@@ -33,7 +33,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'full-acceptance') && github.run_id || github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance') }}
 
 permissions:
   contents: read
@@ -100,10 +100,10 @@ jobs:
 
   detect:
     name: Detect changed paths
-    if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      selected: ${{ steps.event.outputs.selected }}
       docs_only: ${{ steps.paths.outputs.docs_only }}
       run_l1: ${{ steps.paths.outputs.run_l1 }}
       run_quality: ${{ steps.paths.outputs.run_quality }}
@@ -111,18 +111,27 @@ jobs:
       run_l2: ${{ steps.paths.outputs.run_l2 }}
 
     steps:
+      - name: Select CI event
+        id: event
+        env:
+          SELECTED: ${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance' }}
+        run: echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
+
       - name: Check out repository
+        if: steps.event.outputs.selected == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Node.js
+        if: steps.event.outputs.selected == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
+        if: steps.event.outputs.selected == 'true'
         run: npm ci
 
       - name: Retained rehearsal source lock on native Linux
@@ -130,6 +139,7 @@ jobs:
         run: npx vitest run --config vitest.scripts.config.ts scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts
 
       - name: Classify changed paths
+        if: steps.event.outputs.selected == 'true'
         id: paths
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -179,10 +189,12 @@ jobs:
           esac
 
       - name: Record CI shadow scope
+        if: steps.event.outputs.selected == 'true'
         id: shadow-summary
         run: node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope
 
       - name: Documentation governance
+        if: steps.event.outputs.selected == 'true'
         run: npm run docs:check
 
   l1-static:
@@ -497,7 +509,7 @@ jobs:
 
   l1-server:
     name: L1 backend
-    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')
+    if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, l1-server-shards]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -521,7 +533,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')
+    if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, l1-static, l1-frontend, l1-scripts, l1-server]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -608,7 +620,7 @@ jobs:
       - name: Read Playwright version
         id: playwright_version
         timeout-minutes: 1
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         timeout-minutes: 2
@@ -702,7 +714,7 @@ jobs:
 
   acceptance-quality:
     name: Acceptance quality
-    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')
+    if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, acceptance-quality-lanes]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -780,7 +792,7 @@ jobs:
       - name: Read Playwright version
         id: playwright_version
         timeout-minutes: 1
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         timeout-minutes: 2
@@ -903,7 +915,7 @@ jobs:
       - name: Read Playwright version
         id: playwright_version
         timeout-minutes: 1
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         timeout-minutes: 2
@@ -1100,7 +1112,7 @@ jobs:
 
   acceptance-local-non-hdc:
     name: Acceptance local non-HDC
-    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')
+    if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, acceptance-local-non-hdc-shards]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1160,7 +1172,7 @@ jobs:
       - name: Read Playwright version
         id: playwright_version
         timeout-minutes: 1
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         timeout-minutes: 2
@@ -1238,7 +1250,7 @@ jobs:
             test-results/quality
 
   required:
-    name: Merge bar${{ (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'full-acceptance') && ' (ignored label)' || '' }}
+    name: Merge bar${{ needs.detect.outputs.selected == 'false' && ' (ignored label)' || '' }}
     if: always()
     needs:
       - detect
@@ -1252,13 +1264,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'
+        if: needs.detect.outputs.selected != 'false'
       - uses: actions/setup-node@v4
-        if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'
+        if: needs.detect.outputs.selected != 'false'
         with:
           node-version-file: .nvmrc
       - name: Check jobs that were supposed to run
-        if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'
+        if: needs.detect.outputs.selected != 'false'
         env:
           EFF_NEEDS: ${{ toJSON(needs) }}
         run: node --experimental-strip-types scripts/ci-required-results.ts required

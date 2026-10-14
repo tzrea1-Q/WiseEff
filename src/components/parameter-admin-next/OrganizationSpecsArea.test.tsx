@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
 import { describe, expect, it, vi } from "vitest";
@@ -39,6 +39,27 @@ function renderIdentityEntry(tasks: IdentityMappingTask[] | Error) {
 }
 
 describe("OrganizationSpecsArea identity-mapping entry", () => {
+  it("does not report settled readiness until the empty identity task redirects to the review queue", async () => {
+    let resolveTasks!: (tasks: IdentityMappingTask[]) => void;
+    const tasks = new Promise<IdentityMappingTask[]>((resolve) => { resolveTasks = resolve; });
+    const topology = { listMappingTasks: vi.fn(() => tasks) };
+    const onNavigate = vi.fn();
+    const entry = (pathname: string, search: string) => (
+      <ParameterAdminProvider topology={topology as never} moduleRegistry={{} as never}>
+        <OrganizationSpecsArea pathname={pathname} search={search} onNavigate={onNavigate}
+          renderCatalogLibrary={() => <div>Canonical Catalog</div>} />
+      </ParameterAdminProvider>
+    );
+    const view = render(entry("/parameter-admin/specs/identity-mapping", ""));
+    expect(screen.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", "loading");
+    expect(onNavigate).not.toHaveBeenCalled();
+    await act(async () => { resolveTasks([]); await tasks; });
+    expect(screen.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", "redirecting");
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs?review=open");
+    view.rerender(entry("/parameter-admin/specs", "?review=open"));
+    await waitFor(() => expect(screen.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", "ready"));
+  });
+
   it("shows unresolved identity evidence inside the Catalog task area without changing its review link", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const topology = { listMappingTasks: vi.fn().mockResolvedValue([

@@ -8,7 +8,7 @@ export function buildCachedToolInvocation(tool: "tsc" | "eslint", env: NodeJS.Pr
   if (tool === "eslint") {
     return {
       bin: path.resolve("node_modules/eslint/bin/eslint.js"),
-      args: ["src", "--cache", "--cache-location", cache ? path.resolve(cache, "eslint") + path.sep : "node_modules/.cache/eslint/"]
+      args: ["src", "scripts/**/*.{test,spec}.{ts,tsx}", "--cache", "--cache-location", cache ? path.resolve(cache, "eslint") + path.sep : "node_modules/.cache/eslint/"]
     };
   }
   const args = ["-b"];

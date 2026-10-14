@@ -60,7 +60,7 @@ npm run --silent test:impact -- --base origin/main --json > /tmp/vitest-impact.j
 
 本地 Unix-domain IPC 仅允许使用当前用户规范化临时目录中的 `tsx-<effective UID>` 子目录。子进程的 `TMPDIR` 固定为该规范化临时目录，使 tsx socket 路径与沙箱规则一致；非回环 IP 网络继续被拒绝。
 
-`test:browser:codex` 是 #1179 的本地运行器，不替代 CI 或协调者验收。必须在独立 linked worktree 的根目录、`codex/<task>` 分支运行，并显式导出 `WISEEFF_RUNTIME_LANE` 与指向 localhost PostgreSQL 的 `DATABASE_URL`。lane ID 不得与其他工作树或浏览器会话重复。运行前通过既有浏览器环境准备流程创建并播种派生的 `<database>_lane_<N>` 数据库；运行器不创建、迁移、重置或播种数据库。PostgreSQL URL 的查询参数覆盖和已属于其他 lane 的数据库会被拒绝。
+`test:browser:codex` 是 #1179 的本地运行器，不替代 CI 或协调者验收。必须在独立 linked worktree 的根目录、`codex/<task>` 分支运行，并显式导出 `WISEEFF_RUNTIME_LANE` 与指向 localhost PostgreSQL 的 `DATABASE_URL`。lane ID 不得与其他工作树或浏览器会话重复。运行前通过既有浏览器环境准备流程创建派生的 `<database>_lane_<N>` 数据库；运行器不创建数据库。启动 quality 服务器前，它会执行 `seed:browser`（迁移 → 重置临时 quality 数据 → 全量播种 → 播种管理列表）；只有显式设置 `WISEEFF_QUALITY_SKIP_SEED=true` 才使用预先播种／只读环境。PostgreSQL URL 的查询参数覆盖和已属于其他 lane 的数据库会被拒绝。
 
 ```bash
 export WISEEFF_RUNTIME_LANE=7
@@ -76,7 +76,7 @@ npm run test:browser:codex -- --check test-results/lanes/7/codex-browser-evidenc
 
 版本 1 回执位于 `test-results/lanes/<N>/codex-browser-evidence.json`。包含 `worktree`（根目录、分支、HEAD、dirty 标记）、不含凭据的 `lane`（数据库名称、URL 和产物根目录）、`network`、`selection.changedPaths`、完整的 `selection.browser`、时间戳、总体 `status`、已执行测试标签中的 `themes`，以及按 quality、acceptance 排序的两个 `runs`。每次运行记录退出码、耗时毫秒数、JSON 报告路径、报告错误数量和测试列表；每个测试记录文件/标题/项目、标题标注的路由/主题、预期状态、原生结果、总耗时，以及每次尝试的状态/重试序号/耗时/产物路径。未标注路由保持 `[]`，未标注主题保持 `null`；这些是报告标签，不证明浏览器实际访问了哪些页面。内联附件引用原始 JSON 报告，不重复保存字节。原始 JSON、HTML 报告、截图和 trace 保留在既有 lane 目录，继续遵守既有产物脱敏和共享要求。
 
-导出的 `codexBrowserEvidenceSchema` 与 `--check <receipt>` 验证机器可读格式，并核对结果与状态。非零/中断启动、损坏或缺失报告、unexpected/flaky 结果、漏收所选 acceptance spec、未执行非 warmup 测试、整次运行全部跳过，均不能通过。启动前删除旧 JSON 结果，输出符号链接不能逃逸工作树；lane 本地锁拒绝同一工作树内并发启动运行器。强制终止后可能残留 `.codex-browser-lock`；协调者必须确认相关进程均已停止，才可移除该空目录。初始回执的 `spotCheck` 为 `null`；协调者真实检查后改为 `{ "reviewer": "<姓名>", "checkedAt": "<ISO 时间>", "outcome": "passed|failed", "notes": "<变更、路由/主题、已检查截图/交互>" }`，并重新运行 `--check`。待检查状态会明确输出；格式合法但运行失败或抽查失败时仍以非零退出。真实变更演示、协调者抽查记录、Playwright quality/acceptance、`ui:check` 和截图均须由真实运行时提供，不能用单元测试代替。
+导出的 `codexBrowserEvidenceSchema` 与 `--check <receipt>` 验证机器可读格式，并核对结果与状态。非零/中断启动、损坏或缺失报告、unexpected/flaky 结果、漏收所选 acceptance spec、未执行非 warmup 测试、整次运行全部跳过，均不能通过。启动前删除旧 JSON 结果，输出符号链接不能逃逸工作树；lane 本地锁拒绝同一工作树内并发启动运行器。强制终止后可能残留 `.codex-browser-lock`；协调者必须确认相关进程均已停止，才可移除该空目录。初始回执的 `spotCheck` 为 `null`；协调者真实检查后执行 `npm run test:browser:codex -- --spot-check <receipt> --reviewer "<姓名>" --outcome passed|failed --notes "<变更、路由/主题、已检查截图/交互>"`，并重新运行 `--check`。该命令验证回执及非空白的检查字段，自动记录时间，在 lane 锁内原子保存，不启动浏览器。待检查状态会明确输出；格式合法但运行失败或抽查失败时仍以非零退出。真实变更演示、协调者抽查记录、Playwright quality/acceptance、`ui:check` 和截图均须由真实运行时提供，不能用单元测试代替。
 
 ### 测试数据库隔离
 

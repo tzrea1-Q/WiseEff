@@ -11,7 +11,7 @@ const identity = {
   base: "1".repeat(40), head: "2".repeat(40), sha: "3".repeat(40), tree: "4".repeat(40),
   runId: "100", attempt: "1",
 };
-const docs = { docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" };
+const docs = { selected: "true", docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" };
 const docNeeds = {
   detect: { result: "success", outputs: docs },
   "build-and-test": { result: "success", outputs: { identity: JSON.stringify(identity) } },
@@ -27,6 +27,13 @@ describe("strict CI required results", () => {
   it("accepts docs-only with a successful stable Build and test", () => {
     expect(() => assertRequiredResults({ identity, needs: docNeeds })).not.toThrow();
   });
+  it.each(["false", "unknown", ""])("rejects non-selected or invalid detect selection %s", (selected) => {
+    expect(() => assertRequiredResults({ identity, needs: { ...docNeeds, detect: { result: "success", outputs: { ...docs, selected } } } })).toThrow();
+  });
+  it("rejects a missing selected-event output instead of accepting absent selection", () => {
+    const { selected: _selected, ...outputs } = docs;
+    expect(() => assertRequiredResults({ identity, needs: { ...docNeeds, detect: { result: "success", outputs } } })).toThrow();
+  });
   it("requires the always-running Build and test gate on docs-only changes", () => {
     expect(() => assertRequiredResults({ identity, needs: { ...docNeeds, "build-and-test": { result: "skipped" } } })).toThrow();
   });
@@ -38,14 +45,14 @@ describe("strict CI required results", () => {
   });
   it.each(["push", "schedule"])("requires complete main L1, quality and L2 for %s", (event) => {
     const mainIdentity = { ...identity, event, ref: "refs/heads/main", base: "", head: "" };
-    const needs = { ...docNeeds, "build-and-test": { result: "success", outputs: { identity: JSON.stringify(mainIdentity) } }, detect: { result: "success", outputs: { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" } }, "acceptance-quality": { result: "success", outputs: { identity: JSON.stringify(mainIdentity) } }, "acceptance-local-non-hdc": { result: "success" } };
+    const needs = { ...docNeeds, "build-and-test": { result: "success", outputs: { identity: JSON.stringify(mainIdentity) } }, detect: { result: "success", outputs: { selected: "true", docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" } }, "acceptance-quality": { result: "success", outputs: { identity: JSON.stringify(mainIdentity) } }, "acceptance-local-non-hdc": { result: "success" } };
     expect(() => assertRequiredResults({ identity: mainIdentity, needs })).not.toThrow();
     expect(() => assertRequiredResults({ identity: mainIdentity, needs: { ...needs, "acceptance-local-non-hdc": { result: "skipped" } } })).toThrow();
   });
   it.each(["local-non-hdc", "target-non-hdc", "full-pilot", "minimal-upgrade"])("retains %s manual dispatch requirements", (mode) => {
     const local = mode === "local-non-hdc";
     const target = mode === "target-non-hdc" || mode === "full-pilot";
-    const needs = { ...docNeeds, detect: { result: "success", outputs: { docs_only: "false", run_l1: "false", run_quality: String(local), run_smoke: "false", run_l2: String(local) } }, "acceptance-local-non-hdc": { result: "success" }, "target-synthetic-acceptance": { result: target ? "success" : "skipped" }, "minimal-upgrade": { result: mode === "minimal-upgrade" ? "success" : "skipped" } };
+    const needs = { ...docNeeds, detect: { result: "success", outputs: { selected: "true", docs_only: "false", run_l1: "false", run_quality: String(local), run_smoke: "false", run_l2: String(local) } }, "acceptance-local-non-hdc": { result: "success" }, "target-synthetic-acceptance": { result: target ? "success" : "skipped" }, "minimal-upgrade": { result: mode === "minimal-upgrade" ? "success" : "skipped" } };
     const dispatchIdentity = { ...identity, event: "workflow_dispatch", base: "", head: "", mode };
     needs["build-and-test"] = { result: "success", outputs: { identity: JSON.stringify(dispatchIdentity) } };
     needs["acceptance-quality"] = { result: "success", outputs: { identity: JSON.stringify(dispatchIdentity) } };
@@ -263,7 +270,7 @@ describe("L1 invocation receipts", () => {
     const nativeSteps = (job: string) => Object.fromEntries(l1CommandIds[job].map((id) => [id, {
       outcome: "success", outputs: { report: JSON.stringify({ ...report(id), identity: mainIdentity }) },
     }]));
-    const nativeNeeds = { detect: { result: "success", outputs: { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" } },
+    const nativeNeeds = { detect: { result: "success", outputs: { selected: "true", docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" } },
       ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: mainIdentity, job, steps: nativeSteps(job) })) } }])),
     };
     const env = { ...process.env, PATH: "/usr/bin:/bin", GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main", GITHUB_SHA: sha,
@@ -324,7 +331,7 @@ describe("L1 invocation receipts", () => {
       return value;
     };
     const mainIdentity = { ...prIdentity, event: "push" as const, base: "", head: "", ref: "refs/heads/main" };
-    const mainFlags = { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" };
+    const mainFlags = { selected: "true", docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" };
     const mainNeeds = { detect: { result: "success", outputs: mainFlags },
       ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: mainIdentity, job, steps: nativeSteps(job, mainIdentity) })) } }])) };
     const cases: Array<{ name: string; shadow: unknown; needs?: unknown; event?: "pull_request" | "push"; expectedExit: number; expectedState: "observed" | "unavailable" | "not-applicable" | null }> = [
@@ -343,7 +350,7 @@ describe("L1 invocation receipts", () => {
       { name: "envelope-contradiction", shadow: (() => { const value = clone(allObserved); value["l1-server"].outputs.unknown = "{}"; return value; })(), expectedExit: 0, expectedState: "unavailable" },
       ...(["failure", "cancelled", "skipped"] as const).map((result) => ({ name: `native-${result}`, shadow: allObserved, needs: { ...clone(nativeNeeds), "l1-server": result === "skipped" ? { result } : { result, outputs: { receipt: "" } } }, expectedExit: 1, expectedState: null })),
     ];
-    const docsDetect = { result: "success", outputs: { docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } };
+    const docsDetect = { result: "success", outputs: { selected: "true", docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } };
     cases.push(
       { name: "non-pr-not-applicable", shadow: {}, needs: mainNeeds, event: "push", expectedExit: 0, expectedState: "not-applicable" },
       { name: "docs-pr-not-applicable", shadow: {}, needs: { detect: docsDetect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "skipped" }])) }, expectedExit: 0, expectedState: "not-applicable" },

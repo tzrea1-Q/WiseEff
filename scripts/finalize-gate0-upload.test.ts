@@ -36,7 +36,9 @@ import { finalizeGate0UploadSnapshot } from "./finalize-gate0-upload";
 import {
   initializeGate0ProvisioningJournal,
   recordGate0ProvisioningProcessStarted,
+  recordGate0ProvisioningProcessStopped,
 } from "./gate0-provisioning-journal";
+import { browserSeedSteps } from "./browser-seed-contract";
 import {
   listGate0OwnedProcessLaunches,
   readGate0SupervisedProcessIdentity,
@@ -59,6 +61,52 @@ afterEach(() => {
 });
 
 describe("Gate0 immutable upload finalization", () => {
+  it.each(["valid", "duplicate", "undeclared", "wrong-identity"])("validates every registered browser seed launch: %s", async (mutation) => {
+    const fixture = createNestedFixture(`seed_${mutation.replaceAll("-", "_")}`);
+    const descriptorPath = path.join(fixture.runRoot, "runtime.json");
+    const descriptor = JSON.parse(readFileSync(descriptorPath, "utf8")) as OwnedLocalAcceptanceRuntimeDescriptorV1;
+    const journalPath = initializeGate0ProvisioningJournal(fixture.runRoot, {
+      run: { ...descriptor.run, state: "provisioning" },
+      resources: {
+        databaseName: descriptor.database.name, runRoot: fixture.runRoot,
+        objectStoreRoot: descriptor.objectStore.root, nestedRuntimeManifest: descriptor.artifacts.nestedRuntimeManifest,
+      },
+    });
+    for (const label of ["api", "frontend"] as const) {
+      const writer = descriptor.processes[label];
+      recordGate0ProvisioningProcessStarted(journalPath, label, writer.command, writer.pid, writer.processIdentity);
+    }
+    const launchRoot = path.join(fixture.runRoot, ".gate0-owned-process-launches");
+    mkdirSync(launchRoot);
+    browserSeedSteps.forEach(({ script, label }, index) => {
+      const identity = processIdentity(`seed-${index}`, "c");
+      const pid = 43_000 + index;
+      recordGate0ProvisioningProcessStarted(journalPath, label, script, pid, identity);
+      recordGate0ProvisioningProcessStopped(journalPath, label);
+      const launchId = `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
+      writeFileSync(path.join(launchRoot, `${launchId}.json`), JSON.stringify({
+        version: 1, kind: "wiseeff-gate0-owned-process-launch", launchId,
+        runId: fixture.runId, sourceCommit: descriptor.run.sourceCommit,
+        label: `root:${fixture.runId}:${mutation === "duplicate" ? "seed" : mutation === "undeclared" && index === 0 ? "visual" : label}`,
+        ownerPid: descriptor.run.ownerPid, ownerProcessIdentity: descriptor.run.ownerProcessIdentity,
+        state: "claimed", launcherPid: pid,
+        launcherProcessIdentity: mutation === "wrong-identity" ? processIdentity("wrong", "d") : identity,
+        createdAt: descriptor.run.createdAt,
+      }), { mode: 0o600 });
+    });
+    const finalize = finalizeGate0UploadSnapshot({
+      runsRoot: fixture.runsRoot, uploadRoot: fixture.uploadRoot,
+      stopOptions: { processGroupExists: () => false },
+    });
+    if (mutation === "valid") {
+      await finalize;
+      expect(existsSync(fixture.uploadRoot)).toBe(true);
+    } else {
+      await expect(finalize).rejects.toThrow(/duplicate label|no exact declared writer|conflicts with its declared writer identity/);
+      expect(existsSync(fixture.uploadRoot)).toBe(false);
+    }
+  });
+
   it("takes over a pre-rename provisioning stage after the real owner is SIGKILLed", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "wiseeff-gate0-stage-crash-"));
     roots.push(root);

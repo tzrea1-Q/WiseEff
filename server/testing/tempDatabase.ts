@@ -93,6 +93,8 @@ export type WithTempDatabaseOptions = {
  * Create a disposable PostgreSQL database, hand it to the callback, and drop it afterwards
  * regardless of outcome. Consolidates the per-suite copies that previously lived in the
  * parameter-topology, parameter-specs, and parameters/dashboard suites.
+ * Omitted `migrate` clones the migrated template without replaying cluster-shared
+ * role guards; role/guard tests must pass `migrate: true` for a full fresh replay.
  */
 export async function withTempDatabase<T>(
   options: WithTempDatabaseOptions,

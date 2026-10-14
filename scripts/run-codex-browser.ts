@@ -32,6 +32,7 @@ const skipSchema = z.object({ suite: z.enum(["quality", "acceptance"]), project:
 const blockSchema = z.object({ reason: z.enum(["lane ports in use", "lane port check failed", "authentication probe failed", "runtime startup failed", "runtime teardown failed", "runtime interrupted"]), suite: z.enum(["quality", "acceptance"]).nullable(), ports: z.array(z.number().int().positive()).optional(), httpStatus: z.number().int().nullable().optional() });
 type BrowserBlock = z.infer<typeof blockSchema>;
 const authProbeSchema = z.object({ suite: z.enum(["quality", "acceptance"]), mode: z.enum(["development", "production"]), mechanism: z.enum(["development-header", "bearer"]), httpStatus: z.number().int().nullable() }).strict();
+const spotCheckSchema = z.object({ reviewer: z.string().trim().min(1), checkedAt: z.string().datetime(), outcome: z.enum(["passed", "failed"]), notes: z.string().trim().min(1) }).strict();
 type AuthProbe = z.infer<typeof authProbeSchema>;
 const missingAuth = (env: NodeJS.ProcessEnv, selection: BrowserSelection) => selection.acceptanceSpecs.length ? authNames.filter((name) => !env[name]?.trim()) : [];
 const successfulRuns = (runs: z.infer<typeof runSchema>[]) => runs.length === 2 && runs.some((run) => run.status === "passed") && runs.every((run) => run.status !== "failed");
@@ -50,7 +51,7 @@ export const codexBrowserEvidenceSchema = z.object({
   missingConfig: z.array(z.enum(authNames)).default([]), skipped: z.array(skipSchema).default([]),
   block: blockSchema.nullable().default(null),
   authProbes: z.array(authProbeSchema).max(2).default([]),
-  spotCheck: z.object({ reviewer: z.string().min(1), checkedAt: z.string().datetime(), outcome: z.enum(["passed", "failed"]), notes: z.string().min(1) }).nullable(),
+  spotCheck: spotCheckSchema.nullable(),
 }).strict().superRefine((evidence, context) => {
   if (evidence.missingConfig.length) {
     if (evidence.status !== `blocked: missing ${evidence.missingConfig.join(", ")}` || evidence.runs.length || evidence.themes.length || evidence.block) {
@@ -399,8 +400,36 @@ export async function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrows
   }
 }
 
-async function cli() {
-  const { values, positionals } = parseArgs({ options: { base: { type: "string" }, check: { type: "string" } }, allowPositionals: true });
+export async function runCodexBrowserCli(args: string[] = process.argv.slice(2)) {
+  const { values, positionals } = parseArgs({ args, options: {
+    base: { type: "string" }, check: { type: "string" }, "spot-check": { type: "string" },
+    reviewer: { type: "string" }, outcome: { type: "string" }, notes: { type: "string" },
+  }, allowPositionals: true });
+  const reviewOptions = [values.reviewer, values.outcome, values.notes];
+  if (values["spot-check"] !== undefined) {
+    if (values.base !== undefined || values.check !== undefined || positionals.length) throw new Error("--spot-check cannot be combined with --check or a browser run.");
+    const spotCheck = spotCheckSchema.parse({ reviewer: values.reviewer, outcome: values.outcome, notes: values.notes, checkedAt: new Date().toISOString() });
+    const evidencePath = resolve(values["spot-check"]);
+    const initial = codexBrowserEvidenceSchema.parse(JSON.parse(readFileSync(evidencePath, "utf8")));
+    const root = realpathSync(initial.worktree.root);
+    assertLocalDestination(root, evidencePath);
+    const lock = resolve(root, initial.lane.outputDir, ".codex-browser-lock");
+    assertLocalDestination(root, lock);
+    mkdirSync(lock);
+    try {
+      const evidence = codexBrowserEvidenceSchema.parse({ ...JSON.parse(readFileSync(evidencePath, "utf8")), spotCheck });
+      const temporary = `${evidencePath}.tmp`;
+      assertLocalDestination(root, temporary);
+      writeFileSync(temporary, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+      renameSync(temporary, evidencePath);
+      console.log(`Recorded browser spot-check: ${spotCheck.outcome}; reviewer: ${spotCheck.reviewer}`);
+      process.exitCode = evidence.status === "passed" && spotCheck.outcome === "passed" ? 0 : 1;
+    } finally {
+      rmdirSync(lock);
+    }
+    return;
+  }
+  if (reviewOptions.some((value) => value !== undefined)) throw new Error("--reviewer, --outcome and --notes require --spot-check <evidence.json>.");
   if (values.check) {
     if (values.base || positionals.length) throw new Error("--check cannot be combined with a browser run.");
     const evidence = codexBrowserEvidenceSchema.parse(JSON.parse(readFileSync(values.check, "utf8")));
@@ -433,6 +462,6 @@ async function cli() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { await cli(); }
+  try { await runCodexBrowserCli(); }
   catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }
 }

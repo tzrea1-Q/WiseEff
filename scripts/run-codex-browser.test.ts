@@ -3,7 +3,7 @@ import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { browserPlatformSkips, buildCodexBrowserEvidence, checkCodexLanePorts, codexBrowserEvidenceSchema, launchCodexBrowserSuite, planCodexBrowserRun, runCodexBrowserPlan, summarizeBrowserReport } from "./run-codex-browser";
+import { browserPlatformSkips, buildCodexBrowserEvidence, checkCodexLanePorts, codexBrowserEvidenceSchema, launchCodexBrowserSuite, planCodexBrowserRun, runCodexBrowserCli, runCodexBrowserPlan, summarizeBrowserReport } from "./run-codex-browser";
 import { selectBrowserImpact } from "./test-impact";
 import { buildPlaywrightWebServers } from "../playwright.shared";
 import { createBearerTokenForUser } from "../e2e/acceptance/helpers/runtime";
@@ -402,6 +402,51 @@ describe("Codex browser runner", () => {
       }, async () => null);
       expect(codexBrowserEvidenceSchema.parse(evidence)).toMatchObject({ status: "passed", themes: ["light"], spotCheck: null });
       expect(evidence.runs.map((run) => run.tests[0].durationMs)).toEqual([12, 12]);
+      const receipt = resolve(root, plan.lane.outputDir, "codex-browser-evidence.json");
+      const output = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      const previousExitCode = process.exitCode;
+      try {
+        await runCodexBrowserCli(["--check", receipt]);
+        expect(output).toHaveBeenLastCalledWith("Valid browser evidence: passed; spot-check: pending");
+        for (const outcome of ["passed", "failed"]) {
+          await runCodexBrowserCli(["--spot-check", receipt, "--reviewer", "Coordinator", "--outcome", outcome, "--notes", "Checked /logs in light theme and screenshot artifacts"]);
+          const recorded = codexBrowserEvidenceSchema.parse(JSON.parse(readFileSync(receipt, "utf8")));
+          expect(recorded).toEqual({ ...evidence, spotCheck: {
+            reviewer: "Coordinator", outcome, notes: "Checked /logs in light theme and screenshot artifacts", checkedAt: expect.any(String),
+          } });
+          expect(Number.isNaN(Date.parse(recorded.spotCheck!.checkedAt))).toBe(false);
+          await runCodexBrowserCli(["--check", receipt]);
+          expect(output).toHaveBeenLastCalledWith(`Valid browser evidence: passed; spot-check: ${outcome}`);
+          expect(process.exitCode).toBe(outcome === "passed" ? 0 : 1);
+        }
+        const saved = readFileSync(receipt, "utf8");
+        for (const invalid of [
+          ["--outcome", "unknown"], ["--reviewer", " "], ["--notes", " "], ["--check", receipt], ["--base", "main"], ["src/App.tsx"],
+        ]) {
+          await expect(runCodexBrowserCli(["--spot-check", receipt, "--reviewer", "Coordinator", "--outcome", "passed", "--notes", "Reviewed", ...invalid])).rejects.toThrow();
+          expect(readFileSync(receipt, "utf8")).toBe(saved);
+        }
+        await expect(runCodexBrowserCli(["--spot-check", receipt])).rejects.toThrow();
+        await expect(runCodexBrowserCli(["--reviewer", "Coordinator", "--check", receipt])).rejects.toThrow(/require --spot-check/);
+        const lock = resolve(root, plan.lane.outputDir, ".codex-browser-lock");
+        mkdirSync(lock);
+        await expect(runCodexBrowserCli(["--spot-check", receipt, "--reviewer", "Coordinator", "--outcome", "passed", "--notes", "Reviewed"])).rejects.toThrow();
+        expect(readFileSync(receipt, "utf8")).toBe(saved);
+        rmSync(lock, { recursive: true });
+        writeFileSync(receipt, JSON.stringify({ ...evidence, status: "failed" }));
+        await expect(runCodexBrowserCli(["--spot-check", receipt, "--reviewer", "Coordinator", "--outcome", "passed", "--notes", "Reviewed"])).rejects.toThrow();
+        const failed = buildCodexBrowserEvidence(plan, ["src/features/log-analysis/LogsPage.tsx"], [
+          { ...evidence.runs[0], status: "failed", exitCode: 1 }, evidence.runs[1],
+        ]);
+        writeFileSync(receipt, JSON.stringify(failed));
+        await runCodexBrowserCli(["--spot-check", receipt, "--reviewer", "Coordinator", "--outcome", "passed", "--notes", "Reviewed failure"]);
+        await runCodexBrowserCli(["--check", receipt]);
+        expect(output).toHaveBeenLastCalledWith("Valid browser evidence: failed; spot-check: passed");
+        expect(process.exitCode).toBe(1);
+      } finally {
+        output.mockRestore();
+        process.exitCode = previousExitCode;
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

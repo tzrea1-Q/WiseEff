@@ -154,7 +154,7 @@ describe("native test discovery and execution", () => {
 describe("matrix scheduling fail-closed", () => {
   it.each(["server", "quality"] as const)("accepts %s only when every selected worker succeeds", (kind) => {
     const job = kind === "server" ? "l1-server-shards" : "acceptance-quality-lanes";
-    const input = { identity, needs: { detect: { result: "success", outputs: { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "true", run_l2: "false" } }, [job]: { result: "success" } } };
+    const input = { identity, needs: { detect: { result: "success", outputs: { selected: "true", docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "true", run_l2: "false" } }, [job]: { result: "success" } } };
     expect(assertShardJobs(input, kind)).toBe(true);
     for (const result of ["failure", "cancelled", "skipped", "missing"]) {
       expect(() => assertShardJobs({ ...input, needs: { ...input.needs, [job]: { result } } }, kind)).toThrow();
@@ -162,7 +162,7 @@ describe("matrix scheduling fail-closed", () => {
   });
   it.each(["server", "quality"] as const)("only accepts intentionally skipped %s matrices on docs-only", (kind) => {
     const job = kind === "server" ? "l1-server-shards" : "acceptance-quality-lanes";
-    const input = { identity, needs: { detect: { result: "success", outputs: { docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } }, [job]: { result: "skipped" } } };
+    const input = { identity, needs: { detect: { result: "success", outputs: { selected: "true", docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } }, [job]: { result: "skipped" } } };
     expect(assertShardJobs(input, kind)).toBe(false);
     expect(() => assertShardJobs({ ...input, needs: { ...input.needs, [job]: { result: "success" } } }, kind)).toThrow();
   });

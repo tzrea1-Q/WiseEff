@@ -1,17 +1,24 @@
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { evaluateL1CiWorkflow } from "./check-acceptance-ci";
 
-type Step = { id?: string; uses?: string; run?: string; if?: string; with?: Record<string, string> };
-type Job = { name?: string; if?: string; steps: Step[] };
+type Step = { name?: string; id?: string; uses?: string; run?: string; if?: string; env?: Record<string, string>; with?: Record<string, string> };
+type Job = { name?: string; if?: string; outputs?: Record<string, string>; steps: Step[] };
 const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
 const jobs = workflow.jobs as Record<string, Job>;
 
 function evaluate(expression: string, eventName: string, action = "", label = "") {
+  const github = { event_name: eventName, event: { action, label: { name: label }, pull_request: { number: eventName === "pull_request" ? 42 : undefined } }, workflow: "CI", run_id: 123 };
+  const selected = String(runInNewContext(jobs.detect.steps[0].env!.SELECTED.replace(/\$\{\{|\}\}/g, ""), { github }));
   return runInNewContext(expression.replace(/\$\{\{|\}\}/g, ""), {
-    github: { event_name: eventName, event: { action, label: { name: label }, pull_request: { number: eventName === "pull_request" ? 42 : undefined } }, workflow: "CI", run_id: 123 },
+    github,
+    steps: { event: { outputs: { selected } } },
+    needs: { detect: { outputs: { selected } } },
     always: () => true,
   });
 }
@@ -21,11 +28,14 @@ function render(template: string, eventName: string, action: string, label: stri
 }
 
 describe("CI hygiene", () => {
-  it.each(["cache", "install", "detect", "concurrency", "gate-name", "gate-step", "aggregate"])("rejects hygiene/gate regressions: %s", (mutation) => {
+  it.each(["cache", "install", "detect", "detect-output", "detect-selector", "detect-condition", "concurrency", "gate-name", "gate-step", "aggregate"])("rejects hygiene/gate regressions: %s", (mutation) => {
     const candidate = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
     if (mutation === "cache") candidate.jobs["acceptance-quality-lanes"].steps = candidate.jobs["acceptance-quality-lanes"].steps.filter((step: Step) => step.uses !== "actions/cache@v4");
     if (mutation === "install") candidate.jobs["acceptance-smoke"].steps.find((step: Step) => step.run?.includes("playwright install")).if = "steps.cache.outputs.cache-hit != 'true'";
-    if (mutation === "detect") delete candidate.jobs.detect.if;
+    if (mutation === "detect") delete candidate.jobs.detect.steps[1].if;
+    if (mutation === "detect-output") delete candidate.jobs.detect.outputs.selected;
+    if (mutation === "detect-selector") candidate.jobs.detect.steps[0].env.SELECTED = "true";
+    if (mutation === "detect-condition") candidate.jobs.detect.if = "false";
     if (mutation === "concurrency") candidate.concurrency.group = "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}";
     if (mutation === "gate-name") candidate.jobs.required.name = "Merge bar";
     if (mutation === "gate-step") candidate.jobs.required.steps[2].if = "false";
@@ -48,7 +58,14 @@ describe("CI hygiene", () => {
     const group = render(workflow.concurrency.group, eventName, action, label);
     expect(group).toBe(selected && eventName === "pull_request" ? "CI-42" : "CI-123");
     expect(evaluate(workflow.concurrency["cancel-in-progress"], eventName, action, label)).toBe(selected && eventName === "pull_request");
-    for (const id of ["detect", "l1-server", "build-and-test", "acceptance-quality", "acceptance-local-non-hdc"]) {
+    expect(jobs.detect.if).toBeUndefined();
+    expect(jobs.detect.outputs?.selected).toBe("${{ steps.event.outputs.selected }}");
+    expect(evaluate(jobs.detect.steps[0].env!.SELECTED, eventName, action, label)).toBe(selected);
+    for (const step of jobs.detect.steps.slice(1)) {
+      if (step.name === "Retained rehearsal source lock on native Linux") continue;
+      expect(evaluate(step.if ?? "true", eventName, action, label)).toBe(selected);
+    }
+    for (const id of ["l1-server", "build-and-test", "acceptance-quality", "acceptance-local-non-hdc"]) {
       expect(evaluate(jobs[id].if ?? "true", eventName, action, label), id).toBe(selected);
     }
     expect(jobs.required.if).toBe("always()");
@@ -67,11 +84,30 @@ describe("CI hygiene", () => {
       expect(versionIndex).toBeGreaterThan(job.steps.findIndex((step) => step.run === "npm ci"));
       expect(cacheIndex).toBeGreaterThan(versionIndex);
       expect(installIndex).toBeGreaterThan(cacheIndex);
-      expect(job.steps[versionIndex].run).toContain("require('@playwright/test/package.json').version");
+      expect(job.steps[versionIndex].run).toContain("require('./package-lock.json').packages['node_modules/playwright'].version");
       expect(job.steps[cacheIndex].with?.key).toBe("playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}");
       expect(job.steps[cacheIndex].with?.["restore-keys"]).toBeUndefined();
       expect(job.steps[installIndex]).toMatchObject({ run: "npx playwright install --with-deps chromium" });
       expect(job.steps[installIndex].if).toBeUndefined();
+    }
+  });
+  it("reads the Chromium cache version from the lockfile without installed packages", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "wiseeff-playwright-cache-"));
+    try {
+      copyFileSync("package-lock.json", path.join(directory, "package-lock.json"));
+      const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+      for (const job of Object.values(jobs)) {
+        const version = job.steps.find((step) => step.id === "playwright_version");
+        if (!version) continue;
+        const output = path.join(directory, "output");
+        rmSync(output, { force: true });
+        execFileSync("bash", ["-e", "-c", version.run!], {
+          cwd: directory, env: { ...process.env, GITHUB_OUTPUT: output },
+        });
+        expect(readFileSync(output, "utf8")).toBe(`version=${lock.packages["node_modules/playwright"].version}\n`);
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

@@ -25,7 +25,8 @@ export const GATE0_PROVISIONING_JOURNAL_FILE = "runtime-provisioning.json";
 const JOURNAL_KIND = "wiseeff-owned-local-acceptance-provisioning";
 const STAGING_DIRECTORY = ".gate0-acceptance-provisioning-staging";
 
-export type Gate0ProvisioningProcessLabel = "migration" | "seed" | "api" | "frontend";
+export const gate0ProvisioningProcessLabels = ["migration", "seed-reset", "seed", "seed-admin-lists", "api", "frontend"] as const;
+export type Gate0ProvisioningProcessLabel = typeof gate0ProvisioningProcessLabels[number];
 export type Gate0ProvisioningProcess = {
   state: "not-started" | "launching" | "running" | "stopped";
   operation?: string;
@@ -66,7 +67,9 @@ export function initializeGate0ProvisioningJournal(
     ...input,
     processes: {
       migration: { state: "not-started" },
+      "seed-reset": { state: "not-started" },
       seed: { state: "not-started" },
+      "seed-admin-lists": { state: "not-started" },
       api: { state: "not-started" },
       frontend: { state: "not-started" },
     },
@@ -99,7 +102,9 @@ export function initializeGate0ProvisioningRun(
     ...input,
     processes: {
       migration: { state: "not-started" },
+      "seed-reset": { state: "not-started" },
       seed: { state: "not-started" },
+      "seed-admin-lists": { state: "not-started" },
       api: { state: "not-started" },
       frontend: { state: "not-started" },
     },
@@ -349,7 +354,7 @@ function assertGate0ProvisioningJournal(
   ) {
     throw new Error("Gate0 provisioning journal resource identity is invalid.");
   }
-  for (const label of ["migration", "seed", "api", "frontend"] as const) {
+  for (const label of gate0ProvisioningProcessLabels) {
     const processRecord = journal.processes[label];
     if (!processRecord || !["not-started", "launching", "running", "stopped"].includes(processRecord.state)) {
       throw new Error("Gate0 provisioning journal process state is invalid.");

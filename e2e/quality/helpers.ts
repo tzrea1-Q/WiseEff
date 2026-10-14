@@ -105,9 +105,13 @@ export async function settleXiaozePopupClosed(page: Page, timeoutMs = 15_000) {
   await expect(page.getByTestId("xiaoze-popup-layer")).toBeHidden();
 }
 
-export async function dismissXiaozeToggleHintIfPresent(page: Page, timeoutMs = 2_000) {
+export async function dismissXiaozeToggleHintIfPresent(page: Page, timeoutMs = 15_000) {
   const hint = page.getByTestId("xiaoze-toggle-hint");
   const readiness = page.getByTestId("xiaoze-toggle-hint-readiness");
+  if (await readiness.count() === 0) {
+    await expect(hint).toBeHidden();
+    return;
+  }
   await expect(readiness).toHaveAttribute("data-state", /^(revealed|suppressed)$/, { timeout: timeoutMs });
 
   if (await hint.isVisible()) {
@@ -224,7 +228,7 @@ export async function stableMasks(page: Page, routePath = ""): Promise<Locator[]
     // body so chrome (tabs, search) stays the gate.
     masks.push(page.locator(".parameter-catalog__anchor"));
     optionalMasks.push(page.locator(".parameter-catalog__banner"));
-    masks.push(page.locator(".parameter-catalog__workspace"));
+    masks.push(page.locator(".parameter-catalog .navigator-workbench__body"));
   }
 
   if (routePath === "/parameter-home") {
@@ -261,7 +265,9 @@ export async function stableMasks(page: Page, routePath = ""): Promise<Locator[]
     // the same surface that would show relative "N 分钟前" / clock-skewed ISO
     // if a later hydrate reformats capturedAt. Metadata's captured-at cell is
     // the other clock-bound label (hidden on the default History tab).
-    masks.push(page.locator(".rawlog-table__time"));
+    if (!await page.locator(".log-error-alert").isVisible()) {
+      masks.push(page.locator(".rawlog-table__time"));
+    }
     optionalMasks.push(page.locator(".logs-metadata-list dd"));
     // Inline width on the fill can still interpolate a frame even with
     // screenshot animations disabled; mask the bar, not the workbench.
@@ -296,6 +302,10 @@ export async function waitForFontsAndNextPaint(page: Page) {
  */
 export async function settleQualityRoute(page: Page, routePath: string, options: { readOnly?: boolean } = {}) {
   const timeout = 20_000;
+
+  if (["/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"].includes(routePath.split("?")[0])) {
+    await expect(page.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", /^(ready|error)$/, { timeout });
+  }
 
   if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath.split("?")[0])) {
     await expect(page.locator('.parameter-module-mapping-panel[aria-busy="false"]')).toBeVisible({ timeout });

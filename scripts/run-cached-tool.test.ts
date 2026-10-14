@@ -4,12 +4,13 @@ import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
+import { ESLint } from "eslint";
 import { buildCachedToolInvocation } from "./run-cached-tool";
 
 describe("writable tool caches", () => {
   it("preserves default developer commands", () => {
     expect(buildCachedToolInvocation("tsc", {}).args).toEqual(["-b"]);
-    expect(buildCachedToolInvocation("eslint", {}).args).toEqual(["src", "--cache", "--cache-location", "node_modules/.cache/eslint/"]);
+    expect(buildCachedToolInvocation("eslint", {}).args).toEqual(["src", "scripts/**/*.{test,spec}.{ts,tsx}", "--cache", "--cache-location", "node_modules/.cache/eslint/"]);
   });
 
   it("redirects both build-info files and ESLint without changing TypeScript inputs", () => {
@@ -25,7 +26,7 @@ describe("writable tool caches", () => {
         expect(parsed.fileNames).toEqual(original.fileNames);
         expect(parsed.options).toEqual({ ...original.options, configFilePath: generated, tsBuildInfoFile: path.join(cache, `tsconfig.${name}.tsbuildinfo`) });
       }
-      expect(buildCachedToolInvocation("eslint", { WISEEFF_TOOL_CACHE_DIR: cache }).args).toEqual(["src", "--cache", "--cache-location", path.join(cache, "eslint") + path.sep]);
+      expect(buildCachedToolInvocation("eslint", { WISEEFF_TOOL_CACHE_DIR: cache }).args).toEqual(["src", "scripts/**/*.{test,spec}.{ts,tsx}", "--cache", "--cache-location", path.join(cache, "eslint") + path.sep]);
     } finally { rmSync(cache, { recursive: true, force: true }); }
   });
 
@@ -34,6 +35,12 @@ describe("writable tool caches", () => {
     expect(scripts.lint).toBe("tsx scripts/run-cached-tool.ts eslint");
     expect(scripts.typecheck).toContain("tsx scripts/run-cached-tool.ts tsc");
     expect(scripts.build).toContain("tsx scripts/run-cached-tool.ts tsc &&");
+  });
+
+  it("enforces the configured CSS assertion rule in scripts tests included by lint", async () => {
+    const [result] = await new ESLint().lintText('import { readFileSync } from "node:fs";\nconst css = readFileSync("src/app.css", "utf8");\nexpect(css).toContain("display: flex");\n', { filePath: "scripts/lint-regression.test.ts" });
+    expect(result.messages.map(({ ruleId }) => ruleId)).toContain("wiseeff/no-raw-css-text-assertions");
+    expect(result.errorCount).toBe(1);
   });
 });
 

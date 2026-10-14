@@ -6,9 +6,11 @@ import { isForbiddenComposeAppPostgres } from "../server/testing/testDatabase";
 import { l1CommandIds, l1Jobs } from "./ci-required-results";
 
 export const ciSelectedEventCondition = "github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'";
-export const ciAggregateEventCondition = `always() && (${ciSelectedEventCondition})`;
+export const ciGateEventCondition = "needs.detect.outputs.selected != 'false'";
+export const ciAggregateEventCondition = `always() && ${ciGateEventCondition}`;
 export const ciIgnoredLabelCondition = "github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'full-acceptance'";
-export const ciRequiredJobName = `Merge bar\${{ (${ciIgnoredLabelCondition}) && ' (ignored label)' || '' }}`;
+export const ciRequiredJobName = "Merge bar${{ needs.detect.outputs.selected == 'false' && ' (ignored label)' || '' }}";
+export const ciCancelInProgressCondition = "${{ github.event_name == 'pull_request' && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance') }}";
 
 export const requiredAcceptanceCiScripts = [
   "acceptance:ci",
@@ -509,10 +511,18 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   catch { return { status: "failed", errors: ["Malformed L1 workflow."] }; }
   const jobs = workflow?.jobs;
   const check = (valid: unknown, message: string) => { if (!valid) errors.push(message); };
-  check(jobs?.detect?.if === ciSelectedEventCondition, "Detect must ignore only unrelated PR label edits.");
+  const event = jobs?.detect?.steps?.[0];
+  check(jobs?.detect?.if === undefined && jobs?.detect?.outputs?.selected === "${{ steps.event.outputs.selected }}"
+    && event?.id === "event" && event.run === 'echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"'
+    && event.env?.SELECTED === `\${{ ${ciSelectedEventCondition} }}`
+    && event.if === undefined && event["continue-on-error"] === undefined,
+  "Detect must publish the exact label-edit selection before any fallible setup.");
+  check(jobs?.detect?.steps?.slice(1).every((step) => step.if === "steps.event.outputs.selected == 'true'"
+    || (step.name === "Retained rehearsal source lock on native Linux" && step.if === "github.event_name == 'workflow_dispatch' && inputs.acceptance_mode == 'minimal-upgrade'")),
+  "Ignored label edits must not run detect setup or classification.");
   check(JSON.stringify(workflow.on?.pull_request?.types) === JSON.stringify(["opened", "synchronize", "reopened", "labeled", "unlabeled"]), "CI must retain PR lifecycle and both acceptance-label transitions.");
   check(workflow.concurrency?.group === `\${{ github.workflow }}-\${{ (${ciIgnoredLabelCondition}) && github.run_id || github.event.pull_request.number || github.run_id }}`
-    && workflow.concurrency["cancel-in-progress"] === `\${{ github.event_name == 'pull_request' && (${ciSelectedEventCondition}) }}`, "Ignored label edits must not cancel or replace pending PR CI.");
+    && workflow.concurrency["cancel-in-progress"] === ciCancelInProgressCondition, "Ignored label edits must not cancel or replace pending PR CI.");
   for (const [id, job] of Object.entries(jobs ?? {})) {
     const steps = job.steps ?? [];
     const installIndex = steps.findIndex((step) => step.run?.includes("playwright install"));
@@ -522,14 +532,14 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     check(versionIndex > steps.findIndex((step) => step.run === "npm ci") && cacheIndex > versionIndex && installIndex > cacheIndex
       && steps.filter((step) => step.id === "playwright_version").length === 1
       && steps.filter((step) => step.name === "Cache Playwright browsers").length === 1
-      && steps[versionIndex]?.run === 'echo "version=$(node -p "require(\'@playwright/test/package.json\').version")" >> "$GITHUB_OUTPUT"'
+      && steps[versionIndex]?.run === 'echo "version=$(node -p "require(\'./package-lock.json\').packages[\'node_modules/playwright\'].version")" >> "$GITHUB_OUTPUT"'
       && steps[cacheIndex]?.uses === "actions/cache@v4"
       && steps[cacheIndex]?.with?.path === "~/.cache/ms-playwright"
       && steps[cacheIndex]?.with?.key === "playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}"
       && steps[cacheIndex]?.with?.["restore-keys"] === undefined
       && steps[installIndex]?.run === "npx playwright install --with-deps chromium"
       && [versionIndex, cacheIndex, installIndex].every((index) => steps[index]?.if === undefined && steps[index]?.["continue-on-error"] === undefined),
-    `${id} must restore the exact installed Playwright version before unconditionally installing Chromium and system dependencies.`);
+    `${id} must restore the exact locked Playwright version before unconditionally installing Chromium and system dependencies.`);
   }
   const cli = "node --experimental-strip-types scripts/ci-required-results.ts";
   const identityEnvironment = {
@@ -573,9 +583,9 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     "l1-scripts": ["receipt", "shadow_scripts", "shadow_bridge"],
   };
   const shadowScope = jobs?.detect?.steps?.find((step) => step.id === "shadow-summary");
-  check(shadowScope?.run === "node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope" && shadowScope.if === undefined
+  check(shadowScope?.run === "node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope" && shadowScope.if === "steps.event.outputs.selected == 'true'"
     && shadowScope["continue-on-error"] === undefined, "Detect must record the fixed CI shadow scope without changing scheduling outputs.");
-  check(JSON.stringify(Object.keys(jobs?.detect?.outputs ?? {}).sort()) === JSON.stringify(["docs_only", "run_l1", "run_l2", "run_quality", "run_smoke"]), "Detect must retain exactly its five scheduling outputs.");
+  check(JSON.stringify(Object.keys(jobs?.detect?.outputs ?? {}).sort()) === JSON.stringify(["docs_only", "run_l1", "run_l2", "run_quality", "run_smoke", "selected"]), "Detect must retain exactly its five coverage flags and selected-event output.");
   for (const id of l1Jobs) {
     const workerId = id === "l1-server" ? "l1-server-shards" : id;
     const job = jobs?.[workerId];
@@ -783,7 +793,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[2]?.run === `${cli} ${mode}`
       && steps[2]?.env?.EFF_NEEDS === (id === "build-and-test" ? expectedNeedsProjection : "${{ toJSON(needs) }}")
       && (id !== "build-and-test" || steps[2]?.env?.EFF_SHADOW === expectedShadowProjection)
-      && steps.every((step) => step.if === (id === "required" ? ciSelectedEventCondition : undefined) && step["continue-on-error"] === undefined), `${id} must validate exact results without npm installation or failure suppression.`);
+      && steps.every((step) => step.if === (id === "required" ? ciGateEventCondition : undefined) && step["continue-on-error"] === undefined), `${id} must validate exact results without npm installation or failure suppression.`);
   }
   check(jobs?.["build-and-test"]?.outputs?.identity === "${{ steps.results.outputs.identity }}", "Build and test must publish its verified execution identity.");
   const shards = jobs?.["acceptance-local-non-hdc-shards"];

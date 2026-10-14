@@ -161,7 +161,7 @@ async function canonicalSchemaFingerprint(db: Database): Promise<string> {
 
 describe("canonical Catalog privilege boundary and migration paths", () => {
   it("exposes only an execute-revoked scalar current-release guard to PUBLIC", async () => {
-    await withTempDatabase({ prefix: "pcat_privileges" }, async ({ db }) => {
+    await withTempDatabase({ prefix: "pcat_privileges", migrate: true }, async ({ db }) => {
       const result = await db.query<{
         return_type: string;
         security_definer: boolean;

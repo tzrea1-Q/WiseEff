@@ -197,7 +197,7 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
           await form.getByRole("heading").first().scrollIntoViewIfNeeded();
         }
         const pendingWork = page.getByRole("dialog", { name: "待处理工作", exact: true });
-        if (route.path.includes("?review=open") || await pendingWork.isVisible()) {
+        if (new URL(page.url()).searchParams.get("review") === "open" || await pendingWork.isVisible()) {
           await expect(pendingWork).toBeVisible();
           await expect(pendingWork.locator(".section-skeleton")).toHaveCount(0);
           await expect(pendingWork.getByRole("alert")).toHaveCount(0);

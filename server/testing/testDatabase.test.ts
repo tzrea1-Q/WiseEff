@@ -111,7 +111,7 @@ describe("fresh database fixture policy", () => {
         "wayfinder671_source:false", "wayfinder671_unknown:false", "wayfinder671_zero_source:false"
       ],
       "server/modules/agent/xiaoze/durableAgentResume.integration.test.ts": ["xiaoze_concurrent_admission:true", "xiaoze_owned_backend_loss:true"],
-      "server/modules/catalog-kernel/schema/catalogSchemaPrivileges.integration.test.ts": ["pcat_compat:false", "pcat_floor:false", "pcat_fresh:false", "pcat_upgrade:false"],
+      "server/modules/catalog-kernel/schema/catalogSchemaPrivileges.integration.test.ts": ["pcat_compat:false", "pcat_floor:false", "pcat_fresh:false", "pcat_privileges:true", "pcat_upgrade:false"],
       "server/modules/catalog-kernel/security/catalogRoles.integration.test.ts": ["pcat_rbac_0138_replay:false", "pcat_rbac_0170_upgrade:false", "pcat_rbac_0179:false", "pcat_rbac_0179_v1:false", "pcat_rbac_floor:false", "pcat_rbac_fresh:true", "pcat_rbac_missing:false", "pcat_rbac_upgrade:false"],
       "server/modules/catalog-kernel/security/retainedDismissedIdentities.integration.test.ts": ["retainedfresh:true", "retainedids:false"],
       "server/modules/catalog-publication/persistence/schema.integration.test.ts": ["cp02pop:false"],
@@ -482,6 +482,30 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
 });
 
 describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () => {
+  it("releases the clone lock before a role callback so a second ready clone can complete", async () => {
+    let releaseFirst!: () => void;
+    let firstEntered!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const firstReady = new Promise<void>((resolve) => { firstEntered = resolve; });
+    const first = withTestClusterRoleCatalogLock(() => withTempDatabase({ prefix: "parallelfirst" }, async () => {
+      firstEntered();
+      await firstGate;
+    }));
+    try {
+      await firstReady;
+      await withTempDatabase({ prefix: "parallelsecond" }, async ({ db }) => {
+        expect((await db.query("select count(*)::int as n from schema_migrations")).rows[0].n).toBeGreaterThan(0);
+        await withAdminClient(async (observer) => {
+          expect((await observer.query("select pg_try_advisory_lock($1) as acquired", [4_201_659])).rows).toEqual([{ acquired: false }]);
+          expect((await observer.query("select pg_try_advisory_lock($1) as acquired", [4_201_660])).rows).toEqual([{ acquired: true }]);
+          await observer.query("select pg_advisory_unlock($1)", [4_201_660]);
+        });
+      });
+    } finally {
+      releaseFirst();
+      await first;
+    }
+  });
   it("defaults to a complete clone and releases the template lock before the callback", async () => {
     const applicationName = `template_callback_${process.pid}`;
     vi.stubEnv("PGAPPNAME", applicationName);
@@ -500,8 +524,8 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
             select count(*)::int as count from pg_locks locks
               join pg_stat_activity activity on activity.pid = locks.pid
              where locktype = 'advisory' and database = (select oid from pg_database where datname = 'postgres')
-               and classid = 0 and objid = $1 and objsubid = 1 and granted and application_name = $2
-          `, [4_201_659, applicationName])).rows).toEqual([{ count: 0 }]);
+               and classid = 0 and objid = any($1::oid[]) and objsubid = 1 and granted and application_name = $2
+          `, [[4_201_659, 4_201_660], applicationName])).rows).toEqual([{ count: 0 }]);
         });
       });
     } finally { vi.unstubAllEnvs(); }
@@ -712,7 +736,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     });
   });
 
-  it("makes an expired inherited lease reacquire the lock behind the current owner", async () => {
+  it("lets a ready clone with an expired inherited lease bypass unrelated role work", async () => {
     let resume!: () => void;
     let inherited!: Promise<void>;
     let entered = false;
@@ -724,8 +748,11 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     });
     await withTestClusterRoleCatalogLock(async () => {
       resume();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(entered).toBe(false);
+      await inherited;
+      expect(entered).toBe(true);
+      await withAdminClient(async (observer) => {
+        expect((await observer.query("select pg_try_advisory_lock($1) as acquired", [4_201_659])).rows).toEqual([{ acquired: false }]);
+      });
     });
     await inherited;
     expect(entered).toBe(true);

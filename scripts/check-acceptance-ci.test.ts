@@ -4,6 +4,7 @@ import YAML from "yaml";
 import {
   CI_SMOKE_TAG,
   ciAggregateEventCondition,
+  ciCancelInProgressCondition,
   ciSelectedEventCondition,
   countCiSmokeTags,
   evaluateAcceptanceLocalNonHdcBudget,
@@ -246,8 +247,44 @@ describe("equivalent fixed L1 scheduling", () => {
     expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "labeled", "unlabeled"]);
     expect(workflow.on.schedule).toEqual([{ cron: "30 18 * * *" }]);
     expect(workflow.on.workflow_dispatch.inputs.acceptance_mode.options).toEqual(["local-non-hdc", "target-non-hdc", "full-pilot", "minimal-upgrade"]);
-    expect(workflow.concurrency["cancel-in-progress"]).toBe(`\${{ github.event_name == 'pull_request' && (${ciSelectedEventCondition}) }}`);
+    expect(workflow.concurrency["cancel-in-progress"]).toBe(ciCancelInProgressCondition);
     expect(workflow.jobs.detect.steps.find((step: { id: string }) => step.id === "paths").run).toContain('echo "run_l2=true"');
+  });
+
+  it.each([
+    ["push", "", "", true, false], ["schedule", "", "", true, false], ["workflow_dispatch", "", "", true, false],
+    ["pull_request", "synchronize", "", true, true], ["pull_request", "opened", "", true, true],
+    ["pull_request", "labeled", "full-acceptance", true, true], ["pull_request", "unlabeled", "full-acceptance", true, true],
+    ["pull_request", "labeled", "documentation", false, false], ["pull_request", "unlabeled", "documentation", false, false],
+  ])("selects %s/%s/%s without replacing CI for unrelated labels", (eventName, action, label, selected, cancel) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const evaluate = (expression: string, context: object) => Function("github", `return (${expression.replace(/^\$\{\{\s*|\s*\}\}$/g, "")});`)(context);
+    const github = { event_name: eventName, event: { action, label: { name: label } } };
+    expect(evaluate(workflow.jobs.detect.steps[0].env.SELECTED, github)).toBe(selected);
+    expect(evaluate(workflow.concurrency["cancel-in-progress"], github)).toBe(cancel);
+    expect(workflow.jobs.detect.steps[0].env.SELECTED).toBe(`\${{ ${ciSelectedEventCondition} }}`);
+  });
+
+  it.each(["true", "false", ""])("keeps gate naming and failure checks safe for selected=%s", (selected) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const evaluate = (expression: string) => Function("needs", "always", `return (${expression});`)({ detect: { outputs: { selected } } }, () => true);
+    const name = workflow.jobs.required.name.replace(/\$\{\{(.*?)\}\}/g, (_match: string, expression: string) => evaluate(expression));
+    expect(name).toBe(selected === "false" ? "Merge bar (ignored label)" : "Merge bar");
+    for (const id of ["build-and-test", "acceptance-quality", "acceptance-local-non-hdc"]) {
+      expect(evaluate(workflow.jobs[id].if)).toBe(selected !== "false");
+    }
+    for (const step of workflow.jobs.required.steps) expect(evaluate(step.if)).toBe(selected !== "false");
+  });
+
+  it.each(["predicate", "output", "setup", "aggregate", "name", "event-failure"])("rejects weakened deduplicated selection: %s", (mutation) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    if (mutation === "predicate") workflow.jobs.detect.steps[0].env.SELECTED = "true";
+    if (mutation === "output") workflow.jobs.detect.outputs.selected = "false";
+    if (mutation === "setup") delete workflow.jobs.detect.steps[1].if;
+    if (mutation === "aggregate") workflow.jobs["build-and-test"].if = "always() && needs.detect.outputs.selected == 'true'";
+    if (mutation === "name") workflow.jobs.required.name = "Merge bar (ignored label)";
+    if (mutation === "event-failure") workflow.jobs.detect.steps[0]["continue-on-error"] = true;
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
   });
 });
 

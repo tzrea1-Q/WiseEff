@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   type OwnedLocalAcceptanceRuntimeDescriptorV1,
@@ -57,21 +57,37 @@ describe("owned local acceptance runtime", () => {
   it("seeds populated admin lists before marking the Gate0 database ready", async () => {
     const repo = createCleanTestRepository("wiseeff-owned-browser-seed-");
     const scripts: string[] = [];
-    await expect(provisionOwnedLocalAcceptanceRuntime({
-      baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
-      worktreeRoot: repo,
-      runsRoot: "runs",
-    }, {
-      allocateLoopbackPort: async (range) => range.min,
-      databaseCreationOperations: () => ({
-        databaseExistsBeforeCreate: async () => false,
-        createDatabase: async () => undefined,
-        databaseExistsAfterCreateFailure: async () => false,
-      }),
-      runNpmScriptWithLog: async (_root, script) => { scripts.push(script); },
-      writeAndReadDatabaseMarker: async () => { throw new Error("stop before runtime launch"); },
-    })).rejects.toThrow(/provisioning failed/i);
-    expect(scripts).toEqual(["db:migrate", "db:seed:all", "seed:quality:admin-lists"]);
+    const labels: string[] = [];
+    const identity = vi.spyOn(await import("./process-start-identity"), "readProcessStartIdentity").mockReturnValue({
+      startToken: "unit-test-owner", commandSha256: "a".repeat(64),
+    });
+    try {
+      await expect(provisionOwnedLocalAcceptanceRuntime({
+        baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+        worktreeRoot: repo,
+        runsRoot: "runs",
+      }, {
+        allocateLoopbackPort: async (range) => range.min,
+        databaseCreationOperations: () => ({
+          databaseExistsBeforeCreate: async () => false,
+          createDatabase: async () => undefined,
+          databaseExistsAfterCreateFailure: async () => false,
+        }),
+        runNpmScriptWithLog: async (_root, script, _env, _log, _owner, lifecycle) => {
+          scripts.push(script);
+          labels.push(lifecycle!.supervision.label.split(":").at(-1)!);
+          lifecycle!.launching(script);
+          lifecycle!.started(script, 12345, { startToken: script, commandSha256: "b".repeat(64) });
+          lifecycle!.stopped();
+        },
+        writeAndReadDatabaseMarker: async () => { throw new Error("stop before runtime launch"); },
+      })).rejects.toThrow(/provisioning failed/i);
+      expect(scripts).toEqual(["db:migrate", "reset:quality-runtime", "db:seed:all", "seed:quality:admin-lists"]);
+      expect(labels).toEqual(["migration", "seed-reset", "seed", "seed-admin-lists"]);
+      expect(new Set(labels).size).toBe(scripts.length);
+    } finally {
+      identity.mockRestore();
+    }
   });
 
   it("records an unmarked retained database when CREATE commits but its response is lost", async () => {
