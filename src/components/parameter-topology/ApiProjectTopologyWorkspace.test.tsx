@@ -1454,8 +1454,6 @@ describe("ApiProjectTopologyWorkspace", () => {
       });
       await draftRequest.promise;
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
     expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
     expect(vi.mocked(repository.getTopology).mock.calls.filter(([requestProjectId]) => requestProjectId === "aurora").length).toBe(auroraTopologyCalls);
     expect(repository.getTopology).not.toHaveBeenCalledWith(

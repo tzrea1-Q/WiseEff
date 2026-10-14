@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import { hdcApiBridge } from "./viteHdcApi";
+import { resolveVitestMaxWorkers } from "./scripts/vitest-workers";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
@@ -118,6 +119,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    maxWorkers: resolveVitestMaxWorkers("frontend"),
     // packages/** run in node via vitest.bridge.config.ts; scripts/** and ops/** run in
     // node via vitest.scripts.config.ts. Keeping them out of the jsdom suite avoids
     // double-running bridge tests and avoids DOM patches leaking into pure-node tests.

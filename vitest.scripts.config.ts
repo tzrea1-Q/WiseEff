@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { fileURLToPath } from "node:url";
+import { resolveVitestMaxWorkers } from "./scripts/vitest-workers";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
@@ -24,7 +25,7 @@ export default defineConfig({
     passWithNoTests: true,
     // ponytail: serialize script files to avoid competing full-tree proof scans;
     // if throughput becomes limiting, isolate the scan suites in a Vitest project.
-    maxWorkers: 1,
+    maxWorkers: resolveVitestMaxWorkers("scripts"),
     // Ancestry walks in rehearsal source-lock tests exceed Vitest's 5s default on Hosted.
     testTimeout: 60_000,
   }

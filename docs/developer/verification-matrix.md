@@ -4,6 +4,14 @@
 
 Use the narrowest command that proves the change while developing. Before finishing, broaden to the gate that matches the risk and touched surface.
 
+## Local Vitest worker budget
+
+When the coordinator runs concurrent Vitest lanes on one host, set `WISEEFF_VITEST_LANES` to the total number of simultaneous Vitest processes in every lane (not the runtime lane ID). For example, `WISEEFF_VITEST_LANES=3 npm test -- src/NodeDebuggingPage.test.tsx` shares the host's `availableParallelism()` across three lanes. A single process defaults to `1` lane.
+
+Frontend and Bridge default to at most four workers; server keeps its half-CPU, four-worker default; scripts stay serialized. Each cap is further bounded by `floor(availableParallelism / lanes)`, with a minimum of one worker. `VITEST_SERVER_MAX_WORKERS` remains available but cannot exceed the per-lane CPU budget. Both settings require positive safe integers. Do not override `--maxWorkers` when using this budget. More lanes than available CPUs still need coordinator serialization: one worker per lane is the minimum.
+
+Load-sensitive DOM tests must await rendered readiness and settle controlled promises inside `act`, not treat a started request, a changed URL, or a fixed sleep as completion. Keep existing assertions and timeouts. Repeated isolated/concurrent-load runs and PR CI remain coordinator acceptance evidence, distinct from a scoped local pass.
+
 The L2 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` artifact is a bounded workflow-context snapshot, independent of the safety-gated per-shard ZIP. It records checkout-observed SHA/tree before candidate setup, workflow SHA, PR head/base (push predecessor or scheduled head on non-PR events), and execution/archive/full-upload outcomes. Internal phase, cleanup and test counts remain unknown in this bootstrap channel; it never reads candidate reports or raw logs. A failed publisher produces only `DIAGNOSTIC_REJECTED`; neither fallback nor upload success overrides an earlier failed step. Its own upload is pending inside the snapshot and settles in Actions and the job summary. A lost runner can leave it incomplete. The complete archive keeps its existing size, ownership and safety requirements.
 
 For changes to this channel, run `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` and `npm run acceptance:ci`. These extract and exercise the real isolated workflow publisher; synthetic failures are diagnostic checks, not full acceptance. All bounded diagnostic steps count toward the L2 platform budget (151-minute floor, 155-minute job ceiling); the Gate0 owner and existing scan/upload allowances are unchanged.
