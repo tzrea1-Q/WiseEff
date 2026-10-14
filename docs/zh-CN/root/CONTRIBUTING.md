@@ -56,6 +56,8 @@ npm run --silent test:impact -- --base origin/main --json > /tmp/vitest-impact.j
 
 ### Codex 定向浏览器运行器（D3）
 
+本地 Unix-domain IPC 仅允许使用当前用户规范化临时目录中的 `tsx-<effective UID>` 子目录。子进程的 `TMPDIR` 固定为该规范化临时目录，使 tsx socket 路径与沙箱规则一致；非回环 IP 网络继续被拒绝。
+
 `test:browser:codex` 是 #1179 的本地运行器，不替代 CI 或协调者验收。必须在独立 linked worktree 的根目录、`codex/<task>` 分支运行，并显式导出 `WISEEFF_RUNTIME_LANE` 与指向 localhost PostgreSQL 的 `DATABASE_URL`。lane ID 不得与其他工作树或浏览器会话重复。运行前通过既有浏览器环境准备流程创建并播种派生的 `<database>_lane_<N>` 数据库；运行器不创建、迁移、重置或播种数据库。PostgreSQL URL 的查询参数覆盖和已属于其他 lane 的数据库会被拒绝。
 
 ```bash

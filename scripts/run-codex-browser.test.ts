@@ -1,5 +1,5 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildCodexBrowserEvidence, codexBrowserEvidenceSchema, planCodexBrowserRun, runCodexBrowserPlan, summarizeBrowserReport } from "./run-codex-browser";
@@ -16,6 +16,24 @@ const selection = selectBrowserImpact(["src/features/log-analysis/LogsPage.tsx"]
 });
 
 describe("Codex browser runner", () => {
+  it("allows tsx Unix-socket IPC only in the user's temp directory while retaining loopback-only IP rules", () => {
+    const plan = planCodexBrowserRun(worktree, selection, environment, "darwin");
+    const profile = plan.commands[0].args[1];
+    const temporary = realpathSync(tmpdir());
+    const ipcPath = JSON.stringify(resolve(temporary, `tsx-${process.geteuid?.() ?? userInfo().username}`));
+    expect(plan.env.TMPDIR).toBe(temporary);
+    expect(profile).toContain("(deny network*)");
+    expect(profile.match(/^\(allow network[^\n]+/gm)).toEqual([
+      '(allow network-bind (local ip "localhost:*"))',
+      '(allow network-inbound (local ip "localhost:*"))',
+      '(allow network-outbound (remote ip "localhost:*"))',
+      `(allow network-bind (local unix-socket (subpath ${ipcPath})))`,
+      `(allow network-inbound (local unix-socket (subpath ${ipcPath})))`,
+      `(allow network-outbound (remote unix-socket (subpath ${ipcPath})))`,
+    ]);
+    expect(plan.commands[1].args[1]).toBe(profile);
+  });
+
   it("runs the selector's exact subset in an isolated local lane without a shell or git writes", () => {
     const plan = planCodexBrowserRun(worktree, selection, environment, "darwin");
 

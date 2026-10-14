@@ -98,6 +98,8 @@ Browser selection uses `e2e/quality/route-ownership.ts` next to the quality rout
 
 ### Codex scoped browser runner (D3)
 
+Local Unix-domain IPC is allowed only beneath the current user's canonical temp directory's `tsx-<effective UID>` subdirectory. Child `TMPDIR` is pinned to that canonical temp directory so tsx's socket path matches the profile; non-loopback IP networking remains denied.
+
 `test:browser:codex` is the local runner for #1179, not a replacement for CI or coordinator acceptance. Run it from the root of a dedicated linked worktree on a `codex/<task>` branch, with an explicitly exported `WISEEFF_RUNTIME_LANE` and a localhost PostgreSQL `DATABASE_URL`. Choose a lane ID not used by another worktree or browser session. Provision and seed the derived `<database>_lane_<N>` database using the existing browser runtime setup first; the runner does not provision, migrate, reset, or seed databases. PostgreSQL URL query overrides and databases already belonging to a different lane are rejected.
 
 ```bash

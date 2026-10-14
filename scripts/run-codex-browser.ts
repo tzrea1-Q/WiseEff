@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import { tmpdir, userInfo } from "node:os";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -93,12 +94,17 @@ export function buildCodexBrowserEvidence(plan: ReturnType<typeof planCodexBrows
       .flatMap((test) => test.theme ? [test.theme] : [])))].sort(), runs, spotCheck: null,
   });
 }
+const userTempDirectory = realpathSync(tmpdir());
+const tsxIpcDirectory = JSON.stringify(resolve(userTempDirectory, `tsx-${process.geteuid?.() ?? userInfo().username}`));
 const localhostProfile = `(version 1)
 (allow default)
 (deny network*)
 (allow network-bind (local ip "localhost:*"))
 (allow network-inbound (local ip "localhost:*"))
-(allow network-outbound (remote ip "localhost:*"))`;
+(allow network-outbound (remote ip "localhost:*"))
+(allow network-bind (local unix-socket (subpath ${tsxIpcDirectory})))
+(allow network-inbound (local unix-socket (subpath ${tsxIpcDirectory})))
+(allow network-outbound (remote unix-socket (subpath ${tsxIpcDirectory})))`;
 
 export function planCodexBrowserRun(worktree: BrowserWorktree, selection: BrowserSelection, environment: NodeJS.ProcessEnv, platform = process.platform) {
   if (platform !== "darwin") throw new Error("Localhost-only browser execution currently requires macOS sandbox-exec; no unrestricted fallback.");
@@ -124,7 +130,7 @@ export function planCodexBrowserRun(worktree: BrowserWorktree, selection: Browse
     throw new Error("OBJECT_STORE_ROOT must stay relative to the task worktree.");
   }
   if (!selection.qualityGrep || !selection.qualityRoutes.length || !selection.acceptanceSpecs.length) throw new Error("Empty browser selection; no passing no-op.");
-  const env: NodeJS.ProcessEnv = { ...environment, HOST: "127.0.0.1", OBJECT_STORE_MODE: "local", WISEEFF_ACCEPTANCE_ENV_FILE: "/dev/null" };
+  const env: NodeJS.ProcessEnv = { ...environment, TMPDIR: userTempDirectory, HOST: "127.0.0.1", OBJECT_STORE_MODE: "local", WISEEFF_ACCEPTANCE_ENV_FILE: "/dev/null" };
   const lane = applyPlaywrightRuntimeLane(env)!;
   const command = (suite: "quality" | "acceptance", filters: string[]) => ({
     suite,
