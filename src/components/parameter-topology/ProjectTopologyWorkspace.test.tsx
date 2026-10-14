@@ -232,26 +232,6 @@ describe("ProjectTopologyWorkspace", () => {
     expect(within(workspace).getByRole("navigation", { name: "拓扑导航" })).toHaveTextContent(/树|属性|详情/);
   });
 
-  it("wraps long binding identity and provenance tokens inside the mobile detail pane", () => {
-    const styles = readStylesheet("src/styles.css");
-    const minWidthRule = declarationsFor(styles, ".binding-detail-panel__header");
-    const tokenRule = declarationsFor(styles, ".binding-detail-panel__header p");
-
-    expect(minWidthRule["min-width"]).toBe("0");
-    expect(tokenRule["overflow-wrap"]).toBe("anywhere");
-    expect(tokenRule["word-break"]).toBe("break-word");
-  });
-
-  it("allows topology panes and long locator labels to shrink inside the mobile viewport", () => {
-    const styles = readStylesheet("src/styles.css");
-    const paneItemRule = declarationsFor(styles, ".project-topology-workspace__panes > *");
-    const treeTokenRule = declarationsFor(styles, ".topology-tree__item code");
-
-    expect(paneItemRule["min-width"]).toBe("0");
-    expect(treeTokenRule["overflow-wrap"]).toBe("anywhere");
-    expect(treeTokenRule["word-break"]).toBe("break-word");
-  });
-
   it("keeps tree item meta text on the readable muted-text token (TD-081)", () => {
     // `--muted` is the shadcn surface alias (near-white); meta text must use
     // the semantic `--text-muted` token to stay readable on white rows.

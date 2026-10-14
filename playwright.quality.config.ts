@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "playwright/test";
 import { buildPlaywrightWebServers, portFromUrl } from "./playwright.shared";
 import { loadAcceptanceEnvironment } from "./e2e/acceptance/helpers/acceptanceEnvironment";
-import { parseQualityLane, selectQualityProjects } from "./e2e/quality/quality-partition";
+import { consistencyTestMatch, parseQualityLane, selectQualityProjects } from "./e2e/quality/quality-partition";
 import { applyPlaywrightRuntimeLane } from "./scripts/playwright-runtime-lane";
 
 const acceptanceEnvironment = loadAcceptanceEnvironment();
@@ -68,9 +68,7 @@ export default defineConfig({
     },
     {
       name: "consistency",
-      testMatch: qualityLane === "consistency-1"
-        ? /consistency\.quality\.spec\.ts/
-        : /consistency\.(quality|collector)\.spec\.ts/,
+      testMatch: consistencyTestMatch(qualityLane),
       dependencies: ["runtime-warmup"],
       use: {
         ...devices["Desktop Chrome"],

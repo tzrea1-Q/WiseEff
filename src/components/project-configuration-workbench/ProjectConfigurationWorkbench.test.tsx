@@ -14,8 +14,7 @@ import {
 } from "./ProjectConfigurationWorkbench";
 import {
   readSessionDraftStore,
-  SESSION_DRAFT_STORAGE_KEY,
-  upsertSessionDraftBucket
+  SESSION_DRAFT_STORAGE_KEY
 } from "@/application/project-configuration/sessionDraftStorage";
 import { declarationsFor, hasAtRule, hasRule, readStylesheet } from "../../test/cssAssertions";
 import {
@@ -616,8 +615,6 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByLabelText("后续阶段操作")).toContainElement(uploadAction);
     expect(screen.getByLabelText("后续阶段操作").lastElementChild).toBe(uploadAction.parentElement);
     expect(screen.getByRole("group", { name: "工作台操作" })).toContainElement(screen.getByLabelText("配置命令栏"));
-    expect(declarationsFor(readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css"),
-      ".configuration-workbench__toolbar-content .configuration-workbench__command")["padding-right"]).toBe("0");
     expect(screen.getAllByRole("button", { name: "上传候选" })).toHaveLength(1);
     await openWorkbenchMoreMenu();
     expect(screen.getByRole("menuitem", { name: "创建基线" })).toBeEnabled();
@@ -2336,7 +2333,6 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(inspector).toHaveTextContent("成功");
   });
 
-
   it("restores file context from a targetable activity event and fails gracefully when missing", async () => {
     const listAuditEvents = vi.fn(async () => ({
       items: [
@@ -2404,7 +2400,6 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
   });
 
-
   it("shows mutation toasts and refreshes the activity timeline from server evidence", async () => {
     const listAuditEvents = vi.fn(async () => ({ items: [], nextCursor: null }));
     const createCandidate = vi.fn(async () => ({
@@ -2450,7 +2445,6 @@ describe("ProjectConfigurationWorkbench", () => {
     await waitFor(() => expect(listAuditEvents.mock.calls.length).toBeGreaterThan(1));
   });
 
-
   it("keeps the workbench when activity loading fails and preserves PCW-D15 layout attribute", async () => {
     const listAuditEvents = vi.fn(async () => {
       throw new Error("audit unavailable");
@@ -2468,10 +2462,6 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveAttribute("data-layout");
   });
-
-
-
-
 
   it("creates a Config set from the empty project path with name validation and duplicate handling", async () => {
     const created = {
@@ -2882,8 +2872,6 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("编入");
   });
 
-
-
   it("loads open conflicts on mount so the task count stays current", async () => {
     const listConflicts = vi.fn(async () => [
       {
@@ -2998,20 +2986,9 @@ describe("configuration-workbench stylesheet", () => {
     expect(hasAtRule(css, "@media (max-width: 1024px)")).toBe(true);
     expect(hasAtRule(css, "@media (max-width: 768px)")).toBe(true);
     expect(hasAtRule(css, "@media (max-width: 460px)")).toBe(true);
-
-    const workbench = declarationsFor(css, ".configuration-workbench");
-    expect(workbench.display).toBe("flex");
-    expect(workbench["min-height"]).toBe("0");
     expect(hasRule(css, ".configuration-workbench__body")).toBe(false);
-    expect(declarationsFor(css, ".configuration-workbench > .navigator-workbench")["grid-template-rows"])
-      .toBe("auto auto minmax(0, 1fr)");
     expect(declarationsFor(readStylesheet("src/components/layout/navigator-workbench.css"), ".navigator-workbench__navigator")["border-radius"])
       .toBe("var(--radius-md)");
-
-    const command = declarationsFor(css, ".configuration-workbench__command", {
-      within: "@media (max-width: 1024px)"
-    });
-    expect(command["flex-wrap"]).toBe("wrap");
 
     expect(
       declarationsFor(

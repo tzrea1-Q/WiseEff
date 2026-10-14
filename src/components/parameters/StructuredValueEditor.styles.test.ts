@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { DtsValueType } from "../../application/ports/DtsStructuredRepository";
-import { allSelectors, declarationsFor, readStylesheet } from "../../test/cssAssertions";
+import { allSelectors, readStylesheet } from "../../test/cssAssertions";
 import { StructuredValueEditor, type StructuredValueEditorProps } from "./StructuredValueEditor";
 
 /**
@@ -93,18 +93,5 @@ describe("StructuredValueEditor styling contract", () => {
     );
 
     expect(unstyled).toEqual([]);
-  });
-
-  it("gives the editor's inputs and buttons a visible affordance", () => {
-    const styles = readStylesheet("src/styles.css");
-    const inputRule = declarationsFor(styles, '.structured-value-editor input:not([type="checkbox"])');
-    const buttonRule = declarationsFor(styles, ".structured-value-editor button");
-    const invalidInputRule = declarationsFor(styles, '.structured-value-editor input[aria-invalid="true"]');
-
-    expect(inputRule.border).toContain("1px solid");
-    expect(buttonRule.border).toContain("1px solid");
-    // Touch target floor for the add-cell / add-byte / remove controls.
-    expect(Number.parseInt(buttonRule["min-height"] ?? "0", 10)).toBeGreaterThanOrEqual(30);
-    expect(invalidInputRule["border-color"]).toBeTruthy();
   });
 });

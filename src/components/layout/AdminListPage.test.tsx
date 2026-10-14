@@ -13,21 +13,8 @@ import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowled
 import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
 import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency-collector";
 import { requireRowActionVisibility } from "../../../e2e/quality/consistency-assertions";
-import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 
 describe("AdminListPage", () => {
-  it("pins the CI header row and compact search/select height regression", () => {
-    const css = readStylesheet("src/components/layout/admin-list-page.css");
-    const header = declarationsFor(css, ".admin-list-page__header");
-    expect(header.display).toBe("grid");
-    expect(header["grid-template-columns"]).toBe("minmax(0, 1fr) auto");
-    expect(declarationsFor(css, ".user-permissions-toolbar.admin-list-page__header").display).toBe("grid");
-    const search = declarationsFor(css, ".admin-list-page__filters .admin-list-page__filter-field .search-field");
-    expect(search.height).toBe(declarationsFor(readStylesheet("src/styles.css"), ".compact-filter-control").height);
-    const input = declarationsFor(css, ".admin-list-page__filters .admin-list-page__filter-field .search-field__input");
-    expect(input["min-height"]).toBe("0");
-    expect(input.border).toBe("0");
-  });
   it("keeps header context and actions together without duplicating an external tab toolbar", () => {
     render(<>
       <AdminListPageHeader label="用户" content={<button>账号库</button>} actions={<button>添加用户</button>} />

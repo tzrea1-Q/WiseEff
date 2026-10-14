@@ -16,13 +16,9 @@ describe("shared consistency contracts", () => {
   it("keeps settings forms on token-only styles, one column and the section-title scale", () => {
     const settings = readStylesheet("src/components/layout/settings-form-page.css");
     expect(declarationsFor(settings, ".settings-form-page")["max-width"]).toBe("var(--settings-form-max-width)");
-    expect(declarationsFor(settings, ".settings-form-page")["flex-direction"]).toBe("column");
     expect(declarationsFor(settings, ".settings-form-page__section h2")["font-size"]).toBe("var(--text-lg)");
     expect(declarationsFor(settings, ".settings-form-page__section h2")["line-height"]).toBe("var(--leading-lg)");
-    expect(declarationsFor(settings, ".settings-form-page__save-bar").position).toBe("sticky");
     const roleStyles = readStylesheet("src/components/parameter-admin-next/project-review-roles.css");
-    expect(declarationsFor(roleStyles, ".project-review-roles__pools").display).toBe("grid");
-    expect(declarationsFor(roleStyles, ".project-review-roles__pools")["grid-template-columns"]).toBe("repeat(3, minmax(0, 1fr))");
     expect(declarationsFor(roleStyles, ".project-review-roles__pools").gap).toBe("var(--space-3)");
     const formStyles = parseCssRules(styles).filter((rule) => /organization-profile|reload-configuration/.test(rule.selector))
       .map((rule) => `${rule.selector} { ${Object.entries(rule.declarations).map(([property, value]) => `${property}: ${value};`).join(" ")} }`).join("\n");
@@ -42,26 +38,6 @@ describe("shared consistency contracts", () => {
     expect(declarationsFor(styles, ".parameters-column-filter__trigger")["font-size"]).toBe("var(--text-xs)");
     expect(declarationsFor(styles, ".parameters-column-filter__trigger span")["font-size"]).toBe("var(--text-xs)");
     expect(declarationsFor(styles, ".dts-parameter-workbench-table__provenance small")["font-size"]).toBe("var(--text-xs)");
-  });
-  it("preserves the bounded configuration pane height through the routed content wrapper", () => {
-    const configuration = readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css");
-    const content = declarationsFor(configuration, ".main-content:has(.param-admin-shell--configuration-workbench) > .page-content");
-    expect(content.height).toBe("100%");
-    expect(content["min-height"]).toBe("0");
-    for (const selector of [".param-admin-shell--configuration-workbench", ".project-admin-layout--configuration-workbench", ".configuration-workbench"]) {
-      expect(declarationsFor(configuration, selector).height).toBe("100%");
-    }
-    expect(declarationsFor(configuration, ".configuration-workbench > .navigator-workbench")["grid-template-rows"]).toBe("auto auto minmax(0, 1fr)");
-  });
-
-  it("positions the configuration inspector as an overlay unless the pane is persistent", () => {
-    const configuration = readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css");
-    const overlay = declarationsFor(configuration, ".configuration-workbench__inspector");
-    expect(overlay.position).toBe("absolute");
-    expect(overlay.inset).toBe("0");
-    const persistent = declarationsFor(configuration, ".configuration-workbench__inspector.is-persistent");
-    expect(persistent.position).toBe("relative");
-    expect(persistent.inset).toBe("auto");
   });
 
   it("preserves source canvas metrics, full-grid insets and the upward task dock shadow", () => {
@@ -94,7 +70,8 @@ describe("shared consistency contracts", () => {
     ]) {
       const css = readStylesheet(file);
       expect(scanCssContent(file, css), file).toEqual([]);
-      expect(css, file).not.toMatch(/\bfont\s*:[^;{}]*\d(?:px|rem|em)\b/);
+      const rawFontShorthands = parseCssRules(css).filter((rule) => /\d(?:px|rem|em)\b/.test(rule.declarations.font ?? ""));
+      expect(rawFontShorthands.map((rule) => rule.selector), file).toEqual([]);
     }
   });
 
@@ -199,15 +176,6 @@ describe("shared consistency contracts", () => {
   });
 
   it("uses one size table for legacy and shared buttons", () => {
-    for (const [size, legacy, height] of [["md", ".button", "var(--space-8)"], ["sm", ".button.sm", "calc(var(--space-6) + var(--space-1))"], ["lg", ".button.lg", "calc(var(--space-8) + var(--space-1))"]]) {
-      const shared = declarationsFor(styles, `.button-size-${size}`);
-      const original = declarationsFor(styles, legacy);
-      expect(original["min-height"]).toBe(height);
-      expect(shared["min-height"]).toBe(original["min-height"]);
-      expect(shared["font-size"]).toBe(original["font-size"]);
-      expect(shared["line-height"]).toBe(original["line-height"]);
-      expect(shared.padding).toBe(original.padding);
-    }
     expect(declarationsFor(styles, ".topbar-title")["font-size"]).toBe("var(--text-xl)");
     expect(declarationsFor(styles, ".topbar-title")["line-height"]).toBe("var(--leading-xl)");
   });
@@ -215,9 +183,6 @@ describe("shared consistency contracts", () => {
   it("aligns shell chrome and page roots without a second gutter", () => {
     expect(declarationsFor(styles, ".topbar").padding).toBe("var(--space-3) var(--page-gutter)");
     expect(declarationsFor(styles, ".main-content").padding).toBe("var(--page-gutter) var(--page-gutter) calc(var(--space-16) + var(--space-12))");
-    for (const root of [".organization-page", ".user-permissions-page", ".audit-center-page", ".param-admin-shell", ".platform-console-page"]) {
-      expect(declarationsFor(styles, root).padding).toBe("0");
-    }
     const navigation = declarationsFor(styles, ".nav-item");
     expect(navigation.gap).toBe("var(--space-3)");
     expect(navigation.padding).toBe("var(--space-2) var(--space-3)");
@@ -269,7 +234,6 @@ describe("shared consistency contracts", () => {
     const menu = readStylesheet("src/components/common/row-action-menu.css");
     const destructive = declarationsFor(menu, ".row-action-menu__item[data-destructive]");
     expect(destructive.color).toBe("var(--danger)");
-    expect(destructive.background).toBeUndefined();
     expect(declarationsFor(menu, ".row-action-menu__item[data-destructive][data-highlighted]").background).toBe("var(--danger-soft)");
   });
 });

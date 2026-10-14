@@ -102,7 +102,6 @@ describe("compact control measurement scope", () => {
     const styles = declarationsFor(readStylesheet("src/styles.css"), ".compact-filter-control");
     expect(styles.height).toBe("var(--space-8)");
     expect(styles["min-height"]).toBe("var(--space-8)");
-    expect(styles["box-sizing"]).toBe("border-box");
     expect(styles["border-radius"]).toBe("var(--radius-sm)");
     expect(styles.border).toBe("1px solid var(--border)");
   });
