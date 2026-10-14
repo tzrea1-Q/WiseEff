@@ -4,6 +4,57 @@
 
 这是日常开发文档，帮助开发者完成本地启动、环境配置、验证选择和验收覆盖判断。
 
+## 验证分层
+
+贡献者和智能体使用同一模型。选择不等于执行，本地通过不等于 PR、合入、夜间、目标主机或生产证据。已接受任务及发布契约的额外门禁保持不变。
+
+| 层级 | 负责人及必需证据 |
+| --- | --- |
+| 编辑内循环 | 实现者：仅运行正在修改的测试文件；通过 `test:impact` 发现受影响套件、静态门禁、quality 路由及跨路由 acceptance spec，不凭文件名猜测。行为变更使用红 → 绿；纯文档不制造失败测试。 |
+| 交接前 | 实现者：在分配预算内执行受影响选择、检查差异并报告两个回退标志。协调者：执行预算外的选中门禁和真实 API 浏览器检查，以及 TypeScript/Vite/路由/共享类型变更必需的构建。纯文档选择 `docs:check`，不选择 Vitest 或浏览器。 |
+| PR CI | 协调者：检查精确推送 head 的实际工作流，包括原生选中作业、回执及必需汇总。Spec #1164 要求 PR 按影响运行验收；本地选择器不会安装此 CI 策略。CI 集成落地前，仍由既有路径选择和 `full-acceptance` 标签决定 CI L2。 |
+| 合入 | 协调者仅在获授权时执行：要求当前候选版本真正的 `Merge bar` 成功及全部已接受任务证据。pending、cancelled、旧 head 或 `Merge bar (ignored label)` 均不能替代。本地选择不能豁免必需作业。 |
+| 夜间 | `main` 上的 CI：main push 与夜间运行保留完整 L1/L2，包括完整 quality/backend 清单和归属 Gate0 验收。定向本地通过不能替代此层。 |
+
+### 选择一次，按层执行
+
+```bash
+# 显式文件，或实际集成基线及全部工作树变更：
+npm run test:impact -- src/DebuggingPage.tsx
+npm run --silent test:impact -- --base origin/main --json > /tmp/wiseeff-impact.json
+# 编辑内循环：替换为正在修改的具体测试文件。
+VITE_WISEEFF_RUNTIME_MODE=mock npx vitest run --configLoader runner <test-file>
+```
+
+任务集成基线与 `origin/main` 不同时使用实际基线。读取 `suites`、`gates`、`commands` 和 `browser`；检查 **两个** `fullFallback` 和 `browser.fullFallback` 及其原因。执行输出命令时不删除配置、预热、跨路由 spec 或静态门禁。共享、删除、未知映射或发现失败均保守回退；完整覆盖超预算时交给协调者，不擅自缩小范围。空变更是错误，不是验收。选择器契约见[贡献指南](../root/CONTRIBUTING.md#本地-vitest-影响选择)。
+
+### 智能体验证预算
+
+委派任务由协调者承担昂贵门禁时，所有检查顺序执行。编辑期间仅运行正在修改的测试文件。全部编辑结束后，对每个变更源码运行一次 related，再 lint 这些文件并检查受影响 TypeScript 项目：
+
+```bash
+VITE_WISEEFF_RUNTIME_MODE=mock npx vitest related --run --configLoader runner <changed-source-files>
+npx eslint <changed-code-files>
+npx tsc -p tsconfig.app.json --noEmit
+npx tsc -p tsconfig.node.json --noEmit
+git diff --check
+```
+
+`src/` TypeScript 变更运行 app 类型检查；server/scripts/e2e/config TypeScript 变更运行 node 类型检查。related 仅覆盖当前 Vitest 配置：使用 `test:impact` 识别其他套件/门禁，并明确将未执行选择交给协调者。纯文档不需要 related、ESLint 或 TypeScript 检查；选中的 `npm run docs:check` 仍为必需，任务将文档门禁保留给协调者时由其执行。related 失败可修复后最多重跑两次。此预算下不执行完整套件、构建、全仓 lint、浏览器循环或并发测试/构建会话。协调者每个任务执行一次昂贵门禁；只是移交，不是取消。环境不可用或沙箱错误属于缺失证据，不是通过。
+
+### 隔离浏览器泳道
+
+获准执行定向浏览器检查时，先按照[本地设置](../root/CONTRIBUTING.md#测试数据库隔离)准备并播种可丢弃的 lane 数据库。导出基础 PostgreSQL `DATABASE_URL` 后，使用 `browser.commands` 输出的精确 grep 和 spec 清单：
+
+```bash
+WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.quality.config.ts --grep '<browser.qualityGrep>'
+WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.acceptance.config.ts <browser.acceptanceSpecs>
+# 只执行一个已注册 quality 分区，而不是全部项目：
+WISEEFF_RUNTIME_LANE=1 WISEEFF_QUALITY_LANE=consistency-1 npx playwright test --config playwright.quality.config.ts --grep '<browser.qualityGrep>'
+```
+
+占位符须替换为选择器输出，不是字面参数。分区执行选择时运行所有适用 quality 分区（`visual`、`consistency-1`、`consistency-2`、`accessibility`）。`WISEEFF_RUNTIME_LANE` 隔离端口、数据库、对象存储和报告；`WISEEFF_QUALITY_LANE` 选择覆盖范围，不隔离运行时。顺序执行 quality/acceptance 可复用 lane；同时执行必须使用不同运行时 lane ID。`WISEEFF_VITEST_LANES` 是并发 Vitest 进程总数，不是浏览器 lane 设置。描述符不创建数据库，不能与归属 Gate0 运行时控制混用。定向 Playwright 证据不是完整 Gate0 证据；受控运行时及回执义务保持不变。可见变更要求 `1440x900` 的真实 API 证据；mock 测试、收集和元数据不能代替执行。浏览器归协调者时，报告选中路由/spec 和缺失截图，不自行启动。
+
 ## 本地 Vitest worker 预算
 
 协调者在同一主机并发运行 Vitest 泳道时，应为每条泳道设置 `WISEEFF_VITEST_LANES`，其值为同时运行的 Vitest 进程总数，而非运行时泳道 ID。例如，`WISEEFF_VITEST_LANES=3 npm test -- src/NodeDebuggingPage.test.tsx` 会将主机的 `availableParallelism()` 分给三条泳道。单进程默认使用 `1` 条泳道。

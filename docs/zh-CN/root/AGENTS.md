@@ -37,7 +37,7 @@
 
 WiseEff 以 PC 为主。可见修改默认检查受影响页面及状态的 `1440x900` 视口；只有布局风险需要时才补充一个较窄 PC 窗口。平板和手机检查按需启用，不是默认完成门禁，详细策略以界面检查清单为准。
 
-复用 `npm test -- <files>`、`npm run test:server -- <files>`、`npm run test:scripts -- <files>` 和 `npm run bridge:test -- <files>`。编辑期间运行最窄的有效检查；交接前执行受影响检查，TypeScript、Vite、路由或共享类型变更仍须执行构建。既有任务的额外门禁不变。
+使用 `npm run test:impact -- <changed-files>` 或 `--base <integration-base>`，检查 Vitest/浏览器两个回退标志。遵循 `docs/developer/verification-matrix.md` 的编辑内循环、交接前、PR CI、合入和夜间分层。任务要求协调者承担昂贵门禁时，其智能体验证预算将定向检查分配给实现者；不缩小回退范围或重复昂贵门禁。获准的浏览器检查使用隔离 `WISEEFF_RUNTIME_LANE` ID 和选择器命令；`WISEEFF_QUALITY_LANE` 选择覆盖，不隔离运行时。TypeScript、Vite、路由或共享类型变更仍保留构建及全部已接受任务额外门禁，明确未执行证据的负责人。
 
 `verify:plan/run/report` 当前是有界 shadow/本地工具，不替代原生验收；memo/enforcement 在单独批准启用前保持关闭。不要编造参数或借用历史通过结果。
 
