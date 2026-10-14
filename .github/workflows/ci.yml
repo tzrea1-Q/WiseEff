@@ -5,7 +5,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   schedule:
     # Nightly L1 + L2 on main (UTC).
     - cron: "30 18 * * *"
@@ -32,8 +32,8 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'full-acceptance') && github.run_id || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance') }}
 
 permissions:
   contents: read
@@ -100,6 +100,7 @@ jobs:
 
   detect:
     name: Detect changed paths
+    if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -496,7 +497,7 @@ jobs:
 
   l1-server:
     name: L1 backend
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')
     needs: [detect, l1-server-shards]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -520,7 +521,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')
     needs: [detect, l1-static, l1-frontend, l1-scripts, l1-server]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -604,6 +605,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Read Playwright version
+        id: playwright_version
+        timeout-minutes: 1
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        timeout-minutes: 2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
@@ -677,7 +690,7 @@ jobs:
 
   acceptance-quality:
     name: Acceptance quality
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')
     needs: [detect, acceptance-quality-lanes]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -752,11 +765,17 @@ jobs:
       - name: Install and verify DTS toolchain
         uses: ./.github/actions/setup-dts-toolchain
 
+      - name: Read Playwright version
+        id: playwright_version
+        timeout-minutes: 1
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
+        timeout-minutes: 2
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -869,8 +888,20 @@ jobs:
         continue-on-error: true
         run: npm run dtc:seed:compile
 
+      - name: Read Playwright version
+        id: playwright_version
+        timeout-minutes: 1
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        timeout-minutes: 2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
+
       - name: Install Playwright Chromium
-        timeout-minutes: 15
+        timeout-minutes: 12
         run: npx playwright install --with-deps chromium
 
       - name: Acceptance CI metadata
@@ -1057,7 +1088,7 @@ jobs:
 
   acceptance-local-non-hdc:
     name: Acceptance local non-HDC
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')
     needs: [detect, acceptance-local-non-hdc-shards]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1113,6 +1144,18 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Read Playwright version
+        id: playwright_version
+        timeout-minutes: 1
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        timeout-minutes: 2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -1183,7 +1226,7 @@ jobs:
             test-results/quality
 
   required:
-    name: Merge bar
+    name: Merge bar${{ (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'full-acceptance') && ' (ignored label)' || '' }}
     if: always()
     needs:
       - detect
@@ -1197,10 +1240,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'
       - uses: actions/setup-node@v4
+        if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'
         with:
           node-version-file: .nvmrc
       - name: Check jobs that were supposed to run
+        if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'
         env:
           EFF_NEEDS: ${{ toJSON(needs) }}
         run: node --experimental-strip-types scripts/ci-required-results.ts required
