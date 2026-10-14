@@ -688,6 +688,18 @@ jobs:
             playwright-report/quality
             test-results/quality
 
+      - name: Generate candidate baseline review
+        if: failure() && matrix.lane == 'visual'
+        run: npx tsx scripts/quality-baseline-review.ts "$RUNNER_TEMP/wiseeff-ci-shard/results.json"
+
+      - name: Upload candidate baseline review
+        if: failure() && matrix.lane == 'visual' && hashFiles('test-results/quality/baseline-review/candidate.patch') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-visual-baseline-review
+          path: test-results/quality/baseline-review
+          if-no-files-found: error
+
   acceptance-quality:
     name: Acceptance quality
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance')

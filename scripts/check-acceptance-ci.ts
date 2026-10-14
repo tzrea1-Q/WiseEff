@@ -678,7 +678,11 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       const expectedNames = ["Check out repository", "Set up Node.js", "Install dependencies", "Install Playwright Chromium", "Prepare local acceptance env",
         "Migrate and seed database", "Acceptance quality metadata", "Acceptance quality gates"];
       check(JSON.stringify(runtimeSteps.slice(0, expectedNames.length).map((step) => step.name)) === JSON.stringify(expectedNames)
-        && runtimeSteps.length === expectedNames.length + 3, "Quality lanes must retain every ordered runtime prerequisite, metadata, gate, runtime report and separate uploads.");
+        && runtimeSteps.length === expectedNames.length + 5
+        && JSON.stringify(runtimeSteps.slice(expectedNames.length).map((step) => step.name)) === JSON.stringify([
+          "Upload quality lane receipt", "Report quality gate runtime", "Upload quality evidence",
+          "Generate candidate baseline review", "Upload candidate baseline review"
+        ]), "Quality lanes must retain every ordered runtime prerequisite, metadata, gate, runtime report and separate uploads before candidate baseline review.");
       check(runtimeSteps[0]?.uses === "actions/checkout@v4" && runtimeSteps[1]?.uses === "actions/setup-node@v4"
         && runtimeSteps[1]?.with?.["node-version-file"] === ".nvmrc" && runtimeSteps[1]?.with?.cache === "npm"
         && runtimeSteps[2]?.run === "npm ci" && runtimeSteps[3]?.run === "npx playwright install --with-deps chromium"
@@ -719,6 +723,22 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
         && evidence.if === "always()" && evidence["continue-on-error"] === true
         && evidence.with?.name === "${{ matrix.lane == 'visual' && 'wiseeff-acceptance-quality' || format('wiseeff-acceptance-quality-{0}', matrix.lane) }}"
         && evidence.with?.path === "playwright-report/quality\ntest-results/quality\n", "Quality evidence must retain the visual artifact name and isolate all other lane names and paths.");
+      const reviewGenerator = runtimeSteps[11];
+      const reviewUpload = runtimeSteps[12];
+      check(reviewGenerator?.name === "Generate candidate baseline review"
+        && reviewGenerator.if === "failure() && matrix.lane == 'visual'"
+        && reviewGenerator.run === 'npx tsx scripts/quality-baseline-review.ts "$RUNNER_TEMP/wiseeff-ci-shard/results.json"'
+        && JSON.stringify(Object.keys(reviewGenerator).sort()) === JSON.stringify(["if", "name", "run"]),
+        "Candidate baseline review generation must run only after visual lane failures, after existing quality steps, without overrides or failure suppression.");
+      check(reviewUpload?.name === "Upload candidate baseline review"
+        && reviewUpload.if === "failure() && matrix.lane == 'visual' && hashFiles('test-results/quality/baseline-review/candidate.patch') != ''"
+        && reviewUpload.uses === "actions/upload-artifact@v4"
+        && reviewUpload.with?.name === "wiseeff-visual-baseline-review"
+        && reviewUpload.with.path === "test-results/quality/baseline-review"
+        && reviewUpload.with["if-no-files-found"] === "error"
+        && JSON.stringify(Object.keys(reviewUpload).sort()) === JSON.stringify(["if", "name", "uses", "with"])
+        && JSON.stringify(Object.keys(reviewUpload.with).sort()) === JSON.stringify(["if-no-files-found", "name", "path"]),
+        "Candidate baseline review must upload separately only after generation on visual lane failures with a candidate patch, without overrides or failure suppression.");
     } else {
       check(steps.at(-1) === upload, "Backend shards must upload only after recording the complete invocation receipt.");
     }
