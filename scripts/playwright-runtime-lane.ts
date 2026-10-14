@@ -28,6 +28,7 @@ export function resolvePlaywrightRuntimeLane(env: NodeJS.ProcessEnv = process.en
     id,
     apiURL: `http://127.0.0.1:${20000 + Number(id) * 2}`,
     baseURL: `http://127.0.0.1:${20001 + Number(id) * 2}`,
+    bridgeURL: `http://127.0.0.1:${40000 + Number(id) * 2}`,
     databaseUrl: databaseUrl.href,
     objectStoreRoot: path.basename(objectStoreRoot) === `lane-${id}` ? objectStoreRoot : path.join(objectStoreRoot, `lane-${id}`),
     outputDir: path.join("test-results", "lanes", id),
@@ -40,6 +41,7 @@ export function applyPlaywrightRuntimeLane(env: NodeJS.ProcessEnv = process.env)
   if (lane) Object.assign(env, {
     PORT: new URL(lane.apiURL).port,
     WISEEFF_FRONTEND_PORT: new URL(lane.baseURL).port,
+    WISEEFF_LOCAL_BRIDGE_PROXY_URL: lane.bridgeURL,
     VITE_WISEEFF_API_BASE_URL: lane.apiURL,
     WISEEFF_ACCEPTANCE_FRONTEND_URL: lane.baseURL,
     DATABASE_URL: lane.databaseUrl,

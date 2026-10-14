@@ -103,7 +103,7 @@ export default defineConfig({
         changeOrigin: true
       },
       "/local-bridge": {
-        target: "http://127.0.0.1:18787",
+        target: process.env.WISEEFF_LOCAL_BRIDGE_PROXY_URL?.trim() || "http://127.0.0.1:18787",
         changeOrigin: true,
         rewrite: (requestPath) => requestPath.replace(/^\/local-bridge/, "")
       }

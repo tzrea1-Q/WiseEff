@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { resolvePlaywrightRuntimeLane } from "./playwright-runtime-lane";
+import { applyPlaywrightRuntimeLane, resolvePlaywrightRuntimeLane } from "./playwright-runtime-lane";
 
 describe("local Playwright runtime lanes", () => {
   beforeEach(() => {
-    for (const key of ["PORT", "WISEEFF_FRONTEND_PORT", "VITE_WISEEFF_API_BASE_URL", "WISEEFF_DEV_API_PROXY_URL", "WISEEFF_ACCEPTANCE_FRONTEND_URL", "DATABASE_URL", "TEST_DATABASE_URL", "OBJECT_STORE_ROOT", "WISEEFF_TEST_DATABASE_PREFIX", "WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR", "WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR", "WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR", "WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR"]) vi.stubEnv(key, process.env[key]);
+    for (const key of ["PORT", "WISEEFF_FRONTEND_PORT", "VITE_WISEEFF_API_BASE_URL", "WISEEFF_DEV_API_PROXY_URL", "WISEEFF_LOCAL_BRIDGE_PROXY_URL", "WISEEFF_ACCEPTANCE_FRONTEND_URL", "DATABASE_URL", "TEST_DATABASE_URL", "OBJECT_STORE_ROOT", "WISEEFF_TEST_DATABASE_PREFIX", "WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR", "WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR", "WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR", "WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR"]) vi.stubEnv(key, process.env[key]);
     vi.stubEnv("WISEEFF_RUNTIME_LANE", undefined);
     vi.stubEnv("WISEEFF_DEV_API_PROXY_URL", undefined);
+    vi.stubEnv("WISEEFF_LOCAL_BRIDGE_PROXY_URL", undefined);
   });
   afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
   it("resolves two isolated lanes from the same environment", () => {
@@ -16,6 +17,7 @@ describe("local Playwright runtime lanes", () => {
     const second = resolvePlaywrightRuntimeLane({ ...env, WISEEFF_RUNTIME_LANE: "2" });
     expect(first).toEqual({
       id: "1", apiURL: "http://127.0.0.1:20002", baseURL: "http://127.0.0.1:20003",
+      bridgeURL: "http://127.0.0.1:40002",
       databaseUrl: "postgres://user:password@localhost:5432/wiseeff_lane_1?sslmode=disable",
       objectStoreRoot: "/tmp/objects/lane-1", outputDir: "test-results/lanes/1", reportDir: "playwright-report/lanes/1"
     });
@@ -23,7 +25,29 @@ describe("local Playwright runtime lanes", () => {
     expect(second?.objectStoreRoot).not.toBe(first?.objectStoreRoot);
     expect(second?.outputDir).not.toBe(first?.outputDir);
     expect(second?.reportDir).not.toBe(first?.reportDir);
-    expect(new Set([first?.apiURL, first?.baseURL, second?.apiURL, second?.baseURL]).size).toBe(4);
+    expect(new Set([first?.apiURL, first?.baseURL, first?.bridgeURL, second?.apiURL, second?.baseURL, second?.bridgeURL]).size).toBe(6);
+  });
+  it("allocates bridge ports disjoint from every supported lane's API and frontend ports", () => {
+    const ports = new Set<number>();
+    for (let id = 1; id <= 10000; id++) {
+      const lane = resolvePlaywrightRuntimeLane({ WISEEFF_RUNTIME_LANE: String(id), DATABASE_URL: "postgres://localhost/app" })!;
+      expect(lane.bridgeURL).toBe(`http://127.0.0.1:${40000 + 2 * id}`);
+      for (const url of [lane.apiURL, lane.baseURL, lane.bridgeURL]) {
+        const port = Number(new URL(url).port);
+        expect(port).toBeLessThanOrEqual(65535);
+        expect(ports.has(port)).toBe(false);
+        ports.add(port);
+      }
+    }
+    expect(ports.size).toBe(30000);
+  });
+  it("overrides a shared bridge upstream only when a lane is selected", () => {
+    const env = { WISEEFF_LOCAL_BRIDGE_PROXY_URL: "http://127.0.0.1:18787" };
+    expect(applyPlaywrightRuntimeLane(env)).toBeUndefined();
+    expect(env.WISEEFF_LOCAL_BRIDGE_PROXY_URL).toBe("http://127.0.0.1:18787");
+    const laneEnv = { ...env, WISEEFF_RUNTIME_LANE: "2", DATABASE_URL: "postgres://localhost/app" };
+    applyPlaywrightRuntimeLane(laneEnv);
+    expect(laneEnv.WISEEFF_LOCAL_BRIDGE_PROXY_URL).toBe("http://127.0.0.1:40004");
   });
   it("preserves legacy defaults and rejects unsafe or ambiguous lane selections", () => {
     expect(resolvePlaywrightRuntimeLane({})).toBeUndefined();
@@ -58,6 +82,7 @@ describe("local Playwright runtime lanes", () => {
       expect(servers[0].env.VITE_WISEEFF_API_BASE_URL).toBe("http://127.0.0.1:20004");
       expect(new URL(servers[1].env.VITE_WISEEFF_API_BASE_URL).origin).toBe(new URL(config.use!.baseURL!).origin);
       expect(servers[1].env.WISEEFF_DEV_API_PROXY_URL).toBe("http://127.0.0.1:20004");
+      expect(servers[1].env.WISEEFF_LOCAL_BRIDGE_PROXY_URL).toBe("http://127.0.0.1:40004");
       expect(servers[1].env.VITE_WISEEFF_API_AUTHORIZATION).toBe("Bearer lane-smoke");
       expect(servers[1].command).toContain("--port 20005");
       expect(servers.every((server) => !server.reuseExistingServer)).toBe(true);
@@ -67,6 +92,27 @@ describe("local Playwright runtime lanes", () => {
     const vite = (await import("../vite.config")).default as { server: { proxy: Record<string, { target: string }> } };
     expect(vite.server.proxy["/api"].target).toBe("http://127.0.0.1:20004");
     expect(vite.server.proxy["/downloads"].target).toBe("http://127.0.0.1:20004");
+    expect(vite.server.proxy["/local-bridge"].target).toBe("http://127.0.0.1:40004");
+  });
+  it.each([undefined, "", "   "])("keeps the legacy local-bridge proxy when its override is %s, including CI", async (override) => {
+    vi.stubEnv("CI", "true");
+    vi.stubEnv("WISEEFF_LOCAL_BRIDGE_PROXY_URL", override);
+    const config = (await import("../vite.config")).default as { server: { proxy: Record<string, { target: string; rewrite: (path: string) => string }> } };
+    expect(config.server.proxy["/local-bridge"].target).toBe("http://127.0.0.1:18787");
+    expect(config.server.proxy["/local-bridge"].rewrite("/local-bridge/health")).toBe("/health");
+    const { buildPlaywrightWebServers } = await import("../playwright.shared");
+    const servers = buildPlaywrightWebServers({ baseURL: "http://127.0.0.1:5173", apiURL: "http://127.0.0.1:8787", reuseExistingServer: true }, {}) as Array<{ env: Record<string, string> }>;
+    expect(servers[1].env).not.toHaveProperty("WISEEFF_LOCAL_BRIDGE_PROXY_URL");
+  });
+  it("honors a configured local-bridge proxy without changing the API upstream", async () => {
+    vi.stubEnv("WISEEFF_LOCAL_BRIDGE_PROXY_URL", " http://127.0.0.1:40100 ");
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:8787");
+    const config = (await import("../vite.config")).default as { server: { proxy: Record<string, { target: string }> } };
+    expect(config.server.proxy["/local-bridge"].target).toBe("http://127.0.0.1:40100");
+    expect(config.server.proxy["/api"].target).toBe("http://127.0.0.1:8787");
+    const { buildPlaywrightWebServers } = await import("../playwright.shared");
+    const servers = buildPlaywrightWebServers({ baseURL: "http://127.0.0.1:5173", apiURL: "http://127.0.0.1:8787", reuseExistingServer: true }, process.env) as Array<{ env: Record<string, string> }>;
+    expect(servers[1].env.WISEEFF_LOCAL_BRIDGE_PROXY_URL?.trim()).toBe("http://127.0.0.1:40100");
   });
   it("keeps npm dev API overrides and Vite proxies aligned with the requested ports", async () => {
     vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:20004");

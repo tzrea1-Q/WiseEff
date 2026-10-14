@@ -167,7 +167,7 @@ export function planCodexBrowserRun(worktree: BrowserWorktree, selection: Browse
   environment = { ...fileConfig, ...Object.fromEntries(Object.entries(environment).filter(([, value]) => value !== undefined)) };
   const localFile = resolve(worktree.root, ".env.local");
   const localConfig = existsSync(localFile) ? parse(readFileSync(localFile, "utf8")) : {};
-  for (const name of ["DATABASE_URL", "TEST_DATABASE_URL", "HOST", "PORT", "OBJECT_STORE_MODE", "OBJECT_STORE_ROOT", "WISEEFF_RUNTIME_LANE", "WISEEFF_API_PORT", "WISEEFF_FRONTEND_PORT", "VITE_WISEEFF_API_BASE_URL", "WISEEFF_ACCEPTANCE_FRONTEND_URL", "AUTH_MODE", "AUTH_PROVIDER", ...authNames]) {
+  for (const name of ["DATABASE_URL", "TEST_DATABASE_URL", "HOST", "PORT", "OBJECT_STORE_MODE", "OBJECT_STORE_ROOT", "WISEEFF_RUNTIME_LANE", "WISEEFF_API_PORT", "WISEEFF_FRONTEND_PORT", "WISEEFF_LOCAL_BRIDGE_PROXY_URL", "VITE_WISEEFF_API_BASE_URL", "WISEEFF_ACCEPTANCE_FRONTEND_URL", "AUTH_MODE", "AUTH_PROVIDER", ...authNames]) {
     if (localConfig[name] !== undefined) throw new Error(`Runtime override .env.local ${name} is not allowed.`);
   }
   if (worktree.gitDir === worktree.commonDir || !relative(resolve(worktree.commonDir, "worktrees"), worktree.gitDir).match(/^[^./][^/]*$/)) {

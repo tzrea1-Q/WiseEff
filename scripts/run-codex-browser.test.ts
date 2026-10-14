@@ -42,6 +42,7 @@ describe("Codex browser runner", () => {
           expect(childOptions.detached).toBe(true);
           expect(childOptions.env).toMatchObject({ DATABASE_URL: plan.env.DATABASE_URL, WISEEFF_RUNTIME_LANE: "7", AUTH_TOKEN_HMAC_SECRET: "test-hmac-secret" });
           if (name === "api") expect(childOptions.env.AUTH_MODE).toBe(options.suite === "quality" ? "development" : "production");
+          if (name === "frontend") expect(childOptions.env.WISEEFF_LOCAL_BRIDGE_PROXY_URL).toBe("http://127.0.0.1:40014");
           const child = Object.assign(new EventEmitter(), { pid: ++sequence, exitCode: null, signalCode: null, label: `${options.suite}:${name}` });
           if (name === "tests") {
             expect(childOptions.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME).toBe("true");
@@ -193,6 +194,8 @@ describe("Codex browser runner", () => {
       expect(plan.env.https_proxy).toBeUndefined();
       writeFileSync(resolve(root, ".env.local"), 'DATABASE_URL=postgres://other@127.0.0.1/shared\n');
       expect(() => planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin")).toThrow(/\.env\.local.*DATABASE_URL/);
+      writeFileSync(resolve(root, ".env.local"), 'WISEEFF_LOCAL_BRIDGE_PROXY_URL=http://127.0.0.1:18787\n');
+      expect(() => planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin")).toThrow(/\.env\.local.*WISEEFF_LOCAL_BRIDGE_PROXY_URL/);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
@@ -267,10 +270,11 @@ describe("Codex browser runner", () => {
   });
 
   it("runs the selector's exact subset in an isolated local lane without a shell or git writes", () => {
-    const plan = planCodexBrowserRun(worktree, selection, environment, "darwin");
+    const plan = planCodexBrowserRun(worktree, selection, { ...environment, WISEEFF_LOCAL_BRIDGE_PROXY_URL: "http://remote.example:18787" }, "darwin");
 
     expect(plan.lane).toMatchObject({ id: "7", databaseName: "wiseeff_lane_7", baseURL: "http://127.0.0.1:20015" });
     expect(plan.env).toMatchObject({ DATABASE_URL: "postgres://local:secret@127.0.0.1:5432/wiseeff_lane_7", HOST: "127.0.0.1", OBJECT_STORE_MODE: "local" });
+    expect(plan.env.WISEEFF_LOCAL_BRIDGE_PROXY_URL).toBe("http://127.0.0.1:40014");
     expect(plan.commands.map(({ suite, args }) => ({ suite, args: args.slice(4) }))).toEqual([
       { suite: "quality", args: ["test", "--config", "playwright.quality.config.ts", "--grep", selection.qualityGrep, ...["runtime-warmup", "a11y", "consistency", "compact", "responsive"].map((project) => `--project=${project}`)] },
       { suite: "acceptance", args: ["test", "--config", "playwright.acceptance.config.ts", "e2e/acceptance/logs\\.spec\\.ts$"] },
