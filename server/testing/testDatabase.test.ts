@@ -58,17 +58,22 @@ describe("literal test database namespace isolation", () => {
   it.each([
     { prefix: "t1080ci2_qglj", token: "r1234567", foreign: ["p1234567", "qglj"] },
     { prefix: "t1080ci2_f_x66", token: "f", foreign: ["b"] }
-  ])("preserves foreign runs when cleaning token $token in lane $prefix", async ({ prefix, token, foreign }) => {
+  ])("preserves foreign runs during setup and teardown of token $token in lane $prefix", async ({ prefix, token, foreign }) => {
     vi.stubEnv("WISEEFF_TEST_DATABASE_PREFIX", prefix);
     vi.resetModules();
     const databases: Awaited<ReturnType<typeof createEphemeralTestDatabase>>[] = [];
     try {
-      const { createEphemeralTestDatabase: createLaneDatabase, teardownTestDatabaseRun } = await import("./testDatabase");
+      const { createEphemeralTestDatabase: createLaneDatabase, setupTestDatabaseRun, teardownTestDatabaseRun } = await import("./testDatabase");
       for (const runToken of foreign) {
         vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", runToken);
         databases.push(await createLaneDatabase("foreign"));
       }
       const foreignNames = databases.map((database) => new URL(database.url).pathname.slice(1));
+      await setupTestDatabaseRun();
+      await withAdminClient(async (admin) => {
+        expect((await admin.query("select datname from pg_database where datname = any($1)", [foreignNames]))
+          .rows.map((row) => row.datname).sort()).toEqual([...foreignNames].sort());
+      });
       vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", token);
       const owned = await createLaneDatabase("owned");
       databases.push(owned);
@@ -393,6 +398,9 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
 
 describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () => {
   it("uses a new fingerprint for changed SQL and never publishes a failed build", async () => {
+    const worker = await createInMemoryTestDatabase();
+    const workerIdentity = (await worker.query("select oid from pg_database where datname = current_database()")).rows;
+    await worker.rollback();
     const prefix = process.env.WISEEFF_TEST_DATABASE_PREFIX?.trim() || "wiseeff";
     const last = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort().at(-1)!;
     const sqlPath = path.join(migrationsDir, last);
@@ -429,6 +437,11 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
         } else {
           const next = await changed("fingerprintnew");
           try {
+            const subsequent = await createInMemoryTestDatabase();
+            try {
+              expect((await subsequent.query("select oid from pg_database where datname = current_database()")).rows)
+                .toEqual(workerIdentity);
+            } finally { await subsequent.rollback(); }
             expect(new URL(next.url).pathname).toContain(`_${fingerprint}_`);
             expect(new URL(originalUrl).pathname).not.toContain(`_${fingerprint}_`);
             const client = new pg.Client({ connectionString: next.url });
@@ -658,6 +671,50 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
 });
 
 describe.skipIf(!databaseAvailable)("cluster role lifecycle lease", () => {
+  it("queues contending leases in PostgreSQL so a later caller cannot bypass a waiter", async () => {
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    await withAdminClient(async (holder) => {
+      await holder.query("select pg_advisory_lock($1)", [4_201_659]);
+      const firstLabel = `lease_first_${process.pid}`;
+      const secondLabel = `lease_second_${process.pid}`;
+      vi.stubEnv("PGAPPNAME", firstLabel);
+      const first = withTestClusterRoleCatalogLock(async () => {
+        order.push("first");
+        await firstGate;
+      });
+      let second: Promise<void> | undefined;
+      const waitForQueue = async (label: string) => {
+        await vi.waitFor(async () => {
+          const waiting = await holder.query<{ count: number }>(
+            `select count(*)::int as count from pg_locks locks
+             join pg_stat_activity activity on activity.pid = locks.pid
+             where locktype = 'advisory' and database = (select oid from pg_database where datname = 'postgres')
+               and classid = 0 and objid = $1 and objsubid = 1 and not granted
+               and application_name = $2`,
+            [4_201_659, label],
+          );
+          expect(waiting.rows[0].count).toBe(1);
+        });
+      };
+      try {
+        await waitForQueue(firstLabel);
+        vi.stubEnv("PGAPPNAME", secondLabel);
+        second = withTestClusterRoleCatalogLock(async () => { order.push("second"); });
+        await waitForQueue(secondLabel);
+        await holder.query("select pg_advisory_unlock($1)", [4_201_659]);
+        await vi.waitFor(() => { expect(order).toEqual(["first"]); });
+      } finally {
+        await holder.query("select pg_advisory_unlock($1)", [4_201_659]);
+        releaseFirst();
+        try { await Promise.all([first, second]); }
+        finally { vi.unstubAllEnvs(); }
+      }
+    });
+    expect(order).toEqual(["first", "second"]);
+  });
+
   it("serializes role migrations across databases while ordinary queries remain parallel", async () => {
     await withTempDatabase({ prefix: "role_lease_a", migrate: false }, async ({ db: a }) => {
       await withTempDatabase({ prefix: "role_lease_b", migrate: false }, async ({ db: b }) => {
