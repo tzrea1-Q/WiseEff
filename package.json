@@ -40,6 +40,8 @@
     "acceptance:models": "tsx scripts/check-acceptance-state-models.ts",
     "acceptance:evidence": "tsx scripts/check-operation-evidence.ts",
     "acceptance:ci": "tsx scripts/check-acceptance-ci.ts",
+    "acceptance:consistency": "playwright test --config playwright.quality.config.ts --project consistency",
+    "acceptance:compact": "playwright test --config playwright.quality.config.ts --project compact",
     "acceptance:a11y": "playwright test --config playwright.quality.config.ts --project a11y",
     "acceptance:visual": "playwright test --config playwright.quality.config.ts --project visual",
     "acceptance:responsive": "playwright test --config playwright.quality.config.ts --project responsive",

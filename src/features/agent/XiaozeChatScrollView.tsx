@@ -32,6 +32,11 @@ export function XiaozeChatScrollView({
   ...props
 }: XiaozeChatScrollViewProps) {
   const mode = normalizeAutoScroll(autoScroll);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const { showScrollButton, scrollToBottom } = useXiaozeChatAutoScroll(scrollRef, contentRef, {
+    enabled: mode === "pin-to-bottom"
+  });
 
   if (mode !== "pin-to-bottom") {
     return (
@@ -40,10 +45,6 @@ export function XiaozeChatScrollView({
       </CopilotChatView.ScrollView>
     );
   }
-
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const { showScrollButton, scrollToBottom } = useXiaozeChatAutoScroll(scrollRef, contentRef);
 
   return (
     <div
