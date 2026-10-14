@@ -86,6 +86,8 @@ npm run test:browser:codex -- --check test-results/lanes/7/codex-browser-evidenc
 
 lane 模式下，前端子进程的 `VITE_WISEEFF_API_BASE_URL` 使用自身 Vite 源站，使浏览器 API 与下载请求保持同源。`WISEEFF_DEV_API_PROXY_URL` 为 Vite 的 `/api` 与 `/downloads` 代理指定独立 API 上游。Node 侧浏览器 fixture 与播种工具仍使用直连 API URL。这样无需扩大 API 对 lane 端口的 CORS 权限，授权请求头也保持不变；非 lane 启动行为不变。手动启动 lane 前端时，同样需要区分浏览器基础 URL 与代理上游 URL。
 
+Vite 的 `/local-bridge` 代理使用 `WISEEFF_LOCAL_BRIDGE_PROXY_URL`（非 lane 开发及 CI 默认 `http://127.0.0.1:18787`）。lane 将其覆盖为 `http://127.0.0.1:<40000 + 2*N>`，并传递给前端子进程，Codex 浏览器运行器也使用此设置。Bridge 端口 40002–60000 与所有支持的 lane 的 API/前端端口 20002–40001 不重叠。浏览器 Bridge 请求仍保持同源；生产环境的 Bridge URL 解析不变。描述符不会启动 Bridge：lane 使用的 Bridge 必须配置为监听其分配端口。手动启动前端时，还须导出该 lane 的 `WISEEFF_LOCAL_BRIDGE_PROXY_URL`。Codex 沙箱现有的仅限 localhost 网络许可已覆盖这些端口，不扩大权限，且不允许 `.env.local` 覆盖 Bridge 上游。
+
 设置 `WISEEFF_TEST_DATABASE_PREFIX` 后，一次性切换后浏览器测试使用 `<prefix>_disposable_…`；未设置时保留 `wiseeff_acceptance_disposable_…`。手动运行可用 `WISEEFF_ACCEPTANCE_NESTED_API_PORT` 和 `WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT` 固定嵌套 API/前端监听端口（1–65535 范围内的不同整数），canonical DTS reload 测试也遵循这两个覆盖变量。复用手动运行的端口时，设置 `WISEEFF_ACCEPTANCE_NO_START_RUNTIME=true`，使用 `--no-deps` 仅运行嵌套测试，不要同时在这些端口启动父运行时。受控设备的回环 socket 仍由测试独占并使用临时端口。CI 不设置端口覆盖，继续使用自动分配的隔离端口。
 
 PostgreSQL 测试工具（`server/testing/testDatabase.ts`）依次使用非空的 `TEST_DATABASE_URL`、`DATABASE_URL`，最后回退到本地 Compose 默认连接。同一集群上的并行工作树应在启动各自测试进程前设置不同的 `WISEEFF_TEST_DATABASE_PREFIX`。前缀会去除首尾空白；未设置或为空时默认 `wiseeff`。有效格式为 `^[a-z][a-z0-9_]{0,15}$`：1–16 个字符，以小写 ASCII 字母开头，后续仅允许小写 ASCII 字母、数字或下划线。无效前缀会在数据库准备前报错。

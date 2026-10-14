@@ -77,6 +77,7 @@ export function buildPlaywrightWebServers({
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: env.WISEEFF_RUNTIME_LANE ? baseURL : apiURL,
         WISEEFF_DEV_API_PROXY_URL: apiURL,
+        ...(env.WISEEFF_LOCAL_BRIDGE_PROXY_URL ? { WISEEFF_LOCAL_BRIDGE_PROXY_URL: env.WISEEFF_LOCAL_BRIDGE_PROXY_URL } : {}),
         ...(projectConfigurationWorkbenchEnabled
           ? { VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED: "true" }
           : {}),
