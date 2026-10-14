@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "playwright/test";
+import { expect, test, type Locator, type Page } from "playwright/test";
 import { runNpmScript } from "../acceptance/helpers/database";
 import {
   assertVisualReviewFixtureConfigured,
@@ -99,61 +99,35 @@ export async function closeXiaozePopupIfOpen(page: Page) {
   await expect(popup).toBeHidden({ timeout: 10_000 });
 }
 
-/**
- * Wait until the Xiaoze popup layer settles hidden. CopilotKit can keep its
- * popup DOM mounted while open state is being restored; an axe scan launched
- * right after `main` becomes visible can race that transition. Require the
- * layer to stay hidden for a short dwell so scans always see the steady state.
- */
-export async function settleXiaozePopupClosed(page: Page, dwellMs = 600, timeoutMs = 15_000) {
-  const layer = page.getByTestId("xiaoze-popup-layer");
-  const deadline = Date.now() + timeoutMs;
-  let hiddenSince: number | null = null;
-
-  while (Date.now() < deadline) {
-    const visible = await layer.isVisible().catch(() => false);
-    if (!visible) {
-      hiddenSince ??= Date.now();
-      if (Date.now() - hiddenSince >= dwellMs) {
-        return;
-      }
-    } else {
-      hiddenSince = null;
-    }
-    await page.waitForTimeout(100);
-  }
-
-  await expect(layer).toBeHidden();
+export async function settleXiaozePopupClosed(page: Page, timeoutMs = 15_000) {
+  await expect(page.getByTestId("xiaoze-popup-readiness")).toHaveAttribute("data-state", "closed", { timeout: timeoutMs });
+  await expect(page.getByTestId("xiaoze-popup-layer")).toBeHidden();
 }
 
-/**
- * Xiaoze's first-use hint appears after a 1.4s delay. Wait through that
- * reveal window and close it explicitly so screenshots never depend on
- * whether route hydration happened just before or after the timer fired.
- */
 export async function dismissXiaozeToggleHintIfPresent(page: Page, timeoutMs = 2_000) {
   const hint = page.getByTestId("xiaoze-toggle-hint");
-  await hint.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => undefined);
+  const readiness = page.getByTestId("xiaoze-toggle-hint-readiness");
+  await expect(readiness).toHaveAttribute("data-state", /^(revealed|suppressed)$/, { timeout: timeoutMs });
 
-  const dismiss = hint.getByRole("button", { name: "不再提示" });
-  if (await dismiss.isVisible().catch(() => false)) {
-    await settleAppToasts(page);
-    await dismiss.click();
+  if (await hint.isVisible()) {
+    await test.step("quality:readiness", () => settleAppToasts(page));
+    await hint.getByRole("button", { name: "不再提示" }).click();
+    await expect(readiness).toHaveAttribute("data-state", "suppressed");
   }
   await expect(hint).toBeHidden();
 }
 
 export async function prepareInteractionSurface(page: Page) {
   await dismissCopilotDevOverlays(page);
-  await closeXiaozePopupIfOpen(page);
-  await settleXiaozePopupClosed(page);
-  await dismissXiaozeToggleHintIfPresent(page);
+  await test.step("quality:readiness", () => closeXiaozePopupIfOpen(page));
+  await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
+  await test.step("quality:readiness", () => dismissXiaozeToggleHintIfPresent(page));
   await dismissCopilotDevOverlays(page);
 }
 
 export async function openXiaozePopup(page: Page, route = "/parameters?project=aurora") {
-  await page.goto(route, { waitUntil: "domcontentloaded" });
-  await expectUsablePage(page);
+  await test.step("quality:navigation", () => page.goto(route, { waitUntil: "domcontentloaded" }));
+  await test.step("quality:readiness", () => expectUsablePage(page));
 
   const toggle = page.getByTestId("copilot-chat-toggle");
   await expect(toggle).toBeVisible();
@@ -327,7 +301,7 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     for (const label of ["正在加载规范主体…", "正在读取发现结果…", "正在加载历史驱动注册表…"]) {
       await expect(page.getByText(label, { exact: true })).toHaveCount(0, { timeout });
     }
-    await waitForFontsAndNextPaint(page);
+    await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
     return;
   }
 
@@ -360,7 +334,7 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
         await expect(page.getByTestId(collection === "domains" ? "log-domain-governance" : "feedback-quality-insights")).toHaveAttribute("aria-busy", "false", { timeout });
         await expect(page.getByRole("table", { name: collection === "domains" ? "业务域列表" : "分析质量反馈聚合" })).toBeVisible({ timeout });
         await expect(page.getByText("正在加载反馈数据…", { exact: true })).toHaveCount(0, { timeout });
-        await waitForFontsAndNextPaint(page);
+        await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         return;
       }
       // The default time window may exclude the seeded logs, so settle on either a seeded row or the loaded empty row.
@@ -369,14 +343,14 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     } else if (routePath === "/debugging-admin/nodes") {
       await expect(page.locator(".debug-admin-coverage-badge").first()).toBeVisible({ timeout });
     }
-    await waitForFontsAndNextPaint(page);
+    await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
     return;
   }
 
   if (routePath === "/knowledge-admin") {
     await expect(page.getByRole("tabpanel").getByRole("table")).toBeVisible({ timeout });
     await expect(page.getByRole("tabpanel").getByText(/^正在加载/)).toHaveCount(0, { timeout });
-    await waitForFontsAndNextPaint(page);
+    await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
     return;
   }
 
@@ -419,7 +393,7 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     await expect(failureAlert).toBeVisible({ timeout });
     await expect(page.locator(".history-item.active")).toContainText("unsupported.bin", { timeout });
     await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout });
-    await waitForFontsAndNextPaint(page);
+    await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
     await expect.poll(async () => failureAlert.isVisible(), { timeout: 5_000 }).toBe(true);
     await expect(failureAlert).toContainText("在 日志解析 阶段失败");
     await expect(failureAlert).toContainText(".log / .txt / .csv / .json");

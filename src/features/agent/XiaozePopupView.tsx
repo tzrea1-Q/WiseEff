@@ -345,6 +345,11 @@ export function XiaozePopupView({
 
   return (
     <>
+      <span
+        hidden
+        data-testid="xiaoze-popup-readiness"
+        data-state={isPopupOpen ? motion === "visible" ? "open" : "opening" : isMounted ? "closing" : "closed"}
+      />
       {toggleButtonElement}
       {isMounted ? (
         <div

@@ -25,10 +25,10 @@ test.beforeAll(() => seedQualityRuntime());
 for (const route of compactQualityRoutes) {
   for (const theme of ["light", "dark"] as const) {
     test(`${route.template}: ${route.path} stays within layout budget at compact (${theme})`, async ({ page }) => {
-      await page.goto(route.path);
-      await expectUsablePage(page);
-      await prepareInteractionSurface(page);
-      await settleQualityRoute(page, route.path);
+      await test.step("quality:navigation", () => page.goto(route.path));
+      await test.step("quality:readiness", () => expectUsablePage(page));
+      await test.step("quality:readiness", () => prepareInteractionSurface(page));
+      await test.step("quality:readiness", () => settleQualityRoute(page, route.path));
       await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
       const headingScope = "headingScope" in route ? page.locator(route.headingScope) : page;
       await expect(headingScope.getByText(route.heading, { exact: true }).first()).toBeVisible();
@@ -37,7 +37,7 @@ for (const route of compactQualityRoutes) {
       await expectBoundedInteractiveControls(page);
       await expectVisibleFormControlAffordances(page);
 
-      const measurements = await page.evaluate(collectConsistencyMeasurements);
+      const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
       switch (route.template) {
         case "NavigatorWorkbench": requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, route.path); break;
         case "AdminListPage": requireAdminListGeometry(measurements.adminLists, route.path); break;
