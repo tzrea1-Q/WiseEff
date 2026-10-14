@@ -19,7 +19,7 @@
 7. **密度是能力。** 主工作表格必须在 1280px 内容宽度内放下所有列,不允许因外框留白导致横向滚动;溢出的细节进检查器/弹窗,而不是加列。
 8. **动效令牌化且克制。** 时长与缓动一律来自 motion 令牌;禁用 `ease` 关键字与 >400ms 的 UI 过渡;无限循环动画必须响应 `prefers-reduced-motion`。
 9. **演示数据即产品数据。** 种子环境不得在用户界面暴露测试残留（`FoldRegistryTestDG`、`probe-edit-*.dts`、验收 fixture 账号等）。
-10. **每个可见变更都要真实浏览器验证。** 按检查清单在 1440/768/390 三档宽度验证后才算完成。
+10. **每个可见变更都要真实浏览器验证。** 按 PC 优先检查清单在 1440×900 验证后才算完成；布局风险需要时增加紧凑 PC 窗口。平板/手机走查须有明确请求或已接受的设备专属契约。
 
 ## 规范实现
 
@@ -133,6 +133,8 @@
 
 不允许其它 `font-size` 值。`letter-spacing` 只允许 `0`（正文）与 `0.04em`（仅大写 eyebrow）。
 
+TopBar 使用 `--text-xl` / `--leading-xl`（20/28）。应用内标题和按钮文案只使用这套字号，包括旧控件与通过 Portal 渲染的确认弹窗。一致性采集器检查每个可见标题和按钮，要求恰好一个 TopBar 标题，并在所有一致性路由的 1440×900 明暗主题检查中拒绝空采集或刻度外字号。公开营销首页的排版不属于应用壳层契约。
+
 ### 间距
 
 4px 栅格。令牌 `--space-1..-16` = 4、8、12、16、20、24、32、40、48、64。默认:
@@ -171,6 +173,8 @@
 | `--shadow-3` | 弹窗、侧板 |
 | `--ring` | 焦点环:`0 0 0 2px` 固定透明度的 accent,可按表面色偏移 |
 
+状态侧线（`--shadow-status-warning`、`--shadow-status-accent`、`--shadow-status-accent-light`）以及轮廓、焦点和脉冲配方（`--ring-soft`、`--ring-outline`、`--ring-secondary`、`--ring-accent`、`--ring-pulse-start`、`--ring-pulse-end`）统一定义在根令牌块。这些是语义描边，不是新增的层次等级；页面 CSS 不得内联发明其尺寸和颜色。配置工作台底部锚定的任务面板使用方向性 `--shadow-sheet-above` 配方，使阴影投向上方内容而非视口下方。
+
 ### 动效
 
 | 令牌 | 值 | 用途 |
@@ -184,6 +188,8 @@
 规则:禁用 `ease` 关键字;UI 过渡不超过 400ms;入场只动 opacity/transform;所有无限循环动画必须带 `prefers-reduced-motion: reduce` 回退。
 
 ### z-index
+
+页面内容内部使用命名子阶梯：`--z-content-base`（0）、`--z-content`（1）、`--z-content-sticky`（2）、`--z-content-panel`（3）、`--z-content-toolbar`（4）、`--z-content-menu`（5）、`--z-content-overlay`（10）。它保留工作台、树、检查器和底部任务区的现有叠放关系，全部低于应用级吸顶层（20）。
 
 `:root` 中只声明一条阶梯；组件 CSS 或 TSX 里的裸数字一律禁止。浮层刻度为 `--z-xiaoze-fab: 1100`、`--z-xiaoze-popup: 1140`、`--z-modal-backdrop: 1150`、`--z-modal-backdrop-nested: 1160`、`--z-xiaoze-approval: 1250`、`--z-toast: 1350`，吸顶头、侧边栏、下拉/浮层等应用层令牌位于其下。无模态小泽窗口刻意低于业务弹窗，小泽审批层和 toast 刻意高于业务弹窗。「+1 逃生舱」（40 对 41、60 对 61）是缺陷。
 
@@ -209,6 +215,26 @@ hover 与 focus-visible 必须保持视觉可区分（不得合并成同一条�
 - 只有一套实现。变体:`primary`（accent 实心）、`secondary`（表面 + 边框）、`ghost`（透明）、`danger`（危险实心或描边）、`link`（文本)。尺寸:`sm` 28px、`md` 32px（默认）、`lg` 36px;纯图标按钮为方形、内含居中 16px 图标。
 - `docs/FRONTEND.md` § Button And Action Styling 的完整视觉契约继续生效。当前 42 个作用域各自覆写 `.button` 几何属于缺陷,按计划迁移。
 - 每个视图只有一个主按钮。
+
+旧 `.button` 和共享 `Button` 使用同一张基于现有间距与字号令牌的 CSS 尺寸表，不再分别定义 Tailwind 与 CSS 尺寸：
+
+| 尺寸 | 高度 | 字号/行高 | 水平内边距 |
+| --- | --- | --- | --- |
+| `xs`（共享辅助控件） | 24px | 11/16 | 4px |
+| `sm`（行操作） | 28px | 12/18 | 8px |
+| `md`（共享 `default`） | 32px | 13/20 | 12px |
+| `lg` | 36px | 13/20 | 16px |
+
+尺寸表只在共享 `.button-size-*` 规则及并列的旧选择器中定义一次。图标变体使用对应高度的方形边长、零内边距；图标为 16px，`xs` 图标为 12px。小控件内容间距为 4px，默认和大控件为 8px。两种实现均使用中等圆角和 600 字重。页面不得重定义这些几何值。
+
+### 行操作
+
+`src/components/common/RowActionMenu.tsx` 是后续列表迁移共用的行操作契约。每行至多展示一个文本操作（`primaryAction`）和一个有名称的「更多」入口。可见操作与入口使用 `Button size="sm" variant="ghost"`，菜单项使用相同的小尺寸。本次契约工单不迁移旧页面的行操作。
+
+- `label` 为辅助技术标识该行的操作组和菜单。`items` 提供稳定 ID、文案、可选禁用状态和 `onSelect` 回调。空菜单集合不渲染「更多」。
+- Radix DropdownMenu 提供 menu/menuitem 语义、游走焦点、方向键、Home/End、输入定位、Escape、点击外部关闭和焦点返回。菜单通过 Portal 渲染，不被表格滚动区域裁切。
+- 危险项必须声明 `destructive: true`，并提供包含标题、影响范围说明和确认文案的 `confirmation`；可选风险勾选复用 ConfirmDialog 契约。危险项不能成为可见文本操作，只在菜单中显示红字，不在表格行中放实心红按钮。选择危险项只打开 `ConfirmDialog`。
+- 仅在用户确认后执行危险回调。提交中禁用重复提交和关闭；失败保留弹窗并显示经共享格式化器处理的中文错误，允许重试；取消和成功后焦点返回「更多」。普通操作的结果仍由调用方处理。
 
 ### 输入与选择
 
@@ -249,6 +275,49 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 ## 布局与页面结构
 
+页面应复用以下五种原型，而非自建局部布局。所有模板继承下述壳层边距、字号、紧凑控件与主操作契约；填充槽位时保留现有权限校验、加载/错误状态与人工写入确认。
+
+| 页面原型 | 共享模板 | 代表性视觉路由 |
+| --- | --- | --- |
+| 导航工作台 | `NavigatorWorkbench` | `/parameters` |
+| 管理列表 | `AdminListPage` | `/parameter-admin/projects` |
+| 入口/概览 | `OverviewPage`（指标用 `OverviewTile`，迁移提示用 `RetiredNotice`） | `/parameter-home` |
+| 配置表单 | `SettingsFormPage` | `/organization` |
+| 审核/详情 | `ReviewInbox` | `/parameter-review` |
+
+### 壳层边距与导航
+
+应用壳层拥有 `--page-gutter`（PC 为 24px）。`.main-content` 与 `.topbar` 消费此令牌；`.page-content` 无额外内边距地包裹路由内容，应用页脚仍是它在壳层中的同级区域。页面根容器不添加外层内边距或外边距。卡片与工作台面板保留内部留白；不要删除这些内部内边距，也不要用全局覆写替代页面局部 CSS。配置工作台保留现有的不显示页脚行为。
+
+配置内容包装层保留通往有界面板的满高链。源码画布沿用 `--font-code` 字体栈、`--text-sm` 字号和 1.75 行高比例（12/21px）；令牌迁移不得改变源码行尺寸。紧凑壳层底部留白为 4px 网格上的 120px，而不是单个 64px 间距刻度。仅供屏幕阅读器的图表回退文本使用负的 `--stroke-hairline` 外边距，而非负的内容间距。
+
+共享导航展开和折叠状态均使用 4px 间距令牌；普通导航项最小高度为 40px，垂直/水平内边距为 8px/12px，图标与标签间距为 12px。明暗主题的活动项都使用命名的 `--shadow-1` 层级，不允许自定义活动阴影或刻度外导航间距。
+
+一致性测试在每条路由比较壳层令牌定义的左边缘与路由内容、页面根内容、TopBar、页脚左边缘（±1px）。区域缺失或非有限测量值均失败。仅当 DOM 中不存在壳层页脚时，页脚区域才是可选的（包括重定向到配置工作台的旧版项目链接）；所有存在的页脚即使隐藏也必须测量并检查。仍需真实运行时截图与质量/验收测试，静态测试不能替代它们。
+
+### 管理列表页面
+
+`src/components/layout/` 中的 `AdminListPage` 负责页头操作、紧凑筛选栏、共享 `DataTable`、可选通知与可选详情抽屉/弹窗。页面标题与边距来自壳层；模板不再添加重复标题或外层留白。次要操作排在主动作之前，主动作保持在最右端。页面只填充槽，并删除旧列表布局 CSS，不覆盖模板。
+
+多集合管理页使用 URL 驱动的 `ViewSwitch` 内容标签、一个可见面板与一个可见 `AdminListPage`，不再堆叠集合卡片。知识治理选择 `tab=drafts`（默认）、`tab=index` 或 `tab=archived`；日志后台选择 `tab=records`（默认）、`tab=domains` 或 `tab=quality`。无效标签回退到默认；切换保留其他查询参数与片段，新增历史记录，并支持浏览器前进/后退恢复。离开日志业务域标签时保留编辑器的本地输入。仅有重试操作的索引行与只读反馈行不放空的「更多」菜单；多操作行复用共享菜单，危险操作保留确认。每个集合分别纳入浅色/深色 1440×900 一致性测量。
+
+- `table` 沿用 DataTable 契约，包括受控 `sort`、`onSort`、`page` 和 `onPageChange`。路由负责序列化：项目试点将搜索（`q`）、状态（`status`）、排序（`sort`）与分页（`page`）保存在 URL，支持刷新和浏览器历史恢复。筛选/排序变化回到第一页；第一页省略 URL 参数，无效页码归一为一。
+- 模板启用 DataTable 的 `compactControls` 模式：列筛选配置由共享 `ColumnFilter` 渲染，可排序表头保留 `aria-sort`。两者使用令牌化的 32px `.compact-filter-control` 几何与显式 `data-compact-control` 筛选/排序标记，供一致性采集器测量。模板以外的原生表头控件保留原有尺寸和测量范围。
+- `rowActions` 提供 `RowActionMenu` 参数，而非任意按钮组：每行至多一个小尺寸文本操作加「更多」。操作可选 `ariaLabel` 与 `descriptionId` 保留逐行名称和禁用说明。规范历史项目仍禁用删除；允许的删除通过 ConfirmDialog 复用项目影响范围文案。提交中与失败状态遵循共享菜单确认契约。 已有页面级确认弹窗通过危险项的 `onRequestConfirmation` 复用；该回调只打开确认，不执行写入。
+- `emptyState` 必须提供一条消息和唯一下一步，由 SectionEmpty 在表格内渲染。无项目时提供创建，无匹配时提供清除筛选。`detailDrawer` 接入调用方已有的可访问弹窗，不替换其焦点管理。 `tableState` 用于初次加载、错误或知识检索结果，已有行在刷新期间保留。
+- 布局常量只在根令牌定义一次：`--admin-list-table-min-width`（1080px）、`--admin-list-name-max-width`（240px）与 `--admin-list-detail-width`（520px）。长名称保留完整名称提示，共享滚动条与已有小窗口卡片字段标签继续保留；删除页面专属表格规则，试点的详情表单也改用令牌。
+- 真实运行时一致性项目在浅色/深色 1440×900 下检查项目、组织成员/用户权限、调试节点、反馈、审计与知识列表：页头/筛选/表格对齐、首行可见、每行小尺寸操作加「更多」、无可见危险操作，并沿用边距、字号、主色与裁切契约。组件和纯采集器测试不能替代真实 API、无障碍、验收或截图证据。
+
+### 概览与退役页面模板
+
+`src/components/layout/` 中的 `OverviewPage` 按顺序组织摘要条、响应式内容网格和可选快捷操作。页面通过 `summary`、`children`、`quickActions` 填充槽，并提供可访问的 `label`，不在页面 CSS 中重新实现网格。模板继承壳层间距，复用现有间距和字号刻度，仅定义指标卡与内容网格的最小宽度布局令牌。指标使用描述列表中的 `OverviewTile` 展示数值、标签和可选趋势；实际观测到的零数值和零趋势仍保留。
+
+调用方根据指标的真实来源，为每张指标卡或 `OverviewVerdict` 提供 `hasSamples`。没有观测时，共享策略将数值替换为「暂无样本」、判断替换为「暂无样本，无法判断」，并隐藏趋势，不伪造成功判断或百分比。加载、错误与风险数据不可用仍保持原有含义。`/parameter-home` 使用当前概览范围，保留项目选择、时间窗口、快捷操作和热榜标签页。`/log-dashboard` 使用今日未归档日志，质量指标仅使用已完成日志的置信度观测，原有导航动作仍位于 TopBar。公共首页仍在应用壳层之外。
+
+`RetiredNotice` 将退役的参数对比与调试模拟器页面统一为一个标题、一句解释和一个主替代链接。`/parameter-comparison` 链接到 `/parameters`，`/debugging` 链接到 `/node-debugging`。链接有真实 `href`，普通激活使用应用导航，修饰键点击保留原生行为，不显示误导性的 404 错误。
+
+组件测试覆盖槽、无样本策略和替代导航。一致性测试要求四条路由在 1440x900、明暗主题中都有非空模板测量，检查槽与壳层边缘对齐、指标卡包含关系、页面横向溢出、首个内容区可见及无样本数值与判断，并验证退役提示的主链接目的地。真实运行时质量/验收测试和改动前后截图仍是独立证据；样式守卫要求视觉声明只使用令牌，`ui:check` 计数下降时同步下调基线。
+
 ### 导航工作台
 
 `src/components/layout/` 中的 `NavigatorWorkbench` 负责固定顺序：工具栏（主动作位于最右端）、可选的紧凑上下文、至多一个通知槽，然后是有名称的导航、任务及可选检查器区域。页面只填充槽，不重定义网格、面板宽度或滚动预算。`/parameters` 的 DTS 与 JSON 均使用此模板。Catalog 参数定义页面（`/parameter-admin`、`/parameter-admin/specs` 及其参数定义别名、`/parameters/definitions`）将发布条放在上下文槽、治理提示放在通知槽，并保留现有定义对话框。Catalog 管理别名共用 `catalog-definitions` 折叠键；只读的 `/parameters/definitions` 使用 `parameter-definitions`。模拟模式的平面参数表及其他路由在各自迁移前保留原有布局。
@@ -264,9 +333,17 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 布局常量仅在 `src/styles.css` 根令牌块定义一次：`--navigator-workbench-navigator-width`（18rem，为模块数量预留空间）、`--navigator-workbench-navigator-cap`（别名为 `--module-navigator-max-width`，即 `min(32.5rem, 42vw)`）、`--navigator-workbench-collapsed-width`（`--space-10`，40px）、`--navigator-workbench-inspector-width`（20rem）、`--navigator-workbench-gap` 与 `--navigator-workbench-toolbar-padding`（`--space-3`，12px）、`--navigator-workbench-pane-height`（`min(670px, calc(100vh - 230px))`）及 `--navigator-workbench-scroll-rail-height`（14px）。主体网格使用导航宽度与上限的较小值、`minmax(0, 1fr)` 任务轨道，以及可选的检查器宽度。在 1440×900 下，导航从模板左边界开始，任务区左边界为一个有上限的导航宽度加一个间距。标签保持单行并使用省略号；数量列保留固有宽度，不收缩或裁切。溢出只在导航或任务滚动容器内处理，不延伸到页面。工具栏、面板、树和参数表的颜色使用语义主题令牌，深色模式也遵循 Phase 2 对比度配对。已迁移页面不得在模板外再套一层带留白的卡片，也不得保留局部网格、面板宽度或滚动高度规则。
 
-折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化；存储不可用时，选择仅在当前挂载期间保留。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠将导航轨道替换为 40px 窄轨，隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`；Catalog 保留 `moduleNodeId`）。切换按钮通过 `aria-controls` 指明受控内容，并暴露 `aria-expanded`。导航、任务和检查器均为有名称的 `section` 区域，不新增 `main` 地标；保留应用壳的主地标与跳转链接。DOM 与键盘顺序为工具栏控件 → 主动作 → 上下文 → 通知 → 导航切换按钮和树 → 任务 → 检查器，跳过未提供或隐藏的内容。可选结果标签通过名称关联主体 `tabpanel`；格式切换后焦点回到当前格式标签。
+折叠通过浏览器本地存储 `wiseeff.navigator-workbench.collapsed:<pageKey>` 持久化；存储不可用时，选择仅在当前挂载期间保留。`/parameters` 在项目间以及 DTS/JSON 格式间共享页面键。折叠将导航轨道替换为 40px 窄轨，隐藏导航内容但不卸载，保留模块选择和 URL 状态（`project`、`moduleNode`；Catalog 保留 `moduleNodeId`）。切换按钮通过 `aria-controls` 指明受控内容，并暴露 `aria-expanded`。导航、任务和检查器均为有名称的区域，不新增 `main` 地标；保留应用壳的主地标与跳转链接。任务滚动容器复用 TabPanel 的键盘入口：没有可 Tab 聚焦的内容时，有名称的区域获得 `tabIndex=0`。DOM 与键盘顺序为工具栏控件 → 主动作 → 上下文 → 通知 → 导航切换按钮和树 → 任务 → 检查器，跳过未提供或隐藏的内容。可选结果标签通过名称关联主体 `tabpanel`；格式切换后焦点回到当前格式标签。
 
-后续迁移不属于本轮首批范围：模块治理、项目配置、#1110（Bridge 就绪）之后的节点调试与 DTS 重载，以及 #1112 之后的日志。在对应工单迁移调用方之前，保留节点调试与 DTS 重载仍使用的 `.dts-parameter-workbench__body` / `.dts-workbench-topology` 旧规则；它们不是已迁移 `/parameters` 或 Catalog 界面的面板覆盖。本契约不改变配色、字体、密度、URL、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
+项目配置复用同一模板：配置集与成员文件放在导航区，各源码模式及现有空状态保留在任务区，现有检查器放入检查器槽。源码、结构、冲突使用 URL 驱动的内容标签（`tab`）；旧文件/配置集链接保留检查器选择，结构链接选择结构标签，`tasks=conflicts` 或 `dock=conflicts` 选择冲突标签。切换标签保留配置集、文件、节点、属性、源码模式与版本焦点。当常驻检查器会使源码区不足 640px 时，共享检查器槽以浮层呈现，不占用网格列。配置工作台保留受限壳高度与内部滚动容器，不再添加外层卡片或留白。一致性项目在浅色、深色主题的 1440×900 视口下覆盖每个配置子路由、全部五种源码模式，以及检查器深链接。
+
+样式表中仍保留 `.dts-parameter-workbench__body` / `.dts-workbench-topology` 旧规则；它们不是已迁移 `/parameters`、Catalog 或项目配置界面的面板覆盖。本契约不改变配色、字体、密度、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
+
+日志工作台（`/logs`，页面键 `logs`）把历史记录放在可折叠导航区。报告、元数据与相关内容标签共享任务区；成功与处理中的记录显示分析，失败记录仅显示失败摘要。相关知识保留现有能力检查。上传操作放在工具栏主动作槽；上传与重新上传后回到所选记录的报告。选择仍通过 `logId` 分享，不受标签切换与导航折叠影响。共享面板几何与滚动容器替代页面自建网格。 已完成报告无需切换标签即可访问带标签的已发布相关知识区域；结论动作（包括能力门控的知识沉淀）在报告与相关内容标签中均可用。
+
+节点调试与 DTS 重载也使用 `NavigatorWorkbench`：Bridge 就绪条进入上下文槽，模块树进入导航槽，参数表及操作／运行历史进入任务槽。重载托盘位于候选表下方，使回访与已连接用户在 1440×900 下能看到首条数据行。协议保留为活动工作台外层的内容页签；`node-debugging` 与 `dts-reload` 页面键分别持久化折叠状态。下发与节点回滚保留现有审批和能力闸门。其他工作台由各自工单迁移。本契约不改变配色、字体、密度、URL、权限、服务端或 Agent/设备写入行为；平板与手机重新设计仍不在范围内。
+
+模块治理（`/parameter-admin/modules`）使用 `module-governance` 折叠键。现有可编辑分类树位于导航区；内容标签分别显示规范主体与归属、兼容发现，以及只读历史注册表。各标签保留挂载内容，复用同一工作台几何。默认模块标签使用基础 URL；`?tab=queue` 和 `?tab=registry` 选择其他标签。旧 `/modules/queue` 和 `/modules/registry` 书签替换当前历史记录为对应标签 URL，保留其他查询参数；浏览器后退恢复标签状态。分类操作、规范权限检查及历史只读对话框均保持不变。
 
 质量一致性项目在浅色、深色主题的 1440×900 视口下检查展开与折叠几何（±1px）、工具栏与动作位置、单一通知、首行可见、页面横向溢出，数量文字裁切，以及现有行操作和模块树契约。深色 `/parameters` 检查还运行无排除项的 axe 文字对比度扫描。截图附件是 Catalog 迁移前的审阅门槛；不得在本地重生成 Linux 视觉基线。
 
@@ -277,6 +354,24 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 - 宽度预算纳入评审:1440px 视口下,任何主工作台表格不得因外框留白而横向滚动。
 - 侧边栏:桌面展开 256px / 收起 76px;<768px 改为抽屉浮层(常驻窄轨吃掉手机屏幕 ~18% 宽度是缺陷)。任何宽度下用户菜单必须可达。
 - 导航保持 SPA 行为(应用内链接不整页刷新)、路由切换重置主区滚动位置、活动态只保留一套视觉层级。
+
+### 设置表单
+
+`src/components/layout/` 中的 `SettingsFormPage` 与 `SettingsFormSection` 负责配置表单布局。组织设置（`/organization`）、DTS 重载默认值（`/debugging-admin`）与项目审核角色（`/parameter-admin/projects/:projectId/review-roles`）均采用单列布局，以 `--settings-form-max-width`（960px）限定最大宽度。外侧留白由应用壳负责，只有分节卡片增加内边距。每节包含标题与简短说明；审核角色矩阵仅在分节内横向滚动，不让页面横向溢出。
+
+`useDirtyState` 比较可序列化为 JSON 的已保存快照与草稿；恢复已保存值后，保存条消失。存在未保存更改时显示粘性保存条，包含唯一主动作 保存 与 放弃。放弃恢复最后一次保存的快照，不发送服务端写入。保存失败保留草稿并显示有名称的错误摘要；字段校验就近展示并关联相应控件。保存期间禁用字段、保存/放弃与导航。应用壳导航、浏览器前进/后退及刷新会提醒未保存工作；审核角色的刷新动作使用同一离开守卫。
+
+项目角色保存保留人工确认，并列出每位修改成员的变更前后角色。服务端写入仍为携带 `expectedRoles` 的逐成员乐观更新，而非原子批量写入：某次更新失败时，已保存成员保持已保存，其余草稿可重试或放弃。角色过期冲突会刷新受影响成员后再重试。一致性套件在 1440×900 的明暗主题下测量干净与未保存状态，并附带截图，不提交写入。
+
+### 审核/详情收件箱
+
+`src/features/parameter-review/ReviewInbox.tsx` 中的 `ReviewInbox` 是 #1109 的队列与详情模板，由 `/parameter-review` 和 `/parameter-submissions` 共享。此类工作流应复用它，不再创建另一套队列、标签栏或详情网格。模板在有名称的区域中保持一张可见队列表格，在相邻、有名称的 complementary 详情区域展示选中请求。页面标题与边距由壳层提供；`ViewSwitch` 提供待处理与已处理两个内容标签，分别关联标签面板。
+
+调用方以 `project` 限定队列范围。URL 保存 `view`、`type` 与请求深链接（`request`、`legacyRequest` 或 `memberRequest`）；刷新保留选择，深链接定位请求所属视图。列筛选是本地状态，导航或上下文变化时重置，不能通过 URL 分享。上下文变化清理不兼容的选择。请求不可用时明确提示，不悄悄选择另一行。队列展示当前项目的软件值变更、JSON 成员删除与符合条件的旧版请求；调用方提供行选择、队列操作与旧版详情槽位，以保留已有流程。`mineOnly` 限定个人跟踪范围，`canReview` 控制审核操作的可见性；二者均不替代仓储/服务端授权。
+
+点击行或详情按钮选择请求；方向键或 J/K 切换行，Enter 打开选中详情，Alt+1/Alt+2 在队列与详情间移动焦点。快捷键不抢占文本输入或已打开的弹窗。规范详情面板保留结构化变更摘要、明确的决策操作与默认折叠的来源信息，不在队列上方重复铺开原始记录。加载、可重试错误、筛选为空与无请求状态保持区分；清除筛选与查看历史是明确的下一步。现有确认与审核权限不变。
+
+一致性测试在两条路由的 1440×900 明暗主题下检查一张可见表格、一个双标签组且仅一个标签选中、紧凑控件、字号与壳层对齐边界。有内容的审核视觉基线复用隔离的合成夹具，以软件提交人身份选择请求；仅遮罩易变的记录元信息，不遮罩变更内容与决策控件。这是视觉证据，不证明设备写入或生产审核授权。
 
 ## 内容与语言
 
@@ -292,6 +387,8 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 - 所有可交互元素键盘可达、可操作;可点击表格行与卡片实现 `tabIndex` + Enter/Space 激活。
 - 弹窗语义遵循 `ModalDialog`（role 在卡片上、标题关联、焦点陷阱/归还）。
 - 每个表单控件有程序化 label;每条错误有程序化关联。
+- 已启用的 `jsx-a11y` 规则均为 error。保留推荐配置的复合角色选项，ESLint 仅声明由原生可关联控件实现的标签控件；radiogroup 不是可关联 label 的输入控件。剩余 `react-hooks` warning 只能减少。
+- 使用显式焦点管理（弹窗使用 `ModalDialog.initialFocusRef`），不用原生 `autoFocus`。可键盘滚动的只读值、粘贴区域与帮助图标保留焦点访问；仅对已确认的 lint 误报，在对应元素处用一行说明抑制。
 - `npm run acceptance:a11y` 对覆盖路由保持通过;新增主路由必须纳入覆盖清单。
 
 ## 反模式（禁止上线）
@@ -309,7 +406,11 @@ Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`�
 
 ## 验证
 
-每个前端可见变更都执行 [`docs/zh-CN/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md) 的完成门禁:目标测试、`npm run build`、真实浏览器三视口走查（1440×900、768×1024、390×844）,截图、控制台检查与交互证据存放在 `work/ui-checks/<topic>/`。质量门禁:`npm run acceptance:a11y`、`npm run acceptance:visual`、`npm run acceptance:responsive`。
+视觉质量 spec 为每种原型注册一个代表页面，在 1440×900 下覆盖明暗主题。亮色快照保留已有名称（`parameters-workbench.png`、`parameter-home-workbench.png`、`organization.png`、`parameter-review-workbench.png`）；管理列表使用 `projects-admin-list.png`。暗色文件在 `.png` 前加 `-dark`。由 CI 生成 Linux 渲染并检查，再要求后续 CI 对已接受基线通过；不得在 macOS 本地生成或替换 PNG。审核快照必须使用明确隔离的审核夹具，跳过不算通过。
+
+迁移后的页面与模板样式必须没有原始视觉值。样式守卫与 `ui:check` 分别验证此契约：计数下降后，协调员仅通过 `npm run ui:check -- --update-baseline` 降低 `scripts/ui-standards-baseline.json`，并在 TD-113 记录余量。实现者的限定检查不能代替全量测试、构建、真实质量/验收、截图或最终棘轮验收。
+
+每个前端可见变更都遵循 [`docs/zh-CN/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md)：受影响的原生测试、`npm run build` 与 1440×900 真实浏览器走查，截图、控制台检查和交互证据记录在 PR 中。仅在布局有风险时增加紧凑 PC 窗口；平板/手机走查为可选项，除非已接受契约明确要求。质量门禁仍为 `npm run acceptance:a11y`、`npm run acceptance:visual` 与 `npm run acceptance:responsive`；昂贵门禁交由协调员执行不等于豁免。
 
 ## 变更控制
 

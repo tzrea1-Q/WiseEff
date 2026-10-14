@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
@@ -10,7 +10,50 @@ const manageCapability: KnowledgeCapability = { userId: "u-xu-yun", canView: tru
 const editorCapability: KnowledgeCapability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
 
 describe("KnowledgeAdminPage", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/knowledge-admin"));
+
+  it.each(["drafts", "index", "archived"])("keeps tabs, header, filter context and table in order on %s", async (tab) => {
+    window.history.replaceState(null, "", `/knowledge-admin?tab=${tab}`);
+    render(<KnowledgeAdminPage repository={createMockKnowledgeRepository()} capability={manageCapability} />);
+    const table = await screen.findByRole("table");
+    const panel = screen.getByRole("tabpanel");
+    const header = within(panel).getByRole("group", { name: /操作$/ });
+    const filters = within(panel).getByRole("group", { name: /筛选$/ });
+    for (const [before, after] of [[screen.getByRole("tablist"), header], [header, filters], [filters, table]]) {
+      expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(filters).not.toBeEmptyDOMElement();
+  });
+
+  it("follows same-page router navigation and falls back from unknown tabs", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=index");
+    const repository = createMockKnowledgeRepository();
+    const page = render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+    expect(await screen.findByRole("table", { name: "知识索引状态" })).toBeVisible();
+    window.history.pushState(null, "", "/knowledge-admin?tab=unknown");
+    page.rerender(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+    expect(screen.getByRole("tab", { name: "Agent 草稿发布队列" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+  });
+
+  it("restores URL collection tabs without showing stacked collections", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=archived&keep=1#detail");
+    render(<KnowledgeAdminPage repository={createMockKnowledgeRepository()} capability={manageCapability} />);
+    expect(await screen.findByRole("table", { name: "已归档知识条目" })).toBeVisible();
+    expect(screen.queryByRole("table", { name: "Agent 知识草稿队列" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "检索索引健康" }));
+    expect(screen.getByRole("tabpanel")).toHaveAccessibleName("检索索引健康");
+    expect(window.location.search).toBe("?tab=index&keep=1");
+    expect(window.location.hash).toBe("#detail");
+    act(() => {
+      window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.getByRole("tab", { name: "已归档条目" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+  });
   it("lists archived entries only", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
 
@@ -20,6 +63,7 @@ describe("KnowledgeAdminPage", () => {
   });
 
   it("restores an archived entry back to published", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
     const user = userEvent.setup();
@@ -35,12 +79,14 @@ describe("KnowledgeAdminPage", () => {
   });
 
   it("hard deletes after an acknowledged confirmation", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
     const user = userEvent.setup();
 
     const table = await screen.findByRole("table", { name: "已归档知识条目" });
-    await user.click(within(table).getByRole("button", { name: "彻底删除" }));
+    await user.click(within(table).getByRole("button", { name: /：更多$/ }));
+    await user.click(screen.getByRole("menuitem", { name: "彻底删除" }));
 
     const confirm = await screen.findByRole("dialog", { name: /彻底删除/ });
     const confirmButton = within(confirm).getByRole("button", { name: "彻底删除" });
@@ -54,12 +100,28 @@ describe("KnowledgeAdminPage", () => {
   });
 
   it("hides hard delete without manage capability", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={editorCapability} />);
 
     await screen.findByRole("table", { name: "已归档知识条目" });
     expect(screen.queryByRole("button", { name: "彻底删除" })).not.toBeInTheDocument();
     expect(screen.getByText(/没有知识治理权限/)).toBeInTheDocument();
+  });
+
+  it("retains the delete confirmation and entry when the write fails", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=archived");
+    const repository = createMockKnowledgeRepository();
+    vi.spyOn(repository, "hardDelete").mockRejectedValue(new Error("failure"));
+    render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+    const table = await screen.findByRole("table", { name: "已归档知识条目" });
+    await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "彻底删除" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("checkbox"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "彻底删除" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("操作失败，请重试。");
+    expect(await repository.get("mock-kb-5")).not.toBeNull();
   });
 
   it("lists the agent-draft publish queue with creator, session origin, and source analysis link", async () => {
@@ -113,7 +175,8 @@ describe("KnowledgeAdminPage", () => {
 
     const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
     const row = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
-    await user.click(within(row).getByRole("button", { name: "发布" }));
+    await user.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await user.click(screen.getByRole("menuitem", { name: "发布" }));
 
     await waitFor(async () => {
       const entry = await repository.get("mock-kb-agent-1");
@@ -129,7 +192,8 @@ describe("KnowledgeAdminPage", () => {
 
     const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
     const row = within(queue).getByText("小泽沉淀:无线充异物检测误报处置").closest("tr")! as HTMLElement;
-    await user.click(within(row).getByRole("button", { name: "拒绝归档" }));
+    await user.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await user.click(screen.getByRole("menuitem", { name: "拒绝归档" }));
 
     const confirm = await screen.findByRole("dialog", { name: /拒绝并归档/ });
     await user.click(within(confirm).getByRole("button", { name: "拒绝归档" }));
@@ -138,6 +202,8 @@ describe("KnowledgeAdminPage", () => {
       const entry = await repository.get("mock-kb-agent-2");
       expect(entry?.status).toBe("archived");
     });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "已归档条目" }));
     const archivedTable = screen.getByRole("table", { name: "已归档知识条目" });
     await waitFor(() => {
       expect(within(archivedTable).getByText("小泽沉淀:无线充异物检测误报处置")).toBeInTheDocument();
@@ -152,11 +218,13 @@ describe("KnowledgeAdminPage", () => {
 
     const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
     const ownRow = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
-    expect(within(ownRow).getByRole("button", { name: "发布" })).toBeEnabled();
+    await userEvent.click(within(ownRow).getByRole("button", { name: /：更多$/ }));
+    expect(screen.getByRole("menuitem", { name: "发布" })).not.toHaveAttribute("data-disabled");
     expect(within(queue).queryByText("小泽沉淀:无线充异物检测误报处置")).not.toBeInTheDocument();
   });
 
   it("shows index health with the retrieval-mode banner, per-entry status, and failure reasons", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=index");
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
 
@@ -171,6 +239,7 @@ describe("KnowledgeAdminPage", () => {
   });
 
   it("retries a failed entry back into the queue", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=index");
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
     const user = userEvent.setup();
@@ -187,6 +256,7 @@ describe("KnowledgeAdminPage", () => {
   });
 
   it("rebuilds the whole index and reports the enqueued count", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=index");
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
     const user = userEvent.setup();
@@ -200,10 +270,10 @@ describe("KnowledgeAdminPage", () => {
   });
 
   it("gates index health behind knowledge:manage", async () => {
+    window.history.replaceState(null, "", "/knowledge-admin?tab=index");
     const repository = createMockKnowledgeRepository({ canManage: false });
     render(<KnowledgeAdminPage repository={repository} capability={editorCapability} />);
 
-    await screen.findByRole("table", { name: "已归档知识条目" });
     expect(screen.getByText(/索引健康与重建操作需要知识管理员权限/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "全量重建索引" })).not.toBeInTheDocument();
   });

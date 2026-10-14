@@ -19,7 +19,7 @@ Quality benchmark: a focused, dense, fast workbench in the spirit of Linear — 
 7. **Density is a feature.** Primary tables must fit their columns inside a 1280px content area without horizontal scrolling; overflow detail belongs in inspectors/dialogs, not in more columns.
 8. **Motion is tokenized and subtle.** Durations and easings come from motion tokens; the `ease` keyword and >400ms UI transitions are not allowed; infinite loops must respect `prefers-reduced-motion`.
 9. **Demo data is product data.** Seeded environments must never show test residue (`FoldRegistryTestDG`, `probe-edit-*.dts`, acceptance fixture accounts) in user-facing surfaces.
-10. **Every visible change is verified in a real browser** per the checklist, at 1440/768/390 widths, before it is called done.
+10. **Every visible change is verified in a real browser** per the PC-first checklist at 1440×900 before it is called done. Add compact-PC coverage when layout risk warrants it; tablet/mobile sweeps require an explicit request or accepted device-specific contract.
 
 ## Canonical Implementation
 
@@ -133,6 +133,8 @@ Type scale (px values; one `rem` basis is acceptable, but no mixing per surface)
 
 No other `font-size` values. `letter-spacing` is limited to `0` (body) and `0.04em` (uppercase eyebrows only).
 
+The TopBar uses `--text-xl` / `--leading-xl` (20/28). App headings and button labels consume this scale, including legacy controls and portalled confirmations. The consistency collector checks every visible heading and button, requires one TopBar title, and rejects missing or off-scale measurements on every consistency route in light and dark at 1440×900. Public marketing typography stays outside this app-shell contract.
+
 ### Spacing
 
 4px grid. Tokens `--space-1..-16` = 4, 8, 12, 16, 20, 24, 32, 40, 48, 64. Defaults:
@@ -171,6 +173,8 @@ Exactly four levels; shadows are never invented inline:
 | `--shadow-3` | Dialogs, sheets |
 | `--ring` | Focus ring: `0 0 0 2px` accent at fixed alpha, optionally offset by surface color |
 
+Status rails (`--shadow-status-warning`, `--shadow-status-accent`, `--shadow-status-accent-light`) and outline/focus/pulse recipes (`--ring-soft`, `--ring-outline`, `--ring-secondary`, `--ring-accent`, `--ring-pulse-start`, `--ring-pulse-end`) live in the same root token block. These are semantic strokes, not additional elevation levels; page CSS must not invent their geometry or colors inline. The bottom-anchored configuration task sheet uses the directional `--shadow-sheet-above` recipe so its shadow falls onto the content above it, not below the viewport.
+
 ### Motion
 
 | Token | Value | Use |
@@ -184,6 +188,8 @@ Exactly four levels; shadows are never invented inline:
 Rules: no `ease` keyword; no UI transition above 400ms; entrances animate opacity/transform only; every infinite animation has a `prefers-reduced-motion: reduce` fallback.
 
 ### Z-Index
+
+Within page content, the named sub-ladder is `--z-content-base` (0), `--z-content` (1), `--z-content-sticky` (2), `--z-content-panel` (3), `--z-content-toolbar` (4), `--z-content-menu` (5), and `--z-content-overlay` (10). This preserves existing workbench/tree/inspector/dock stacking below the app-level sticky tier (20).
 
 One declared ladder in `:root`; raw numbers in component CSS or TSX are forbidden. The overlay scale is `--z-xiaoze-fab: 1100`, `--z-xiaoze-popup: 1140`, `--z-modal-backdrop: 1150`, `--z-modal-backdrop-nested: 1160`, `--z-xiaoze-approval: 1250`, and `--z-toast: 1350`, with app-layer tokens below it (sticky header, sidebar, dropdown/popover). The modeless Xiaoze popup deliberately sits below business dialogs; its approval surface and toasts deliberately sit above them. "+1 escape hatches" (40 vs 41, 60 vs 61) are defects.
 
@@ -209,6 +215,26 @@ Hover and focus-visible must remain visually distinguishable (do not merge them 
 - One implementation. Variants: `primary` (accent fill), `secondary` (surface + border), `ghost` (transparent), `danger` (danger fill or outline), `link` (text). Sizes: `sm` 28px, `md` 32px (default), `lg` 36px; icon-only buttons are square with centered 16px icons.
 - The full visual contract in `docs/FRONTEND.md` § Button And Action Styling applies. Per-scope geometry overrides of `.button` (42 scopes today) are defects to migrate.
 - Primary actions per view: exactly one.
+
+Legacy `.button` and shared `Button` use one CSS size table over the existing spacing and typography tokens, not separate Tailwind and CSS sizes:
+
+| Size | Height | Font / line-height | Horizontal padding |
+| --- | --- | --- | --- |
+| `xs` (shared auxiliary controls) | 24px | 11/16 | 4px |
+| `sm` (row actions) | 28px | 12/18 | 8px |
+| `md` (shared `default`) | 32px | 13/20 | 12px |
+| `lg` | 36px | 13/20 | 16px |
+
+The table is declared once by the shared `.button-size-*` rules alongside their legacy selectors. Icon variants use the corresponding square side with zero padding; their icons are 16px, except the 12px `xs` icon. Small controls have a 4px content gap; default and large controls have an 8px gap. Both implementations use the medium radius and weight 600. Page scopes must not redefine this geometry.
+
+### Row actions
+
+`src/components/common/RowActionMenu.tsx` is the shared row-action contract for subsequent list migrations. Each row has at most one visible text action (`primaryAction`) plus a labelled overflow trigger. The visible action and trigger use `Button size="sm" variant="ghost"`; overflow items use the same small geometry. Existing callers are not migrated by the contract-only ticket.
+
+- `label` identifies the row's action group and overflow menu for assistive technology. `items` have stable IDs, labels, optional disabled state and `onSelect` callbacks. An empty item collection renders no overflow trigger.
+- Radix DropdownMenu supplies menu/menuitem semantics, roving keyboard focus, arrows, Home/End, typeahead, Escape, outside dismissal and focus return. The menu is portalled so table scrollports do not clip it.
+- A destructive item must declare `destructive: true` and `confirmation` with a title, blast-radius description and confirm label; optional acknowledgement uses the existing ConfirmDialog contract. Destructive actions cannot be the visible action. They are red text in the menu, never solid red row buttons, and selection only opens `ConfirmDialog`.
+- The destructive callback runs only after confirmation. Pending confirmation disables repeat submission and dismissal. Rejections remain in the dialog as localized errors for retry; cancellation and success return focus to the overflow trigger. Ordinary action callbacks retain caller-owned outcome handling.
 
 ### Inputs and selects
 
@@ -249,6 +275,49 @@ Ratified ramp (P3): `--chart-1` aliases `--accent`; `--chart-2` teal `#0e7490`, 
 
 ## Layout and Page Structure
 
+Use one of these five archetypes rather than a page-local layout. All inherit the shell gutter, typography, compact-control and primary-action contracts below; slots preserve existing permission checks, loading/error states and human write confirmations.
+
+| Archetype | Shared template | Representative visual route |
+| --- | --- | --- |
+| Navigator workbench | `NavigatorWorkbench` | `/parameters` |
+| Admin list | `AdminListPage` | `/parameter-admin/projects` |
+| Entry/overview | `OverviewPage` (with `OverviewTile`; `RetiredNotice` for moved pages) | `/parameter-home` |
+| Configuration form | `SettingsFormPage` | `/organization` |
+| Review/detail | `ReviewInbox` | `/parameter-review` |
+
+### Shell gutter and navigation
+
+The app shell owns `--page-gutter` (24px on PC). `.main-content` and `.topbar` consume it; `.page-content` wraps routed app content without an inset, and the app footer remains its shell sibling. Page roots add no outer padding or margin. Cards and workbench panes retain their internal padding; do not remove those interior insets or replace page-local CSS with global overrides. The configuration workbench keeps its existing omitted footer.
+
+The configuration content wrapper preserves the full-height chain into the bounded panes. Its source canvas keeps the existing `--font-code` stack at `--text-sm` with a 1.75 line-height ratio (12/21px); token migration must not change source-line geometry. Compact shell bottom clearance is 120px on the 4px grid, not a single 64px spacing step. Screen-reader-only chart fallback text uses a negative `--stroke-hairline` margin, not negative content spacing.
+
+Expanded and collapsed shared navigation use the 4px spacing tokens; ordinary items have a 40px minimum height, 8px vertical / 12px horizontal padding and a 12px icon-label gap. Active items use the named `--shadow-1` tier in both themes. No custom active shadows or off-grid navigation spacing are permitted.
+
+The consistency harness compares the shell's token-defined left edge with routed content, page-root content, TopBar and footer edges (±1px) on every consistency route. Missing regions or non-finite measurements fail. The footer is optional only when no shell footer exists in the DOM (including legacy project links redirected to the configuration workbench); every present footer is measured and checked, even if hidden. Runtime screenshots and quality/acceptance runs remain required, not replaced by static tests.
+
+### Admin list page
+
+`AdminListPage` in `src/components/layout/` owns header actions, a compact filter bar, the shared `DataTable`, an optional notice and an optional detail drawer/dialog. The shell supplies the page title and gutter; the template adds neither a duplicate title nor outer padding. Put secondary header actions before the primary action so the primary stays at the right end. Pages fill slots and delete their old list layout CSS instead of overriding the template.
+
+Multi-collection administration uses one URL-backed `ViewSwitch` tab panel and one visible `AdminListPage`, not stacked collection cards. Knowledge governance selects `tab=drafts` (default), `tab=index` or `tab=archived`; log administration selects `tab=records` (default), `tab=domains` or `tab=quality`. Unknown tabs fall back to the default. Selection preserves other query parameters and the fragment, pushes a history entry, and restores on Back/Forward. Switching away from log-domain editors preserves their in-progress local state. Single-action index rows and read-only feedback rows need no empty overflow menu; multi-action rows use the shared menu and confirmed destructive actions. Every collection is measured separately in both themes at 1440×900.
+
+- `table` passes the existing DataTable contract, including controlled `sort`, `onSort`, `page` and `onPageChange`. The route owns serialization: the projects pilot preserves search (`q`), status (`status`), sort (`sort`) and pagination (`page`) across reload and browser history. Filter/sort changes reset the page; page one is omitted, and invalid page values normalize to one.
+- The template enables DataTable's `compactControls` mode: configured column filters render the shared `ColumnFilter`, and sortable headers keep `aria-sort`. Both use the tokenized 32px `.compact-filter-control` geometry and explicit `data-compact-control` filter/sort markers measured by the consistency collector. Outside the template, native header controls retain their existing geometry and measurement scope.
+- `rowActions` supplies `RowActionMenu` props, not arbitrary button groups: one small text action plus overflow. Optional action `ariaLabel` and `descriptionId` preserve row-specific names and disabled-action explanations. Projects keep canonical-retention deletion disabled; permitted deletion reuses the project blast-radius copy in ConfirmDialog. Pending and failed writes follow the shared menu confirmation contract. Existing page-owned confirmations are reused through destructive items’ `onRequestConfirmation`; this callback opens confirmation only and must not perform a write.
+- `emptyState` requires one message and exactly one next action, rendered through SectionEmpty inside the table. The pilot offers creation for an empty installation or clear-filters for no matches. `detailDrawer` hosts the caller's existing accessible dialog without replacing its focus management. `tableState` accommodates initial loading, errors or knowledge search results; existing rows remain mounted during refresh.
+- Layout constants live once in root tokens: `--admin-list-table-min-width` (1080px), `--admin-list-name-max-width` (240px) and `--admin-list-detail-width` (520px). Long names retain full-name tooltips. The shared scroll rail and existing small-window card labels remain; page-specific table rules are removed, and the pilot's detail form consumes tokens too.
+- The live consistency project checks projects, organization members/user permissions, debugging nodes, feedback, audit and knowledge lists at 1440x900 in both themes: aligned header/filter/table slots, a visible first row, one small action plus overflow per row, no visible destructive action, and the existing gutter, typography, primary-color and clipping contracts. Component and pure-collector tests do not replace live API, accessibility, acceptance or screenshot evidence.
+
+### Overview and retired-page templates
+
+`OverviewPage` in `src/components/layout/` owns a summary strip, a responsive content grid, and optional quick actions, in that order. Pages supply `summary`, `children`, and `quickActions`, with an accessible `label`; they do not recreate the grid in page-local CSS. The template inherits the shell gutter, uses the existing spacing and typography scale, and defines only tile/content minimum-width layout tokens. Tiles live in a description list and use `OverviewTile` for a value, label and optional trend. Measured zero values and zero trends remain visible.
+
+The caller supplies `hasSamples` for each tile or `OverviewVerdict` from that metric's actual source. With no observations, the shared policy replaces values and verdicts with the canonical no-sample message and suppresses trends; it never substitutes a success verdict or a fabricated percentage. Loading, error and unavailable-risk states retain their existing meanings. `/parameter-home` uses the selected overview scope and retains project selection, window controls, quick actions and the hotspot tab. `/log-dashboard` uses today's non-archived logs, with completed confidence observations for quality metrics; its existing navigation actions stay in the TopBar. The public home stays outside the shell.
+
+`RetiredNotice` replaces obsolete comparison and simulator pages with one title, one explanatory sentence and a primary replacement link. `/parameter-comparison` links to `/parameters`; `/debugging` links to `/node-debugging`. Links have real `href` destinations, use app navigation on an ordinary activation, and preserve native modified-click navigation. They do not render a misleading not-found error.
+
+Component tests cover slots, sample policy and replacement navigation. The consistency harness requires non-empty template measurements on all four routes in light and dark at 1440x900, checks gutter-aligned slots, tile containment, page overflow, first-section visibility and no-sample values/verdicts, and verifies each retired notice's primary destination. Runtime quality/acceptance checks and before/after screenshots remain separate evidence; stylesheet guards enforce token-only visual declarations, and `ui:check` is ratcheted down when counts drop.
+
 ### Navigator workbench
 
 `NavigatorWorkbench` in `src/components/layout/` owns the fixed order: toolbar (primary action at the right end), optional compact context, at most one notice slot, then named navigator, task and optional inspector regions. Page code fills slots; it does not redefine the grid, pane widths or scroll budget. `/parameters` uses this template for both DTS and JSON. Catalog definitions (`/parameter-admin`, `/parameter-admin/specs` and its definition aliases, `/parameters/definitions`) put the release strip in context and governance guidance in the notice slot, retaining the existing definition dialog. Catalog admin aliases share the `catalog-definitions` collapse key; the read-only `/parameters/definitions` uses `parameter-definitions`. Mock-mode flat parameter tables and other routes retain their existing layouts until separately migrated.
@@ -264,9 +333,17 @@ Ratified ramp (P3): `--chart-1` aliases `--accent`; `--chart-2` teal `#0e7490`, 
 
 Layout constants are defined once in the `src/styles.css` root token block: `--navigator-workbench-navigator-width` (18rem, reserving room for module counts), `--navigator-workbench-navigator-cap` (aliases `--module-navigator-max-width`, `min(32.5rem, 42vw)`), `--navigator-workbench-collapsed-width` (`--space-10`, 40px), `--navigator-workbench-inspector-width` (20rem), `--navigator-workbench-gap` and `--navigator-workbench-toolbar-padding` (`--space-3`, 12px), `--navigator-workbench-pane-height` (`min(670px, calc(100vh - 230px))`) and `--navigator-workbench-scroll-rail-height` (14px). The body grid uses the smaller of navigator width and cap, a `minmax(0, 1fr)` task track and, when present, the inspector width. At 1440×900, the navigator starts at the template's left edge; the task starts one bounded navigator width plus one gap to its right. Labels stay on one line with ellipsis; the intrinsic-width count column never shrinks or clips. Overflow stays inside the navigation/task scrollports, never on the page. Toolbar, pane, tree and parameter-table colors consume semantic theme tokens, including the Phase 2 contrast pairs in dark mode. Migrated pages must not wrap the template in a second padded card or retain local grid, pane-width or scroll-height rules.
 
-Collapse uses `wiseeff.navigator-workbench.collapsed:<pageKey>` in browser local storage; when storage is unavailable, the choice lasts only for the current mount. `/parameters` shares its page key across projects and DTS/JSON formats. Collapse replaces the navigator track with the 40px rail, keeps navigator content mounted but hidden, and preserves module selection and URL state (`project`, `moduleNode`; Catalog retains `moduleNodeId`). The toggle names its controlled content with `aria-controls` and exposes `aria-expanded`. Navigator, task and inspector are labelled `section` regions, not additional `main` landmarks; retain the app shell's main landmark and skip link. DOM and keyboard order is toolbar controls → primary action → context → notice → navigator toggle/tree → task → inspector, omitting absent or hidden content. Optional result tabs label the body `tabpanel`; format switching restores focus to the active format tab.
+Collapse uses `wiseeff.navigator-workbench.collapsed:<pageKey>` in browser local storage; when storage is unavailable, the choice lasts only for the current mount. `/parameters` shares its page key across projects and DTS/JSON formats. Collapse replaces the navigator track with the 40px rail, keeps navigator content mounted but hidden, and preserves module selection and URL state (`project`, `moduleNode`; Catalog retains `moduleNodeId`). The toggle names its controlled content with `aria-controls` and exposes `aria-expanded`. Navigator, task and inspector are labelled regions, not additional `main` landmarks; retain the app shell's main landmark and skip link. The task scrollport uses TabPanel keyboard entry: when it has no tabbable content, the named region receives `tabIndex=0`. DOM and keyboard order is toolbar controls → primary action → context → notice → navigator toggle/tree → task → inspector, omitting absent or hidden content. Optional result tabs label the body `tabpanel`; format switching restores focus to the active format tab.
 
-Next migrations, outside this first slice: module governance, project configuration, node debugging and DTS reload after #1110 (Bridge readiness), and logs after #1112. Until those tickets migrate their callers, retain the legacy `.dts-parameter-workbench__body` / `.dts-workbench-topology` rules used by node debugging and DTS reload. They are not pane overrides on the migrated `/parameters` or Catalog surfaces. No palette, typography, density, URL, permission, server or Agent/device-write changes are part of this contract; tablet/mobile redesign remains out of scope.
+Project configuration uses the same template: configuration sets and member files fill the navigator, source modes retain their existing canvas and empty states in the task area, and the existing inspector fills the inspector slot. Source, structure and conflicts are URL-backed content tabs (`tab`); the legacy files/config-sets links retain their inspector selection, structure selects its content tab, and `tasks=conflicts` or `dock=conflicts` selects conflicts. Switching tabs preserves configuration, file, node, property, source-mode and version focus. The shared inspector slot supports an overlay when a persistent pane would leave less than 640px for source; it does not consume a grid column in that state. Configuration preserves its bounded shell height and internal scrollports, without an additional outer card or gutter. The consistency project covers every configuration sub-route and all five source modes at 1440×900 in light and dark, plus the inspector deep link.
+
+Legacy `.dts-parameter-workbench__body` / `.dts-workbench-topology` rules remain in the stylesheet; they are not pane overrides on the migrated `/parameters`, Catalog or project-configuration surfaces. No palette, typography, density, permission, server or Agent/device-write changes are part of this contract; tablet/mobile redesign remains out of scope.
+
+The logs workbench (`/logs`, page key `logs`) keeps history in the collapsible navigator. Report, metadata and related-content tabs share the task area; successful and processing records show the analysis, while failed records show only the failure summary. Related knowledge retains its existing capability check. The upload action occupies the toolbar's primary slot; upload and re-upload return to the selected record's report. Selection remains shareable through `logId`, independently of tabs and navigator collapse. The shared pane geometry and scrollports replace the page-local grid. Completed reports also expose the labelled published-knowledge region without requiring a tab change; conclusion actions, including capability-gated distillation, remain available in both report and related-content tabs.
+
+Node debugging and DTS reload also fill `NavigatorWorkbench`: Bridge readiness occupies context, module trees occupy navigator, and tables plus operation/run history occupy task. Reload batches follow the candidate table so returning and connected users see the first data row at 1440×900. Protocols remain content tabs around the active workbench; page keys `node-debugging` and `dts-reload` independently persist collapse. Dispatch and node rollback retain their existing approval and capability gates. Other workbenches migrate in their own tickets. No palette, typography, density, URL, permission, server or Agent/device-write changes are part of this contract; tablet/mobile redesign remains out of scope.
+
+Module governance (`/parameter-admin/modules`) uses the `module-governance` collapse key. The existing editable taxonomy tree occupies the navigator; content tabs show canonical subjects and placements, compatible discovery, or the read-only historical registry table. Tabs retain mounted content and share the same workbench geometry. The default module tab uses the base URL; `?tab=queue` and `?tab=registry` select the other tabs. Old `/modules/queue` and `/modules/registry` bookmarks replace the history entry with their matching tab URL while preserving other query parameters; browser Back restores tab state. Taxonomy actions, canonical permission checks and historical read-only dialogs are unchanged.
 
 The consistency quality project checks expanded and collapsed geometry (±1px), toolbar/action placement, one notice, first-row visibility, page overflow, count text clipping, and the existing row-action/module-tree contracts in light and dark at 1440×900. The dark `/parameters` pass also runs axe color-contrast without exclusions. Its screenshot attachments are the review gate before any Catalog migration; Linux visual baselines are never regenerated locally.
 
@@ -277,6 +354,24 @@ The consistency quality project checks expanded and collapsed geometry (±1px), 
 - Content max nesting and width budgets are part of review: at 1440px viewport no primary workbench table may require horizontal scrolling caused by chrome padding.
 - Sidebar: 256px expanded / 76px rail on desktop; below 768px it becomes an overlay drawer (a persistent rail consuming ~18% of a phone screen is a defect). The user menu must remain reachable at all widths.
 - Navigation preserves SPA behavior (no full-page reloads from in-app links), resets main scroll position on route change, and keeps exactly one visual hierarchy of active states.
+
+### Settings forms
+
+`SettingsFormPage` and `SettingsFormSection` in `src/components/layout/` own configuration-form layout. Organization settings (`/organization`), DTS reload defaults (`/debugging-admin`) and project review roles (`/parameter-admin/projects/:projectId/review-roles`) use one column capped by `--settings-form-max-width` (960px). The shell owns the outer gutter; only section cards add padding. Each section has a heading and short help text; the review-role matrix scrolls horizontally inside its section, not on the page.
+
+The JSON-compatible saved and draft snapshots drive `useDirtyState`; returning to saved values removes the save bar. Dirty forms show a sticky bar with one primary 保存 and a 放弃 action. Discard restores the last saved snapshot without a server write. Save failures retain drafts and display a labelled error summary; field validation is inline and linked to the affected controls. During a save, fields, save/discard and navigation are blocked. Shell navigation, browser back/forward and reload warn about unsaved work; refresh on review roles uses the same guard.
+
+Project-role saves keep the existing human confirmation, including each changed member's before/after roles. Writes remain individual optimistic updates using `expectedRoles`, not an atomic batch: if one fails, already saved members stay saved and remaining drafts can be retried or discarded. A stale-role conflict refreshes the affected member before retry. The consistency suite measures clean and dirty states in light/dark at 1440×900 and attaches screenshots without submitting writes.
+
+### Review/detail inbox
+
+`ReviewInbox` in `src/features/parameter-review/ReviewInbox.tsx` is the #1109 queue-and-detail template, shared by `/parameter-review` and `/parameter-submissions`. Reuse it for this workflow rather than building a second queue, tab strip or detail grid. It keeps one visible queue table in a labelled region and a selected request in the adjacent, labelled complementary detail region. The shell supplies the page title and gutter. `ViewSwitch` supplies two content tabs, pending and history, each linked to its tab panel.
+
+The caller scopes the queue by `project`. The URL owns `view`, `type` and the request deep link (`request`, `legacyRequest` or `memberRequest`); the template preserves selection through reloads and resolves deep links to the request's view. Column filters are local state and reset on navigation or a context change; they are not shareable URL filters. Changing context clears incompatible selection. An unavailable request shows an explicit alert instead of silently choosing another row. Rows show the current project's software value changes, JSON member removals and eligible legacy requests; caller-provided row selection, queue actions and legacy detail slots preserve existing workflows. `mineOnly` scopes personal tracking, while `canReview` controls review affordances; neither replaces repository/server authorization.
+
+Clicking a row or its detail button selects the request. Arrow keys or J/K move through rows, Enter opens the selected detail, and Alt+1/Alt+2 move focus between queue and detail; shortcuts do not override text entry or an open dialog. Canonical detail panels retain their structured change summary, explicit decision controls and collapsed provenance rather than duplicating raw records above the queue. Loading, retryable errors, filtered-empty and no-request states remain distinct; clearing filters and switching to history are explicit next steps. Existing confirmations and reviewer permissions are unchanged.
+
+The consistency harness checks one visible table, one two-tab group with exactly one selected tab, compact controls, typography and shell-aligned edges on both routes at 1440×900 in light and dark. The populated review visual uses the existing isolated synthetic fixture, selected as the software committer, and masks only volatile record metadata, not change content or decision controls. This render is visual evidence, not proof of device writes or production review authorization.
 
 ## Content and Language
 
@@ -292,6 +387,8 @@ The consistency quality project checks expanded and collapsed geometry (±1px), 
 - All interactive elements are reachable and operable by keyboard; clickable table rows and cards implement `tabIndex` + Enter/Space activation.
 - Dialog semantics follow `ModalDialog` (role on the card, labelled title, focus trap/restore).
 - Every form control has a programmatic label; every error is programmatically associated.
+- Enabled `jsx-a11y` rules are errors. Keep the recommended composite-role options and declare only native-backed label controls in ESLint; a radiogroup is not a labelable input. Remaining `react-hooks` warnings may only decrease.
+- Use explicit focus management (`ModalDialog.initialFocusRef` for dialogs), not native `autoFocus`. Keyboard-scrollable read-only values, paste targets and tooltip icons retain focus access; any lint false-positive suppression needs a one-line justification at the affected element.
 - `npm run acceptance:a11y` must stay green for covered routes; new primary routes join the covered list.
 
 ## Anti-Patterns (Do Not Ship)
@@ -309,7 +406,11 @@ The consistency quality project checks expanded and collapsed geometry (±1px), 
 
 ## Verification
 
-Every frontend-visible change runs the completion gate in [`docs/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md): targeted tests, `npm run build`, and a real-browser walkthrough (1440×900, 768×1024, 390×844) with screenshots, console checks, and interaction evidence under `work/ui-checks/<topic>/`. Quality gates: `npm run acceptance:a11y`, `npm run acceptance:visual`, `npm run acceptance:responsive`.
+The visual quality spec registers one representative per archetype at 1440×900 in light and dark. Light snapshots retain their existing names (`parameters-workbench.png`, `parameter-home-workbench.png`, `organization.png`, `parameter-review-workbench.png`); the admin-list snapshot is `projects-admin-list.png`. Each dark companion adds `-dark` before `.png`. Generate and inspect Linux renders in CI, then require a following CI run against the accepted baselines; do not generate or replace PNGs on macOS. Review snapshots require the explicitly isolated review fixture and must not be counted as passing when skipped.
+
+Migrated page and template styles must contain zero raw visual values. The stylesheet guard and `ui:check` enforce this separately: the coordinator lowers `scripts/ui-standards-baseline.json` only with `npm run ui:check -- --update-baseline` after counts drop and records the remaining stock in TD-113. The implementer's bounded checks do not establish full-suite, build, live quality/acceptance, screenshots or final ratchet acceptance.
+
+Every frontend-visible change follows [`docs/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md): affected native tests, `npm run build`, and a real-browser walkthrough at 1440×900 with screenshots, console checks and interaction evidence in the PR. Add a compact PC window only for layout risk; tablet/mobile sweeps are opt-in unless the accepted contract requires them. Quality gates remain `npm run acceptance:a11y`, `npm run acceptance:visual` and `npm run acceptance:responsive`; delegation of expensive gates does not waive them.
 
 ## Change Control
 

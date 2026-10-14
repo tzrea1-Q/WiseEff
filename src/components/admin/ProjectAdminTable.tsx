@@ -1,12 +1,14 @@
-import { Pencil, Trash2 } from "lucide-react";
-import { useMemo } from "react";
-import { ColumnFilter } from "@/components/ColumnFilter";
+import { useMemo, type ReactNode } from "react";
 import { SearchField } from "@/components/common/SearchField";
 import { filterItems } from "@/lib/search";
 import { projectAdminSearchProfile } from "@/lib/search/profiles";
 import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import type { ParameterAdminProjectRow } from "@/parameterAdminProjects";
-import { DataTable, type Column, type DataTableSort } from "./DataTable";
+import { AdminListPage } from "@/components/layout/AdminListPage";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { projectDeleteConfirmation } from "./DeleteProjectDialog";
+import type { Column, DataTableSort } from "./DataTable";
 
 type ProjectAdminTableProps = {
   rows: ParameterAdminProjectRow[];
@@ -14,10 +16,11 @@ type ProjectAdminTableProps = {
   onUpdateSearch: (patch: Partial<ParamAdminProjectsSearch>) => void;
   onCreateProject: () => void;
   onEditProject: (projectId: string) => void;
-  onDeleteProject: (projectId: string) => void;
+  onDeleteProject: (projectId: string) => void | Promise<void>;
   onManageFiles: (projectId: string) => void;
   onConfigureReviewRoles?: (projectId: string) => void;
   primaryActionLabel?: string;
+  detailDrawer?: ReactNode;
 };
 
 const STATUS_FILTER_OPTIONS = [
@@ -27,6 +30,12 @@ const STATUS_FILTER_OPTIONS = [
   { value: "initialization_rejected", label: "已驳回" },
   { value: "not_initialized", label: "未初始化" }
 ] as const;
+
+const statusClasses: Record<string, string> = {
+  initialized: "bg-[var(--success-soft)] text-[var(--success)]",
+  maintenance: "bg-[var(--info-soft)] text-[var(--info)]",
+  initialization_pending_review: "bg-[var(--warning-soft)] text-[var(--warning)]"
+};
 
 function tableSortFromSearch(sort: string): DataTableSort {
   switch (sort) {
@@ -63,7 +72,8 @@ export function ProjectAdminTable({
   onDeleteProject,
   onManageFiles,
   onConfigureReviewRoles,
-  primaryActionLabel = "管理文件"
+  primaryActionLabel = "管理文件",
+  detailDrawer
 }: ProjectAdminTableProps) {
   const selectedStatuses = search.statuses ?? [];
   const filteredRows = useMemo(
@@ -92,7 +102,7 @@ export function ProjectAdminTable({
       key: "name",
       header: "项目名称",
       sortAccessor: (row) => row.name,
-      render: (row) => <strong>{row.name}</strong>
+      render: (row) => <strong title={row.name}>{row.name}</strong>
     },
     {
       key: "code",
@@ -103,33 +113,32 @@ export function ProjectAdminTable({
       key: "status",
       header: "状态",
       align: "center",
-      headerFilter: (
-        <ColumnFilter
-          label="状态"
-          groupLabel="状态筛选"
-          values={statusValues}
-          selectedValues={selectedStatuses}
-          renderLabel={(value) => statusLabelByValue[value] ?? value}
-          onToggle={toggleStatus}
-          onClear={() => onUpdateSearch({ statuses: [] })}
-        />
-      ),
+      headerFilter: {
+        label: "状态",
+        groupLabel: "状态筛选",
+        values: statusValues,
+        selectedValues: selectedStatuses,
+        getValue: (row) => row.status,
+        renderLabel: (value) => statusLabelByValue[value] ?? value,
+        onToggle: toggleStatus,
+        onClear: () => onUpdateSearch({ statuses: [] })
+      },
       render: (row) => (
-        <span className={`project-admin-status project-admin-status--${row.status}`}>{row.statusLabel}</span>
+        <Badge variant={row.status === "initialization_rejected" ? "destructive" : "secondary"} className={statusClasses[row.status]}>{row.statusLabel}</Badge>
       )
     },
     {
       key: "conflicts",
       header: "冲突",
       align: "center",
-      className: "project-admin-col-numeric",
+      className: "tabular-nums",
       render: (row) =>
         row.openConflictCount > 0 ? (
-          <span className="project-admin-attention project-admin-attention--conflict">
+          <Badge variant="secondary" className="bg-[var(--warning-soft)] text-[var(--warning)]">
             {row.openConflictCount}
-          </span>
+          </Badge>
         ) : (
-          <span className="project-admin-attention-muted">0</span>
+          <span className="text-muted-foreground">0</span>
         )
     },
     {
@@ -140,8 +149,8 @@ export function ProjectAdminTable({
         <span
           className={
             row.releasedBaselineCount > 0
-              ? "project-admin-attention project-admin-attention--baseline"
-              : "project-admin-attention-muted"
+              ? "text-[var(--success)] font-semibold tabular-nums"
+              : "text-muted-foreground tabular-nums"
           }
         >
           {row.baselineLabel}
@@ -152,14 +161,14 @@ export function ProjectAdminTable({
       key: "modules",
       header: "模块",
       align: "center",
-      className: "project-admin-col-numeric",
+      className: "tabular-nums",
       render: (row) => row.moduleCount
     },
     {
       key: "parameters",
       header: "参数",
       align: "center",
-      className: "project-admin-col-numeric",
+      className: "tabular-nums",
       sortAccessor: (row) => row.parameterCount,
       render: (row) => row.parameterCount
     },
@@ -167,125 +176,65 @@ export function ProjectAdminTable({
       key: "updated",
       header: "最近更新",
       align: "center",
-      className: "project-admin-col-updated-cell",
+      className: "tabular-nums",
       sortAccessor: (row) => row.updatedAt,
       render: (row) => row.updatedAtLabel
     }
   ];
 
   return (
-    <section className="parameters-table param-admin-library-table project-admin-library-table">
-      <div className="parameters-table-heading">
-        <div>
-          <h2>项目清单</h2>
-          <p>维护项目基础信息与初始化状态；冲突与基线列标出需要治理关注的项目。</p>
-          {rows.some((row) => row.canonicalOwned) ? (
-            <p id="canonical-project-retention-policy">项目需保留规范历史，不能删除；归档或处置功能尚未开放。</p>
-          ) : null}
-        </div>
-        <div className="param-admin-library-heading-actions">
-          <button type="button" className="button primary" onClick={onCreateProject}>
-            新建项目
-          </button>
-        </div>
-      </div>
-
-      <DataTable
-        aria-label="项目管理列表"
-        className="project-admin-library-datatable"
-        tableClassName="parameters-table-grid project-admin-library-grid"
-        rows={filteredRows}
-        rowKey={(row) => row.id}
-        columns={columns}
-        pageSize={10}
-        visibleScrollRail
-        sort={tableSort}
-        onSort={(key) => onUpdateSearch({ sort: nextSearchSort(key, tableSort) })}
-        onRowClick={(row) => onManageFiles(row.id)}
-        toolbar={
-          <div className="parameters-table-toolbar">
+    <AdminListPage
+      label="项目清单"
+      detailDrawer={detailDrawer}
+      headerActions={<Button type="button" onClick={onCreateProject}>新建项目</Button>}
+      headerContent={<>
+        <p>维护项目基础信息与初始化状态；冲突与基线列标出需要治理关注的项目。</p>
+        {rows.some((row) => row.canonicalOwned) ?
+          <p id="canonical-project-retention-policy">项目需保留规范历史，不能删除；归档或处置功能尚未开放。</p> : null}
+      </>}
+      table={{
+        ariaLabel: "项目管理列表", rows: filteredRows, rowKey: (row) => row.id, columns, pageSize: 10,
+        page: search.page ?? 1, onPageChange: (page) => onUpdateSearch({ page }), sort: tableSort,
+        onSort: (key) => onUpdateSearch({ sort: nextSearchSort(key, tableSort) }),
+        onRowClick: (row) => onManageFiles(row.id)
+      }}
+      filterBar={
+          <>
             <SearchField
               value={search.q}
               onValueChange={(value) => onUpdateSearch({ q: value })}
               placeholder="搜索项目名称、代号或 ID"
               ariaLabel="搜索项目"
             />
-            <div className="parameters-table-filters param-admin-library-filters">
               {filtersActive ? (
-                <button
+                <Button
                   aria-label="清除筛选"
-                  className="clear-filters"
+                  variant="ghost" size="sm"
                   type="button"
                   onClick={() => onUpdateSearch({ q: "", statuses: [] })}
                 >
                   清除筛选
-                </button>
+                </Button>
               ) : null}
-            </div>
-            <span className="parameters-table-count">
+            <span className="ml-auto text-sm text-muted-foreground tabular-nums">
               {filteredRows.length} / {rows.length} 项
             </span>
-          </div>
+          </>
         }
-        emptyState={
-          <div className="parameters-table-empty">
-            <p>没有匹配的项目。</p>
-            {filtersActive ? (
-              <button
-                type="button"
-                className="button subtle"
-                onClick={() => onUpdateSearch({ q: "", statuses: [] })}
-              >
-                清除筛选条件
-              </button>
-            ) : null}
-          </div>
-        }
-        renderRowActions={(row) => (
-          <div className="param-admin-row-actions project-admin-row-actions">
-            <button
-              type="button"
-              className="button subtle project-admin-row-manage-files"
-              aria-label={`${primaryActionLabel} ${row.name}`}
-              title={`${primaryActionLabel} ${row.name}`}
-              onClick={() => onManageFiles(row.id)}
-            >
-              {primaryActionLabel}
-            </button>
-            {onConfigureReviewRoles ? (
-              <button
-                type="button"
-                className="button subtle project-admin-row-review-roles"
-                aria-label={`审核角色 ${row.name}`}
-                title={`审核角色 ${row.name}`}
-                onClick={() => onConfigureReviewRoles(row.id)}
-              >
-                审核角色
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="icon-button project-admin-row-edit"
-              aria-label={`编辑 ${row.name}`}
-              title={`编辑 ${row.name}`}
-              onClick={() => onEditProject(row.id)}
-            >
-              <Pencil size={15} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="icon-button project-admin-row-delete"
-              aria-label={`删除 ${row.name}`}
-              disabled={row.canonicalOwned}
-              aria-describedby={row.canonicalOwned ? "canonical-project-retention-policy" : undefined}
-              title={row.canonicalOwned ? "项目需保留规范历史，不能删除；归档或处置功能尚未开放。" : `删除 ${row.name}`}
-              onClick={() => onDeleteProject(row.id)}
-            >
-              <Trash2 size={15} aria-hidden="true" />
-            </button>
-          </div>
-        )}
-      />
-    </section>
+      emptyState={{ message: filtersActive ? "没有匹配的项目。" : "暂无项目。",
+        actionLabel: filtersActive ? "清除筛选条件" : "新建项目",
+        onAction: filtersActive ? () => onUpdateSearch({ q: "", statuses: [] }) : onCreateProject }}
+      rowActions={(row) => ({
+        label: `${row.name}操作`,
+        primaryAction: { id: "configure", label: primaryActionLabel, ariaLabel: `${primaryActionLabel} ${row.name}`, onSelect: () => onManageFiles(row.id) },
+        items: [
+          ...(onConfigureReviewRoles ? [{ id: "review-roles", label: "审核角色", ariaLabel: `审核角色 ${row.name}`, onSelect: () => onConfigureReviewRoles(row.id) }] : []),
+          { id: "edit", label: "编辑", ariaLabel: `编辑 ${row.name}`, onSelect: () => onEditProject(row.id) },
+          { id: "delete", label: "删除", ariaLabel: `删除 ${row.name}`, disabled: row.canonicalOwned,
+            descriptionId: row.canonicalOwned ? "canonical-project-retention-policy" : undefined,
+            destructive: true, confirmation: projectDeleteConfirmation(row), onSelect: () => onDeleteProject(row.id) }
+        ]
+      })}
+    />
   );
 }

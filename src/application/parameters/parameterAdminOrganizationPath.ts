@@ -6,8 +6,8 @@ export type ParameterAdminOrganizationView = "specs" | "modules";
 /** Nested peer under `/parameter-admin/specs` — library is default; identity mapping is optional. */
 export type ParameterAdminSpecsSubView = "library" | "identity-mapping";
 
-/** Nested peer under `/parameter-admin/modules` — tree is default; queue is optional. */
-export type ParameterAdminModulesSubView = "tree" | "queue";
+/** URL-backed module governance tabs; tree is the default. */
+export type ParameterAdminModulesSubView = "tree" | "queue" | "registry";
 
 export const PARAMETER_ADMIN_ORGANIZATION_VIEWS: readonly ParameterAdminOrganizationView[] = [
   "specs",
@@ -64,18 +64,18 @@ export function parseParameterAdminSpecsSubView(
 }
 
 export function parseParameterAdminModulesSubView(
-  pathname: string
+  pathname: string,
+  search = ""
 ): ParameterAdminModulesSubView | null {
   if (/^\/parameter-admin\/modules\/?$/.test(pathname)) {
-    return "tree";
+    const tab = new URLSearchParams(search).get("tab");
+    return tab === "queue" || tab === "registry" ? tab : "tree";
   }
   if (/^\/parameter-admin\/modules\/queue\/?$/.test(pathname)) {
     return "queue";
   }
-  // Legacy /modules/registry bookmarks: organization path still resolves to modules;
-  // callers redirect to tree. Treat as tree so subtitle/nav do not blank.
   if (/^\/parameter-admin\/modules\/registry\/?$/.test(pathname)) {
-    return "tree";
+    return "registry";
   }
   return null;
 }
@@ -104,9 +104,11 @@ export function buildParameterAdminModulesPath(
   subView: ParameterAdminModulesSubView = "tree",
   search = ""
 ): string {
-  const raw = search.startsWith("?") ? search.slice(1) : search;
-  const base = subView === "queue" ? "/parameter-admin/modules/queue" : "/parameter-admin/modules";
-  return `${base}${raw ? `?${raw}` : ""}`;
+  const params = new URLSearchParams(search);
+  if (subView === "tree") params.delete("tab");
+  else params.set("tab", subView);
+  const query = params.toString();
+  return `/parameter-admin/modules${query ? `?${query}` : ""}`;
 }
 
 /**

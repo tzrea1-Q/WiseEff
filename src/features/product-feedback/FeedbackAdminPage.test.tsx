@@ -146,7 +146,7 @@ describe("FeedbackAdminPage", () => {
     const repository = createRepository([feedback({ id: "feedback-open", pageTitle: "参数首页" })]);
     await renderPage(repository);
 
-    fireEvent.click(screen.getByText("参数首页"));
+    fireEvent.click(within(screen.getByRole("table", { name: "产品反馈记录" })).getByRole("button", { name: "查看" }));
     const drawer = await screen.findByRole("dialog", { name: "参数首页" });
     fireEvent.change(within(drawer).getByLabelText("处理备注"), { target: { value: "已开始排查" } });
     fireEvent.click(within(drawer).getByRole("button", { name: "开始处理" }));

@@ -38,12 +38,10 @@ const apiSession = {
 };
 const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc" as const, label: "API Gateway Target" };
 
-async function confirmHighRiskWriteIfPrompted() {
-  try {
-    const confirm = await screen.findByRole("button", { name: /^确认写入$/ }, { timeout: 300 });
+function confirmHighRiskWriteIfPrompted() {
+  const confirm = screen.queryByRole("button", { name: /^确认写入$/ });
+  if (confirm) {
     fireEvent.click(confirm);
-  } catch {
-    // Medium/Low risk writes skip the confirmation dialog.
   }
 }
 
@@ -222,6 +220,48 @@ afterEach(() => {
 });
 
 describe("/node-debugging", () => {
+  it.each(["loading", "error"] as const)("blocks toolbar device writes when a connected catalog becomes %s", async (runtimeStatus) => {
+    const debuggingActions = createDebuggingActions();
+    const state: PrototypeState = { ...userState, lastDebugSnapshot: {
+      id: "snapshot-toolbar", createdAt: "2026-05-27T09:00:00.000Z", risk: "Low", entries: []
+    } };
+    const view = renderNodeDebuggingPage({ state, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
+    fireEvent.click(within(findRowByText("charger.input_current_limit_ma")).getByRole("button", { name: /查看\/修改/ }));
+    fireEvent.change(within(getNodeDetailDialog()).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(getNodeDetailDialog()).getByRole("button", { name: "暂存" }));
+    expect(screen.getByRole("button", { name: /批量下发节点|下发选中/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "回滚快照" })).toBeEnabled();
+
+    view.rerender({ state, debuggingActions, runtimeStatus, runtimeError: "节点目录不可用" });
+    expect(screen.getByRole("button", { name: /批量下发节点|下发选中/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "回滚快照" })).toBeDisabled();
+    expect(screen.getByRole("region", { name: "节点操作记录" })).toBeInTheDocument();
+  });
+
+  it("keeps node tasks available when module navigation is collapsed and remembers the choice", async () => {
+    const props = { state: userState, debuggingActions: createDebuggingActions() };
+    const first = renderNodeDebuggingPage(props);
+    await screen.findByText(/已连接：API Gateway Target/);
+
+    const toolbar = screen.getByRole("group", { name: "工作台操作" });
+    expect(within(toolbar).getByRole("button", { name: "批量下发节点" })).toBeDisabled();
+    const task = screen.getByRole("region", { name: "节点调试任务" });
+    expect(within(task).getByRole("table")).toBeInTheDocument();
+    expect(findRowByText("charger.input_current_limit_ma").querySelector('[data-row-status]'))
+      .toHaveTextContent("成功");
+    expect(task).not.toContainElement(screen.getByRole("region", { name: "本地设备连接" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(screen.queryByRole("tree", { name: "调试节点模块树" })).not.toBeInTheDocument();
+    expect(within(task).getByRole("table")).toBeVisible();
+
+    first.unmount();
+    renderNodeDebuggingPage(props);
+    expect(screen.getByRole("button", { name: "展开模块导航" })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(screen.getByRole("tree", { name: "调试节点模块树" })).toBeVisible();
+  });
+
   it("explains an unreachable local Bridge and keeps its technical detail expandable", async () => {
     vi.spyOn(bridgeLauncher, "connectLocalBridge").mockResolvedValue({ reachable: true, ok: true, accepted: true });
     vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockResolvedValue(null);
@@ -1000,6 +1040,9 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await screen.findByText(/API Gateway Target/);
 
+    await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
+      nodeId: "dbg-charge-input-current"
+    })));
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
     const dialog = getNodeDetailDialog();
@@ -1211,7 +1254,10 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
-    const downloadLink = await screen.findByRole("link", { name: "安装 Bridge（Windows）" });
+    expect(screen.queryByRole("link", { name: "安装 Bridge（Windows）" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "安装指南" }));
+    const guide = screen.getByRole("dialog", { name: "安装与连接本地 Bridge" });
+    const downloadLink = await within(guide).findByRole("link", { name: "安装 Bridge（Windows）" });
     expect(downloadLink).toHaveAttribute(
       "href",
       `${expectedBridgeDownloadBase}/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe`
@@ -1648,14 +1694,13 @@ describe("/node-debugging", () => {
     const first = renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
-    const navigator = screen.getByRole("region", { name: "模块导航" });
-    const tree = within(navigator).getByRole("tree", { name: "调试节点模块树" });
+    const tree = await screen.findByRole("tree", { name: "调试节点模块树" });
+    const chargingPolicy = await within(tree).findByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
     expect(
       within(tree).getAllByRole("treeitem", { name: /Power.*\d+ 个节点/ })
         .find((item) => item.getAttribute("aria-level") === "1")
     ).toBeInTheDocument();
 
-    const chargingPolicy = within(tree).getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
     fireEvent.click(chargingPolicy);
 
     expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
@@ -1663,12 +1708,20 @@ describe("/node-debugging", () => {
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
     expect(new URL(window.location.href).searchParams.get("moduleNode")).toBeTruthy();
 
+    const selectedUrl = window.location.href;
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(window.location.href).toBe(selectedUrl);
+    expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(within(screen.getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ })).toHaveAttribute("aria-selected", "true");
+
     first.unmount();
     renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
-    const restored = within(screen.getByRole("tree", { name: "调试节点模块树" }))
-      .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
-    expect(restored).toHaveAttribute("aria-selected", "true");
+    const restored = await within(await screen.findByRole("tree", { name: "调试节点模块树" }))
+      .findByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
+    await waitFor(() => expect(restored).toHaveAttribute("aria-selected", "true"));
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
     fireEvent.click(restored);
     expect(findRowByText("battery.thermal_foldback_pct")).toBeInTheDocument();
@@ -2055,6 +2108,7 @@ describe("/node-debugging", () => {
     expect(alert).toHaveTextContent("无法加载调试节点数据");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
+    expect(screen.getByRole("region", { name: "节点操作记录" })).toBeInTheDocument();
     fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
     expect(onRuntimeRetry).toHaveBeenCalledTimes(1);
   });

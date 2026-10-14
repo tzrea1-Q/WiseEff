@@ -45,6 +45,7 @@ export type LocalDeviceBridgePanelState = {
 };
 
 export type LocalDeviceBridgePanelProps = {
+  compact?: boolean;
   target?: string;
   detecting: boolean;
   protocol: DebugConnectionProtocol;
@@ -59,6 +60,7 @@ export type LocalDeviceBridgePanelProps = {
 };
 
 export function LocalDeviceBridgePanel({
+  compact = false,
   target,
   detecting,
   protocol,
@@ -399,6 +401,7 @@ export function LocalDeviceBridgePanel({
   return (
     <section className="local-device-bridge-panel" aria-label="本地设备连接">
       <LocalDeviceBridgeWizard
+        compact={compact}
         panelStatus={panelStatus}
         pairingStale={pairingStale}
         pairingAuthFailure={pairingAuthFailure}

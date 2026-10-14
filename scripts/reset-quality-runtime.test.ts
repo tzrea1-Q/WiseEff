@@ -307,6 +307,18 @@ describe("quality runtime reset wiring", () => {
     expect(runScript).not.toHaveBeenCalled();
   });
 
+  it("populates admin lists after the base seeds and seeds only once", async () => {
+    vi.resetModules();
+    const { seedQualityRuntime: seed } = await import("../e2e/quality/helpers");
+    const runScript = vi.fn();
+    seed(runScript);
+    seed(runScript);
+    expect(runScript.mock.calls.map(([script]) => script)).toEqual([
+      "db:migrate", "reset:quality-runtime", "db:seed:m0", "db:seed:m1", "db:seed:m2", "db:seed:m3",
+      "seed:quality:admin-lists"
+    ]);
+  });
+
   it("keeps the review fixture out of the skippable base seed lifecycle", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
     const packageJson = readFileSync("package.json", "utf8");
@@ -319,6 +331,17 @@ describe("quality runtime reset wiring", () => {
       helpers.indexOf("export function seedQualityVisualReviewFixture")
     );
     expect(baseSeedLifecycle).not.toContain('"seed:quality:visual-review"');
+  });
+
+  it("populates CI admin lists before skipping runtime seeding", () => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    const seedStep = workflow.jobs["acceptance-quality-lanes"].steps.find(
+      (step: { name: string }) => step.name === "Migrate and seed database",
+    );
+
+    expect(seedStep.run).toMatch(
+      /npm run db:seed:all\s+npm run --if-present seed:quality:admin-lists\s+echo "WISEEFF_QUALITY_SKIP_SEED=true"/,
+    );
   });
 
   it("installs and removes the visual review fixture even when base seeding is skipped", () => {

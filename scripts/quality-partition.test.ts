@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { consistencyReadOnlyRoutes, consistencyRoutes, selectConsistencyRoutes } from "../e2e/quality/consistency-routes";
 import { parseQualityLane, qualityLanes, selectQualityProjects } from "../e2e/quality/quality-partition";
+import { compactQualityRoutes } from "../e2e/quality/compact-routes";
+import { playwrightInventory, validateShardInventories, type ShardReceipt } from "./ci-shard-results";
+import type { Identity } from "./ci-required-results";
 
 type ListedSuite = {
   title: string;
@@ -152,6 +155,27 @@ describe("quality partitions", () => {
     const unfiltered = registrationKeys(baseline.stdout);
     const warmup = unfiltered.filter((key) => JSON.parse(key)[0] === "runtime-warmup");
     expect(warmup.length).toBeGreaterThan(0);
+    const titles = (keys: string[]) => keys.map((key) => JSON.parse(key).at(-1) as string);
+    const routeTitles = consistencyReadOnlyRoutes.flatMap((route) => ["light", "dark"].map((theme) =>
+      `asserts read-only UI consistency for ${route.path} (${theme})`));
+    const homeTitles = ["light", "dark"].map((theme) => `asserts public home accessibility semantics (${theme})`);
+    const bridgeTitles = ["/node-debugging", "/dts-reload"].flatMap((path) => ["light", "dark"].flatMap((theme) =>
+      ["returning", "first-time", "connected"].map((readiness) => `Bridge readiness on ${path}: ${readiness} (${theme})`)));
+    expect(titles(unfiltered).filter((title) => title.startsWith("asserts read-only UI consistency")).sort())
+      .toEqual(routeTitles.sort());
+    expect(titles(unfiltered)).toEqual(expect.arrayContaining([...homeTitles, ...bridgeTitles]));
+    for (const path of ["/knowledge-admin", "/log-admin", "/log-admin?tab=domains", "/log-admin?tab=quality"]) {
+      expect(consistencyReadOnlyRoutes.map((route) => route.path)).toContain(path);
+    }
+    const compact = unfiltered.filter((key) => JSON.parse(key)[0] === "compact");
+    expect(compact).toHaveLength(compactQualityRoutes.length * 2);
+    const identity: Identity = {
+      event: "pull_request", mode: "", fullAcceptance: false, ref: "refs/pull/1142/merge",
+      base: "1".repeat(40), head: "2".repeat(40), sha: "3".repeat(40), tree: "4".repeat(40), runId: "100", attempt: "1"
+    };
+    const inventory = playwrightInventory(JSON.parse(baseline.stdout), false);
+    const receipts: ShardReceipt[] = [];
+    const consistencyCounts: number[] = [];
     const partitioned: string[] = [];
     for (const lane of qualityLanes) {
       const result = listRegistrations(lane);
@@ -160,10 +184,25 @@ describe("quality partitions", () => {
       expect(keys.filter((key) => JSON.parse(key)[0] === "runtime-warmup")).toEqual(warmup);
       const tests = keys.filter((key) => JSON.parse(key)[0] !== "runtime-warmup");
       expect(tests.length).toBeGreaterThan(0);
+      expect(keys.filter((key) => JSON.parse(key)[0] === "compact")).toEqual(lane === "visual" ? compact : []);
+      expect(titles(keys).filter((title) => title.startsWith("Bridge readiness"))).toEqual(lane === "consistency-1" ? bridgeTitles : []);
+      expect(titles(keys).filter((title) => title.startsWith("asserts public home"))).toEqual(lane === "consistency-2" ? homeTitles : []);
+      if (lane.startsWith("consistency-")) consistencyCounts.push(tests.length);
+      receipts.push({ version: 1, kind: "quality", lane, identity, inventory,
+        executed: playwrightInventory(JSON.parse(result.stdout), false), receipt: null });
       partitioned.push(...tests);
     }
     expect(new Set(partitioned).size).toBe(partitioned.length);
     expect(partitioned.sort()).toEqual(unfiltered.filter((key) => JSON.parse(key)[0] !== "runtime-warmup").sort());
+    expect(Math.abs(consistencyCounts[0] - consistencyCounts[1])).toBeLessThanOrEqual(2);
+    expect(validateShardInventories(receipts, "quality", identity)).toEqual(inventory);
+    const missing = structuredClone(receipts);
+    const missingId = missing[1].executed.tests.find((id) => !inventory.warmup.includes(id));
+    missing[1].executed.tests = missing[1].executed.tests.filter((id) => id !== missingId);
+    expect(() => validateShardInventories(missing, "quality", identity)).toThrow("COVERAGE");
+    const duplicated = structuredClone(receipts);
+    duplicated[2].executed.tests.push(duplicated[1].executed.tests.find((id) => !inventory.warmup.includes(id))!);
+    expect(() => validateShardInventories(duplicated, "quality", identity)).toThrow("COVERAGE");
   });
 
   it("fails closed at the Playwright config boundary for an unknown lane", () => {

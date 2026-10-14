@@ -10,7 +10,7 @@ type TaskState = { kind: "loading" | "empty"; message: string }
 
 type NavigatorWorkbenchProps = {
   pageKey: string;
-  toolbar: ReactNode;
+  toolbar: ReactNode | ((primaryAction: ReactNode) => ReactNode);
   primaryAction?: ReactNode;
   context?: ReactNode;
   notice?: ReactNode;
@@ -22,6 +22,7 @@ type NavigatorWorkbenchProps = {
   panelId?: string;
   tabId?: string;
   inspector?: ReactNode;
+  inspectorOverlay?: boolean;
   inspectorLabel?: string;
   children?: ReactNode;
 };
@@ -31,7 +32,7 @@ export function NavigatorWorkbench(props: NavigatorWorkbenchProps) {
 }
 
 function WorkbenchSlots({ pageKey, toolbar, primaryAction, context, notice, navigator, navigatorLabel,
-  taskLabel, taskClassName = "", taskState, panelId, tabId, inspector, inspectorLabel = "检查器", children }: NavigatorWorkbenchProps) {
+  taskLabel, taskClassName = "", taskState, panelId, tabId, inspector, inspectorOverlay = false, inspectorLabel = "检查器", children }: NavigatorWorkbenchProps) {
   const navigationId = useId();
   const storageKey = `wiseeff.navigator-workbench.collapsed:${pageKey}`;
   const [collapsed, setCollapsed] = useState(() => {
@@ -50,11 +51,12 @@ function WorkbenchSlots({ pageKey, toolbar, primaryAction, context, notice, navi
       return;
     }
   };
+  const primaryActionSlot = primaryAction ? <div className="navigator-workbench__primary">{primaryAction}</div> : null;
   return (
     <div className="navigator-workbench" data-workbench-page={pageKey} data-navigator-collapsed={collapsed}>
       <div className="navigator-workbench__toolbar" role="group" aria-label="工作台操作">
-        <div className="navigator-workbench__controls">{toolbar}</div>
-        {primaryAction ? <div className="navigator-workbench__primary">{primaryAction}</div> : null}
+        <div className="navigator-workbench__controls">{typeof toolbar === "function" ? toolbar(primaryActionSlot) : toolbar}</div>
+        {typeof toolbar !== "function" ? primaryActionSlot : null}
       </div>
       {context ? <div className="navigator-workbench__context">{context}</div> : null}
       {notice ? <div className="navigator-workbench__notice">{notice}</div> : null}
@@ -71,13 +73,13 @@ function WorkbenchSlots({ pageKey, toolbar, primaryAction, context, notice, navi
           </div>
           <div id={navigationId} className="navigator-workbench__navigation" hidden={collapsed}>{navigator}</div>
         </section>
-        <section className={`navigator-workbench__task ${taskClassName}`} aria-label={taskLabel}>
+        <TabPanel role="region" className={`navigator-workbench__task ${taskClassName}`} aria-label={taskLabel}>
           {taskState?.kind === "loading" ? <SectionSkeleton label={taskState.message} />
             : taskState?.kind === "empty" ? <SectionEmpty message={taskState.message} />
             : taskState?.kind === "error" ? <SectionError message={taskState.message} detail={taskState.detail} onRetry={taskState.onRetry} />
             : children}
-        </section>
-        {inspector ? <section className="navigator-workbench__inspector" aria-label={inspectorLabel}>{inspector}</section> : null}
+        </TabPanel>
+        {inspector ? <section className="navigator-workbench__inspector" data-overlay={inspectorOverlay} aria-label={inspectorLabel}>{inspector}</section> : null}
       </TabPanel>
     </div>
   );

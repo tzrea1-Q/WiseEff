@@ -751,7 +751,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "校验并加入本轮" }));
     }
     const tray = await screen.findByRole("region", { name: "参数修改提交" });
-    expect(within(tray).getByText("Local structural edit")).toBeVisible();
+    expect(await within(tray).findByText("Local structural edit")).toBeVisible();
     await act(async () => { delayed.resolve([persisted]); });
     expect(await within(tray).findByText("Rebased structural draft")).toBeVisible();
     expect(within(tray).getByText("Local structural edit")).toBeVisible();

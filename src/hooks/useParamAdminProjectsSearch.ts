@@ -9,20 +9,24 @@ export type ParamAdminProjectsSearch = {
   /** Empty = all statuses. */
   statuses: string[];
   sort: string;
+  page?: number;
 };
 
 const defaultSearch: ParamAdminProjectsSearch = {
   q: "",
   statuses: [],
-  sort: "name-asc"
+  sort: "name-asc",
+  page: 1
 };
 
 export function parseParamAdminProjectsSearch(search: string): ParamAdminProjectsSearch {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const page = Number(params.get("page"));
   return {
     q: params.get("q") ?? "",
     statuses: parseCsvQueryParam(params.get("status")),
-    sort: params.get("sort") ?? "name-asc"
+    sort: params.get("sort") ?? "name-asc",
+    page: Number.isSafeInteger(page) && page > 0 ? page : 1
   };
 }
 
@@ -49,7 +53,7 @@ export function useParamAdminProjectsSearch() {
 
   const updateSearch = useCallback((patch: Partial<ParamAdminProjectsSearch>) => {
     setSearch((current) => {
-      const next = { ...current, ...patch };
+      const next = { ...current, ...patch, page: patch.page ?? 1 };
       applyToLocation(next);
       return next;
     });
@@ -65,6 +69,8 @@ export function buildParamAdminProjectsPath(search: Partial<ParamAdminProjectsSe
   const status = formatCsvQueryParam(merged.statuses);
   if (status) params.set("status", status);
   if (merged.sort !== "name-asc") params.set("sort", merged.sort);
+  const page = merged.page ?? 1;
+  if (Number.isSafeInteger(page) && page > 1) params.set("page", String(page));
   const query = params.toString();
   return `/parameter-admin/projects${query ? `?${query}` : ""}`;
 }

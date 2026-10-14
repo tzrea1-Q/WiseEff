@@ -353,6 +353,19 @@ describe("buildDtsWorkbenchRows", () => {
     expect(row.searchText).toContain("电荷泵中断引脚的完整参数说明");
   });
 
+  it("carries the current head name alongside pinned copy and makes it searchable without cutover", () => {
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora", configRevisionId: "revision-1", view: "effective",
+      bindings: [{ ...binding, displayName: "旧名称", currentDisplayName: "当前中断名称" }],
+      sourceNodes, effectiveNodes, mappingTasks: []
+    });
+    expect(row).toMatchObject({
+      displayName: "旧名称", currentDisplayName: "当前中断名称",
+      effectiveRevisionId: binding.parameterSpecVersionId
+    });
+    expect(row?.searchText).toContain("当前中断名称");
+  });
+
   it("uses the persisted binding.moduleId with registry lookup for name/importance/sortOrder (phase 2 browse source of truth)", () => {
     const registry: ParameterModuleRegistry = {
       modules: [

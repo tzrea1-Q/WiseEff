@@ -56,6 +56,7 @@ export type ProjectBindingDto = {
   policyState: ProjectParameterBinding["policyState"];
   moduleId: string;
   displayName: string | null;
+  currentDisplayName?: string | null;
   description: string | null;
   documentation: string | null;
 };
@@ -201,6 +202,7 @@ export function bindingFromDto(
     policyState: dto.policyState,
     moduleId: dto.moduleId,
     displayName: dto.displayName,
+    ...(dto.currentDisplayName !== undefined ? { currentDisplayName: dto.currentDisplayName } : {}),
     description: dto.description,
     documentation: dto.documentation,
   };

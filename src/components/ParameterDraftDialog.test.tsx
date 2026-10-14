@@ -167,10 +167,13 @@ describe("ParameterDraftDialog", () => {
     const baseSubtleRule = declarationsFor(styles, ".button.subtle");
     const baseSubtleHoverRule = declarationsFor(styles, ".button.subtle:hover:not(:disabled)");
     const submitLinkRule = declarationsFor(styles, ".parameter-draft-dialog__submit-link");
+    const tokens = declarationsFor(styles, ":root");
 
     expect(baseButtonRule.display).toBe("inline-flex");
-    expect(baseButtonRule["min-height"]).toBe("32px");
+    expect(baseButtonRule["min-height"]).toBe("var(--space-8)");
+    expect(tokens["--space-8"]).toBe("32px");
     expect(baseButtonRule.padding).toBe("0 var(--space-3)");
+    expect(tokens["--space-3"]).toBe("12px");
     expect(baseButtonRule["border-radius"]).toBe("var(--radius-md)");
     expect(baseButtonRule.cursor).toBe("pointer");
     expect(baseSubtleRule.background).toBe("var(--surface)");
@@ -219,4 +222,3 @@ describe("ParameterDraftDialog", () => {
     expect(within(dialog).queryByText("未保存")).not.toBeInTheDocument();
   });
 });
-

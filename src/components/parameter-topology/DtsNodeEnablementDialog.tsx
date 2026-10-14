@@ -144,7 +144,6 @@ export function DtsNodeEnablementDialog({
           {isNonstandard && !nonstandardRevealed ? (
             <section
               className="dts-node-enablement-dialog__panel"
-              role="region"
               aria-label="非标准 status"
             >
               <strong>非标准取值</strong>

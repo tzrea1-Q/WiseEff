@@ -10,6 +10,7 @@ import {
   UserRound
 } from "lucide-react";
 import { AppShellConnectionError } from "@/components/common/AppShellConnectionError";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { AppShellSkeleton } from "@/components/common/AppShellSkeleton";
 import { AppFooter } from "@/components/common/AppFooter";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -323,6 +324,8 @@ function AppShell({
   const stateRef = useRef(state);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
+  const historyIndex = useRef(0);
+  const navigationRequest = useRef(0);
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
@@ -843,22 +846,59 @@ function AppShell({
   }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
 
   useEffect(() => {
-    const syncPathFromHistory = () => {
-      if (isStaticDownloadPath(window.location.pathname)) {
-        return;
+    historyIndex.current = window.history.state?.wiseeffNavigationIndex ?? 0;
+    window.history.replaceState({ ...window.history.state, wiseeffNavigationIndex: historyIndex.current }, "");
+    const originalPush = window.history.pushState;
+    const originalReplace = window.history.replaceState;
+    window.history.pushState = (data, unused, url) => {
+      const previousPath = window.location.pathname;
+      const previousIndex = window.history.state?.wiseeffNavigationIndex ?? historyIndex.current;
+      const nextIndex = previousIndex + 1;
+      originalPush.call(window.history, { ...data, wiseeffNavigationIndex: nextIndex }, unused, url);
+      if (window.location.pathname === previousPath && previousIndex === historyIndex.current) historyIndex.current = nextIndex;
+      navigationRequest.current += 1;
+    };
+    window.history.replaceState = (data, unused, url) => {
+      const index = window.history.state?.wiseeffNavigationIndex ?? historyIndex.current;
+      originalReplace.call(window.history, { ...data, wiseeffNavigationIndex: index }, unused, url);
+      navigationRequest.current += 1;
+    };
+    const syncPathFromHistory = (event?: PopStateEvent) => {
+      const request = ++navigationRequest.current;
+      const nextIndex = event ? window.history.state?.wiseeffNavigationIndex ?? 0 : historyIndex.current;
+      const applyNavigation = () => {
+        historyIndex.current = nextIndex;
+        if (isStaticDownloadPath(window.location.pathname)) return;
+        const nextPage = getPageByPath(window.location.pathname);
+        if (nextPage.path !== window.location.pathname) {
+          window.history.replaceState({ ...window.history.state, wiseeffNavigationIndex: nextIndex }, "", `${nextPage.path}${window.location.search}`);
+        }
+        setPath(nextPage.path);
+        setSearch(window.location.search);
+      };
+      if (event && nextIndex !== historyIndex.current) {
+        const decision = requestSettingsLeave();
+        if (decision instanceof Promise) {
+          const requestedUrl = window.location.href;
+          void decision.then((allowed) => {
+            if (request !== navigationRequest.current || window.location.href !== requestedUrl) return;
+            if (allowed) applyNavigation();
+            else window.history.go(historyIndex.current - nextIndex);
+          });
+          return;
+        }
+        if (!decision) { window.history.go(historyIndex.current - nextIndex); return; }
       }
-      const nextPage = getPageByPath(window.location.pathname);
-      if (nextPage.path !== window.location.pathname) {
-        window.history.replaceState(null, "", `${nextPage.path}${window.location.search}`);
-      }
-      setPath(nextPage.path);
-      setSearch(window.location.search);
+      applyNavigation();
     };
 
     syncPathFromHistory();
     window.addEventListener("popstate", syncPathFromHistory);
     return () => {
       window.removeEventListener("popstate", syncPathFromHistory);
+      window.history.pushState = originalPush;
+      window.history.replaceState = originalReplace;
+      navigationRequest.current += 1;
     };
   }, []);
 
@@ -876,10 +916,13 @@ function AppShell({
     };
   }, []);
 
-  const navigate = useCallback((nextPath: string) => {
+  const navigate = useCallback((nextPath: string, options?: { replace?: boolean }) => {
+    const request = ++navigationRequest.current;
     const url = new URL(nextPath, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
-      window.location.assign(url.href);
+      const decision = requestSettingsLeave();
+      if (decision instanceof Promise) void decision.then((allowed) => { if (allowed && request === navigationRequest.current) window.location.assign(url.href); });
+      else if (decision) window.location.assign(url.href);
       return;
     }
     const nextPage = getPageByPath(url.pathname);
@@ -892,9 +935,15 @@ function AppShell({
       return;
     }
 
-    window.history.pushState(null, "", nextUrl);
-    setPath(nextPage.path);
-    setSearch(url.search);
+    const applyNavigation = () => {
+      window.history[options?.replace ? "replaceState" : "pushState"](null, "", nextUrl);
+      historyIndex.current = window.history.state?.wiseeffNavigationIndex ?? historyIndex.current + (options?.replace ? 0 : 1);
+      setPath(nextPage.path);
+      setSearch(url.search);
+    };
+    const decision = requestSettingsLeave();
+    if (decision instanceof Promise) void decision.then((allowed) => { if (allowed && request === navigationRequest.current) applyNavigation(); });
+    else if (decision) applyNavigation();
   }, []);
 
   const retryAuthProbe = useCallback(() => {
@@ -1187,40 +1236,42 @@ function AppShell({
             >
               {apiRuntimeStatusBanner}
               {proactiveInsightsBanner}
-              <PageRouter
-                page={page}
-                onFeedback={() => setFeedbackOpen(true)}
-                state={state}
-                dispatch={dispatch}
-                onNavigate={navigate}
-                onNewProject={() => setProjectInitOpen(true)}
-                debuggingActions={debuggingActions}
-                logActions={logActions}
-                parameterActions={parameterActions}
-                runtime={appRuntime}
-                knowledgeCapability={knowledgeCapability}
-                canStartDtsReload={canStartDtsReload}
-                canPromoteDtsReloadDrafts={canPromoteDtsReloadDrafts}
-                runtimeMode={runtimeMode}
-                search={search}
-                dashboardState={dashboardState}
-                dashboardRuntime={dashboardRuntime}
-                onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
-                onDashboardDimensionChange={(dimension) =>
-                  dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
-                }
-                onDashboardOverviewScopeChange={(scope) =>
-                  dashboardDispatch({ type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope })
-                }
-                onDashboardProjectChange={(projectId) =>
-                  dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
-                }
-                onAuthContextRefresh={hydrateAuthContext}
-                organizationId={organizationId}
-                sessionPermissions={apiAuthPermissions}
-                sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
-                DebuggingAdminPage={DebuggingAdminPageWithRuntime}
-              />
+              <div className="page-content">
+                <PageRouter
+                  page={page}
+                  onFeedback={() => setFeedbackOpen(true)}
+                  state={state}
+                  dispatch={dispatch}
+                  onNavigate={navigate}
+                  onNewProject={() => setProjectInitOpen(true)}
+                  debuggingActions={debuggingActions}
+                  logActions={logActions}
+                  parameterActions={parameterActions}
+                  runtime={appRuntime}
+                  knowledgeCapability={knowledgeCapability}
+                  canStartDtsReload={canStartDtsReload}
+                  canPromoteDtsReloadDrafts={canPromoteDtsReloadDrafts}
+                  runtimeMode={runtimeMode}
+                  search={search}
+                  dashboardState={dashboardState}
+                  dashboardRuntime={dashboardRuntime}
+                  onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
+                  onDashboardDimensionChange={(dimension) =>
+                    dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                  }
+                  onDashboardOverviewScopeChange={(scope) =>
+                    dashboardDispatch({ type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope })
+                  }
+                  onDashboardProjectChange={(projectId) =>
+                    dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
+                  }
+                  onAuthContextRefresh={hydrateAuthContext}
+                  organizationId={organizationId}
+                  sessionPermissions={apiAuthPermissions}
+                  sessionRoles={runtimeMode === "api" ? apiAuthRoles : undefined}
+                  DebuggingAdminPage={DebuggingAdminPageWithRuntime}
+                />
+              </div>
               {showsApplicationFooter ? (
                 <AppFooter config={appFooterConfig} onFeedback={() => setFeedbackOpen(true)} />
               ) : null}

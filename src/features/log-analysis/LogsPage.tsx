@@ -1,6 +1,6 @@
-import { TabPanel } from "@/components/ui/tab-panel";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
+import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -66,7 +66,7 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-type LogsAuxTab = "history" | "metadata" | "related";
+type LogsAuxTab = "report" | "metadata" | "related";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 
 function createEmptyLogRecord(): LogRecord {
@@ -112,7 +112,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
+  const [auxTab, setAuxTab] = useState<LogsAuxTab>("report");
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [hoveredLine, setHoveredLine] = useState<number | null>(null);
@@ -186,6 +186,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   useEffect(() => {
     if (state.logs.length > prevLogCount.current) {
       setSelectedLogId(state.logs[0].id);
+      setAuxTab("report");
     }
     prevLogCount.current = state.logs.length;
   }, [state.logs]);
@@ -203,8 +204,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [activeLog.id]);
 
   useEffect(() => {
-    setLiveMessage(`已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${formatPercent(activeLog.confidence)}`);
-  }, [activeLog.confidence, activeLog.fileName, activeLog.id, activeLog.status]);
+    setLiveMessage(hasActiveLog ? `已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${formatPercent(activeLog.confidence)}` : "暂无日志记录，请上传日志。");
+  }, [activeLog.confidence, activeLog.fileName, activeLog.id, activeLog.status, hasActiveLog]);
 
   useEffect(() => {
     setActiveMatchIndex(0);
@@ -230,7 +231,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" && searchInputRef.current) {
         event.preventDefault();
         searchInputRef.current?.focus();
       }
@@ -418,9 +419,35 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       <div role="status" aria-live="polite" aria-label="日志切换状态" className="sr-only" data-testid="log-live-region">
         {liveMessage}
       </div>
-      <div className={classNames("logs-v2-main", hasActiveLog && activeLog.status === "Failed" && "logs-v2-main--failed")}>
-        <LogsPageHeader onNavigate={onNavigate} onUpload={openUploadDialog} />
-        <LogConclusionCard
+      <LogsPageHeader onNavigate={onNavigate} />
+      <NavigatorWorkbench
+        pageKey="logs"
+        navigatorLabel="模块导航"
+        taskLabel="日志任务区"
+        taskState={!hasActiveLog ? { kind: "empty", message: "暂无日志记录，请上传日志。" } : undefined}
+        panelId={`logs-aux-${auxTab}`}
+        tabId={`logs-aux-tab-${auxTab}`}
+        toolbar={<ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
+          onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
+          items={([["report", "报告"], ["metadata", "元数据"], ["related", "相关"]] as const)
+            .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} />}
+        primaryAction={<button className="button primary" type="button" onClick={openUploadDialog}>
+          <Upload size={16} />上传新日志
+        </button>}
+        navigator={<aside className="logs-aux-panel" aria-label="历史日志记录">
+          <div className="history-panel">
+            {state.logs.length ? state.logs.map((log) => (
+              <button aria-pressed={log.id === activeLog.id} className={log.id === activeLog.id ? "history-item active" : "history-item"}
+                key={log.id} type="button" onClick={() => setSelectedLogId(log.id)}>
+                <strong title={log.fileName}>{log.fileName}</strong>
+                <span className="logs-history-status">{logStatusLabels[log.status]} · {formatPercent(log.confidence)}</span>
+              </button>
+            )) : <EmptyState text="暂无日志记录，请上传日志。" />}
+          </div>
+        </aside>}
+      >
+      {auxTab !== "metadata" ? <div className="logs-v2-main">
+        {auxTab === "report" || activeLog.status === "Complete" ? <LogConclusionCard
           log={activeLog}
           onAskAgent={onAskAgent}
           onCopyLink={onCopyLink}
@@ -432,8 +459,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           relatedParameterLocated={Boolean(logActions && activeLog.relatedParameterId && activeLog.relatedParameterProjectId)}
           relatedParameterUnlocated={relatedParameterUnlocated}
           onRetry={activeLog.status === "Failed" ? openUploadDialog : handleRetryLog}
-        />
-        {activeLog.status !== "Failed" || !hasActiveLog ? (
+        /> : null}
+        {auxTab === "report" ? (activeLog.status !== "Failed" || !hasActiveLog ? (
           <>
             <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
             <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
@@ -465,20 +492,12 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
               </div>
             </section>
           </>
-        ) : null}
-        {/* Related knowledge (design deferred roadmap item 1): completed
-            analyses only, visible to knowledge:view holders in both modes. */}
+        ) : null) : <EmptyState text="没有找到关联日志。" />}
         {hasActiveLog && activeLog.status === "Complete" && knowledgeRepository && knowledgeCapability?.canView ? (
           <RelatedKnowledgeSection logId={activeLog.id} repository={knowledgeRepository} onNavigate={onNavigate} />
         ) : null}
-      </div>
-      <LogsAuxPanel
-        activeLog={activeLog}
-        auxTab={auxTab}
-        logs={state.logs}
-        onSelectLog={setSelectedLogId}
-        onTabChange={setAuxTab}
-      />
+      </div> : <LogMetadata log={activeLog} />}
+      </NavigatorWorkbench>
       {uploadDialogOpen ? (
         <UploadLogDialog
           accept={logActions ? null : mockLogUploadAccept}
@@ -824,18 +843,14 @@ function UploadLogDialog({
   );
 }
 
-function LogsPageHeader({ onNavigate, onUpload }: { onNavigate: (path: string) => void; onUpload: () => void }) {
+function LogsPageHeader({ onNavigate }: { onNavigate: (path: string) => void }) {
   useTopBarActions(
     <>
       <button className="button subtle" type="button" onClick={() => onNavigate("/")}>
         首页
       </button>
-      <button className="button primary" type="button" onClick={onUpload}>
-        <Upload size={16} />
-        上传新日志
-      </button>
     </>,
-    [onNavigate, onUpload]
+    [onNavigate]
   );
 
   return null;
@@ -1122,7 +1137,7 @@ function LogStageTimeline({ stage, status }: { stage: LogStageId; status: LogRec
         );
 
         return (
-          <li aria-current={current ? "step" : undefined} aria-disabled={aborted || undefined} className={className} key={id}>
+          <li aria-current={current ? "step" : undefined} className={className} key={id}>
             <span>{failed ? "!" : done ? <Check size={14} /> : index + 1}</span>
             <small>{STAGE_LABELS[id]}{aborted ? " · 已中止" : ""}</small>
           </li>
@@ -1244,7 +1259,7 @@ function RawLogViewer({
         <button aria-label="下一个匹配" disabled={matchLines.length === 0} type="button" onClick={() => moveMatch(1)}>
           ↓
         </button>
-        <output aria-live="polite" role="status">
+        <output aria-live="polite">
           {searchQuery.trim() === "" ? "" : matchLines.length === 0 ? "无匹配。按 Esc 清空" : `${activeMatchIndex + 1} / ${matchLines.length} 匹配`}
         </output>
       </div>
@@ -1369,7 +1384,7 @@ function EvidenceCard({
   const title = `证据 ${String(index + 1).padStart(2, "0")}`;
 
   return (
-    <article
+    <div
       aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`}
       aria-pressed={focused}
       className={classNames("evidence-card", focused && "evidence-card--focused", `evidence-card--${evidence.stageId}`)}
@@ -1399,73 +1414,16 @@ function EvidenceCard({
         <small>建议处置</small>
         <p>关联处置：{evidence.suggestedAction}</p>
       </footer>
-    </article>
+    </div>
   );
 }
 
-function LogsAuxPanel({
-  logs,
-  activeLog,
-  auxTab,
-  onTabChange,
-  onSelectLog
-}: {
-  logs: LogRecord[];
-  activeLog: LogRecord;
-  auxTab: LogsAuxTab;
-  onTabChange: (tab: LogsAuxTab) => void;
-  onSelectLog: (id: string) => void;
-}) {
-  const tabs: Array<[LogsAuxTab, string]> = [
-    ["history", "历史"],
-    ["metadata", "元数据"],
-    ["related", "相关"]
-  ];
-
+function LogMetadata({ log }: { log: LogRecord }) {
   return (
-    <aside className="logs-aux-panel" aria-label="历史日志记录">
-      <ViewSwitch
-        variant="tabs"
-        ariaLabel="日志辅助信息"
-        value={auxTab}
-        onValueChange={(value) => onTabChange(value as LogsAuxTab)}
-        items={tabs.map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))}
-      />
-      <TabPanel aria-labelledby={`logs-aux-tab-${auxTab}`} className="logs-aux-panel__body" id={`logs-aux-${auxTab}`} role="tabpanel">
-        {auxTab === "history" ? (
-          <div className="history-panel">
-            {logs.map((log) => (
-              <button
-                aria-pressed={log.id === activeLog.id}
-                className={log.id === activeLog.id ? "history-item active" : "history-item"}
-                key={log.id}
-                type="button"
-                onClick={() => onSelectLog(log.id)}
-              >
-                <strong>{log.fileName}</strong>
-                <span>{logStatusLabels[log.status]} · {formatPercent(log.confidence)}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {auxTab === "metadata" ? (
-          <dl className="logs-metadata-list">
-            <div>
-              <dt>文件名</dt>
-              <dd>{activeLog.fileName}</dd>
-            </div>
-            <div>
-              <dt>设备</dt>
-              <dd>{activeLog.device ?? "未记录"}</dd>
-            </div>
-            <div>
-              <dt>采集时间</dt>
-              <dd>{activeLog.capturedAt}</dd>
-            </div>
-          </dl>
-        ) : null}
-        {auxTab === "related" ? <EmptyState text="没有找到关联日志。" /> : null}
-      </TabPanel>
-    </aside>
+    <dl className="logs-metadata-list">
+      <div><dt>文件名</dt><dd>{log.fileName}</dd></div>
+      <div><dt>设备</dt><dd>{log.device ?? "未记录"}</dd></div>
+      <div><dt>采集时间</dt><dd>{log.capturedAt}</dd></div>
+    </dl>
   );
 }

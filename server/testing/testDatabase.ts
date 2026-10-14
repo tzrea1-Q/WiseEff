@@ -27,7 +27,6 @@ loadDotenvFiles(projectRoot);
 const TEMPLATE_BUILD_LOCK = 4_201_659;
 const roleCatalogLease = new AsyncLocalStorage<{ active: boolean; clones: Promise<void> }>();
 const TEMPLATE_LOCK_WAIT_MS = 120_000;
-const TEMPLATE_LOCK_POLL_MS = 50;
 const DATABASE_DISCONNECT_WAIT_MS = 5_000;
 const DATABASE_DISCONNECT_POLL_MS = 25;
 
@@ -118,19 +117,12 @@ async function databaseExists(admin: pg.Client, name: string): Promise<boolean> 
 }
 
 async function acquireTemplateLock(admin: pg.Client): Promise<void> {
-  const deadline = Date.now() + TEMPLATE_LOCK_WAIT_MS;
-  while (Date.now() < deadline) {
-    const result = await admin.query<{ ok: boolean }>("select pg_try_advisory_lock($1) as ok", [
-      TEMPLATE_BUILD_LOCK
-    ]);
-    if (result.rows[0]?.ok) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, TEMPLATE_LOCK_POLL_MS));
+  await admin.query("select set_config('lock_timeout', $1, false)", [`${TEMPLATE_LOCK_WAIT_MS}ms`]);
+  try {
+    await admin.query("select pg_advisory_lock($1)", [TEMPLATE_BUILD_LOCK]);
+  } finally {
+    await admin.query("reset lock_timeout");
   }
-  throw new Error(
-    `Timed out after ${TEMPLATE_LOCK_WAIT_MS}ms waiting for test template build lock ${TEMPLATE_BUILD_LOCK}`
-  );
 }
 
 /**
@@ -164,13 +156,12 @@ export function hasTestClusterRoleCatalogLock(): boolean {
   return roleCatalogLease.getStore()?.active === true;
 }
 
-async function dropStaleTestDatabases(admin: pg.Client, keepFingerprint: string): Promise<void> {
+async function dropStaleTemplates(admin: pg.Client, keepFingerprint: string): Promise<void> {
   const rows = await admin.query<{ datname: string }>(
     `select datname
      from pg_database
-     where (datname like $1 or datname like $2)
-       and strpos(datname, $3) = 0`,
-    [testDatabasePrefixPattern(TEMPLATE_PREFIX), testDatabasePrefixPattern(WORKER_PREFIX), keepFingerprint]
+     where datname like $1 and datname <> $2`,
+    [testDatabasePrefixPattern(TEMPLATE_PREFIX), `${TEMPLATE_PREFIX}${keepFingerprint}`]
   );
   for (const row of rows.rows) {
     const active = await admin.query("select 1 from pg_stat_activity where datname = $1 limit 1", [row.datname]);
@@ -211,7 +202,7 @@ async function ensureTemplateDatabase(admin: pg.Client, fingerprint: string): Pr
   }
 
   await admin.query(`alter database ${buildName} rename to ${templateName}`);
-  await dropStaleTestDatabases(admin, fingerprint);
+  await dropStaleTemplates(admin, fingerprint);
   return templateName;
 }
 
@@ -234,8 +225,8 @@ function currentPoolId(): string {
 
 /**
  * Run-scoped setup: stamp the run token, pre-build the migrations template so no suite
- * pays the build inside its own test budget, and reap orphaned worker databases left by
- * crashed runs (connection-free databases carrying a different run token).
+ * pays the build inside its own test budget. Worker databases belong to their run's
+ * teardown; a connection-free database can still be needed by a live worker.
  */
 export async function setupTestDatabaseRun(): Promise<void> {
   process.env.WISEEFF_TEST_RUN_TOKEN = `r${process.pid}`;
@@ -261,19 +252,6 @@ export async function setupTestDatabaseRun(): Promise<void> {
         await applyMigrations(sharedDb, migrationsDir);
       } finally {
         await shared.end().catch(() => undefined);
-      }
-      const orphans = await admin.query<{ datname: string }>(
-        `select datname
-         from pg_database d
-         where datname like $1
-           and not starts_with(substr(datname, $2), $3)
-           and not exists (select 1 from pg_stat_activity a where a.datname = d.datname)`,
-        [testDatabasePrefixPattern(WORKER_PREFIX), WORKER_PREFIX.length + MIGRATIONS_FINGERPRINT_LENGTH + 2, `${currentRunToken()}_`]
-      );
-      for (const row of orphans.rows) {
-        // No force: if another live run connects between the check and the drop, the
-        // drop fails and we leave their database alone.
-        await admin.query(`drop database if exists ${row.datname}`).catch(() => undefined);
       }
     } finally {
       await admin

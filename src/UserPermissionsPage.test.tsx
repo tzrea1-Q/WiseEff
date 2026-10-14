@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -65,6 +65,14 @@ async function openApprovalsWorkspace() {
 }
 
 describe("UserPermissionsPage", () => {
+  it("clears an empty member search through the template's next step", async () => {
+    renderPage();
+    await userEvent.type(screen.getByRole("searchbox", { name: "搜索用户" }), "not-a-member");
+    expect(screen.queryByText("Liu Min")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "清除筛选条件" }));
+    expect(screen.getByRole("searchbox", { name: "搜索用户" })).toHaveValue("");
+    expect(screen.getByText("Liu Min")).toBeInTheDocument();
+  });
   it("shows a loading skeleton while the user directory hydrates", () => {
     const state = { ...createPrototypeState(), activeRoleId: "admin" };
     render(
@@ -179,7 +187,7 @@ describe("UserPermissionsPage", () => {
     render(<UserPermissionsPage state={{ ...createPrototypeState(), activeRoleId: "admin" }} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
 
     expect(document.querySelector(".user-permissions-page")).toBeInTheDocument();
-    expect(document.querySelector(".user-permissions-toolbar")).toBeInTheDocument();
+    expect(document.querySelector(".user-permissions-toolbar")).toContainElement(screen.getByRole("button", { name: "添加用户" }));
     expect(document.querySelector(".user-permissions-grid")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
   });
@@ -256,47 +264,50 @@ describe("UserPermissionsPage", () => {
     const { dispatch } = renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
-    await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
-    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
-    await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
-    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
-    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Demo Engineer" } });
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "demo.engineer" } });
+    fireEvent.change(screen.getByLabelText("职务"), { target: { value: "Validation Engineer" } });
+    fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "WiseEff@2026" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "WiseEff@2026" } });
     await userEvent.selectOptions(screen.getByLabelText("初始角色"), "hardware-user");
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
-    expect(dispatch).toHaveBeenCalledWith({
+    await waitFor(() => expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_USER",
       name: "Demo Engineer",
       username: "demo.engineer",
       title: "Validation Engineer",
       roleId: "hardware-user"
-    });
+    }));
   });
 
   it("uses backend user governance actions when adding users in API mode", async () => {
+    const createdUser = {
+      id: "u-demo-engineer",
+      name: "Demo Engineer Canonical",
+      username: "demo.engineer",
+      title: "User",
+      roleId: "hardware-user" as const,
+      isActive: true,
+      createdAt: "2026-06-02T00:00:00.000Z",
+      lastActive: "never"
+    };
+    let resolveCreation!: (user: typeof createdUser) => void;
+    const creation = new Promise<typeof createdUser>((resolve) => { resolveCreation = resolve; });
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
-      createUser: vi.fn(async () => ({
-        id: "u-demo-engineer",
-        name: "Demo Engineer Canonical",
-        username: "demo.engineer",
-        title: "User",
-        roleId: "hardware-user" as const,
-        isActive: true,
-        createdAt: "2026-06-02T00:00:00.000Z",
-        lastActive: "never"
-      })),
+      createUser: vi.fn(() => creation),
       assignUserRole: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined)
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
-    await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
-    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
-    await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
-    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
-    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Demo Engineer" } });
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "demo.engineer" } });
+    fireEvent.change(screen.getByLabelText("职务"), { target: { value: "Validation Engineer" } });
+    fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "WiseEff@2026" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "WiseEff@2026" } });
     await userEvent.selectOptions(screen.getByLabelText("初始角色"), "hardware-user");
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
@@ -307,64 +318,68 @@ describe("UserPermissionsPage", () => {
       password: "WiseEff@2026",
       roleId: "hardware-user"
     });
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_USER" }));
+    expect(screen.getByRole("dialog", { name: "添加用户" })).toBeInTheDocument();
+    resolveCreation(createdUser);
+    await waitFor(() => expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_USER",
       id: "u-demo-engineer",
       name: "Demo Engineer Canonical",
       username: "demo.engineer",
       title: "User",
       roleId: "hardware-user"
-    });
+    }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "添加用户" })).not.toBeInTheDocument());
   });
 
   it("allows the add user title to be omitted so the reducer fallback can apply", async () => {
     const { dispatch } = renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
-    await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
-    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
-    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
-    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Demo Engineer" } });
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "demo.engineer" } });
+    fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "WiseEff@2026" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "WiseEff@2026" } });
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
-    expect(dispatch).toHaveBeenCalledWith({
+    await waitFor(() => expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_USER",
       name: "Demo Engineer",
       username: "demo.engineer",
       title: "",
       roleId: "hardware-user"
-    });
+    }));
   });
 
   it("keeps the add user dialog open when required account fields are empty", async () => {
     const { dispatch } = renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
-    await userEvent.type(screen.getByLabelText("姓名"), "   ");
-    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
-    await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
-    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
-    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "demo.engineer" } });
+    fireEvent.change(screen.getByLabelText("职务"), { target: { value: "Validation Engineer" } });
+    fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "WiseEff@2026" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "WiseEff@2026" } });
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
     expect(dispatch).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "添加用户" })).toBeInTheDocument();
-    expect(screen.getByText("姓名、用户名和初始密码不能为空。")).toBeInTheDocument();
+    expect(await screen.findByText("姓名、用户名和初始密码不能为空。")).toBeInTheDocument();
   });
 
   it("keeps the add user dialog open when password confirmation differs", async () => {
     const { dispatch } = renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
-    await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
-    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
-    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
-    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2027");
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Demo Engineer" } });
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "demo.engineer" } });
+    fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "WiseEff@2026" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "WiseEff@2027" } });
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
     expect(dispatch).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "添加用户" })).toBeInTheDocument();
-    expect(screen.getByText("两次输入的密码不一致。")).toBeInTheDocument();
+    expect(await screen.findByText("两次输入的密码不一致。")).toBeInTheDocument();
   });
 
   it("renders the add user dialog with structured form styling", async () => {
@@ -460,7 +475,9 @@ describe("UserPermissionsPage", () => {
     const { dispatch } = renderPageWithActions(userGovernanceActions);
     const row = screen.getByText("Liu Min").closest("tr")!;
 
-    await userEvent.click(within(row).getByRole("button", { name: "注销 Liu Min" }));
+    expect(within(row).queryByRole("button", { name: "注销 Liu Min" })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "注销 Liu Min" }));
     expect(userGovernanceActions.deleteUser).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
     expect(dialog).toHaveTextContent("永久删除");
@@ -486,7 +503,9 @@ describe("UserPermissionsPage", () => {
     const { dispatch } = renderPageWithActions(userGovernanceActions);
     const row = screen.getByText("Liu Min").closest("tr")!;
 
-    await userEvent.click(within(row).getByRole("button", { name: "注销 Liu Min" }));
+    expect(within(row).queryByRole("button", { name: "注销 Liu Min" })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "注销 Liu Min" }));
     const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
     await userEvent.click(within(dialog).getByRole("button", { name: "确认注销" }));
 
@@ -496,15 +515,15 @@ describe("UserPermissionsPage", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "DELETE_USER", userId: "u-liu-min" });
   });
 
-  it("disables permanent deletion for the current signed-in user", () => {
+  it("disables permanent deletion for the current signed-in user", async () => {
     renderPage();
     const currentUserRow = screen.getByText("Xu Yun").closest("tr")!;
 
-    const deleteButton = within(currentUserRow).getByRole("button", { name: "注销 Xu Yun" });
-    const reason = within(currentUserRow).getByText("不能注销当前登录账号。");
-    expect(deleteButton).toBeDisabled();
-    expect(deleteButton).toHaveAttribute("aria-describedby", reason.id);
-    expect(reason).toBeVisible();
+    await userEvent.click(within(currentUserRow).getByRole("button", { name: /：更多$/ }));
+    const deleteItem = screen.getByRole("menuitem", { name: "注销 Xu Yun" });
+    expect(deleteItem).toHaveAttribute("aria-disabled", "true");
+    expect(deleteItem).toHaveAccessibleDescription("不能注销当前登录账号。");
+    expect(within(deleteItem).getByText("不能注销当前登录账号。")).toBeVisible();
   });
 
   it("resets a member password through the governance action", async () => {
@@ -517,7 +536,8 @@ describe("UserPermissionsPage", () => {
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
 
-    await userEvent.click(screen.getByRole("button", { name: "重置 Liu Min 的密码" }));
+    await userEvent.click(within(screen.getByText("Liu Min").closest("tr")!).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "重置 Liu Min 的密码" }));
     const dialog = screen.getByRole("dialog", { name: "重置密码" });
     expect(dialog).toHaveTextContent("Liu Min");
     await userEvent.type(within(dialog).getByLabelText("新密码"), "ResetPass@2026");
@@ -734,11 +754,11 @@ describe("UserPermissionsPage", () => {
     });
     expect(narrowApprovalItemStyles["grid-template-areas"]).toContain('"user actions"');
     expect(approvalUserStyles["text-overflow"]).toBe("ellipsis");
-    expect(roleCellStyles.width).toBe("204px");
-    expect(roleSelectStyles["min-width"]).toBe("180px");
-    expect(roleSelectStyles.width).toBe("180px");
+    expect(roleCellStyles.width).toBe("var(--admin-list-role-cell-width)");
+    expect(roleSelectStyles["min-width"]).toBe("var(--admin-list-role-control-width)");
+    expect(roleSelectStyles.width).toBe("var(--admin-list-role-control-width)");
     expect(roleTooltipStyles.position).toBe("fixed");
-    expect(roleTooltipStyles["max-height"]).toBe("calc(100vh - 32px)");
+    expect(roleTooltipStyles["max-height"]).toBe("calc(100vh - var(--space-8))");
     expect(roleTooltipStyles.overflow).toBe("auto");
   });
 
@@ -757,16 +777,13 @@ describe("UserPermissionsPage", () => {
     expect(primaryButtonStyles["border-color"]).toBe("var(--primary)");
   });
 
-  it("keeps the member deletion button compact inside its table cell", () => {
+  it("shows only one compact action and overflow for each member", () => {
     renderPage();
     const row = screen.getByText("Wang Jie").closest("tr")!;
-    const deleteButton = within(row).getByRole("button", { name: "注销 Wang Jie" });
-    const css = readStylesheet("src/styles.css");
-    const styles = declarationsFor(css, ".user-permissions-delete-button");
-
-    expect(deleteButton).toHaveClass("user-permissions-delete-button");
-    expect(styles["justify-self"]).toBe("start");
-    expect(styles["min-width"]).toBe("0");
+    const actions = within(row).getByRole("group", { name: "Wang Jie 操作" });
+    expect(within(actions).getAllByRole("button")).toHaveLength(2);
+    for (const button of within(actions).getAllByRole("button")) expect(button).toHaveAttribute("data-size", "sm");
+    expect(within(row).queryByRole("button", { name: /注销/ })).not.toBeInTheDocument();
   });
 
   it("renders and filters legacy role ids under their migrated platform role", async () => {

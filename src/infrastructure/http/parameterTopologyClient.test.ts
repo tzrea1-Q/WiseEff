@@ -179,7 +179,7 @@ describe("createHttpParameterTopologyRepository", () => {
   });
 
   it("lists bindings via v2 project bindings and maps DTOs", async () => {
-    const fetchMock = fetchQueue({ items: [bindingDto] });
+    const fetchMock = fetchQueue({ items: [{ ...bindingDto, currentDisplayName: "当前中断名称" }] });
     const repository = createHttpParameterTopologyRepository(
       createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
     );
@@ -196,6 +196,7 @@ describe("createHttpParameterTopologyRepository", () => {
       instanceName: "sc8562@6E",
       locator: "/amba/i2c@FDF5E000/sc8562@6E",
       displayName: "GPIO 中断",
+      currentDisplayName: "当前中断名称",
       description: "SC8562 中断 GPIO 展示描述。",
       documentation: "电荷泵中断引脚的完整参数说明。"
     });

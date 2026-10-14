@@ -77,6 +77,14 @@ describe.each(["light", "dark"])("%s theme contrast pairs", (theme) => {
     ...(theme === "dark" ? declarationsFor(styles, ".dark") : {})
   };
 
+  it("preserves light table separators and uses the subtle dark border", () => {
+    const separator = declarationsFor(styles, "td")["border-bottom"].split(" solid ")[1];
+    expect(separator).toBe("var(--table-row-border)");
+    if (theme === "light") expect(tokens["--table-row-border"]).toBe("#e7ecf7");
+    expect(resolveColor(separator, tokens)).toEqual(resolveColor(theme === "light" ? "#e7ecf7" : "#27334a", tokens));
+    if (theme === "dark") expect(resolveColor(separator, tokens)).toEqual(resolveColor("var(--border)", tokens));
+  });
+
   it.each([".brand-subtitle", ".nav-group-label"])("keeps %s readable on the sidebar surface", (selector) => {
     expectReadable(declarationsFor(styles, selector).color, declarationsFor(styles, ".sidebar").background, tokens);
   });

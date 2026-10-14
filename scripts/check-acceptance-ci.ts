@@ -650,7 +650,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       const expectedNames = ["Check out repository", "Set up Node.js", "Install dependencies", "Install Playwright Chromium", "Prepare local acceptance env",
         "Migrate and seed database", "Acceptance quality metadata", "Acceptance quality gates"];
       check(JSON.stringify(steps.slice(0, expectedNames.length).map((step) => step.name)) === JSON.stringify(expectedNames)
-        && steps.length === expectedNames.length + 2, "Quality lanes must retain every ordered runtime prerequisite, metadata, gate and separate uploads.");
+        && steps.length === expectedNames.length + 3, "Quality lanes must retain every ordered runtime prerequisite, metadata, gate, runtime report and separate uploads.");
       check(steps[0]?.uses === "actions/checkout@v4" && steps[1]?.uses === "actions/setup-node@v4"
         && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[1]?.with?.cache === "npm"
         && steps[2]?.run === "npm ci" && steps[3]?.run === "npx playwright install --with-deps chromium"
@@ -668,8 +668,26 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
         M5_CONTRACT_CHECK_PASSED: "true", M5_SMOKE_ALLOW_NO_API: "false",
       };
       for (const [key, value] of Object.entries(qualityEnvironment)) check(worker?.env?.[key] === value, `Quality lanes must retain runtime environment ${key}.`);
+      const runtimeReport = steps[9];
+      const runtimeReportCommand = [
+        "node --input-type=module <<'NODE'",
+        "import { appendFileSync, existsSync, readFileSync } from 'node:fs';",
+        "const reportPath = 'test-results/quality/results.json';",
+        "const lane = process.env.WISEEFF_QUALITY_LANE;",
+        "const summary = existsSync(reportPath)",
+        "  ? `Quality lane ${lane}${lane === 'visual' ? ' (including compact PC)' : ''}: ${(JSON.parse(readFileSync(reportPath, 'utf8')).stats.duration / 1000).toFixed(1)} seconds. CI job limit: 35 minutes.`",
+        "  : 'Quality gate runtime unavailable: Playwright did not produce its JSON report.';",
+        "console.log(summary);",
+        "appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\\n`);",
+        "NODE",
+        "",
+      ].join("\n");
+      check(runtimeReport?.name === "Report quality gate runtime" && runtimeReport.if === "always()"
+        && runtimeReport["continue-on-error"] === undefined && runtimeReport.env === undefined
+        && runtimeReport.uses === undefined && runtimeReport.run === runtimeReportCommand,
+        "Quality lanes must retain the exact always-running lane runtime report without overrides or failure suppression.");
       const evidence = steps.find((step) => step.name === "Upload quality evidence");
-      check(steps[8] === upload && steps[9] === evidence && evidence?.uses === "actions/upload-artifact@v4"
+      check(steps[8] === upload && steps[10] === evidence && evidence?.uses === "actions/upload-artifact@v4"
         && evidence.if === "always()" && evidence["continue-on-error"] === true
         && evidence.with?.name === "${{ matrix.lane == 'visual' && 'wiseeff-acceptance-quality' || format('wiseeff-acceptance-quality-{0}', matrix.lane) }}"
         && evidence.with?.path === "playwright-report/quality\ntest-results/quality\n", "Quality evidence must retain the visual artifact name and isolate all other lane names and paths.");

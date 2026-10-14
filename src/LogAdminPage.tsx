@@ -1,12 +1,15 @@
 import { Download, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  DataTable,
   LogRecordDrawer,
   PageInsightBar,
   TimeWindowSelect,
   type Column
 } from "@/components/admin";
+import { AdminListPage } from "@/components/layout/AdminListPage";
+import { ViewSwitch } from "@/components/ui/view-switch";
+import { TabPanel } from "@/components/ui/tab-panel";
+import { useCollectionTab } from "@/hooks/useCollectionTab";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/common/SearchField";
 import { filterItems } from "@/lib/search";
@@ -27,6 +30,8 @@ import type { LogDomainKnowledgeLink } from "@/domain/logs/types";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
+
+const collectionTabs = ["records", "domains", "quality"] as const;
 
 export type LogAdminPageProps = {
   state: PrototypeState;
@@ -52,7 +57,7 @@ const statusBadgeClasses: Record<LogStatus, string> = {
 
 function StatusBadge({ status }: { status: LogStatus }) {
   return (
-    <span className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium", statusBadgeClasses[status])}>
+    <span className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-xs font-medium", statusBadgeClasses[status])}>
       {statusLabels[status]}
     </span>
   );
@@ -331,7 +336,7 @@ function DomainWebhookEditor({
               <li key={delivery.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-xs">
                 <span className="font-mono text-muted-foreground">{formatDeliveryTime(delivery.createdAt)}</span>
                 <span className="text-muted-foreground">{delivery.kind === "test" ? "测试" : "结果"} · 第 {delivery.attempt} 次</span>
-                <span className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium", deliveryStatusClasses[delivery.status])}>
+                <span className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-xs font-medium", deliveryStatusClasses[delivery.status])}>
                   {deliveryStatusLabels[delivery.status]}
                 </span>
                 <span className="font-mono text-muted-foreground">{delivery.httpStatus ? `HTTP ${delivery.httpStatus}` : delivery.error ?? ""}</span>
@@ -522,7 +527,8 @@ function LogDomainGovernanceSection({
   logActions?: LogRuntimeActions;
   knowledgeRepository?: KnowledgeRepository;
 }) {
-  const [domains, setDomains] = useState<LogDomain[]>([]);
+  const [domains, setDomains] = useState<LogDomain[] | null>(null);
+  const domainsLoading = Boolean(logActions) && domains === null;
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -622,8 +628,6 @@ function LogDomainGovernanceSection({
     try {
       await logActions.archiveLogDomain(domainId);
       await refreshDomains();
-    } catch {
-      // Already notified by the runtime.
     } finally {
       setPending(false);
     }
@@ -693,7 +697,7 @@ function LogDomainGovernanceSection({
       render: (domain) => (
         <span
           className={cn(
-            "inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium",
+            "inline-flex h-5 items-center rounded-md px-1.5 text-xs font-medium",
             domain.status === "archived" && "opacity-60",
             domain.status === "active" ? "bg-emerald-100 text-emerald-900" : "bg-muted text-muted-foreground"
           )}
@@ -706,21 +710,7 @@ function LogDomainGovernanceSection({
   ];
 
   return (
-    <section className="flex flex-col gap-2" aria-label="日志业务域治理" data-testid="log-domain-governance">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">业务域治理</h2>
-          <p className="text-xs text-muted-foreground">
-            注册业务域（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。
-          </p>
-        </div>
-        {canGovern ? (
-          <Button size="sm" onClick={openCreateForm} disabled={!logActions}>
-            新建业务域
-          </Button>
-        ) : null}
-      </div>
-
+    <section className="flex flex-col gap-2" aria-label="日志业务域治理" data-testid="log-domain-governance" aria-busy={domainsLoading}>
       {!canGovern ? (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           业务域治理需要 Admin 权限（logs:admin-domains）。
@@ -731,46 +721,21 @@ function LogDomainGovernanceSection({
         </p>
       ) : (
         <>
-          <DataTable
-            aria-label="业务域列表"
-            rows={domains}
-            rowKey={(domain) => domain.id}
-            columns={domainColumns}
-            pageSize={50}
-            emptyMessage="暂无业务域；未分类域始终可用（通用分析）。"
-            renderRowActions={(domain) => (
-              <div className="flex flex-wrap justify-end gap-1.5">
-                <Button variant="outline" size="sm" disabled={pending} onClick={() => openEditForm(domain)}>
-                  编辑
-                </Button>
-                {domain.status === "active" ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => setLinksDomain((current) => (current?.id === domain.id ? null : domain))}
-                  >
-                    知识条目
-                  </Button>
-                ) : null}
-                {domain.status === "active" ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => setWebhookDomain((current) => (current?.id === domain.id ? null : domain))}
-                  >
-                    结果回调
-                  </Button>
-                ) : null}
-                {domain.status === "active" ? (
-                  <Button variant="destructive" size="sm" disabled={pending} onClick={() => void archiveDomain(domain.id)}>
-                    归档
-                  </Button>
-                ) : null}
-              </div>
-            )}
-          />
+          <AdminListPage label="业务域治理"
+            headerActions={<Button size="sm" onClick={openCreateForm} disabled={pending}>新建业务域</Button>}
+            filterBar={<p className="text-sm text-muted-foreground">注册业务域（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
+            table={{ "aria-label": "业务域列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50 }}
+            rowActions={(domain) => ({ label: domain.name,
+              primaryAction: { id: "edit", label: "编辑", disabled: pending, onSelect: () => openEditForm(domain) },
+              items: domain.status === "active" ? [
+                { id: "knowledge", label: "知识条目", disabled: pending, onSelect: () => setLinksDomain((current) => current?.id === domain.id ? null : domain) },
+                { id: "webhook", label: "结果回调", disabled: pending, onSelect: () => setWebhookDomain((current) => current?.id === domain.id ? null : domain) },
+                { id: "archive", label: "归档", disabled: pending, destructive: true,
+                  confirmation: { title: `归档「${domain.name}」`, description: "该业务域将被归档，不再供新日志绑定；已有日志及其分析记录保留。", confirmLabel: "归档" },
+                  onSelect: () => archiveDomain(domain.id) }
+              ] : []
+            })}
+            emptyState={{ message: domainsLoading ? "正在加载业务域…" : "暂无业务域；未分类域始终可用（通用分析）。", actionLabel: "新建业务域", onAction: openCreateForm }} />
 
           {formOpen ? (
             <form
@@ -907,6 +872,7 @@ function FeedbackQualityInsightsSection({
 }) {
   const [rows, setRows] = useState<LogFeedbackInsight[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshCount, setRefreshCount] = useState(0);
 
   useEffect(() => {
     if (!logActions) {
@@ -929,7 +895,7 @@ function FeedbackQualityInsightsSection({
     return () => {
       cancelled = true;
     };
-  }, [logActions, refreshKey, timeWindow]);
+  }, [logActions, refreshKey, refreshCount, timeWindow]);
 
   const columns: Column<LogFeedbackInsight>[] = [
     {
@@ -989,34 +955,24 @@ function FeedbackQualityInsightsSection({
   ];
 
   return (
-    <section className="flex flex-col gap-2" aria-label="分析质量" data-testid="feedback-quality-insights">
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">分析质量</h2>
-        <p className="text-xs text-muted-foreground">
-          按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。
-        </p>
-      </div>
+    <section className="flex flex-col gap-2" aria-label="分析质量" data-testid="feedback-quality-insights" aria-busy={loading}>
       {!logActions ? (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           分析质量监控需在 API 模式下使用；mock 模式仅展示静态日志种子。
         </p>
       ) : (
-        <DataTable
-          aria-label="分析质量反馈聚合"
-          rows={rows}
-          rowKey={feedbackInsightRowKey}
-          columns={columns}
-          pageSize={6}
-          emptyState={
-            <p className="text-sm text-muted-foreground">{loading ? "正在加载反馈数据…" : "暂无反馈"}</p>
-          }
-        />
+        <AdminListPage label="分析质量"
+          headerActions={<Button size="sm" disabled={loading} onClick={() => setRefreshCount((count) => count + 1)}>刷新反馈</Button>}
+          filterBar={<p className="text-sm text-muted-foreground">按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。</p>}
+          table={{ "aria-label": "分析质量反馈聚合", rows, rowKey: feedbackInsightRowKey, columns, pageSize: 6 }}
+          emptyState={{ message: loading ? "正在加载反馈数据…" : "暂无反馈", actionLabel: "刷新", onAction: () => setRefreshCount((count) => count + 1) }} />
       )}
     </section>
   );
 }
 
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, knowledgeRepository }: LogAdminPageProps) {
+  const [collection, selectCollection] = useCollectionTab(collectionTabs, "records");
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
@@ -1184,29 +1140,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       sortAccessor: (record) => record.confidence,
       align: "right",
       widthClass: "w-36"
-    },
-    {
-      key: "action",
-      header: "",
-      render: (record) =>
-        logView === "archived" && canAct ? (
-          <button
-            type="button"
-            className="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-50"
-            disabled={pendingActions.has(pendingKey("unarchive", record.id))}
-            aria-busy={pendingActions.has(pendingKey("unarchive", record.id)) || undefined}
-            onClick={(event) => {
-              event.stopPropagation();
-              unarchiveLog(record.id);
-            }}
-          >
-            恢复
-          </button>
-        ) : (
-          <span className="text-xs text-primary">查看</span>
-        ),
-      align: "right",
-      widthClass: "w-20"
     }
   ];
 
@@ -1313,7 +1246,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         <Download data-icon="inline-start" />
         导出报表
       </Button>
-      <Button size="sm" onClick={handleSync} disabled={syncPending} aria-busy={syncPending || undefined}>
+      <Button variant="outline" size="sm" onClick={handleSync} disabled={syncPending} aria-busy={syncPending || undefined}>
         <RefreshCw data-icon="inline-start" />
         同步日志
       </Button>
@@ -1322,7 +1255,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   );
 
   return (
-    <div className="log-admin-page flex flex-col gap-5 p-6">
+    <div className="log-admin-page flex flex-col gap-5">
       {insight && !insightDismissed ? (
         <PageInsightBar
           variant={insight.severity}
@@ -1340,61 +1273,31 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         />
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4">
-        <LogDomainGovernanceSection
-          canGovern={canPerform(state.activeRoleId, "logs.admin-domains")}
-          logActions={logActions}
-          knowledgeRepository={knowledgeRepository}
-        />
-        <FeedbackQualityInsightsSection
-          timeWindow={timeWindow}
-          logActions={logActions}
-          refreshKey={feedbackInsightsRefreshKey}
-        />
-        <section className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-foreground">日志分析记录</h2>
-            <div className="flex items-center gap-1" role="group" aria-label="日志视图切换">
-              <button
-                type="button"
-                aria-pressed={logView === "active"}
-                onClick={() => setLogView("active")}
-                className={cn(
-                  "h-7 rounded-md px-2.5 text-xs transition-colors",
-                  logView === "active" ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"
-                )}
-              >
-                活跃日志
-              </button>
-              <button
-                type="button"
-                aria-pressed={logView === "archived"}
-                onClick={() => setLogView("archived")}
-                className={cn(
-                  "h-7 rounded-md px-2.5 text-xs transition-colors",
-                  logView === "archived" ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"
-                )}
-              >
-                已归档{archivedLogs.length > 0 ? `（${archivedLogs.length}）` : ""}
-              </button>
-            </div>
-          </div>
-          <DataTable
-            aria-label="日志分析记录"
-            rows={filteredRows}
-            rowKey={(record) => record.id}
-            columns={columns}
-            onRowClick={(record) => setSelectedRecordId(record.id)}
-            selectedRowKey={selectedRecordId ?? undefined}
-            pageSize={8}
-            toolbar={
+      <ViewSwitch variant="tabs" ariaLabel="日志后台集合" value={collection} onValueChange={selectCollection}
+        items={[
+          { value: "records", label: "日志分析记录", id: "log-tab-records", panelId: "log-panel-records" },
+          { value: "domains", label: "业务域治理", id: "log-tab-domains", panelId: "log-panel-domains" },
+          { value: "quality", label: "分析质量", id: "log-tab-quality", panelId: "log-panel-quality" }
+        ]} />
+      <TabPanel id={`log-panel-${collection}`} aria-labelledby={`log-tab-${collection}`}>
+        <div hidden={collection !== "domains"}>
+          <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} knowledgeRepository={knowledgeRepository} />
+        </div>
+        <div hidden={collection !== "quality"}>
+          <FeedbackQualityInsightsSection timeWindow={timeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} />
+        </div>
+        {collection === "records" ? (
+          <AdminListPage label="日志分析记录"
+            headerActions={<Button size="sm" onClick={() => void handleSync()} disabled={syncPending} aria-busy={syncPending || undefined}>刷新记录</Button>}
+            headerContent={<ViewSwitch variant="toggle" ariaLabel="日志视图切换" value={logView} onValueChange={(value) => setLogView(value as "active" | "archived")}
+              items={[{ value: "active", label: "活跃日志" }, { value: "archived", label: archivedLogs.length > 0 ? `已归档（${archivedLogs.length}）` : "已归档" }]} />}
+            filterBar={<>
               <div className="flex flex-wrap items-center gap-2">
                 <SearchField
                   value={tableQuery}
                   onValueChange={setTableQuery}
                   placeholder="搜索报告号、文件名、来源或结论"
                   ariaLabel="搜索日志分析记录"
-                  className="log-admin-search"
                 />
                 {hasActiveFilters ? (
                   <button
@@ -1409,24 +1312,17 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
                   显示 {filteredRows.length} / {tableSourceLogs.length} 条
                 </span>
               </div>
-            }
-            emptyState={
-              hasActiveFilters ? (
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">未匹配任何记录</p>
-                  <button type="button" onClick={resetFilters} className="mt-2 text-xs text-primary hover:underline">
-                    重置筛选
-                  </button>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {logView === "archived" ? "暂无已归档日志" : "当前时间窗口内暂无日志"}
-                </p>
-              )
-            }
-          />
-        </section>
-      </div>
+            </>}
+            table={{ "aria-label": "日志分析记录", rows: filteredRows, rowKey: (record) => record.id, columns,
+              onRowClick: (record) => setSelectedRecordId(record.id), selectedRowKey: selectedRecordId ?? undefined, pageSize: 8 }}
+            rowActions={(record) => ({ label: record.fileName,
+              primaryAction: { id: "view", label: "查看", onSelect: () => setSelectedRecordId(record.id) },
+              items: logView === "archived" && canAct ? [{ id: "restore", label: "恢复", disabled: pendingActions.has(pendingKey("unarchive", record.id)), onSelect: () => unarchiveLog(record.id) }] : []
+            })}
+            emptyState={{ message: hasActiveFilters ? "未匹配任何记录" : logView === "archived" ? "暂无已归档日志" : "当前时间窗口内暂无日志",
+              actionLabel: hasActiveFilters ? "重置筛选" : "刷新", onAction: hasActiveFilters ? resetFilters : () => void handleSync() }} />
+        ) : null}
+      </TabPanel>
 
       <LogRecordDrawer
         record={selectedRecord}

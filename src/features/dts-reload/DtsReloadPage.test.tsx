@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -294,7 +294,7 @@ async function setDebugValueInTray(
 ) {
   const input = await screen.findByLabelText(label);
   await user.clear(input);
-  await user.type(input, value);
+  await user.paste(value);
 }
 
 async function setWatchdogDebugValue(
@@ -320,7 +320,7 @@ afterEach(() => {
 
 describe("DtsReloadPage", () => {
   it("restores a selected module after candidates reload and clears it on reselect", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository();
     const first = renderPage(repository);
     await screen.findByRole("button", { name: /编辑 Watchdog/ });
@@ -338,7 +338,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("explains an unreachable local Bridge with expandable details and a working retry", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.spyOn(bridgeLauncher, "connectLocalBridge").mockResolvedValue({ reachable: true, ok: true, accepted: true });
     vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockResolvedValue(null);
     vi.spyOn(bridgeLauncher, "probeLocalBridgeHealthDetailed")
@@ -394,7 +394,7 @@ describe("DtsReloadPage", () => {
     { otherCount: 1, revokeOther: true, revokeFails: false },
     { otherCount: 0, revokeOther: false, revokeFails: true }
   ])("handles bridge revoke and re-pair without restarting the page: %j", async ({ otherCount, revokeOther, revokeFails }) => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const currentBridge: bridgeClient.DeviceBridgeRecord = {
       id: "bridge-old", machineLabel: "Lab PC", platform: "windows", arch: "amd64",
       clientVersion: "0.1.0", capabilities: {}, createdAt: "2026-09-15T00:00:00Z",
@@ -452,7 +452,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("rebinds a local bridge owned by another account without reporting pairing expiry", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     let activeBridges: bridgeClient.DeviceBridgeRecord[] = [];
     let health: bridgeClient.LocalBridgeHealthState = {
       ok: true,
@@ -561,8 +561,35 @@ describe("DtsReloadPage", () => {
     expect(history).not.toHaveAttribute("open");
   });
 
+  it("keeps reload candidates before the tray and remembers module navigation collapse", async () => {
+    const repository = createRepository();
+    const first = renderPage(repository);
+    await screen.findByRole("button", { name: /编辑 Watchdog/ });
+    const task = screen.getByRole("region", { name: "DTS 重载任务" });
+    const table = within(task).getByRole("table", { name: "可调试参数" });
+    expect(task).not.toContainElement(screen.getByRole("region", { name: "本地设备连接" }));
+    const toolbar = screen.getByRole("group", { name: "工作台操作" });
+    expect(within(toolbar).getByRole("combobox", { name: "选择项目" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "选择参数后下发" })).toBeDisabled();
+    fireEvent.click(within(table).getByRole("checkbox", { name: "选择 Watchdog" }));
+    const tray = await screen.findByRole("region", { name: "本轮重载" });
+    expect(task).toContainElement(tray);
+    expect(table.compareDocumentPosition(tray) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(toolbar).getByRole("button", { name: /下发参数/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(screen.queryByRole("tree", { name: "业务模块树" })).not.toBeInTheDocument();
+    expect(table).toBeVisible();
+    expect(tray).toBeVisible();
+
+    first.unmount();
+    renderPage(repository);
+    expect(screen.getByRole("button", { name: "展开模块导航" })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(await screen.findByRole("tree", { name: "业务模块树" })).toBeVisible();
+  });
+
   it("publishes device connection status and redetection to the topbar", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const detectTargets = vi.fn(async () => []);
     renderPageWithTopBar(createRepository(), { detectTargets });
 
@@ -593,7 +620,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("does not send a stale bridge id while offline and explains how to recover", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const detectTargets = vi.fn(async () => []);
     renderPageWithTopBar(createRepository(), {
       detectTargets,
@@ -635,7 +662,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("clears the previous protocol target while the next detection is pending", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     let resolveAdb: ((targets: DtsReloadReachableTarget[]) => void) | undefined;
     const detectTargets = vi.fn((requestedProtocol: "hdc" | "adb", _bridgeId?: string) => {
       if (requestedProtocol === "hdc") {
@@ -786,7 +813,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("opens a side sheet to edit a debuggable candidate into the reload batch", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository();
     renderPage(repository);
 
@@ -801,7 +828,7 @@ describe("DtsReloadPage", () => {
     const valueInput = within(sheet).getByLabelText("Watchdog 调试值");
     await user.clear(valueInput);
     expect(within(sheet).getByRole("button", { name: "加入本轮重载" })).toBeDisabled();
-    await user.type(valueInput, "<7000>");
+    await user.paste("<7000>");
     expect(within(sheet).getByRole("button", { name: "加入本轮重载" })).toBeEnabled();
     await user.click(within(sheet).getByRole("button", { name: "加入本轮重载" }));
 
@@ -818,7 +845,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("edits the reload batch in a workbench-style tray with remove and reset actions", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: [
@@ -852,7 +879,7 @@ describe("DtsReloadPage", () => {
 
     const compatibleInput = screen.getByLabelText("Compatible 调试值");
     await user.clear(compatibleInput);
-    await user.type(compatibleInput, '"debug"');
+    await user.paste('"debug"');
     expect(compatibleInput).toHaveValue('"debug"');
     const compatibleDiff = screen.getByLabelText("Compatible 值变更");
     expect(compatibleDiff.querySelector(".submission-preview-diff--scalar")).toHaveAttribute("data-kind", "changed");
@@ -870,8 +897,8 @@ describe("DtsReloadPage", () => {
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
   });
 
-  it("keeps block reasons in the operations column for not-debuggable rows", async () => {
-    const user = userEvent.setup();
+  it("keeps block reasons in the operations column and disables edits for not-debuggable rows", async () => {
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: [
@@ -888,15 +915,18 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
 
     expect(await screen.findByText("Blocked")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /编辑 Blocked/ })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
+    const edit = screen.getByRole("button", { name: /编辑 Blocked/ });
+    expect(edit).toBeDisabled();
+    const operations = edit.closest("td")!;
+    expect(within(operations).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
+    expect(within(operations).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
+    await user.click(edit);
     await user.click(screen.getByText("Blocked"));
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
   });
 
   it("filters the candidate table to workbench hand-off ids and does not auto-fill the tray", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: [
@@ -925,7 +955,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("filters candidates with the 模块 ColumnFilter multi-select", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: [
@@ -967,7 +997,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("keeps legacy candidates with the same module label independently selectable", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: [
@@ -990,7 +1020,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("sorts the candidate DataTable and exposes aria-sort", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: [
@@ -1023,7 +1053,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("paginates the candidate DataTable and toggles a row from its checkbox", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: Array.from({ length: 12 }, (_, index) =>
@@ -1057,8 +1087,18 @@ describe("DtsReloadPage", () => {
   });
 
   it("lists candidates, starts a batch run, shows overlay source, and downloads the artifact", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
+    let completeStart!: (value: DtsReloadRun) => void;
+    const startedRun = new Promise<DtsReloadRun>((resolve) => {
+      completeStart = resolve;
+    });
+    let completeDownload!: (value: Blob) => void;
+    const downloadedArtifact = new Promise<Blob>((resolve) => {
+      completeDownload = resolve;
+    });
     const repository = createRepository({
+      startRun: vi.fn(() => startedRun),
+      downloadArtifact: vi.fn(() => downloadedArtifact),
       listCandidates: vi.fn(async () => ({
         items: [
           candidate(),
@@ -1104,7 +1144,8 @@ describe("DtsReloadPage", () => {
     await user.click(uartModule);
     expect(screen.getByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("按名称搜索参数"), "Watch");
+    await user.click(screen.getByLabelText("按名称搜索参数"));
+    await user.paste("Watch");
     expect(screen.getByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "选择 Compatible" })).not.toBeInTheDocument();
     await user.clear(screen.getByLabelText("按名称搜索参数"));
@@ -1115,31 +1156,34 @@ describe("DtsReloadPage", () => {
 
     const watchdogInput = screen.getByLabelText("Watchdog 调试值");
     await user.clear(watchdogInput);
-    await user.type(watchdogInput, "<99999>");
+    await user.paste("<99999>");
     await fillDeployFields(user);
     await user.click(screen.getByRole("button", { name: /下发参数/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/最大值/);
     expect(repository.startRun).not.toHaveBeenCalled();
 
     await user.clear(watchdogInput);
-    await user.type(watchdogInput, "<7000>");
+    await user.paste("<7000>");
     const compatibleInput = screen.getByLabelText("Compatible 调试值");
     await user.clear(compatibleInput);
-    await user.type(compatibleInput, '"sc8562", "sc8562-v2"');
+    await user.paste('"sc8562", "sc8562-v2"');
     await user.click(screen.getByRole("button", { name: /下发参数/ }));
 
-    await waitFor(() =>
-      expect(repository.startRun).toHaveBeenCalledWith({
-        projectId: "project-1",
-        targets: [
-          { bindingId: "binding-1", debugValue: "<7000>" },
-          { bindingId: "binding-2", debugValue: '"sc8562", "sc8562-v2"' }
-        ]
-      })
-    );
+    expect(repository.startRun).toHaveBeenCalledWith({
+      projectId: "project-1",
+      targets: [
+        { bindingId: "binding-1", debugValue: "<7000>" },
+        { bindingId: "binding-2", debugValue: '"sc8562", "sc8562-v2"' }
+      ]
+    });
     expect(repository.deployRun).not.toHaveBeenCalled();
 
-    const dialog = await screen.findByRole("dialog");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await act(async () => {
+      completeStart(run());
+      await startedRun;
+    });
+    const dialog = screen.getByRole("dialog");
     expect((within(dialog).getByLabelText("部署确认 Overlay 源码") as HTMLTextAreaElement).value).toContain(
       "target-path"
     );
@@ -1147,16 +1191,22 @@ describe("DtsReloadPage", () => {
     expect(within(dialog).getByText(/<7000>/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
 
-    const overlay = await screen.findByLabelText("Overlay 源码");
+    const overlay = screen.getByLabelText("Overlay 源码");
     expect((overlay as HTMLTextAreaElement).value).toContain("target-path");
     expect(screen.getByText(/本运行包含 1 个参数目标/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /下载编译产物/ }));
-    await waitFor(() => expect(repository.downloadArtifact).toHaveBeenCalledWith("run-1"));
+    expect(repository.downloadArtifact).toHaveBeenCalledWith("run-1");
+    expect(createObjectURL).not.toHaveBeenCalled();
+    await act(async () => {
+      completeDownload(new Blob([Uint8Array.from([1, 2, 3])]));
+      await downloadedArtifact;
+    });
     expect(createObjectURL).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:overlay");
   });
 
   it("does not allow selecting a not-debuggable parameter", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: [
@@ -1182,7 +1232,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("marks sensitive candidates before start and requires critical confirmation token", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
         items: [
@@ -1249,7 +1299,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("opens deploy confirm after validated start and only calls deployRun with confirm-dts-reload on confirm", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository();
 
     renderPage(repository);
@@ -1303,7 +1353,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("shows per-parameter behavioural verification outcomes including missing bindings", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       deployRun: vi.fn(async () =>
         run({
@@ -1365,7 +1415,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("distinguishes capture failure from obtained-with-no-matches in the evidence panel", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const failedRepo = createRepository({
       deployRun: vi.fn(async () =>
         run({
@@ -1421,7 +1471,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("shows residue bookkeeping copy and opens compensating restore confirmation", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const residue = {
       deviceId: "bridge:bridge-1",
       projectId: "project-1",
@@ -1467,7 +1517,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("shows run history and last-reload state; view-only users can open details but not start", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const historyRun = run({
       id: "run-history",
       status: "failed",
@@ -1652,7 +1702,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("lists reachable targets from detectTargets for selection context", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository();
     renderPage(repository, {
       bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
@@ -1674,7 +1724,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("offers 沉淀为知识 on a terminal history run for knowledge editors and hands off to /knowledge", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const terminalRun = run({
       id: "run-terminal",
       status: "unverifiable",
@@ -1708,7 +1758,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("hides 沉淀为知识 for non-terminal runs and for users without knowledge:edit", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const knowledgeRepository = {
       distillFromReloadRun: vi.fn()
     } as unknown as KnowledgeRepository;
@@ -1746,7 +1796,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("offers 晋升为草稿 on a verified ordinary run and hands off to the workbench", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const verifiedRun = run({
       id: "run-verified",
       status: "verified",
@@ -1783,7 +1833,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("asks for acknowledgement before promoting an unverifiable run", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const unverifiableRun = run({
       id: "run-unverifiable",
       status: "unverifiable"
@@ -1871,7 +1921,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("surfaces a promotion failure without navigating away", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       getRun: vi.fn(async () => run({ id: "run-verified", status: "verified" })),
       promoteToDrafts: vi.fn(async () => {
@@ -1892,7 +1942,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("surfaces a distillation failure without navigating away", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       getRun: vi.fn(async () => run({ id: "run-terminal", status: "contradicted" }))
     });
@@ -1916,7 +1966,7 @@ describe("DtsReloadPage", () => {
   });
 
   it("renders a navigable upgrade control when deploy fails with bridge-upgrade-required", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
     const repository = createRepository({
       deployRun: vi.fn(async () => {

@@ -104,6 +104,7 @@
     "parameter-definitions:reconcile": "tsx scripts/reconcile-parameter-definitions.ts",
     "parameter-definitions:check": "tsx scripts/reconcile-parameter-definitions.ts --verify",
     "reset:quality-runtime": "tsx scripts/reset-quality-runtime.ts",
+    "seed:quality:admin-lists": "tsx scripts/seed-quality-admin-lists.ts",
     "seed:quality:visual-review": "tsx scripts/seed-quality-visual-review.ts",
     "cleanup:quality:visual-review": "tsx scripts/seed-quality-visual-review.ts --cleanup",
     "db:seed:m0": "tsx scripts/seed-m0.ts",

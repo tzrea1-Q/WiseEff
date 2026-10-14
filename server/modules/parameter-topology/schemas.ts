@@ -73,6 +73,7 @@ export const projectBindingDtoSchema = z.object({
   /** Durable v1 business module (phase 2, §5.1 read path) — browse source of truth. */
   moduleId: z.string(),
   displayName: z.string().nullable(),
+  currentDisplayName: z.string().nullable().optional(),
   description: z.string().nullable(),
   documentation: z.string().nullable()
 });

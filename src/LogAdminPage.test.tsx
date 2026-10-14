@@ -16,6 +16,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+beforeEach(() => window.history.replaceState(null, "", "/log-admin"));
+
+it.each(["domains", "quality"])("keeps tabs, header, filter context and table in order on %s", async (tab) => {
+  window.history.replaceState(null, "", `/log-admin?tab=${tab}`);
+  renderPage({ logActions: createLogActions() });
+  const table = await screen.findByRole("table");
+  const panel = screen.getByRole("tabpanel");
+  const header = within(panel).getByRole("group", { name: /操作$/ });
+  const filters = within(panel).getByRole("group", { name: /筛选$/ });
+  for (const [before, after] of [[screen.getByRole("tablist"), header], [header, filters], [filters, table]]) {
+    expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+  expect(filters).not.toBeEmptyDOMElement();
+});
+
 function TopBarActionsHarness({ children }: { children: ReactNode }) {
   const [actions, setActions] = useState<ReactNode | null>(null);
   const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {
@@ -75,6 +90,21 @@ function getLogRow(fileName: RegExp) {
 }
 
 describe("LogAdminPage M3 skeleton", () => {
+  it("restores URL collection tabs without showing stacked collections", async () => {
+    window.history.replaceState(null, "", "/log-admin?tab=quality&keep=1");
+    renderPage({ logActions: createLogActions() });
+    expect(await screen.findByRole("table", { name: "分析质量反馈聚合" })).toBeVisible();
+    expect(screen.queryByRole("table", { name: "日志分析记录" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "日志分析记录" }));
+    expect(window.location.search).toBe("?tab=records&keep=1");
+    expect(screen.getByRole("tabpanel")).toHaveAccessibleName("日志分析记录");
+    act(() => {
+      window.history.replaceState(null, "", "/log-admin?tab=domains");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.getByRole("tab", { name: "业务域治理" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+  });
   it("moves page actions into the topbar instead of rendering a page header", () => {
     renderPage();
 
@@ -430,10 +460,11 @@ describe("LogAdminPage · archived view", () => {
     const table = screen.getByRole("table", { name: "日志分析记录" });
     expect(within(table).queryByText(base.logs[1]!.fileName)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /已归档（1）/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /已归档（1）/ }));
     expect(within(screen.getByRole("table", { name: "日志分析记录" })).getByText(base.logs[1]!.fileName)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "恢复" }));
+    await userEvent.click(screen.getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "恢复" }));
     expect(dispatch).toHaveBeenCalledWith({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId: archivedId });
   });
 
@@ -443,10 +474,11 @@ describe("LogAdminPage · archived view", () => {
     const logActions = createLogActions();
     renderPage({ logActions, stateOverrides: { archivedLogIds: [archivedId] } });
 
-    await userEvent.click(screen.getByRole("button", { name: /已归档（1）/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /已归档（1）/ }));
     expect(logActions.refresh).toHaveBeenCalledWith({ includeArchived: true });
 
-    await userEvent.click(screen.getByRole("button", { name: "恢复" }));
+    await userEvent.click(screen.getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "恢复" }));
     await waitFor(() => expect(logActions.unarchive).toHaveBeenCalledWith(archivedId));
   });
 });
@@ -555,6 +587,28 @@ describe("LogAdminPage · page header actions", () => {
 });
 
 describe("LogAdminPage 业务域治理", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=domains"));
+
+  it("confirms domain archival from overflow before writing", async () => {
+    const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([chargingDomain]) });
+    renderPage({ logActions });
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "charging-power：更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "归档" }));
+    expect(logActions.archiveLogDomain).not.toHaveBeenCalled();
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "归档" }));
+    await waitFor(() => expect(logActions.archiveLogDomain).toHaveBeenCalledWith("domain-charging"));
+  });
+
+  it("preserves domain edits while visiting another collection", async () => {
+    renderPage({ logActions: createLogActions() });
+    await userEvent.click(within(screen.getByRole("group", { name: "业务域治理操作" })).getByRole("button", { name: "新建业务域" }));
+    await userEvent.type(screen.getByLabelText(/名称/), "未保存业务域");
+    await userEvent.click(screen.getByRole("tab", { name: "日志分析记录" }));
+    expect(screen.queryByRole("form", { name: "新建业务域" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "业务域治理" }));
+    expect(screen.getByLabelText(/名称/)).toHaveValue("未保存业务域");
+  });
   const chargingDomain = {
     id: "domain-charging",
     name: "charging-power",
@@ -634,7 +688,7 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    await userEvent.click(await screen.findByRole("button", { name: "新建业务域" }));
+    await userEvent.click(await within(screen.getByRole("group", { name: "业务域治理操作" })).findByRole("button", { name: "新建业务域" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
     await userEvent.type(screen.getByLabelText(/描述/), "充电域");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
@@ -655,7 +709,7 @@ describe("LogAdminPage 业务域治理", () => {
     const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([]) });
     renderPage({ logActions });
 
-    await userEvent.click(await screen.findByRole("button", { name: "新建业务域" }));
+    await userEvent.click(await within(screen.getByRole("group", { name: "业务域治理操作" })).findByRole("button", { name: "新建业务域" }));
     await userEvent.type(screen.getByLabelText(/名称/), "broken");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
     await userEvent.click(profileInput);
@@ -680,7 +734,7 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    await userEvent.click(await screen.findByRole("button", { name: "新建业务域" }));
+    await userEvent.click(await within(screen.getByRole("group", { name: "业务域治理操作" })).findByRole("button", { name: "新建业务域" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
     await userEvent.click(profileInput);
@@ -706,7 +760,7 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    await userEvent.click(await screen.findByRole("button", { name: "新建业务域" }));
+    await userEvent.click(await within(screen.getByRole("group", { name: "业务域治理操作" })).findByRole("button", { name: "新建业务域" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
     await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
 
@@ -722,7 +776,9 @@ describe("LogAdminPage 业务域治理", () => {
     renderPage({ logActions });
 
     const table = await screen.findByRole("table", { name: "业务域列表" });
-    await userEvent.click(within(table).getByRole("button", { name: "归档" }));
+    await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "归档" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "归档" }));
 
     await waitFor(() => expect(logActions.archiveLogDomain).toHaveBeenCalledWith("domain-charging"));
   });
@@ -748,6 +804,7 @@ describe("LogAdminPage 业务域治理", () => {
 });
 
 describe("LogAdminPage 业务域知识条目关联", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=domains"));
   const chargingDomain = {
     id: "domain-charging",
     name: "charging-power",
@@ -806,7 +863,8 @@ describe("LogAdminPage 业务域知识条目关联", () => {
     renderPage({ logActions, knowledgeRepository });
 
     const table = await screen.findByRole("table", { name: "业务域列表" });
-    await userEvent.click(within(table).getByRole("button", { name: "知识条目" }));
+    await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "知识条目" }));
 
     const editor = await screen.findByTestId("domain-knowledge-links-editor");
     await waitFor(() => expect(logActions.listLogDomainKnowledgeLinks).toHaveBeenCalledWith("domain-charging"));
@@ -852,7 +910,8 @@ describe("LogAdminPage 业务域知识条目关联", () => {
     renderPage({ logActions, knowledgeRepository: makeKnowledgeRepository([makePublishedEntry()]) });
 
     const table = await screen.findByRole("table", { name: "业务域列表" });
-    await userEvent.click(within(table).getByRole("button", { name: "知识条目" }));
+    await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "知识条目" }));
     const editor = await screen.findByTestId("domain-knowledge-links-editor");
 
     expect(await within(editor).findByRole("note")).toHaveTextContent(/Archived charging note/);
@@ -868,6 +927,7 @@ describe("LogAdminPage 业务域知识条目关联", () => {
 });
 
 describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=domains"));
   const webhookDomain = {
     id: "domain-charging",
     name: "charging-power",
@@ -946,7 +1006,8 @@ describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
     renderPage({ logActions });
 
     const table = await screen.findByRole("table", { name: "业务域列表" });
-    await userEvent.click(within(table).getByRole("button", { name: "结果回调" }));
+    await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "结果回调" }));
 
     const editor = await screen.findByTestId("domain-webhook-editor");
     await waitFor(() => expect(logActions.listLogDomainWebhookDeliveries).toHaveBeenCalledWith("domain-charging", 10));
@@ -981,7 +1042,8 @@ describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
     renderPage({ logActions });
 
     const table = await screen.findByRole("table", { name: "业务域列表" });
-    await userEvent.click(within(table).getByRole("button", { name: "结果回调" }));
+    await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "结果回调" }));
     const editor = await screen.findByTestId("domain-webhook-editor");
     await userEvent.click(within(editor).getByRole("button", { name: "发送测试投递" }));
 
@@ -993,6 +1055,7 @@ describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
 });
 
 describe("LogAdminPage 分析质量洞察", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=quality"));
   const agentInsight = {
     logDomainId: "domain-charging",
     logDomainName: "charging-power",

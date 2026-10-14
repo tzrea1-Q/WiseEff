@@ -395,7 +395,8 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
         response.request().method() === "DELETE" &&
         new URL(response.url()).pathname === `/api/v1/users/${encodeURIComponent(createdUser!.id)}`
     );
-    await chenRow.getByRole("button", { name: "注销 Chen Rui" }).click();
+    await chenRow.getByRole("button", { name: /：更多$/ }).click();
+    await page.getByRole("menuitem", { name: "注销 Chen Rui" }).click();
     const deleteDialog = page.getByRole("dialog", { name: "确认注销用户" });
     await expect(deleteDialog).toContainText("业务与审计历史记录会保留");
     await expect(deleteDialog).toContainText("用户引用会自动变为 null");
@@ -529,7 +530,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       (response) =>
         response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/v1/organization"
     );
-    await page.getByRole("button", { name: "保存名称" }).click();
+    await page.getByRole("button", { name: "保存", exact: true }).click();
     const renameResponse = await renameResponsePromise;
     expect(renameResponse.ok()).toBe(true);
     await expect(nameInput).toHaveValue(renamed);

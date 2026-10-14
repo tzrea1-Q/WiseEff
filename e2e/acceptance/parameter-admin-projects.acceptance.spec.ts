@@ -86,7 +86,8 @@ test.describe("parameter-admin project list", () => {
     await page.goto(`/parameter-admin/projects?q=${encodeURIComponent(project.name)}`);
     await dismissXiaozeHint(page);
     const row = page.getByRole("row").filter({ hasText: project.name }).first();
-    const deleteAction = row.getByRole("button", { name: `删除 ${project.name}`, exact: true });
+    await row.getByRole("button", { name: `${project.name}操作：更多`, exact: true }).click();
+    const deleteAction = page.getByRole("menuitem", { name: `删除 ${project.name}`, exact: true });
     await expect(deleteAction).toBeDisabled();
     const explanation = "项目需保留规范历史，不能删除；归档或处置功能尚未开放。";
     await expect(deleteAction).toHaveAccessibleDescription(explanation);
@@ -134,7 +135,7 @@ test.describe("parameter-admin project list", () => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
       await dismissXiaozeHint(page);
-      await expect(page.getByRole("heading", { name: "项目清单" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("region", { name: "项目清单", exact: true })).toBeVisible({ timeout: 30_000 });
 
       const search = page.getByRole("searchbox", { name: "搜索项目" });
       await search.fill(queryLabel);
@@ -176,7 +177,7 @@ test.describe("parameter-admin project list", () => {
       await expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
 
       const desktopLayout = await page.evaluate(() => {
-        const rail = document.querySelector<HTMLElement>(".project-admin-library-table .horizontal-drag-scroll-rail");
+        const rail = document.querySelector<HTMLElement>(".admin-list-page .horizontal-drag-scroll-rail");
         return {
           pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           railVisible: rail ? !rail.hidden && getComputedStyle(rail).display !== "none" : false
@@ -192,11 +193,16 @@ test.describe("parameter-admin project list", () => {
       await expect(firstRow).toBeVisible();
       await expect(firstRow.getByRole("button", { name: /配置工作台/ })).toBeVisible();
 
-      await firstRow.getByRole("button", { name: /编辑/ }).click();
+      await expect(firstRow.getByRole("button")).toHaveCount(2);
+      await firstRow.getByRole("button", { name: /更多/ }).click();
+      await page.getByRole("menuitem", { name: /编辑/ }).click();
       await expect(page.getByRole("dialog", { name: "编辑项目详情" })).toBeVisible();
       await page.getByRole("dialog", { name: "编辑项目详情" }).getByRole("button", { name: "取消" }).click();
-      await firstRow.getByRole("button", { name: /删除/ }).click();
+      await firstRow.getByRole("button", { name: /更多/ }).click();
+      await page.getByRole("menuitem", { name: /删除/ }).click();
       await expect(page.getByRole("dialog", { name: /删除项目/ })).toBeVisible();
+      await expect(page.getByRole("dialog", { name: /删除项目/ })).toContainText("此操作不可撤销");
+      await expect(page.getByRole("dialog", { name: /删除项目/ })).toContainText("共享参数库中的参数定义会保留。");
       await page.getByRole("dialog", { name: /删除项目/ }).getByRole("button", { name: "取消" }).click();
       await expect(page).toHaveURL(/\/parameter-admin\/projects\?/);
 
@@ -205,9 +211,13 @@ test.describe("parameter-admin project list", () => {
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(/\/parameter-admin\/projects\/td112-[^/]+\/configuration(?:\?|$)/);
       await page.goto(listUrl);
-      await expect(page.getByRole("heading", { name: "项目清单" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "项目清单", exact: true })).toBeVisible();
 
       await page.getByRole("button", { name: "下一页" }).click();
+      await expect(page.getByText("第 2 / 2 页 · 共 12 条")).toBeVisible();
+      await expect(page).toHaveURL(/page=2/);
+      await page.reload();
+      await dismissXiaozeHint(page);
       await expect(page.getByText("第 2 / 2 页 · 共 12 条")).toBeVisible();
 
       for (const screenshotPath of screenshotPaths) {

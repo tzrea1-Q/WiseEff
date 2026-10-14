@@ -10,6 +10,7 @@ export function collectConsistencyMeasurements() {
   const role = (element: Element) => element.getAttribute("role")
     ?? (({ BUTTON: "button", A: "link", LI: "listitem", NAV: "navigation" } as Record<string, string>)[element.tagName] ?? null);
   const main = document.querySelector("main, .main-content");
+  const footer = document.querySelector(".app-footer");
   const elements = (selector: string) => [...(main?.querySelectorAll(selector) ?? [])].filter(visible);
   const bounds = (element: Element) => {
     const rect = element.getBoundingClientRect();
@@ -20,6 +21,42 @@ export function collectConsistencyMeasurements() {
     dom: describeElement(element), role: role(element), height: element.getBoundingClientRect().height,
     compactControl: element.getAttribute("data-compact-control")
   });
+  const measureTypography = (element: Element) => ({
+    dom: describeElement(element), fontSize: Number.parseFloat(getComputedStyle(element).fontSize)
+  });
+  const titles = [...document.querySelectorAll('.topbar-title, main h1, main h2, main h3, main h4, main h5, main h6, main [role="heading"], main [class$="__title"], main [class$="-title"], [role="dialog"] h1, [role="dialog"] h2, [role="dialog"] h3')]
+    .filter(visible).map((element) => ({ ...measureTypography(element), pageTitle: element.matches(".topbar-title") }));
+  const buttons = [...document.querySelectorAll('button, .button, [data-slot="button"], [role="button"]')]
+    .filter(visible).map(measureTypography);
+  const typeProbe = document.createElement("span");
+  typeProbe.style.cssText = "position: absolute; visibility: hidden; pointer-events: none";
+  document.documentElement.append(typeProbe);
+  const typeScale = ["xs", "sm", "base", "md", "lg", "xl", "2xl"].map((step) => {
+    typeProbe.style.fontSize = `var(--text-${step})`;
+    return { fontSize: Number.parseFloat(getComputedStyle(typeProbe).fontSize) };
+  });
+  typeProbe.remove();
+  const pageEdges: { dom: string; region: string; left: number; expectedLeft: number }[] = [];
+  if (main) {
+    const gutterProbe = document.createElement("span");
+    gutterProbe.style.cssText = "position: absolute; visibility: hidden; width: var(--page-gutter)";
+    main.append(gutterProbe);
+    const expectedLeft = bounds(main).left + Number.parseFloat(getComputedStyle(gutterProbe).width);
+    gutterProbe.remove();
+    const measureEdge = (element: Element, region: string) => ({
+      dom: describeElement(element), region, expectedLeft,
+      left: bounds(element).left + (Number.parseFloat(getComputedStyle(element).paddingLeft) || 0)
+    });
+    pageEdges.push(measureEdge(main, "shell"));
+    const content = main.querySelector(":scope > .page-content");
+    if (content && visible(content)) {
+      pageEdges.push(measureEdge(content, "content"));
+      pageEdges.push(...[...content.children].filter(visible).map((element) => measureEdge(element, "page")));
+    }
+    const toolbar = document.querySelector(".topbar");
+    if (toolbar && visible(toolbar)) pageEdges.push(measureEdge(toolbar, "toolbar"));
+    if (footer) pageEdges.push(measureEdge(footer, "footer"));
+  }
   const viewSwitchElements = elements([
     '[role="tablist"] [role="tab"]', '[role="radiogroup"] [role="radio"]',
     'nav:has([aria-current]) button', 'nav:has([aria-current]) a', 'nav button[aria-pressed]',
@@ -87,10 +124,10 @@ export function collectConsistencyMeasurements() {
   const primaryActions = primaryActionElements.map((element) => ({ ...measureControl(element), background: getComputedStyle(element).backgroundColor, primaryColor,
       disabled: element.matches(':disabled,[aria-disabled="true"]') }));
   const enabledPrimaryActionCount = primaryActionElements.filter((element) => !element.matches(':disabled,[aria-disabled="true"]')).length;
-  const actionCells = new Set(elements('.dts-parameter-workbench-table__actions,td[data-label="操作"],[data-catalog-row-action]')
+  const actionCells = new Set(elements('.dts-parameter-workbench-table__actions,td[data-label="操作"],[data-catalog-row-action],[data-row-action-row] .row-action-menu')
     .map((element) => element.closest('td,[role="cell"]') ?? element));
   const rowActions = [...actionCells].flatMap((element) => {
-    const row = element.closest('tr,[role="row"]');
+    const row = element.closest('tr,[role="row"],[data-row-action-row]');
     if (!row) return [];
     let left = 0, right = innerWidth, scrollLeft = 0;
     for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
@@ -104,7 +141,7 @@ export function collectConsistencyMeasurements() {
     return [{
       dom: describeElement(element), cell: bounds(element), row: bounds(row), clip: { left, right }, scrollLeft,
       actions: [...element.querySelectorAll('button,a,[role="button"]')].filter(visible).map(geometry),
-      statuses: [...row.querySelectorAll('[data-label="重要性"],.parameter-catalog__lifecycle')].filter(visible).map(geometry)
+      statuses: [...row.querySelectorAll('[data-row-action-status],[data-row-status],[data-label="重要性"],.parameter-catalog__lifecycle,[data-label="状态"]')].filter(visible).map(geometry)
     }];
   });
   const overlays = (selector: string) => [...document.querySelectorAll(selector)].filter(visible).map(geometry);
@@ -153,7 +190,7 @@ export function collectConsistencyMeasurements() {
       || element.querySelector('button,a[href],[role="button"]'))
   ).flatMap(clippedGeometry);
   const moduleTrees = elements('[role="tree"],nav > .parameter-catalog__tree');
-  const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label").map((element) => {
+  const moduleTreeLabels = elements(".dts-topology-navigator__label,.parameter-catalog__tree-label,.parameter-module-mapping-panel .module-attribution-tree__label").map((element) => {
     const tree = element.closest('[role="tree"],nav > .parameter-catalog__tree') ?? element.parentElement!;
     const treeItem = element.closest('[role="treeitem"]');
     let depth = Number(treeItem?.getAttribute("aria-level")) || 0;
@@ -184,17 +221,27 @@ export function collectConsistencyMeasurements() {
       probe.remove();
       return width;
     };
-    const firstRow = workbench.querySelector('.navigator-workbench__task tbody tr, .navigator-workbench__task [role="row"]:has([role="cell"]), .navigator-workbench__task .identity-mapping-review__item');
+    const projectWorkbench = workbench.getAttribute("data-workbench-page")?.startsWith("project-configuration:");
+    const taskScope = workbench.querySelector(".navigator-workbench__task") ?? workbench;
+    const rowScope = workbench.getAttribute("data-workbench-page") === "module-governance"
+      ? taskScope.querySelector('[data-module-governance-task="active"]') ?? taskScope : taskScope;
+    const firstRow = [...rowScope.querySelectorAll(projectWorkbench
+      ? '.configuration-workbench__source-head, .configuration-workbench__source-state, [role="treeitem"], .configuration-workbench__task-toggle, .section-empty, .section-error'
+      : 'tbody tr, [role="row"]:has([role="cell"]), .identity-mapping-review__item, .logs-conclusion-card, .log-error-alert, [data-canonical-subject-id], .canonical-driver-discovery__item')].find(visible)
+      ?? (workbench.getAttribute("data-workbench-page") === "module-governance"
+        ? [...rowScope.querySelectorAll('[role="status"], [role="alert"]')].find(visible) : undefined);
     return {
       pageKey: workbench.getAttribute("data-workbench-page"),
       collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",
       root: bounds(workbench),
       navigator: measure(":scope > .navigator-workbench__body > .navigator-workbench__navigator"),
       task: measure(":scope > .navigator-workbench__body > .navigator-workbench__task"),
+      inspector: measure(":scope > .navigator-workbench__body > .navigator-workbench__inspector"),
+      inspectorOverlay: workbench.querySelector(".navigator-workbench__inspector")?.getAttribute("data-overlay") === "true",
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
       primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
-      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count")].filter(visible).map((count) => {
+      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .logs-history-status, .navigator-workbench__navigation .module-attribution-tree__count")].filter(visible).map((count) => {
         const navigation = count.closest(".navigator-workbench__navigation")!;
         const navigationRect = bounds(navigation);
         const countRect = bounds(count);
@@ -219,13 +266,103 @@ export function collectConsistencyMeasurements() {
         navigatorWidth: Math.min(tokenWidth("--navigator-workbench-navigator-width"), tokenWidth("--navigator-workbench-navigator-cap")),
         collapsedWidth: tokenWidth("--navigator-workbench-collapsed-width"),
         gap: tokenWidth("--navigator-workbench-gap"),
-        toolbarPadding: tokenWidth("--navigator-workbench-toolbar-padding")
+        toolbarPadding: tokenWidth("--navigator-workbench-toolbar-padding"),
+        inspectorWidth: tokenWidth("--navigator-workbench-inspector-width")
       }
     };
   });
+  const workbenchTables = elements(".dts-parameter-workbench-table").map((table) => {
+    const rows = [...table.querySelectorAll('.dts-parameter-workbench-table__row')].filter(visible);
+    return {
+      rowCount: rows.length,
+      descriptionHeaderCount: [...table.querySelectorAll('[role="columnheader"]')]
+        .filter((header) => visible(header) && header.textContent?.trim() === "展示描述").length,
+      descriptions: rows.flatMap((row) => [...row.querySelectorAll('[data-label="展示描述"]')]
+        .filter(visible).map((cell) => cell.getAttribute("title")?.trim() ?? "")),
+      keys: rows.flatMap((row) => [...row.querySelectorAll('[data-label="参数名"] code')].filter(visible).map((key) => {
+        const style = getComputedStyle(key);
+        return { text: key.textContent?.trim() ?? "", title: key.getAttribute("title"),
+          whiteSpace: style.whiteSpace, overflow: style.overflow, textOverflow: style.textOverflow };
+      }))
+    };
+  });
+  const adminLists = elements(".admin-list-page").map((list) => {
+    const header = list.querySelector(":scope > .admin-list-page__header")
+      ?? list.closest(".user-permissions-page")?.querySelector(":scope > .admin-list-page__header");
+    const measure = (selector: string) => {
+      const element = list.querySelector(selector);
+      return element && visible(element) ? bounds(element) : null;
+    };
+    const primaryAction = header?.querySelector('[data-primary-action="true"],[data-slot="button"][data-variant="default"],.button.primary');
+    const rows = [...list.querySelectorAll("tbody tr")].filter((row) => visible(row) && !row.querySelector("td[colspan]"));
+    return {
+      root: bounds(list), header: header && visible(header) ? bounds(header) : null,
+      primaryAction: primaryAction && visible(primaryAction) ? bounds(primaryAction) : null,
+      filters: measure(":scope > .admin-list-page__filters"), table: measure("table"),
+      tableCount: [...list.querySelectorAll("table")].filter(visible).length,
+      firstRow: rows[0] ? bounds(rows[0]) : null,
+      emptyActionCount: [...list.querySelectorAll("td .section-empty button, td .section-empty a")].filter(visible).length,
+      rows: rows.map((row) => ({ actions: [...row.querySelectorAll('td[data-label="操作"] button,td[data-label="操作"] a')].filter(visible).map((action) => ({
+        height: action.getBoundingClientRect().height, overflow: action.getAttribute("aria-haspopup") === "menu",
+        destructive: action.matches('[data-destructive="true"],.danger,[data-variant="destructive"]')
+          || /^(删除|注销|撤销)(?:\s|$)/.test(action.textContent?.trim() || action.getAttribute("aria-label") || "")
+      })) }))
+    };
+  });
+  const overviewPages = elements(".overview-page").map((overview) => {
+    const measureSlot = (selector: string) => {
+      const slot = overview.querySelector(selector);
+      return slot && visible(slot) ? bounds(slot) : null;
+    };
+    return {
+      root: bounds(overview), summary: measureSlot(":scope > .overview-page__summary"),
+      content: measureSlot(":scope > .overview-page__content"), actions: measureSlot(":scope > .overview-page__actions"),
+      gap: Number.parseFloat(getComputedStyle(overview).rowGap),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      viewportHeight: innerHeight,
+      tiles: [...overview.querySelectorAll(".overview-tile")].filter(visible).map((tile) => ({
+        rect: bounds(tile), hasSamples: tile.getAttribute("data-has-samples") === "true",
+        value: tile.querySelector(".overview-tile__value")?.textContent?.trim() ?? "",
+        trendCount: tile.querySelectorAll(".overview-tile__trend").length
+      })),
+      items: [...overview.querySelectorAll(":scope > .overview-page__content > *")].filter(visible).map(bounds),
+      verdicts: [...overview.querySelectorAll("[data-overview-verdict]")].filter(visible).map((verdict) => ({
+        hasSamples: verdict.getAttribute("data-has-samples") === "true", text: verdict.textContent?.trim() ?? ""
+      }))
+    };
+  });
+  const retiredNotices = elements(".retired-notice").map((notice) => ({
+    root: bounds(notice), titleCount: notice.querySelectorAll("h2").length,
+    descriptionCount: notice.querySelectorAll("p").length, linkCount: notice.querySelectorAll("a").length,
+    href: notice.querySelector("a")?.getAttribute("href") ?? null,
+    primary: notice.querySelector("a")?.getAttribute("data-variant") === "default"
+  }));
+  const settingsForms = elements(".settings-form-page").map((form) => {
+    const style = getComputedStyle(form);
+    const sections = [...form.querySelectorAll(".settings-form-page__section")].filter(visible);
+    const probe = document.createElement("span");
+    probe.style.cssText = "position: absolute; visibility: hidden; width: var(--settings-form-max-width)";
+    document.documentElement.append(probe);
+    const widthToken = Number.parseFloat(getComputedStyle(probe).width);
+    probe.remove();
+    return { ...geometry(form), maxWidth: Number.parseFloat(style.maxWidth), widthToken,
+      direction: style.display === "flex" ? style.flexDirection : "",
+      sectionCount: sections.length,
+      titledSections: sections.filter((section) => section.querySelector("header h2")?.textContent?.trim()).length,
+      helpedSections: sections.filter((section) => section.querySelector("header p")?.textContent?.trim()).length,
+      dirty: form.getAttribute("data-settings-dirty") === "true",
+      saveBars: [...form.querySelectorAll(".settings-form-page__save-bar")].filter(visible).map((bar) => ({
+        position: getComputedStyle(bar).position, bottom: Number.parseFloat(getComputedStyle(bar).bottom),
+        primaryCount: bar.querySelectorAll('[data-variant="default"]').length,
+        saveLabel: bar.querySelector('button[type="submit"]')?.textContent?.trim() ?? "",
+        discardLabel: bar.querySelector('button[type="button"]')?.textContent?.trim() ?? ""
+      }))
+    };
+  });
   return {
+    titles, buttons, typeScale, pageEdges, footerPresent: Boolean(footer), overviewPages, retiredNotices,
     viewSwitches, viewSwitchSignatures, primaryActions, enabledPrimaryActionCount, rowActions, xiaozeLaunchers, xiaozeHints, tableScrollports, stickyActionAreas,
-    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, visibleTableCount: visibleTables.length
+    moduleTreeLabels, filterControls, sortControls, paginationControls, unmarkedCompactControls, navigatorWorkbenches, workbenchTables, adminLists, settingsForms, visibleTableCount: visibleTables.length
   };
 }
 

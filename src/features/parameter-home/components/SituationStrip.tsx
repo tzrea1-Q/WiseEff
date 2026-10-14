@@ -9,6 +9,7 @@ import { deriveOverviewPresentation } from "../overview/deriveOverviewPresentati
 import { OverviewScopeToggle } from "./OverviewScopeToggle";
 import { Panel } from "./Panel";
 import { SectionError, SectionSkeleton } from "./SectionState";
+import { OverviewTile } from "@/components/layout/OverviewPage";
 
 type SituationStripProps = {
   status: SectionStatus;
@@ -19,7 +20,6 @@ type SituationStripProps = {
   onScopeChange: (scope: OverviewScope) => void;
   error?: string | null;
   onRetry?: () => void;
-  variant?: "sidebar" | "strip";
 };
 
 export function SituationStrip({
@@ -30,21 +30,13 @@ export function SituationStrip({
   roleView,
   onScopeChange,
   error,
-  onRetry,
-  variant = "strip"
+  onRetry
 }: SituationStripProps) {
-  const isSidebar = variant === "sidebar";
   const presentation = deriveOverviewPresentation(roleView, scope, kpis, personalKpis);
-  const isPersonalEmpty =
-    status === "ready" &&
-    scope === "personal" &&
-    personalKpis !== null &&
-    [
-      personalKpis.contributionCount,
-      personalKpis.workflowCount,
-      personalKpis.openItemCount,
-      personalKpis.pendingTodoCount
-    ].every((value) => value === 0);
+  const sourceKpis = scope === "overall" ? kpis : personalKpis;
+  const hasSamples = status === "ready" && sourceKpis !== null;
+  const hasActivity = hasSamples
+    && Object.values(sourceKpis).some((value) => typeof value === "number" && value > 0);
   const emptyMessage =
     scope === "personal"
       ? `当前时间窗口暂无个人活动${roleView === "guest" ? "（访客只读视角）" : ""}`
@@ -55,23 +47,21 @@ export function SituationStrip({
       title="概览"
       subtitle={presentation.panelSubtitle}
       actions={<OverviewScopeToggle scope={scope} onScopeChange={onScopeChange} />}
-      className={isSidebar ? "parameter-home__panel--situation parameter-home__panel--situation-sidebar" : "parameter-home__panel--situation"}
+      className="parameter-home__panel--situation"
     >
       {status === "loading" || status === "idle" ? <SectionSkeleton label="加载态势指标" /> : null}
       {status === "error" ? (
         <SectionError message={error ?? "态势指标加载失败"} onRetry={onRetry ?? (() => undefined)} />
       ) : null}
-      {status === "ready" && (kpis || personalKpis) ? (
-        <dl className={isSidebar ? "parameter-home__situation-stats parameter-home__situation-stats--sidebar" : "parameter-home__situation-stats"}>
+      {status === "ready" || status === "empty" ? (
+        <dl className="overview-page__tiles">
           {presentation.kpiItems.map((item) => (
-            <div key={item.key} className="parameter-home__situation-stat" data-kpi={item.key}>
-              <dt className="parameter-home__situation-stat-label">{item.label}</dt>
-              <dd className="parameter-home__situation-stat-value">{item.value}</dd>
-            </div>
+            <OverviewTile key={item.key} metricKey={item.key} label={item.label} value={item.value}
+              hasSamples={hasSamples} />
           ))}
         </dl>
       ) : null}
-      {status === "empty" || isPersonalEmpty ? <p className="parameter-home__section-empty">{emptyMessage}</p> : null}
+      {(status === "ready" || status === "empty") && !hasActivity ? <p className="parameter-home__section-empty">{emptyMessage}</p> : null}
     </Panel>
   );
 }

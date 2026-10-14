@@ -1,8 +1,8 @@
 import type { Database } from "../../../shared/database/client";
-import { createParameterModule, getParameterModuleByName, getParameterModuleBySourceKey } from "../../parameters/parameterModuleRepository";
+import { adoptParameterModuleSourceKey, createParameterModule, getParameterModuleByName, getParameterModuleBySourceKey, updateParameterModule } from "../../parameters/parameterModuleRepository";
 
 const DRIVER_CAPACITY_KEY = "seed-placement-capacity:driver-group";
-const DRIVER_CAPACITY_NAME = "Seed placement capacity";
+const DRIVER_CAPACITY_NAME = "默认驱动分组";
 
 const freeModuleId = async (
   db: Database,
@@ -48,11 +48,21 @@ export async function curateReviewedSeedPlacementCapacity(
     organizationId: input.organizationId, sourceKey: DRIVER_CAPACITY_KEY,
   }) ?? await getParameterModuleByName(db, {
     // Earlier operators created this reviewed slot without a source key.
-    organizationId: input.organizationId, name: DRIVER_CAPACITY_NAME,
+    organizationId: input.organizationId, name: "Seed placement capacity",
   });
   if (reserved && (reserved.kind !== "driver-group" || reserved.origin !== "curated"
     || (reserved.sourceKey !== null && reserved.sourceKey !== DRIVER_CAPACITY_KEY))) {
     throw new Error("seed-rebuild-placement-capacity-conflict");
+  }
+  if (reserved && reserved.sourceKey === null) {
+    await adoptParameterModuleSourceKey(db, {
+      organizationId: input.organizationId, moduleId: reserved.id, sourceKey: DRIVER_CAPACITY_KEY,
+    });
+  }
+  if (reserved?.name === "Seed placement capacity") {
+    await updateParameterModule(db, {
+      organizationId: input.organizationId, moduleId: reserved.id, name: DRIVER_CAPACITY_NAME,
+    });
   }
   let driverGroupModuleId = reserved?.id ?? null;
   if (!driverGroupModuleId) {

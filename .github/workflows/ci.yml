@@ -653,6 +653,20 @@ jobs:
           path: ${{ runner.temp }}/wiseeff-ci-shard/receipt.json
           if-no-files-found: error
 
+      - name: Report quality gate runtime
+        if: always()
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+          const reportPath = 'test-results/quality/results.json';
+          const lane = process.env.WISEEFF_QUALITY_LANE;
+          const summary = existsSync(reportPath)
+            ? `Quality lane ${lane}${lane === 'visual' ? ' (including compact PC)' : ''}: ${(JSON.parse(readFileSync(reportPath, 'utf8')).stats.duration / 1000).toFixed(1)} seconds. CI job limit: 35 minutes.`
+            : 'Quality gate runtime unavailable: Playwright did not produce its JSON report.';
+          console.log(summary);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
+          NODE
+
       - name: Upload quality evidence
         if: always()
         continue-on-error: true

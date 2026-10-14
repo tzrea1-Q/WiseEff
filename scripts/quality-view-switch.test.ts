@@ -15,12 +15,16 @@ function measurement(style = signatures[0], selected = true) {
 }
 
 describe("view-switch consistency", () => {
-  it("enforces styles on all 23 audited pathnames, including the retired account redirect", () => {
+  it("enforces styles on all 32 audited routes, including the retired account redirect", () => {
     const auditPaths = [
-      "/audit", "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/logs", "/node-debugging",
+      "/audit", "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/knowledge-admin",
+      "/log-admin", "/log-admin?tab=domains", "/log-admin?tab=quality", "/logs", "/node-debugging",
       "/organization", "/organization/members", "/parameter-admin", "/parameter-admin/identity-mapping",
       "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
-      "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/parameter-admin/spec-review",
+      "/parameter-admin/projects", "/parameter-admin/projects/aurora/config-sets",
+      "/parameter-admin/projects/aurora/configuration", "/parameter-admin/projects/aurora/conflicts",
+      "/parameter-admin/projects/aurora/files", "/parameter-admin/projects/aurora/review-roles",
+      "/parameter-admin/projects/aurora/structure", "/parameter-admin/spec-review",
       "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
       "/parameter-submissions", "/parameters", "/user-permissions"
     ];
@@ -65,8 +69,7 @@ describe("view-switch consistency", () => {
     ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions"]
       .map((path) => [path, "tabs"]),
     ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
-      "/parameter-admin/specs/identity-mapping", "/parameter-admin/modules", "/parameter-admin/modules/queue",
-      "/parameter-admin/modules/registry", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
+      "/parameter-admin/specs/identity-mapping", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
       "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles"].map((path) => [path, "section"])
   ])("enforces the migrated tier on %s: %s", (path, variant) => {
     expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
@@ -78,6 +81,17 @@ describe("view-switch consistency", () => {
       else expect(assertStyles).toThrow("matched 0");
     }
   });
+
+  it.each(["/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry"])(
+    "requires both organization sections and governance content tabs on %s", (path) => {
+      expect(() => requireViewSwitchStyles({
+        viewSwitches: [measurement(signatures[0]), measurement(signatures[1])], viewSwitchSignatures: signatures
+      }, path)).not.toThrow();
+      for (const style of signatures) {
+        expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(style)], viewSwitchSignatures: signatures }, path)).toThrow(/matched 0|missing view-switch tiers/);
+      }
+    }
+  );
 
   it.each(["atlas", "aurora", "nebula"])("enforces result-mode tabs on the project route %s", (project) => {
     const path = `/parameters?project=${project}`;
@@ -179,6 +193,6 @@ describe("view-switch consistency", () => {
   });
 
   it("leaves legacy switches on unmigrated routes working during expansion", () => {
-    expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: [] }, "/log-admin")).not.toThrow();
+    expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: [] }, "/")).not.toThrow();
   });
 });

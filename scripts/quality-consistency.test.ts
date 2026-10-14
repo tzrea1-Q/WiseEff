@@ -1,14 +1,171 @@
 import type { BrowserContext, Route } from "playwright/test";
+import { requireOverviewGeometry, requireRetiredNotice } from "../e2e/quality/consistency-assertions";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint } from "../e2e/quality/consistency-assertions";
+import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireNavigatorWorkbenchGeometry, requireAdminListGeometry, requireRowActionVisibility, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
+
+describe("admin list template contract", () => {
+  it("measures the shared external user-permissions header without borrowing unrelated headers", () => {
+    const markup = `<div class="user-permissions-page">
+      <div class="admin-list-page__header" data-test-top="40"><button class="button primary">添加用户</button></div>
+      <div role="tabpanel"><section class="admin-list-page"><div class="admin-list-page__filters" data-test-top="80">搜索</div>
+        <table data-test-top="120"><tbody><tr><td data-label="操作"><button aria-haspopup="menu" data-test-height="28">更多</button></td></tr></tbody></table>
+      </section></div></div>`;
+    const measured = collectMarkup(markup);
+    expect(measured.adminLists[0].header?.top).toBe(40);
+    expect(measured.adminLists[0].primaryAction).not.toBeNull();
+    expect(() => requireAdminListGeometry(measured.adminLists, "/user-permissions")).not.toThrow();
+    expect(collectMarkup(markup.replace('class="user-permissions-page"', '')).adminLists[0].header).toBeNull();
+  });
+  it("guards every remaining admin list route with geometry and row-action contracts", () => {
+    for (const path of ["/parameter-admin/projects", "/organization/members", "/user-permissions", "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required)
+        .toEqual(expect.arrayContaining(["adminLists", "rowActions", "tableScrollports"]));
+    }
+  });
+  const rect = { left: 24, right: 1200, top: 100, bottom: 132, width: 1176, height: 32 };
+  const list = { root: rect, header: rect, primaryAction: { ...rect, left: 1100, width: 100 }, filters: { ...rect, top: 144, bottom: 176 },
+    table: { ...rect, top: 188, bottom: 400 }, tableCount: 1,
+    firstRow: { ...rect, top: 220, bottom: 252 }, emptyActionCount: 0,
+    rows: [{ actions: [{ height: 28, overflow: false, destructive: false }, { height: 28, overflow: true, destructive: false }] }] };
+  it("allows read-only and sole-action collections without weakening the overflow contract", () => {
+    for (const actions of [[], [{ height: 28, overflow: false, destructive: false }]]) {
+      const collection = { ...list, rows: [{ actions }] };
+      expect(() => requireAdminListGeometry([collection], "/log-admin?tab=quality", false)).not.toThrow();
+      expect(() => requireAdminListGeometry([collection], "/parameter-admin/projects")).toThrow();
+    }
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [{ height: 28, overflow: false, destructive: true }] }] }], "/log-admin", false)).toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [{ height: 32, overflow: false, destructive: false }] }] }], "/knowledge-admin?tab=index", false)).toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, rows: [{ actions: [list.rows[0].actions[0], list.rows[0].actions[0]] }] }], "/log-admin", false)).toThrow();
+  });
+  it("requires one aligned template, a visible first row and one small action plus overflow", () => {
+    expect(() => requireAdminListGeometry([list], "/parameter-admin/projects")).not.toThrow();
+    expect(() => requireAdminListGeometry([], "/parameter-admin/projects")).toThrow(/missing/);
+    for (const invalid of [
+      { ...list, header: null }, { ...list, filters: null }, { ...list, table: null }, { ...list, primaryAction: null },
+      { ...list, filters: { ...list.filters, top: 100 } }, { ...list, table: { ...list.table, top: 144 } },
+      { ...list, tableCount: 2 }, { ...list, filters: { ...list.filters, left: 48 } },
+      { ...list, primaryAction: { ...list.primaryAction, right: 1150 } },
+      { ...list, firstRow: { ...list.firstRow, bottom: 901 } },
+      { ...list, firstRow: { ...list.firstRow, top: -1 } },
+      { ...list, root: { ...list.root, left: NaN } },
+      { ...list, rows: [{ actions: [...list.rows[0].actions, list.rows[0].actions[0]] }] },
+      { ...list, rows: [{ actions: [{ height: 32, overflow: true, destructive: false }] }] },
+      { ...list, rows: [{ actions: [{ height: 28, overflow: false, destructive: true }] }] }
+    ]) expect(() => requireAdminListGeometry([invalid], "/parameter-admin/projects")).toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, firstRow: null, rows: [], emptyActionCount: 1 }], "/parameter-admin/projects")).not.toThrow();
+    expect(() => requireAdminListGeometry([{ ...list, firstRow: null, rows: [], emptyActionCount: 0 }], "/parameter-admin/projects")).toThrow(/empty/);
+  });
+  it("collects template geometry and row-action semantics instead of ignoring the pilot", () => {
+    const measured = collectMarkup(`<section class="admin-list-page">
+      <div class="admin-list-page__header"></div><div class="admin-list-page__filters"></div>
+      <table><tbody><tr><td data-label="状态">在研</td><td data-label="操作"><div class="row-action-menu">
+        <button>配置工作台</button><button aria-haspopup="menu">更多</button>
+      </div></td></tr></tbody></table></section>`);
+    expect(measured.adminLists).toHaveLength(1);
+    expect(measured.adminLists[0].rows[0].actions.map((action) => action.overflow)).toEqual([false, true]);
+    expect(measured.rowActions[0].statuses).toHaveLength(1);
+    expect(consistencyRoutes.find((route) => route.path === "/parameter-admin/projects")?.required)
+      .toEqual(expect.arrayContaining(["adminLists", "rowActions", "filterControls", "sortControls"]));
+  });
+  it("rejects unmeasured rows and non-finite slot geometry", () => {
+    for (const invalid of [
+      { ...list, firstRow: null },
+      { ...list, header: { ...list.header, bottom: NaN } },
+      { ...list, filters: { ...list.filters, top: NaN } },
+      { ...list, table: { ...list.table, top: NaN } }
+    ]) expect(() => requireAdminListGeometry([invalid], "/parameter-admin/projects")).toThrow();
+  });
+  it("measures every data row so a missing overflow menu cannot escape the guard", () => {
+    const measured = collectMarkup(`<section class="admin-list-page"><table><tbody>
+      <tr><td data-label="操作"><div class="row-action-menu"><button aria-haspopup="menu">更多</button></div></td></tr>
+      <tr><td data-label="操作"><button>删除</button></td></tr>
+    </tbody></table></section>`);
+    expect(measured.adminLists[0].rows).toHaveLength(2);
+    expect(measured.adminLists[0].rows[1].actions).toEqual([{ height: 32, overflow: false, destructive: true }]);
+  });
+  it("does not mistake a project name for a destructive action", () => {
+    const measured = collectMarkup(`<section class="admin-list-page"><table><tbody><tr><td data-label="操作">
+      <div class="row-action-menu"><button aria-label="配置工作台 删除 演练">配置工作台</button>
+      <button aria-haspopup="menu" aria-label="删除 演练操作：更多">更多</button><button aria-label="删除 演练"></button>
+      </div></td></tr></tbody></table></section>`);
+    expect(measured.adminLists[0].rows[0].actions.map((action) => action.destructive)).toEqual([false, false, true]);
+  });
+});
+
+
+describe("settings form layout contract", () => {
+  const form = { dom: "form", rect: { left: 100, right: 1060, top: 100, bottom: 800, width: 960, height: 700 },
+    maxWidth: 960, widthToken: 960, direction: "column", sectionCount: 2, titledSections: 2, helpedSections: 2,
+    dirty: false, saveBars: [] };
+  const bar = { position: "sticky", bottom: 16, primaryCount: 1, saveLabel: "保存", discardLabel: "放弃" };
+  it("collects section help and dirty actions, and requires coverage on all three routes", () => {
+    const measurements = collectMarkup(`<form class="settings-form-page" data-settings-dirty="true" style="display:flex;flex-direction:column;max-width:960px">
+      <section class="settings-form-page__section"><header><h2>设置</h2><p>说明</p></header></section>
+      <div class="settings-form-page__save-bar" style="position:sticky;bottom:16px"><button type="button">放弃</button><button type="submit" data-variant="default">保存</button></div>
+    </form>`);
+    expect(measurements.settingsForms).toEqual([expect.objectContaining({ direction: "column", sectionCount: 1,
+      titledSections: 1, helpedSections: 1, dirty: true, saveBars: [bar] })]);
+    for (const path of ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("settingsForms");
+    }
+  });
+  it("accepts clean single-column forms and dirty forms with the shared save bar", () => {
+    expect(() => requireSettingsFormPresentation([form], "/organization")).not.toThrow();
+    expect(() => requireSettingsFormPresentation([{ ...form, dirty: true, saveBars: [bar] }], "/organization")).not.toThrow();
+  });
+  it("rejects absent coverage, untitled sections, non-token widths and non-sticky or missing save actions", () => {
+    for (const forms of [[], [form, form], [{ ...form, sectionCount: 0 }], [{ ...form, helpedSections: 1 }],
+      [{ ...form, titledSections: 1 }], [{ ...form, maxWidth: 1200 }], [{ ...form, direction: "row" }],
+      [{ ...form, dirty: true }], [{ ...form, saveBars: [bar] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, position: "static" }] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, primaryCount: 2 }] }],
+      [{ ...form, dirty: true, saveBars: [{ ...bar, discardLabel: "" }] }]]) {
+      expect(() => requireSettingsFormPresentation(forms, "/organization")).toThrow(/settings form/);
+    }
+  });
+});
+
+describe("workbench optional descriptions and single-line keys", () => {
+  const key = { text: "vendor,long-key", title: "vendor,long-key", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+  const empty = { rowCount: 1, descriptionHeaderCount: 0, descriptions: [], keys: [key] };
+  it("accepts empty columns being absent and mixed descriptions being present", () => {
+    expect(() => requireWorkbenchPresentation([empty], "/parameters")).not.toThrow();
+    expect(() => requireWorkbenchPresentation([{ ...empty, rowCount: 2,
+      descriptionHeaderCount: 1, descriptions: ["说明", ""], keys: [key, key]
+    }], "/parameters")).not.toThrow();
+  });
+  it("rejects an empty description column, wrapping keys, missing tooltips, and empty measurements", () => {
+    expect(() => requireWorkbenchPresentation([{ ...empty, descriptionHeaderCount: 1, descriptions: [""] }], "/parameters")).toThrow(/description/);
+    expect(() => requireWorkbenchPresentation([{ ...empty, keys: [{ ...key, whiteSpace: "pre-wrap" }] }], "/parameters")).toThrow(/key/);
+    expect(() => requireWorkbenchPresentation([{ ...empty, keys: [{ ...key, title: "" }] }], "/parameters")).toThrow(/key/);
+    expect(() => requireWorkbenchPresentation([], "/parameters")).toThrow(/missing/);
+  });
+  it("collects visible workbench descriptions and full-key presentation from the DOM", () => {
+    const measurements = collectMarkup(`
+      <div role="table" class="dts-parameter-workbench-table">
+        <span role="columnheader">展示描述</span>
+        <div role="row" class="dts-parameter-workbench-table__row">
+          <span data-label="参数名"><code title="vendor,long-key" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">vendor,long-key</code></span>
+          <span data-label="展示描述" title="说明">说明</span>
+        </div>
+      </div>
+    `);
+    expect(measurements.workbenchTables).toEqual([{
+      rowCount: 1, descriptionHeaderCount: 1, descriptions: ["说明"], keys: [key]
+    }]);
+    expect(() => requireWorkbenchPresentation(measurements.workbenchTables, "/parameters")).not.toThrow();
+  });
+});
 
 function collectMarkup(markup: string, portalMarkup = "") {
   const dom = new JSDOM(`<main>${markup}</main>${portalMarkup}`);
-  vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockReturnValue({
-    x: 100, y: 100, left: 100, top: 100, right: 200, bottom: 132, width: 100, height: 32, toJSON: () => ({})
+  vi.spyOn(dom.window.Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const top = Number(this.getAttribute("data-test-top") ?? 100);
+    const height = Number(this.getAttribute("data-test-height") ?? 32);
+    return { x: 100, y: top, left: 100, top, right: 200, bottom: top + height, width: 100, height, toJSON: () => ({}) };
   });
-  dom.window.Element.prototype.checkVisibility = () => true;
+  dom.window.Element.prototype.checkVisibility = function () { return !this.closest("[hidden]"); };
   dom.window.Range.prototype.getBoundingClientRect = () => dom.window.document.documentElement.getBoundingClientRect();
   vi.stubGlobal("document", dom.window.document);
   vi.stubGlobal("getComputedStyle", dom.window.getComputedStyle.bind(dom.window));
@@ -22,8 +179,176 @@ function collectMarkup(markup: string, portalMarkup = "") {
   }
 }
 import { collectConsistencyMeasurements } from "../e2e/quality/consistency-collector";
-import { consistencyRoutes } from "../e2e/quality/consistency-routes";
+import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency-routes";
+
+describe("administration collection coverage", () => {
+  it.each([
+    "/knowledge-admin?tab=drafts", "/knowledge-admin?tab=index", "/knowledge-admin?tab=archived",
+    "/log-admin?tab=records", "/log-admin?tab=domains", "/log-admin?tab=quality"
+  ])("measures template geometry, scrollports and tab styles on %s", (path) => {
+    expect(consistencyRoutes.find((route) => route.path === path)?.required)
+      .toEqual(expect.arrayContaining(["adminLists", "viewSwitches", "viewSwitchSignatures", "tableScrollports"]));
+  });
+  it("ignores the retained but hidden collections", () => {
+    const measured = collectMarkup(`<div class="admin-list-page"><table><tbody><tr><td>当前集合</td></tr></tbody></table></div>
+      <div hidden><div class="admin-list-page"><table><tbody><tr><td>其他集合</td></tr></tbody></table></div></div>`);
+    expect(measured.adminLists).toHaveLength(1);
+    expect(measured.visibleTableCount).toBe(1);
+  });
+});
+
+describe("project configuration workbench coverage", () => {
+  it.each([false, true])("measures real navigator and task row actions with navigator collapsed=%s", (collapsed) => {
+    const row = `<div data-row-action-row><span data-row-action-status>活跃 v1</span>
+      <div class="row-action-menu"><button>详情</button></div></div>`;
+    const measurements = collectMarkup(`<div class="navigator-workbench">
+      <div class="navigator-workbench__navigation" ${collapsed ? "hidden" : ""}>${row}</div>
+      <div class="navigator-workbench__task">${row}</div></div>
+      <div class="row-action-menu"><button>非行操作</button></div>`);
+    expect(measurements.rowActions).toHaveLength(collapsed ? 1 : 2);
+    expect(() => requireRowActionVisibility(measurements.rowActions, "/parameter-admin/projects/aurora/configuration"))
+      .not.toThrow();
+  });
+  const paths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
+    .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
+  it.each(paths)("requires shared config-set sections and content tabs on %s", (path) => {
+    expect(viewSwitchStyleExpectations[path]).toEqual(["section", "tabs"]);
+  });
+  it.each(paths)("requires template geometry on %s in every source mode", (path) => {
+    for (const mode of ["working", "history", "candidate", "unified-diff", "side-by-side"]) {
+      const route = mode === "working" ? path : `${path}?sourceMode=${mode}`;
+      expect(consistencyRoutes.find((item) => item.path === route)?.required)
+        .toEqual(expect.arrayContaining(["navigatorWorkbenches", "rowActions", "viewSwitches", "viewSwitchSignatures"]));
+    }
+  });
+  it.each([
+    '<header class="configuration-workbench__source-head">board.dts</header>',
+    '<div class="configuration-workbench__source-state">暂无历史版本</div>',
+    '<div role="tree"><ul><li role="treeitem">节点</li></ul></div>',
+    '<footer class="configuration-workbench__tasks"><button class="configuration-workbench__task-toggle">任务</button></footer>'
+  ])("measures the first project task content without requiring a data table", (content) => {
+    const measurements = collectMarkup(`<div class="navigator-workbench" data-workbench-page="project-configuration:aurora">
+      <div class="navigator-workbench__body"><section class="navigator-workbench__task">${content}</section></div></div>`);
+    expect(measurements.navigatorWorkbenches[0].firstRow?.height).toBe(32);
+  });
+  it("rejects missing task content and an inspector outside its token-owned slot", () => {
+    const firstRow = { left: 300, top: 60, right: 500, bottom: 100, width: 200, height: 40 };
+    const workbench = {
+      pageKey: "project-configuration:aurora", collapsed: false,
+      root: { left: 0, top: 0, right: 1440, bottom: 800, width: 1440, height: 800 },
+      navigator: { left: 0, top: 60, right: 288, bottom: 800, width: 288, height: 740 },
+      task: { left: 300, top: 60, right: 1440, bottom: 800, width: 1140, height: 740 },
+      toolbar: { left: 0, top: 0, right: 1440, bottom: 50, width: 1440, height: 50 },
+      primaryAction: { left: 1327, top: 12, right: 1427, bottom: 40, width: 100, height: 28 },
+      inspector: { left: 1120, top: 60, right: 1440, bottom: 800, width: 320, height: 740 },
+      inspectorOverlay: true, noticeCount: 0,
+      navigatorCounts: [{ text: "2 个配置集", textRect: { left: 12, right: 80, width: 68 },
+        clip: { left: 0, right: 288 }, clientWidth: 80, scrollWidth: 80 }], firstRow, firstRowClip: firstRow,
+      viewport: { width: 1440, height: 900 }, pageOverflow: 0,
+      contract: { navigatorWidth: 288, collapsedWidth: 40, gap: 12, toolbarPadding: 12, inspectorWidth: 320 }
+    };
+    expect(() => requireNavigatorWorkbenchGeometry([workbench], "/parameter-admin/projects/aurora/configuration")).not.toThrow();
+    expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench, firstRow: null }], "/configuration")).toThrow(/first row/);
+    expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench, inspector: null }], "/configuration?inspector=file"))
+      .toThrow(/inspector/);
+    expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench,
+      inspector: { ...workbench.inspector, width: 360 } }], "/configuration")).toThrow(/inspector/);
+    expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench, inspectorOverlay: false,
+      task: { ...workbench.task, right: 1108, width: 808 } }], "/configuration")).not.toThrow();
+  });
+});
 import { installConsistencyReadGuard } from "../e2e/quality/consistency";
+
+describe("typography scale contract", () => {
+  const measurements = () => ({
+    typeScale: [11, 12, 13, 14, 16, 20, 24].map((fontSize) => ({ fontSize })),
+    titles: [{ dom: "page title", fontSize: 20, pageTitle: true }, { dom: "section title", fontSize: 16, pageTitle: false }],
+    buttons: [{ dom: "button", fontSize: 13 }]
+  });
+
+  it("accepts only the documented scale and its page-title step", () => {
+    expect(() => requireTypographyScale(measurements(), "/audit")).not.toThrow();
+    for (const fontSize of [0, 15, 18, NaN, Infinity]) {
+      expect(() => requireTypographyScale({ ...measurements(), buttons: [{ dom: "off-scale button", fontSize }] }, "/audit"))
+        .toThrow(/typography/);
+    }
+    expect(() => requireTypographyScale({ ...measurements(), titles: [{ dom: "small page title", fontSize: 16, pageTitle: true }] }, "/audit"))
+      .toThrow(/page title/);
+  });
+
+  it("rejects empty collections, missing page titles and corrupted scale tokens", () => {
+    for (const category of ["titles", "buttons", "typeScale"] as const) {
+      expect(() => requireTypographyScale({ ...measurements(), [category]: [] }, "/audit")).toThrow(/missing consistency measurements/);
+    }
+    expect(() => requireTypographyScale({ ...measurements(), titles: [{ dom: "section", fontSize: 16, pageTitle: false }] }, "/audit"))
+      .toThrow(/page title/);
+    expect(() => requireTypographyScale({ ...measurements(), typeScale: [{ fontSize: NaN }] }, "/audit")).toThrow(/scale/);
+  });
+});
+
+describe("shell-owned page gutter", () => {
+  const edges = () => ["shell", "content", "page", "toolbar", "footer"].map((region) => ({
+    dom: region, region, left: 280, expectedLeft: 280
+  }));
+
+  it("aligns every content, toolbar and footer edge to the shell token within one pixel", () => {
+    expect(() => requirePageGutter(edges(), "/audit", true)).not.toThrow();
+    expect(() => requirePageGutter(edges().map((edge) => ({ ...edge, left: 281 })), "/audit", true)).not.toThrow();
+    for (const left of [282, 304, NaN, Infinity]) {
+      expect(() => requirePageGutter(edges().map((edge) => edge.region === "page" ? { ...edge, left } : edge), "/audit", true))
+        .toThrow(/gutter/);
+    }
+    expect(() => requirePageGutter(edges().map((edge) => ({ ...edge, expectedLeft: NaN })), "/audit", true)).toThrow(/gutter/);
+  });
+
+  it("fails on empty or missing regions and exempts only a footer absent from the DOM", () => {
+    expect(() => requirePageGutter([], "/audit", false)).toThrow(/missing consistency measurements/);
+    for (const region of ["shell", "content", "page", "toolbar", "footer"]) {
+      expect(() => requirePageGutter(edges().filter((edge) => edge.region !== region), "/audit", true)).toThrow(/missing.*gutter/);
+    }
+    expect(() => requirePageGutter(edges().filter((edge) => edge.region !== "footer"), "/parameter-admin/projects/aurora", false))
+      .not.toThrow();
+    expect(() => requirePageGutter(edges().filter((edge) => edge.region !== "footer"), "/parameter-admin/projects/aurora/configuration", true))
+      .toThrow(/missing.*footer/);
+    expect(() => requirePageGutter(edges().map((edge) => edge.region === "footer" ? { ...edge, left: 304 } : edge), "/parameter-admin/projects/aurora/configuration", true))
+      .toThrow(/gutter/);
+    expect(() => requirePageGutter(edges().filter((edge) => edge.region !== "toolbar" && edge.region !== "footer"), "/parameter-admin/projects/aurora", false))
+      .toThrow(/missing.*toolbar/);
+  });
+
+  it("records footer DOM presence even when a present footer is hidden", () => {
+    expect(collectMarkup('<div class="page-content"><section>Page</section></div>').footerPresent).toBe(false);
+    const measured = collectMarkup('<div class="page-content"><section>Page</section></div><footer class="app-footer" style="display:none">Footer</footer>');
+    expect(measured.footerPresent).toBe(true);
+    expect(measured.pageEdges.some((edge) => edge.region === "footer")).toBe(true);
+    const misplaced = collectMarkup('<div class="page-content"><section>Page</section></div>', '<footer class="app-footer">Footer</footer>');
+    expect(misplaced.footerPresent).toBe(true);
+    expect(misplaced.pageEdges.some((edge) => edge.region === "footer")).toBe(true);
+  });
+
+  it("collects page insets, shell chrome, portal titles and disabled button typography", () => {
+    const measured = collectMarkup(`
+      <div class="page-content"><section style="padding-left:24px">
+        <h2 style="font-size:16px">Section</h2><button style="font-size:12px" disabled>Action</button>
+        <aside class="panel__title" style="font-size:14px">Panel title</aside>
+      </section></div><footer class="app-footer">Footer</footer>
+    `, '<header class="topbar"><div class="topbar-title" style="font-size:20px">Page</div></header><section role="dialog"><h2 style="font-size:16px">Confirmation</h2><button style="font-size:13px">Cancel</button></section>');
+    expect(measured.titles.map((title) => title.fontSize)).toEqual([16, 14, 20, 16]);
+    expect(measured.titles.filter((title) => title.pageTitle)).toEqual([{ dom: "div.topbar-title", fontSize: 20, pageTitle: true }]);
+    expect(measured.buttons.map((button) => button.fontSize)).toEqual([12, 13]);
+    expect(measured.footerPresent).toBe(true);
+    expect(measured.pageEdges.map((edge) => [edge.region, edge.left])).toEqual([
+      ["shell", 100], ["content", 100], ["page", 124], ["toolbar", 100], ["footer", 100]
+    ]);
+  });
+
+  it("requires typography and gutters on every consistency route", () => {
+    for (const route of consistencyRoutes) {
+      expect(route.required).toEqual(expect.arrayContaining(["titles", "buttons", "typeScale", "pageEdges"]));
+    }
+    expect(consistencyRoutes.some((route) => route.path === "/knowledge-admin")).toBe(true);
+  });
+});
 
 describe("unified review inbox structure", () => {
   const tabs = `<div role="tablist"><button role="tab" aria-selected="true">待处理</button>
@@ -47,6 +372,53 @@ describe("unified review inbox structure", () => {
 });
 
 describe("view-switch collection", () => {
+  it.each([
+    ['<li class="canonical-driver-discovery__item">发现记录</li>', 100],
+    ['<p role="status">当前范围没有来源观察记录。</p>', 100],
+    ["", null]
+  ])("measures the queue's own row or empty state, never the shared canonical list: %s", (queue, expectedTop) => {
+    const measurements = collectMarkup(`
+      <div class="navigator-workbench" data-workbench-page="module-governance">
+        <section class="navigator-workbench__task">
+          <div data-module-governance-task="active"><section class="canonical-driver-discovery">${queue}</section></div>
+          <div><ul aria-label="规范主体列表"><li data-canonical-subject-id="subject-one" data-test-top="1000">规范主体</li></ul></div>
+        </section>
+      </div>
+    `);
+    const workbench = measurements.navigatorWorkbenches[0];
+    expect(workbench.firstRow?.top ?? null).toBe(expectedTop);
+    expect(workbench.firstRowClip?.top ?? null).toBe(expectedTop);
+  });
+
+  it("requires the shared navigator geometry on logs", () => {
+    expect(consistencyRoutes.find((route) => route.path === "/logs")?.required).toContain("navigatorWorkbenches");
+  });
+
+  it.each(["Complete", "Processing", "Failed"])("measures the first %s log report section and history status", (status) => {
+    const measurements = collectMarkup(`
+      <div class="navigator-workbench" data-workbench-page="logs">
+        <div class="navigator-workbench__navigation"><span class="logs-history-status">${status} · 88%</span></div>
+        <section class="navigator-workbench__task">
+          <section class="${status === "Failed" ? "log-error-alert" : "logs-conclusion-card"}">Report</section>
+        </section>
+      </div>
+    `);
+    expect(measurements.navigatorWorkbenches[0].firstRow).not.toBeNull();
+    expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual([`${status} · 88%`]);
+  });
+
+  it.each(["未检测", "可调试", "不支持的值类型"])("measures row actions and explicit status %s without accepting missing evidence", (status) => {
+    const markup = `<table><tbody><tr><td><span data-row-status>${status}</span></td>
+      <td data-label="操作"><button disabled>编辑</button></td></tr></tbody></table>`;
+    const measurements = collectMarkup(markup);
+    expect(measurements.rowActions[0].statuses).toHaveLength(1);
+    expect(() => requireRowActionVisibility(measurements.rowActions, "/dts-reload")).not.toThrow();
+    for (const incomplete of [markup.replace("data-row-status", ""), markup.replace("<button disabled>编辑</button>", "")]) {
+      expect(() => requireRowActionVisibility(collectMarkup(incomplete).rowActions, "/dts-reload"))
+        .toThrow("missing action or status measurements");
+    }
+  });
+
   it("measures the first read-only identity evidence item and protects its task scrollport", () => {
     const measurements = collectMarkup(`
       <div class="navigator-workbench"><section class="navigator-workbench__task" style="overflow-x: auto; overflow-y: auto">
@@ -70,7 +442,7 @@ describe("view-switch collection", () => {
     expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["4", "12 个参数"]);
   });
 
-  it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping", "/parameters/definitions"])(
+  it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping", "/parameters/definitions", "/node-debugging", "/dts-reload"])(
     "requires navigator-workbench geometry for the migrated route %s", (path) => {
       expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("navigatorWorkbenches");
     }
@@ -351,6 +723,59 @@ describe("consistency measurement coverage", () => {
       expect(route.required, route.path).toContain("xiaozeLaunchers");
       expect(route.required, route.path).not.toContain("xiaozeHints");
     }
+  });
+});
+
+describe("overview consistency", () => {
+  const rect = { left: 24, top: 20, right: 624, bottom: 120, width: 600, height: 100 };
+  const overview = {
+    root: { ...rect, bottom: 500, height: 480 }, summary: rect,
+    content: { ...rect, top: 140, bottom: 400, height: 260 },
+    actions: null, gap: 20, pageOverflow: 0, viewportHeight: 900,
+    tiles: [{ rect, hasSamples: false, value: "暂无样本", trendCount: 0 }],
+    items: [{ ...rect, top: 140, bottom: 400, height: 260 }],
+    verdicts: [{ hasSamples: false, text: "暂无样本，无法判断" }]
+  };
+  it("requires template measurements on both overviews and both retired routes", () => {
+    for (const path of ["/parameter-home", "/log-dashboard"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("overviewPages");
+    }
+    for (const path of ["/parameter-comparison", "/debugging"]) {
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("retiredNotices");
+    }
+    expect(() => requireOverviewGeometry([], "/log-dashboard")).toThrow(/missing/i);
+    expect(() => requireRetiredNotice([], "/debugging")).toThrow(/missing/i);
+  });
+  it("accepts the token-aligned grid and rejects overflow, missing tiles and fabricated empty-source verdicts", () => {
+    expect(() => requireOverviewGeometry([overview], "/log-dashboard")).not.toThrow();
+    for (const invalid of [
+      { ...overview, content: { ...overview.content, left: 48 } },
+      { ...overview, pageOverflow: 10 },
+      { ...overview, gap: Number.NaN },
+      { ...overview, tiles: [] },
+      { ...overview, items: [] },
+      { ...overview, tiles: [{ ...overview.tiles[0], value: "100%" }] },
+      { ...overview, tiles: [{ ...overview.tiles[0], trendCount: 1 }] },
+      { ...overview, verdicts: [{ hasSamples: false, text: "质量表现稳定" }] }
+    ]) {
+      expect(() => requireOverviewGeometry([invalid], "/log-dashboard")).toThrow();
+    }
+  });
+  it("rejects an overview with its first content section below the PC viewport", () => {
+    const belowFold = { ...overview, viewportHeight: 100 };
+    expect(() => requireOverviewGeometry([belowFold], "/parameter-home")).toThrow(/first section/i);
+  });
+  it("collects overview tiles and retired replacement links through the rendered DOM", () => {
+    const measurements = collectMarkup(`
+      <section class="overview-page"><div class="overview-page__summary">
+        <dl><div class="overview-tile" data-has-samples="false"><dt>今日分析</dt><dd class="overview-tile__value">暂无样本</dd></div></dl>
+      </div><div class="overview-page__content"><article><strong data-overview-verdict data-has-samples="false">暂无样本，无法判断</strong></article></div></section>
+      <section class="retired-notice"><h2>已下线</h2><p>请使用节点调试。</p><a href="/node-debugging" data-variant="default">节点调试</a></section>
+    `);
+    expect(measurements.overviewPages[0].tiles[0]).toMatchObject({ hasSamples: false, value: "暂无样本", trendCount: 0 });
+    expect(measurements.overviewPages[0].viewportHeight).toBe(900);
+    expect(() => requireRetiredNotice(measurements.retiredNotices, "/debugging")).not.toThrow();
+    expect(() => requireRetiredNotice([{ ...measurements.retiredNotices[0], href: "/wrong" }], "/debugging")).toThrow();
   });
 });
 

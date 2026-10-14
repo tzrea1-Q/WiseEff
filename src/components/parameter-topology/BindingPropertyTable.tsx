@@ -68,7 +68,7 @@ export function BindingPropertyTable({
               className={selectedBindingId === binding.id ? "is-selected" : undefined}
               onClick={() => onSelectBinding(binding.id)}
             >
-              <td role="cell">{binding.propertyKey}</td>
+              <td>{binding.propertyKey}</td>
               <td>{binding.driverModule ?? "—"}</td>
               <td>{binding.instanceName ?? "—"}</td>
               <td>

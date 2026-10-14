@@ -77,6 +77,17 @@ export default defineConfig({
       }
     },
     {
+      name: "compact",
+      testMatch: /compact\.quality\.spec\.ts/,
+      dependencies: ["runtime-warmup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        serviceWorkers: "block",
+        reducedMotion: "reduce"
+      }
+    },
+    {
       name: "responsive",
       testMatch: /responsive\.quality\.spec\.ts/,
       dependencies: ["runtime-warmup"],

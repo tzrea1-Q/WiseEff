@@ -1,6 +1,130 @@
 import type { ConsistencyMeasurements, ConsistencyCategory } from "./consistency-collector";
 import { consistencyRoutes } from "./consistency-routes";
 
+export function requireOverviewGeometry(overviews: ConsistencyMeasurements["overviewPages"], routePath: string) {
+  requireMeasuredCategories({ overviewPages: overviews }, ["overviewPages"], routePath);
+  for (const overview of overviews) {
+    const { root, summary, content, actions, gap } = overview;
+    if (!summary || !content || !overview.tiles.length || !overview.items.length) {
+      throw new Error(`${routePath}: missing overview summary, tiles or content`);
+    }
+    if (![root, summary, content, ...(actions ? [actions] : []), ...overview.tiles.map((tile) => tile.rect), ...overview.items]
+      .flatMap((rect) => Object.values(rect)).every(Number.isFinite)
+      || !Number.isFinite(gap) || gap <= 0 || !Number.isFinite(overview.pageOverflow)
+      || !Number.isFinite(overview.viewportHeight) || overview.viewportHeight <= 0) {
+      throw new Error(`${routePath}: invalid overview geometry or gap token`);
+    }
+    for (const slot of [summary, content, ...(actions ? [actions] : [])]) {
+      if (Math.abs(slot.left - root.left) > 1 || Math.abs(slot.right - root.right) > 1) {
+        throw new Error(`${routePath}: overview slot does not align with the page gutter`);
+      }
+    }
+    if (Math.abs(content.top - summary.bottom - gap) > 1
+      || (actions && Math.abs(actions.top - content.bottom - gap) > 1) || overview.pageOverflow > 1) {
+      throw new Error(`${routePath}: overview gap or page overflow differs from the contract`);
+    }
+    if (overview.items[0].top >= overview.viewportHeight) {
+      throw new Error(`${routePath}: first section must be visible in the PC viewport`);
+    }
+    for (const item of overview.items) {
+      if (item.width <= 0 || item.left < content.left - 1 || item.right > content.right + 1) {
+        throw new Error(`${routePath}: overview content escapes its grid`);
+      }
+    }
+    for (const tile of overview.tiles) {
+      if (tile.rect.width <= 0 || tile.rect.left < summary.left - 1 || tile.rect.right > summary.right + 1
+        || (!tile.hasSamples && (tile.value !== "暂无样本" || tile.trendCount !== 0))) {
+        throw new Error(`${routePath}: overview tile geometry or no-sample policy violated`);
+      }
+    }
+    if (overview.verdicts.some((verdict) => !verdict.hasSamples && verdict.text !== "暂无样本，无法判断")) {
+      throw new Error(`${routePath}: unsupported overview verdict without samples`);
+    }
+  }
+}
+
+export function requireRetiredNotice(notices: ConsistencyMeasurements["retiredNotices"], routePath: string) {
+  requireMeasuredCategories({ retiredNotices: notices }, ["retiredNotices"], routePath);
+  const replacement = routePath === "/debugging" ? "/node-debugging" : "/parameters";
+  for (const notice of notices) {
+    if (!Object.values(notice.root).every(Number.isFinite) || notice.root.width <= 0
+      || notice.titleCount !== 1 || notice.descriptionCount !== 1 || notice.linkCount !== 1
+      || !notice.primary || notice.href !== replacement) {
+      throw new Error(`${routePath}: retired notice must have one title, explanation and primary replacement link`);
+    }
+  }
+}
+
+export function requireSettingsFormPresentation(forms: ConsistencyMeasurements["settingsForms"], routePath: string) {
+  if (forms.length !== 1) throw new Error(`${routePath}: settings form measurement must cover exactly one form`);
+  const form = forms[0];
+  if (!Number.isFinite(form.widthToken) || form.widthToken <= 0 || form.maxWidth !== form.widthToken
+    || !Number.isFinite(form.rect.width) || form.rect.width <= 0 || form.rect.width > form.widthToken + 1
+    || form.direction !== "column" || form.sectionCount === 0
+    || form.titledSections !== form.sectionCount || form.helpedSections !== form.sectionCount) {
+    throw new Error(`${routePath}: settings form must use the max-width token and a single column of titled, explained sections`);
+  }
+  if (form.saveBars.length !== (form.dirty ? 1 : 0)) throw new Error(`${routePath}: settings form save bar must appear only while dirty`);
+  for (const bar of form.saveBars) {
+    if (bar.position !== "sticky" || !Number.isFinite(bar.bottom) || bar.bottom < 0 || bar.primaryCount !== 1
+      || !["保存", "保存中…"].includes(bar.saveLabel) || bar.discardLabel !== "放弃") {
+      throw new Error(`${routePath}: settings form requires sticky 保存 and 放弃 actions with one primary`);
+    }
+  }
+}
+
+export function requirePageGutter(pageEdges: ConsistencyMeasurements["pageEdges"], routePath: string, footerPresent: boolean) {
+  requireMeasuredCategories({ pageEdges }, ["pageEdges"], routePath);
+  const required = ["shell", "content", "page", "toolbar", ...(footerPresent ? ["footer"] : [])];
+  for (const region of required) {
+    if (!pageEdges.some((edge) => edge.region === region)) {
+      throw new Error(`${routePath}: missing page-gutter region: ${region}`);
+    }
+  }
+  for (const edge of pageEdges) {
+    if (![edge.left, edge.expectedLeft].every(Number.isFinite) || Math.abs(edge.left - edge.expectedLeft) > 1) {
+      throw new Error(`${routePath}: ${edge.dom} does not align with the shell-owned page gutter`);
+    }
+  }
+}
+
+export function requireTypographyScale(
+  measurements: Pick<ConsistencyMeasurements, "titles" | "buttons" | "typeScale">,
+  routePath: string
+) {
+  requireMeasuredCategories(measurements, ["titles", "buttons", "typeScale"], routePath);
+  const scale = [11, 12, 13, 14, 16, 20, 24];
+  if (measurements.typeScale.length !== scale.length
+    || measurements.typeScale.some((step, index) => step.fontSize !== scale[index])) {
+    throw new Error(`${routePath}: typography scale tokens differ from the documented scale`);
+  }
+  const pageTitles = measurements.titles.filter((title) => title.pageTitle);
+  if (pageTitles.length !== 1 || pageTitles[0].fontSize !== 20) {
+    throw new Error(`${routePath}: page title must use the typography page-title step (20px)`);
+  }
+  for (const item of [...measurements.titles, ...measurements.buttons]) {
+    if (!scale.includes(item.fontSize)) {
+      throw new Error(`${routePath}: ${item.dom} has off-scale typography (${item.fontSize}px)`);
+    }
+  }
+}
+
+export function requireWorkbenchPresentation(tables: ConsistencyMeasurements["workbenchTables"], routePath: string) {
+  if (!tables.length) throw new Error(`${routePath}: missing workbench table measurements`);
+  for (const table of tables) {
+    const hasDescription = table.descriptions.some((text) => text !== "");
+    if (table.descriptionHeaderCount !== Number(hasDescription)
+      || table.descriptions.length !== (hasDescription ? table.rowCount : 0)) {
+      throw new Error(`${routePath}: description column must appear only for a nonempty current result`);
+    }
+    if (!table.rowCount || table.keys.length !== table.rowCount || table.keys.some((key) =>
+      !key.text || key.title !== key.text || key.whiteSpace !== "nowrap"
+      || key.overflow !== "hidden" || key.textOverflow !== "ellipsis")) {
+      throw new Error(`${routePath}: each workbench key requires a single-line ellipsis and full-key tooltip`);
+    }
+  }
+}
+
 export function requireReviewInboxStructure(
   measurements: Pick<ConsistencyMeasurements, "viewSwitches" | "visibleTableCount">,
   routePath: string
@@ -31,6 +155,37 @@ export function requireModuleTreeAlignment(
     depths.set(label.depth, range);
     if (range.max - range.min > 1) {
       throw new Error(`${routePath}: module tree ${label.tree} depth ${label.depth} label anchors differ by ${range.max - range.min}px (maximum 1px)`);
+    }
+  }
+}
+
+export function requireAdminListGeometry(lists: ConsistencyMeasurements["adminLists"], routePath: string, requireOverflow = true) {
+  requireMeasuredCategories({ adminLists: lists }, ["adminLists"], routePath);
+  for (const list of lists) {
+    if (list.tableCount !== 1 || !list.header || !list.filters || !list.table || !list.primaryAction
+      || [list.root, list.header, list.filters, list.table, list.primaryAction].some((slot) => Object.values(slot).some((value) => !Number.isFinite(value)))
+      || Math.abs(list.primaryAction.right - list.header.right) > 1
+      || list.header.bottom > list.filters.top + 1 || list.filters.bottom > list.table.top + 1
+      || [list.header, list.filters, list.table].some((slot) => !Number.isFinite(slot.left) || Math.abs(slot.left - list.root.left) > 1)) {
+      throw new Error(`${routePath}: admin list requires one aligned header, filter bar and table in that order`);
+    }
+    if (list.rows.length && !list.firstRow) {
+      throw new Error(`${routePath}: admin list first row must be measured`);
+    }
+    if (list.firstRow && (!Number.isFinite(list.firstRow.top) || !Number.isFinite(list.firstRow.bottom)
+      || list.firstRow.top < 0 || list.firstRow.bottom > 900)) {
+      throw new Error(`${routePath}: admin list first row must be visible at 1440x900`);
+    }
+    if (!list.rows.length && list.emptyActionCount !== 1) {
+      throw new Error(`${routePath}: empty admin list must offer exactly one next step`);
+    }
+    for (const row of list.rows) {
+      if (row.actions.length > 2 || row.actions.filter((action) => !action.overflow).length > 1
+        || row.actions.filter((action) => action.overflow).length > 1
+        || (requireOverflow && row.actions.filter((action) => action.overflow).length !== 1)
+        || row.actions.some((action) => !Number.isFinite(action.height) || Math.abs(action.height - 28) > 1 || action.destructive)) {
+        throw new Error(`${routePath}: rows require at most one small text action plus overflow, with no visible destructive action`);
+      }
     }
   }
 }
@@ -129,6 +284,19 @@ export function requireNavigatorWorkbenchGeometry(workbenches: ConsistencyMeasur
     }
     if (workbench.noticeCount > 1) throw new Error(`${routePath}: navigator-workbench has more than one notice`);
     if (workbench.pageOverflow > 1) throw new Error(`${routePath}: navigator-workbench causes page horizontal scrolling`);
+    if ((/\/(files|config-sets)(\?|$)/.test(routePath)
+      || new URLSearchParams(routePath.split("?")[1]).get("inspector") === "file") && !workbench.inspector) {
+      throw new Error(`${routePath}: missing navigator-workbench inspector for the deep link`);
+    }
+    if (workbench.inspector) {
+      const inspector = workbench.inspector;
+      if (![...Object.values(inspector)].every(Number.isFinite)
+        || !aligned(inspector.width, contract.inspectorWidth) || !aligned(inspector.top, task.top)
+        || (workbench.inspectorOverlay ? !aligned(inspector.right, task.right)
+          : !aligned(inspector.left, task.right + contract.gap))) {
+        throw new Error(`${routePath}: navigator-workbench inspector differs from the slot contract`);
+      }
+    }
     if (!workbench.collapsed) {
       if (!workbench.navigatorCounts.length) throw new Error(`${routePath}: missing navigator-workbench count measurements`);
       for (const count of workbench.navigatorCounts) {

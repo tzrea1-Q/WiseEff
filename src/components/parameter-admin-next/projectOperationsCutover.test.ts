@@ -49,9 +49,9 @@ describe("projectOperationsCutover", () => {
     );
   });
 
-  it("maps structure to configuration with working source mode by default", () => {
+  it("selects the structure content tab while preserving the source mode and focus", () => {
     expect(buildCanonicalConfigurationPath("proj-1", "structure")).toBe(
-      "/parameter-admin/projects/proj-1/configuration?sourceMode=working"
+      "/parameter-admin/projects/proj-1/configuration?tab=structure&sourceMode=working"
     );
     expect(
       buildCanonicalConfigurationPath(
@@ -60,7 +60,7 @@ describe("projectOperationsCutover", () => {
         "?file=f1&node=board&property=model&sourceMode=structured"
       )
     ).toBe(
-      "/parameter-admin/projects/proj-1/configuration?file=f1&node=board&property=model&sourceMode=structured"
+      "/parameter-admin/projects/proj-1/configuration?file=f1&node=board&property=model&sourceMode=structured&tab=structure"
     );
   });
 

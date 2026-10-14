@@ -57,6 +57,14 @@ describe("parameter catalog layout contract", () => {
     expect(actions.width).toBe("var(--pcat-table-actions-width)");
   });
 
+  it("fits the first row inside the compact task pane when its content width is below the table floor", () => {
+    const table = declarationsFor(readStylesheet(stylesheet), ".parameter-catalog .parameter-catalog__table");
+
+    expect(table.width).toBe("100%");
+    expect(table["min-width"]).toBe("min(100%, var(--pcat-table-min-width))");
+    expect(table["table-layout"]).toBe("fixed");
+  });
+
   it("keeps narrow-screen navigation and identity text manageable", () => {
     // The detail and timeline are disclosed in one dialog at every viewport, so
     // there is no inline detail/timeline pane left to hide here.

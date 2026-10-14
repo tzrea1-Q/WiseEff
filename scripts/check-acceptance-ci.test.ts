@@ -393,10 +393,12 @@ describe("D2 backend shards and quality lanes", () => {
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     });
 
-  it.each(["missing", "reordered", "command", "suppressed", "condition", "metadata", "install", "browser", "runtime-env", "step-env", "legacy-gate", "evidence-name", "evidence-path", "fixture-db", "missing-seed", "unconditional-seed", "suppressed-seed", "early-skip-seed", "fixture-lane"])
+  it.each(["missing", "reordered", "command", "suppressed", "condition", "metadata", "install", "browser", "runtime-env", "step-env", "legacy-gate", "evidence-name", "evidence-path", "report-missing", "report-reordered", "report-command", "report-condition", "report-suppressed", "report-env", "fixture-db", "missing-seed", "unconditional-seed", "suppressed-seed", "early-skip-seed", "fixture-lane"])
     ("rejects quality prerequisites, lane execution or evidence drift: %s", (mutation) => {
       const workflow = YAML.parse(compliantWorkflow);
       const worker = workflow.jobs["acceptance-quality-lanes"];
+      const evidence = worker.steps.find((step: { name: string }) => step.name === "Upload quality evidence");
+      const runtimeReport = worker.steps.find((step: { name: string }) => step.name === "Report quality gate runtime");
       if (mutation === "missing") worker.steps.splice(6, 1);
       if (mutation === "reordered") [worker.steps[6], worker.steps[7]] = [worker.steps[7], worker.steps[6]];
       if (mutation === "command") worker.steps[7].run += " || true";
@@ -408,8 +410,14 @@ describe("D2 backend shards and quality lanes", () => {
       if (mutation === "runtime-env") worker.env.VITE_WISEEFF_RUNTIME_MODE = "mock";
       if (mutation === "step-env") worker.steps[7].env = { WISEEFF_QUALITY_LANE: "visual" };
       if (mutation === "legacy-gate") worker.steps[7].run = "npm run acceptance:quality-run";
-      if (mutation === "evidence-name") worker.steps[9].with.name = "wiseeff-acceptance-quality";
-      if (mutation === "evidence-path") worker.steps[9].with.path += "${{ runner.temp }}/wiseeff-ci-shard/receipt.json\n";
+      if (mutation === "evidence-name") evidence.with.name = "wiseeff-acceptance-quality";
+      if (mutation === "evidence-path") evidence.with.path += "${{ runner.temp }}/wiseeff-ci-shard/receipt.json\n";
+      if (mutation === "report-missing") worker.steps = worker.steps.filter((step: unknown) => step !== runtimeReport);
+      if (mutation === "report-reordered") [worker.steps[8], worker.steps[9]] = [worker.steps[9], worker.steps[8]];
+      if (mutation === "report-command") runtimeReport.run += "echo unmapped\n";
+      if (mutation === "report-condition") runtimeReport.if = "success()";
+      if (mutation === "report-suppressed") runtimeReport["continue-on-error"] = true;
+      if (mutation === "report-env") runtimeReport.env = { WISEEFF_QUALITY_LANE: "visual" };
       if (mutation === "fixture-db") worker.env.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/other";
       if (mutation === "missing-seed") worker.steps[5].run = worker.steps[5].run.replace("npm run --if-present seed:quality:admin-lists\n", "");
       if (mutation === "unconditional-seed") worker.steps[5].run = worker.steps[5].run.replace("npm run --if-present", "npm run");

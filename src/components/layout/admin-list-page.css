@@ -1,0 +1,147 @@
+.admin-list-page {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.admin-list-page__header,
+.user-permissions-toolbar.admin-list-page__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.admin-list-page__header-content {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.admin-list-page__header-content p {
+  margin: 0;
+}
+
+.admin-list-page__header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.admin-list-page__filters .admin-list-page__filter-field {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.admin-list-page__filters .admin-list-page__filter-field .search-field {
+  height: var(--space-8);
+  min-height: var(--space-8);
+  padding: 0 var(--space-2);
+}
+
+.admin-list-page__filters .admin-list-page__filter-field .search-field__input {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.admin-list-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.admin-list-page__notice {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.admin-list-page__notice p {
+  margin: 0;
+}
+
+.admin-list-page .data-table-scroll > table {
+  min-width: var(--admin-list-table-min-width);
+}
+
+.admin-list-page th,
+.admin-list-page td {
+  white-space: nowrap;
+  padding: var(--space-2);
+}
+
+.admin-list-page th {
+  color: var(--text-muted);
+}
+
+.admin-list-page td:first-child {
+  max-width: var(--admin-list-name-max-width);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-list-page td[data-label="操作"] {
+  width: max-content;
+}
+
+.admin-list-page .admin-list-truncated-cell {
+  max-width: var(--admin-list-name-max-width);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .admin-list-page .data-table-scroll {
+    overflow: visible;
+  }
+
+  .admin-list-page .data-table-scroll > table {
+    display: block;
+    min-width: 0;
+  }
+
+  .admin-list-page thead,
+  .admin-list-page .horizontal-drag-scroll-rail {
+    display: none;
+  }
+
+  .admin-list-page tbody {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .admin-list-page tr {
+    display: grid;
+    border-bottom: var(--stroke-hairline) solid var(--border);
+  }
+
+  .admin-list-page td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    max-width: none;
+    white-space: normal;
+  }
+
+  .admin-list-page td[data-label]::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+  }
+
+  .admin-list-page td:first-child {
+    max-width: none;
+  }
+
+  .admin-list-page td[data-label="操作"] {
+    width: auto;
+  }
+}

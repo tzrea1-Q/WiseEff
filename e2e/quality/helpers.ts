@@ -29,7 +29,8 @@ export function seedQualityRuntime(runScript: (script: string) => void = runNpmS
     "db:seed:m0",
     "db:seed:m1",
     "db:seed:m2",
-    "db:seed:m3"
+    "db:seed:m3",
+    "seed:quality:admin-lists"
   ]) {
     runScript(script);
   }
@@ -243,6 +244,14 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     masks.push(page.locator(".dts-parameter-workbench-table, .dts-workbench-list"));
   }
 
+  if (routePath === "/parameter-admin/projects") {
+    masks.push(page.getByRole("table", { name: "项目管理列表" }).locator('td[data-label="最近更新"]'));
+  }
+
+  if (routePath === "/feedback-admin") {
+    masks.push(page.getByRole("table", { name: "产品反馈记录" }).locator('td[data-label="创建时间"]'));
+  }
+
   if (routePath === "/parameter-admin") {
     // Published vendor catalog fills the navigator/list; the linux baseline
     // was captured against an unpublished Catalog. Mask the data-dependent
@@ -322,6 +331,16 @@ export async function waitForFontsAndNextPaint(page: Page) {
 export async function settleQualityRoute(page: Page, routePath: string, options: { readOnly?: boolean } = {}) {
   const timeout = 20_000;
 
+  if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath.split("?")[0])) {
+    await expect(page.locator('.parameter-module-mapping-panel[aria-busy="false"]')).toBeVisible({ timeout });
+    await expect(page.getByRole("tree", { name: "模块归属树" })).toBeVisible({ timeout });
+    for (const label of ["正在加载规范主体…", "正在读取发现结果…", "正在加载历史驱动注册表…"]) {
+      await expect(page.getByText(label, { exact: true })).toHaveCount(0, { timeout });
+    }
+    await waitForFontsAndNextPaint(page);
+    return;
+  }
+
   if (routePath === "/parameter-home") {
     // The trend panel swaps its loading skeleton for the chart once the
     // dashboard summary API answers.
@@ -346,12 +365,27 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout });
     await expect(page.locator(".api-runtime-error-banner")).toHaveCount(0, { timeout });
     if (routePath === "/log-admin") {
+      const collection = new URL(page.url()).searchParams.get("tab");
+      if (collection === "domains" || collection === "quality") {
+        await expect(page.getByTestId(collection === "domains" ? "log-domain-governance" : "feedback-quality-insights")).toHaveAttribute("aria-busy", "false", { timeout });
+        await expect(page.getByRole("table", { name: collection === "domains" ? "业务域列表" : "分析质量反馈聚合" })).toBeVisible({ timeout });
+        await expect(page.getByText("正在加载反馈数据…", { exact: true })).toHaveCount(0, { timeout });
+        await waitForFontsAndNextPaint(page);
+        return;
+      }
       // The default time window may exclude the seeded logs, so settle on either a seeded row or the loaded empty row.
       const records = page.getByRole("table", { name: "日志分析记录" });
       await expect(records.getByText("charging-foldback.log").or(records.getByText("当前时间窗口内暂无日志")).first()).toBeVisible({ timeout });
     } else if (routePath === "/debugging-admin/nodes") {
       await expect(page.locator(".debug-admin-coverage-badge").first()).toBeVisible({ timeout });
     }
+    await waitForFontsAndNextPaint(page);
+    return;
+  }
+
+  if (routePath === "/knowledge-admin") {
+    await expect(page.getByRole("tabpanel").getByRole("table")).toBeVisible({ timeout });
+    await expect(page.getByRole("tabpanel").getByText(/^正在加载/)).toHaveCount(0, { timeout });
     await waitForFontsAndNextPaint(page);
     return;
   }
@@ -371,9 +405,10 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     return;
   }
 
-  if (routePath === "/feedback-admin") {
-    // The seed ships no product feedback, so the list settles on its empty state.
-    await expect(page.getByText("暂无产品反馈")).toBeVisible({ timeout });
+  if (routePath === "/feedback-admin" || routePath === "/knowledge") {
+    const name = routePath === "/knowledge" ? "知识条目列表" : "产品反馈记录";
+    await expect(page.getByRole("table", { name }).locator("tbody .row-action-menu")
+      .getByRole("button", { name: "查看", exact: true }).first()).toBeVisible({ timeout });
     return;
   }
 

@@ -10,6 +10,8 @@ import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { ModuleTreeSelect } from "./components/common/ModuleTreeSelect";
 import { SearchField } from "./components/common/SearchField";
+import { NavigatorWorkbench } from "./components/layout/NavigatorWorkbench";
+import { Button } from "@/components/ui/button";
 import { SectionError, SectionSkeleton } from "./components/common/SectionState";
 import { createSearchIndex } from "@/lib/search";
 import { debugParameterSearchProfile } from "@/lib/search/profiles";
@@ -222,8 +224,8 @@ function DebugValueCodeBlock({ label, row, value }: { label: string; row: Runtim
         <strong>{label}</strong>
         <DebugValueFormatBadge row={row} />
       </div>
-      <pre>
-        <code tabIndex={0}>{value || "-"}</code>
+      <pre aria-label={label} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing code scrollport must support keyboard scrolling. */}>
+        <code>{value || "-"}</code>
       </pre>
     </div>
   );
@@ -236,7 +238,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
   const isComplex = isComplexDebugParameter(row);
 
   return (
-    <section className="node-write-format-panel" role="region" aria-labelledby={titleId}>
+    <section className="node-write-format-panel" aria-labelledby={titleId}>
       <div className="node-write-format-head">
         <h3 id={titleId}>{isComplex ? "复杂值写入格式" : "写入格式"}</h3>
         <span>{row.accessMode}</span>
@@ -498,16 +500,36 @@ export function NodeDebuggingPage({
 
   return (
     <div className="workbench-page node-debugging-page">
-      <div className="workbench-one-col">
+      <div className="debugging-workbench-content">
         <div className="node-debugging-controls">
           <ViewSwitch variant="tabs" ariaLabel="连接协议" value={protocol}
             onValueChange={(value) => session.setProtocol(value as DebugConnectionProtocol, debuggingActions)}
             items={(["hdc", "adb"] as const).map((value) => ({ value, label: protocolLabel(value),
               id: `node-debugging-${value}-tab`, panelId: `node-debugging-${value}-panel` }))} />
         </div>
-        <div className="workbench-one-col" role="tabpanel" id={`node-debugging-${protocol}-panel`}
+        <div role="tabpanel" id={`node-debugging-${protocol}-panel`}
           aria-labelledby={`node-debugging-${protocol}-tab`}>
+        <NavigatorWorkbench
+          pageKey="node-debugging"
+          toolbar={<>
+            <span className="parameters-table-count">
+              <strong>{selectedIds.length > 0 ? `已选 ${selectedIds.length} 项` : `${pendingRows.length} 项节点等待写入`}</strong>
+              {selectedIds.length > 0 ? ` · 其中 ${pendingSelectedRows.length} 项为待写入状态` : " · 可先在节点详情中暂存目标值"}
+            </span>
+            <Button variant="outline" disabled={!runtimeReady || !connected || !state.lastDebugSnapshot}
+              title={state.lastDebugSnapshot ? "回滚到上次写前快照" : "尚无快照，写入成功后自动生成"}
+              onClick={() => session.requestRollback()}>
+              <RotateCcw aria-hidden="true" />回滚快照
+            </Button>
+          </>}
+          primaryAction={<Button data-primary-action="true" disabled={!runtimeReady || !connected || batchTargetRows.length === 0}
+            onClick={() => void session.requestBulkWrite(debuggingActions)}>
+            <Send aria-hidden="true" />
+            {selectedIds.length > 0 ? `下发选中 (${pendingSelectedRows.length})` : "批量下发节点"}
+          </Button>}
+          context={<>
         <LocalDeviceBridgePanel
+          compact
           target={target}
           detecting={detecting}
           protocol={protocol}
@@ -541,32 +563,10 @@ export function NodeDebuggingPage({
             </ul>
           </section>
         ) : null}
-
-        <section className="debug-table">
-          <div className="panel-header">
-            <strong>节点调试参数</strong>
-            <span>{connected ? `${protocolLabel(protocol)} 设备在线` : "等待设备检测"}</span>
-          </div>
-
-          {runtimeStatus === "loading" ? (
-            <SectionSkeleton label="正在加载调试节点" />
-          ) : runtimeStatus === "error" ? (
-            <SectionError
-              message={runtimeError || "无法加载调试节点数据，请稍后重试。"}
-              onRetry={handleRuntimeRetry}
-            />
-          ) : (
-            <>
-          <div className="dts-parameter-workbench node-debugging-module-workbench">
-            <div className="dts-parameter-workbench__body">
-              <div
-                className="dts-parameter-workbench__navigator dts-workbench-topology"
-                role="region"
-                aria-label="模块导航"
-              >
-                <div className="dts-parameter-workbench__navigator-header">
-                  <h3 className="dts-parameter-workbench__navigator-title">模块导航</h3>
-                </div>
+          </>}
+          navigatorLabel="模块导航"
+          taskLabel="节点调试任务"
+          navigator={
                 <DtsTopologyNavigator
                   view="effective"
                   nodes={moduleNavigationTree}
@@ -580,8 +580,13 @@ export function NodeDebuggingPage({
                     setSelectedModuleNodeId((current) => (current === nodeId ? null : nodeId))
                   }
                 />
-              </div>
-              <div className="node-debugging-module-results">
+          }
+        >
+          {runtimeStatus === "loading" ? (
+            <SectionSkeleton label="正在加载调试节点" />
+          ) : runtimeStatus === "error" ? (
+            <SectionError message={runtimeError || "无法加载调试节点数据，请稍后重试。"} onRetry={handleRuntimeRetry} />
+          ) : (
           <section className="parameters-table parameters-table--column-filters" aria-label="节点调试参数">
             <div className="parameters-table-toolbar">
               <SearchField
@@ -706,7 +711,7 @@ export function NodeDebuggingPage({
                           <span>{row.accessMode === "WO" ? "只写（安全写入不可用）" : "只读"}</span>
                         )}
                       </td>
-                      <td data-label="状态"><span className={statusClass(row.runtimeStatus)}>{row.runtimeStatus}</span></td>
+                      <td data-label="状态"><span data-row-status className={statusClass(row.runtimeStatus)}>{row.runtimeStatus}</span></td>
                       <td className="parameter-row-actions" data-label="操作">
                         <button
                           className="icon-button parameter-row-edit"
@@ -747,43 +752,9 @@ export function NodeDebuggingPage({
               </div>
             ) : null}
           </section>
-              </div>
-            </div>
-          </div>
-
-          <div className="parameters-submit-bar parameters-submit-bar-active" aria-label="节点批量下发操作栏">
-            <div>
-              <strong>{selectedIds.length > 0 ? `已选 ${selectedIds.length} 项` : `${pendingRows.length} 项节点等待写入`}</strong>
-              <span>{selectedIds.length > 0 ? `其中 ${pendingSelectedRows.length} 项为待写入状态` : "可先在节点详情中暂存目标值，再批量下发到设备。"}</span>
-            </div>
-            <div className="debugging-action-buttons">
-              <button
-                className="button subtle"
-                type="button"
-                disabled={!connected || !state.lastDebugSnapshot}
-                title={state.lastDebugSnapshot ? "回滚到上次写前快照" : "尚无快照，写入成功后自动生成"}
-                onClick={() => session.requestRollback()}
-              >
-                <RotateCcw size={16} aria-hidden="true" />
-                回滚快照
-              </button>
-              <button
-                className="submit-round-button debugging-deploy-button"
-                data-primary-action="true"
-                type="button"
-                disabled={!connected || batchTargetRows.length === 0}
-                onClick={() => void session.requestBulkWrite(debuggingActions)}
-              >
-                <Send size={16} aria-hidden="true" />
-                {selectedIds.length > 0 ? `下发选中 (${pendingSelectedRows.length})` : "批量下发节点"}
-              </button>
-            </div>
-          </div>
-            </>
           )}
-        </section>
-
         <NodeOperationHistoryPanel events={events} />
+        </NavigatorWorkbench>
         </div>
         <div role="tabpanel" id={`node-debugging-${protocol === "hdc" ? "adb" : "hdc"}-panel`}
           aria-labelledby={`node-debugging-${protocol === "hdc" ? "adb" : "hdc"}-tab`} hidden />

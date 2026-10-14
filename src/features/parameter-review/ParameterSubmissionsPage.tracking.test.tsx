@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppRuntime } from "@/app/appRuntime";
@@ -33,14 +33,20 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
   });
 
   it("tracks a node-enablement round as active work with its items and withdrawal action", async () => {
+    const user = userEvent.setup();
     const nodeRound = { ...initialState.parameterSubmissionRounds[0], id: "node-round", status: "硬件Committer检视" as const,
       items: [{ ...initialState.parameterSubmissionRounds[0].items[0], requestId: "node-request",
         editSubjectKind: "node-enablement" as const, logicalNodeId: "node-charger", parameterId: "node-charger",
         name: "charger", module: "节点启用", currentValue: '"okay"', targetValue: '"disabled"' }] };
-    const listSubmissionRounds = vi.fn().mockResolvedValue([nodeRound]);
-    const withdrawSubmissionRound = vi.fn().mockImplementation(async () => {
-      listSubmissionRounds.mockResolvedValue([{ ...nodeRound, status: "已撤回" }]);
+    let finishRefresh!: () => void;
+    const refreshReady = new Promise<void>((resolve) => {
+      finishRefresh = resolve;
     });
+    const listSubmissionRounds = vi.fn().mockResolvedValueOnce([nodeRound]).mockImplementationOnce(async () => {
+      await refreshReady;
+      return [{ ...nodeRound, status: "已撤回" }];
+    });
+    const withdrawSubmissionRound = vi.fn().mockResolvedValue(undefined);
     const runtime = { parameterRepository: { listSubmissionRounds }, parameterCatalogRepository: {
       listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [] })
     } } as unknown as AppRuntime;
@@ -54,13 +60,15 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
     expect(tracking).toHaveTextContent("硬件MDE检视");
     expect(tracking).toHaveTextContent('"disabled"');
     expect(screen.queryByText("旧版提交归档")).not.toBeInTheDocument();
-    fireEvent.click(within(tracking).getByRole("button", { name: "撤回本轮提交" }));
-    fireEvent.click(screen.getByRole("button", { name: "确认撤回" }));
+    await user.click(within(tracking).getByRole("button", { name: "撤回本轮提交" }));
+    await user.click(await screen.findByRole("button", { name: "确认撤回" }));
     await waitFor(() => expect(withdrawSubmissionRound).toHaveBeenCalledWith("node-round"));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(listSubmissionRounds).toHaveBeenCalledTimes(2);
-    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
-    expect(await screen.findByRole("button", { name: "撤回本轮提交" })).toBeDisabled();
+    await waitFor(() => expect(listSubmissionRounds).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载审核队列");
+    await user.click(screen.getByRole("tab", { name: "已处理" }));
+    await act(async () => { finishRefresh(); });
+    await waitFor(() => expect(screen.getByRole("button", { name: "撤回本轮提交" })).toBeDisabled());
   });
 
   it("trusts the server-filtered API personal legacy archive when the DTO omits submitter ID", async () => {

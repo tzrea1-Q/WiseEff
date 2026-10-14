@@ -181,7 +181,7 @@ describe("ParameterAdminNextPage · shell", () => {
     const nav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(nav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
   });
 });
@@ -242,21 +242,23 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
   it("passes hydrated dual-role authority to the Organization Review Queue", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const listReviewItems = vi.spyOn(ports.governance, "listReviewItems");
-    renderPage({
-      path: "/parameter-admin/specs?review=open",
-      runtimeMode: "api",
-      state: { ...initialState, activeRoleId: "platform-admin" },
-      sessionRoles: [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }],
-      runtime: {
-        parameterCatalogRepository: ports.catalog,
-        parameterCatalogGovernanceRepository: ports.governance
-      } as AppRuntime,
-      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    await act(async () => {
+      renderPage({
+        path: "/parameter-admin/specs?review=open",
+        runtimeMode: "api",
+        state: { ...initialState, activeRoleId: "platform-admin" },
+        sessionRoles: [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }],
+        runtime: {
+          parameterCatalogRepository: ports.catalog,
+          parameterCatalogGovernanceRepository: ports.governance
+        } as AppRuntime,
+        catalogOrganizationId: CATALOG_ORGANIZATION_ID
+      });
     });
 
     expect(await screen.findByRole("button", { name: /待处理工作/ })).toBeVisible();
     expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "处理审核" })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "处理审核" })).toBeEnabled());
     expect(listReviewItems).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID);
   });
 
@@ -909,7 +911,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
       area: "projects"
     });
 
-    expect(await screen.findByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     const firstOpen = screen.getAllByRole("button", { name: /配置工作台/ })[0]!;
     fireEvent.click(firstOpen);
 
@@ -967,7 +969,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     });
     await waitFor(() =>
       expect(structure.onNavigate).toHaveBeenCalledWith(
-        `/parameter-admin/projects/${projectId}/configuration?file=f1&node=board&property=model&sourceMode=working`
+        `/parameter-admin/projects/${projectId}/configuration?file=f1&node=board&property=model&tab=structure&sourceMode=working`
       )
     );
     cleanup();
@@ -1000,7 +1002,8 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     renderPage({ path: "/parameter-admin/projects", area: "projects", dispatch });
 
     const projectName = initialState.configDraft.projects[0]!.name;
-    fireEvent.click(screen.getByRole("button", { name: `编辑 ${projectName}` }));
+    await userEvent.click(screen.getByRole("button", { name: `${projectName}操作：更多` }));
+    await userEvent.click(screen.getByRole("menuitem", { name: `编辑 ${projectName}` }));
     const editDialog = await screen.findByRole("dialog", { name: "编辑项目详情" });
     fireEvent.change(within(editDialog).getByLabelText("项目名称"), {
       target: { value: `${projectName} Updated` }

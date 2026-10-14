@@ -45,9 +45,9 @@ describe("AuditCenterPage", () => {
       />
     );
 
-    const timeline = screen.getByRole("heading", { name: "审计事件" }).closest("section");
-    expect(timeline).toBeTruthy();
-    fireEvent.click(within(timeline!).getByRole("button", { name: /导入 8 条混合参数草稿/ }));
+    const table = screen.getByRole("table", { name: "审计事件" });
+    const row = within(table).getByText("导入 8 条混合参数草稿").closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "查看" }));
 
     const dialog = screen.getByRole("dialog", { name: "操作证据与变更摘要" });
     expect(dialog).toBeInTheDocument();

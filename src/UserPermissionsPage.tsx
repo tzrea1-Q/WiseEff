@@ -8,7 +8,8 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { filterItems } from "@/lib/search";
 import { userAccountSearchProfile } from "@/lib/search/profiles";
-import { DataTable, type Column } from "@/components/admin";
+import type { Column } from "@/components/admin";
+import { AdminListPage, AdminListPageHeader } from "@/components/layout/AdminListPage";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { ViewSwitch } from "@/components/ui/view-switch";
@@ -617,35 +618,19 @@ export function UserPermissionsPage({
           (r) => r.projectId !== null && !r.roleId.startsWith("catalog-capability-")
         );
         return (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="flex flex-wrap items-center gap-2">
             {projectBindings.length > 0 ? (
               projectBindings.map((b, idx) => (
                 <span
                   key={`${b.projectId}-${b.roleId}-${idx}`}
-                  style={{
-                    fontSize: "0.75rem",
-                    padding: "0.125rem 0.375rem",
-                    borderRadius: "0.25rem",
-                    backgroundColor: "#eff6ff",
-                    color: "#1e40af",
-                    border: "1px solid #dbeafe"
-                  }}
+                  className="rounded-sm border border-border bg-accent/10 px-2 py-1 text-xs text-foreground"
                 >
                   {b.projectId}: {roleLabelOf(b.roleId)}
                 </span>
               ))
             ) : (
-              <span style={{ color: "#94a3b8", fontSize: "0.8125rem" }}>—</span>
+              <span className="text-sm text-muted-foreground">—</span>
             )}
-            <button
-              type="button"
-              className="button subtle"
-              onClick={() => onNavigate("/parameter-admin/projects")}
-              style={{ fontSize: "0.75rem", padding: "0.125rem 0.375rem" }}
-              title="前往项目管理配置审核角色"
-            >
-              配置
-            </button>
           </div>
         );
       }
@@ -655,85 +640,7 @@ export function UserPermissionsPage({
       header: "状态",
       sortAccessor: (user) => statusLabelOf(user.isActive),
       headerFilter: headerFilterConfig("status", "状态"),
-      render: (user) => {
-        const isCurrentUser = user.id === state.currentUserId;
-        const statusPlatformAdminLocked = isPlatformAdminLocked(state, user);
-
-        return (
-          <button
-            className="button"
-            type="button"
-            disabled={isCurrentUser || statusPlatformAdminLocked}
-            title={
-              statusPlatformAdminLocked
-                ? "只有平台超级管理员可以停用平台超级管理员。"
-                : undefined
-            }
-            onClick={() => {
-              setGovernanceError(null);
-              setPendingGovernance({ kind: "active", user, nextActive: !user.isActive });
-            }}
-          >
-            {user.isActive ? "停用" : "启用"}
-          </button>
-        );
-      }
-    },
-    ...(userGovernanceActions?.resetUserPassword
-      ? [
-          {
-            key: "password",
-            header: "密码",
-            render: (user: User) => (
-              <button
-                className="button"
-                type="button"
-                aria-label={`重置 ${user.name} 的密码`}
-                onClick={() => openResetPassword(user)}
-              >
-                重置密码
-              </button>
-            )
-          } satisfies Column<User>
-        ]
-      : []),
-    {
-      key: "delete",
-      header: "注销",
-      render: (user) => {
-        const isCurrentUser = user.id === state.currentUserId;
-        const platformAdminLocked = isPlatformAdminLocked(state, user);
-        const disabledReason = isCurrentUser
-          ? "不能注销当前登录账号。"
-          : platformAdminLocked
-            ? "只有平台超级管理员可以注销平台超级管理员。"
-            : undefined;
-
-        const reasonId = disabledReason ? `delete-user-reason-${user.id}` : undefined;
-
-        return (
-          <div className="user-permissions-action-with-reason">
-            <button
-              className="button danger user-permissions-delete-button"
-              type="button"
-              aria-label={`注销 ${user.name}`}
-              aria-describedby={reasonId}
-              disabled={Boolean(disabledReason)}
-              onClick={() => {
-                setGovernanceError(null);
-                setPendingGovernance({ kind: "delete", user });
-              }}
-            >
-              注销
-            </button>
-            {disabledReason ? (
-              <span id={reasonId} className="user-permissions-disabled-reason">
-                {disabledReason}
-              </span>
-            ) : null}
-          </div>
-        );
-      }
+      render: (user) => statusLabelOf(user.isActive)
     },
     {
       key: "lastActive",
@@ -745,8 +652,8 @@ export function UserPermissionsPage({
 
   return (
     <section className="user-permissions-page" aria-label="用户权限">
-      <div className="user-permissions-toolbar">
-        {approvalWorkflowEnabled ? (
+      <AdminListPageHeader label="平台用户" className="user-permissions-toolbar" content={
+        approvalWorkflowEnabled ? (
           <ViewSwitch
             variant="tabs"
             ariaLabel="用户权限工作区"
@@ -767,12 +674,9 @@ export function UserPermissionsPage({
             <span className="eyebrow">用户治理</span>
             <h2>账号库</h2>
           </div>
-        )}
-        <button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
-          <UserPlus size={16} aria-hidden="true" />
-          <span>添加用户</span>
-        </button>
-      </div>
+        )} actions={<button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
+          <UserPlus size={16} aria-hidden="true" /><span>添加用户</span>
+        </button>} />
 
       {approvalWorkflowEnabled && workspace === "accounts" && pendingApprovalCount > 0 ? (
         <p className="user-permissions-pending-hint">
@@ -785,60 +689,71 @@ export function UserPermissionsPage({
 
       {workspace === "accounts" ? (
         <>
-          <div className="user-permissions-filters" role="search" aria-label="用户筛选">
-            <label className="user-permissions-filter-field user-permissions-filter-field--search">
-              <span className="user-permissions-filter-label">搜索</span>
-              <SearchField value={query} onValueChange={setQuery} placeholder="搜索用户" ariaLabel="搜索用户" />
-            </label>
-            <label className="user-permissions-filter-field">
-              <span className="user-permissions-filter-label">角色</span>
-              <select className="compact-filter-control" data-compact-control="filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
-                <option value="all">全部角色</option>
-                {platformRoles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {roleLabelOf(role.id)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="user-permissions-filter-field">
-              <span className="user-permissions-filter-label">状态</span>
-              <select className="compact-filter-control" data-compact-control="filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-                {statusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
           <TabPanel
             className="user-permissions-grid"
             role={approvalWorkflowEnabled ? "tabpanel" : undefined}
             id="user-permissions-workspace-accounts-panel"
             aria-labelledby={approvalWorkflowEnabled ? "user-permissions-workspace-accounts" : undefined}
           >
-            {userDirectoryStatus === "loading" ? (
-              <SectionSkeleton label="正在加载用户名录" />
-            ) : userDirectoryStatus === "error" ? (
-              <SectionError
-                message={userDirectoryError || "无法加载用户名录，请稍后重试。"}
-                onRetry={handleUserDirectoryRetry}
-              />
-            ) : (
-              <DataTable
-                ariaLabel="平台用户"
-                rows={filteredUsers}
-                rowKey={(user) => user.id}
-                emptyMessage={
-                  state.users.length === 0
-                    ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。"
-                    : "没有符合筛选条件的用户，请调整搜索或筛选条件。"
-                }
-                columns={accountColumns}
-              />
-            )}
+            <AdminListPage label="平台用户" headerActions={null}
+              filterBar={
+                      <div className="user-permissions-filters" role="search" aria-label="用户筛选">
+                  <label className="admin-list-page__filter-field user-permissions-filter-field user-permissions-filter-field--search">
+                    <span className="user-permissions-filter-label">搜索</span>
+                    <SearchField value={query} onValueChange={setQuery} placeholder="搜索用户" ariaLabel="搜索用户" />
+                  </label>
+                  <label className="admin-list-page__filter-field user-permissions-filter-field">
+                    <span className="user-permissions-filter-label">角色</span>
+                    <select className="compact-filter-control" data-compact-control="filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
+                      <option value="all">全部角色</option>
+                      {platformRoles.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {roleLabelOf(role.id)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="admin-list-page__filter-field user-permissions-filter-field">
+                    <span className="user-permissions-filter-label">状态</span>
+                    <select className="compact-filter-control" data-compact-control="filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+                      {statusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>}
+              tableState={userDirectoryStatus === "loading" ? <SectionSkeleton label="正在加载用户名录" />
+                : userDirectoryStatus === "error" ? <SectionError message={userDirectoryError || "无法加载用户名录，请稍后重试。"} onRetry={handleUserDirectoryRetry} /> : undefined}
+              table={{ ariaLabel: "平台用户", rows: filteredUsers, rowKey: (user) => user.id, columns: accountColumns }}
+              emptyState={{ message: state.users.length === 0 ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。" : "没有符合筛选条件的用户，请调整搜索或筛选条件。",
+                actionLabel: state.users.length === 0 ? "添加用户" : "清除筛选条件", onAction: () => {
+                  if (state.users.length === 0) setAddUserOpen(true);
+                  else { setQuery(""); setRoleFilter("all"); setStatusFilter("all"); setColumnFilters({}); }
+                } }}
+              rowActions={(user) => {
+                const locked = isPlatformAdminLocked(state, user);
+                const disabledReason = user.id === state.currentUserId ? "不能注销当前登录账号。"
+                  : locked ? "只有平台超级管理员可以注销平台超级管理员。" : undefined;
+                return {
+                  label: `${user.name} 操作`,
+                  primaryAction: { id: "active", label: user.isActive ? "停用" : "启用", disabled: user.id === state.currentUserId || locked,
+                    title: locked ? "只有平台超级管理员可以停用平台超级管理员。" : undefined,
+                    onSelect: () => { setGovernanceError(null); setPendingGovernance({ kind: "active", user, nextActive: !user.isActive }); } },
+                  items: [
+                    { id: "projects", label: "配置项目职责", onSelect: () => onNavigate("/parameter-admin/projects") },
+                    ...(userGovernanceActions?.resetUserPassword ? [{ id: "password", label: "重置密码", ariaLabel: `重置 ${user.name} 的密码`, onSelect: () => openResetPassword(user) }] : []),
+                    { id: "delete", label: "注销", ariaLabel: `注销 ${user.name}`, destructive: true as const,
+                      disabled: Boolean(disabledReason), description: disabledReason, descriptionId: disabledReason ? `delete-user-reason-${user.id}` : undefined,
+                      onRequestConfirmation: () => { setGovernanceError(null); setPendingGovernance({ kind: "delete", user }); } }
+                  ]
+                };
+              }} />
+            {filteredUsers.filter((user) => user.id === state.currentUserId || isPlatformAdminLocked(state, user)).map((user) =>
+              <span key={user.id} id={`delete-user-reason-${user.id}`} className="sr-only">
+                {user.id === state.currentUserId ? "不能注销当前登录账号。" : "只有平台超级管理员可以注销平台超级管理员。"}
+              </span>)}
           </TabPanel>
         </>
       ) : (
@@ -926,7 +841,7 @@ export function UserPermissionsPage({
                   {roleLabelOf(migrateLegacyRoleId(pendingGovernance.user.roleId))}」调整为「
                   {roleLabelOf(pendingGovernance.nextRoleId)}」，新权限立即生效。
                 </p>
-                <p style={{ marginTop: "0.5rem", fontSize: "0.8125rem", color: "var(--color-text-secondary, #64748b)" }}>
+                <p className="mt-2 text-sm text-muted-foreground">
                   注意：本次修改仅更新组织级内置角色，该用户在各项目中的项目审核角色与职责绑定将完整保留。
                 </p>
               </div>

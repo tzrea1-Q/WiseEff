@@ -152,7 +152,7 @@ function BindingHistoryEntryItem({
     <li className="parameter-detail-history__item" data-complex="true">
       <span className="parameter-detail-history__version">{eventLabel}</span>
       <span className="parameter-detail-history__value">
-        <code tabIndex={0}>{displayHistoryRaw(entry.toRawValue, entry.valueState)}</code>
+        <code aria-label={eventLabel} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing history value must support keyboard scrolling. */}>{displayHistoryRaw(entry.toRawValue, entry.valueState)}</code>
       </span>
       <small className="parameter-detail-history__meta">
         {[entry.eventType, historyRevisionLabel(entry), ...metaParts]

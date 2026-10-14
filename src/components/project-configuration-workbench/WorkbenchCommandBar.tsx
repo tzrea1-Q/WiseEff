@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Activity, ChevronLeft, PanelRight } from "lucide-react";
 
 import type {
@@ -15,6 +15,7 @@ import {
 } from "./WorkbenchReleaseReadiness";
 
 export type WorkbenchCommandBarProps = {
+  primaryAction?: ReactNode;
   project: {
     id: string;
     name: string;
@@ -44,7 +45,6 @@ export type WorkbenchCommandBarProps = {
   inspectorOpen: boolean;
   onInspectorToggle: () => void;
   candidateFileInputRef: RefObject<HTMLInputElement | null>;
-  uploadingCandidate: boolean;
   onCandidateFileChange: (file: File) => void;
   downloadingDts: boolean;
   onDownloadActiveDts: () => void;
@@ -57,6 +57,7 @@ export type WorkbenchCommandBarProps = {
 };
 
 export function WorkbenchCommandBar({
+  primaryAction,
   project,
   onLeave,
   configSets,
@@ -81,7 +82,6 @@ export function WorkbenchCommandBar({
   inspectorOpen,
   onInspectorToggle,
   candidateFileInputRef,
-  uploadingCandidate,
   onCandidateFileChange,
   downloadingDts,
   onDownloadActiveDts,
@@ -95,6 +95,7 @@ export function WorkbenchCommandBar({
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const activeFileFormatLabel = selectedMember?.format === "json" ? "JSON" : "DTS";
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const configSetNameRef = useRef<HTMLInputElement | null>(null);
   const [createConfigSetOpen, setCreateConfigSetOpen] = useState(false);
   const [newConfigSetName, setNewConfigSetName] = useState("");
   const [configSetNameError, setConfigSetNameError] = useState("");
@@ -264,15 +265,6 @@ export function WorkbenchCommandBar({
               onCandidateFileChange(file);
             }}
           />
-          <button
-            className="button subtle"
-            type="button"
-            disabled={uploadingCandidate || !selectedConfigSet || !canAdmin}
-            title="上传创建候选文件版本，不会激活工作配置"
-            onClick={() => candidateFileInputRef.current?.click()}
-          >
-            {uploadingCandidate ? "上传中…" : "上传候选"}
-          </button>
           <div className="dropdown-root configuration-workbench__more" ref={moreMenuRef}>
             <button
               type="button"
@@ -367,6 +359,7 @@ export function WorkbenchCommandBar({
               </div>
             ) : null}
           </div>
+          {primaryAction}
         </div>
       </header>
 
@@ -376,6 +369,7 @@ export function WorkbenchCommandBar({
         className="submission-dialog configuration-workbench__create-config-dialog"
         backdropClassName="param-admin-modal-backdrop"
         describedBy
+        initialFocusRef={configSetNameRef}
       >
         {({ titleId, descriptionId }) => (
           <>
@@ -406,7 +400,7 @@ export function WorkbenchCommandBar({
                 <input
                   type="text"
                   value={newConfigSetName}
-                  autoFocus
+                  ref={configSetNameRef}
                   aria-invalid={configSetNameError ? "true" : "false"}
                   aria-describedby={configSetNameError ? "workbench-config-set-name-error" : undefined}
                   onChange={(event) => {

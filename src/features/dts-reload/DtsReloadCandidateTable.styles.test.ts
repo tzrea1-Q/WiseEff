@@ -13,9 +13,9 @@ describe("DtsReloadCandidateTable action column", () => {
       ".dts-reload-candidate-table__grid td:last-child"
     );
 
-    expect(header.width).toBe("96px");
-    expect(header["min-width"]).toBe("96px");
-    expect(header["max-width"]).toBe("96px");
+    expect(header.width).toBe("calc(3 * var(--space-8))");
+    expect(header["min-width"]).toBe("calc(3 * var(--space-8))");
+    expect(header["max-width"]).toBe("calc(3 * var(--space-8))");
     expect(header["text-align"]).toBe("center");
     expect(cell["text-align"]).toBe("center");
   });

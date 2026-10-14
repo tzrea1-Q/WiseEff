@@ -15,7 +15,7 @@ export function TabPanel(props: Omit<ComponentPropsWithoutRef<"div">, "tabIndex"
         }
         return true;
       });
-      if (panel.hidden || panel.getAttribute("role") !== "tabpanel" || hasFocusableContent) {
+      if (panel.hidden || !["tabpanel", "region"].includes(panel.getAttribute("role") ?? "") || hasFocusableContent) {
         panel.removeAttribute("tabindex");
       } else if (panel.tabIndex !== 0) {
         panel.tabIndex = 0;

@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("@/features/agent/XiaozeProvider", () => ({
   XiaozeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -37,10 +38,165 @@ import {
 } from "./test/harness";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
+import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
 
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+
+it("replaces legacy module bookmarks and restores governance tabs on browser Back", async () => {
+  window.history.replaceState(null, "", "/parameter-admin/modules/queue?q=power");
+  const historyLength = window.history.length;
+  render(<App runtimeMode="mock" initialAppState={adminState} />);
+  await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/parameter-admin/modules?q=power&tab=queue"));
+  expect(window.history.length).toBe(historyLength);
+  expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
+  await waitFor(() => expect(window.location.search).toBe("?q=power&tab=registry"));
+  expect(window.history.length).toBe(historyLength + 1);
+  window.history.back();
+  await waitFor(() => expect(window.location.search).toBe("?q=power&tab=queue"));
+  expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+});
+
+it("waits for the settings leave dialog before changing a shell route", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  expect(window.location.pathname).toBe("/organization");
+  fireEvent.click(within(screen.getByRole("dialog", { name: "放弃未保存的更改？" })).getByRole("button", { name: "继续编辑" }));
+  expect(window.location.pathname).toBe("/organization");
+  fireEvent.click(screen.getByRole("button", { name: "人员管理" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "放弃并离开" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+});
+
+it("keeps the current page until an asynchronous browser-back guard is resolved", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+  window.history.back();
+  const dialog = await screen.findByRole("dialog", { name: "放弃未保存的更改？" });
+  expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "继续编辑" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+  window.history.back();
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "放弃并离开" }));
+  await screen.findByRole("region", { name: "组织档案" });
+  expect(window.location.pathname).toBe("/organization");
+});
+
+it("restores the settings URL after cancelling Back across a history entry created without navigation metadata", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  window.history.pushState(null, "", "/organization/members?search=member");
+  fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "组织管理" }));
+  await screen.findByRole("region", { name: "组织档案" });
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>保留未保存的草稿</SettingsFormPage>);
+
+  window.history.back();
+  const dialog = await screen.findByRole("dialog", { name: "放弃未保存的更改？" });
+  expect(window.location.search).toBe("?search=member");
+  fireEvent.click(within(dialog).getByRole("button", { name: "继续编辑" }));
+
+  await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/organization"));
+  expect(screen.getByRole("region", { name: "组织档案" })).toBeInTheDocument();
+  expect(screen.getByText("保留未保存的草稿")).toBeInTheDocument();
+});
+
+it("lets a newer browser Back supersede shell navigation waiting on the same leave dialog", async () => {
+  window.history.replaceState(null, "", "/organization?previous=1");
+  renderApp({ initialAppState: adminState });
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  const dirtyForm = render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+  fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "组织管理" }));
+  const dialog = screen.getByRole("dialog", { name: "放弃未保存的更改？" });
+
+  window.history.back();
+  await waitFor(() => expect(window.location.search).toBe("?previous=1"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "放弃并离开" }));
+
+  await screen.findByRole("region", { name: "组织档案" });
+  expect(window.location.pathname + window.location.search).toBe("/organization?previous=1");
+  dirtyForm.unmount();
+  window.history.forward();
+  await screen.findByRole("table", { name: "平台用户" });
+  expect(window.location.pathname).toBe("/organization/members");
+});
+
+it("guards synthetic route synchronization and preserves the next native Back guard", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  await screen.findByRole("region", { name: "组织档案" });
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>未保存的草稿</SettingsFormPage>);
+  window.history.pushState(null, "", "/organization/members");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "继续编辑" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/organization"));
+  expect(screen.getByRole("region", { name: "组织档案" })).toBeInTheDocument();
+
+  window.history.pushState(null, "", "/organization/members");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "放弃并离开" }));
+  await screen.findByRole("table", { name: "平台用户" });
+  window.history.back();
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "继续编辑" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+});
+
+it("keeps pending synthetic navigation guarded when another push changes its query", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  await screen.findByRole("region", { name: "组织档案" });
+  render(<SettingsFormPage label="未保存设置" dirty onSave={vi.fn()} onDiscard={vi.fn()}>保留未保存的草稿</SettingsFormPage>);
+  act(() => {
+    window.history.pushState(null, "", "/organization/members");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  const dialog = await screen.findByRole("dialog", { name: "放弃未保存的更改？" });
+  act(() => {
+    window.history.pushState(null, "", "/organization/members?second=1");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(screen.getByRole("region", { name: "组织档案" })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "继续编辑" }));
+  await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/organization"));
+  expect(screen.getByText("保留未保存的草稿")).toBeInTheDocument();
+});
+
+it("keeps the current route when a settings form rejects shell navigation", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  const rejectLeave = (event: Event) => event.preventDefault();
+  window.addEventListener("wiseeff:settings-before-leave", rejectLeave);
+  try {
+    fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+    expect(window.location.pathname).toBe("/organization");
+  } finally {
+    window.removeEventListener("wiseeff:settings-before-leave", rejectLeave);
+  }
+});
+
+it("restores browser history when a settings form rejects back navigation", async () => {
+  window.history.replaceState(null, "", "/organization");
+  renderApp({ initialAppState: adminState });
+  fireEvent.click(await screen.findByRole("button", { name: "人员管理" }));
+  expect(window.location.pathname).toBe("/organization/members");
+  const rejectLeave = (event: Event) => event.preventDefault();
+  window.addEventListener("wiseeff:settings-before-leave", rejectLeave);
+  const go = vi.spyOn(window.history, "go");
+  try {
+    window.history.back();
+    await waitFor(() => expect(go).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+    expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
+  } finally {
+    window.removeEventListener("wiseeff:settings-before-leave", rejectLeave);
+  }
+});
 
 it("waits for live projects before reading their initialization state", async () => {
   window.history.replaceState(null, "", "/parameters");
@@ -1093,7 +1249,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    await screen.findByText("可调节点目录");
+    await screen.findByRole("table", { name: "可调节点目录" });
     expect(debuggingGateway.listRuntimeNodes).toHaveBeenCalledTimes(1);
 
     fireEvent.click(
@@ -1242,7 +1398,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       routesSource.indexOf('case "debugging-admin":')
     );
 
-    expect(debuggingCase).toContain("NoEntryPage");
+    expect(debuggingCase).toContain("RetiredNotice");
     expect(debuggingCase).not.toContain("DebuggingPageWithRuntimeProps");
     // Both runtime modes route through the same debugging actions (the gateway behind
     // them is mode-selected by resolveDebuggingGateway); mock mode adds bridge seams.
@@ -1327,12 +1483,15 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "已处理" }), { button: 0, ctrlKey: false });
-    const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
+    await userEvent.click(await screen.findByRole("tab", { name: "已处理" }));
+    await screen.findByRole("complementary", { name: "审阅详情" });
     // Prefer selecting the merged row if the queue does not auto-select it
     const row = within(screen.getByRole("table")).getByText(merged.title);
     fireEvent.click(row.closest("tr") ?? row);
 
+    await waitFor(() => expect(within(screen.getByRole("complementary", { name: "审阅详情" }))
+      .getAllByRole("link", { name: "https://example.com/mr/99" }).length).toBeGreaterThanOrEqual(2));
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
     const links = within(reviewDetail).getAllByRole("link", { name: "https://example.com/mr/99" });
     expect(links.length).toBeGreaterThanOrEqual(2);
     for (const link of links) {
@@ -1380,10 +1539,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "已处理" }), { button: 0, ctrlKey: false });
-    const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
+    await userEvent.click(await screen.findByRole("tab", { name: "已处理" }));
+    await screen.findByRole("complementary", { name: "审阅详情" });
     const row = within(screen.getByRole("table")).getByText(merged.title);
     fireEvent.click(row.closest("tr") ?? row);
+    await waitFor(() => expect(within(screen.getByRole("complementary", { name: "审阅详情" }))
+      .getByRole("heading", { name: merged.title })).toBeVisible());
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
     expect(within(reviewDetail).queryByRole("link", { name: /https?:\/\// })).toBeNull();
     expect(reviewDetail.querySelector(".merge-link-card")).toBeNull();
   });
@@ -2557,7 +2719,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("heading", { name: "页面不可用" })).toBeInTheDocument();
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "参数工作台" }));
+    expect(screen.getByRole("link", { name: "参数工作台" })).toHaveAttribute("href", "/parameters");
+    fireEvent.click(screen.getByRole("link", { name: "参数工作台" }));
 
     expect(window.location.pathname).toBe("/parameters");
   });
@@ -3237,7 +3400,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     );
 
     await waitFor(() => {
-      expect(document.querySelector(".topbar-page-actions .button.primary")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "上传新日志" })).toBeEnabled();
     });
   });
 
@@ -3418,6 +3581,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByRole("heading", { level: 2, name: "页面暂时不可用" })).toBeInTheDocument();
     expect(screen.queryByText("实时可调参数")).not.toBeInTheDocument();
+    const replacement = screen.getByRole("link", { name: "节点调试" });
+    expect(replacement).toHaveAttribute("href", "/node-debugging");
+    fireEvent.click(replacement);
+    expect(window.location.pathname).toBe("/node-debugging");
   });
 
   it("shows the project selector only on parameter-management routes", () => {
@@ -3711,7 +3878,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       })
     ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument();
     expect(document.querySelector(".project-admin-detail")).not.toBeInTheDocument();
@@ -3743,7 +3910,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     window.history.replaceState(null, "", "/parameter-admin/projects");
     renderApp({ initialAppState: adminState });
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
   });
 
@@ -3850,25 +4017,27 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
   });
 
-  it("edits debug node config from the debugging admin catalog", () => {
+  it("edits debug node config from the debugging admin catalog", async () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
 
     renderApp({ initialAppState: adminState, runtimeMode: "mock" });
 
     const catalog = screen.getByRole("table", { name: "可调节点目录" });
     const chargerRow = within(catalog).getByRole("row", { name: /充电输入限流/ });
-    fireEvent.click(within(chargerRow).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
     const editedPath = "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited";
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: editedPath }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    fireEvent.click(within(chargerRow).getByRole("button", { name: "路径绑定" }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
 
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue(editedPath);
   });
 
-  it("adds and disables debug nodes from the debugging admin catalog", () => {
+  it("adds and disables debug nodes from the debugging admin catalog", async () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
     const nextName = "新调试节点";
 
@@ -3882,7 +4051,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const createdRow = screen.getByRole("row", { name: new RegExp(nextName) });
     expect(createdRow).toBeInTheDocument();
 
-    fireEvent.click(within(createdRow).getByRole("button", { name: new RegExp(`禁用 ${nextName}`) }));
+    await userEvent.click(within(createdRow).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: new RegExp(`禁用 ${nextName}`) }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "禁用" }));
 
     expect(within(createdRow).getByText("已禁用")).toBeInTheDocument();
@@ -3996,6 +4166,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.pushState(null, "", "/logs");
     fireEvent.popState(window);
 
-    expect(within(document.querySelector(".topbar") as HTMLElement).getByRole("button", { name: "上传新日志" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传新日志" })).toBeInTheDocument();
   });
 });
