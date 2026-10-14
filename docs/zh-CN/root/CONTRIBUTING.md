@@ -66,7 +66,7 @@ npm run test:browser:codex -- src/features/log-analysis/LogsPage.tsx
 npm run test:browser:codex -- --check test-results/lanes/7/codex-browser-evidence.json
 ```
 
-也可用 `--base <commit>` 替代变更路径；与 `test:impact` 一样包含已提交、暂存、未暂存和未跟踪变更。运行器复用该选择器的实现，原样记录其浏览器输出，只执行 quality grep 和精确 acceptance spec 路径，并保留既有 warmup 依赖与全部 quality 项目。未知或共享变更保留选择器的完整浏览器回退；任务预算禁止这类运行时，应交给协调者，而不是手动缩小选择。quality 与 acceptance 在同一 lane 顺序运行，复用既有独立数据库、端口、对象存储和输出路径，并拒绝复用服务器。受控运行时描述符、跳过运行时设置、quality 项目分区覆盖、替代 snapshot 根目录和工作树外对象存储均被拒绝。acceptance 的 dotenv 输入固定为 `/dev/null`；所需本地运行时设置必须显式导出。
+也可用 `--base <commit>` 替代变更路径；与 `test:impact` 一样包含已提交、暂存、未暂存和未跟踪变更。运行器复用该选择器的实现，记录实际浏览器选择与命令，只执行 quality grep 和精确 acceptance spec 路径，并保留既有 warmup 依赖。非 Linux 主机排除 `visual` quality 项目及包含截图/快照基线断言的 spec 文件，在 `skipped` 中逐项记录原因 `platform: Linux-only baselines`；Linux 选择不作此排除（CI 渲染仍为权威基准）。未知或共享变更保留选择器的完整浏览器回退；任务预算禁止这类运行时，应交给协调者，而不是手动缩小选择。quality 与 acceptance 在同一 lane 顺序运行，复用既有独立数据库、端口、对象存储和输出路径，并拒绝复用服务器。受控运行时描述符、跳过运行时设置、quality 项目分区覆盖、替代 snapshot 根目录和工作树外对象存储均被拒绝。在启动任何运行时之前，所选 acceptance 测试必须具有非空白的 `AUTH_TOKEN_ISSUER` 与 `AUTH_TOKEN_HMAC_SECRET`：显式环境变量优先于工作树 `.env`。仅从 `.env` 加载这两个键；acceptance 的 dotenv 输入仍固定为 `/dev/null`，其他所需本地运行时设置须显式导出。缺少认证配置时非零退出，回执记录 `status: "blocked: missing <names>"`、仅含名称的 `missingConfig` 和空 `runs`；不会将秘密值复制到回执中。
 
 当前执行后端**仅支持 macOS**：通过原生 `/usr/bin/sandbox-exec` 将 Playwright、Chromium、API/前端服务器及其子进程的 IP 网络限制为回环。其他平台或原生沙箱不可用/被拒绝时失败关闭，不提供无限制回退、浏览器下载、shell 命令输入、git 写入、push 或 PR 操作。D3 中用户批准的 Codex 沙箱绕过，只适用于协调者在相同边界内启动的独立任务会话；运行器本身不会启用绕过。协调者接受该后端前，必须真实验证原生网络限制和 Chromium 启动。本票的普通沙箱实现者不启动它。
 

@@ -2,20 +2,70 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync,
 import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildCodexBrowserEvidence, codexBrowserEvidenceSchema, planCodexBrowserRun, runCodexBrowserPlan, summarizeBrowserReport } from "./run-codex-browser";
+import { browserPlatformSkips, buildCodexBrowserEvidence, codexBrowserEvidenceSchema, planCodexBrowserRun, runCodexBrowserPlan, summarizeBrowserReport } from "./run-codex-browser";
 import { selectBrowserImpact } from "./test-impact";
 
 const worktree = {
   root: "/tmp/task", gitDir: "/tmp/main/.git/worktrees/task", commonDir: "/tmp/main/.git",
   branch: "codex/ui-t-1179", head: "9cde32f5f0167855ca5b239c8ef68a041f528143", dirty: true,
 };
-const environment = { WISEEFF_RUNTIME_LANE: "7", DATABASE_URL: "postgres://local:secret@127.0.0.1:5432/wiseeff" };
+const environment = { WISEEFF_RUNTIME_LANE: "7", DATABASE_URL: "postgres://local:secret@127.0.0.1:5432/wiseeff", AUTH_TOKEN_ISSUER: "test-issuer", AUTH_TOKEN_HMAC_SECRET: "test-hmac-secret" };
 const selection = selectBrowserImpact(["src/features/log-analysis/LogsPage.tsx"], {
   "e2e/acceptance/logs.spec.ts": ["/logs"],
   "e2e/acceptance/organization.spec.ts": ["/organization"],
 });
 
 describe("Codex browser runner", () => {
+  it("excludes baseline projects/specs on non-Linux hosts and records platform skips", () => {
+    const root = realpathSync(mkdtempSync(resolve(tmpdir(), "codex-browser-")));
+    try {
+      mkdirSync(resolve(root, "e2e/acceptance"), { recursive: true });
+      writeFileSync(resolve(root, "e2e/acceptance/baseline.spec.ts"), 'await expect(page).toHaveScreenshot("baseline.png");');
+      mkdirSync(resolve(root, "e2e/quality"), { recursive: true });
+      writeFileSync(resolve(root, "e2e/quality/other.quality.spec.ts"), 'await expect(image).toMatchSnapshot("baseline.png");');
+      const requested = { ...selection, acceptanceSpecs: [...selection.acceptanceSpecs, "e2e/acceptance/baseline.spec.ts"] };
+      const plan = planCodexBrowserRun({ ...worktree, root }, requested, environment, "darwin");
+      expect(plan.selection.acceptanceSpecs).toEqual(selection.acceptanceSpecs);
+      expect(plan.commands[0].args).toContain("--project=a11y");
+      expect(plan.commands[0].args).not.toContain("--project=visual");
+      const fileFilter = new RegExp(plan.commands[0].args.at(-1)!);
+      expect(fileFilter.test(resolve(root, "e2e/quality/other.quality.spec.ts"))).toBe(false);
+      expect(fileFilter.test(resolve(root, "e2e/quality/a11y.quality.spec.ts"))).toBe(true);
+      expect(plan.commands[1].args.join(" ")).not.toContain("baseline");
+      const evidence = runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], () => ({ status: 1, signal: null }));
+      expect(evidence.skipped).toEqual(expect.arrayContaining([
+        expect.objectContaining({ suite: "quality", project: "visual", status: "skipped", reason: "platform: Linux-only baselines" }),
+        expect.objectContaining({ suite: "acceptance", file: "e2e/acceptance/baseline.spec.ts", status: "skipped", reason: "platform: Linux-only baselines" }),
+      ]));
+      expect(browserPlatformSkips(root, "linux")).toEqual([]);
+      expect(browserPlatformSkips(root, "win32")).toEqual(browserPlatformSkips(root, "darwin"));
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("blocks before either runtime starts when auth configuration is missing, without exposing values", () => {
+    const root = realpathSync(mkdtempSync(resolve(tmpdir(), "codex-browser-")));
+    try {
+      for (const [supplied, missing] of [
+        [{}, "AUTH_TOKEN_ISSUER, AUTH_TOKEN_HMAC_SECRET"],
+        [{ AUTH_TOKEN_ISSUER: "private-issuer" }, "AUTH_TOKEN_HMAC_SECRET"],
+        [{ AUTH_TOKEN_ISSUER: " ", AUTH_TOKEN_HMAC_SECRET: "private-secret" }, "AUTH_TOKEN_ISSUER"],
+      ] as const) {
+        const plan = planCodexBrowserRun({ ...worktree, root }, selection, { ...environment, AUTH_TOKEN_ISSUER: undefined, AUTH_TOKEN_HMAC_SECRET: undefined, ...supplied }, "darwin");
+        let launches = 0;
+        const evidence = runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], () => { launches++; return { status: 0, signal: null }; });
+        expect(evidence.status).toBe(`blocked: missing ${missing}`);
+        expect(evidence.runs).toEqual([]);
+        expect(launches).toBe(0);
+        const saved = readFileSync(resolve(root, plan.lane.outputDir, "codex-browser-evidence.json"), "utf8");
+        expect(codexBrowserEvidenceSchema.parse(JSON.parse(saved)).status).toBe(evidence.status);
+        expect(saved).not.toMatch(/private-issuer|private-secret/);
+      }
+      writeFileSync(resolve(root, ".env"), 'AUTH_TOKEN_ISSUER="file-issuer"\nAUTH_TOKEN_HMAC_SECRET="file-secret"\nHOST=remote.example\n');
+      const plan = planCodexBrowserRun({ ...worktree, root }, selection, { ...environment, AUTH_TOKEN_HMAC_SECRET: undefined }, "darwin");
+      expect(plan.env).toMatchObject({ AUTH_TOKEN_ISSUER: "test-issuer", AUTH_TOKEN_HMAC_SECRET: "file-secret", HOST: "127.0.0.1" });
+      expect(JSON.stringify(runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], () => ({ status: 1, signal: null })))).not.toMatch(/file-secret|file-issuer|test-issuer|test-hmac-secret/);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it("allows tsx Unix-socket IPC only in the user's temp directory while retaining loopback-only IP rules", () => {
     const plan = planCodexBrowserRun(worktree, selection, environment, "darwin");
     const profile = plan.commands[0].args[1];
@@ -40,7 +90,7 @@ describe("Codex browser runner", () => {
     expect(plan.lane).toMatchObject({ id: "7", databaseName: "wiseeff_lane_7", baseURL: "http://127.0.0.1:20015" });
     expect(plan.env).toMatchObject({ DATABASE_URL: "postgres://local:secret@127.0.0.1:5432/wiseeff_lane_7", HOST: "127.0.0.1", OBJECT_STORE_MODE: "local" });
     expect(plan.commands.map(({ suite, args }) => ({ suite, args: args.slice(4) }))).toEqual([
-      { suite: "quality", args: ["test", "--config", "playwright.quality.config.ts", "--grep", selection.qualityGrep] },
+      { suite: "quality", args: ["test", "--config", "playwright.quality.config.ts", "--grep", selection.qualityGrep, ...["runtime-warmup", "a11y", "consistency", "compact", "responsive"].map((project) => `--project=${project}`)] },
       { suite: "acceptance", args: ["test", "--config", "playwright.acceptance.config.ts", "e2e/acceptance/logs\\.spec\\.ts$"] },
     ]);
     expect(plan.commands.every((command) => command.command === "/usr/bin/sandbox-exec")).toBe(true);

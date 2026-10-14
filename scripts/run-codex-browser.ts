@@ -1,10 +1,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { tmpdir, userInfo } from "node:os";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { parse } from "dotenv";
 import { applyPlaywrightRuntimeLane } from "./playwright-runtime-lane";
 import { createVitestImpact, type selectBrowserImpact } from "./test-impact";
 
@@ -15,8 +16,13 @@ const testStatusSchema = z.enum(["passed", "failed", "timedOut", "skipped", "int
 const artifactSchema = z.object({ name: z.string(), contentType: z.string(), path: z.string(), inline: z.boolean() });
 const attemptSchema = z.object({ status: testStatusSchema, retry: z.number().int().nonnegative(), durationMs: z.number().nonnegative(), artifacts: z.array(artifactSchema) });
 const testSchema = z.object({ file: z.string(), title: z.string(), project: z.string(), routes: z.array(z.string()), theme: z.enum(["light", "dark"]).nullable(), expectedStatus: testStatusSchema, outcome: outcomeSchema, durationMs: z.number().nonnegative(), attempts: z.array(attemptSchema) });
-const runSchema = z.object({ suite: z.enum(["quality", "acceptance"]), status: z.enum(["passed", "failed"]), exitCode: z.number().int().nullable(), durationMs: z.number().nonnegative(), report: z.string(), error: z.string().nullable(), reportErrors: z.number().int().nonnegative(), tests: z.array(testSchema) });
-const browserSelectionSchema = z.object({ fullFallback: z.boolean(), reasons: z.array(z.string()), qualityRoutes: z.array(z.string()).nonempty(), qualityGrep: z.string().min(1), acceptanceSpecs: z.array(z.string()).nonempty(), commands: z.array(z.string()) });
+const runSchema = z.object({ suite: z.enum(["quality", "acceptance"]), status: z.enum(["passed", "failed", "skipped"]), exitCode: z.number().int().nullable(), durationMs: z.number().nonnegative(), report: z.string(), error: z.string().nullable(), reportErrors: z.number().int().nonnegative(), tests: z.array(testSchema) });
+const browserSelectionSchema = z.object({ fullFallback: z.boolean(), reasons: z.array(z.string()), qualityRoutes: z.array(z.string()).nonempty(), qualityGrep: z.string().min(1), acceptanceSpecs: z.array(z.string()), commands: z.array(z.string()) });
+const authNames = ["AUTH_TOKEN_ISSUER", "AUTH_TOKEN_HMAC_SECRET"] as const;
+const platformReason = "platform: Linux-only baselines";
+const skipSchema = z.object({ suite: z.enum(["quality", "acceptance"]), project: z.string().nullable(), file: z.string().nullable(), status: z.literal("skipped"), reason: z.literal(platformReason) });
+const missingAuth = (env: NodeJS.ProcessEnv, selection: BrowserSelection) => selection.acceptanceSpecs.length ? authNames.filter((name) => !env[name]?.trim()) : [];
+const successfulRuns = (runs: z.infer<typeof runSchema>[]) => runs.length === 2 && runs.some((run) => run.status === "passed") && runs.every((run) => run.status !== "failed");
 const passedRun = (run: z.infer<typeof runSchema>, acceptanceSpecs: readonly string[]) => run.exitCode === 0 && !run.error && run.reportErrors === 0
   && (run.suite !== "acceptance" || acceptanceSpecs.every((file) => run.tests.some((test) => test.file === file)))
   && run.tests.some((test) => test.project !== "runtime-warmup" && test.attempts.some((attempt) => !["skipped", "not-run"].includes(attempt.status)))
@@ -24,16 +30,24 @@ const passedRun = (run: z.infer<typeof runSchema>, acceptanceSpecs: readonly str
     && test.attempts.at(-1)!.status === test.expectedStatus));
 
 export const codexBrowserEvidenceSchema = z.object({
-  version: z.literal(1), startedAt: z.string().datetime(), finishedAt: z.string().datetime(), status: z.enum(["passed", "failed"]),
+  version: z.literal(1), startedAt: z.string().datetime(), finishedAt: z.string().datetime(), status: z.union([z.enum(["passed", "failed"]), z.string().regex(/^blocked: missing AUTH_TOKEN_(?:ISSUER|HMAC_SECRET)(?:, AUTH_TOKEN_HMAC_SECRET)?$/)]),
   worktree: z.object({ root: z.string(), branch: z.string(), head: z.string().regex(/^[a-f0-9]{40}$/), dirty: z.boolean() }),
   lane: z.object({ id: z.string(), baseURL: z.string().url(), apiURL: z.string().url(), databaseName: z.string(), objectStoreRoot: z.string(), outputDir: z.string(), reportDir: z.string() }),
   network: z.literal("macos-localhost-only"), selection: z.object({ changedPaths: z.array(z.string()).nonempty(), browser: browserSelectionSchema }),
-  themes: z.array(z.enum(["light", "dark"])), runs: z.array(runSchema).length(2),
+  themes: z.array(z.enum(["light", "dark"])), runs: z.array(runSchema),
+  missingConfig: z.array(z.enum(authNames)).default([]), skipped: z.array(skipSchema).default([]),
   spotCheck: z.object({ reviewer: z.string().min(1), checkedAt: z.string().datetime(), outcome: z.enum(["passed", "failed"]), notes: z.string().min(1) }).nullable(),
 }).strict().superRefine((evidence, context) => {
-  if (evidence.runs[0]?.suite !== "quality" || evidence.runs[1]?.suite !== "acceptance"
+  if (evidence.missingConfig.length) {
+    if (evidence.status !== `blocked: missing ${evidence.missingConfig.join(", ")}` || evidence.runs.length || evidence.themes.length) {
+      context.addIssue({ code: "custom", message: "Missing configuration must block before browser runs." });
+    }
+    return;
+  }
+  if (evidence.status.startsWith("blocked:") || evidence.runs.length !== 2 || evidence.runs[0]?.suite !== "quality" || evidence.runs[1]?.suite !== "acceptance"
     || evidence.runs.some((run) => (run.status === "passed") !== passedRun(run, evidence.selection.browser.acceptanceSpecs))
-    || (evidence.status === "passed") !== evidence.runs.every((run) => run.status === "passed")) {
+    || evidence.runs.some((run) => run.status === "skipped" && (run.suite !== "acceptance" || evidence.selection.browser.acceptanceSpecs.length || run.exitCode !== null || run.tests.length || run.error !== platformReason || !evidence.skipped.some((skip) => skip.suite === "acceptance")))
+    || (evidence.status === "passed") !== successfulRuns(evidence.runs)) {
     context.addIssue({ code: "custom", message: "Evidence status must match two nonempty, successful browser runs." });
   }
 });
@@ -86,10 +100,11 @@ export function summarizeBrowserReport(plan: ReturnType<typeof planCodexBrowserR
 
 export function buildCodexBrowserEvidence(plan: ReturnType<typeof planCodexBrowserRun>, changedPaths: string[], runs: z.infer<typeof runSchema>[], startedAt = new Date().toISOString()) {
   const { root, branch, head, dirty } = plan.worktree;
+  const missingConfig = missingAuth(plan.env, plan.selection);
   return codexBrowserEvidenceSchema.parse({
-    version: 1, startedAt, finishedAt: new Date().toISOString(), status: runs.every((run) => run.status === "passed") ? "passed" : "failed",
+    version: 1, startedAt, finishedAt: new Date().toISOString(), status: missingConfig.length ? `blocked: missing ${missingConfig.join(", ")}` : successfulRuns(runs) ? "passed" : "failed",
     worktree: { root, branch, head, dirty }, lane: plan.lane, network: "macos-localhost-only",
-    selection: { changedPaths, browser: plan.selection },
+    selection: { changedPaths, browser: plan.selection }, missingConfig, skipped: plan.skipped,
     themes: [...new Set(runs.flatMap((run) => run.tests.filter((test) => test.outcome !== "skipped" && test.attempts.length)
       .flatMap((test) => test.theme ? [test.theme] : [])))].sort(), runs, spotCheck: null,
   });
@@ -105,6 +120,21 @@ const localhostProfile = `(version 1)
 (allow network-bind (local unix-socket (subpath ${tsxIpcDirectory})))
 (allow network-inbound (local unix-socket (subpath ${tsxIpcDirectory})))
 (allow network-outbound (remote unix-socket (subpath ${tsxIpcDirectory})))`;
+
+export function browserPlatformSkips(root: string, platform = process.platform): z.infer<typeof skipSchema>[] {
+  if (platform === "linux") return [];
+  const skipped: z.infer<typeof skipSchema>[] = [{ suite: "quality", project: "visual", file: null, status: "skipped", reason: platformReason }];
+  for (const suite of ["quality", "acceptance"] as const) {
+    const directory = resolve(root, "e2e", suite);
+    if (!existsSync(directory)) continue;
+    for (const file of readdirSync(directory, { recursive: true })) {
+      if (typeof file === "string" && file.endsWith(".spec.ts") && /\.(?:toHaveScreenshot|toMatchSnapshot)\s*\(/.test(readFileSync(resolve(directory, file), "utf8"))) {
+        skipped.push({ suite, project: null, file: `e2e/${suite}/${file.replaceAll("\\", "/")}`, status: "skipped", reason: platformReason });
+      }
+    }
+  }
+  return skipped;
+}
 
 export function planCodexBrowserRun(worktree: BrowserWorktree, selection: BrowserSelection, environment: NodeJS.ProcessEnv, platform = process.platform) {
   if (platform !== "darwin") throw new Error("Localhost-only browser execution currently requires macOS sandbox-exec; no unrestricted fallback.");
@@ -130,7 +160,12 @@ export function planCodexBrowserRun(worktree: BrowserWorktree, selection: Browse
     throw new Error("OBJECT_STORE_ROOT must stay relative to the task worktree.");
   }
   if (!selection.qualityGrep || !selection.qualityRoutes.length || !selection.acceptanceSpecs.length) throw new Error("Empty browser selection; no passing no-op.");
+  const skipped = browserPlatformSkips(worktree.root, platform).filter((skip) => skip.suite === "quality" || selection.acceptanceSpecs.some((file) => file === skip.file));
+  selection = { ...selection, acceptanceSpecs: selection.acceptanceSpecs.filter((file) => !skipped.some((skip) => skip.file === file)) };
   const env: NodeJS.ProcessEnv = { ...environment, TMPDIR: userTempDirectory, HOST: "127.0.0.1", OBJECT_STORE_MODE: "local", WISEEFF_ACCEPTANCE_ENV_FILE: "/dev/null" };
+  const envFile = resolve(worktree.root, ".env");
+  const fileConfig = existsSync(envFile) ? parse(readFileSync(envFile, "utf8")) : {};
+  for (const name of authNames) env[name] ??= fileConfig[name];
   const lane = applyPlaywrightRuntimeLane(env)!;
   const command = (suite: "quality" | "acceptance", filters: string[]) => ({
     suite,
@@ -139,10 +174,18 @@ export function planCodexBrowserRun(worktree: BrowserWorktree, selection: Browse
       "test", "--config", `playwright.${suite}.config.ts`, ...filters],
     report: `${lane.outputDir}/${suite}/results.json`,
   });
+  const qualityFilters = ["--grep", selection.qualityGrep!];
+  if (skipped.some((skip) => skip.project === "visual")) {
+    qualityFilters.push(...["runtime-warmup", "a11y", "consistency", "compact", "responsive"].map((project) => `--project=${project}`));
+    const files = skipped.filter((skip) => skip.suite === "quality" && skip.file).map((skip) => skip.file!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (files.length) qualityFilters.push(`^(?!.*(?:${files.join("|")})$).*`);
+  }
+  const commands = [command("quality", qualityFilters), command("acceptance", selection.acceptanceSpecs.map((spec) => `${spec.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`))];
+  selection = { ...selection, commands: commands.map((entry) => ["playwright", ...entry.args.slice(4)].join(" ")) };
   return {
-    worktree, selection, env, platform,
+    worktree, selection, env, platform, skipped,
     lane: { id: lane.id, baseURL: lane.baseURL, apiURL: lane.apiURL, databaseName: decodeURIComponent(new URL(lane.databaseUrl).pathname.slice(1)), objectStoreRoot: lane.objectStoreRoot, outputDir: lane.outputDir, reportDir: lane.reportDir },
-    commands: [command("quality", ["--grep", selection.qualityGrep!]), command("acceptance", selection.acceptanceSpecs.map((spec) => `${spec.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`))],
+    commands,
   };
 }
 
@@ -167,7 +210,10 @@ export function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrowserRun>
   try {
     assertLocalDestination(root, evidencePath);
     rmSync(evidencePath, { force: true });
-    const runs = plan.commands.map((command) => {
+    const runs: z.infer<typeof runSchema>[] = missingAuth(plan.env, plan.selection).length ? [] : plan.commands.map((command) => {
+      if (command.suite === "acceptance" && !plan.selection.acceptanceSpecs.length) {
+        return { suite: command.suite, status: "skipped", exitCode: null, durationMs: 0, report: command.report, error: platformReason, reportErrors: 0, tests: [] };
+      }
       const reportPath = resolve(root, command.report);
       rmSync(reportPath, { force: true });
       const start = Date.now();
