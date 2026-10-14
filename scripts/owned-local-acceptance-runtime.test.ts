@@ -54,6 +54,26 @@ afterEach(async () => {
 });
 
 describe("owned local acceptance runtime", () => {
+  it("seeds populated admin lists before marking the Gate0 database ready", async () => {
+    const repo = createCleanTestRepository("wiseeff-owned-browser-seed-");
+    const scripts: string[] = [];
+    await expect(provisionOwnedLocalAcceptanceRuntime({
+      baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+      worktreeRoot: repo,
+      runsRoot: "runs",
+    }, {
+      allocateLoopbackPort: async (range) => range.min,
+      databaseCreationOperations: () => ({
+        databaseExistsBeforeCreate: async () => false,
+        createDatabase: async () => undefined,
+        databaseExistsAfterCreateFailure: async () => false,
+      }),
+      runNpmScriptWithLog: async (_root, script) => { scripts.push(script); },
+      writeAndReadDatabaseMarker: async () => { throw new Error("stop before runtime launch"); },
+    })).rejects.toThrow(/provisioning failed/i);
+    expect(scripts).toEqual(["db:migrate", "db:seed:all", "seed:quality:admin-lists"]);
+  });
+
   it("records an unmarked retained database when CREATE commits but its response is lost", async () => {
     const databaseName = "wiseeff_acceptance_full_response_lost";
     const evidence: Array<Record<string, unknown>> = [];

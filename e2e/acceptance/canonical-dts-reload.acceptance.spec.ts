@@ -95,11 +95,12 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       await page.goto(`${frontendUrl}/favicon.svg`);
       await page.evaluate((value) => localStorage.setItem("wiseeff.localAuthToken", value), token);
       await page.goto(`${frontendUrl}/parameters?project=${fixture.projectId}`);
-      await expect(page.getByRole("cell", { name: "iin_max", exact: true })).toBeVisible();
+      const bindingRow = page.getByRole("row").filter({ has: page.getByText("iin_max", { exact: true }) });
+      await expect(bindingRow).toBeVisible();
       const hint = page.getByRole("button", { name: "不再提示" });
       if (await hint.isVisible()) await hint.click();
       const candidateResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/dts-reload/projects/${fixture.projectId}/candidates`);
-      await page.getByRole("button", { name: /^带入 DTS 调试 iin_max/ }).click();
+      await bindingRow.getByRole("button", { name: /^带入 DTS 调试 iin_max/ }).click();
       await expect(page).toHaveURL(new RegExp(`/dts-reload\\?project=${fixture.projectId}`));
       const candidatePayload = await (await candidateResponse).json();
       const target = candidatePayload.items.find((item: { bindingId: string }) => item.bindingId === fixture.bindingId);
@@ -138,7 +139,9 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       await page.screenshot({ path: testInfo.outputPath("canonical-promotion-confirmation-1440x900.png") });
       await confirmation.getByRole("button", { name: "晋升为草稿" }).click();
       await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${fixture.projectId}`));
-      await expect(page.getByRole("cell", { name: "iin_max 草稿", exact: true })).toBeVisible();
+      const promotedRow = page.getByRole("row").filter({ has: page.getByTestId(`draft-${fixture.bindingId}`) });
+      await expect(promotedRow.getByText("iin_max", { exact: true })).toBeVisible();
+      await expect(promotedRow.getByText("草稿", { exact: true })).toBeVisible();
       await page.reload();
       await expect(page.getByRole("button", { name: /^继续编辑 iin_max/ })).toBeVisible();
       const draft = (await db.query<{ id: string }>("select id from project_parameter_value_drafts where binding_id=$1", [fixture.bindingId])).rows;
@@ -155,7 +158,7 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       }, reviewerToken);
       expect(await currentValueId()).not.toBe(fixture.currentValueId);
       await page.reload();
-      const parameterRow = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "iin_max", exact: true }) });
+      const parameterRow = page.getByRole("row").filter({ has: page.getByText("iin_max", { exact: true }) });
       await expect(parameterRow.getByRole("cell", { name: "<6>", exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("canonical-reviewed-1440x900.png") });
       const history = await json("GET", `/api/v1/dts-reload/runs/${run.id}`, undefined, token);

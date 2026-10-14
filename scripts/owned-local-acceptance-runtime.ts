@@ -396,6 +396,14 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       options.ownerDeadline,
       gate0ProvisionProcessLifecycle(provisioningJournal, "seed"),
     );
+    await runProvisionScript(
+      worktreeRoot,
+      "seed:quality:admin-lists",
+      env,
+      provisionLog,
+      options.ownerDeadline,
+      gate0ProvisionProcessLifecycle(provisioningJournal, "seed"),
+    );
     checkpointOwner(options, "database marker proof");
     const databaseEvidence = await (
       dependencies.writeAndReadDatabaseMarker ?? writeAndReadDatabaseMarker

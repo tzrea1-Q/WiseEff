@@ -118,7 +118,7 @@ test.describe("restored definition workspace and governed authoring", () => {
       surface.body as { item: { authoringAllowed: boolean; publishingAllowed: boolean } }
     ).item;
     const retire = table.getByRole("button", { name: /^(弃用|恢复) /u }).first();
-    const edit = table.getByRole("button", { name: /^编辑 /u }).first();
+    const edit = table.getByRole("button", { name: permissions.authoringAllowed ? /^编辑 /u : /^查看 /u }).first();
 
     if (permissions.publishingAllowed) {
       await expect(retire).toBeVisible({ timeout: 15_000 });
