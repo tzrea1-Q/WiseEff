@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import { browserPlatformSkips, buildCodexBrowserEvidence, checkCodexLanePorts, codexBrowserEvidenceSchema, launchCodexBrowserSuite, planCodexBrowserRun, runCodexBrowserPlan, summarizeBrowserReport } from "./run-codex-browser";
 import { selectBrowserImpact } from "./test-impact";
 import { buildPlaywrightWebServers } from "../playwright.shared";
+import { createBearerTokenForUser } from "../e2e/acceptance/helpers/runtime";
+import { castByRole } from "../e2e/acceptance/helpers/cast";
 
 const worktree = {
   root: "/tmp/task", gitDir: "/tmp/main/.git/worktrees/task", commonDir: "/tmp/main/.git",
@@ -22,7 +24,7 @@ describe("Codex browser runner", () => {
     const root = realpathSync(mkdtempSync(resolve(tmpdir(), "codex-browser-")));
     const events: string[] = [];
     try {
-      const plan = planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin");
+      const plan = planCodexBrowserRun({ ...worktree, root }, selection, { ...environment, AUTH_MODE: "development" }, "darwin");
       let sequence = 0;
       const result = await runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], (command, args, options) => launchCodexBrowserSuite(command, args, options, {
         spawn: (executable, childArgs, childOptions) => {
@@ -32,6 +34,7 @@ describe("Codex browser runner", () => {
           expect(childArgs.slice(0, 2)).toEqual(args.slice(0, 2));
           expect(childOptions.detached).toBe(true);
           expect(childOptions.env).toMatchObject({ DATABASE_URL: plan.env.DATABASE_URL, WISEEFF_RUNTIME_LANE: "7", AUTH_TOKEN_HMAC_SECRET: "test-hmac-secret" });
+          if (name === "api") expect(childOptions.env.AUTH_MODE).toBe(options.suite === "quality" ? "development" : "production");
           const child = Object.assign(new EventEmitter(), { pid: ++sequence, exitCode: null, signalCode: null, label: `${options.suite}:${name}` });
           if (name === "tests") {
             expect(childOptions.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME).toBe("true");
@@ -42,20 +45,56 @@ describe("Codex browser runner", () => {
         request: async (url, headers) => {
           if (url.endsWith("/api/v1/me")) {
             events.push(`${options.suite}:auth:${new URL(url).port}`);
-            expect(headers.Authorization).toMatch(/^Bearer /);
             expect([`${plan.lane.apiURL}/api/v1/me`, `${plan.lane.baseURL}/api/v1/me`]).toContain(url);
-            expect(JSON.parse(Buffer.from(headers.Authorization.slice(7).split(".")[0], "base64url").toString())).toMatchObject({ iss: "test-issuer", sub: "u-xu-yun" });
+            const actor = castByRole.admin;
+            expect(headers).toEqual(options.suite === "quality" ? { "x-wiseeff-user": actor.userId } : {
+              Authorization: createBearerTokenForUser(actor.userId, actor.email, actor.name, undefined, plan.env),
+            });
           }
           return 200;
         },
         stop: async (child) => { await Promise.resolve(); events.push(`stop:${child.label}`); },
       }), async () => { events.push("ports"); return null; });
       expect(result.status).toBe("failed");
+      expect(result.authProbes).toEqual([
+        { suite: "quality", mode: "development", mechanism: "development-header", httpStatus: 200 },
+        { suite: "acceptance", mode: "production", mechanism: "bearer", httpStatus: 200 },
+      ]);
       expect(events).toEqual([
         "ports", "quality:start:api", "quality:start:frontend", "quality:auth:20014", "quality:auth:20015", "quality:start:tests", "stop:quality:tests", "stop:quality:frontend", "stop:quality:api",
         "ports", "acceptance:start:api", "acceptance:start:frontend", "acceptance:auth:20014", "acceptance:auth:20015", "acceptance:start:tests", "stop:acceptance:tests", "stop:acceptance:frontend", "stop:acceptance:api", "ports",
       ]);
     } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.each([
+    { AUTH_MODE: "development", AUTH_TOKEN_ISSUER: undefined, AUTH_TOKEN_HMAC_SECRET: undefined },
+    { AUTH_MODE: "production", VITE_WISEEFF_API_AUTHORIZATION: "Bearer quality-browser-token", M5_SMOKE_AUTHORIZATION: "Bearer unused-smoke-token" },
+    { AUTH_MODE: "production", M5_SMOKE_AUTHORIZATION: "Bearer quality-browser-token" },
+  ])("probes quality with its effective browser auth without inventing a token: %j", async (authEnv) => {
+    const plan = planCodexBrowserRun(worktree, selection, { ...environment, ...authEnv }, "darwin");
+    const probes: string[] = [];
+    let launches = 0;
+    const result = await launchCodexBrowserSuite(plan.commands[0].command, plan.commands[0].args, {
+      cwd: worktree.root, env: plan.env, stdio: "inherit", shell: false, suite: "quality",
+    }, {
+      spawn: () => {
+        const child = Object.assign(new EventEmitter(), { pid: ++launches, exitCode: null, signalCode: null });
+        if (launches === 3) queueMicrotask(() => child.emit("close", 0, null));
+        return child;
+      },
+      request: async (url, headers) => {
+        if (url.endsWith("/api/v1/me")) {
+          probes.push(url);
+          expect(headers).toEqual(authEnv.AUTH_MODE === "development" ? { "x-wiseeff-user": castByRole.admin.userId } : { Authorization: "Bearer quality-browser-token" });
+        }
+        return 200;
+      },
+      stop: async () => undefined,
+    });
+    expect(result.block).toBeUndefined();
+    expect(result.status).toBe(0);
+    expect(probes).toEqual([`${plan.lane.apiURL}/api/v1/me`, `${plan.lane.baseURL}/api/v1/me`]);
   });
 
   it("blocks busy lane ports and failed authenticated probes before tests, and still tears down servers", async () => {
@@ -77,6 +116,7 @@ describe("Codex browser runner", () => {
         stop: async (child) => { stopped.push(child.pid); },
       }), async () => null);
       expect(evidence).toMatchObject({ status: "blocked: authentication probe failed", block: { suite: "quality", httpStatus: 401 } });
+      expect(evidence.authProbes).toEqual([{ suite: "quality", mode: "production", mechanism: "bearer", httpStatus: 401 }]);
       expect(launches).toBe(2);
       expect(stopped).toEqual([2, 1]);
       expect(JSON.stringify(evidence)).not.toContain("test-hmac-secret");

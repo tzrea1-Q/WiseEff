@@ -11,7 +11,7 @@ import { request } from "node:http";
 import { setTimeout as wait } from "node:timers/promises";
 import { applyPlaywrightRuntimeLane } from "./playwright-runtime-lane";
 import { createVitestImpact, type selectBrowserImpact } from "./test-impact";
-import { buildPlaywrightWebServers } from "../playwright.shared";
+import { buildPlaywrightWebServers, resolveApiAuthorization } from "../playwright.shared";
 import { stopOwnedProcessGroup, waitForOwnedProcessGroupExit } from "./owned-process-group";
 import { createBearerTokenForUser } from "../e2e/acceptance/helpers/runtime";
 import { ACCEPTANCE_ORGANIZATION, castByRole } from "../e2e/acceptance/helpers/cast";
@@ -30,6 +30,8 @@ const platformReason = "platform: Linux-only baselines";
 const skipSchema = z.object({ suite: z.enum(["quality", "acceptance"]), project: z.string().nullable(), file: z.string().nullable(), status: z.literal("skipped"), reason: z.literal(platformReason) });
 const blockSchema = z.object({ reason: z.enum(["lane ports in use", "lane port check failed", "authentication probe failed", "runtime startup failed", "runtime teardown failed", "runtime interrupted"]), suite: z.enum(["quality", "acceptance"]).nullable(), ports: z.array(z.number().int().positive()).optional(), httpStatus: z.number().int().nullable().optional() });
 type BrowserBlock = z.infer<typeof blockSchema>;
+const authProbeSchema = z.object({ suite: z.enum(["quality", "acceptance"]), mode: z.enum(["development", "production"]), mechanism: z.enum(["development-header", "bearer"]), httpStatus: z.number().int().nullable() }).strict();
+type AuthProbe = z.infer<typeof authProbeSchema>;
 const missingAuth = (env: NodeJS.ProcessEnv, selection: BrowserSelection) => selection.acceptanceSpecs.length ? authNames.filter((name) => !env[name]?.trim()) : [];
 const successfulRuns = (runs: z.infer<typeof runSchema>[]) => runs.length === 2 && runs.some((run) => run.status === "passed") && runs.every((run) => run.status !== "failed");
 const passedRun = (run: z.infer<typeof runSchema>, acceptanceSpecs: readonly string[]) => run.exitCode === 0 && !run.error && run.reportErrors === 0
@@ -46,6 +48,7 @@ export const codexBrowserEvidenceSchema = z.object({
   themes: z.array(z.enum(["light", "dark"])), runs: z.array(runSchema),
   missingConfig: z.array(z.enum(authNames)).default([]), skipped: z.array(skipSchema).default([]),
   block: blockSchema.nullable().default(null),
+  authProbes: z.array(authProbeSchema).max(2).default([]),
   spotCheck: z.object({ reviewer: z.string().min(1), checkedAt: z.string().datetime(), outcome: z.enum(["passed", "failed"]), notes: z.string().min(1) }).nullable(),
 }).strict().superRefine((evidence, context) => {
   if (evidence.missingConfig.length) {
@@ -115,13 +118,13 @@ export function summarizeBrowserReport(plan: ReturnType<typeof planCodexBrowserR
   return run;
 }
 
-export function buildCodexBrowserEvidence(plan: ReturnType<typeof planCodexBrowserRun>, changedPaths: string[], runs: z.infer<typeof runSchema>[], startedAt = new Date().toISOString(), block: BrowserBlock | null = null) {
+export function buildCodexBrowserEvidence(plan: ReturnType<typeof planCodexBrowserRun>, changedPaths: string[], runs: z.infer<typeof runSchema>[], startedAt = new Date().toISOString(), block: BrowserBlock | null = null, authProbes: AuthProbe[] = []) {
   const { root, branch, head, dirty } = plan.worktree;
   const missingConfig = missingAuth(plan.env, plan.selection);
   return codexBrowserEvidenceSchema.parse({
     version: 1, startedAt, finishedAt: new Date().toISOString(), status: missingConfig.length ? `blocked: missing ${missingConfig.join(", ")}` : block ? `blocked: ${block.reason}` : successfulRuns(runs) ? "passed" : "failed",
     worktree: { root, branch, head, dirty }, lane: plan.lane, network: "macos-localhost-only",
-    selection: { changedPaths, browser: plan.selection }, missingConfig, skipped: plan.skipped, block,
+    selection: { changedPaths, browser: plan.selection }, missingConfig, skipped: plan.skipped, block, authProbes,
     themes: [...new Set(runs.flatMap((run) => run.tests.filter((test) => test.outcome !== "skipped" && test.attempts.length)
       .flatMap((test) => test.theme ? [test.theme] : [])))].sort(), runs, spotCheck: null,
   });
@@ -215,7 +218,7 @@ export function planCodexBrowserRun(worktree: BrowserWorktree, selection: Browse
 }
 
 type LaunchOptions = { cwd: string; env: NodeJS.ProcessEnv; stdio: "inherit"; shell: false; suite: "quality" | "acceptance" };
-type LaunchResult = { status: number | null; error?: Error; signal: NodeJS.Signals | null; block?: BrowserBlock };
+type LaunchResult = { status: number | null; error?: Error; signal: NodeJS.Signals | null; block?: BrowserBlock; authProbe?: AuthProbe };
 type Launch = (command: string, args: string[], options: LaunchOptions) => LaunchResult | Promise<LaunchResult>;
 
 async function probeLanePort(port: number): Promise<"free" | "busy" | "error"> {
@@ -279,6 +282,8 @@ export async function launchCodexBrowserSuite(command: string, args: string[], o
     const servers = buildPlaywrightWebServers({ baseURL: options.env.WISEEFF_ACCEPTANCE_FRONTEND_URL!, apiURL: options.env.VITE_WISEEFF_API_BASE_URL!, reuseExistingServer: false,
       ...(options.suite === "acceptance" ? { authMode: "production", includeXiaozeProactive: true, projectConfigurationWorkbenchEnabled: true } : {}),
     }, options.env) as Array<{ env?: NodeJS.ProcessEnv; url?: string }>;
+    const apiEnv = { ...options.env, ...servers[0].env };
+    const browserEnv = { ...options.env, ...servers[1].env };
     for (const [index, server] of servers.entries()) {
       const serverArgs = index === 0
         ? [process.execPath, resolve(options.cwd, "node_modules/tsx/dist/cli.mjs"), "watch", "server/index.ts"]
@@ -294,14 +299,17 @@ export async function launchCodexBrowserSuite(command: string, args: string[], o
       }
     }
     const actor = castByRole.admin;
-    const authorization = createBearerTokenForUser(actor.userId, actor.email, actor.name, ACCEPTANCE_ORGANIZATION.id, options.env);
+    const mode = apiEnv.AUTH_MODE === "development" ? "development" : "production";
+    const authorization = mode === "development" ? undefined : options.suite === "quality"
+      ? resolveApiAuthorization(browserEnv)
+      : createBearerTokenForUser(actor.userId, actor.email, actor.name, ACCEPTANCE_ORGANIZATION.id, apiEnv);
+    const headers: Record<string, string> = mode === "development" ? { "x-wiseeff-user": actor.userId } : authorization ? { Authorization: authorization } : {};
     let httpStatus: number | null = null;
-    if (authorization) {
-      for (const baseURL of [options.env.VITE_WISEEFF_API_BASE_URL, options.env.WISEEFF_ACCEPTANCE_FRONTEND_URL]) {
-        try { httpStatus = await runtime.request(`${baseURL}/api/v1/me`, { Authorization: authorization, "x-wiseeff-user": actor.userId }, controller.signal); } catch { httpStatus = null; }
-        if (httpStatus !== 200) break;
-      }
+    for (const baseURL of [options.env.VITE_WISEEFF_API_BASE_URL, options.env.WISEEFF_ACCEPTANCE_FRONTEND_URL]) {
+      try { httpStatus = await runtime.request(`${baseURL}/api/v1/me`, headers, controller.signal); } catch { httpStatus = null; }
+      if (httpStatus !== 200) break;
     }
+    result.authProbe = { suite: options.suite, mode, mechanism: mode === "development" ? "development-header" : "bearer", httpStatus };
     if (httpStatus !== 200) result.block = { reason: "authentication probe failed", suite: options.suite, httpStatus };
     else {
       const child = start(args, { ...options.env, WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true" });
@@ -309,7 +317,7 @@ export async function launchCodexBrowserSuite(command: string, args: string[], o
       result.signal = child.signalCode;
     }
   } catch {
-    result = { status: null, signal: interrupted, block: { reason: interrupted ? "runtime interrupted" : "runtime startup failed", suite: options.suite } };
+    result = { ...result, status: null, signal: interrupted, block: { reason: interrupted ? "runtime interrupted" : "runtime startup failed", suite: options.suite } };
   } finally {
     stopping = true;
     for (const child of children.reverse()) {
@@ -342,6 +350,7 @@ export async function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrows
     assertLocalDestination(root, evidencePath);
     rmSync(evidencePath, { force: true });
     const runs: z.infer<typeof runSchema>[] = [];
+    const authProbes: AuthProbe[] = [];
     let block: BrowserBlock | null = null;
     for (const command of missingAuth(plan.env, plan.selection).length ? [] : plan.commands) {
       if (command.suite === "acceptance" && !plan.selection.acceptanceSpecs.length) {
@@ -356,6 +365,7 @@ export async function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrows
       let result: LaunchResult;
       try { result = await launch(command.command, command.args, { cwd: root, env: plan.env, stdio: "inherit", shell: false, suite: command.suite }); }
       catch { result = { status: null, error: new Error("launch-error"), signal: null }; }
+      if (result.authProbe) authProbes.push(result.authProbe);
       let run: z.infer<typeof runSchema>;
       try {
         run = summarizeBrowserReport(plan, command.suite, existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, "utf8")) : null, result.status, Date.now() - start);
@@ -369,7 +379,7 @@ export async function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrows
       if (result.signal) { block = { reason: "runtime interrupted", suite: command.suite }; break; }
     }
     if (!block && !missingAuth(plan.env, plan.selection).length) block = await checkPorts(plan);
-    const evidence = buildCodexBrowserEvidence(plan, changedPaths, runs, startedAt, block);
+    const evidence = buildCodexBrowserEvidence(plan, changedPaths, runs, startedAt, block, authProbes);
     const temporary = `${evidencePath}.tmp`;
     assertLocalDestination(root, temporary);
     writeFileSync(temporary, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
