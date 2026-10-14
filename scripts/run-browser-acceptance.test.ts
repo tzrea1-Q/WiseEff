@@ -28,11 +28,15 @@ describe("browser acceptance runner", () => {
       { file: "parameters.acceptance.spec.ts", suites: [{ specs: [{ id: "browser", tests: [{ projectName: "Desktop Chrome", results: [{ status: "passed" }] }] }] }] },
     ],
   };
-  it("forwards browser-only sharding without restricting projects or suppressing dependency warmup", () => {
+  it("selects balanced whole specs without native count sharding or suppressing dependency warmup", () => {
     for (const args of [["--shard=2/4"], ["--shard", "2/4"]]) {
       const options = parseBrowserAcceptanceArgs(args, { WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR: "/tmp/owned/runtime.json" });
-      expect(buildBrowserAcceptanceCommand({ ...options, runtimeDescriptor: undefined }, {}).args).toEqual(["run", "acceptance:e2e", "--", "--shard=2/4"]);
+      const command = buildBrowserAcceptanceCommand({ ...options, runtimeDescriptor: undefined }, {}, undefined,
+        ["a.spec.ts", "b.spec.ts", "c.spec.ts", "d.spec.ts"]);
+      expect(command.args).toEqual(["run", "acceptance:e2e", "--", "(^|/)a\\.spec\\.ts$", "(^|/)runtime-warmup\\.spec\\.ts$"]);
     }
+    expect(() => buildBrowserAcceptanceCommand({ ...parseBrowserAcceptanceArgs([], {}), shard: "1/4" }, {}))
+      .toThrow(/full native browser inventory/);
   });
   it("refuses standalone or target/full-pilot shards rather than publishing partial full-run evidence", () => {
     expect(() => parseBrowserAcceptanceArgs(["--shard=2/4"], {})).toThrow(/owned Gate0/);
