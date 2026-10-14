@@ -87,18 +87,15 @@ export function OrganizationSpecsArea({
     !hasMappingSurface
       ? "library"
       : requestedSubView;
+  const redirecting = requestedSubView === "identity-mapping" && mappingCounts.status === "ready" && !hasMappingSurface;
 
   useEffect(() => {
-    if (
-      requestedSubView === "identity-mapping" &&
-      mappingCounts.status === "ready" &&
-      !hasMappingSurface
-    ) {
+    if (redirecting) {
       const params = new URLSearchParams(search);
       params.set("review", "open");
       onNavigate(buildParameterAdminSpecsPath("library", params.toString()));
     }
-  }, [hasMappingSurface, mappingCounts.status, onNavigate, requestedSubView, search]);
+  }, [redirecting, onNavigate, search]);
 
   const goToSubView = (subView: ParameterAdminSpecsSubView) => {
     onNavigate(buildParameterAdminSpecsPath(subView, search));
@@ -109,6 +106,7 @@ export function OrganizationSpecsArea({
 
   return (
     <>
+      <span hidden data-testid="organization-specs-readiness" data-state={redirecting ? "redirecting" : mappingCounts.status} />
       {showSpecsSubNav ? (
         <ViewSwitch variant="section" ariaLabel={PARAMETER_ADMIN_UI.specsSubnavAria} value={activeSubView}
           onValueChange={(value) => goToSubView(value as ParameterAdminSpecsSubView)}

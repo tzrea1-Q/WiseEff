@@ -15,6 +15,7 @@ import type { PrototypeState } from "./mockData";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
 import * as bridgeLauncher from "./infrastructure/http/bridgeConnectLauncher";
+import { createMockDebuggingBridgeSeams, createMockDebuggingGateway } from "./infrastructure/mock/mockDebuggingGateway";
 import { createTestDebuggingGateway, renderApp } from "./test/harness";
 
 /**
@@ -38,11 +39,9 @@ const apiSession = {
 };
 const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc" as const, label: "API Gateway Target" };
 
-function confirmHighRiskWriteIfPrompted() {
-  const confirm = screen.queryByRole("button", { name: /^确认写入$/ });
-  if (confirm) {
-    fireEvent.click(confirm);
-  }
+async function confirmHighRiskWriteIfPrompted() {
+  const dialog = await screen.findByRole("dialog", { name: "确认高风险节点写入" });
+  fireEvent.click(within(dialog).getByRole("button", { name: /^确认写入$/ }));
 }
 
 /** Connected-state label of the seeded mock gateway story (Mock Bridge · MOCK-AURORA-001). */
@@ -122,8 +121,8 @@ function mockFetchSequence(responses: unknown[]) {
   }) as typeof fetch);
 }
 
-function findRowByText(text: string) {
-  const row = Array.from(screen.getByRole("table").querySelectorAll("tbody tr")).find((item) =>
+function findRowByText(text: string, table = screen.getByRole("table")) {
+  const row = Array.from(table.querySelectorAll("tbody tr")).find((item) =>
     item.textContent?.includes(text)
   );
   if (!row) {
@@ -185,10 +184,12 @@ function renderNodeDebuggingPage(pageProps: NodeDebuggingPageProps) {
  */
 function StatefulNodeDebuggingHarness({
   gateway,
-  initialAppState
+  initialAppState,
+  pageProps = {}
 }: {
   gateway: DebuggingGateway;
   initialAppState: PrototypeState;
+  pageProps?: Omit<NodeDebuggingPageProps, "state" | "debuggingActions">;
 }) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const stateRef = useRef(state);
@@ -198,14 +199,14 @@ function StatefulNodeDebuggingHarness({
   const debuggingActions = useMemo(
     () =>
       createDebuggingRuntimeActions({
-        mode: "api",
+        mode: pageProps.runtimeMode ?? "api",
         gateway,
         dispatch,
         getState: () => stateRef.current
       }),
-    [gateway]
+    [gateway, pageProps.runtimeMode]
   );
-  return <NodeDebuggingPageHarness pageProps={{ state, debuggingActions }} />;
+  return <NodeDebuggingPageHarness pageProps={{ ...pageProps, state, debuggingActions }} />;
 }
 
 beforeEach(() => {
@@ -1047,13 +1048,13 @@ describe("/node-debugging", () => {
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
     const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "3700" } });
-    fireEvent.click(within(dialog).getAllByRole("button").at(-1) as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
     await within(row).findByText(/^写入已执行$/);
     expect(currentValueCell(row)).toHaveTextContent("3600");
 
-    delayedRead.resolve({
+    await act(async () => delayedRead.resolve({
       ok: true,
       value: "3651",
       stdout: "3651\n",
@@ -1069,7 +1070,7 @@ describe("/node-debugging", () => {
         durationMs: 7,
         createdAt: "2026-05-27T09:00:03.000Z"
       }
-    });
+    }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: /节点操作记录/ })).toHaveTextContent("10 条"));
     expect(currentValueCell(row)).toHaveTextContent("3600");
@@ -1445,7 +1446,8 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    await userEvent.click(await screen.findByRole("tab", { name: "ADB" }));
+    await screen.findByText(/已连接：API Gateway Target/);
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     const renameInput = await screen.findByDisplayValue("Laptop");
     fireEvent.change(renameInput, { target: { value: "Desk-PC" } });
@@ -1680,6 +1682,7 @@ describe("/node-debugging", () => {
   });
 
   it("uses the module navigator to browse a selected module subtree", async () => {
+    mockFetchSequence([]);
     const debugParameters = userState.debugParameters.map((parameter) => {
       const modulePath = parameter.module === "Battery Safety"
         ? ["Power", "Charging Policy", "Battery Safety"]
@@ -1691,11 +1694,19 @@ describe("/node-debugging", () => {
       };
     });
 
-    const first = renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
+    const { createPairingCode, ...bridgeSeams } = createMockDebuggingBridgeSeams();
+    const renderWorkbench = () => render(<StatefulNodeDebuggingHarness
+      gateway={createMockDebuggingGateway({ getDebugParameters: () => debugParameters })}
+      initialAppState={{ ...userState, debugParameters }}
+      pageProps={{ runtimeMode: "mock", ...bridgeSeams, createBridgePairingCode: createPairingCode }}
+    />);
+    const first = await act(async () => renderWorkbench());
 
-    await screen.findByText(mockStoryConnectedLabel);
-    const tree = await screen.findByRole("tree", { name: "调试节点模块树" });
-    const chargingPolicy = await within(tree).findByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
+    expect(screen.getByText(mockStoryConnectedLabel)).toBeInTheDocument();
+    const panel = screen.getByRole("tabpanel", { name: "HDC" });
+    const table = within(panel).getByRole("table");
+    const tree = within(panel).getByRole("tree", { name: "调试节点模块树" });
+    const chargingPolicy = within(tree).getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
     expect(
       within(tree).getAllByRole("treeitem", { name: /Power.*\d+ 个节点/ })
         .find((item) => item.getAttribute("aria-level") === "1")
@@ -1703,28 +1714,29 @@ describe("/node-debugging", () => {
 
     fireEvent.click(chargingPolicy);
 
-    expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
-    expect(findRowByText("battery.impedance_mohm")).toBeInTheDocument();
+    expect(findRowByText("charger.input_current_limit_ma", table)).toBeInTheDocument();
+    expect(findRowByText("battery.impedance_mohm", table)).toBeInTheDocument();
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
     expect(new URL(window.location.href).searchParams.get("moduleNode")).toBeTruthy();
 
     const selectedUrl = window.location.href;
-    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "收起模块导航" }));
     expect(window.location.href).toBe(selectedUrl);
-    expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
-    expect(within(screen.getByRole("tree", { name: "调试节点模块树" }))
+    expect(findRowByText("charger.input_current_limit_ma", table)).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "展开模块导航" }));
+    expect(within(within(panel).getByRole("tree", { name: "调试节点模块树" }))
       .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ })).toHaveAttribute("aria-selected", "true");
 
     first.unmount();
-    renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
-    await screen.findByText(mockStoryConnectedLabel);
-    const restored = await within(await screen.findByRole("tree", { name: "调试节点模块树" }))
-      .findByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
-    await waitFor(() => expect(restored).toHaveAttribute("aria-selected", "true"));
+    await act(async () => renderWorkbench());
+    expect(screen.getByText(mockStoryConnectedLabel)).toBeInTheDocument();
+    const restoredPanel = screen.getByRole("tabpanel", { name: "HDC" });
+    const restored = within(within(restoredPanel).getByRole("tree", { name: "调试节点模块树" }))
+      .getByRole("treeitem", { name: /Charging Policy.*\d+ 个节点/ });
+    expect(restored).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByText("battery.thermal_foldback_pct")).not.toBeInTheDocument();
     fireEvent.click(restored);
-    expect(findRowByText("battery.thermal_foldback_pct")).toBeInTheDocument();
+    expect(findRowByText("battery.thermal_foldback_pct", within(restoredPanel).getByRole("table"))).toBeInTheDocument();
     expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
   });
 
@@ -1813,7 +1825,7 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    expect(screen.queryByRole("dialog", { name: /确认写入节点/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "确认高风险节点写入" })).not.toBeInTheDocument();
     await within(row).findByText(/^写入已执行$/);
     expect(currentValueCell(row)).toHaveTextContent("3700");
   });

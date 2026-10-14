@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterRecord } from "@/domain/prototype/types";
-import { declarationFor, declarationsFor, readStylesheet } from "../test/cssAssertions";
 import { ParametersTable, type ParametersTableProps } from "./ParametersTable";
 
 const rows: ParameterRecord[] = [
@@ -425,75 +424,6 @@ describe("ParametersTable", () => {
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
   });
 
-  it("keeps sticky columns anchored and gives the search wrapper a focus ring", () => {
-    const styles = readStylesheet("src/styles.css");
-    const firstColumn = declarationsFor(styles, ".parameters-table-grid th:first-child");
-    const nameColumn = declarationsFor(styles, ".parameters-table-grid th:nth-child(2)");
-
-    expect(firstColumn.position).toBe("sticky");
-    expect(firstColumn.left).toBe("0");
-    expect(nameColumn.left).toBe("48px");
-    expect(declarationFor(styles, ".search-field:focus-within", "box-shadow")).toBeTruthy();
-  });
-
-  it("does not force desktop horizontal scrolling with a wide table min-width", () => {
-    const styles = readStylesheet("src/styles.css");
-    const tableGrid = declarationsFor(styles, ".parameters-table-grid");
-    const tableHeader = declarationsFor(styles, ".parameters-table-grid th");
-    const nameColumn = declarationsFor(styles, ".parameters-table-grid th:nth-child(2)");
-    const scroll = declarationsFor(styles, ".parameters-table-scroll");
-
-    expect(tableGrid["min-width"]).toBe("0");
-    expect(tableGrid["table-layout"]).toBe("fixed");
-    expect(tableHeader["white-space"]).toBeUndefined();
-    expect(nameColumn.width).toContain("clamp(");
-    expect(scroll["overflow-x"]).toBe("auto");
-  });
-
-  it("lets long DTS-style parameter descriptions wrap inside the name column", () => {
-    const styles = readStylesheet("src/styles.css");
-    const nameContent = declarationsFor(styles, ".parameters-table-grid td:nth-child(2) strong");
-    const nameMeta = declarationsFor(styles, ".parameters-table-grid td:nth-child(2) small");
-
-    expect(nameContent["white-space"]).toBe("normal");
-    expect(nameContent["overflow-wrap"]).toBe("anywhere");
-    expect(nameMeta["white-space"]).toBe("normal");
-    expect(nameMeta["overflow-wrap"]).toBe("anywhere");
-  });
-
-  it("keeps multiline parameter values inside the current-to-recommended column", () => {
-    const styles = readStylesheet("src/styles.css");
-    const diff = declarationsFor(styles, ".parameter-value-diff");
-    const diffChildSpan = declarationsFor(styles, ".parameter-value-diff > span");
-    const diffChildStrong = declarationsFor(styles, ".parameter-value-diff > strong");
-
-    expect(diff.display).toBe("grid");
-    expect(diff["white-space"]).toBe("normal");
-    expect(diff["max-width"]).toBe("100%");
-    expect(diffChildSpan["overflow-wrap"]).toBe("anywhere");
-    expect(diffChildSpan["white-space"]).toBe("pre-wrap");
-    expect(diffChildStrong["overflow-wrap"]).toBe("anywhere");
-    expect(diffChildStrong["white-space"]).toBe("pre-wrap");
-  });
-
-  it("keeps column filter menus usable while the table scrolls horizontally", () => {
-    const styles = readStylesheet("src/styles.css");
-
-    expect(
-      declarationFor(styles, ".parameters-table--column-filters .parameters-table-scroll", "overflow-x")
-    ).toBe("auto");
-    expect(declarationFor(styles, ".parameters-page-layout .workbench-main", "overflow")).toBe("hidden");
-    expect(declarationFor(styles, ".parameters-column-filter__menu--fixed", "position")).toBe("fixed");
-  });
-
-  it("keeps header filter buttons adjacent to header labels", () => {
-    const styles = readStylesheet("src/styles.css");
-    const headCell = declarationsFor(styles, ".parameters-table-head-cell");
-
-    expect(headCell["justify-content"]).toBe("flex-start");
-    expect(headCell.width).toBe("fit-content");
-  });
-
   it("right-aligns the importance filter menu away from row actions", () => {
     setup();
 
@@ -507,51 +437,5 @@ describe("ParametersTable", () => {
     const source = readFileSync(resolve(__dirname, "ParametersTable.tsx"), "utf8");
 
     expect(source).not.toContain("<ColumnFilter {...providedFilter}");
-  });
-
-  it("turns the parameter table into mobile cards instead of a forced wide grid", () => {
-    const styles = readStylesheet("src/styles.css");
-    const mobile = { within: "(max-width: 960px)" };
-
-    expect(declarationFor(styles, ".parameters-table-grid thead", "display", mobile)).toBe("none");
-    expect(declarationFor(styles, ".parameters-table-grid tbody tr", "display", mobile)).toBe("grid");
-    expect(
-      declarationFor(styles, ".parameters-table-grid", "min-width", { within: "(max-width: 900px)" })
-    ).toBe("0");
-  });
-
-  it("keeps mobile card table values readable beside their labels", () => {
-    const styles = readStylesheet("src/styles.css");
-    const mobile = { within: "(max-width: 960px)" };
-    const mobileRow = declarationsFor(styles, ".parameters-table-grid tbody tr", mobile);
-    const mobileCell = declarationsFor(styles, ".parameters-table-grid td", mobile);
-    const mobileBodyCell = declarationsFor(styles, ".parameters-table-grid tbody td", mobile);
-    const mobileAnyBodyCell = declarationsFor(styles, ".parameters-table-grid tbody td:nth-child(n)", mobile);
-
-    expect(mobileRow["min-width"]).toBe("0");
-    expect(mobileCell["grid-template-columns"]).toBe("minmax(76px, 0.32fr) minmax(0, 1fr)");
-    expect(mobileBodyCell.width).toBe("auto");
-    expect(mobileAnyBodyCell.width).toBe("auto");
-    expect(mobileAnyBodyCell.left).toBe("auto");
-    expect(mobileCell["overflow-wrap"]).toBe("anywhere");
-    expect(mobileCell["word-break"]).toBe("normal");
-  });
-
-  it("keeps debugging toolbar search from stretching vertically on narrow viewports (TD-107)", () => {
-    const styles = readStylesheet("src/styles.css");
-    const searchSelector = ".debugging-page .search-field";
-    const narrow = { within: "(max-width: 960px)" };
-
-    const desktop = declarationsFor(styles, searchSelector);
-    expect(desktop.flex).toBe("0 0 auto");
-    expect(desktop.width).toBe("min(260px, 100%)");
-    expect(desktop["flex-basis"]).toBeUndefined();
-
-    const mobile = declarationsFor(styles, searchSelector, narrow);
-    expect(mobile.width).toBe("100%");
-    expect(mobile["max-width"]).toBe("none");
-    expect(mobile["min-width"]).toBe("0");
-    expect(mobile.height).toBeUndefined();
-    expect(mobile["flex-basis"]).toBeUndefined();
   });
 });

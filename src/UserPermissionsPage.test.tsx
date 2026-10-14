@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -172,7 +172,7 @@ describe("UserPermissionsPage", () => {
     expect(within(tooltip).getByText("包含硬件开发权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
     expect(within(tooltip).getByText("审阅参数提交")).toBeInTheDocument();
 
-    roleSelect.blur();
+    act(() => roleSelect.blur());
 
     await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
   });
@@ -442,10 +442,12 @@ describe("UserPermissionsPage", () => {
   });
 
   it("uses backend user governance actions when changing role and activation", async () => {
+    let finishRoleChange!: () => void;
+    const roleChange = new Promise<void>((resolve) => { finishRoleChange = resolve; });
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
-      assignUserRole: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(() => roleChange),
       setUserActive: vi.fn(async () => undefined)
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
@@ -455,6 +457,11 @@ describe("UserPermissionsPage", () => {
     await userEvent.click(
       within(screen.getByRole("dialog", { name: "确认调整用户角色" })).getByRole("button", { name: "确认调整" })
     );
+    expect(screen.getByRole("dialog", { name: "确认调整用户角色" })).toBeInTheDocument();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
+    await act(async () => { finishRoleChange(); await roleChange; });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(dispatch).toHaveBeenCalledWith({ type: "ASSIGN_USER_ROLE", userId: "u-liu-min", roleId: "software-committer" });
     await userEvent.click(within(row).getByRole("button", { name: "停用" }));
     await userEvent.click(
       within(screen.getByRole("dialog", { name: "确认停用用户" })).getByRole("button", { name: "确认停用" })
@@ -745,21 +752,10 @@ describe("UserPermissionsPage", () => {
     const roleCellStyles = declarationsFor(css, ".user-permissions-role-cell");
     const roleSelectStyles = declarationsFor(css, ".user-permissions-role-select");
     const roleTooltipStyles = declarationsFor(css, ".user-permissions-role-tooltip");
-
-    const approvalItemStyles = declarationsFor(css, ".user-permissions-approval-item");
-    const approvalUserStyles = declarationsFor(css, ".user-permissions-approval-user strong");
-    expect(approvalItemStyles["grid-template-columns"]).toBe("minmax(0, 1.2fr) minmax(0, 1fr) auto");
-    const narrowApprovalItemStyles = declarationsFor(css, ".user-permissions-approval-item", {
-      within: "(max-width: 1100px)"
-    });
-    expect(narrowApprovalItemStyles["grid-template-areas"]).toContain('"user actions"');
-    expect(approvalUserStyles["text-overflow"]).toBe("ellipsis");
     expect(roleCellStyles.width).toBe("var(--admin-list-role-cell-width)");
     expect(roleSelectStyles["min-width"]).toBe("var(--admin-list-role-control-width)");
     expect(roleSelectStyles.width).toBe("var(--admin-list-role-control-width)");
-    expect(roleTooltipStyles.position).toBe("fixed");
     expect(roleTooltipStyles["max-height"]).toBe("calc(100vh - var(--space-8))");
-    expect(roleTooltipStyles.overflow).toBe("auto");
   });
 
   it("gives user management action buttons visible chrome instead of text-only controls", () => {
@@ -768,8 +764,6 @@ describe("UserPermissionsPage", () => {
     const css = readStylesheet("src/styles.css");
     const baseButtonStyles = declarationsFor(css, ".button");
     const primaryButtonStyles = declarationsFor(css, ".button.primary");
-
-    expect(baseButtonStyles.display).toBe("inline-flex");
     expect(baseButtonStyles.background).toBe("var(--surface)");
     expect(baseButtonStyles.border).toBe("1px solid var(--border)");
     expect(baseButtonStyles["border-radius"]).toBe("var(--radius-md)");

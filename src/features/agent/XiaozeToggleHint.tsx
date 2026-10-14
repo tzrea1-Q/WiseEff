@@ -32,8 +32,17 @@ export function XiaozeToggleHint({ userId, visible, onOpen }: XiaozeToggleHintPr
     return () => window.clearTimeout(timer);
   }, [dismissed, userId, visible]);
 
-  if (!visible || dismissed || !revealed) {
-    return null;
+  const shown = visible && !dismissed && revealed;
+  const readiness = (
+    <span
+      hidden
+      data-testid="xiaoze-toggle-hint-readiness"
+      data-state={shown ? "revealed" : !visible || dismissed || readXiaozeToggleHintShown(userId) ? "suppressed" : "pending"}
+    />
+  );
+
+  if (!shown) {
+    return readiness;
   }
 
   const handleDismiss = () => {
@@ -42,18 +51,21 @@ export function XiaozeToggleHint({ userId, visible, onOpen }: XiaozeToggleHintPr
   };
 
   return (
-    <div className="xiaoze-toggle-hint" data-testid="xiaoze-toggle-hint" role="status" aria-live="polite">
-      <button type="button" className="xiaoze-toggle-hint__body" onClick={onOpen}>
-        有问题？点这里问小泽
-      </button>
-      <button
-        type="button"
-        className="xiaoze-toggle-hint__dismiss"
-        aria-label="不再提示"
-        onClick={handleDismiss}
-      >
-        <X size={14} aria-hidden="true" />
-      </button>
-    </div>
+    <>
+      {readiness}
+      <div className="xiaoze-toggle-hint" data-testid="xiaoze-toggle-hint" role="status" aria-live="polite">
+        <button type="button" className="xiaoze-toggle-hint__body" onClick={onOpen}>
+          有问题？点这里问小泽
+        </button>
+        <button
+          type="button"
+          className="xiaoze-toggle-hint__dismiss"
+          aria-label="不再提示"
+          onClick={handleDismiss}
+        >
+          <X size={14} aria-hidden="true" />
+        </button>
+      </div>
+    </>
   );
 }

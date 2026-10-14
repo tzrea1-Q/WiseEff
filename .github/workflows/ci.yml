@@ -5,7 +5,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   schedule:
     # Nightly L1 + L2 on main (UTC).
     - cron: "30 18 * * *"
@@ -32,8 +32,8 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'full-acceptance') && github.run_id || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance') }}
 
 permissions:
   contents: read
@@ -103,6 +103,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      selected: ${{ steps.event.outputs.selected }}
       docs_only: ${{ steps.paths.outputs.docs_only }}
       run_l1: ${{ steps.paths.outputs.run_l1 }}
       run_quality: ${{ steps.paths.outputs.run_quality }}
@@ -110,18 +111,27 @@ jobs:
       run_l2: ${{ steps.paths.outputs.run_l2 }}
 
     steps:
+      - name: Select CI event
+        id: event
+        env:
+          SELECTED: ${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance' }}
+        run: echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
+
       - name: Check out repository
+        if: steps.event.outputs.selected == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Node.js
+        if: steps.event.outputs.selected == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
+        if: steps.event.outputs.selected == 'true'
         run: npm ci
 
       - name: Retained rehearsal source lock on native Linux
@@ -129,6 +139,7 @@ jobs:
         run: npx vitest run --config vitest.scripts.config.ts scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts
 
       - name: Classify changed paths
+        if: steps.event.outputs.selected == 'true'
         id: paths
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -178,10 +189,12 @@ jobs:
           esac
 
       - name: Record CI shadow scope
+        if: steps.event.outputs.selected == 'true'
         id: shadow-summary
         run: node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope
 
       - name: Documentation governance
+        if: steps.event.outputs.selected == 'true'
         run: npm run docs:check
 
   l1-static:
@@ -496,7 +509,7 @@ jobs:
 
   l1-server:
     name: L1 backend
-    if: always()
+    if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, l1-server-shards]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -520,7 +533,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    if: always()
+    if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, l1-static, l1-frontend, l1-scripts, l1-server]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -604,6 +617,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Read Playwright version
+        id: playwright_version
+        timeout-minutes: 1
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        timeout-minutes: 2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
@@ -631,9 +656,7 @@ jobs:
 
       - name: Migrate and seed database
         run: |
-          npm run db:migrate
-          npm run db:seed:all
-          npm run --if-present seed:quality:admin-lists
+          npm run seed:browser
           echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"
           if [ "$WISEEFF_QUALITY_LANE" = "visual" ]; then
             echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"
@@ -677,9 +700,21 @@ jobs:
             playwright-report/quality
             test-results/quality
 
+      - name: Generate candidate baseline review
+        if: failure() && matrix.lane == 'visual'
+        run: npx tsx scripts/quality-baseline-review.ts "$RUNNER_TEMP/wiseeff-ci-shard/results.json"
+
+      - name: Upload candidate baseline review
+        if: failure() && matrix.lane == 'visual' && hashFiles('test-results/quality/baseline-review/candidate.patch') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-visual-baseline-review
+          path: test-results/quality/baseline-review
+          if-no-files-found: error
+
   acceptance-quality:
     name: Acceptance quality
-    if: always()
+    if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, acceptance-quality-lanes]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -754,11 +789,17 @@ jobs:
       - name: Install and verify DTS toolchain
         uses: ./.github/actions/setup-dts-toolchain
 
+      - name: Read Playwright version
+        id: playwright_version
+        timeout-minutes: 1
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
+        timeout-minutes: 2
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -788,8 +829,7 @@ jobs:
 
       - name: Migrate and seed database
         run: |
-          npm run db:migrate
-          npm run db:seed:all
+          npm run seed:browser
 
       - name: Acceptance smoke
         run: npm run acceptance:smoke
@@ -872,8 +912,20 @@ jobs:
         continue-on-error: true
         run: npm run dtc:seed:compile
 
+      - name: Read Playwright version
+        id: playwright_version
+        timeout-minutes: 1
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        timeout-minutes: 2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
+
       - name: Install Playwright Chromium
-        timeout-minutes: 15
+        timeout-minutes: 12
         run: npx playwright install --with-deps chromium
 
       - name: Acceptance CI metadata
@@ -1060,7 +1112,7 @@ jobs:
 
   acceptance-local-non-hdc:
     name: Acceptance local non-HDC
-    if: always()
+    if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, acceptance-local-non-hdc-shards]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1116,6 +1168,18 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Read Playwright version
+        id: playwright_version
+        timeout-minutes: 1
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        timeout-minutes: 2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -1186,7 +1250,7 @@ jobs:
             test-results/quality
 
   required:
-    name: Merge bar
+    name: Merge bar${{ needs.detect.outputs.selected == 'false' && ' (ignored label)' || '' }}
     if: always()
     needs:
       - detect
@@ -1200,10 +1264,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        if: needs.detect.outputs.selected != 'false'
       - uses: actions/setup-node@v4
+        if: needs.detect.outputs.selected != 'false'
         with:
           node-version-file: .nvmrc
       - name: Check jobs that were supposed to run
+        if: needs.detect.outputs.selected != 'false'
         env:
           EFF_NEEDS: ${{ toJSON(needs) }}
         run: node --experimental-strip-types scripts/ci-required-results.ts required

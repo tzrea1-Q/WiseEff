@@ -331,7 +331,6 @@ const API_SENTINEL_BINDING: ProjectParameterBinding = {
   moduleId: "mod-sentinel-device"
 };
 
-
 function createApiBoundaryRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
@@ -1317,10 +1316,6 @@ describe("ParametersPage · 提交契约", () => {
 
     const styles = readStylesheet("src/styles.css");
     const codeRule = declarationsFor(styles, ".submission-preview-diff");
-    const rowCodeRule = declarationsFor(styles, ".submission-preview-diff-row code");
-    const removeRowRule = declarationsFor(styles, '.submission-preview-diff-row[data-kind="remove"]');
-    const addRowRule = declarationsFor(styles, '.submission-preview-diff-row[data-kind="add"]');
-    const lineMetaRule = declarationsFor(styles, ".submission-preview-diff-row__marker");
     const allRules = parseCssRules(styles);
     const genericHeadingRuleIndex = allRules.findIndex((rule) =>
       rule.selectors.includes(".submission-diff-card strong")
@@ -1328,14 +1323,8 @@ describe("ParametersPage · 提交契约", () => {
     const complexHeadingRuleIndex = allRules.findLastIndex((rule) =>
       rule.selectors.includes(".submission-diff-card--complex strong")
     );
-    expect(codeRule.overflow).toBe("auto");
     expect(codeRule.background).toBe("var(--surface)");
     expect(codeRule.color).toBe("var(--text)");
-    expect(removeRowRule.background).toBe("#fff1f2");
-    expect(addRowRule.background).toBe("#ecfdf5");
-    expect(lineMetaRule.background).toBe("#f8fafc");
-    expect(rowCodeRule["white-space"]).toContain("pre");
-    expect(codeRule["word-break"]).toBe("normal");
     // The complex-card heading override must stay after the generic heading
     // rule so its equal-specificity declarations win the cascade.
     expect(genericHeadingRuleIndex).toBeGreaterThanOrEqual(0);

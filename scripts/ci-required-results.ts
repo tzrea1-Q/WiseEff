@@ -27,7 +27,7 @@ const testCommands: Record<string, { job: string; args: string[]; config?: strin
   bridge: { job: "l1-scripts", args: ["run", "bridge:test"], config: "vitest.bridge.config.ts" },
   server: { job: "l1-server", args: ["run", "test:server"], config: "vitest.server.config.ts" },
 };
-const flagNames = ["docs_only", "run_l1", "run_quality", "run_smoke", "run_l2"];
+const flagNames = ["selected", "docs_only", "run_l1", "run_quality", "run_smoke", "run_l2"];
 
 function requireCi(condition: unknown, code: string): asserts condition {
   if (!condition) throw new Error(`CI_${code}`);
@@ -61,6 +61,7 @@ function flagsFor(identity: Identity, needs: RecordValue): Record<string, boolea
   requireCi(detect.result === "success", "DETECT_FAILED");
   const outputs = record(detect.outputs);
   exactKeys(outputs, flagNames);
+  requireCi(outputs.selected === "true", "EVENT_NOT_SELECTED");
   for (const value of Object.values(outputs)) requireCi(value === "true" || value === "false", "UNKNOWN_FLAG");
   const flags = Object.fromEntries(flagNames.map((name) => [name, outputs[name] === "true"]));
   if (identity.event === "pull_request") {

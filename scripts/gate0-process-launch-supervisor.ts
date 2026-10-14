@@ -255,7 +255,7 @@ function assertLaunchRecord(
     !/^[a-f0-9-]{36}$/iu.test(record.launchId ?? "") ||
     path.resolve(recordPath) !== path.join(expectedDirectory, `${record.launchId}.json`) ||
     !record.runId || !/^[a-f0-9]{40}$/u.test(record.sourceCommit ?? "") ||
-    typeof record.label !== "string" || !/^(?:root|nested):[a-z0-9_-]+:(?:migration|seed|api|frontend|visual|browser)$/u.test(record.label) ||
+    typeof record.label !== "string" || !/^(?:root|nested):[a-z0-9_-]+:(?:migration|seed-reset|seed|seed-admin-lists|api|frontend|visual|browser)$/u.test(record.label) ||
     !Number.isSafeInteger(record.ownerPid) || Number(record.ownerPid) <= 0 ||
     !isProcessStartIdentity(record.ownerProcessIdentity) ||
     !["intent", "claimed", "aborted", "rejected"].includes(record.state ?? "") ||

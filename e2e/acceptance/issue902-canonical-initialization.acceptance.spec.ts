@@ -159,8 +159,11 @@ test.describe("issue902 canonical-only JSON project initialization", () => {
     expect((await beforeApproval.json()).items).toEqual([]);
 
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-review?project=${targetProjectId}`);
-    await expect(page).toHaveURL(new RegExp(`/parameter-review\\?project=${targetProjectId}$`));
-    await page.getByRole("button", { name: `查看 ${targetProjectName} 初始化详情`, exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === "/parameter-review"
+      && url.searchParams.get("project") === targetProjectId);
+    const reviewRow = page.getByRole("table", { name: "审阅队列" })
+      .locator(`[data-review-row-id="${review.id}"]`);
+    await reviewRow.getByRole("button", { name: /提交详情$/ }).click();
     const detail = page.getByRole("complementary", { name: "审阅详情" });
     await expect(detail).toContainText(targetProjectName);
     const approved = page.waitForResponse(response => response.request().method() === "POST"

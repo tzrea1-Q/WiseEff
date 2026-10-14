@@ -13,7 +13,7 @@ test("measures only the active governance task and keeps historical counts and e
     '<table><tbody><tr><td>历史注册记录</td></tr></tbody></table>',
     '<p role="status" style="margin: 0">当前范围没有来源观察记录。</p>'
   ]) {
-    await page.setContent(`<style>
+    await test.step("quality:navigation", () => page.setContent(`<style>
       .navigator-workbench__task > div:not([hidden]) { position: absolute; top: 240px; left: 600px; width: 600px; }
       .module-attribution-tree__count { display: block; }
     </style>
@@ -26,8 +26,8 @@ test("measures only the active governance task and keeps historical counts and e
         <section class="navigator-workbench__task"><div hidden><li data-canonical-subject-id="hidden-subject">隐藏主体</li></div>
           <div>${task}</div></section>
       </div>
-    </div></div></main>`);
-    const measurements = await page.evaluate(collectConsistencyMeasurements);
+    </div></div></main>`));
+    const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
     expect(measurements.navigatorWorkbenches).toHaveLength(1);
     const measurement = measurements.navigatorWorkbenches[0];
     expect(measurement.firstRow?.left).toBeGreaterThanOrEqual(600);
@@ -43,7 +43,7 @@ test("measures only the active governance task and keeps historical counts and e
 });
 
 test("resolves all three root switch signatures and catches scoped geometry or semantic drift", async ({ page }) => {
-  await page.setContent(`
+  await test.step("quality:navigation", () => page.setContent(`
     <style>
       :root {
         --space-10: 40px; --space-8: 32px; --space-6: 24px; --space-1: 4px;
@@ -69,14 +69,14 @@ test("resolves all three root switch signatures and catches scoped geometry or s
       <div role="radiogroup"><button class="view-switch__item" role="radio" aria-checked="true">全部</button><button class="view-switch__item" role="radio" aria-checked="false">我的</button></div>
       <div hidden><button class="view-switch__item" role="tab">隐藏</button></div>
     </main>
-  `);
-  const measurements = await page.evaluate(collectConsistencyMeasurements);
+  `));
+  const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(measurements.viewSwitches).toHaveLength(6);
   expect(measurements.viewSwitchSignatures.map((style) => [style.variant, style.height])).toEqual([["section", 40], ["tabs", 32], ["toggle", 28]]);
   expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).not.toThrow();
   expect(() => requireViewSwitchStyles({ ...measurements, viewSwitches: measurements.viewSwitches.filter((control) => control.role === "radio") }, "/parameter-home")).not.toThrow();
   await page.locator("nav").evaluate((element) => element.classList.add("scoped"));
-  const overridden = await page.evaluate(collectConsistencyMeasurements);
+  const overridden = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(overridden.viewSwitchSignatures[0].height).toBe(40);
   expect(() => requireViewSwitchStyles({ ...overridden, viewSwitches: overridden.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).toThrow("matched 0");
   await page.locator("nav").evaluate((element) => element.classList.remove("scoped"));
@@ -84,14 +84,14 @@ test("resolves all three root switch signatures and catches scoped geometry or s
     element.removeAttribute("role");
     element.querySelectorAll("button").forEach((button) => button.removeAttribute("role"));
   });
-  const missingRoles = await page.evaluate(collectConsistencyMeasurements);
+  const missingRoles = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(missingRoles.viewSwitches).toHaveLength(6);
   expect(() => requireViewSwitchStyles({ ...missingRoles, viewSwitches: missingRoles.viewSwitches.filter((control) => control.role !== "radio") }, "/organization/members")).toThrow("matched 0");
 });
 
 for (const [theme, primaryColor] of [["light", "rgb(0, 82, 204)"], ["dark", "rgb(76, 141, 255)"]]) {
   test(`resolves the root primary color without hiding scoped overrides (${theme})`, async ({ page }) => {
-    await page.setContent(`
+    await test.step("quality:navigation", () => page.setContent(`
       <style>
         :root { --primary: ${primaryColor}; }
         button, a { display: inline-block; height: 32px; }
@@ -108,20 +108,20 @@ for (const [theme, primaryColor] of [["light", "rgb(0, 82, 204)"], ["dark", "rgb
         <nav><button aria-current="page">选中导航</button></nav>
         <div hidden><button class="button primary">隐藏</button></div>
       </main>
-    `);
-    const measurements = await page.evaluate(collectConsistencyMeasurements);
+    `));
+    const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
     expect(measurements.primaryActions).toHaveLength(5);
     expect(measurements.primaryActions.map((action) => action.primaryColor)).toEqual(Array(5).fill(primaryColor));
     expect(measurements.primaryActions.map((action) => action.disabled)).toEqual([true, true, false, false, false]);
     expect(() => requirePrimaryActionColors(measurements, "/fixture")).not.toThrow();
     await page.locator("main").evaluate((element) => element.classList.add("scoped"));
-    const overridden = await page.evaluate(collectConsistencyMeasurements);
+    const overridden = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
     expect(() => requirePrimaryActionColors(overridden, "/fixture")).toThrow("must equal primary");
   });
 }
 
 test("collects visible view-switch signatures without enforcing a design", async ({ page }) => {
-  await page.setContent(`
+  await test.step("quality:navigation", () => page.setContent(`
     <style>
       button, a { display: inline-block; height: 32px; box-sizing: border-box; border-radius: 8px; font-size: 13px; }
       [aria-selected="true"], [aria-checked="true"], [aria-current="page"] { background: rgb(0, 61, 155); }
@@ -134,9 +134,9 @@ test("collects visible view-switch signatures without enforcing a design", async
       <ol class="local-device-bridge-wizard__steps"><li data-active="true">安装</li></ol>
       <div hidden><button role="tab">隐藏</button></div>
     </main>
-  `);
+  `));
 
-  const measurements = await page.evaluate(collectConsistencyMeasurements);
+  const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(measurements.viewSwitches).toHaveLength(6);
   expect(measurements.viewSwitches).toEqual(expect.arrayContaining([
     expect.objectContaining({ role: "link", groupRole: "navigation", selected: true, height: 32, radius: "8px 8px 8px 8px", fontSize: "13px", background: "rgb(0, 61, 155)" }),
@@ -148,30 +148,30 @@ test("collects visible view-switch signatures without enforcing a design", async
 });
 
 test("settles read-only Bridge routes without waiting for a POST-created pairing code", async ({ page }) => {
-  await page.setContent(`<main><div class="local-device-bridge-panel__readiness" aria-busy="false">本地 Bridge 未运行</div><p>运行历史</p>
+  await test.step("quality:navigation", () => page.setContent(`<main><div class="local-device-bridge-panel__readiness" aria-busy="false">本地 Bridge 未运行</div><p>运行历史</p>
     <section aria-label="节点调试参数"><table><tbody><tr>
       <td data-label="参数名称"><strong>Fast charge current</strong></td>
-    </tr></tbody></table></section></main>`);
-  await settleQualityRoute(page, "/node-debugging", { readOnly: true });
-  await settleQualityRoute(page, "/dts-reload", { readOnly: true });
+    </tr></tbody></table></section></main>`));
+  await test.step("quality:readiness", () => settleQualityRoute(page, "/node-debugging", { readOnly: true }));
+  await test.step("quality:readiness", () => settleQualityRoute(page, "/dts-reload", { readOnly: true }));
 });
 
 test("settles a module-filtered debug table without requiring another module's row", async ({ page }) => {
-  await page.setContent(`<main><div class="local-device-bridge-panel__readiness" aria-busy="false">本地 Bridge 未运行</div>
+  await test.step("quality:navigation", () => page.setContent(`<main><div class="local-device-bridge-panel__readiness" aria-busy="false">本地 Bridge 未运行</div>
     <div role="tree" aria-label="调试节点模块树">
       <div role="treeitem" aria-selected="true">Battery Health 1 个节点</div>
     </div>
     <section aria-label="节点调试参数" style="margin-top: 1200px"><table><tbody><tr>
       <td data-label="参数名称"><strong>Cycle count</strong></td>
-    </tr></tbody></table></section></main>`);
+    </tr></tbody></table></section></main>`));
   await expect(page.getByText("Fast charge current")).toHaveCount(0);
-  await settleQualityRoute(page, "/node-debugging", { readOnly: true });
+  await test.step("quality:readiness", () => settleQualityRoute(page, "/node-debugging", { readOnly: true }));
   await expect(page.getByRole("treeitem")).toHaveAttribute("aria-selected", "true");
 });
 
 test("settles project review roles on its loaded governance content, not a DTS file", async ({ page }) => {
-  await page.setContent("<main><h1>aurora 项目审核角色配置</h1><h2>组织成员职责授权</h2></main>");
-  await settleQualityRoute(page, "/parameter-admin/projects/aurora/review-roles", { readOnly: true });
+  await test.step("quality:navigation", () => page.setContent("<main><h1>aurora 项目审核角色配置</h1><h2>组织成员职责授权</h2></main>"));
+  await test.step("quality:readiness", () => settleQualityRoute(page, "/parameter-admin/projects/aurora/review-roles", { readOnly: true }));
 });
 
 test("stubs Bridge pairing setup without sending a POST to the server", async ({ context, page }) => {
@@ -181,7 +181,7 @@ test("stubs Bridge pairing setup without sending a POST to the server", async ({
     await route.fulfill({ contentType: "text/html", body: "<main>只读</main>" });
   });
   const blocked = await installConsistencyReadGuard(context);
-  await page.goto("https://consistency.example/");
+  await test.step("quality:navigation", () => page.goto("https://consistency.example/"));
   const response = await page.evaluate(async () => {
     const response = await fetch("/api/v1/device-bridges/pairing-codes", { method: "POST" });
     return { status: response.status, body: await response.json() };
@@ -194,11 +194,11 @@ test("stubs Bridge pairing setup without sending a POST to the server", async ({
 });
 
 test("includes topbar primary actions and only marked compact filters", async ({ page }) => {
-  await page.setContent(`
+  await test.step("quality:navigation", () => page.setContent(`
     <header><button class="button primary">上传</button></header>
     <main><select data-compact-control="filter" aria-label="项目筛选"><option>项目</option></select><div role="table"><div role="rowgroup"><div role="row"><span role="columnheader"><button class="parameters-column-filter__trigger">筛选模块</button></span></div></div></div></main>
-  `);
-  const measurements = await page.evaluate(collectConsistencyMeasurements);
+  `));
+  const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(measurements.primaryActions).toHaveLength(1);
   expect(measurements.filterControls).toHaveLength(1);
   expect(measurements.filterControls[0]).toMatchObject({ dom: "select", compactControl: "filter" });
@@ -211,7 +211,7 @@ test("blocks every non-GET request before it reaches the server", async ({ conte
     await route.fulfill({ contentType: "text/html", body: "<main>只读</main>" });
   });
   const blocked = await installConsistencyReadGuard(context);
-  await page.goto("https://consistency.example/");
+  await test.step("quality:navigation", () => page.goto("https://consistency.example/"));
   const results = await page.evaluate(async () => {
     const results: boolean[] = [];
     for (const method of ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]) {
@@ -226,7 +226,7 @@ test("blocks every non-GET request before it reaches the server", async ({ conte
 });
 
 test("collects primary colors, row geometry, overlays, tree anchors and control heights", async ({ page }) => {
-  await page.setContent(`
+  await test.step("quality:navigation", () => page.setContent(`
     <style>
       body { margin: 0; }
       .clip { position: absolute; left: 20px; top: 10px; width: 300px; height: 80px; overflow: hidden; }
@@ -260,9 +260,9 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
       <ul class="parameter-catalog__tree"><li class="parameter-catalog__tree-node"><span class="parameter-catalog__tree-label">旧模块</span><ul><li class="parameter-catalog__tree-node"><span class="parameter-catalog__tree-label">旧参数</span></li></ul></li></ul>
     </main>
     <button class="xiaoze-chat-toggle">小泽</button><div class="xiaoze-toggle-hint">提示</div>
-  `);
+  `));
 
-  const measurements = await page.evaluate(collectConsistencyMeasurements);
+  const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
   expect(measurements.primaryActions).toEqual([expect.objectContaining({ background: "rgb(10, 20, 30)" })]);
   expect(measurements.rowActions).toEqual([expect.objectContaining({
     cell: expect.objectContaining({ left: 350, right: 430, height: 40 }),
@@ -286,5 +286,5 @@ test("collects primary colors, row geometry, overlays, tree anchors and control 
   expect(measurements.sortControls.map((control) => control.height)).toEqual([28]);
   expect(measurements.paginationControls.map((control) => control.height)).toEqual([30]);
   await page.locator(".data-table-scroll").evaluate((element) => { element.scrollLeft = 40; });
-  expect((await page.evaluate(collectConsistencyMeasurements)).rowActions[0].scrollLeft).toBe(40);
+  expect((await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements))).rowActions[0].scrollLeft).toBe(40);
 });

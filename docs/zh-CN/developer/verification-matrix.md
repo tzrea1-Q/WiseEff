@@ -4,6 +4,65 @@
 
 这是日常开发文档，帮助开发者完成本地启动、环境配置、验证选择和验收覆盖判断。
 
+## 验证分层
+
+贡献者和智能体使用同一模型。选择不等于执行，本地通过不等于 PR、合入、夜间、目标主机或生产证据。已接受任务及发布契约的额外门禁保持不变。
+
+| 层级 | 负责人及必需证据 |
+| --- | --- |
+| 编辑内循环 | 实现者：仅运行正在修改的测试文件；通过 `test:impact` 发现受影响套件、静态门禁、quality 路由及跨路由 acceptance spec，不凭文件名猜测。行为变更使用红 → 绿；纯文档不制造失败测试。 |
+| 交接前 | 实现者：在分配预算内执行受影响选择、检查差异并报告两个回退标志。协调者：执行预算外的选中门禁和真实 API 浏览器检查，以及 TypeScript/Vite/路由/共享类型变更必需的构建。纯文档选择 `docs:check`，不选择 Vitest 或浏览器。 |
+| PR CI | 协调者：检查精确推送 head 的实际工作流，包括原生选中作业、回执及必需汇总。Spec #1164 要求 PR 按影响运行验收；本地选择器不会安装此 CI 策略。CI 集成落地前，仍由既有路径选择和 `full-acceptance` 标签决定 CI L2。 |
+| 合入 | 协调者仅在获授权时执行：要求当前候选版本真正的 `Merge bar` 成功及全部已接受任务证据。pending、cancelled、旧 head 或 `Merge bar (ignored label)` 均不能替代。本地选择不能豁免必需作业。 |
+| 夜间 | `main` 上的 CI：main push 与夜间运行保留完整 L1/L2，包括完整 quality/backend 清单和归属 Gate0 验收。定向本地通过不能替代此层。 |
+
+### 选择一次，按层执行
+
+```bash
+# 显式文件，或实际集成基线及全部工作树变更：
+npm run test:impact -- src/DebuggingPage.tsx
+npm run --silent test:impact -- --base origin/main --json > /tmp/wiseeff-impact.json
+# 编辑内循环：替换为正在修改的具体测试文件。
+VITE_WISEEFF_RUNTIME_MODE=mock npx vitest run --configLoader runner <test-file>
+```
+
+任务集成基线与 `origin/main` 不同时使用实际基线。读取 `suites`、`gates`、`commands` 和 `browser`；检查 **两个** `fullFallback` 和 `browser.fullFallback` 及其原因。执行输出命令时不删除配置、预热、跨路由 spec 或静态门禁。共享、删除、未知映射或发现失败均保守回退；完整覆盖超预算时交给协调者，不擅自缩小范围。空变更是错误，不是验收。选择器契约见[贡献指南](../root/CONTRIBUTING.md#本地-vitest-影响选择)。
+
+### 智能体验证预算
+
+委派任务由协调者承担昂贵门禁时，所有检查顺序执行。编辑期间仅运行正在修改的测试文件。全部编辑结束后，对每个变更源码运行一次 related，再 lint 这些文件并检查受影响 TypeScript 项目：
+
+```bash
+VITE_WISEEFF_RUNTIME_MODE=mock npx vitest related --run --configLoader runner <changed-source-files>
+npx eslint <changed-code-files>
+npx tsc -p tsconfig.app.json --noEmit
+npx tsc -p tsconfig.node.json --noEmit
+git diff --check
+```
+
+`src/` TypeScript 变更运行 app 类型检查；server/scripts/e2e/config TypeScript 变更运行 node 类型检查。related 仅覆盖当前 Vitest 配置：使用 `test:impact` 识别其他套件/门禁，并明确将未执行选择交给协调者。纯文档不需要 related、ESLint 或 TypeScript 检查；选中的 `npm run docs:check` 仍为必需，任务将文档门禁保留给协调者时由其执行。related 失败可修复后最多重跑两次。此预算下不执行完整套件、构建、全仓 lint、浏览器循环或并发测试/构建会话。协调者每个任务执行一次昂贵门禁；只是移交，不是取消。环境不可用或沙箱错误属于缺失证据，不是通过。
+
+### 隔离浏览器泳道
+
+获准执行定向浏览器检查时，先按照[本地设置](../root/CONTRIBUTING.md#测试数据库隔离)准备并播种可丢弃的 lane 数据库。导出基础 PostgreSQL `DATABASE_URL` 后，使用 `browser.commands` 输出的精确 grep 和 spec 清单：
+
+```bash
+WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.quality.config.ts --grep '<browser.qualityGrep>'
+WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.acceptance.config.ts <browser.acceptanceSpecs>
+# 只执行一个已注册 quality 分区，而不是全部项目：
+WISEEFF_RUNTIME_LANE=1 WISEEFF_QUALITY_LANE=consistency-1 npx playwright test --config playwright.quality.config.ts --grep '<browser.qualityGrep>'
+```
+
+占位符须替换为选择器输出，不是字面参数。分区执行选择时运行所有适用 quality 分区（`visual`、`consistency-1`、`consistency-2`、`accessibility`）。`WISEEFF_RUNTIME_LANE` 隔离端口、数据库、对象存储和报告；`WISEEFF_QUALITY_LANE` 选择覆盖范围，不隔离运行时。顺序执行 quality/acceptance 可复用 lane；同时执行必须使用不同运行时 lane ID。`WISEEFF_VITEST_LANES` 是并发 Vitest 进程总数，不是浏览器 lane 设置。描述符不创建数据库，不能与归属 Gate0 运行时控制混用。定向 Playwright 证据不是完整 Gate0 证据；受控运行时及回执义务保持不变。可见变更要求 `1440x900` 的真实 API 证据；mock 测试、收集和元数据不能代替执行。浏览器归协调者时，报告选中路由/spec 和缺失截图，不自行启动。
+
+## 本地 Vitest worker 预算
+
+协调者在同一主机并发运行 Vitest 泳道时，应为每条泳道设置 `WISEEFF_VITEST_LANES`，其值为同时运行的 Vitest 进程总数，而非运行时泳道 ID。例如，`WISEEFF_VITEST_LANES=3 npm test -- src/NodeDebuggingPage.test.tsx` 会将主机的 `availableParallelism()` 分给三条泳道。单进程默认使用 `1` 条泳道。
+
+前端和 Bridge 默认最多四个 worker；server 保留半数 CPU、最多四个 worker 的默认值；scripts 保持串行。每个上限还受 `floor(availableParallelism / lanes)` 限制，最少一个 worker。`VITEST_SERVER_MAX_WORKERS` 仍可设置，但不能超过每条泳道的 CPU 预算。两个设置均须为正安全整数。使用此预算时不要覆盖 `--maxWorkers`。泳道数超过可用 CPU 时仍需协调者串行调度，因为每条泳道最少需要一个 worker。
+
+负载敏感的 DOM 测试应等待界面就绪，并在 `act` 内完成受控 Promise，而不是把请求开始、URL 改变或固定 sleep 当作完成。保留原有断言和超时。重复的隔离运行、并发负载运行及 PR CI 仍由协调者提供验收证据，与局部本地通过结果分开。
+
 ## 使用方式
 
 L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` 产物是有界的工作流状态快照，与经过安全门禁的各分片完整 ZIP 分开。它记录候选初始化前实测的 checkout SHA/tree、workflow SHA、PR head/base（非 PR 事件使用 push 前驱或定时运行的 head），以及执行、归档、完整上传的结果。首版内部阶段、清理和测试数量仍是 unknown，不读取候选报告或原始日志。发布器失败时只生成 `DIAGNOSTIC_REJECTED`；后备诊断或上传成功不能覆盖先前失败。诊断自身上传在快照中为 pending，最终状态见 Actions 和作业摘要；runner 丢失时可能 incomplete。完整产物的大小、所有权及安全要求保持不变。
@@ -13,6 +72,10 @@ L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` �
 L2 浏览器验收使用 `--shard=i/4` 分为四个独立 Gate0 作业，各自拥有 PostgreSQL 服务及运行时。视觉验收仅在分片 1 执行，浏览器预热依赖在每个分片执行。执行前由原生 Playwright 收集确定非空测试清单及按文件划分的工作流/操作证据义务，结果清单必须一致；整套静态覆盖检查及所有运行时归属证据检查继续保留。每个必须自动验收的操作只能有一个浏览器 spec 所有者。分片不发布最新完整证据指针。稳定的 `Acceptance local non-HDC` 汇总门要求矩阵全部成功，或由成功的 detect 有意跳过矩阵，之后 `Merge bar` 才能通过。不带参数的 `npm run acceptance:gate0` 仍在本地执行两个完整阶段。
 
 分片执行前，不分片的原生测试收集必须仍包含所有必需操作的浏览器所有者。分片参数仅用于具备有效归属描述符及归属输出路径的本地非 HDC 运行；独立、target 或 full-pilot 片段不能覆盖完整运行证据。收集、清单及其他阶段命令失败均进入 Gate0 的结构化失败清单，即使原生报告中没有失败测试结果。
+
+浏览器分片按耗时均衡分配，不再使用 Playwright 原生的测试数量分片。`scripts/acceptance-shard-plan.ts` 从完整原生收集结果中按文件分配：先处理实测耗时最长的文件，再交给当前负载最低的分片；相同耗时按文件名、分片序号确定顺序。分片 1 的初始负载包含实测视觉阶段墙钟耗时，每个分片至少拥有一个浏览器文件。`scripts/acceptance-durations.json` 保存输入测量值及来源：2026-10-10 完整收集运行的浏览器 list 报告按文件累加耗时，以及 2026-09-18 视觉 JSON 报告的 `stats.duration`。两次历史运行均含失败，这些值仅用于调度，不代表当前验收通过或已实测的加速。新增或零耗时文件使用已记录最慢文件的权重，不会被遗漏。显式转义的文件筛选保留预热项目，原有计划、完整收集、结果清单及操作检查保持不变。
+
+协调者使用完整浏览器 JSON 报告按文件累加结果耗时（含重试），以及视觉报告的墙钟耗时，更新这些权重；快照保留来源日期及失败限制说明。协调者必须在变更前后运行全部四个 Gate0 分片，报告实际作业墙钟耗时，不能用测试耗时之和代替；既有 CI 中位数（24.35 / 15.55 / 16.43 / 9.73 分钟，混合成功和失败运行）仅作背景。验收超时、必需汇总门和视觉验收义务均不变。
 
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
 - 命令、路径、环境变量、API 路径、角色名、状态名和脚本名称保持英文原样，避免复制时出错。
@@ -70,6 +133,7 @@ EFF 夹具工作复用原有自有 Gate0 runtime 与原生验收配置，保持�
 
 | 命令 | 证明内容 | 使用场景 |
 | --- | --- | --- |
+| `npm run acceptance:quality` | consistency（含 collector）、compact、visual、a11y 和 responsive 的质量门禁脚本/规格文件元数据及项目注册；配置在产品规格之前运行 `runtime-warmup`。元数据通过不代表浏览器执行通过。 | 修改 package 脚本、质量 Playwright 配置或质量规格文件位置后使用。 |
 | `npm run verify:plan -- --base <40-hex-SHA> [--head <40-hex-SHA>]` | 对 clean 已提交仓库输出有界、只读的 JSON 影响预览，核对 base、逻辑 head、实际 checkout SHA/tree 和唯一 diff base。完整必需任务保留，`executable:false`、`acceptancePending:true`、shadow/observation-pending，memo 禁用。 | 从仓库根目录在提交后运行。拒绝 dirty、冲突、shallow、partial 和不安全 Git 配置，不自动 fetch。head 默认实际 HEAD；指定不同 head 时，实际 HEAD 必须恰以提供的 base/head 为有序双亲。不执行测试，不探测 npm/运行环境。edit profile、输出路径与 enforce 参数尚不可用。本地原始路径不自动上传。 |
 | `npm run verify:run -- --base <40-hex-SHA> --task <ci-changed-paths\|feedback-frontend-client> [--force]` | 重新发现并执行一个固定本地任务：原有 changed-path 脚本文件，或五个反馈前端/client 文件。核对 Git、源码、依赖、环境身份和非零原生计数；任务失败与清理错误保持失败。 | 从 clean 已提交仓库根目录运行。每次调用均重新执行，`--force` 也相同。手工任务不代表完整验证计划或验收门禁。所属完整日志、原生 JSON 与 `record.json` 保存在 `work/verification-runs/<UUID>/`；没有 PG、浏览器、Hosted、目标环境或缓存结果适配器。 |
 | `npm run verify:report -- --run <UUID>` | 有界校验并读取已保存本地记录，标注 `scope:recorded-local-data`、`freshness:unverified`、memo 禁用及验收待完成。 | 使用新执行返回的 UUID。此命令不运行测试，不能授权复用或当前验收；缺失、畸形或身份不匹配证据均拒绝。其他验证继续使用原生命令。 |
@@ -114,6 +178,8 @@ EFF 夹具工作复用原有自有 Gate0 runtime 与原生验收配置，保持�
 | `npm run acceptance:a11y` / `acceptance:visual` / `acceptance:responsive` / `acceptance:e2e` | 质量与验收 Playwright 配置在产品用例前运行 `runtime-warmup`：webServer ready 后通过 `page.goto` 加载 SPA 入口，Vite 首次 transform 不计入首条产品用例超时 | 修改质量/验收 Playwright 配置或冷启动预热后。 |
 | `npm run seed:quality:visual-review` / `npm run cleanup:quality:visual-review` | 只在可丢弃质量库安装/清理 populated review 视觉 fixture；命令校验 `current_database()` 与固定 ID 精确归属 | 必须同时设置 `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true` 和 `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=<current_database()>`。外部 Gate0 从自有数据库 descriptor 派生期望库名。Target synthetic 不设置两者，只 planned-skip populated `/parameter-review` 视觉用例，其余视觉及全部 a11y/响应式覆盖保持只读执行。 |
 | GitHub Actions `Acceptance quality` Linux 视觉基线 | 合并权威的 Linux 渲染环境；下载失败工件并在原始分辨率逐张检查 actual PNG | 只把已审查的精确失败图片复制到 `visual.quality.spec.ts-snapshots/linux/`。本地 MCR Playwright arm64 容器只作预检；其中文字体度量或 seed 身份可能与 GitHub runner 不同，容器像素不能作为基线权威。截图交互态前，visual spec 必须用正向 DOM 断言锁定 production/HMAC 可见 fixture 身份。 |
+| 候选视觉基线复核（#1172） | visual lane 仅因已有 Linux 截图比较失败时，CI 上传 `wiseeff-visual-baseline-review`：自包含 `index.html`，按基线展示 expected/actual/diff，以及 Git 二进制 `candidate.patch` | 生成器读取失败 lane 原始的 `$RUNNER_TEMP/wiseeff-ci-shard/results.json`。断言、运行时、compact 项目、缺失基线、中断、重试、全局失败，以及截图三件套不完整或替换冲突时，不发布候选。它不修改已跟踪基线，也不改变门禁失败结果。打开图库，使用图片的浏览器右键菜单单独打开，在原始分辨率逐张复核；必须由人明确批准每张替换。在失败 run 精确 head 的干净 checkout 中先运行 `git apply --check /absolute/path/candidate.patch`，批准后才运行 `git apply --binary /absolute/path/candidate.patch`。复核仅含基线的 diff，走正常 PR 流程，并在 GitHub Actions Linux 上重跑正常比较，不使用 `--update-snapshots`。下载候选、成功应用补丁、本地或容器渲染均不是验收。 |
+| 视觉遮罩约定 | 优先固定 fixture/时钟；否则只在 `stableMasks`（`e2e/quality/helpers.ts`）中遮罩已记录的易变值，不为过关而新增遮罩控件或整个交互区域 | 必需 route 遮罩包含 seed 时间单元格、参数行、现有 Catalog anchor/workspace、按日期变化的趋势图、审核标识/时间和日志时间；缺失定位器在截图前失败。shell 用户/历史/audit/live-region、条件 Catalog banner、bridge 配对数字/过期时间、日志 metadata/confidence fill 仅因目标状态可能未挂载而为可选；只在匹配非空时纳入。`resolveVisualMasks` 返回截图遮罩前再次检查所有已纳入定位器；零匹配即失败，包括解析过程中消失的可选区域。保留既有 seed 行数量和可见性断言。已知 seed 状态应添加必需定位器，不能借可选遮罩绕过坏 selector；每个 route/state 的解析需在真实 quality run 中证明。 |
 | `npm run acceptance:gate0` | owner 在创建任何数据库、对象根或进程之前，先执行公开的钉扎门禁 `npm run dts:toolchain:check -- --required`；CI 由 `setup-dts-toolchain` 安装，本地操作者另行显式 bootstrap，Gate0 本身绝不联网安装依赖。之后创建 checked-absent `wiseeff_acceptance_full_*` 数据库并完成 migrate/seed/marker 证明，创建 checked-absent run-scoped 对象根和精确 loopback API/frontend 进程，再把同一份不含秘密的 descriptor 交给 visual 与 full browser。未知监听者以及 PID/DB/object marker 不匹配均 fail-closed。`CREATE DATABASE` 前先原子写入精确创建意图；若 create 响应丢失，则使用独立有界的 admin 重连把数据库判定为存在、不存在或未知，`provision-failure.json` 会把存在/未知目标记录为 `unverified-no-marker`，在精确 marker 证明成功前拒绝破坏性清理。phase 与 nested child 环境都从最小 OS 启动 allowlist 加本轮精确 owned 变量重新构造；Playwright config 与 27 个原 dotenv-backed acceptance spec 统一经过 owned-runtime-aware helper：descriptor 先校验，descriptor-free nested worker 使用显式 owned flag，两种 owned 路径都不得隐式读取工作树 `.env`；legacy/manual runner 继续显式加载所选 env file。`PGPASSWORD`、`DOCKER_AUTH_CONFIG`、`GIT_ASKPASS`、CI JWT、通用 secret key 与无关宿主设置都不会因继承进入 child。嵌套 disposable suite 在第一个外部资源创建前先写 `provisioning` 清单，随后由 tracked-spawn handshake 同步登记 migration identity 与 detached PID；清单原子写入，并使用原子发布的 PID/token/parent-run/process-start 锁串行化：锁龄不能证明失效，仅死 owner 或已证明的 PID 复用可恢复。根 owner 在 finalize 时读取该清单：成功前每个 child 必须终态为 cleaned；Playwright 非预期失败只停止 child 进程，child DB/object 以 `failed-retained` 留存；timeout/crash 则接管部分 provision、running 与可重试的 `cleanup-failed` child，直到进程清理稳定。 | TD-122 的权威本地 L2 基线。60 分钟 owner 硬时限从进程入口开始，覆盖 DTS、source check、provision、HTTP startup、两阶段、进程停止、artifact finalize 和 cleanup；operation deadline 会在硬时限前 5 分钟启动收尾，因此 prerequisite 与 provision 也不能耗尽 finalize 预算。`SIGINT`/`SIGTERM` 会取消 provision/phase，但进程在同一套有界失败收尾完成前不会退出。全部 Playwright output/report/snapshot、preflight、浏览器/operation evidence、日志、trace、截图、清单和 inventory 都写入独占 runRoot；operation record 使用真实存在的 report/trace 后代与不可变 runtime snapshot digest，不哈希可变 descriptor bytes。失败保留精确 DB/object/descriptor/artifact 并记录清理状态；只有成功才删除精确 DB/object。root 与 nested 本轮生成 secret 仅在带 token 的 loopback registry 原子发布加密 exact-value 上下文后才 ACK；Gate0 在递归文本/ZIP 脱敏与 fail-closed scanner 前先封存 writer，manifest 始终不含 secret。不支持格式或二进制一旦命中凭据即 fail-closed；普通路径和 ZIP entry name 也会以不泄密的 artifact ID 扫描，且 `npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs` 必须为 0 violation。该基础 PR 本身不关闭 TD-122。 |
 | Gate0 ownership 补充合同 | root descriptor 生成前的 provision failure 必须逐进程记录 PID、端口、命令、日志及 cleanup 状态/原因。nested object root 必须是 parent runRoot 内 checked-absent、带 marker 的普通后代；递归删除前重新验证 realpath、marker 与 symlink 祖先。tracked spawn 同步持久化 PID、端口与 OS process-start identity；一旦持久化，PID/端口/start-token/command-digest identity 在进入 ready 前后都不可变。stale-lock 恢复先 hard-link 一个独占 recovery claim，再复核同一 inode、token 与 owner 后才 unlink，因此并发 stale waiter 不会删除替换后的 live lock。parent takeover 每次 signal 前重新读取 identity，不确定或不匹配时禁止 kill，并保留 `cleanup-failed`。 | hard 60 分钟截止覆盖最终资源操作；各 finalizer 消费 hard-deadline signal，公开 CLI 与 hard deadline 竞速，因此忽略取消的 finalizer 也不能延长终态边界。 |
 | Gate0 fixed-point 安全合同 | root owner、visual/browser phase group、root/nested API/frontend 都持久化精确 process-start identity；TERM、KILL 分别在发信号前重新验证持久 identity。root 或 nested PID 已退出时，只有 process identity 读取为空、内核 PID 不存在且已登记 loopback port 无监听者三项同时成立，才会在不发信号的情况下记为 stopped；live 或 identity 不匹配的 PID 仍 fail-closed。process-group 探测出现瞬时 `EPERM` 时，会在有界 verification grace period 内重试，且绝不会把 `EPERM` 判为进程不存在。root provisioning 在 run 目录可见前先原子发布不含秘密的 journal，并显式记录 migration/seed/API/frontend 状态。它的 rename 前 durable staging 位于 live runs root 的私有同级目录，因此不会被枚举成 child run；fresh finalizer 只有在证明精确 owner 已退出后才会 promote。provision 命令、root/nested runtime 与 visual/browser phase 命令共用受控启动协议：先落 durable intent，process-group launcher 自行发布 PID/start identity，父进程 ACK 前真实命令不得 exec。因此 owner 遭 `SIGKILL` 后，fresh finalizer 能接管“API 已登记、frontend 明确 not-started”、phase identity 回写中断等 partial writer；未知或 PID reused 时绝不 signal，DB/object 始终保留取证。nested manifest 初始版本从同父目录的 durable 私有 candidate 以原子 no-replace 方式发布；损坏、半写、歧义或语义不可能的 manifest 一律 fail-closed，crash candidate 只会在所有可证明 writer 停止后被 promote。recovery owner 与 reclaimer 崩溃残留 link 只在 dead/expired identity 加 inode/token 证明后回收。每次 exact secret 注册在 ACK 前原子发布加密二扫上下文。exact context 会保留到私有 staging 与其中生成的单一 ZIP 都达到 0 violation；之后才原子发布只读 ZIP 并退役 registry。artifact safety 会递归脱敏/扫描 nested ZIP（含 magic sniff 识别的改名 ZIP）；raw envelope 校验会在上传前拒绝重复/不安全路径、前后附加数据、加密或不支持压缩、metadata 凭据、CRC/尺寸不一致，以及整棵树范围的深度、entry 数、解压总量与膨胀率超限。精确位于 Playwright 直接报告资源、报告数据 ZIP 或本轮 owned trace ZIP 资源路径下的可打印 UTF-8 文本按报告文本脱敏；任意其他路径、二进制附件或含禁用控制字符的文本仍 fail-closed。CI 只上传该精确 ZIP，绝不上传 live runs root。nested object intent 在首次 mkdir 前登记；启动失败保留 DB/object 证据，没有 marker/cutover 证明的数据库绝不 drop。root 与 nested object cleanup 会持久化 provision 时的目录 identity chain，只原子隔离已证明的 root，并在递归删除前再次验证每个祖先、inode、realpath 与 marker。CI timeout 统计不依赖 YAML step 键顺序，枚举全部 step。 | 修改 Gate0 provision、进程清理、manifest lock、artifact safety、不可变上传 finalizer 或 CI workflow 解析后，运行聚焦 scripts 测试与 `npm run acceptance:ci`。 |

@@ -338,8 +338,7 @@ describe("fresh local verification runner", () => {
     const foreign = mkdtempSync(path.join(testRunsDirectory(), "eff04-foreign-"));
     const marker = path.join(foreign, "marker");
     writeFileSync(marker, "untouched", { mode: 0o600 });
-    const cli = path.join(implementationRoot, "node_modules/.bin/tsx");
-    const result = spawnSync(cli, [path.join(implementationRoot, "scripts/verification/run.ts"), "--base", "a".repeat(40), "--task", TASK_IDS[0]], {
+    const result = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), path.join(implementationRoot, "scripts/verification/run.ts"), "--base", "a".repeat(40), "--task", TASK_IDS[0]], {
       cwd: foreign,
       env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, TMPDIR: foreign },
       encoding: "utf8",

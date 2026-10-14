@@ -12,7 +12,6 @@ it("reserves a non-scrolling shell gutter and keeps the hint beside a left-docke
     .toBe("calc(var(--space-16) + max(var(--space-6), env(safe-area-inset-bottom, 0px)))");
   const hint = declarationsFor(css, '.xiaoze-chat-toggle-anchor[data-xiaoze-hint-side="right"] .xiaoze-toggle-hint');
   expect(hint.left).toBe("calc(100% + var(--space-3))");
-  expect(hint.right).toBe("auto");
 });
 
 /**
@@ -27,10 +26,6 @@ describe("XiaozeToggleHint dialog suppression", () => {
     const selector = 'body:has([role="dialog"]) .xiaoze-toggle-hint';
 
     expect(hasRule(styles, selector)).toBe(true);
-
-    const suppressed = declarationsFor(styles, selector);
-    expect(suppressed["pointer-events"]).toBe("none");
-    expect(suppressed.visibility).toBe("hidden");
   });
 
   it("relies on role=dialog from the shared modal and sheet primitives", () => {

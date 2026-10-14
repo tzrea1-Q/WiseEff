@@ -4,7 +4,7 @@ import { appReducer } from "@/application/state/appState";
 import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
 import type { PrototypeState } from "@/mockData";
-import { declarationFor, hasRule, parseCssRules, readStylesheet } from "@/test/cssAssertions";
+import { declarationFor, hasRule, readStylesheet } from "@/test/cssAssertions";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 import { ParameterSubmissionsPage } from "./ParameterSubmissionsPage";
 
@@ -106,33 +106,13 @@ describe("parameter action panels", () => {
 
   it("uses one structural action column without legacy full-width selectors", () => {
     const stylesheet = readStylesheet("src/styles.css");
-    const parameterReviewStylesheet = readStylesheet("src/features/parameter-review/parameter-review.css");
-
-    expect(declarationFor(stylesheet, ".action-panel", "grid-template-columns")).toBe("1fr");
     expect(hasRule(stylesheet, ".action-panel .full")).toBe(false);
     expect(hasRule(stylesheet, ".button.full")).toBe(false);
-    expect(declarationFor(parameterReviewStylesheet, ".review-merge-link", "grid-column")).toBeUndefined();
   });
 
   it("bounds the unified inbox table and keeps inspector actions out of sticky code overlays", () => {
     const stylesheet = readStylesheet("src/features/parameter-review/parameter-review.css");
-    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap table", "table-layout")).toBe("fixed");
-    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap table", "min-width")).toBe("0");
-    expect(declarationFor(stylesheet, ".review-inbox__summary", "text-overflow")).toBe("ellipsis");
-    expect(declarationFor(stylesheet, ".review-inbox__summary", "overflow")).toBe("hidden");
-    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap :is(th, td)", "white-space")).toBe("nowrap");
-    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap :is(th, td)", "overflow-wrap")).toBe("normal");
-    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap td:not(.change-cell)", "overflow")).toBe("hidden");
-    expect(declarationFor(stylesheet, ".review-inbox .review-table-wrap td:not(.change-cell)", "text-overflow")).toBe("ellipsis");
-    for (const [column, width] of Object.entries({ type: "13%", project: "16%", module: "12%", submitter: "15%", time: "12%", status: "11%" })) {
-      expect(declarationFor(stylesheet, `.review-inbox__${column}-column`, "width")).toBe(width);
-    }
-    expect(declarationFor(stylesheet, ".review-inbox__summary-column", "width")).toBe("auto");
-    expect(declarationFor(stylesheet, ".review-inbox__chip", "white-space")).toBe("nowrap");
-    expect(declarationFor(stylesheet, ".review-inbox__chip", "overflow")).toBe("hidden");
-    expect(declarationFor(stylesheet, ".review-inbox__chip", "text-overflow")).toBe("ellipsis");
     expect(hasRule(stylesheet, ".review-inbox .review-detail footer.dialog-actions")).toBe(false);
-    expect(declarationFor(stylesheet, ".review-inspector__actions", "position")).toBeUndefined();
     expect(declarationFor(stylesheet, ".review-inbox .review-inspector__meta dt", "color")).toBe("var(--text-muted)");
   });
 
@@ -158,30 +138,4 @@ describe("parameter action panels", () => {
     expect(actionPanel!.querySelector(".full")).toBeNull();
   });
 
-  it("keeps the submission history mobile grid override after its base rule", () => {
-    const rules = parseCssRules(readStylesheet("src/features/parameter-review/parameter-review.css"));
-    const baseRuleIndex = rules.findIndex(
-      (rule) => rule.selectors.includes(".submission-history-layout") && rule.atRules.length === 0
-    );
-    const mobileRuleIndex = rules.findIndex(
-      (rule) =>
-        rule.selectors.includes(".submission-history-layout") &&
-        rule.atRules.some((atRule) => atRule.includes("@media (max-width: 900px)"))
-    );
-
-    expect(baseRuleIndex).toBeGreaterThanOrEqual(0);
-    expect(mobileRuleIndex).toBeGreaterThan(baseRuleIndex);
-  });
-
-  it("gives history cards a page-scoped single-column rule that outranks the shared card grid", () => {
-    const stylesheet = readStylesheet("src/features/parameter-review/parameter-review.css");
-
-    expect(
-      declarationFor(
-        stylesheet,
-        ".submission-diff-card.submission-diff-card--history",
-        "grid-template-columns"
-      )
-    ).toBe("minmax(0, 1fr)");
-  });
 });

@@ -43,6 +43,7 @@ import {
   sanitizeGate0DiagnosticText,
 } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
+import { browserSeedSteps } from "./browser-seed-contract";
 import {
   readGate0SupervisedProcessIdentity,
   spawnGate0SupervisedProcess,
@@ -380,22 +381,16 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     });
     databaseCreated = true;
     const runProvisionScript = dependencies.runNpmScriptWithLog ?? runNpmScriptWithLog;
-    await runProvisionScript(
-      worktreeRoot,
-      "db:migrate",
-      env,
-      provisionLog,
-      options.ownerDeadline,
-      gate0ProvisionProcessLifecycle(provisioningJournal, "migration"),
-    );
-    await runProvisionScript(
-      worktreeRoot,
-      "db:seed:all",
-      env,
-      provisionLog,
-      options.ownerDeadline,
-      gate0ProvisionProcessLifecycle(provisioningJournal, "seed"),
-    );
+    for (const { script, label } of browserSeedSteps) {
+      await runProvisionScript(
+        worktreeRoot,
+        script,
+        env,
+        provisionLog,
+        options.ownerDeadline,
+        gate0ProvisionProcessLifecycle(provisioningJournal, label),
+      );
+    }
     checkpointOwner(options, "database marker proof");
     const databaseEvidence = await (
       dependencies.writeAndReadDatabaseMarker ?? writeAndReadDatabaseMarker

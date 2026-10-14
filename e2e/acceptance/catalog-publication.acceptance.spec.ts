@@ -6,6 +6,7 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
   CATALOG_EXPECTED_API_FAILURES,
   CATALOG_PAGE_PATH,
+  catalogJson,
   catalogPage,
   catalogScreenshot,
   dismissXiaozeHint,
@@ -49,10 +50,15 @@ test.describe("catalog M1 publication operator loop", () => {
     const dialog = page.getByRole("dialog", { name: "向已发布主体新增定义" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel(/摘要|仓库|Git|digest/i)).toHaveCount(0);
+    const surface = await catalogJson(page.request, "GET", "/api/v2/catalog/publication-surface");
+    expect(surface.status).toBe(200);
+    const publication = (surface.body as { item: { authoringAllowed: boolean; blockers: string[] } }).item;
     const blocked = dialog.getByRole("status").filter({
-      hasText: /尚未完成接管|缺少目录编写或发布权限|没有目录编写权限|实例发布策略已关闭|不能发起目录发布/
+      hasText: /目录正在接管|缺少目录编写或发布权限|没有目录编写权限|实例发布策略已关闭|不能发起目录发布|维护冻结/
     });
-    if (await blocked.first().isVisible().catch(() => false)) {
+    if (!publication.authoringAllowed) {
+      expect(publication.blockers.length).toBeGreaterThan(0);
+      await expect(blocked.first()).toBeVisible();
       await expect(dialog.getByLabel("已发布主体")).toHaveCount(0);
       await catalogScreenshot(page, testInfo, "cp08-authorized-publish-blocked");
       expect(fixture.powerSubjectId.length).toBeGreaterThan(0);

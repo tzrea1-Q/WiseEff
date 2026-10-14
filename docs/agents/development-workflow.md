@@ -21,7 +21,9 @@ Establish the requested outcome, affected seam, current worktree ownership, and 
 
 Read the changed implementation and its closest tests, then only the supporting design sections needed to resolve uncertainty. Reproduce defects when practical. Add or update behavior tests; use red/green where it demonstrates the defect, not as a ritual for documentation, formatting, or generated files.
 
-Run focused feedback while editing. Once the implementation is coherent, inspect the diff, check adjacent integration seams, and execute the required candidate gates. Do not repeatedly run broad suites after unchanged edits or rerun an unchanged failure without a hypothesis. An existing result can inform diagnosis; it does not become current candidate acceptance after the source or relevant environment changes.
+Follow the [verification tiers](../developer/verification-matrix.md#verification-tiers): inner loop → pre-hand-off → PR CI → merge → nightly. Run `npm run test:impact -- <changed-files>` or `npm run test:impact -- --base <integration-base>` to select suites, static gates, quality routes and cross-route acceptance specs. Inspect both fallback flags; do not narrow a fallback to fit a budget. For authorized real API browser checks, use the selector's commands with isolated `WISEEFF_RUNTIME_LANE` IDs; quality coverage partitions use the separate `WISEEFF_QUALITY_LANE` setting.
+
+Run focused feedback while editing. Once the implementation is coherent, inspect the diff, check adjacent integration seams, and execute the required candidate gates within the [agent verification budget](../developer/verification-matrix.md#agent-verification-budget). A coordinator-owned budget means one final related pass, changed-file ESLint and affected-project TypeScript checks, sequentially; hand selected extra suites, static gates, builds and browser evidence to the coordinator. Prose-only work selects docs validation, not artificial tests. Do not repeatedly run broad suites after unchanged edits or rerun an unchanged failure without a hypothesis. An existing result can inform diagnosis; it does not become current candidate acceptance after the source or relevant environment changes.
 
 An unavailable browser, database, external service, or independent reviewer blocks the evidence it owns, not unrelated safe implementation. Continue unaffected work, name the missing evidence, and do not claim readiness or merge through a required gate.
 
@@ -36,6 +38,14 @@ A useful handoff contains: goal and scope; branch/base/head; owned paths and rel
 Delegate independent investigation, disjoint implementation, or a required review. Give each worker an outcome, owned paths, relevant contract, expected evidence, and stop boundary. The coordinator retains integration and external mutation authority. Do not create workers merely to fill slots, or launch dependent work during CI just to satisfy an activity metric.
 
 For ordinary work, open one integration-ready PR when the user has authorized delivery. Fix findings on that PR; closing and reopening is not an ordinary repair mechanism. Accepted sealed programs keep their explicit PR/seal lifecycle. Do not bypass required checks or fabricate a reviewer when only one agent is available.
+
+### Draft-PR CI early signal
+
+When PR creation and pushes are authorized, open the same PR as a draft early enough to receive integration feedback during implementation. After every push, the coordinator reads the CI run for that exact pushed head: check failed jobs and bounded logs immediately, fix integration failures before accumulating more work, and verify the final `Merge bar` result before marking the PR ready. A pending, cancelled, or older-head run is not current acceptance; draft status does not waive any gate.
+
+CI runs on PR open, synchronize and reopen, and on adding or removing `full-acceptance`. Unrelated label edits skip the expensive jobs and use a separate concurrency group so they cannot cancel active or pending PR CI. Their lightweight result is named `Merge bar (ignored label)`, not the required `Merge bar`; it does not replace the real gate result. Acceptance-label transitions rerun selection against the current label list. Pushes to `main`, nightly runs and manual acceptance modes retain their existing coverage.
+
+Every Chromium-installing job restores the browser cache by runner OS, architecture and installed Playwright version, then still installs Chromium with system dependencies on both cache hits and misses. For CI-hygiene changes, the coordinator records before/after setup timings in the PR: exact head/run/job, cache hit or miss, and durations for dependency installation, cache restore and browser/system-dependency installation. Compare like jobs and distinguish cold from warm runs; report unavailable measurements as missing, not as savings.
 
 After a rebase, retest affected behavior and required identifiers/artifacts. Use `npm run typecheck` for relevant TypeScript changes, and retain the final build gate. Do not force unrelated worktrees to reset or pull; synchronize a designated clean main worktree only when authorized.
 

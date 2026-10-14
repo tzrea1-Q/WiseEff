@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import {
   CI_SMOKE_TAG,
+  ciAggregateEventCondition,
+  ciCancelInProgressCondition,
+  ciSelectedEventCondition,
   countCiSmokeTags,
   evaluateAcceptanceLocalNonHdcBudget,
   evaluateAcceptanceCiConfiguration,
@@ -241,11 +244,47 @@ describe("equivalent fixed L1 scheduling", () => {
     const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
     expect(Object.keys(workflow.on).sort()).toEqual(["pull_request", "push", "schedule", "workflow_dispatch"]);
     expect(workflow.on.push).toEqual({ branches: ["main"] });
-    expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "labeled"]);
+    expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "labeled", "unlabeled"]);
     expect(workflow.on.schedule).toEqual([{ cron: "30 18 * * *" }]);
     expect(workflow.on.workflow_dispatch.inputs.acceptance_mode.options).toEqual(["local-non-hdc", "target-non-hdc", "full-pilot", "minimal-upgrade"]);
-    expect(workflow.concurrency["cancel-in-progress"]).toBe("${{ github.event_name == 'pull_request' }}");
+    expect(workflow.concurrency["cancel-in-progress"]).toBe(ciCancelInProgressCondition);
     expect(workflow.jobs.detect.steps.find((step: { id: string }) => step.id === "paths").run).toContain('echo "run_l2=true"');
+  });
+
+  it.each([
+    ["push", "", "", true, false], ["schedule", "", "", true, false], ["workflow_dispatch", "", "", true, false],
+    ["pull_request", "synchronize", "", true, true], ["pull_request", "opened", "", true, true],
+    ["pull_request", "labeled", "full-acceptance", true, true], ["pull_request", "unlabeled", "full-acceptance", true, true],
+    ["pull_request", "labeled", "documentation", false, false], ["pull_request", "unlabeled", "documentation", false, false],
+  ])("selects %s/%s/%s without replacing CI for unrelated labels", (eventName, action, label, selected, cancel) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const evaluate = (expression: string, context: object) => Function("github", `return (${expression.replace(/^\$\{\{\s*|\s*\}\}$/g, "")});`)(context);
+    const github = { event_name: eventName, event: { action, label: { name: label } } };
+    expect(evaluate(workflow.jobs.detect.steps[0].env.SELECTED, github)).toBe(selected);
+    expect(evaluate(workflow.concurrency["cancel-in-progress"], github)).toBe(cancel);
+    expect(workflow.jobs.detect.steps[0].env.SELECTED).toBe(`\${{ ${ciSelectedEventCondition} }}`);
+  });
+
+  it.each(["true", "false", ""])("keeps gate naming and failure checks safe for selected=%s", (selected) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const evaluate = (expression: string) => Function("needs", "always", `return (${expression});`)({ detect: { outputs: { selected } } }, () => true);
+    const name = workflow.jobs.required.name.replace(/\$\{\{(.*?)\}\}/g, (_match: string, expression: string) => evaluate(expression));
+    expect(name).toBe(selected === "false" ? "Merge bar (ignored label)" : "Merge bar");
+    for (const id of ["build-and-test", "acceptance-quality", "acceptance-local-non-hdc"]) {
+      expect(evaluate(workflow.jobs[id].if)).toBe(selected !== "false");
+    }
+    for (const step of workflow.jobs.required.steps) expect(evaluate(step.if)).toBe(selected !== "false");
+  });
+
+  it.each(["predicate", "output", "setup", "aggregate", "name", "event-failure"])("rejects weakened deduplicated selection: %s", (mutation) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    if (mutation === "predicate") workflow.jobs.detect.steps[0].env.SELECTED = "true";
+    if (mutation === "output") workflow.jobs.detect.outputs.selected = "false";
+    if (mutation === "setup") delete workflow.jobs.detect.steps[1].if;
+    if (mutation === "aggregate") workflow.jobs["build-and-test"].if = "always() && needs.detect.outputs.selected == 'true'";
+    if (mutation === "name") workflow.jobs.required.name = "Merge bar (ignored label)";
+    if (mutation === "event-failure") workflow.jobs.detect.steps[0]["continue-on-error"] = true;
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
   });
 });
 
@@ -393,39 +432,82 @@ describe("D2 backend shards and quality lanes", () => {
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     });
 
-  it.each(["missing", "reordered", "command", "suppressed", "condition", "metadata", "install", "browser", "runtime-env", "step-env", "legacy-gate", "evidence-name", "evidence-path", "report-missing", "report-reordered", "report-command", "report-condition", "report-suppressed", "report-env", "fixture-db", "missing-seed", "unconditional-seed", "suppressed-seed", "early-skip-seed", "fixture-lane"])
+  it.each(["missing", "reordered", "command", "suppressed", "condition", "metadata", "install", "browser", "runtime-env", "step-env", "legacy-gate", "evidence-name", "evidence-path", "report-missing", "report-reordered", "report-command", "report-condition", "report-suppressed", "report-env", "fixture-db", "missing-seed", "conditional-seed", "suppressed-seed", "early-skip-seed", "fixture-lane"])
     ("rejects quality prerequisites, lane execution or evidence drift: %s", (mutation) => {
       const workflow = YAML.parse(compliantWorkflow);
       const worker = workflow.jobs["acceptance-quality-lanes"];
       const evidence = worker.steps.find((step: { name: string }) => step.name === "Upload quality evidence");
       const runtimeReport = worker.steps.find((step: { name: string }) => step.name === "Report quality gate runtime");
-      if (mutation === "missing") worker.steps.splice(6, 1);
-      if (mutation === "reordered") [worker.steps[6], worker.steps[7]] = [worker.steps[7], worker.steps[6]];
-      if (mutation === "command") worker.steps[7].run += " || true";
-      if (mutation === "suppressed") worker.steps[7]["continue-on-error"] = true;
-      if (mutation === "condition") worker.steps[7].if = "matrix.lane == 'visual'";
-      if (mutation === "metadata") worker.steps[6].run = "echo metadata";
+      if (mutation === "missing") worker.steps.splice(8, 1);
+      if (mutation === "reordered") [worker.steps[8], worker.steps[9]] = [worker.steps[9], worker.steps[8]];
+      if (mutation === "command") worker.steps[9].run += " || true";
+      if (mutation === "suppressed") worker.steps[9]["continue-on-error"] = true;
+      if (mutation === "condition") worker.steps[9].if = "matrix.lane == 'visual'";
+      if (mutation === "metadata") worker.steps[8].run = "echo metadata";
       if (mutation === "install") worker.steps[2].run = "npm ci || true";
-      if (mutation === "browser") worker.steps[3].run = "echo browser";
+      if (mutation === "browser") worker.steps[5].run = "echo browser";
       if (mutation === "runtime-env") worker.env.VITE_WISEEFF_RUNTIME_MODE = "mock";
-      if (mutation === "step-env") worker.steps[7].env = { WISEEFF_QUALITY_LANE: "visual" };
-      if (mutation === "legacy-gate") worker.steps[7].run = "npm run acceptance:quality-run";
+      if (mutation === "step-env") worker.steps[9].env = { WISEEFF_QUALITY_LANE: "visual" };
+      if (mutation === "legacy-gate") worker.steps[9].run = "npm run acceptance:quality-run";
       if (mutation === "evidence-name") evidence.with.name = "wiseeff-acceptance-quality";
       if (mutation === "evidence-path") evidence.with.path += "${{ runner.temp }}/wiseeff-ci-shard/receipt.json\n";
       if (mutation === "report-missing") worker.steps = worker.steps.filter((step: unknown) => step !== runtimeReport);
-      if (mutation === "report-reordered") [worker.steps[8], worker.steps[9]] = [worker.steps[9], worker.steps[8]];
+      if (mutation === "report-reordered") [worker.steps[10], worker.steps[11]] = [worker.steps[11], worker.steps[10]];
       if (mutation === "report-command") runtimeReport.run += "echo unmapped\n";
       if (mutation === "report-condition") runtimeReport.if = "success()";
       if (mutation === "report-suppressed") runtimeReport["continue-on-error"] = true;
       if (mutation === "report-env") runtimeReport.env = { WISEEFF_QUALITY_LANE: "visual" };
       if (mutation === "fixture-db") worker.env.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/other";
-      if (mutation === "missing-seed") worker.steps[5].run = worker.steps[5].run.replace("npm run --if-present seed:quality:admin-lists\n", "");
-      if (mutation === "unconditional-seed") worker.steps[5].run = worker.steps[5].run.replace("npm run --if-present", "npm run");
-      if (mutation === "suppressed-seed") worker.steps[5].run = worker.steps[5].run.replace("seed:quality:admin-lists\n", "seed:quality:admin-lists || true\n");
-      if (mutation === "early-skip-seed") worker.steps[5].run = 'echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\n' + worker.steps[5].run;
-      if (mutation === "fixture-lane") worker.steps[5].run = worker.steps[5].run.replace('"$WISEEFF_QUALITY_LANE" = "visual"', '"$WISEEFF_QUALITY_LANE" = "consistency-1"');
+      if (mutation === "missing-seed") worker.steps[7].run = worker.steps[7].run.replace("npm run seed:browser\n", "");
+      if (mutation === "conditional-seed") worker.steps[7].run = worker.steps[7].run.replace("npm run seed:browser", "npm run --if-present seed:browser");
+      if (mutation === "suppressed-seed") worker.steps[7].run = worker.steps[7].run.replace("seed:browser\n", "seed:browser || true\n");
+      if (mutation === "early-skip-seed") worker.steps[7].run = 'echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\n' + worker.steps[7].run;
+      if (mutation === "fixture-lane") worker.steps[7].run = worker.steps[7].run.replace('"$WISEEFF_QUALITY_LANE" = "visual"', '"$WISEEFF_QUALITY_LANE" = "consistency-1"');
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     });
+});
+
+describe("visual baseline review CI contract", () => {
+  it("accepts the visual-only failure gallery after all existing quality steps with separate uploads", () => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const steps = workflow.jobs["acceptance-quality-lanes"].steps;
+    expect(steps.slice(-5).map((step: { name: string }) => step.name)).toEqual([
+      "Upload quality lane receipt", "Report quality gate runtime", "Upload quality evidence",
+      "Generate candidate baseline review", "Upload candidate baseline review"
+    ]);
+    expect(evaluateL1CiWorkflow(compliantWorkflow)).toEqual({ status: "passed", errors: [] });
+  });
+
+  it.each(["missing-generator", "missing-upload", "duplicate", "order", "generator-condition", "generator-lane", "generator-command", "generator-suppressed", "generator-env", "generator-shell", "upload-condition", "upload-lane", "upload-candidate-guard", "upload-version", "upload-name", "upload-path", "upload-policy", "upload-suppressed", "upload-env", "upload-command"])("rejects candidate gallery drift: %s", (mutation) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const worker = workflow.jobs["acceptance-quality-lanes"];
+    const generator = worker.steps.find((step: { name: string }) => step.name === "Generate candidate baseline review");
+    const upload = worker.steps.find((step: { name: string }) => step.name === "Upload candidate baseline review");
+    if (mutation === "missing-generator") worker.steps = worker.steps.filter((step: unknown) => step !== generator);
+    if (mutation === "missing-upload") worker.steps = worker.steps.filter((step: unknown) => step !== upload);
+    if (mutation === "duplicate") worker.steps.push({ ...generator });
+    if (mutation === "order") {
+      worker.steps = worker.steps.filter((step: unknown) => step !== generator);
+      worker.steps.splice(worker.steps.indexOf(upload) - 2, 0, generator);
+    }
+    if (mutation === "generator-condition") generator.if = "always() && matrix.lane == 'visual'";
+    if (mutation === "generator-lane") generator.if = "failure() && matrix.lane == 'consistency-1'";
+    if (mutation === "generator-command") generator.run += " || true";
+    if (mutation === "generator-suppressed") generator["continue-on-error"] = true;
+    if (mutation === "generator-env") generator.env = { RUNNER_TEMP: "/other" };
+    if (mutation === "generator-shell") generator.shell = "bash --noprofile --norc -c {0}";
+    if (mutation === "upload-condition") upload.if = "always()";
+    if (mutation === "upload-lane") upload.if = upload.if.replace("'visual'", "'accessibility'");
+    if (mutation === "upload-candidate-guard") upload.if = "failure() && matrix.lane == 'visual'";
+    if (mutation === "upload-version") upload.uses = "actions/upload-artifact@v3";
+    if (mutation === "upload-name") upload.with.name = "wiseeff-ci-quality-${{ github.run_attempt }}-${{ matrix.lane }}";
+    if (mutation === "upload-path") upload.with.path = "test-results/quality";
+    if (mutation === "upload-policy") upload.with["if-no-files-found"] = "ignore";
+    if (mutation === "upload-suppressed") upload["continue-on-error"] = true;
+    if (mutation === "upload-env") upload.env = { WISEEFF_QUALITY_LANE: "visual" };
+    if (mutation === "upload-command") upload.run = "git apply --binary candidate.patch";
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
 });
 
 describe("M5.12 acceptance CI configuration", () => {
@@ -435,7 +517,7 @@ describe("M5.12 acceptance CI configuration", () => {
     expect(shards.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2, 3, 4] } });
     expect(shards.services.postgres.image).toBe("pgvector/pgvector:pg16");
     expect(shards.steps.find((step: any) => step.id === "acceptance_gate0").run).toBe("npm run acceptance:gate0 -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}");
-    expect(workflow.jobs["acceptance-local-non-hdc"]).toMatchObject({ name: "Acceptance local non-HDC", if: "always()", needs: ["detect", "acceptance-local-non-hdc-shards"], "timeout-minutes": 5 });
+    expect(workflow.jobs["acceptance-local-non-hdc"]).toMatchObject({ name: "Acceptance local non-HDC", if: ciAggregateEventCondition, needs: ["detect", "acceptance-local-non-hdc-shards"], "timeout-minutes": 5 });
     expect(workflow.jobs.required.needs).toContain("acceptance-local-non-hdc");
   });
   it.each(["missing-shard", "duplicate-shard", "exclude", "fail-fast", "throttle", "unsharded", "suppressed", "detect", "service", "aggregate-if", "aggregate-needs", "aggregate-command", "aggregate-name"])("rejects unsafe L2 scheduling drift: %s", (mutation) => {

@@ -5,6 +5,13 @@ import YAML from "yaml";
 import { isForbiddenComposeAppPostgres } from "../server/testing/testDatabase";
 import { l1CommandIds, l1Jobs } from "./ci-required-results";
 
+export const ciSelectedEventCondition = "github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance'";
+export const ciGateEventCondition = "needs.detect.outputs.selected != 'false'";
+export const ciAggregateEventCondition = `always() && ${ciGateEventCondition}`;
+export const ciIgnoredLabelCondition = "github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'full-acceptance'";
+export const ciRequiredJobName = "Merge bar${{ needs.detect.outputs.selected == 'false' && ' (ignored label)' || '' }}";
+export const ciCancelInProgressCondition = "${{ github.event_name == 'pull_request' && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'full-acceptance') }}";
+
 export const requiredAcceptanceCiScripts = [
   "acceptance:ci",
   "acceptance:browser",
@@ -499,11 +506,41 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     "continue-on-error"?: boolean; "timeout-minutes"?: number;
     strategy?: { "fail-fast"?: boolean; matrix?: Record<string, unknown>; "max-parallel"?: number };
     outputs?: Record<string, string>; services?: Record<string, { image?: string; env?: Record<string, string>; ports?: string[]; options?: string }>; env?: Record<string, string> };
-  let workflow: { jobs: Record<string, Job>; env?: Record<string, string> };
+  let workflow: { jobs: Record<string, Job>; env?: Record<string, string>; concurrency?: Record<string, string>; on?: { pull_request?: { types?: string[] } } };
   try { workflow = YAML.parse(workflowText) as typeof workflow; }
   catch { return { status: "failed", errors: ["Malformed L1 workflow."] }; }
   const jobs = workflow?.jobs;
   const check = (valid: unknown, message: string) => { if (!valid) errors.push(message); };
+  const event = jobs?.detect?.steps?.[0];
+  check(jobs?.detect?.if === undefined && jobs?.detect?.outputs?.selected === "${{ steps.event.outputs.selected }}"
+    && event?.id === "event" && event.run === 'echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"'
+    && event.env?.SELECTED === `\${{ ${ciSelectedEventCondition} }}`
+    && event.if === undefined && event["continue-on-error"] === undefined,
+  "Detect must publish the exact label-edit selection before any fallible setup.");
+  check(jobs?.detect?.steps?.slice(1).every((step) => step.if === "steps.event.outputs.selected == 'true'"
+    || (step.name === "Retained rehearsal source lock on native Linux" && step.if === "github.event_name == 'workflow_dispatch' && inputs.acceptance_mode == 'minimal-upgrade'")),
+  "Ignored label edits must not run detect setup or classification.");
+  check(JSON.stringify(workflow.on?.pull_request?.types) === JSON.stringify(["opened", "synchronize", "reopened", "labeled", "unlabeled"]), "CI must retain PR lifecycle and both acceptance-label transitions.");
+  check(workflow.concurrency?.group === `\${{ github.workflow }}-\${{ (${ciIgnoredLabelCondition}) && github.run_id || github.event.pull_request.number || github.run_id }}`
+    && workflow.concurrency["cancel-in-progress"] === ciCancelInProgressCondition, "Ignored label edits must not cancel or replace pending PR CI.");
+  for (const [id, job] of Object.entries(jobs ?? {})) {
+    const steps = job.steps ?? [];
+    const installIndex = steps.findIndex((step) => step.run?.includes("playwright install"));
+    if (installIndex < 0) continue;
+    const versionIndex = steps.findIndex((step) => step.id === "playwright_version");
+    const cacheIndex = steps.findIndex((step) => step.name === "Cache Playwright browsers");
+    check(versionIndex > steps.findIndex((step) => step.run === "npm ci") && cacheIndex > versionIndex && installIndex > cacheIndex
+      && steps.filter((step) => step.id === "playwright_version").length === 1
+      && steps.filter((step) => step.name === "Cache Playwright browsers").length === 1
+      && steps[versionIndex]?.run === 'echo "version=$(node -p "require(\'./package-lock.json\').packages[\'node_modules/playwright\'].version")" >> "$GITHUB_OUTPUT"'
+      && steps[cacheIndex]?.uses === "actions/cache@v4"
+      && steps[cacheIndex]?.with?.path === "~/.cache/ms-playwright"
+      && steps[cacheIndex]?.with?.key === "playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}"
+      && steps[cacheIndex]?.with?.["restore-keys"] === undefined
+      && steps[installIndex]?.run === "npx playwright install --with-deps chromium"
+      && [versionIndex, cacheIndex, installIndex].every((index) => steps[index]?.if === undefined && steps[index]?.["continue-on-error"] === undefined),
+    `${id} must restore the exact locked Playwright version before unconditionally installing Chromium and system dependencies.`);
+  }
   const cli = "node --experimental-strip-types scripts/ci-required-results.ts";
   const identityEnvironment = {
     EFF_BASE_SHA: "${{ github.event.pull_request.base.sha }}", EFF_HEAD_SHA: "${{ github.event.pull_request.head.sha }}",
@@ -546,9 +583,9 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     "l1-scripts": ["receipt", "shadow_scripts", "shadow_bridge"],
   };
   const shadowScope = jobs?.detect?.steps?.find((step) => step.id === "shadow-summary");
-  check(shadowScope?.run === "node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope" && shadowScope.if === undefined
+  check(shadowScope?.run === "node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope" && shadowScope.if === "steps.event.outputs.selected == 'true'"
     && shadowScope["continue-on-error"] === undefined, "Detect must record the fixed CI shadow scope without changing scheduling outputs.");
-  check(JSON.stringify(Object.keys(jobs?.detect?.outputs ?? {}).sort()) === JSON.stringify(["docs_only", "run_l1", "run_l2", "run_quality", "run_smoke"]), "Detect must retain exactly its five scheduling outputs.");
+  check(JSON.stringify(Object.keys(jobs?.detect?.outputs ?? {}).sort()) === JSON.stringify(["docs_only", "run_l1", "run_l2", "run_quality", "run_smoke", "selected"]), "Detect must retain exactly its five coverage flags and selected-event output.");
   for (const id of l1Jobs) {
     const workerId = id === "l1-server" ? "l1-server-shards" : id;
     const job = jobs?.[workerId];
@@ -647,19 +684,24 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       && upload.run === undefined && upload.env === undefined
       && (kind === "server" ? upload.id === "shard_receipt" : upload.name === "Upload quality lane receipt"), `${workerId} must upload its own attempt-qualified receipt strictly and separately after its gate.`);
     if (kind === "quality") {
+      const runtimeSteps = steps.filter((step) => step.id !== "playwright_version" && step.name !== "Cache Playwright browsers");
       const expectedNames = ["Check out repository", "Set up Node.js", "Install dependencies", "Install Playwright Chromium", "Prepare local acceptance env",
         "Migrate and seed database", "Acceptance quality metadata", "Acceptance quality gates"];
-      check(JSON.stringify(steps.slice(0, expectedNames.length).map((step) => step.name)) === JSON.stringify(expectedNames)
-        && steps.length === expectedNames.length + 3, "Quality lanes must retain every ordered runtime prerequisite, metadata, gate, runtime report and separate uploads.");
-      check(steps[0]?.uses === "actions/checkout@v4" && steps[1]?.uses === "actions/setup-node@v4"
-        && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[1]?.with?.cache === "npm"
-        && steps[2]?.run === "npm ci" && steps[3]?.run === "npx playwright install --with-deps chromium"
-        && steps[4]?.shell === "bash" && steps[4]?.run?.includes("cp .env.example .env")
-        && steps[5]?.run?.includes("npm run db:migrate") && steps[6]?.run === "npm run acceptance:quality"
-        && steps[7]?.run === `${shardCli} quality`, "Quality lanes must retain runtime preparation and run the strict partition-aware gate.");
-      check(steps[5]?.run === 'npm run db:migrate\nnpm run db:seed:all\nnpm run --if-present seed:quality:admin-lists\necho "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\nif [ "$WISEEFF_QUALITY_LANE" = "visual" ]; then\n  echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"\n  echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"\nfi\n',
+      check(JSON.stringify(runtimeSteps.slice(0, expectedNames.length).map((step) => step.name)) === JSON.stringify(expectedNames)
+        && runtimeSteps.length === expectedNames.length + 5
+        && JSON.stringify(runtimeSteps.slice(expectedNames.length).map((step) => step.name)) === JSON.stringify([
+          "Upload quality lane receipt", "Report quality gate runtime", "Upload quality evidence",
+          "Generate candidate baseline review", "Upload candidate baseline review"
+        ]), "Quality lanes must retain every ordered runtime prerequisite, metadata, gate, runtime report and separate uploads before candidate baseline review.");
+      check(runtimeSteps[0]?.uses === "actions/checkout@v4" && runtimeSteps[1]?.uses === "actions/setup-node@v4"
+        && runtimeSteps[1]?.with?.["node-version-file"] === ".nvmrc" && runtimeSteps[1]?.with?.cache === "npm"
+        && runtimeSteps[2]?.run === "npm ci" && runtimeSteps[3]?.run === "npx playwright install --with-deps chromium"
+        && runtimeSteps[4]?.shell === "bash" && runtimeSteps[4]?.run?.includes("cp .env.example .env")
+        && runtimeSteps[5]?.run?.includes("npm run seed:browser") && runtimeSteps[6]?.run === "npm run acceptance:quality"
+        && runtimeSteps[7]?.run === `${shardCli} quality`, "Quality lanes must retain runtime preparation and run the strict partition-aware gate.");
+      check(runtimeSteps[5]?.run === 'npm run seed:browser\necho "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\nif [ "$WISEEFF_QUALITY_LANE" = "visual" ]; then\n  echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"\n  echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"\nfi\n',
         "Quality lanes must complete required registered seeds before setting skip-seed and restrict isolated visual fixture authorization to the visual lane.");
-      check(steps.slice(0, expectedNames.length).every((step) => step.if === undefined && step["continue-on-error"] === undefined
+      check(runtimeSteps.slice(0, expectedNames.length).every((step) => step.if === undefined && step["continue-on-error"] === undefined
         && step.env === undefined && !/\|\|\s*true|continue-on-error|set\s+\+e/.test(step.run ?? "")), "Quality prerequisites and gates must not be skipped, overridden or failure-suppressed.");
       const qualityEnvironment = {
         WISEEFF_API_BASE_URL: "http://127.0.0.1:8787", VITE_WISEEFF_RUNTIME_MODE: "api", VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:8787",
@@ -668,7 +710,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
         M5_CONTRACT_CHECK_PASSED: "true", M5_SMOKE_ALLOW_NO_API: "false",
       };
       for (const [key, value] of Object.entries(qualityEnvironment)) check(worker?.env?.[key] === value, `Quality lanes must retain runtime environment ${key}.`);
-      const runtimeReport = steps[9];
+      const runtimeReport = runtimeSteps[9];
       const runtimeReportCommand = [
         "node --input-type=module <<'NODE'",
         "import { appendFileSync, existsSync, readFileSync } from 'node:fs';",
@@ -686,11 +728,27 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
         && runtimeReport["continue-on-error"] === undefined && runtimeReport.env === undefined
         && runtimeReport.uses === undefined && runtimeReport.run === runtimeReportCommand,
         "Quality lanes must retain the exact always-running lane runtime report without overrides or failure suppression.");
-      const evidence = steps.find((step) => step.name === "Upload quality evidence");
-      check(steps[8] === upload && steps[10] === evidence && evidence?.uses === "actions/upload-artifact@v4"
+      const evidence = runtimeSteps.find((step) => step.name === "Upload quality evidence");
+      check(runtimeSteps[8] === upload && runtimeSteps[10] === evidence && evidence?.uses === "actions/upload-artifact@v4"
         && evidence.if === "always()" && evidence["continue-on-error"] === true
         && evidence.with?.name === "${{ matrix.lane == 'visual' && 'wiseeff-acceptance-quality' || format('wiseeff-acceptance-quality-{0}', matrix.lane) }}"
         && evidence.with?.path === "playwright-report/quality\ntest-results/quality\n", "Quality evidence must retain the visual artifact name and isolate all other lane names and paths.");
+      const reviewGenerator = runtimeSteps[11];
+      const reviewUpload = runtimeSteps[12];
+      check(reviewGenerator?.name === "Generate candidate baseline review"
+        && reviewGenerator.if === "failure() && matrix.lane == 'visual'"
+        && reviewGenerator.run === 'npx tsx scripts/quality-baseline-review.ts "$RUNNER_TEMP/wiseeff-ci-shard/results.json"'
+        && JSON.stringify(Object.keys(reviewGenerator).sort()) === JSON.stringify(["if", "name", "run"]),
+        "Candidate baseline review generation must run only after visual lane failures, after existing quality steps, without overrides or failure suppression.");
+      check(reviewUpload?.name === "Upload candidate baseline review"
+        && reviewUpload.if === "failure() && matrix.lane == 'visual' && hashFiles('test-results/quality/baseline-review/candidate.patch') != ''"
+        && reviewUpload.uses === "actions/upload-artifact@v4"
+        && reviewUpload.with?.name === "wiseeff-visual-baseline-review"
+        && reviewUpload.with.path === "test-results/quality/baseline-review"
+        && reviewUpload.with["if-no-files-found"] === "error"
+        && JSON.stringify(Object.keys(reviewUpload).sort()) === JSON.stringify(["if", "name", "uses", "with"])
+        && JSON.stringify(Object.keys(reviewUpload.with).sort()) === JSON.stringify(["if-no-files-found", "name", "path"]),
+        "Candidate baseline review must upload separately only after generation on visual lane failures with a candidate patch, without overrides or failure suppression.");
     } else {
       check(steps.at(-1) === upload, "Backend shards must upload only after recording the complete invocation receipt.");
     }
@@ -701,7 +759,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     const expectedOutputs = kind === "server"
       ? { receipt: "${{ steps.results.outputs.receipt }}", shadow_server: "${{ steps.results.outputs.shadow }}" }
       : { identity: "${{ steps.results.outputs.identity }}" };
-    check(aggregate?.name === aggregateName && aggregate.if === "always()" && aggregate["runs-on"] === "ubuntu-latest"
+    check(aggregate?.name === aggregateName && aggregate.if === ciAggregateEventCondition && aggregate["runs-on"] === "ubuntu-latest"
       && aggregate["timeout-minutes"] === 5 && aggregate["continue-on-error"] === undefined
       && JSON.stringify(aggregate.needs) === JSON.stringify(["detect", workerId])
       && aggregate.strategy === undefined && aggregate.services === undefined && aggregate.env === undefined,
@@ -726,16 +784,16 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   for (const [id, needs] of Object.entries(gateNeeds)) {
     const job = jobs?.[id];
     const steps = job?.steps ?? [];
-    const name = id === "required" ? "Merge bar" : id === "build-and-test" ? "Build and test" : "Acceptance local non-HDC";
+    const name = id === "required" ? ciRequiredJobName : id === "build-and-test" ? "Build and test" : "Acceptance local non-HDC";
     const mode = id === "required" ? "required" : id === "build-and-test" ? "l1" : "l2";
-    check(job?.if === "always()" && job?.name === name, `${id} stable gate must always run.`);
+    check(job?.if === (id === "required" ? "always()" : ciAggregateEventCondition) && job?.name === name, `${id} stable gate must always run for selected CI events.`);
     check(job?.["continue-on-error"] === undefined && job?.["timeout-minutes"] === 5, `${id} must retain timeout and strict job failure semantics.`);
     check(JSON.stringify(job?.needs) === JSON.stringify(needs), `${id} has missing or unmapped dependencies.`);
     check(steps.length === 3 && steps[0]?.uses === "actions/checkout@v4" && steps[1]?.uses === "actions/setup-node@v4"
       && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[2]?.run === `${cli} ${mode}`
       && steps[2]?.env?.EFF_NEEDS === (id === "build-and-test" ? expectedNeedsProjection : "${{ toJSON(needs) }}")
       && (id !== "build-and-test" || steps[2]?.env?.EFF_SHADOW === expectedShadowProjection)
-      && steps.every((step) => step.if === undefined && step["continue-on-error"] === undefined), `${id} must validate exact results without npm installation or failure suppression.`);
+      && steps.every((step) => step.if === (id === "required" ? ciGateEventCondition : undefined) && step["continue-on-error"] === undefined), `${id} must validate exact results without npm installation or failure suppression.`);
   }
   check(jobs?.["build-and-test"]?.outputs?.identity === "${{ steps.results.outputs.identity }}", "Build and test must publish its verified execution identity.");
   const shards = jobs?.["acceptance-local-non-hdc-shards"];

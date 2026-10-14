@@ -183,8 +183,7 @@
       "legacy-catalog-sql-write": 1
     },
     "server/modules/parameter-files/syncAudit.integration.test.ts": {
-      "legacy-catalog-sql-write": 1,
-      "unresolved-boundary-expression": 1
+      "legacy-catalog-sql-write": 1
     },
     "server/modules/parameter-files/syncIdentity.test.ts": {
       "legacy-catalog-sql-write": 1,
@@ -237,8 +236,7 @@
     },
     "server/modules/parameter-modules/recomputeDryRun.integration.test.ts": {
       "legacy-catalog-raw-read": 1,
-      "legacy-catalog-sql-write": 5,
-      "unresolved-boundary-expression": 1
+      "legacy-catalog-sql-write": 5
     },
     "server/modules/parameter-modules/repository.ts": {
       "legacy-catalog-raw-read": 18,

@@ -40,6 +40,7 @@ export default [
       // Zero violations today; promoted from recommended "warn" to "error".
       "react-hooks/incompatible-library": "error",
       "react-hooks/unsupported-syntax": "error",
+      "react-hooks/rules-of-hooks": "error",
 
       "jsx-a11y/label-has-associated-control": ["error", {
         controlComponents: ["Input", "Textarea", "SearchField", "SelectControl", "DebugAdminSelectControl"],
@@ -50,13 +51,13 @@ export default [
       "react-hooks/refs": "warn", // 44
       "react-hooks/preserve-manual-memoization": "warn", // 32
       "react-hooks/exhaustive-deps": "warn", // 36
-      "react-hooks/rules-of-hooks": "warn", // 3 — correctness rule; clear these first
       "react-hooks/immutability": "warn", // 2
       "react-hooks/purity": "warn" // 1
     }
   },
   {
-    files: ["src/**/*.{test,spec}.{ts,tsx}"],
+    files: ["{src,scripts}/**/*.{test,spec}.{ts,tsx}"],
+    languageOptions: { parser: tsParser, sourceType: "module" },
     plugins: { wiseeff: wiseeffPlugin },
     rules: {
       "wiseeff/no-raw-css-text-assertions": "error"

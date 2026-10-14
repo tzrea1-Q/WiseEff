@@ -1,12 +1,9 @@
 /**
- * Prevent style tests from asserting against the formatting of raw CSS text.
- *
- * This rule is intentionally narrow: it follows scope-bound static CSS paths
- * and values initialized or directly assigned from readFileSync/readStylesheet,
- * then rejects only Vitest/Jest `toMatch` and `toContain` assertions over that
- * raw value. Other source-text contract tests remain outside its scope.
+ * Keep stylesheet assertions at the token-policy seam. Layout belongs in the
+ * browser; parser fixtures and source-ownership checks are separate contracts.
  */
-const rawMatchers = new Set(["toMatch", "toContain"]);
+const declarationQueries = new Set(["declarationsFor", "declarationFor"]);
+const textTransforms = new Set(["includes", "match", "replace", "replaceAll", "slice", "split", "trim", "test", "parseInt", "parseFloat"]);
 const pathBuilders = new Set(["join", "resolve"]);
 
 function propertyName(member) {
@@ -81,7 +78,7 @@ function isStraightLineAssignment(node) {
 }
 
 function assertedValue(call) {
-  if (call.callee.type !== "MemberExpression" || !rawMatchers.has(propertyName(call.callee))) {
+  if (call.callee.type !== "MemberExpression") {
     return undefined;
   }
 
@@ -104,16 +101,19 @@ export const noRawCssTextAssertions = {
   meta: {
     type: "problem",
     docs: {
-      description: "require structural helpers for assertions over CSS files"
+      description: "require rendered checks instead of stylesheet declaration assertions"
     },
     schema: [],
     messages: {
-      rawCssAssertion: "Assert CSS through src/test/cssAssertions instead of matching raw stylesheet text."
+      rawCssAssertion: "Use behavior or rendered geometry instead of matching raw stylesheet text.",
+      declarationAssertion: "Use behavior or rendered geometry; only token-policy assertions may compare stylesheet declarations."
     }
   },
   create(context) {
     const cssPathVariables = new WeakSet();
     const rawCssVariables = new WeakSet();
+    const declarationVariables = new WeakSet();
+    const importedNames = new WeakMap();
 
     const resolveVariable = (identifier) => {
       let scope = context.sourceCode.getScope(identifier);
@@ -134,21 +134,63 @@ export const noRawCssTextAssertions = {
 
     const isStaticCssPathExpression = (node) => containsCssPath(node, isCssPathVariable);
 
+    const resolvedCallName = (node) => node.callee.type === "Identifier"
+      ? importedNames.get(resolveVariable(node.callee)) ?? callName(node)
+      : callName(node);
+
+    const derivedFrom = (node, predicate) => {
+      if (node.type === "MemberExpression") return predicate(node.object);
+      if (node.type === "BinaryExpression" || node.type === "LogicalExpression") {
+        return predicate(node.left) || predicate(node.right);
+      }
+      if (node.type === "TemplateLiteral") return node.expressions.some(predicate);
+      if (node.type === "CallExpression" && textTransforms.has(resolvedCallName(node))) {
+        return (node.callee.type === "MemberExpression" && predicate(node.callee.object))
+          || node.arguments.some((argument) => argument.type !== "SpreadElement" && predicate(argument));
+      }
+      return false;
+    };
+
     const isRawCssExpression = (node) => {
-      if (isCssReadCall(node, isCssPathVariable)) {
+      if (isCssReadCall(node, isCssPathVariable)
+        || (node.type === "CallExpression" && resolvedCallName(node) === "readStylesheet")) {
         return true;
       }
       if (node.type === "Identifier") {
         const variable = resolveVariable(node);
         return variable ? rawCssVariables.has(variable) : false;
       }
-      if (node.type === "BinaryExpression" && node.operator === "+") {
-        return isRawCssExpression(node.left) || isRawCssExpression(node.right);
+      return derivedFrom(node, isRawCssExpression);
+    };
+
+    const isDeclarationExpression = (node) => {
+      if (node.type === "Identifier") {
+        const variable = resolveVariable(node);
+        return variable ? declarationVariables.has(variable) : false;
       }
-      return false;
+      if (node.type === "MemberExpression") {
+        if (propertyName(node)?.startsWith("--")) return false;
+        return isDeclarationExpression(node.object);
+      }
+      if (node.type === "CallExpression" && declarationQueries.has(resolvedCallName(node))) {
+        if (node.arguments[1]?.type === "Literal" && node.arguments[1].value === ":root") return false;
+        const property = node.arguments[2];
+        if (resolvedCallName(node) === "declarationFor" && property?.type === "Literal"
+          && typeof property.value === "string" && property.value.startsWith("--")) return false;
+        return node.arguments[0] && isRawCssExpression(node.arguments[0]);
+      }
+      return derivedFrom(node, isDeclarationExpression);
     };
 
     return {
+      ImportDeclaration(node) {
+        for (const specifier of node.specifiers) {
+          for (const variable of context.sourceCode.getDeclaredVariables(node).filter((entry) => entry.name === specifier.local.name)) {
+            if (specifier.type === "ImportSpecifier") importedNames.set(variable, specifier.imported.name ?? specifier.imported.value);
+            if (specifier.type === "ImportDefaultSpecifier" && /\.css\?raw(?:$|&)/.test(node.source.value)) rawCssVariables.add(variable);
+          }
+        }
+      },
       AssignmentExpression(node) {
         if (node.operator !== "=" || node.left.type !== "Identifier" || !isStraightLineAssignment(node)) {
           return;
@@ -160,6 +202,7 @@ export const noRawCssTextAssertions = {
 
         const rightIsStaticCssPath = isStaticCssPathExpression(node.right);
         const rightIsRawCss = isRawCssExpression(node.right);
+        const rightIsDeclaration = isDeclarationExpression(node.right);
 
         if (rightIsStaticCssPath) {
           cssPathVariables.add(variable);
@@ -171,6 +214,8 @@ export const noRawCssTextAssertions = {
         } else {
           rawCssVariables.delete(variable);
         }
+        if (rightIsDeclaration) declarationVariables.add(variable);
+        else declarationVariables.delete(variable);
       },
       VariableDeclarator(node) {
         if (node.id.type === "Identifier" && node.init && isStaticCssPathExpression(node.init)) {
@@ -183,11 +228,24 @@ export const noRawCssTextAssertions = {
             rawCssVariables.add(variable);
           }
         }
+        if (node.id.type === "Identifier" && node.init && isDeclarationExpression(node.init)) {
+          for (const variable of context.sourceCode.getDeclaredVariables(node)) {
+            declarationVariables.add(variable);
+          }
+        }
       },
       CallExpression(node) {
         const value = assertedValue(node);
         if (value && isRawCssExpression(value)) {
           context.report({ node, messageId: "rawCssAssertion" });
+        }
+        const expected = node.arguments[0];
+        const tokenPolicy = expected?.type === "Literal" && (
+          (typeof expected.value === "string" && expected.value.includes("var(--"))
+          || (expected.regex?.pattern.startsWith("^var") && expected.regex.pattern.includes("--"))
+        );
+        if (value && !tokenPolicy && isDeclarationExpression(value)) {
+          context.report({ node, messageId: "declarationAssertion" });
         }
       }
     };

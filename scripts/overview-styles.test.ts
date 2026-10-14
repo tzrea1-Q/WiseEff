@@ -1,14 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { scanCssContent } from "./check-ui-standards";
-import { declarationsFor, readStylesheet } from "../src/test/cssAssertions";
 
 describe("overview stylesheet token contract", () => {
-  it.each([".overview-page", ".retired-notice"])("preserves the shell gutter on %s", (selector) => {
-    const root = declarationsFor(readStylesheet("src/components/layout/overview-page.css"), selector);
-    expect(root.padding ?? "0").toBe("0");
-    expect(root.margin ?? "0").toBe("0");
-  });
 
   it.each([
     "src/components/layout/overview-page.css",

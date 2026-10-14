@@ -1372,20 +1372,10 @@ describe("ApiProjectTopologyWorkspace", () => {
   it("ignores a stale Aurora draft after switching Aurora to Nebula and back to Aurora", async () => {
     const { act, fireEvent } = await import("@testing-library/react");
     const draftRequest = createDeferred<Awaited<ReturnType<ParameterTopologyRepository["createBindingDraft"]>>>();
+    const currentDraftRequest = createDeferred<Awaited<ReturnType<ParameterTopologyRepository["createBindingDraft"]>>>();
     const createBindingDraft = vi.fn()
       .mockImplementationOnce(() => draftRequest.promise)
-      .mockResolvedValueOnce({
-        draftId: "draft-aurora-current",
-        parameterId: "binding-sc8562-gpio-int",
-        candidateRevisionId: "rev-aurora-current",
-        rawText: "<&gpio13 31 0>",
-        action: "set" as const,
-        parameterSpecId: "spec-sc8562-gpio-int",
-        projectParameterBindingId: "binding-sc8562-gpio-int",
-        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
-        overlayFileId: "file-overlay",
-        overlayFileName: "overlay.dts"
-      });
+      .mockImplementationOnce(() => currentDraftRequest.promise);
     const repository = createRepository({ createBindingDraft });
     const listConfigSets = vi.fn(async (projectId: string) => [
       { id: `dcs-default-${projectId}`, name: "default" }
@@ -1454,8 +1444,13 @@ describe("ApiProjectTopologyWorkspace", () => {
       });
       await draftRequest.promise;
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
 
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    await createGpioDraftFromWorkbench(workspace, fireEvent, {
+      reason: "Current Aurora draft after stale response settled"
+    });
+    await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
     expect(vi.mocked(repository.getTopology).mock.calls.filter(([requestProjectId]) => requestProjectId === "aurora").length).toBe(auroraTopologyCalls);
     expect(repository.getTopology).not.toHaveBeenCalledWith(
@@ -1465,10 +1460,20 @@ describe("ApiProjectTopologyWorkspace", () => {
       "effective"
     );
 
-    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
-    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    await createGpioDraftFromWorkbench(workspace, fireEvent, {
-      reason: "Current Aurora draft after stale response settled"
+    await act(async () => {
+      currentDraftRequest.resolve({
+        draftId: "draft-aurora-current",
+        parameterId: "binding-sc8562-gpio-int",
+        candidateRevisionId: "rev-aurora-current",
+        rawText: "<&gpio13 31 0>",
+        action: "set",
+        parameterSpecId: "spec-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      });
+      await currentDraftRequest.promise;
     });
     await waitFor(() => expect(screen.getByRole("region", { name: "参数修改提交" })).toBeVisible());
     await waitFor(() =>

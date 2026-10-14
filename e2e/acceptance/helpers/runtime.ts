@@ -1,4 +1,19 @@
+import { createHmac } from "node:crypto";
+import { ACCEPTANCE_ORGANIZATION } from "./cast";
+
 export type AcceptanceRuntimeEnv = Record<string, string | undefined>;
+
+export function createBearerTokenForUser(userId: string, email: string, name: string, scopedOrganizationId = ACCEPTANCE_ORGANIZATION.id, env: AcceptanceRuntimeEnv = process.env) {
+  const issuer = env.AUTH_TOKEN_ISSUER?.trim();
+  const secret = env.AUTH_TOKEN_HMAC_SECRET?.trim();
+  if (!issuer || !secret) return null;
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer, sub: userId, org: scopedOrganizationId, name, email, title: "Acceptance User", orgName: "ChargeLab",
+    roles: [], permissions: [], isActive: true, nbf: 0, exp: 9_999_999_999
+  })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `Bearer ${payload}.${signature}`;
+}
 
 const defaultApiBaseUrl = "http://127.0.0.1:8787";
 

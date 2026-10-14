@@ -40,6 +40,12 @@ WISEEFF_QUALITY_VIEWPORT_PROFILE=extended npm run acceptance:responsive
 
 仅支持 `desktop`、`compact`、`extended`；非法值直接失败，不会悄悄减少覆盖。测试名称记录实际视口。默认 PC 通过不表示平板或手机兼容；共享响应式套件之外已有的特定视口测试不会因此删除或改名为已通过。
 
+## 质量阶段计时与可选 UI 就绪状态
+
+每次质量测试尝试都会在现有 Playwright JSON/HTML 结果中附带 `quality-phase-timings` JSON。具名步骤 `quality:navigation`、`quality:readiness`、`quality:axe` 和 `quality:capture` 记录毫秒耗时、各阶段总耗时、失败状态、重试编号和测试耗时。采集阶段包含截图与一致性测量。嵌套阶段只计一次，未执行的阶段总耗时为零。这些操作计时不等于质量分片的墙钟耗时；优化前后的 CI 作业耗时须单独比较。
+
+隐藏的 `xiaoze-popup-readiness` 标记仅在弹窗层卸载后报告 `closed`，测试工具仍断言弹窗层已隐藏。`xiaoze-toggle-hint-readiness` 标记报告 `pending`、`revealed` 或 `suppressed`。首次提示仍等待真实的 1.4 秒延迟；已关闭或本次页面加载已展示过的提示立即就绪，不再通过超时证明不存在。`revealed` 表示已渲染，不保证 CSS 可见（对话框可以隐藏提示）；测试工具关闭可见提示，并保留隐藏状态断言。几何、axe 规则、截图断言、遮罩和基线均不变。
+
 ## 原生命令与证据
 
 执行定向组件或行为测试；TypeScript、Vite、路由、共享类型变化执行 `npm run build`；前端代码执行相应 `npm run lint`；样式、令牌、弹窗、动态效果、可见文案变化执行 `npm run ui:check`。交互修改按 `docs/PLANS.md` 审阅验收测试、需求编号、操作编号和操作证据影响。

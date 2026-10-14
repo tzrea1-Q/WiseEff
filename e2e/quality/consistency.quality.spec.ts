@@ -26,9 +26,9 @@ test.beforeAll(() => seedQualityRuntime());
 const qualityLane = parseQualityLane(process.env.WISEEFF_QUALITY_LANE);
 
 async function assertAccessibilitySemantics(page: Page, testInfo: TestInfo, label: string) {
-  const result = await new AxeBuilder({ page })
+  const result = await test.step("quality:axe", () => new AxeBuilder({ page })
     .withRules(["label", "aria-roles", "aria-allowed-attr", "aria-required-attr", "button-name", "link-name"])
-    .analyze();
+    .analyze());
   await testInfo.attach(`accessibility-semantics-${label}`, {
     contentType: "application/json", body: JSON.stringify(result.violations, null, 2)
   });
@@ -39,15 +39,15 @@ for (const theme of qualityLane === undefined || qualityLane === "consistency-2"
   test(`asserts public home accessibility semantics (${theme})`, async ({ context, page }, testInfo) => {
     const blockedRequests = await installConsistencyReadGuard(context);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/");
-    await expectUsablePage(page);
+    await test.step("quality:navigation", () => page.goto("/"));
+    await test.step("quality:readiness", () => expectUsablePage(page));
     await expect(page.getByRole("main", { name: "雷泽首页" })).toBeVisible();
-    await settleXiaozePopupClosed(page);
-    await settleAppToasts(page);
+    await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
+    await test.step("quality:readiness", () => settleAppToasts(page));
     await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
-    await waitForFontsAndNextPaint(page);
+    await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
     await assertAccessibilitySemantics(page, testInfo, `home-${theme}`);
-    await testInfo.attach(`accessibility-home-${theme}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+    await testInfo.attach(`accessibility-home-${theme}`, { contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" })) });
     expect(blockedRequests).toEqual([]);
   });
 }
@@ -75,14 +75,14 @@ for (const path of qualityLane === undefined || qualityLane === "consistency-1" 
       await context.route("**/api/v1/debugging/targets/detect", async (request) => request.fulfill({ json: { items: [] } }));
       const [identity] = await Promise.all([
         page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/me"),
-        page.goto(path)
+        test.step("quality:navigation", () => page.goto(path))
       ]);
       expect(identity.ok()).toBe(true);
-      await expectUsablePage(page);
+      await test.step("quality:readiness", () => expectUsablePage(page));
       await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
-      await settleQualityRoute(page, path, { readOnly: true });
-      await settleAppToasts(page);
-      await settleXiaozePopupClosed(page);
+      await test.step("quality:readiness", () => settleQualityRoute(page, path, { readOnly: true }));
+      await test.step("quality:readiness", () => settleAppToasts(page));
+      await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
       const panel = page.getByRole("region", { name: "本地设备连接", exact: true });
       await expect(page.locator(".navigator-workbench__context").getByRole("region", { name: "本地设备连接", exact: true })).toBeVisible();
       if (readiness === "connected") {
@@ -108,8 +108,8 @@ for (const path of qualityLane === undefined || qualityLane === "consistency-1" 
             ? '.navigator-workbench__task tbody tr:has(td[data-label="参数名称"])'
             : ".navigator-workbench__task tbody tr:has(.dts-reload-candidate-table__param)").first();
           await expect(firstRow).toBeVisible();
-          await waitForFontsAndNextPaint(page);
-          const measurements = await page.evaluate(collectConsistencyMeasurements);
+          await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+          const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
           requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, path);
         }
       }
@@ -118,12 +118,12 @@ for (const path of qualityLane === undefined || qualityLane === "consistency-1" 
           ? '.navigator-workbench__task tbody tr:has(td[data-label="参数名称"])'
           : ".navigator-workbench__task tbody tr:has(.dts-reload-candidate-table__param)").first();
         await expect(firstRow).toBeVisible();
-        await waitForFontsAndNextPaint(page);
-        const measurements = await page.evaluate(collectConsistencyMeasurements);
+        await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+        const measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
         requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, path);
       }
       await testInfo.attach(`bridge-${readiness}-${theme}${path.replaceAll("/", "-")}`, {
-        contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+        contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
       });
       if (readiness !== "connected") {
         const trigger = panel.getByRole("button", { name: "安装指南", exact: true });
@@ -160,22 +160,22 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
         const routePath = route.path.split("?")[0];
         const [authResponse] = await Promise.all([
           page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/me" && response.request().method() === "GET"),
-          page.goto(route.path)
+          test.step("quality:navigation", () => page.goto(route.path))
         ]);
         expect(authResponse.ok(), "consistency measurements require the real API runtime").toBe(true);
-        await expectUsablePage(page);
-        await settleQualityRoute(page, routePath, { readOnly: true });
-        await closeXiaozePopupIfOpen(page);
-        await settleXiaozePopupClosed(page);
-        await settleAppToasts(page);
+        await test.step("quality:readiness", () => expectUsablePage(page));
+        await test.step("quality:readiness", () => settleQualityRoute(page, routePath, { readOnly: true }));
+        await test.step("quality:readiness", () => closeXiaozePopupIfOpen(page));
+        await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
+        await test.step("quality:readiness", () => settleAppToasts(page));
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
-        await waitForFontsAndNextPaint(page);
+        await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         if (route.required.includes("settingsForms")) {
           const form = page.locator(".settings-form-page");
           await expect(form).toHaveAttribute("data-settings-dirty", "false");
-          requireSettingsFormPresentation((await page.evaluate(collectConsistencyMeasurements)).settingsForms, route.path);
-          await testInfo.attach(`settings-clean-${theme}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+          requireSettingsFormPresentation((await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements))).settingsForms, route.path);
+          await testInfo.attach(`settings-clean-${theme}`, { contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" })) });
           if (routePath.endsWith("/review-roles")) {
             const checkbox = form.locator('input[type="checkbox"]:enabled').first();
             await expect(checkbox).toBeVisible();
@@ -186,18 +186,18 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
           }
           await expect(form).toHaveAttribute("data-settings-dirty", "true");
           await form.getByRole("group", { name: "未保存的更改" }).scrollIntoViewIfNeeded();
-          const dirtyMeasurements = await page.evaluate(collectConsistencyMeasurements);
+          const dirtyMeasurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
           requireSettingsFormPresentation(dirtyMeasurements.settingsForms, route.path);
           requirePrimaryActionColors(dirtyMeasurements, route.path);
           assertXiaozePlacement(dirtyMeasurements, route.path);
-          await testInfo.attach(`settings-dirty-${theme}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+          await testInfo.attach(`settings-dirty-${theme}`, { contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" })) });
           await form.getByRole("button", { name: "放弃", exact: true }).click();
           await expect(form).toHaveAttribute("data-settings-dirty", "false");
           await expect(form.getByRole("group", { name: "未保存的更改" })).toHaveCount(0);
           await form.getByRole("heading").first().scrollIntoViewIfNeeded();
         }
         const pendingWork = page.getByRole("dialog", { name: "待处理工作", exact: true });
-        if (route.path.includes("?review=open") || await pendingWork.isVisible()) {
+        if (new URL(page.url()).searchParams.get("review") === "open" || await pendingWork.isVisible()) {
           await expect(pendingWork).toBeVisible();
           await expect(pendingWork.locator(".section-skeleton")).toHaveCount(0);
           await expect(pendingWork.getByRole("alert")).toHaveCount(0);
@@ -205,18 +205,18 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
             hasDialog: document.body.matches(':has([role="dialog"])'), viewportWidth: window.innerWidth
           })))).toBe(false);
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeHidden();
-          const modalMeasurements = await page.evaluate(collectConsistencyMeasurements);
+          const modalMeasurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
           assertXiaozePlacement(modalMeasurements, route.path);
           await assertAccessibilitySemantics(page, testInfo, `${route.path}-pending-work-${theme}`);
           await testInfo.attach(`pending-work-${theme}`, {
             contentType: "application/json", body: JSON.stringify(modalMeasurements, null, 2)
           });
           await testInfo.attach(`pending-work-${theme}`, {
-            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+            contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
           await pendingWork.getByRole("button", { name: "关闭", exact: true }).click();
           await expect(pendingWork).toBeHidden();
-          await waitForFontsAndNextPaint(page);
+          await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         }
         const pageState = await page.evaluate(() => ({
           hasDialog: document.body.matches(':has([role="dialog"])'),
@@ -241,7 +241,7 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
             await expectNoHorizontalOverflow(page);
             await expectBoundedMainScroll(page);
           }
-          measurements = await page.evaluate(collectConsistencyMeasurements);
+          measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
           if (routePath === "/parameters" && !hasHistoricalIdentity) {
             requireWorkbenchPresentation(measurements.workbenchTables, route.path);
           }
@@ -285,7 +285,7 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
         requireCompactControlHeights(measurements, route.path, required);
         await assertAccessibilitySemantics(page, testInfo, `${route.path}-${theme}`);
         if (["/parameters", "/parameter-admin/projects"].includes(routePath) && theme === "dark") {
-          const contrast = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
+          const contrast = await test.step("quality:axe", () => new AxeBuilder({ page }).withRules(["color-contrast"]).analyze());
           await testInfo.attach(`${routePath.replaceAll("/", "-")}-dark-color-contrast`, {
             contentType: "application/json", body: Buffer.from(JSON.stringify(contrast.violations, null, 2))
           });
@@ -293,45 +293,45 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
         }
         if (route.required.includes("navigatorWorkbenches")) {
           await testInfo.attach(`navigator-workbench-expanded-${theme}`, {
-            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+            contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
           if (routePath === "/logs") {
             await page.getByRole("complementary", { name: "历史日志记录" })
               .getByRole("button", { name: /charging-foldback\.log/ }).click();
             await expect(page.getByRole("region", { name: "分析结果" })).toBeVisible();
-            await waitForFontsAndNextPaint(page);
-            const completed = await page.evaluate(collectConsistencyMeasurements);
+            await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+            const completed = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
             requireMeasuredCategories(completed, required, route.path);
             requireNavigatorWorkbenchGeometry(completed.navigatorWorkbenches, route.path);
             requireTypographyScale(completed, route.path);
             requirePrimaryActionColors(completed, route.path);
             requireViewSwitchStyles(completed, route.path);
             await testInfo.attach(`logs-complete-${theme}`, {
-              contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+              contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
             });
           }
           const navigatorLabel = routePath.startsWith("/parameter-admin/projects/aurora") ? "文件与配置集" : "模块导航";
           await page.getByRole("button", { name: `收起${navigatorLabel}`, exact: true }).click();
-          await waitForFontsAndNextPaint(page);
-          const collapsed = await page.evaluate(collectConsistencyMeasurements);
+          await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+          const collapsed = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
           requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, route.path);
           if (route.required.includes("rowActions")) requireRowActionVisibility(collapsed.rowActions, route.path);
           await testInfo.attach(`navigator-workbench-collapsed-${theme}`, {
-            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+            contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
           await page.getByRole("button", { name: `展开${navigatorLabel}`, exact: true }).click();
-          await waitForFontsAndNextPaint(page);
+          await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         }
         if (route.required.includes("rowActions")) {
           expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
             `${route.path}: the page must not scroll horizontally`).toBeLessThanOrEqual(1);
           await testInfo.attach(`row-actions${route.path.replaceAll("/", "-")}-${theme}`, {
-            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+            contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
         }
         if (collectionPaths.includes(routePath)) {
           await testInfo.attach(`collection-${route.path.replaceAll("/", "-")}-${theme}`, {
-            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+            contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
           const selectedUrl = page.url();
           const selectedTab = page.getByRole("tab", { selected: true });
@@ -346,7 +346,7 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
           await page.goForward();
           await expect(page.getByRole("tab", { name: otherName!, exact: true })).toHaveAttribute("aria-selected", "true");
           await page.goBack();
-          await settleQualityRoute(page, routePath, { readOnly: true });
+          await test.step("quality:readiness", () => settleQualityRoute(page, routePath, { readOnly: true }));
           const overflow = page.getByRole("tabpanel").getByRole("button", { name: /：更多$/ }).first();
           if (await overflow.count()) {
             await overflow.click();
@@ -417,14 +417,14 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
           await launcher.focus();
           await page.keyboard.press("Shift+Tab");
           await expect(launcher).not.toBeFocused();
-          await waitForFontsAndNextPaint(page);
+          await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
           const restingShadow = await surface.evaluate((element) => getComputedStyle(element).boxShadow);
           await focusViaKeyboard(page, launcher);
           await expect(launcher).toBeFocused();
           expect(await launcher.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
           await expect.poll(() => surface.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe(restingShadow);
           await page.keyboard.press("Shift+ArrowUp");
-          assertXiaozePlacement(await page.evaluate(collectConsistencyMeasurements), route.path);
+          assertXiaozePlacement(await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements)), route.path);
         }
         if (moduleNavigationPaths.includes(routePath)) {
           await test.step("module selection survives reload and clears on reselect without label drift", async () => {
@@ -439,42 +439,42 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
             await expect(node).toHaveAttribute(selectedAttribute, "true");
             const selectedId = new URL(page.url()).searchParams.get(queryKey);
             expect(selectedId).toBeTruthy();
-            await waitForFontsAndNextPaint(page);
-            requireModuleTreeAlignment((await page.evaluate(collectConsistencyMeasurements)).moduleTreeLabels, route.path);
-            await page.reload();
-            await expectUsablePage(page);
-            await settleQualityRoute(page, routePath, { readOnly: true });
-            await closeXiaozePopupIfOpen(page);
-            await settleXiaozePopupClosed(page);
-            await settleAppToasts(page);
+            await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+            requireModuleTreeAlignment((await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements))).moduleTreeLabels, route.path);
+            await test.step("quality:navigation", () => page.reload());
+            await test.step("quality:readiness", () => expectUsablePage(page));
+            await test.step("quality:readiness", () => settleQualityRoute(page, routePath, { readOnly: true }));
+            await test.step("quality:readiness", () => closeXiaozePopupIfOpen(page));
+            await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
+            await test.step("quality:readiness", () => settleAppToasts(page));
             await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
             if (await pendingWork.isVisible()) {
               await pendingWork.getByRole("button", { name: "关闭", exact: true }).click();
               await expect(pendingWork).toBeHidden();
             }
             await page.mouse.move(0, 0);
-            await waitForFontsAndNextPaint(page);
+            await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
             await expect(node).toHaveAttribute(selectedAttribute, "true");
-            requireModuleTreeAlignment((await page.evaluate(collectConsistencyMeasurements)).moduleTreeLabels, route.path);
+            requireModuleTreeAlignment((await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements))).moduleTreeLabels, route.path);
             expect(new URL(page.url()).searchParams.get(queryKey)).toBe(selectedId);
             if (routePath === "/parameters") {
               const url = page.url();
               await page.getByRole("button", { name: "收起模块导航", exact: true }).click();
               await expect(node).toBeHidden();
               expect(page.url()).toBe(url);
-              await waitForFontsAndNextPaint(page);
-              await page.reload();
-              await expectUsablePage(page);
-              await settleQualityRoute(page, routePath, { readOnly: true });
-              await closeXiaozePopupIfOpen(page);
-              await settleXiaozePopupClosed(page);
-              await settleAppToasts(page);
+              await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+              await test.step("quality:navigation", () => page.reload());
+              await test.step("quality:readiness", () => expectUsablePage(page));
+              await test.step("quality:readiness", () => settleQualityRoute(page, routePath, { readOnly: true }));
+              await test.step("quality:readiness", () => closeXiaozePopupIfOpen(page));
+              await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
+              await test.step("quality:readiness", () => settleAppToasts(page));
               await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
               await expect(page.getByRole("button", { name: "展开模块导航", exact: true })).toBeVisible();
               expect(new URL(page.url()).searchParams.get(queryKey)).toBe(selectedId);
               await page.getByRole("button", { name: "展开模块导航", exact: true }).click();
               await expect(node).toHaveAttribute(selectedAttribute, "true");
-              await waitForFontsAndNextPaint(page);
+              await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
             }
             await node.click();
             await expect(node).toHaveAttribute(selectedAttribute, "false");
@@ -483,21 +483,21 @@ for (const route of selectConsistencyRoutes(qualityLane)) {
               const table = page.getByRole("region", { name: "节点调试参数", exact: true }).getByRole("table");
               await expect(table.getByText("Fast charge current", { exact: true })).toHaveCount(1);
             }
-            await waitForFontsAndNextPaint(page);
-            measurements = await page.evaluate(collectConsistencyMeasurements);
+            await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+            measurements = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
             requireModuleTreeAlignment(measurements.moduleTreeLabels, route.path);
           });
         }
         if (route.required.includes("overviewPages") || route.required.includes("retiredNotices")) {
           await testInfo.attach(`overview${route.path.replaceAll("/", "-")}-${theme}`, {
-            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+            contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
         }
         if (route.required.includes("retiredNotices")) {
           const replacement = routePath === "/debugging" ? "/node-debugging" : "/parameters";
           await page.locator(".retired-notice").getByRole("link").click();
           await expect(page).toHaveURL((url) => url.pathname === replacement);
-          await expectUsablePage(page);
+          await test.step("quality:readiness", () => expectUsablePage(page));
         }
       } finally {
         await testInfo.attach(`consistency${route.path.replaceAll("/", "-")}`, {

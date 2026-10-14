@@ -90,10 +90,10 @@ test.describe("M5.11 responsive quality gate", () => {
     const logsLoaded = page.waitForResponse((response) =>
       new URL(response.url()).pathname === "/api/v1/logs" && response.request().method() === "GET" && response.ok()
     );
-    await page.goto("/log-dashboard");
+    await test.step("quality:navigation", () => page.goto("/log-dashboard"));
     await logsLoaded;
-    await expectUsablePage(page);
-    await settleQualityRoute(page, "/log-dashboard");
+    await test.step("quality:readiness", () => expectUsablePage(page));
+    await test.step("quality:readiness", () => settleQualityRoute(page, "/log-dashboard"));
     await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
 
     const dashboard = page.getByRole("region", { name: "日志分析核心指标", exact: true });
@@ -119,9 +119,9 @@ test.describe("M5.11 responsive quality gate", () => {
     for (const route of routes) {
       test(`${route.path} remains usable at ${viewport.name}`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await page.goto(route.path);
-        await expectUsablePage(page);
-        await settleQualityRoute(page, route.path);
+        await test.step("quality:navigation", () => page.goto(route.path));
+        await test.step("quality:readiness", () => expectUsablePage(page));
+        await test.step("quality:readiness", () => settleQualityRoute(page, route.path));
 
         await expect(headingLocator(page, route)).toBeVisible();
         await expect(page.locator("main, .main-content").first().locator("button").first()).toBeVisible();
@@ -134,10 +134,10 @@ test.describe("M5.11 responsive quality gate", () => {
     for (const route of layoutBudgetRoutes) {
       test(`${route.path} stays within layout budget at ${viewport.name}`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await page.goto(route.path);
-        await expectUsablePage(page);
-        await prepareInteractionSurface(page);
-        await settleQualityRoute(page, route.path);
+        await test.step("quality:navigation", () => page.goto(route.path));
+        await test.step("quality:readiness", () => expectUsablePage(page));
+        await test.step("quality:readiness", () => prepareInteractionSurface(page));
+        await test.step("quality:readiness", () => settleQualityRoute(page, route.path));
 
         await expect(headingLocator(page, route)).toBeVisible();
         await expectNoHorizontalOverflow(page);
@@ -150,18 +150,18 @@ test.describe("M5.11 responsive quality gate", () => {
 
   test(`${dialogViewport.name} dialogs remain visible and contained`, async ({ page }) => {
     await page.setViewportSize({ width: dialogViewport.width, height: dialogViewport.height });
-    await page.goto("/logs");
-    await expectUsablePage(page);
-    await prepareInteractionSurface(page);
+    await test.step("quality:navigation", () => page.goto("/logs"));
+    await test.step("quality:readiness", () => expectUsablePage(page));
+    await test.step("quality:readiness", () => prepareInteractionSurface(page));
     await page.getByRole("button", { name: /上传新日志/ }).click();
 
     const uploadDialog = page.getByRole("dialog", { name: "上传日志" });
     await expect(uploadDialog).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
-    await page.goto("/organization/members");
-    await expectUsablePage(page);
-    await prepareInteractionSurface(page);
+    await test.step("quality:navigation", () => page.goto("/organization/members"));
+    await test.step("quality:readiness", () => expectUsablePage(page));
+    await test.step("quality:readiness", () => prepareInteractionSurface(page));
     await page.getByRole("button", { name: "添加用户" }).click();
 
     const userDialog = page.getByRole("dialog", { name: "添加用户" });
@@ -172,8 +172,8 @@ test.describe("M5.11 responsive quality gate", () => {
   for (const viewport of viewports) {
     test(`Xiaoze popup uses the expected ${viewport.name} presentation`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto("/parameters?project=aurora");
-      await expectUsablePage(page);
+      await test.step("quality:navigation", () => page.goto("/parameters?project=aurora"));
+      await test.step("quality:readiness", () => expectUsablePage(page));
       const toggle = page.getByTestId("copilot-chat-toggle");
       if ((await toggle.getAttribute("data-state")) !== "open") {
         const hintDismiss = page.locator(".xiaoze-toggle-hint__dismiss");

@@ -35,7 +35,7 @@ Start with the affected code and tests. Use `rg`/file search and read relevant s
 
 WiseEff is PC-first. For visible changes, check the affected route/state at `1440x900`; add one compact PC window only when layout risk warrants it. Tablet/mobile sweeps are opt-in, not a default completion gate. The UI checklist owns the exact policy.
 
-Use existing scripts: `npm test -- <files>`, `npm run test:server -- <files>`, `npm run test:scripts -- <files>`, and `npm run bridge:test -- <files>`. Run the narrowest useful check during edits. Before handoff, run affected checks and `npm run build` for TypeScript, Vite, routing, or shared-type changes. Preserve additional gates required by the accepted task.
+Use `npm run test:impact -- <changed-files>` or `--base <integration-base>` and inspect both Vitest/browser fallback flags. Follow the inner-loop, pre-hand-off, PR CI, merge and nightly tiers in `docs/developer/verification-matrix.md`. Its agent verification budget assigns scoped checks to implementers and expensive gates to the coordinator when the task requires it; do not narrow a fallback or duplicate those gates. Authorized browser checks use isolated `WISEEFF_RUNTIME_LANE` IDs and the selector's commands; `WISEEFF_QUALITY_LANE` selects coverage, not runtime isolation. Retain the build for TypeScript, Vite, routing or shared-type changes and all additional accepted-task gates, with explicit ownership of unrun evidence.
 
 `verify:plan/run/report` are currently bounded shadow/local tools, not an authoritative replacement for native acceptance; memo/enforcement remain disabled until separately activated. Do not invent unsupported flags or reuse historical passes.
 

@@ -262,7 +262,7 @@ function admissionBarrier() {
 describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL concurrent namespace admission", () => {
   it.each(["reject", "approve"] as const)("refuses a concurrent ordinary writer after genuine %s preflight", async (decision) => {
     resetSharedPostgresCheckpointerSaverForTests();
-    await withTempDatabase({ prefix: "xiaoze_concurrent_admission" }, async ({ db, connectionString }) => {
+    await withTempDatabase({ prefix: "xiaoze_concurrent_admission", migrate: true }, async ({ db, connectionString }) => {
       const savers: PostgresCheckpointerHandle["saver"][] = [];
       const connections: ReturnType<typeof openDatabaseConnection>[] = [];
       const release = admissionBarrier();
@@ -396,7 +396,7 @@ describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL concurrent namespace admi
 
 describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL physical backend loss", () => {
   it("a delayed preflight owner cannot write after its disposable backend is terminated and R2 reacquires", async () => {
-    await withTempDatabase({ prefix: "xiaoze_owned_backend_loss" }, async ({ db, connectionString }) => {
+    await withTempDatabase({ prefix: "xiaoze_owned_backend_loss", migrate: true }, async ({ db, connectionString }) => {
       const savers: PostgresCheckpointerHandle["saver"][] = [];
       const connections: ReturnType<typeof openDatabaseConnection>[] = [];
       const release = admissionBarrier(); let held: ReturnType<typeof post> | undefined;

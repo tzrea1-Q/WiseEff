@@ -6,10 +6,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import { hdcApiBridge } from "./viteHdcApi";
+import { resolveVitestMaxWorkers } from "./scripts/vitest-workers";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
 const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
+const apiProxyTarget = process.env.WISEEFF_DEV_API_PROXY_URL?.trim() || process.env.VITE_WISEEFF_API_BASE_URL?.trim() || "http://127.0.0.1:8787";
 
 function resolvePreviewAllowedHosts(): string[] | true {
   const configured = process.env.VITE_WISEEFF_ALLOWED_HOSTS?.split(",").map((value) => value.trim()).filter(Boolean);
@@ -86,17 +88,18 @@ export default defineConfig({
     allowedHosts: resolvePreviewAllowedHosts()
   },
   server: {
+    port: Number(process.env.WISEEFF_FRONTEND_PORT ?? 5173),
     allowedHosts: resolvePreviewAllowedHosts(),
     fs: {
       allow: [projectRoot, path.resolve(projectRoot, "../..")]
     },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: apiProxyTarget,
         changeOrigin: true
       },
       "/downloads": {
-        target: process.env.VITE_WISEEFF_API_BASE_URL?.trim() || "http://127.0.0.1:8787",
+        target: apiProxyTarget,
         changeOrigin: true
       },
       "/local-bridge": {
@@ -116,6 +119,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    maxWorkers: resolveVitestMaxWorkers("frontend"),
     // packages/** run in node via vitest.bridge.config.ts; scripts/** and ops/** run in
     // node via vitest.scripts.config.ts. Keeping them out of the jsdom suite avoids
     // double-running bridge tests and avoids DOM patches leaking into pure-node tests.

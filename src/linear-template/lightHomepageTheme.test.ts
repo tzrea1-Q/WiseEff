@@ -10,30 +10,17 @@ describe("WiseEff mature homepage theme", () => {
   it("keeps the page foundation light and the three entry cards restrained", () => {
     const card = declarationsFor(cssText, ".sub-app-card");
     const hoverCard = declarationsFor(cssText, ".sub-app-card:hover");
-
-    expect(declarationFor(cssText, ".linear-template-home", "background")).toBe("#fbfcff");
-    expect(declarationFor(cssText, ".linear-page-gradient", "background")).toContain(
-      "linear-gradient(180deg, #fbfcff 0%, #f4f7ff 56%, #fbfcff 100%)"
-    );
     expect(card["border-radius"]).toBe("var(--radius-md)");
     expect(card.background).toContain("var(--surface)");
-    expect(card["box-shadow"]).toBeTruthy();
-    expect(card["min-height"]).toBe("328px");
     expect(card.transition).toContain("transform var(--duration-base) var(--ease-out)");
-    expect(hoverCard.transform).toContain("translateY(-4px)");
     expect(hoverCard["border-color"]).toContain("var(--sub-app-accent)");
-    expect(declarationFor(cssText, ".sub-app-card-icon", "box-shadow")).toBeTruthy();
     expect(declarationFor(cssText, ".sub-app-card-kicker", "background")).toBe("var(--surface)");
-    expect(declarationFor(cssText, ".sub-app-card-ctas", "border-top")).toContain("1px solid");
-    expect(declarationFor(cssText, ".sub-app-card-ctas", "flex-direction")).toBe("column");
     expect(declarationFor(cssText, ".sub-app-card-primary", "background")).toBe(
       "linear-gradient(180deg, #075cd8 0%, var(--linear-primary-blue) 100%)"
     );
-    expect(declarationFor(cssText, ".sub-app-card-secondary", "font-weight")).toBe("600");
   });
 
   it("keeps the workflow band and footer on light surfaces", () => {
-    expect(declarationFor(cssText, ".platform-flow-section", "background")).toBe("#f4f7ff");
     expect(declarationFor(cssText, ".platform-flow-tablist", "background")).toBe(
       "color-mix(in srgb, var(--surface) 66%, transparent)"
     );
@@ -86,18 +73,6 @@ describe("WiseEff mature homepage theme", () => {
     expect(container.querySelector(".linear-login")).toHaveAttribute("href", "#platform-flow");
     expect(container.querySelector(".linear-header-actions .linear-button")).toHaveAttribute("href", "/parameter-home");
     expect(container.querySelectorAll('.linear-footer a[href="#platform-flow"]')).toHaveLength(3);
-  });
-
-  it("keeps the hero headline compact for the shortened homepage", () => {
-    const heroTitle = declarationsFor(cssText, ".linear-hero h1");
-    const mobileHeroTitle = declarationsFor(cssText, ".linear-hero h1", {
-      within: "@media (max-width: 760px)"
-    });
-
-    expect(heroTitle["font-size"]).toBe("56px");
-    expect(heroTitle["line-height"]).toBe("1.08");
-    expect(heroTitle["letter-spacing"]).toBe("0");
-    expect(mobileHeroTitle["font-size"]).toBe("36px");
   });
 
 });

@@ -351,10 +351,10 @@ function parameterRow(page: Page, name: string): Locator {
 }
 
 async function expectSimulatorOnline(page: Page) {
-  const devicePill = page.locator(".topbar .device-pill").first();
-  await expect(devicePill).toBeVisible({ timeout: 30_000 });
-  await expect(devicePill).toContainText("Aurora Simulator 1", { timeout: 30_000 });
-  await expect(devicePill.locator(".live-dot")).toHaveCount(1);
+  const connection = page.getByRole("toolbar", { name: "节点调试平台页面操作", exact: true });
+  await expect(connection).toBeVisible({ timeout: 30_000 });
+  await expect(connection).toContainText("已连接：Aurora Simulator 1", { timeout: 30_000 });
+  await expect(connection.locator(".live-dot")).toHaveCount(1);
 }
 
 async function openParameterSheet(page: Page, name: string) {

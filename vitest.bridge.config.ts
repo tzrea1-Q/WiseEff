@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveVitestMaxWorkers } from "./scripts/vitest-workers";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
@@ -12,6 +13,7 @@ export default defineConfig({
     include: ["packages/**/*.test.ts"],
     exclude: ["node_modules/**", ...siblingWorktreeExclude],
     passWithNoTests: true,
+    maxWorkers: resolveVitestMaxWorkers("bridge"),
     pool: "threads"
   }
 });

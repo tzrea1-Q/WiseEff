@@ -48,7 +48,7 @@ async function scan(page: Page, testInfo: TestInfo, label: string, excludeSelect
   for (const selector of excludeSelectors) {
     builder = builder.exclude(selector);
   }
-  const results = await builder.analyze();
+  const results = await test.step("quality:axe", () => builder.analyze());
 
   await testInfo.attach(`${label}-axe-summary`, {
     body: JSON.stringify(
@@ -83,9 +83,9 @@ test.describe("M5.11 accessibility quality gate", () => {
   ]) {
     test(`has valid inspector definition lists on ${route}`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.goto(route);
-      await settleQualityRoute(page, "/parameter-admin/projects/aurora/configuration");
-      await settleXiaozePopupClosed(page);
+      await test.step("quality:navigation", () => page.goto(route));
+      await test.step("quality:readiness", () => settleQualityRoute(page, "/parameter-admin/projects/aurora/configuration"));
+      await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
       const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
       if (await inspectorToggle.getAttribute("aria-expanded") !== "true") {
         await inspectorToggle.click();
@@ -93,7 +93,7 @@ test.describe("M5.11 accessibility quality gate", () => {
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
       const configSetInspector = route.endsWith("/config-sets") || route.includes("inspector=config-set");
       await expect(page.getByText(configSetInspector ? "成员管理" : "文件格式", { exact: true }).first()).toBeVisible();
-      const results = await new AxeBuilder({ page }).withRules(["definition-list", "dlitem"]).analyze();
+      const results = await test.step("quality:axe", () => new AxeBuilder({ page }).withRules(["definition-list", "dlitem"]).analyze());
       expect(results.violations).toEqual([]);
     });
   }
@@ -101,24 +101,24 @@ test.describe("M5.11 accessibility quality gate", () => {
   for (const route of ["/log-dashboard", "/parameters/definitions"]) {
     test(`permits accessible names on groups on ${route}`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.goto(route);
-      await settleQualityRoute(page, route);
-      await settleXiaozePopupClosed(page);
+      await test.step("quality:navigation", () => page.goto(route));
+      await test.step("quality:readiness", () => settleQualityRoute(page, route));
+      await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
       // The Catalog action group renders only when it has actions, so wait on the definitions table there.
       await expect(
         route === "/log-dashboard" ? page.getByRole("group", { name: "今日状态拆分" }) : page.getByRole("table").first()
       ).toBeVisible();
-      const results = await new AxeBuilder({ page }).withRules(["aria-prohibited-attr"]).analyze();
+      const results = await test.step("quality:axe", () => new AxeBuilder({ page }).withRules(["aria-prohibited-attr"]).analyze());
       expect(results.violations).toEqual([]);
     });
   }
 
   for (const route of coreRoutes) {
     test(`has no WCAG A/AA violations on ${route}`, async ({ page }, testInfo) => {
-      await page.goto(route);
+      await test.step("quality:navigation", () => page.goto(route));
       await expect(page.locator("main, .main-content").first()).toBeVisible();
-      await settleQualityRoute(page, route);
-      await settleXiaozePopupClosed(page);
+      await test.step("quality:readiness", () => settleQualityRoute(page, route));
+      await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
 
       await scan(page, testInfo, route.replace(/[/?=]+/g, "-") || "home");
     });
@@ -135,12 +135,12 @@ test.describe("M5.11 accessibility quality gate", () => {
       "[data-copilotkit]"
     ]);
 
-    await prepareInteractionSurface(page);
+    await test.step("quality:readiness", () => prepareInteractionSurface(page));
 
     // Tablet layout opens binding detail as a dialog drawer (desktop keeps it inline).
     await page.setViewportSize({ width: 900, height: 1024 });
-    await page.goto("/parameters");
-    await prepareInteractionSurface(page);
+    await test.step("quality:navigation", () => page.goto("/parameters"));
+    await test.step("quality:readiness", () => prepareInteractionSurface(page));
     const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspace).toBeVisible({ timeout: 15_000 });
     await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
@@ -158,22 +158,22 @@ test.describe("M5.11 accessibility quality gate", () => {
     }
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/logs");
-    await prepareInteractionSurface(page);
+    await test.step("quality:navigation", () => page.goto("/logs"));
+    await test.step("quality:readiness", () => prepareInteractionSurface(page));
     await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
     await expect(page.getByRole("dialog", { name: "上传日志" })).toBeVisible();
     await scan(page, testInfo, "log-upload-dialog");
 
-    await page.goto("/node-debugging");
-    await prepareInteractionSurface(page);
+    await test.step("quality:navigation", () => page.goto("/node-debugging"));
+    await test.step("quality:readiness", () => prepareInteractionSurface(page));
     const editableRow = page.getByRole("row").filter({ hasText: "Fast charge current" }).first();
     await expect(editableRow).toBeVisible();
     await editableRow.locator("button.parameter-row-edit").click();
     await expect(page.locator(".workbench-sheet")).toBeVisible();
     await scan(page, testInfo, "debugging-node-sheet");
 
-    await page.goto("/organization/members");
-    await prepareInteractionSurface(page);
+    await test.step("quality:navigation", () => page.goto("/organization/members"));
+    await test.step("quality:readiness", () => prepareInteractionSurface(page));
     await page.getByRole("button", { name: "添加用户" }).click();
     await expect(page.getByRole("dialog", { name: "添加用户" })).toBeVisible();
     await scan(page, testInfo, "user-add-dialog");

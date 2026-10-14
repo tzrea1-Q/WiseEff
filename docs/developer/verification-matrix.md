@@ -4,6 +4,65 @@
 
 Use the narrowest command that proves the change while developing. Before finishing, broaden to the gate that matches the risk and touched surface.
 
+## Verification tiers
+
+This is the shared model for contributors and agents. Selection is not execution, and a local pass is not PR, merge, nightly, target-host, or production evidence. Accepted task and release contracts retain their additional gates.
+
+| Tier | Owner and required evidence |
+| --- | --- |
+| Inner loop | Implementer: run only the test files being changed; use `test:impact` to discover affected suites, static gates, quality routes and cross-route acceptance specs instead of guessing filenames. Behavior changes use red → green; prose does not need an artificial failing test. |
+| Pre-hand-off | Implementer: run the affected selection within the assigned budget, inspect the diff and report both fallback flags. Coordinator: run any selected gates or real API browser checks outside that budget, plus the required build for TypeScript/Vite/routing/shared-type changes. Documentation-only changes select `docs:check`, not Vitest or browsers. |
+| PR CI | Coordinator: inspect the actual workflow for the exact pushed head, including native selected jobs, receipts and required aggregates. Spec #1164 calls for impacted acceptance on PRs; the local selector does not install that CI policy. Until the CI integration lands, existing path selection and the `full-acceptance` label govern CI L2. |
+| Merge | Coordinator, only when authorized: require the real `Merge bar` success for the current candidate and all accepted task evidence. Pending, cancelled, old-head or `Merge bar (ignored label)` results cannot substitute. A local selection cannot waive a required job. |
+| Nightly | CI on `main`: retain full L1/L2 coverage on main pushes and nightly runs, including complete quality/backend inventories and owned Gate0 acceptance. Scoped local passes cannot replace this tier. |
+
+### Select once, execute the appropriate tier
+
+```bash
+# Explicit files, or the actual integration base plus all working-tree changes:
+npm run test:impact -- src/DebuggingPage.tsx
+npm run --silent test:impact -- --base origin/main --json > /tmp/wiseeff-impact.json
+# Inner loop: substitute the specific test file being changed.
+VITE_WISEEFF_RUNTIME_MODE=mock npx vitest run --configLoader runner <test-file>
+```
+
+Use the assigned integration base rather than `origin/main` when they differ. Read `suites`, `gates`, `commands` and `browser`; inspect **both** `fullFallback` and `browser.fullFallback`, with their reasons. Execute the emitted commands without dropping configs, warmup, cross-route specs or static gates. Shared, deleted, unmapped or failed-discovery changes fall back conservatively; if full coverage exceeds the assigned budget, hand it to the coordinator rather than narrowing it. Empty changes are an error, not acceptance. See [Contributing](../../CONTRIBUTING.md#local-vitest-impact-selection) for the selector contract.
+
+### Agent verification budget
+
+For a delegated ticket with a coordinator-owned expensive-gate budget, run checks sequentially. During edits, run only changed test files. After all edits, run one related pass over every changed source file, then lint those files and typecheck each affected project:
+
+```bash
+VITE_WISEEFF_RUNTIME_MODE=mock npx vitest related --run --configLoader runner <changed-source-files>
+npx eslint <changed-code-files>
+npx tsc -p tsconfig.app.json --noEmit
+npx tsc -p tsconfig.node.json --noEmit
+git diff --check
+```
+
+Run the app typecheck for `src/` TypeScript changes and the node typecheck for server/scripts/e2e/config TypeScript changes. A related pass covers its active Vitest configuration only: use `test:impact` to identify other suites/gates and explicitly hand any unrun selection to the coordinator. Documentation-only work needs neither a related pass, ESLint nor TypeScript checks; its selected `npm run docs:check` remains required, with execution assigned to the coordinator when the task reserves docs gates. A failing related pass may be fixed and rerun at most twice. Do not run full suites, builds, repo-wide lint, browser loops or concurrent test/build sessions under this budget. The coordinator runs expensive gates once per ticket; they are deferred, not removed. An unavailable environment or sandbox error is missing evidence, not a pass.
+
+### Isolated browser lanes
+
+For an authorized scoped browser run, first provision and seed a disposable lane database using [local setup](../../CONTRIBUTING.md#test-database-isolation). With the base PostgreSQL `DATABASE_URL` exported, use the exact grep and spec list emitted in `browser.commands`:
+
+```bash
+WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.quality.config.ts --grep '<browser.qualityGrep>'
+WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.acceptance.config.ts <browser.acceptanceSpecs>
+# To execute one registered quality partition instead of all projects:
+WISEEFF_RUNTIME_LANE=1 WISEEFF_QUALITY_LANE=consistency-1 npx playwright test --config playwright.quality.config.ts --grep '<browser.qualityGrep>'
+```
+
+The placeholders are selector output, not literal arguments. Run all applicable quality partitions (`visual`, `consistency-1`, `consistency-2`, `accessibility`) when partitioning a selection. `WISEEFF_RUNTIME_LANE` isolates ports, database, object storage and reports; `WISEEFF_QUALITY_LANE` chooses coverage and does not isolate a runtime. Sequential quality/acceptance runs may reuse a lane; simultaneous runs require distinct runtime lane IDs. `WISEEFF_VITEST_LANES` is the total concurrent Vitest process count, not either browser lane setting. The descriptor does not provision databases and cannot be combined with owned Gate0 runtime controls. Scoped Playwright evidence is not full Gate0 evidence; keep controlled-runtime and receipt obligations unchanged. Visible changes require real API evidence at `1440x900`; mock tests, collection and metadata cannot replace execution. When browsers are reserved to the coordinator, report selected routes/specs and missing screenshots instead of launching them.
+
+## Local Vitest worker budget
+
+When the coordinator runs concurrent Vitest lanes on one host, set `WISEEFF_VITEST_LANES` to the total number of simultaneous Vitest processes in every lane (not the runtime lane ID). For example, `WISEEFF_VITEST_LANES=3 npm test -- src/NodeDebuggingPage.test.tsx` shares the host's `availableParallelism()` across three lanes. A single process defaults to `1` lane.
+
+Frontend and Bridge default to at most four workers; server keeps its half-CPU, four-worker default; scripts stay serialized. Each cap is further bounded by `floor(availableParallelism / lanes)`, with a minimum of one worker. `VITEST_SERVER_MAX_WORKERS` remains available but cannot exceed the per-lane CPU budget. Both settings require positive safe integers. Do not override `--maxWorkers` when using this budget. More lanes than available CPUs still need coordinator serialization: one worker per lane is the minimum.
+
+Load-sensitive DOM tests must await rendered readiness and settle controlled promises inside `act`, not treat a started request, a changed URL, or a fixed sleep as completion. Keep existing assertions and timeouts. Repeated isolated/concurrent-load runs and PR CI remain coordinator acceptance evidence, distinct from a scoped local pass.
+
 The L2 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` artifact is a bounded workflow-context snapshot, independent of the safety-gated per-shard ZIP. It records checkout-observed SHA/tree before candidate setup, workflow SHA, PR head/base (push predecessor or scheduled head on non-PR events), and execution/archive/full-upload outcomes. Internal phase, cleanup and test counts remain unknown in this bootstrap channel; it never reads candidate reports or raw logs. A failed publisher produces only `DIAGNOSTIC_REJECTED`; neither fallback nor upload success overrides an earlier failed step. Its own upload is pending inside the snapshot and settles in Actions and the job summary. A lost runner can leave it incomplete. The complete archive keeps its existing size, ownership and safety requirements.
 
 For changes to this channel, run `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` and `npm run acceptance:ci`. These extract and exercise the real isolated workflow publisher; synthetic failures are diagnostic checks, not full acceptance. All bounded diagnostic steps count toward the L2 platform budget (151-minute floor, 155-minute job ceiling); the Gate0 owner and existing scan/upload allowances are unchanged.
@@ -11,6 +70,10 @@ For changes to this channel, run `npm run test:scripts -- scripts/acceptance-dia
 L2 browser acceptance runs in four independent Gate0 jobs with `--shard=i/4`; each owns its PostgreSQL service and runtime. Visual acceptance runs only in shard 1, and the browser warmup dependency runs in every shard. Before execution, native Playwright collection defines each shard's nonempty test inventory and file-scoped workflow/operation obligations; report inventory must match, whole-suite static coverage and all owned evidence checks remain required. Every required automated operation must have exactly one browser-spec owner. Shard runs never publish the latest-full-evidence pointer. The stable `Acceptance local non-HDC` aggregate requires matrix success, or a matrix skipped by successful detection, before `Merge bar` can pass. `npm run acceptance:gate0` without arguments still runs both complete phases locally.
 
 The unsharded native collection must still include every required operation's browser owner before any shard executes. Shard arguments are restricted to local non-HDC runs with a validated owned descriptor and owned output paths; standalone/target/full-pilot fragments cannot overwrite full-run evidence. Collection, inventory, and other phase-command failures are included in Gate0's structured failure inventory even when the native report contains no failing test result.
+
+Browser shard ownership is duration-balanced, not Playwright's native test-count sharding. `scripts/acceptance-shard-plan.ts` assigns whole files from the full native collection, longest measured duration first, to the least-loaded shard; filename and shard index break ties deterministically. Shard 1 starts with the measured visual-phase wall time, and every shard must own at least one browser file. `scripts/acceptance-durations.json` records the input measurements and their sources: summed browser list-reporter durations from the full 2026-10-10 collection and visual JSON `stats.duration` from 2026-09-18. Both historical runs include failures; these are advisory scheduling weights, not current acceptance or a measured speedup. New or zero-duration files receive the slowest recorded file's weight rather than being omitted. Explicit escaped file filters retain the warmup project, and the existing planned/full/report inventory and operation checks are unchanged.
+
+Refresh these weights from the coordinator's complete browser JSON report by summing result durations per browser file (including retries), and from the visual report's wall duration. Keep source dates and failure caveats with the snapshot. The coordinator must run all four Gate0 shards before and after this change and report actual job wall times, not just summed test estimates; existing historical CI medians (24.35 / 15.55 / 16.43 / 9.73 minutes, mixed successes and failures) are context only. No acceptance timeout, required aggregate, or visual obligation changes.
 
 ## Parameter Catalog boundary baseline
 
@@ -110,7 +173,7 @@ For EFF fixture work, use the original owned Gate0 runtime and native acceptance
 | `npm run acceptance:ci` | M5.12 layered GitHub Actions jobs, smoke/quality-run scripts, synthetic mode, and artifact-archive wiring | After changing `.github/workflows/ci.yml`, acceptance CI scripts, target synthetic modes, or CI artifact paths. |
 | `npm run acceptance:smoke` | Tagged `@ci-smoke` Playwright subset (shell + auth + parameter-home) | Local check of the PR merge-bar browser slice. Does not replace `acceptance:browser`. |
 | `npm run ci:changed-paths` | Path-class outputs `docs_only` / `run_l1` / `run_quality` / `run_smoke` | After changing CI path rules or `scripts/ci-changed-paths.ts`. |
-| `npm run acceptance:quality` | M5.11 quality-gate metadata for accessibility, visual, and responsive specs/scripts; configs run a `runtime-warmup` project before product specs | After changing package scripts, quality Playwright config, or quality spec locations. |
+| `npm run acceptance:quality` | Quality-gate metadata for consistency (including its collector), compact, visual, accessibility, and responsive specs/scripts and project registrations; configs run a `runtime-warmup` project before product specs. Metadata does not establish browser execution. | After changing package scripts, quality Playwright config, or quality spec locations. |
 | `npm run acceptance:a11y` | WCAG A/AA accessibility scans for core routes and key interaction states | Changing page structure, dialogs, forms, navigation, headings, labels, focus behavior, or Agent panel UI. |
 | `npm run acceptance:visual` | Stable-region visual regression snapshots for core routes plus shared-primitive interaction states (Button hover/focus-visible, ModalDialog open with backdrop, DataTable row hover and sort-header focus) | Changing CSS, layout, shell/page regions, visual hierarchy, masked snapshot regions, or interaction-state styling of shared primitives. |
 | `npm run acceptance:responsive` | Desktop/tablet/mobile responsive usability and overflow checks | Changing layout, dialogs, tables, toolbars, navigation, or viewport-dependent UI. |
@@ -205,6 +268,10 @@ M5.10 evidence-grade rule: every passed operation evidence record must include r
 M5.11 quality-gate rule: UI-facing changes should run the narrow quality gate that matches the risk, plus `npm run acceptance:quality` when scripts or spec wiring change. `npm run acceptance:a11y` covers automated WCAG A/AA scans, `npm run acceptance:visual` covers stable masked snapshots, and `npm run acceptance:responsive` covers desktop/tablet/mobile usability and horizontal-overflow checks. These gates supplement browser acceptance; they do not replace operation evidence or manual judgment for ambiguous visual issues.
 
 Linux visual baseline rule: GitHub Actions `Acceptance quality` is the merge-authoritative Linux renderer. Download the failing run artifact, inspect every actual PNG at original resolution, and copy only the reviewed failed images into `visual.quality.spec.ts-snapshots/linux/`. The local MCR Playwright arm64 container is a preflight environment only; its CJK font metrics or seed identity may differ from the GitHub runner, so container-generated pixels are not baseline authority. Preserve production/HMAC-visible fixture identities in the visual spec with positive DOM assertions before capturing interaction states.
+
+Candidate baseline review (#1172): when the visual lane fails exclusively on existing Linux screenshot comparisons, CI uploads `wiseeff-visual-baseline-review`: a self-contained `index.html` with expected/actual/diff images per changed baseline and a Git binary `candidate.patch`. The generator reads the failed lane's original `$RUNNER_TEMP/wiseeff-ci-shard/results.json`; it suppresses candidates for assertion, runtime, compact-project, missing-baseline, interrupted, retry or global failures, incomplete screenshot triples, and conflicting replacements. It never changes tracked baselines or the failed gate result. Open the gallery and inspect every image at original resolution (open the image separately from its browser context menu). A human must explicitly approve every replacement. In a clean checkout of the failed run's exact head, run `git apply --check /absolute/path/candidate.patch`, then, only after approval, `git apply --binary /absolute/path/candidate.patch`. Review the baseline-only diff and submit it through the normal PR flow; rerun normal GitHub Actions Linux comparisons without `--update-snapshots`. A downloaded candidate, a successful patch application, or a local/container rendering is not acceptance.
+
+Visual masking convention: stabilize fixtures/clocks first; otherwise mask only documented volatile values in `stableMasks` (`e2e/quality/helpers.ts`), never newly hide controls or whole interaction surfaces to pass. Required route masks cover seeded timestamp cells, parameter rows, existing Catalog anchor/workspace surfaces, the date-dependent trend chart, review identifiers/times, and log timestamps; a missing required locator fails before capture. Shell user/history/audit/live-region masks and conditional Catalog banners, bridge pairing digits/expiry, log metadata/confidence fills are optional only because those surfaces may not be mounted in the captured state. Optional locators are included only when populated. `resolveVisualMasks` rechecks every included locator immediately before returning the capture masks; zero matches fail, including an optional surface that disappears during resolution. Existing seeded-row count and visibility assertions remain mandatory. Add required locators for known seeded state, not optional locators to bypass broken selectors; demonstrate each route/state's resolution in the live quality run.
 
 Visual fixture safety rule: `npm run seed:quality:visual-review` and `npm run cleanup:quality:visual-review` are destructive, evidence-owned commands for an ephemeral database only. Set both `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true` and `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=<current_database()>`. The scripts query `current_database()` and fail before mutation when the name differs or any fixed fixture ID is owned by another row. An external Gate0 runner must derive the expected name from its owned database descriptor. Target synthetic runs set neither variable and planned-skip only the populated `/parameter-review` visual case; they keep the remaining visual routes plus all a11y/responsive coverage read-only.
 

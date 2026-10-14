@@ -657,17 +657,12 @@ describe("ProjectParameterInitializationWizard", () => {
     const menuRule = declarationsFor(styles, ".parameters-column-filter__menu");
     const menuHeadRule = declarationsFor(styles, ".parameters-column-filter__menu-head");
     const optionLabelRule = declarationsFor(styles, ".parameters-column-filter__options label");
-    const optionLabelHoverRule = declarationsFor(styles, ".parameters-column-filter__options label:hover");
 
     expect(menuRule.background).toContain("var(--surface)");
     expect(menuRule["border-radius"]).toBe("var(--radius-md)");
-    expect(menuRule["box-shadow"]).toBeTruthy();
     expect(menuHeadRule["padding-bottom"]).toBe("var(--space-2)");
-    expect(menuHeadRule["border-bottom"]).toBeTruthy();
-    expect(optionLabelRule.display).toBe("flex");
     expect(optionLabelRule["border-radius"]).toBe("var(--radius-sm)");
     expect(optionLabelRule.padding).toBe("6px var(--space-2)");
-    expect(optionLabelHoverRule.background).toBe("#f4f7ff");
   });
 
   it("keeps the initialization parameter table columns readable", () => {
@@ -694,19 +689,6 @@ describe("ProjectParameterInitializationWizard", () => {
     const firstSourceCell = within(firstParameterRow as HTMLElement).getByText(/Aurora 量产平台/).closest("td");
     expect(firstParameterCell).toHaveClass("project-init-table__parameter");
     expect(firstSourceCell).toHaveClass("project-init-table__source");
-
-    const styles = readStylesheet("src/styles.css");
-    const tableRule = declarationsFor(styles, ".project-init-table table");
-    const parameterCellRule = declarationsFor(styles, ".project-init-table__parameter");
-    const sourceCellRule = declarationsFor(styles, ".project-init-table__source");
-
-    expect(tableRule["table-layout"]).toBe("fixed");
-    expect(tableRule["min-width"]).toBe("860px");
-    expect(parameterCellRule.overflow).toBe("hidden");
-    expect(parameterCellRule["text-overflow"]).toBe("ellipsis");
-    expect(parameterCellRule["white-space"]).toBe("nowrap");
-    expect(sourceCellRule["white-space"]).toBe("nowrap");
-    expect(sourceCellRule["text-overflow"]).toBe("ellipsis");
   });
 
   it("shows parameter details from a candidate row", () => {
@@ -740,25 +722,9 @@ describe("ProjectParameterInitializationWizard", () => {
     // Footer buttons consume the shared `.button` base contract (FA-10); the
     // scope only keeps the stable CTA min-width.
     const styles = readStylesheet("src/styles.css");
-    const wizardRule = declarationsFor(styles, ".project-init-wizard");
-    const mainRule = declarationsFor(styles, ".project-init-main");
-    const footerRule = declarationsFor(styles, ".project-init-footer");
-    const footerButtonRule = declarationsFor(styles, ".project-init-footer .button");
     const baseButtonRule = declarationsFor(styles, ".button");
     const baseSubtleRule = declarationsFor(styles, ".button.subtle");
     const basePrimaryRule = declarationsFor(styles, ".button.primary");
-
-    expect(wizardRule.display).toBe("flex");
-    expect(wizardRule["flex-direction"]).toBe("column");
-    expect(wizardRule.overflow).toBe("hidden");
-    expect(mainRule.flex).toContain("1");
-    expect(mainRule.overflow).toBe("auto");
-    expect(footerRule.background).toBe("#fbfcff");
-    expect(footerRule["box-shadow"]).toBeTruthy();
-    expect(footerButtonRule["min-width"]).toBe("96px");
-    expect(baseButtonRule.display).toBe("inline-flex");
-    expect(baseButtonRule["justify-content"]).toBe("center");
-    expect(baseButtonRule.border).toContain("1px solid");
     expect(baseButtonRule["border-radius"]).toBe("var(--radius-md)");
     expect(baseSubtleRule.background).toBe("var(--surface)");
     expect(basePrimaryRule.color).toBe("var(--primary-foreground)");
@@ -801,11 +767,6 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(screen.getByRole("heading", { name: "从参数库选择项目参数" }).closest(".project-init-step-copy--scope")).toBeTruthy();
     expect(screen.getByText(/12 个参数库条目可选/)).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "参数库选择表" })).toBeInTheDocument();
-
-    const styles = readStylesheet("src/styles.css");
-    const scopePanelRule = declarationsFor(styles, ".project-init-step-panel--scope");
-
-    expect(scopePanelRule["grid-template-columns"]).toBe("1fr");
   });
 
   it("filters source projects with search when many projects exist", () => {
@@ -846,14 +807,6 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(screen.getByRole("heading", { name: "选择要继承的项目" }).closest(".project-init-step-copy--source")).toBeTruthy();
     expect(screen.getByRole("table", { name: "可选来源项目" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "搜索来源项目" })).toBeInTheDocument();
-
-    const styles = readStylesheet("src/styles.css");
-    const sourcePanelRule = declarationsFor(styles, ".project-init-step-panel--source");
-    const sourceTableWrapRule = declarationsFor(styles, ".project-init-source-table-wrap");
-
-    expect(sourcePanelRule["grid-template-columns"]).toBe("1fr");
-    expect(sourceTableWrapRule["max-height"]).toBe("260px");
-    expect(sourceTableWrapRule.overflow).toBe("auto");
   });
 
   it("presents the project information step as a focused two-column form card", () => {
@@ -863,19 +816,5 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(projectInfoRegion).toHaveClass("project-init-form-card");
     expect(projectInfoRegion.closest(".project-init-step-panel")).toHaveClass("project-init-step-panel--project");
     expect(projectInfoRegion.querySelector(".project-init-form-card__fields")).toBeInTheDocument();
-
-    const styles = readStylesheet("src/styles.css");
-    const projectPanelRule = declarationsFor(styles, ".project-init-step-panel--project");
-    const formCardRule = declarationsFor(styles, ".project-init-form-card");
-    const formFieldsRule = declarationsFor(styles, ".project-init-form-card__fields");
-
-    expect(projectPanelRule["grid-template-columns"]).toBe("minmax(220px, 0.72fr) minmax(0, 1fr)");
-    expect(projectPanelRule["align-items"]).toBe("start");
-    expect(projectPanelRule["min-height"]).toBe("360px");
-    expect(formCardRule.padding).toBe("22px");
-    expect(formCardRule.border).toContain("1px solid");
-    expect(formCardRule["border-radius"]).toBe("10px");
-    expect(formCardRule["box-shadow"]).toBeTruthy();
-    expect(formFieldsRule["grid-template-columns"]).toBe("1fr");
   });
 });

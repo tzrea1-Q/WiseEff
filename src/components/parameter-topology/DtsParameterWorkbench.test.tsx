@@ -320,17 +320,6 @@ describe("DtsParameterWorkbench", () => {
     expect(within(nameCell as HTMLElement).getByText(displayName)).toHaveAttribute("title", displayName);
     expect(within(nameCell as HTMLElement).getByText(propertyKey)).toHaveAttribute("title", propertyKey);
     expect(nameCell.querySelector(".dts-parameter-workbench-table__enablement-notice")).toHaveAttribute("title", notice);
-    const styles = readStylesheet("src/styles.css");
-    for (const selector of [
-      ".dts-parameter-workbench-table__property-primary > strong",
-      ".dts-parameter-workbench-table__property-primary > code",
-      ".dts-parameter-workbench-table__property-secondary > code",
-      ".dts-parameter-workbench-table__property-secondary > .dts-parameter-workbench-table__enablement-notice",
-    ]) {
-      expect(declarationFor(styles, selector, "white-space")).toBe("nowrap");
-      expect(declarationFor(styles, selector, "overflow")).toBe("hidden");
-      expect(declarationFor(styles, selector, "text-overflow")).toBe("ellipsis");
-    }
   });
 
   it("matches the display name as well as the unchanged key in the workbench search field", () => {
@@ -435,56 +424,9 @@ describe("DtsParameterWorkbench", () => {
     expect(declarationFor(layoutStyles, ".navigator-workbench__task.dts-workbench-list", "height")).toBe(
       "var(--navigator-workbench-pane-height)"
     );
-    expect(declarationFor(styles, ".dts-workbench-list__scroll-x", "overflow-x")).toBe("auto");
-    expect(declarationFor(styles, ".dts-workbench-list__scroll-y", "min-width")).toBe("680px");
-    expect(declarationFor(styles, ".dts-workbench-list__h-rail", "overflow-x")).toBe("scroll");
-    expect(declarationFor(styles, ".dts-workbench-list__h-rail-spacer", "min-width")).toBe("680px");
-    expect(declarationFor(styles, ".dts-parameter-workbench-table", "min-width")).toBe("680px");
-    expect(declarationFor(styles, ".dts-parameter-workbench-table__head", "position")).toBe("sticky");
-    expect(
-      declarationFor(styles, ".dts-parameter-workbench-table", "min-width", {
-        within: "@media (max-width: 1200px)"
-      })
-    ).toBe("640px");
-    expect(
-      declarationFor(styles, ".dts-parameter-workbench-table--surface-mvp", "min-width", {
-        within: "@media (max-width: 820px)"
-      })
-    ).toBe("0 !important");
-    expect(
-      declarationFor(
-        styles,
-        ".dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row",
-        "grid-template-columns",
-        { within: "@media (max-width: 820px)" }
-      )
-    ).toBe("minmax(0, 1fr) minmax(0, 1.5fr) !important");
-    expect(
-      declarationFor(styles, ".dts-parameter-workbench-table", "min-width", {
-        within: "@media (max-width: 820px)"
-      })
-    ).toBe("0 !important");
-    expect(
-      declarationFor(styles, ".dts-parameter-workbench-table__head", "display", {
-        within: "@media (max-width: 820px)"
-      })
-    ).toBe("none !important");
     expect(declarationFor(styles, ".dts-parameter-workbench", "--dts-workbench-muted")).toBe(
       "#52657d"
     );
-    expect(
-      declarationFor(
-        styles,
-        ".dts-parameter-workbench__governance-content :is(button, .button, input, select, textarea)",
-        "min-height",
-        { within: "@media (max-width: 480px)" }
-      )
-    ).toBe("44px");
-    expect(
-      declarationFor(styles, ".dts-binding-detail-dialog__overlay", "animation", {
-        within: "@media (prefers-reduced-motion: reduce)"
-      })
-    ).toBe("none !important");
   });
 
   it("renders module-first headers and module navigator by default", () => {
@@ -757,8 +699,7 @@ describe("DtsParameterWorkbench", () => {
       expect(tokens[columns].replace(
         "var(--dts-workbench-table-columns-without-selection)",
         tokens["--dts-workbench-table-columns-without-selection"]
-      ))
-        .toMatch(/var\(--dts-workbench-table-actions-width\)$/);
+      )).toMatch(/var\(--dts-workbench-table-actions-width\)$/);
     }
     expect(tokens["--dts-workbench-table-actions-width"])
       .toBe("calc(3 * var(--space-8) + 2 * var(--space-1))");

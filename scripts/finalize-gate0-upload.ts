@@ -42,6 +42,7 @@ import {
 } from "./owned-process-group";
 import {
   GATE0_PROVISIONING_JOURNAL_FILE,
+  gate0ProvisioningProcessLabels,
   readGate0ProvisioningJournal,
   recoverGate0ProvisioningStagingRuns,
   type Gate0ProvisioningJournalV1,
@@ -271,7 +272,7 @@ function loadRootTakeoverRecords(
             throw new Error(`Provisioning journal ${label} identity conflicts with the complete runtime descriptor.`);
           }
         }
-        if (journal.processes.migration.state !== "stopped" || journal.processes.seed.state !== "stopped") {
+        if (gate0ProvisioningProcessLabels.some((label) => label !== "api" && label !== "frontend" && journal.processes[label].state !== "stopped")) {
           throw new Error("Provisioning journal command state conflicts with the complete runtime descriptor.");
         }
       }
@@ -440,7 +441,7 @@ function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
       );
     }
     if (record.journal) {
-      for (const label of ["migration", "seed", "api", "frontend"] as const) {
+      for (const label of gate0ProvisioningProcessLabels) {
         const processRecord = record.journal.processes[label];
         if (processRecord.state === "launching" && launchLabels.has(`root:${record.runId}:${label}`)) continue;
         if (processRecord.state === "launching") continue;
@@ -587,7 +588,7 @@ function assertLaunchMatchesDeclaredWriter(
       throw new Error(`Gate0 process launch ${launch.label} conflicts with its declared writer identity.`);
     }
   };
-  for (const label of ["migration", "seed", "api", "frontend"] as const) {
+  for (const label of gate0ProvisioningProcessLabels) {
     if (launch.label !== `root:${record.runId}:${label}`) continue;
     const journalProcess = record.journal?.processes[label];
     const descriptorProcess = label === "api" || label === "frontend"
@@ -628,7 +629,7 @@ function assertAbortedLaunchMatchesDeclaredWriter(
   record: RootTakeoverRecord,
   launch: ReturnType<typeof settledProcessLaunches>[number],
 ) {
-  for (const label of ["migration", "seed", "api", "frontend"] as const) {
+  for (const label of gate0ProvisioningProcessLabels) {
     if (launch.label === `root:${record.runId}:${label}` && record.journal?.processes[label].state === "launching") {
       return;
     }
