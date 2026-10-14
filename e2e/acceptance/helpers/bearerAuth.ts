@@ -1,10 +1,10 @@
-import { createHmac } from "node:crypto";
 import type { Page } from "playwright/test";
 
-import { smokeHeaders } from "./runtime";
+import { createBearerTokenForUser, smokeHeaders } from "./runtime";
 import { ACCEPTANCE_ORGANIZATION, castByRole, roleLabels, type AcceptanceRoleId } from "./cast";
 
 export type { AcceptanceRoleId } from "./cast";
+export { createBearerTokenForUser } from "./runtime";
 
 /** Keep in sync with src/infrastructure/http/authClient.ts — do not import frontend modules here (import.meta.env breaks Playwright Node). */
 const LOCAL_AUTH_TOKEN_STORAGE_KEY = "wiseeff.localAuthToken";
@@ -33,33 +33,6 @@ export function acceptanceRoleLabel(roleId: AcceptanceRoleId) {
 
 export function acceptanceUserIdForRole(roleId: AcceptanceRoleId) {
   return acceptanceUsersByRole[roleId].userId;
-}
-
-export function createBearerTokenForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId) {
-  const issuer = process.env.AUTH_TOKEN_ISSUER?.trim();
-  const secret = process.env.AUTH_TOKEN_HMAC_SECRET?.trim();
-  if (!issuer || !secret) {
-    return null;
-  }
-
-  const payload = Buffer.from(
-    JSON.stringify({
-      iss: issuer,
-      sub: userId,
-      org: scopedOrganizationId,
-      name,
-      email,
-      title: "Acceptance User",
-      orgName: "ChargeLab",
-      roles: [],
-      permissions: [],
-      isActive: true,
-      nbf: 0,
-      exp: 9_999_999_999
-    })
-  ).toString("base64url");
-  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
-  return `Bearer ${payload}.${signature}`;
 }
 
 export function authHeadersForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId) {

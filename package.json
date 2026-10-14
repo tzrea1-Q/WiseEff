@@ -20,6 +20,7 @@
     "build": "NODE_OPTIONS='--max-old-space-size=4096' tsx scripts/run-cached-tool.ts tsc && NODE_OPTIONS='--max-old-space-size=2048' vite build",
     "test": "NODE_OPTIONS='--max-old-space-size=768' tsx scripts/run-vitest.ts",
     "test:impact": "tsx scripts/test-impact.ts",
+    "test:browser:codex": "tsx scripts/run-codex-browser.ts",
     "test:server": "NODE_OPTIONS='--max-old-space-size=768' vitest run --config vitest.server.config.ts",
     "workspace:check": "tsx scripts/check-workspace-links.ts",
     "test:scripts": "tsx scripts/check-workspace-links.ts && vitest run --config vitest.scripts.config.ts",

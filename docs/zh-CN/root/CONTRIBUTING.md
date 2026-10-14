@@ -56,6 +56,28 @@ npm run --silent test:impact -- --base origin/main --json > /tmp/vitest-impact.j
 
 浏览器选择复用质量路由注册表旁的 `e2e/quality/route-ownership.ts`。`browser` 独立输出 `fullFallback`、`reasons`、`qualityRoutes`、`qualityGrep`、`acceptanceSpecs` 和 `commands`；即使 Vitest 找到关联测试，浏览器归属未知时仍回退到完整浏览器覆盖。质量 grep 保留预热、未标明路由的交互检查，以及提到任一选中路由的跨路由测试。验收 spec 根据已有操作矩阵中的访问路由，加上静态导航证据选择，不按文件名选择。发现过程解析路由字面量、运行时 URL 模板、导入的常量、实际调用辅助函数的参数/默认值，以及 `src/appConfig.ts` 中可见的导航标签；未调用的辅助函数不贡献路由。只有真正无法解析的导航才保守保留，并须列入 `scripts/browser-navigation.ts` 的 `unresolvedBrowserNavigation` 清单并注明原因（当前为空，最多五个 spec）。新增无法解析的导航、失效条目或缺少原因时直接报错，避免静默扩大选择。独立路由变更不必运行没有导航的纯 API spec。例如 `/logs` 变更会选中知识蒸馏和使用运行时 URL 的 log904 关联参数流程。共享变更和 Vitest 发现失败选择完整浏览器覆盖；仅文档/生成 OpenAPI 变更不输出浏览器命令。浏览器清单为空或代码选择为空时直接报错，不输出虚假的空操作成功。这些输出只提供可运行的建议选择，不修改 CI 门禁，也不执行 Playwright。
 
+### Codex 定向浏览器运行器（D3）
+
+本地 Unix-domain IPC 仅允许使用当前用户规范化临时目录中的 `tsx-<effective UID>` 子目录。子进程的 `TMPDIR` 固定为该规范化临时目录，使 tsx socket 路径与沙箱规则一致；非回环 IP 网络继续被拒绝。
+
+`test:browser:codex` 是 #1179 的本地运行器，不替代 CI 或协调者验收。必须在独立 linked worktree 的根目录、`codex/<task>` 分支运行，并显式导出 `WISEEFF_RUNTIME_LANE` 与指向 localhost PostgreSQL 的 `DATABASE_URL`。lane ID 不得与其他工作树或浏览器会话重复。运行前通过既有浏览器环境准备流程创建并播种派生的 `<database>_lane_<N>` 数据库；运行器不创建、迁移、重置或播种数据库。PostgreSQL URL 的查询参数覆盖和已属于其他 lane 的数据库会被拒绝。
+
+```bash
+export WISEEFF_RUNTIME_LANE=7
+npm run test:browser:codex -- src/features/log-analysis/LogsPage.tsx
+npm run test:browser:codex -- --check test-results/lanes/7/codex-browser-evidence.json
+```
+
+也可用 `--base <commit>` 替代变更路径；与 `test:impact` 一样包含已提交、暂存、未暂存和未跟踪变更。运行器复用该选择器的实现，记录实际浏览器选择与命令，只执行 quality grep 和精确 acceptance spec 路径，并保留既有 warmup 依赖。非 Linux 主机排除 `visual` quality 项目及包含截图/快照基线断言的 spec 文件，在 `skipped` 中逐项记录原因 `platform: Linux-only baselines`；Linux 选择不作此排除（CI 渲染仍为权威基准）。未知或共享变更保留选择器的完整浏览器回退；任务预算禁止这类运行时，应交给协调者，而不是手动缩小选择。quality 与 acceptance 在同一 lane 顺序运行，复用既有独立数据库、端口、对象存储和输出路径，并拒绝复用服务器。受控运行时描述符、外部传入的跳过运行时设置、quality 项目分区覆盖、替代 snapshot 根目录和工作树外对象存储均被拒绝。在启动任何运行时之前，所选 acceptance 测试必须具有非空白的 `AUTH_TOKEN_ISSUER` 与 `AUTH_TOKEN_HMAC_SECRET`。运行器加载工作树 `.env`，显式环境变量优先，随后验证并固定 lane 所有权。加载内容包括 smoke authorization/provider 设置，而非仅 issuer/secret，以匹配普通 Playwright 的认证 provider 选择。子进程的 dotenv 输入仍固定为 `/dev/null`；拒绝 `.env.local` 对数据库、绑定端口/主机、对象存储或 lane 端点的覆盖。缺少认证配置时非零退出，回执记录 `status: "blocked: missing <names>"`、仅含名称的 `missingConfig` 和空 `runs`；不会将秘密值复制到回执中。
+
+每个 suite 开始前，运行器验证两个 lane TCP 端口均可在回环地址独占绑定；不会终止或复用既有监听者。API/前端服务器由运行器在独立、受沙箱约束的进程组中启动，复用 Playwright 共享 web-server 环境构建器。启动 quality 服务器前，运行器先完成 quality harness 使用的同一 `seed:browser` 契约，随后让其 Playwright 子进程跳过重复 quality seeding；显式的 `WISEEFF_QUALITY_SKIP_SEED=true` 保留既有预先 seed／只读行为。这确保认证探针运行时开发身份已存在。即使父进程导出 `AUTH_MODE=development`，acceptance 仍保留既有 production 认证设置。前端就绪还要求 `/src/main.tsx` 转换成功，不能仅依据 HTML shell 返回 HTTP 200；转换失败会在认证或浏览器测试之前阻止启动。服务器就绪后，必须直接访问 API 及经前端代理访问 `/api/v1/me` 均得到 HTTP 200，才启动测试。探针遵循同一构建器产生的有效服务器环境：development 仅使用 `x-wiseeff-user` 身份请求头，quality 身份取自服务器共享的 `developmentAuthContext`，acceptance 身份取自其 cast helper，不再假设两者相同；production quality 使用前端配置的 authorization，acceptance 则使用与浏览器登录 helper 相同的 bearer/HMAC 签名器。探针不会为 quality 自行生成替代 token。回执的 `authProbes` 记录每次已尝试探针的 suite、有效 `mode`（`development` 或 `production`）、`mechanism`（`development-header` 或 `bearer`）和最终 `httpStatus`（连接失败时为 null），不记录请求头或 token 值。移除代理环境变量并设置 `NO_PROXY=*`，避免继承代理影响回环检查。仅运行器内部拥有的 Playwright 子进程获得跳过 web-server 标志。每个 suite 都等待逆序进程组终止（TERM，必要时 KILL，并验证已消失），才启动下一个 suite；suite 之间及最后一次清理后再次检查端口。SIGINT/SIGTERM 同样进入清理。端口冲突、探针/启动失败、中断或清理失败均非零退出，记录 `blocked: <reason>` 及脱敏 `block`，按情况包含 suite、冲突端口或 HTTP 状态；回执仅保留已尝试的运行。清理失败时不启动下一个 suite。就绪检查和原生运行时行为仍须协调者验证。
+
+当前执行后端**仅支持 macOS**：通过原生 `/usr/bin/sandbox-exec` 将 Playwright、Chromium、API/前端服务器及其子进程的 IP 网络限制为回环。profile 显式允许 Node/esbuild 子进程 IPC 所需的 AF_UNIX socket 创建，但具名 Unix socket 的 bind/connect 仍限于用户临时目录中的 tsx IPC 路径。执行/fork、文件访问和 Mach lookup 已继承 `allow default`，不额外授予宽泛权限。其他平台或原生沙箱不可用/被拒绝时失败关闭，不提供无限制回退、浏览器下载、shell 命令输入、git 写入、push 或 PR 操作。D3 中用户批准的 Codex 沙箱绕过，只适用于协调者在相同边界内启动的独立任务会话；运行器本身不会启用绕过。协调者接受该后端前，必须真实验证原生网络限制和 Chromium 启动。本票的普通沙箱实现者不启动它。
+
+版本 1 回执位于 `test-results/lanes/<N>/codex-browser-evidence.json`。包含 `worktree`（根目录、分支、HEAD、dirty 标记）、不含凭据的 `lane`（数据库名称、URL 和产物根目录）、`network`、`selection.changedPaths`、完整的 `selection.browser`、时间戳、总体 `status`、已执行测试标签中的 `themes`，以及按 quality、acceptance 排序的两个 `runs`。每次运行记录退出码、耗时毫秒数、JSON 报告路径、报告错误数量和测试列表；每个测试记录文件/标题/项目、标题标注的路由/主题、预期状态、原生结果、总耗时，以及每次尝试的状态/重试序号/耗时/产物路径。未标注路由保持 `[]`，未标注主题保持 `null`；这些是报告标签，不证明浏览器实际访问了哪些页面。内联附件引用原始 JSON 报告，不重复保存字节。原始 JSON、HTML 报告、截图和 trace 保留在既有 lane 目录，继续遵守既有产物脱敏和共享要求。
+
+导出的 `codexBrowserEvidenceSchema` 与 `--check <receipt>` 验证机器可读格式，并核对结果与状态。非零/中断启动、损坏或缺失报告、unexpected/flaky 结果、漏收所选 acceptance spec、未执行非 warmup 测试、整次运行全部跳过，均不能通过。启动前删除旧 JSON 结果，输出符号链接不能逃逸工作树；lane 本地锁拒绝同一工作树内并发启动运行器。强制终止后可能残留 `.codex-browser-lock`；协调者必须确认相关进程均已停止，才可移除该空目录。初始回执的 `spotCheck` 为 `null`；协调者真实检查后改为 `{ "reviewer": "<姓名>", "checkedAt": "<ISO 时间>", "outcome": "passed|failed", "notes": "<变更、路由/主题、已检查截图/交互>" }`，并重新运行 `--check`。待检查状态会明确输出；格式合法但运行失败或抽查失败时仍以非零退出。真实变更演示、协调者抽查记录、Playwright quality/acceptance、`ui:check` 和截图均须由真实运行时提供，不能用单元测试代替。
+
 ### 测试数据库隔离
 
 本地 quality 与 acceptance Playwright 配置支持 `WISEEFF_RUNTIME_LANE=<N>`（1–10000 的整数，不允许前导零）。提供 PostgreSQL `DATABASE_URL` 后，描述符选择 `<database>_lane_<N>`、API 端口 `20000 + 2*N`、前端端口 `20001 + 2*N`、`<OBJECT_STORE_ROOT>/lane-<N>`（默认 `.wiseeff-object-store/lane-<N>`），以及 `test-results/lanes/<N>/<quality|acceptance>` 和 `playwright-report/lanes/<N>/<quality|acceptance>`。这些设置会传递给浏览器 worker；嵌套 fixture 使用 `WISEEFF_TEST_DATABASE_PREFIX=pw_lane_<N>`。启动 Playwright 前，使用既有运行时准备流程创建并播种各 lane 数据库；描述符不会创建或重置数据库。并行运行必须使用不同 ID，quality 与 acceptance 同时运行也不例外；对象存储保持 local 模式。lane 不复用既有服务器，也不能与受控 Gate0 描述符或标志同时使用；既有受控运行时隔离保持不变。未选择 lane 时，现有默认值和覆盖变量不变。
