@@ -18,14 +18,16 @@ vi.mock("@copilotkit/react-core/v2", () => ({
   }
 }));
 
-vi.mock("./useXiaozeChatAutoScroll", () => ({
-  useXiaozeChatAutoScroll: () => ({
-    showScrollButton: false,
-    scrollToBottom: vi.fn()
-  })
-}));
-
 describe("XiaozeChatScrollView", () => {
+  it("switches auto-scroll modes without breaking hook order", () => {
+    const { rerender } = render(<XiaozeChatScrollView>messages</XiaozeChatScrollView>);
+    for (const autoScroll of ["none", "pin-to-send", "pin-to-bottom"] as const) {
+      rerender(<XiaozeChatScrollView autoScroll={autoScroll}>messages</XiaozeChatScrollView>);
+      expect(screen.getByText("messages")).toBeInTheDocument();
+      expect(screen.queryByTestId("copilot-scroll-view") !== null).toBe(autoScroll !== "pin-to-bottom");
+    }
+  });
+
   it("uses the custom auto-scroll container for pin-to-bottom mode", () => {
     render(
       <XiaozeChatScrollView>

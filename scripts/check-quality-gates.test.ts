@@ -6,7 +6,55 @@ import {
   requiredQualityGateSpecFiles
 } from "./check-quality-gates";
 
+const qualityConfigSource = readFileSync("playwright.quality.config.ts", "utf8");
+
 describe("M5.11 quality gates", () => {
+  it.each(["consistency", "compact", "visual", "a11y", "responsive"])(
+    "fails when %s is not registered in the quality config",
+    (project) => {
+      const result = evaluateQualityGateConfiguration({
+        packageJson: JSON.parse(readFileSync("package.json", "utf8")),
+        existingFiles: new Set(requiredQualityGateSpecFiles),
+        qualityConfigSource: `selectQualityProjects([${["consistency", "compact", "visual", "a11y", "responsive"]
+          .filter((name) => name !== project).map((name) => `{ name: "${name}" }`).join(",")}], qualityLane)`
+      });
+      expect(result).toMatchObject({ status: "failed", missingProjects: [project] });
+    }
+  );
+
+  it.each(["consistency", "compact", "visual", "a11y", "responsive"])(
+    "fails when the %s quality project configuration is missing",
+    (project) => {
+      const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+      delete packageJson.scripts[`acceptance:${project}`];
+      const result = evaluateQualityGateConfiguration({
+        qualityConfigSource,
+        packageJson,
+        existingFiles: new Set(requiredQualityGateSpecFiles)
+      });
+      expect(result.status).toBe("failed");
+      expect(result.missingScripts).toContain(`acceptance:${project}`);
+    }
+  );
+
+  it.each([
+    "e2e/quality/consistency.quality.spec.ts",
+    "e2e/quality/consistency.collector.spec.ts",
+    "e2e/quality/compact.quality.spec.ts",
+    "e2e/quality/visual.quality.spec.ts",
+    "e2e/quality/a11y.quality.spec.ts",
+    "e2e/quality/responsive.quality.spec.ts"
+  ])("fails when the quality spec %s is missing", (file) => {
+    const existingFiles = new Set<string>(requiredQualityGateSpecFiles);
+    existingFiles.delete(file);
+    const result = evaluateQualityGateConfiguration({
+      qualityConfigSource,
+      packageJson: JSON.parse(readFileSync("package.json", "utf8")),
+      existingFiles
+    });
+    expect(result).toMatchObject({ status: "failed", missingSpecFiles: [file] });
+  });
+
   it.each([
     "/debugging-admin/nodes",
     "/log-admin",
@@ -34,16 +82,21 @@ describe("M5.11 quality gates", () => {
     }
   });
 
-  it("requires the a11y, visual, and responsive npm scripts", () => {
+  it("requires every quality project's npm script", () => {
     expect(requiredQualityGateScripts).toEqual([
+      "acceptance:consistency",
+      "acceptance:compact",
       "acceptance:a11y",
       "acceptance:visual",
       "acceptance:responsive"
     ]);
 
     const result = evaluateQualityGateConfiguration({
+      qualityConfigSource,
       packageJson: {
         scripts: {
+          "acceptance:consistency": "playwright test --config playwright.quality.config.ts --project consistency",
+          "acceptance:compact": "playwright test --config playwright.quality.config.ts --project compact",
           "acceptance:a11y": "playwright test --config playwright.quality.config.ts --project a11y",
           "acceptance:visual": "playwright test --config playwright.quality.config.ts --project visual",
           "acceptance:responsive": "playwright test --config playwright.quality.config.ts --project responsive"
@@ -61,6 +114,7 @@ describe("M5.11 quality gates", () => {
 
   it("fails when any quality script or spec file is missing", () => {
     const result = evaluateQualityGateConfiguration({
+      qualityConfigSource,
       packageJson: {
         scripts: {
           "acceptance:a11y": "playwright test --config playwright.quality.config.ts --project a11y"
@@ -71,8 +125,11 @@ describe("M5.11 quality gates", () => {
 
     expect(result).toMatchObject({
       status: "failed",
-      missingScripts: ["acceptance:visual", "acceptance:responsive"],
+      missingScripts: ["acceptance:consistency", "acceptance:compact", "acceptance:visual", "acceptance:responsive"],
       missingSpecFiles: [
+        "e2e/quality/consistency.quality.spec.ts",
+        "e2e/quality/consistency.collector.spec.ts",
+        "e2e/quality/compact.quality.spec.ts",
         "e2e/quality/visual.quality.spec.ts",
         "e2e/quality/responsive.quality.spec.ts"
       ]
