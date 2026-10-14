@@ -631,9 +631,7 @@ jobs:
 
       - name: Migrate and seed database
         run: |
-          npm run db:migrate
-          npm run db:seed:all
-          npm run --if-present seed:quality:admin-lists
+          npm run seed:browser
           echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"
           if [ "$WISEEFF_QUALITY_LANE" = "visual" ]; then
             echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"
@@ -788,8 +786,7 @@ jobs:
 
       - name: Migrate and seed database
         run: |
-          npm run db:migrate
-          npm run db:seed:all
+          npm run seed:browser
 
       - name: Acceptance smoke
         run: npm run acceptance:smoke

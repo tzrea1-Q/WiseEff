@@ -17,5 +17,23 @@ services:
       timeout: 3s
       retries: 30
 
+  postgres-ci:
+    profiles: ["ci"]
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: wiseeff
+      POSTGRES_PASSWORD: wiseeff
+      POSTGRES_DB: wiseeff_ci
+    ports:
+      - "127.0.0.1:${WISEEFF_CI_POSTGRES_PORT:-55436}:5432"
+    volumes:
+      - wiseeff-postgres-ci-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wiseeff -d wiseeff_ci"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   wiseeff-postgres-data:
+  wiseeff-postgres-ci-data:

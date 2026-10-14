@@ -655,9 +655,9 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
         && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[1]?.with?.cache === "npm"
         && steps[2]?.run === "npm ci" && steps[3]?.run === "npx playwright install --with-deps chromium"
         && steps[4]?.shell === "bash" && steps[4]?.run?.includes("cp .env.example .env")
-        && steps[5]?.run?.includes("npm run db:migrate") && steps[6]?.run === "npm run acceptance:quality"
+        && steps[5]?.run?.includes("npm run seed:browser") && steps[6]?.run === "npm run acceptance:quality"
         && steps[7]?.run === `${shardCli} quality`, "Quality lanes must retain runtime preparation and run the strict partition-aware gate.");
-      check(steps[5]?.run === 'npm run db:migrate\nnpm run db:seed:all\nnpm run --if-present seed:quality:admin-lists\necho "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\nif [ "$WISEEFF_QUALITY_LANE" = "visual" ]; then\n  echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"\n  echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"\nfi\n',
+      check(steps[5]?.run === 'npm run seed:browser\necho "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"\nif [ "$WISEEFF_QUALITY_LANE" = "visual" ]; then\n  echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"\n  echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"\nfi\n',
         "Quality lanes must complete required registered seeds before setting skip-seed and restrict isolated visual fixture authorization to the visual lane.");
       check(steps.slice(0, expectedNames.length).every((step) => step.if === undefined && step["continue-on-error"] === undefined
         && step.env === undefined && !/\|\|\s*true|continue-on-error|set\s+\+e/.test(step.run ?? "")), "Quality prerequisites and gates must not be skipped, overridden or failure-suppressed.");
