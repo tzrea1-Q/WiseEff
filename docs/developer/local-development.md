@@ -13,6 +13,30 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 - Device Tree Compiler (`dtc`) for compiler checks and DTS publish validation. M1 seeding parses the committed project-primary boards without requiring a compiler run.
 - Optional: live Xiaoze LLM values (`XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`) if you are testing non-deterministic Agent behavior.
 
+## CI-parity browser database and tool caches
+
+The opt-in Compose `ci` profile uses `pgvector/pgvector:pg16`, the same image as CI, without replacing the default development database or its volume:
+
+```bash
+docker compose --profile ci up -d --wait postgres-ci
+export DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:55436/wiseeff_ci
+npm run seed:browser
+```
+
+Prepare `.env` and the pinned DTS toolchain as described below before seeding. `WISEEFF_CI_POSTGRES_PORT` overrides the profile's loopback port (default `55436`); update `DATABASE_URL` to match. The profile owns the separate `wiseeff-postgres-ci-data` volume. Stop only this service with `docker compose --profile ci stop postgres-ci`; do not remove unrelated databases or volumes. This persistent local fixture is not the disposable database required by managed-instance server tests.
+
+`seed:browser` is the shared local quality and CI quality/acceptance-smoke contract: `db:migrate` → `reset:quality-runtime` → `db:seed:all` → `seed:quality:admin-lists`. The all-seed command installs the published Catalog between M0 and M1. Any failure stops the sequence. Local quality setup invokes this command automatically; CI sets `WISEEFF_QUALITY_SKIP_SEED=true` only after it succeeds. Run it only against a dedicated local/test fixture: reset removes transient users, credentials, sessions and probe data. Never point it at production. Isolated visual-review fixtures remain separately authorized and seeded.
+
+For sandboxed checkouts whose `node_modules` is not writable, set a writable, checkout-specific cache directory:
+
+```bash
+export WISEEFF_TOOL_CACHE_DIR=/tmp/wiseeff-ui-t-1166-cache
+npm run typecheck
+npm run lint
+```
+
+This redirects both TypeScript build-info files for `npm run typecheck` and the TypeScript phase of `npm run build`, plus the ESLint cache for `npm run lint`. Generated TypeScript configs extend the checked-in configs with unchanged inputs/options except for build-info paths. Use a separate directory per checkout and do not share it between concurrent runs. Unset the variable to retain the existing `node_modules/.tmp` and `node_modules/.cache/eslint/` defaults. Direct `npx tsc`/`npx eslint` commands do not read this variable; use their native flags when bypassing the npm wrappers.
+
 ## First Setup
 
 ```bash

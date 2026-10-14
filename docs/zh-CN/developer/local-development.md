@@ -18,6 +18,30 @@
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - live 小泽在 `.env` 中使用 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`；离线开发/验收使用 `XIAOZE_DETERMINISTIC=true`，不会请求外部 provider。
 
+## 与 CI 一致的浏览器数据库与工具缓存
+
+可选 Compose `ci` profile 使用与 CI 相同的 `pgvector/pgvector:pg16`，不会替换默认开发数据库或其 volume：
+
+```bash
+docker compose --profile ci up -d --wait postgres-ci
+export DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:55436/wiseeff_ci
+npm run seed:browser
+```
+
+运行 seed 前，按英文版首次配置步骤准备 `.env` 和钉扎 DTS 工具链。`WISEEFF_CI_POSTGRES_PORT` 可覆盖 loopback 端口（默认 `55436`），须同步调整 `DATABASE_URL`。此 profile 使用独立的 `wiseeff-postgres-ci-data` volume；停止时仅运行 `docker compose --profile ci stop postgres-ci`，不要删除其他数据库或 volume。这个持久化本地夹具不是 managed-instance 服务端测试要求的临时数据库。
+
+本地 quality 与 CI quality/acceptance-smoke 共用 `seed:browser` 契约：`db:migrate` → `reset:quality-runtime` → `db:seed:all` → `seed:quality:admin-lists`。全量 seed 在 M0 与 M1 之间安装已发布 Catalog；任何步骤失败都停止后续操作。本地 quality setup 自动调用此命令；CI 仅在成功后设置 `WISEEFF_QUALITY_SKIP_SEED=true`。只可用于专用本地/测试夹具：reset 会删除临时用户、凭据、会话与 probe 数据，禁止指向生产数据库。隔离 visual-review 夹具仍须单独授权与 seed。
+
+若沙箱 checkout 的 `node_modules` 不可写，设置此 checkout 专用的可写缓存目录：
+
+```bash
+export WISEEFF_TOOL_CACHE_DIR=/tmp/wiseeff-ui-t-1166-cache
+npm run typecheck
+npm run lint
+```
+
+此变量重定向 `npm run typecheck` 和 `npm run build` 的 TypeScript 阶段产生的两个 build-info 文件，以及 `npm run lint` 的 ESLint 缓存。生成的 TypeScript 配置继承仓库配置，仅改变 build-info 路径，保留原有输入与选项。每个 checkout 使用独立目录，不要并发共用。取消设置后仍使用 `node_modules/.tmp` 与 `node_modules/.cache/eslint/` 默认路径。直接运行 `npx tsc`/`npx eslint` 不读取此变量；绕过 npm wrapper 时使用工具自身的参数。
+
 ## dtc 与 M1 全量种子
 
 需要编译检查或 DTS 发布校验时，安装并检查 Device Tree Compiler；M1 seed 自身对已提交的项目主 DTS 板做解析完整性检查，不要求运行编译器：
