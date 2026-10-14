@@ -125,6 +125,14 @@ test.describe("M5.11 visual quality gate", () => {
       await waitForFontsAndNextPaint(page);
 
       const masks = stableMasks(page, route.path);
+      if (route.path === "/parameter-admin/projects" || route.path === "/feedback-admin") {
+        const mask = masks.at(-1)!;
+        await expect(mask.first()).toBeVisible();
+        await expect(mask).toHaveCount(route.path === "/parameter-admin/projects" ? 3 : 1);
+        for (const cell of await mask.all()) {
+          await expect(cell).toBeVisible();
+        }
+      }
       if (route.path === "/parameter-review") {
         expect(masks.slice(-6)).toHaveLength(6);
         for (const mask of masks.slice(-6)) {

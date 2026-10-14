@@ -238,7 +238,7 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
           items: [{ id: "progress", label: "查看进展", onSelect: () => setSelectedId(feedback.id) }]
         })}
           filterBar={
-            <div className="flex flex-wrap items-center gap-2">
+            <>
               <select
                 aria-label="状态筛选"
                 value={statusFilter}
@@ -286,7 +286,7 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
               <span className="ml-auto text-xs text-muted-foreground">
                 显示 {filteredRows.length} / {rows.length} 条
               </span>
-            </div>
+            </>
           }
         emptyState={{ message: hasActiveFilters ? "未匹配任何反馈" : "暂无产品反馈",
           actionLabel: hasActiveFilters ? "重置筛选" : "刷新", onAction: hasActiveFilters ? resetFilters : () => { void loadFeedback(); } }}

@@ -244,6 +244,14 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     masks.push(page.locator(".dts-parameter-workbench-table, .dts-workbench-list"));
   }
 
+  if (routePath === "/parameter-admin/projects") {
+    masks.push(page.getByRole("table", { name: "项目管理列表" }).locator('td[data-label="最近更新"]'));
+  }
+
+  if (routePath === "/feedback-admin") {
+    masks.push(page.getByRole("table", { name: "产品反馈记录" }).locator('td[data-label="创建时间"]'));
+  }
+
   if (routePath === "/parameter-admin") {
     // Published vendor catalog fills the navigator/list; the linux baseline
     // was captured against an unpublished Catalog. Mask the data-dependent

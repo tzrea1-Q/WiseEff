@@ -3,6 +3,20 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("quality visual masks", () => {
+  it("masks seeded admin-list timestamps and requires populated masks before capture", () => {
+    const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
+    const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");
+
+    for (const [route, label] of [["/parameter-admin/projects", "最近更新"], ["/feedback-admin", "创建时间"]]) {
+      expect(helpers).toContain(`routePath === "${route}"`);
+      expect(helpers.match(new RegExp(`td\\[data-label="${label}"\\]`, "g"))).toHaveLength(1);
+    }
+    expect(helpers).toContain('name: "产品反馈记录"');
+    expect(visualSpec).toContain('route.path === "/feedback-admin"');
+    expect(visualSpec).toContain("await expect(mask.first()).toBeVisible()");
+    expect(visualSpec).toContain("await expect(cell).toBeVisible()");
+  });
+
   it("keeps Xiaoze content observable and settles the popup closed on stable routes", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
     const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");
