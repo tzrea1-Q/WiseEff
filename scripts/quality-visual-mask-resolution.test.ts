@@ -26,10 +26,20 @@ function routePage(counts: Record<string, number>, failedLog = false) {
   } as unknown as Page;
 }
 
-it("declares the current Catalog workbench body, not its retired workspace selector", async () => {
-  const counts = { ".parameter-catalog__anchor": 1, ".parameter-catalog .navigator-workbench__body": 1 };
-  expect((await stableMasks(routePage(counts), "/parameter-admin")).map(String)).toEqual(Object.keys(counts));
-  await expect(stableMasks(routePage({ ...counts, ".parameter-catalog .navigator-workbench__body": 0 }), "/parameter-admin"))
+it("masks only the Catalog anchor and optional banner, leaving the populated workbench compared", async () => {
+  const counts = {
+    ".parameter-catalog__anchor": 1,
+    ".parameter-catalog__banner": 1,
+    ".parameter-catalog .navigator-workbench__body": 1,
+    ".parameter-catalog__workspace": 1,
+  };
+  expect((await stableMasks(routePage(counts), "/parameter-admin")).map(String)).toEqual([
+    ".parameter-catalog__banner",
+    ".parameter-catalog__anchor",
+  ]);
+  expect((await stableMasks(routePage({ ...counts, ".parameter-catalog__banner": 0 }), "/parameter-admin")).map(String))
+    .toEqual([".parameter-catalog__anchor"]);
+  await expect(stableMasks(routePage({ ...counts, ".parameter-catalog__anchor": 0 }), "/parameter-admin"))
     .rejects.toThrow("Visual mask did not resolve");
 });
 

@@ -223,12 +223,9 @@ export async function stableMasks(page: Page, routePath = ""): Promise<Locator[]
   }
 
   if (routePath === "/parameter-admin") {
-    // Published vendor catalog fills the navigator/list; the linux baseline
-    // was captured against an unpublished Catalog. Mask the data-dependent
-    // body so chrome (tabs, search) stays the gate.
+    // Only the anchor and optional banner are masked; the populated workbench remains visually compared.
     masks.push(page.locator(".parameter-catalog__anchor"));
     optionalMasks.push(page.locator(".parameter-catalog__banner"));
-    masks.push(page.locator(".parameter-catalog .navigator-workbench__body"));
   }
 
   if (routePath === "/parameter-home") {
