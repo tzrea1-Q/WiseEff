@@ -63,6 +63,7 @@ describe("XiaozePopupView", () => {
 
   it("keeps the popup open when the page path changes", () => {
     const { rerender } = render(<XiaozePopupView />);
+    expect(screen.getByTestId("xiaoze-popup-readiness")).toHaveAttribute("data-state", "closed");
     setModalOpen.mockClear();
     isModalOpen = true;
     pagePath = "/debugging";
@@ -94,6 +95,9 @@ describe("XiaozePopupView", () => {
     setModalOpen.mockClear();
 
     const activeDialog = screen.getByRole("dialog", { name: "小泽" });
+    expect(screen.getByTestId("xiaoze-popup-readiness")).toHaveAttribute("data-state", "opening");
+    act(() => vi.advanceTimersByTime(32));
+    expect(screen.getByTestId("xiaoze-popup-readiness")).toHaveAttribute("data-state", "open");
     activeDialog.focus();
     expect(activeDialog).toHaveFocus();
 
@@ -102,6 +106,7 @@ describe("XiaozePopupView", () => {
 
     const leavingLayer = screen.getByTestId("xiaoze-popup-layer");
     expect(leavingLayer).toHaveAttribute("data-motion", "leaving");
+    expect(screen.getByTestId("xiaoze-popup-readiness")).toHaveAttribute("data-state", "closing");
     expect(screen.queryByRole("dialog", { name: "小泽" })).not.toBeInTheDocument();
     expect(screen.getByTestId("copilot-popup")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByTestId("copilot-popup")).toHaveAttribute("inert");
@@ -119,6 +124,7 @@ describe("XiaozePopupView", () => {
       vi.advanceTimersByTime(1);
     });
     expect(screen.queryByTestId("xiaoze-popup-layer")).not.toBeInTheDocument();
+    expect(screen.getByTestId("xiaoze-popup-readiness")).toHaveAttribute("data-state", "closed");
 
     vi.useRealTimers();
   });

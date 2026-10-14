@@ -97,17 +97,17 @@ test.describe("M5.11 visual quality gate", () => {
       if (route.path === "/parameter-review" && allowVisualReviewFixture) {
         await signInBrowserAsRole(page, "software-committer", route.path);
       } else {
-        await page.goto(route.path);
+        await test.step("quality:navigation", () => page.goto(route.path));
       }
-      await expectUsablePage(page);
-      await settleQualityRoute(page, route.path);
-      await closeXiaozePopupIfOpen(page);
-      await settleXiaozePopupClosed(page);
-      await dismissXiaozeToggleHintIfPresent(page);
+      await test.step("quality:readiness", () => expectUsablePage(page));
+      await test.step("quality:readiness", () => settleQualityRoute(page, route.path));
+      await test.step("quality:readiness", () => closeXiaozePopupIfOpen(page));
+      await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
+      await test.step("quality:readiness", () => dismissXiaozeToggleHintIfPresent(page));
       if (route.path === "/") {
         await dismissCopilotDevOverlays(page);
       }
-      await settleAppToasts(page);
+      await test.step("quality:readiness", () => settleAppToasts(page));
       if (route.path === "/parameters") {
         const moduleTree = page.getByRole("tree", { name: "业务模块树" });
         await expect(moduleTree.getByRole("treeitem").first()).toBeVisible();
@@ -122,7 +122,7 @@ test.describe("M5.11 visual quality gate", () => {
         await expect(page.getByRole("table", { name: "项目管理列表" }).getByRole("row").filter({ hasText: "aurora" })).toBeVisible();
       }
       await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
-      await waitForFontsAndNextPaint(page);
+      await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
 
       const masks = stableMasks(page, route.path);
       if (route.path === "/parameter-admin/projects" || route.path === "/feedback-admin") {
@@ -140,18 +140,18 @@ test.describe("M5.11 visual quality gate", () => {
           await expect(mask).toBeVisible();
         }
       }
-      await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}${theme === "dark" ? "-dark" : ""}.png`, {
+      await test.step("quality:capture", () => expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}${theme === "dark" ? "-dark" : ""}.png`, {
         mask: masks
-      });
+      }));
     });
   }
 
   test("keeps stable visual baseline for the Xiaoze popup", async ({ page }, testInfo) => {
     annotateFailureRoute(testInfo, VISUAL_XIAOZE_FAILURE_ROUTE);
     const popup = await openXiaozePopup(page);
-    await settleAppToasts(page);
+    await test.step("quality:readiness", () => settleAppToasts(page));
 
-    await expect(popup).toHaveScreenshot("xiaoze-popup-open.png");
+    await test.step("quality:capture", () => { return expect(popup).toHaveScreenshot("xiaoze-popup-open.png"); });
 
     const dragHandle = page.getByRole("button", { name: "拖动小泽窗口" });
     const handleBox = await dragHandle.boundingBox();
@@ -163,7 +163,7 @@ test.describe("M5.11 visual quality gate", () => {
     await page.mouse.move(handleBox.x - 180, handleBox.y + 100, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByRole("button", { name: "恢复小泽默认位置和大小" })).toBeVisible();
-    await expect(popup).toHaveScreenshot("xiaoze-popup-moved.png", { maxDiffPixelRatio: 0.05 });
+    await test.step("quality:capture", () => expect(popup).toHaveScreenshot("xiaoze-popup-moved.png", { maxDiffPixelRatio: 0.05 }));
   });
 });
 
@@ -182,11 +182,11 @@ test.describe("M5.11 interaction-state visual gate", () => {
   });
 
   async function openUserPermissions(page: Page) {
-    await page.goto("/organization/members");
-    await expectUsablePage(page);
-    await prepareInteractionSurface(page);
+    await test.step("quality:navigation", () => page.goto("/organization/members"));
+    await test.step("quality:readiness", () => expectUsablePage(page));
+    await test.step("quality:readiness", () => prepareInteractionSurface(page));
     await expect(page.getByRole("table", { name: "平台用户" })).toBeVisible({ timeout: 20_000 });
-    await settleAppToasts(page);
+    await test.step("quality:readiness", () => settleAppToasts(page));
   }
 
   async function expectProductionFirstUser(page: Page) {
@@ -206,9 +206,9 @@ test.describe("M5.11 interaction-state visual gate", () => {
 
     const toolbar = page.locator(".user-permissions-toolbar");
     await expect(toolbar.getByRole("button", { name: "添加用户" })).toBeVisible();
-    await expect(toolbar).toHaveScreenshot("state-button-primary-hover.png", {
+    await test.step("quality:capture", () => expect(toolbar).toHaveScreenshot("state-button-primary-hover.png", {
       mask: stableMasks(page)
-    });
+    }));
   });
 
   test("captures the primary button keyboard focus-visible state", async ({ page }, testInfo) => {
@@ -220,9 +220,9 @@ test.describe("M5.11 interaction-state visual gate", () => {
 
     const toolbar = page.locator(".user-permissions-toolbar");
     await expect(toolbar.getByRole("button", { name: "添加用户" })).toBeFocused();
-    await expect(toolbar).toHaveScreenshot("state-button-primary-focus-visible.png", {
+    await test.step("quality:capture", () => expect(toolbar).toHaveScreenshot("state-button-primary-focus-visible.png", {
       mask: stableMasks(page)
-    });
+    }));
   });
 
   test("captures the ModalDialog open state with backdrop", async ({ page }, testInfo) => {
@@ -235,12 +235,12 @@ test.describe("M5.11 interaction-state visual gate", () => {
     // Full-page shot includes sidebar/title chrome; wait out the API sync banner
     // (not aria-live, so stableMasks will not cover it) and CJK font swap.
     await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout: 20_000 });
-    await settleAppToasts(page);
-    await waitForFontsAndNextPaint(page);
+    await test.step("quality:readiness", () => settleAppToasts(page));
+    await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
 
-    await expect(page).toHaveScreenshot("state-dialog-modal-open.png", {
+    await test.step("quality:capture", () => expect(page).toHaveScreenshot("state-dialog-modal-open.png", {
       mask: stableMasks(page)
-    });
+    }));
   });
 
   test("captures the data-table row hover state", async ({ page }, testInfo) => {
@@ -253,9 +253,9 @@ test.describe("M5.11 interaction-state visual gate", () => {
     // (mouseenter on the role control) stays closed.
     await firstRow.locator("td").first().hover();
 
-    await expect(firstRow).toHaveScreenshot("state-table-row-hover.png", {
+    await test.step("quality:capture", () => expect(firstRow).toHaveScreenshot("state-table-row-hover.png", {
       mask: stableMasks(page)
-    });
+    }));
   });
 
   test("captures the data-table sort header keyboard focus state", async ({ page }, testInfo) => {
@@ -268,8 +268,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     await focusViaKeyboard(page, sortButton);
     await expect(table.locator("thead th").first()).toHaveAttribute("aria-sort", "none");
 
-    await expect(table.locator("thead tr")).toHaveScreenshot("state-table-sort-header-focus.png", {
+    await test.step("quality:capture", () => expect(table.locator("thead tr")).toHaveScreenshot("state-table-sort-header-focus.png", {
       mask: stableMasks(page)
-    });
+    }));
   });
 });

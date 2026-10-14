@@ -25,12 +25,17 @@ describe("XiaozeToggleHint", () => {
     render(<XiaozeToggleHint visible onOpen={onOpen} />);
 
     expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("xiaoze-toggle-hint-readiness")).toHaveAttribute("data-state", "pending");
 
     act(() => {
-      vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS);
+      vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS - 1);
     });
+    expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("xiaoze-toggle-hint-readiness")).toHaveAttribute("data-state", "pending");
+    act(() => vi.advanceTimersByTime(1));
 
     expect(screen.getByTestId("xiaoze-toggle-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("xiaoze-toggle-hint-readiness")).toHaveAttribute("data-state", "revealed");
 
     fireEvent.click(screen.getByRole("button", { name: "有问题？点这里问小泽" }));
     expect(onOpen).toHaveBeenCalledTimes(1);
@@ -56,12 +61,15 @@ describe("XiaozeToggleHint", () => {
     fireEvent.click(screen.getByLabelText("不再提示"));
     expect(readXiaozeToggleHintDismissed()).toBe(true);
     expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("xiaoze-toggle-hint-readiness")).toHaveAttribute("data-state", "suppressed");
   });
 
   it("does not reappear on later page visits in the same page load", () => {
     markXiaozeToggleHintShown();
 
     render(<XiaozeToggleHint visible onOpen={vi.fn()} />);
+
+    expect(screen.getByTestId("xiaoze-toggle-hint-readiness")).toHaveAttribute("data-state", "suppressed");
 
     act(() => {
       vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS + 100);

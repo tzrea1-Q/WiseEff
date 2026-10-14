@@ -40,6 +40,12 @@ WISEEFF_QUALITY_VIEWPORT_PROFILE=extended npm run acceptance:responsive
 
 The profiles are `desktop`, `compact`, and `extended`; an invalid value fails rather than silently reducing coverage. Test titles identify the actual viewport. A default PC run does not prove tablet/mobile compatibility. Specialized viewport tests outside this shared responsive suite are not removed or relabeled by the profile.
 
+## Quality phase timings and optional UI readiness
+
+Every quality test attempt includes a `quality-phase-timings` JSON attachment in the existing Playwright JSON/HTML results. Named `quality:navigation`, `quality:readiness`, `quality:axe`, and `quality:capture` steps record durations in milliseconds, per-phase totals, failures, retry number, and test duration. Capture includes screenshots and consistency measurements. Nested phase steps count only once; phases not exercised have zero totals. These operation timings are not lane wall time; compare before/after CI job durations separately.
+
+The hidden `xiaoze-popup-readiness` marker reports `closed` only after the popup layer unmounts; the harness also asserts that the layer is hidden. The `xiaoze-toggle-hint-readiness` marker reports `pending`, `revealed`, or `suppressed`. First-use checks still wait for the real 1.4-second reveal, while dismissed/already-shown hints settle immediately without an absence timeout. `revealed` means rendered, not necessarily CSS-visible (dialogs can hide it); the harness dismisses visible hints and retains the hidden-state assertion. Geometry, axe rules, screenshot assertions, masks, and baselines remain unchanged.
+
 ## Native checks and evidence
 
 Run focused component/behavior tests, `npm run build` for TypeScript/Vite/routing/shared-type changes, `npm run lint` for affected frontend code, and `npm run ui:check` for styling, tokens, dialogs, motion, or visible copy. For interaction changes, review relevant acceptance specs, requirement IDs, operation IDs, and operation-evidence impact under `docs/PLANS.md`.

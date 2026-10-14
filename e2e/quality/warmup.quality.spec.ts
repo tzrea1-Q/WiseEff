@@ -3,5 +3,5 @@ import { QUALITY_WARMUP_ROUTES, warmPlaywrightFrontend } from "../shared/runtime
 
 test("warm vite entry graph before quality specs", async ({ page }) => {
   test.setTimeout(120_000);
-  await warmPlaywrightFrontend(page, QUALITY_WARMUP_ROUTES);
+  await test.step("quality:readiness", () => warmPlaywrightFrontend(page, QUALITY_WARMUP_ROUTES));
 });

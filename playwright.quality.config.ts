@@ -28,6 +28,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: [
+    ["./e2e/quality/phase-reporter.ts"],
     ["list"],
     ["json", { outputFile: `${outputDir}/results.json` }],
     ["html", { outputFolder: reportDir, open: "never" }]
