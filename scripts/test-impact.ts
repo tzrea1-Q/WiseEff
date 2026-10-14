@@ -4,6 +4,8 @@ import { dirname, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { preProcessFile } from "typescript";
+import { discoverBrowserInventory, type BrowserInventory } from "./browser-navigation";
+import { qualityRoutePaths, routeOwnership } from "../e2e/quality/route-ownership";
 
 const suiteConfigs = {
   frontend: "vite.config.ts",
@@ -97,6 +99,42 @@ function quote(value: string): string {
   return /^[\w./-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+export type { BrowserInventory } from "./browser-navigation";
+
+export function selectBrowserImpact(paths: string[], inventory?: BrowserInventory, discoveryReasons: string[] = []) {
+  if (!paths.length) throw new Error("Empty changed-file selection");
+  const changedPaths = [...new Set(paths.map(normalizePath))].filter((file) => !gateOnlyPath(file));
+  if (!changedPaths.length) return { fullFallback: false, reasons: [], qualityRoutes: [], qualityGrep: null, acceptanceSpecs: [], commands: [] };
+  inventory ??= discoverBrowserInventory(repositoryRoot);
+  if (!Object.keys(inventory).length) throw new Error("Empty browser test inventory");
+  const reasons = [...discoveryReasons];
+  const routes = new Set<string>();
+  for (const file of changedPaths) {
+    const owners = Object.entries(routeOwnership).filter(([owner]) => owner.endsWith("/") ? file.startsWith(owner) : file === owner);
+    if (sharedPath(file)) reasons.push(`Shared browser change: ${file}`);
+    else if (!owners.length) reasons.push(`Unmapped browser change: ${file}`);
+    for (const [, ownedRoutes] of owners) for (const route of ownedRoutes) routes.add(route);
+  }
+  const fullFallback = reasons.length > 0;
+  const qualityRoutes = fullFallback ? [...qualityRoutePaths] : [...routes].sort();
+  if (!qualityRoutes.length) throw new Error("Empty quality route selection");
+  const acceptanceSpecs = Object.keys(inventory).filter((spec) => fullFallback || inventory[spec] === null
+    || inventory[spec]!.some((route) => qualityRoutes.some((selected) => route.split(/[?#]/)[0] === selected
+      || route.startsWith(`${selected}/`)))).sort();
+  if (!acceptanceSpecs.length) throw new Error("Empty acceptance spec selection");
+  const escape = (route: string) => route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const excluded = qualityRoutePaths.filter((route) => !qualityRoutes.includes(route));
+  const qualityGrep = fullFallback || !excluded.length ? ".*"
+    : `(?:${qualityRoutes.map(escape).join("|")})(?=[\\s?:]|$)|^(?!.*(?:${excluded.map(escape).join("|")})(?=[\\s?:]|$)).*$`;
+  return {
+    fullFallback, reasons, qualityRoutes, qualityGrep, acceptanceSpecs,
+    commands: [
+      `npx playwright test --config playwright.quality.config.ts --grep ${quote(qualityGrep)}`,
+      `npx playwright test --config playwright.acceptance.config.ts ${acceptanceSpecs.map(quote).join(" ")}`,
+    ],
+  };
+}
+
 export function selectVitestImpact(paths: string[], inventory: TestInventory, discoveryReasons: string[] = []) {
   if (!paths.length) throw new Error("Empty changed-file selection");
   const changedPaths = [...new Set(paths.map(normalizePath))].sort();
@@ -141,7 +179,7 @@ export async function createVitestImpact(paths: string[], root = process.cwd()) 
     scripts: { files: [], related: {} },
     bridge: { files: [], related: {} },
   };
-  if (!testPaths.length) return selectVitestImpact(changedPaths, inventory);
+  if (!testPaths.length) return { ...selectVitestImpact(changedPaths, inventory), browser: selectBrowserImpact(changedPaths) };
   const reasons = testPaths.filter((file) => !existsSync(resolve(root, file))).map((file) => `Missing or deleted change: ${file}`);
   const skipRelated = reasons.length > 0 || changedPaths.some(sharedPath);
   const { createVitest } = await import("vitest/node");
@@ -166,7 +204,9 @@ export async function createVitestImpact(paths: string[], root = process.cwd()) 
       await vitest.close();
     }
   }
-  return selectVitestImpact(changedPaths, inventory, reasons);
+  const selection = selectVitestImpact(changedPaths, inventory, reasons);
+  const browser = selectBrowserImpact(changedPaths, discoverBrowserInventory(root), reasons);
+  return { ...selection, browser, commands: [...selection.commands, ...browser.commands] };
 }
 
 async function cli() {

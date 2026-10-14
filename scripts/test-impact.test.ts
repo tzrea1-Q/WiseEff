@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createVitestImpact, gateImplementationFiles, selectVitestImpact, type TestInventory } from "./test-impact";
+import { discoverBrowserInventory } from "./browser-navigation";
 
 const inventory: TestInventory = {
   frontend: { files: ["src/features/example/page.test.tsx", "src/components/ui/view-switch.styles.test.ts"], related: { "src/features/example/page.tsx": ["src/features/example/page.test.tsx"] } },
@@ -196,6 +197,7 @@ describe("native Vitest discovery", () => {
       ["vitest.scripts.config.ts", "scripts/**/*.test.ts"], ["vitest.bridge.config.ts", "packages/**/*.test.ts"],
     ]) write(config, `export default { test: { include: [${JSON.stringify(include)}], globalSetup: ['./never-run.ts'] } };`);
     write("never-run.ts", "throw new Error('Global setup must not run');");
+    write("e2e/acceptance/example.spec.ts", "page.goto('/organization');");
     write("src/shared/value.ts", "export const value = 42;");
     write("src/features/example/page.ts", "export { value } from '../../shared/value';");
     for (const [file, source] of [
@@ -259,6 +261,7 @@ describe("native Vitest discovery", () => {
     expect(normal.status, normal.stderr).toBe(0);
     const selection = JSON.parse(normal.stdout);
     expect(selection.suites.map((suite: { name: string }) => suite.name)).toEqual(["frontend", "server", "scripts", "bridge"]);
+    expect(selection.browser).toMatchObject({ fullFallback: true, qualityGrep: ".*", acceptanceSpecs: ["e2e/acceptance/example.spec.ts"] });
     for (const command of selection.commands) expect(normal.stderr).toContain(command);
     const jsonOnly = invoke("--json", "src/shared/value.ts");
     expect(jsonOnly.status, jsonOnly.stderr).toBe(0);
@@ -312,6 +315,46 @@ describe("native Vitest discovery", () => {
     expect(selection.fullFallback).toBe(true);
     expect(selection.reasons.join("\n")).toContain("Related discovery failed for frontend");
     expect(selection.suites.find((suite) => suite.name === "frontend")?.files).toContain("src/unrelated.test.ts");
-    expect(selection.commands).toHaveLength(4);
+    expect(selection.commands).toHaveLength(6);
+  });
+
+  it("discovers visited routes in a differently named spec and its called helpers", async () => {
+    mkdirSync(join(root, "src/features/log-analysis"), { recursive: true });
+    writeFileSync(join(root, "src/features/log-analysis/LogsPage.tsx"), "export const page = true;");
+    writeFileSync(join(root, "e2e/acceptance/visit.ts"), "export const visit = (page) => page.goto('/logs');");
+    writeFileSync(join(root, "e2e/acceptance/renamed.spec.ts"), "import { visit } from './visit'; page.goto('/knowledge'); visit(page);");
+
+    const selection = await createVitestImpact(["src/features/log-analysis/LogsPage.tsx"], root);
+    expect(selection.browser.fullFallback).toBe(false);
+    expect(selection.browser.acceptanceSpecs).toEqual(["e2e/acceptance/renamed.spec.ts"]);
+    expect(selection.commands).toContain(selection.browser.commands[0]);
+    expect(selection.commands).toContain(selection.browser.commands[1]);
+  });
+
+  it("resolves runtime templates, helper arguments/defaults, constants and registry nav labels without uncalled helpers", () => {
+    writeFileSync(join(root, "src/appConfig.ts"), `export const navigationItems = [{ path: '/parameter-home', label: '我的工作台' }, { path: '/logs', label: '智能分析' }]; export const utilityItems = [];`);
+    writeFileSync(join(root, "e2e/acceptance/routes.ts"), "export const HOME = '/parameter-home'; export const ORGANIZATION = '/organization';");
+    writeFileSync(join(root, "e2e/acceptance/navigate.ts"), `import { HOME } from './routes';
+      export function navigate(page, route = HOME) { return page.goto(route); }
+      export function signIn(page, route = HOME) { return navigate(page, route); }
+      export function unused(page) { return page.goto('/logs'); }`);
+    writeFileSync(join(root, "e2e/acceptance/default.spec.ts"), "import { signIn as login } from './navigate'; login(page);");
+    writeFileSync(join(root, "e2e/acceptance/argument.spec.ts"), "import { navigate } from './navigate'; import { ORGANIZATION as target } from './routes'; navigate(page, target);");
+    writeFileSync(join(root, "e2e/acceptance/template.spec.ts"), "page.goto(`${runtime.frontendUrl}/logs?logId=${id}`);");
+    writeFileSync(join(root, "e2e/acceptance/nav.spec.ts"), `const button = page.getByRole('button', { name: '我的工作台' }); button.click(); page.getByRole('link', { name: /^智能分析$/ }).click();`);
+    const discovered = discoverBrowserInventory(root);
+    expect(discovered["e2e/acceptance/default.spec.ts"]).toEqual(["/parameter-home"]);
+    expect(discovered["e2e/acceptance/argument.spec.ts"]).toEqual(["/organization"]);
+    expect(discovered["e2e/acceptance/template.spec.ts"]).toEqual(["/logs"]);
+    expect(discovered["e2e/acceptance/nav.spec.ts"]).toEqual(["/logs", "/parameter-home"]);
+  });
+
+  it("rejects new unresolved navigation unless explicitly allow-listed with a reason", () => {
+    const spec = "e2e/acceptance/dynamic.spec.ts";
+    writeFileSync(join(root, spec), "page.goto(destination);");
+    expect(() => discoverBrowserInventory(root)).toThrow(/dynamic.spec.ts.*destination/s);
+    expect(discoverBrowserInventory(root, { [spec]: "Destination is supplied by an external redirect service" })[spec]).toBeNull();
+    expect(() => discoverBrowserInventory(root, { [spec]: "" })).toThrow(/explicit reasoned/);
+    expect(() => discoverBrowserInventory(root, { [spec]: "Reason", "absent.spec.ts": "Unused" })).toThrow(/stale/i);
   });
 });

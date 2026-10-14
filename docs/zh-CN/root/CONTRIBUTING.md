@@ -44,13 +44,15 @@ npm run test:impact -- src/DebuggingPage.tsx
 npm run --silent test:impact -- --base origin/main --json > /tmp/vitest-impact.json
 ```
 
-传入仓库相对路径的变更文件，**或** `--base <commit>`。基线提交与当前工作树比较，包含已提交、已暂存、未暂存和未跟踪变更；重命名包含新旧路径。可运行的测试套件和静态门禁命令写入 stderr，JSON（`changedPaths`、`fullFallback`、`reasons`、`suites`、`gates`、`commands`）写入 stdout；`--json` 不再额外列出命令。通过管道读取 JSON 时使用 npm 的 `--silent`。
+传入仓库相对路径的变更文件，**或** `--base <commit>`。基线提交与当前工作树比较，包含已提交、已暂存、未暂存和未跟踪变更；重命名包含新旧路径。可运行的测试套件、静态门禁和浏览器命令写入 stderr，JSON（`changedPaths`、`fullFallback`、`reasons`、`suites`、`gates`、`browser`、`commands`）写入 stdout；`--json` 不再额外列出命令。通过管道读取 JSON 时使用 npm 的 `--silent`。
 
 选择器复用 frontend、server、scripts、Bridge 配置下 Vitest 的传递依赖关联测试发现能力。普通 scripts 文件只选择关联测试，不扩大到整套 scripts 测试；ops 和 packages 变更还会选中完整所属测试套件。局部组件或功能 CSS 变更选中全部 frontend 和 scripts 测试，避免遗漏读取文件的样式守卫。共享外壳/UI 基础组件、全局样式、明确列出的 CI/回执/分片/种子契约/运行时测试工具文件、配置、缺失/删除或未映射代码，以及依赖发现失败，均回退到四套完整测试。
 
 `docs/` 下或仓库根目录的 Markdown 只选择 `docs:check`，不加载 Vitest；运行手册 Markdown 还选择 `docs:runbook-commands:check`，复用现有运行手册命令校验器。OpenAPI/DTO schema 变更选择 `contract:check`，前端 CSS/TSX 选择 `ui:check`，工作流/CI 脚本选择 `acceptance:ci`。门禁实现文件变更还会在关联测试之外选中对应门禁：归属由 package 脚本命令、工具代码的相对导入，以及同一命名空间或共享这些工具模块的生成器推导。生成的 OpenAPI 工件只选择契约门禁。门禁名称在 `gates` 中去重，其可运行命令追加到 `commands`。
 
 只有 `suites` 和 `gates` 同时为空才算空选择；仅选择文档门禁是有效结果。空变更和必需完整测试套件清单缺失仍会报错。执行输出命令前检查 `fullFallback` 并遵守任务验证预算；该本地工具不替代 PR CI、浏览器验收或任何现有门禁。
+
+浏览器选择复用质量路由注册表旁的 `e2e/quality/route-ownership.ts`。`browser` 独立输出 `fullFallback`、`reasons`、`qualityRoutes`、`qualityGrep`、`acceptanceSpecs` 和 `commands`；即使 Vitest 找到关联测试，浏览器归属未知时仍回退到完整浏览器覆盖。质量 grep 保留预热、未标明路由的交互检查，以及提到任一选中路由的跨路由测试。验收 spec 根据已有操作矩阵中的访问路由，加上静态导航证据选择，不按文件名选择。发现过程解析路由字面量、运行时 URL 模板、导入的常量、实际调用辅助函数的参数/默认值，以及 `src/appConfig.ts` 中可见的导航标签；未调用的辅助函数不贡献路由。只有真正无法解析的导航才保守保留，并须列入 `scripts/browser-navigation.ts` 的 `unresolvedBrowserNavigation` 清单并注明原因（当前为空，最多五个 spec）。新增无法解析的导航、失效条目或缺少原因时直接报错，避免静默扩大选择。独立路由变更不必运行没有导航的纯 API spec。例如 `/logs` 变更会选中知识蒸馏和使用运行时 URL 的 log904 关联参数流程。共享变更和 Vitest 发现失败选择完整浏览器覆盖；仅文档/生成 OpenAPI 变更不输出浏览器命令。浏览器清单为空或代码选择为空时直接报错，不输出虚假的空操作成功。这些输出只提供可运行的建议选择，不修改 CI 门禁，也不执行 Playwright。
 
 ### 测试数据库隔离
 
