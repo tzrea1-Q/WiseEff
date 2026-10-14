@@ -124,7 +124,7 @@ test.describe("M5.11 visual quality gate", () => {
       await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
       await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
 
-      const masks = stableMasks(page, route.path);
+      const masks = await stableMasks(page, route.path);
       if (route.path === "/parameter-admin/projects" || route.path === "/feedback-admin") {
         const mask = masks.at(-1)!;
         await expect(mask.first()).toBeVisible();
@@ -206,8 +206,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
 
     const toolbar = page.locator(".user-permissions-toolbar");
     await expect(toolbar.getByRole("button", { name: "添加用户" })).toBeVisible();
-    await test.step("quality:capture", () => expect(toolbar).toHaveScreenshot("state-button-primary-hover.png", {
-      mask: stableMasks(page)
+    await test.step("quality:capture", async () => expect(toolbar).toHaveScreenshot("state-button-primary-hover.png", {
+      mask: await stableMasks(page)
     }));
   });
 
@@ -220,8 +220,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
 
     const toolbar = page.locator(".user-permissions-toolbar");
     await expect(toolbar.getByRole("button", { name: "添加用户" })).toBeFocused();
-    await test.step("quality:capture", () => expect(toolbar).toHaveScreenshot("state-button-primary-focus-visible.png", {
-      mask: stableMasks(page)
+    await test.step("quality:capture", async () => expect(toolbar).toHaveScreenshot("state-button-primary-focus-visible.png", {
+      mask: await stableMasks(page)
     }));
   });
 
@@ -238,8 +238,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     await test.step("quality:readiness", () => settleAppToasts(page));
     await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
 
-    await test.step("quality:capture", () => expect(page).toHaveScreenshot("state-dialog-modal-open.png", {
-      mask: stableMasks(page)
+    await test.step("quality:capture", async () => expect(page).toHaveScreenshot("state-dialog-modal-open.png", {
+      mask: await stableMasks(page)
     }));
   });
 
@@ -253,8 +253,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     // (mouseenter on the role control) stays closed.
     await firstRow.locator("td").first().hover();
 
-    await test.step("quality:capture", () => expect(firstRow).toHaveScreenshot("state-table-row-hover.png", {
-      mask: stableMasks(page)
+    await test.step("quality:capture", async () => expect(firstRow).toHaveScreenshot("state-table-row-hover.png", {
+      mask: await stableMasks(page)
     }));
   });
 
@@ -268,8 +268,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     await focusViaKeyboard(page, sortButton);
     await expect(table.locator("thead th").first()).toHaveAttribute("aria-sort", "none");
 
-    await test.step("quality:capture", () => expect(table.locator("thead tr")).toHaveScreenshot("state-table-sort-header-focus.png", {
-      mask: stableMasks(page)
+    await test.step("quality:capture", async () => expect(table.locator("thead tr")).toHaveScreenshot("state-table-sort-header-focus.png", {
+      mask: await stableMasks(page)
     }));
   });
 });

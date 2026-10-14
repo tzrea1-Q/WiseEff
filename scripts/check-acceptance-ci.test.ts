@@ -430,6 +430,49 @@ describe("D2 backend shards and quality lanes", () => {
     });
 });
 
+describe("visual baseline review CI contract", () => {
+  it("accepts the visual-only failure gallery after all existing quality steps with separate uploads", () => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const steps = workflow.jobs["acceptance-quality-lanes"].steps;
+    expect(steps.slice(-5).map((step: { name: string }) => step.name)).toEqual([
+      "Upload quality lane receipt", "Report quality gate runtime", "Upload quality evidence",
+      "Generate candidate baseline review", "Upload candidate baseline review"
+    ]);
+    expect(evaluateL1CiWorkflow(compliantWorkflow)).toEqual({ status: "passed", errors: [] });
+  });
+
+  it.each(["missing-generator", "missing-upload", "duplicate", "order", "generator-condition", "generator-lane", "generator-command", "generator-suppressed", "generator-env", "generator-shell", "upload-condition", "upload-lane", "upload-candidate-guard", "upload-version", "upload-name", "upload-path", "upload-policy", "upload-suppressed", "upload-env", "upload-command"])("rejects candidate gallery drift: %s", (mutation) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const worker = workflow.jobs["acceptance-quality-lanes"];
+    const generator = worker.steps.find((step: { name: string }) => step.name === "Generate candidate baseline review");
+    const upload = worker.steps.find((step: { name: string }) => step.name === "Upload candidate baseline review");
+    if (mutation === "missing-generator") worker.steps = worker.steps.filter((step: unknown) => step !== generator);
+    if (mutation === "missing-upload") worker.steps = worker.steps.filter((step: unknown) => step !== upload);
+    if (mutation === "duplicate") worker.steps.push({ ...generator });
+    if (mutation === "order") {
+      worker.steps = worker.steps.filter((step: unknown) => step !== generator);
+      worker.steps.splice(worker.steps.indexOf(upload) - 2, 0, generator);
+    }
+    if (mutation === "generator-condition") generator.if = "always() && matrix.lane == 'visual'";
+    if (mutation === "generator-lane") generator.if = "failure() && matrix.lane == 'consistency-1'";
+    if (mutation === "generator-command") generator.run += " || true";
+    if (mutation === "generator-suppressed") generator["continue-on-error"] = true;
+    if (mutation === "generator-env") generator.env = { RUNNER_TEMP: "/other" };
+    if (mutation === "generator-shell") generator.shell = "bash --noprofile --norc -c {0}";
+    if (mutation === "upload-condition") upload.if = "always()";
+    if (mutation === "upload-lane") upload.if = upload.if.replace("'visual'", "'accessibility'");
+    if (mutation === "upload-candidate-guard") upload.if = "failure() && matrix.lane == 'visual'";
+    if (mutation === "upload-version") upload.uses = "actions/upload-artifact@v3";
+    if (mutation === "upload-name") upload.with.name = "wiseeff-ci-quality-${{ github.run_attempt }}-${{ matrix.lane }}";
+    if (mutation === "upload-path") upload.with.path = "test-results/quality";
+    if (mutation === "upload-policy") upload.with["if-no-files-found"] = "ignore";
+    if (mutation === "upload-suppressed") upload["continue-on-error"] = true;
+    if (mutation === "upload-env") upload.env = { WISEEFF_QUALITY_LANE: "visual" };
+    if (mutation === "upload-command") upload.run = "git apply --binary candidate.patch";
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+});
+
 describe("M5.12 acceptance CI configuration", () => {
   it("keeps four independent owned-runtime shards and the stable always-running L2 aggregate", () => {
     const workflow = YAML.parse(compliantWorkflow);

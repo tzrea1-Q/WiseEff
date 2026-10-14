@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "playwright/test";
 import { runNpmScript } from "../acceptance/helpers/database";
+import { resolveVisualMasks } from "../../scripts/quality-visual-mask-resolution";
 import {
   assertVisualReviewFixtureConfigured,
   visualReviewFixtureConfigured
@@ -196,13 +197,14 @@ export async function stabilizeOrganizationVisualClock(page: Page) {
   });
 }
 
-export function stableMasks(page: Page, routePath = ""): Locator[] {
-  const masks = [
+export async function stableMasks(page: Page, routePath = ""): Promise<Locator[]> {
+  const optionalMasks = [
     page.locator(".topbar-user-menu"),
     page.locator(".operation-history-list"),
     page.locator(".audit-column"),
     page.locator("[aria-live]")
   ];
+  const masks: Locator[] = [];
 
   if (routePath === "/parameters") {
     masks.push(page.locator(".dts-parameter-workbench-table, .dts-workbench-list"));
@@ -221,7 +223,7 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     // was captured against an unpublished Catalog. Mask the data-dependent
     // body so chrome (tabs, search) stays the gate.
     masks.push(page.locator(".parameter-catalog__anchor"));
-    masks.push(page.locator(".parameter-catalog__banner"));
+    optionalMasks.push(page.locator(".parameter-catalog__banner"));
     masks.push(page.locator(".parameter-catalog__workspace"));
   }
 
@@ -251,7 +253,7 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
   if (routePath === "/dts-reload" || routePath === "/node-debugging") {
     // Bridge install guide: the API mints a fresh random 6-digit pairing code
     // on every page load; mask its digits and expiry, not the guide or controls.
-    masks.push(page.locator(".local-device-bridge-panel__pairing-code code, .local-device-bridge-panel__pairing-code time"));
+    optionalMasks.push(page.locator(".local-device-bridge-panel__pairing-code code, .local-device-bridge-panel__pairing-code time"));
   }
 
   if (routePath === "/logs") {
@@ -260,13 +262,13 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     // if a later hydrate reformats capturedAt. Metadata's captured-at cell is
     // the other clock-bound label (hidden on the default History tab).
     masks.push(page.locator(".rawlog-table__time"));
-    masks.push(page.locator(".logs-metadata-list dd"));
+    optionalMasks.push(page.locator(".logs-metadata-list dd"));
     // Inline width on the fill can still interpolate a frame even with
     // screenshot animations disabled; mask the bar, not the workbench.
-    masks.push(page.locator(".confidence-bar i"));
+    optionalMasks.push(page.locator(".confidence-bar i"));
   }
 
-  return masks;
+  return resolveVisualMasks(masks, optionalMasks);
 }
 
 /**
