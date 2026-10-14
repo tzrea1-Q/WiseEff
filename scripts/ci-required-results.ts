@@ -511,7 +511,9 @@ async function runTest(command: string, identity: Identity) {
   const directory = mkdtempSync(path.join(realpathSync(process.env.RUNNER_TEMP), "wiseeff-l1-"));
   chmodSync(directory, 0o700);
   const output = path.join(directory, "report.json");
-  const env = command === "frontend" ? { ...process.env, VITE_WISEEFF_RUNTIME_MODE: process.env.VITE_WISEEFF_RUNTIME_MODE?.trim() || "mock" } : process.env;
+  const collectionOutput = path.join(directory, "collection.json");
+  const env = command === "frontend" ? { ...process.env, VITE_WISEEFF_RUNTIME_MODE: process.env.VITE_WISEEFF_RUNTIME_MODE?.trim() || "mock" }
+    : command === "server" ? { ...process.env, WISEEFF_CI_SERVER_INVENTORY_FILE: collectionOutput } : process.env;
   let files: string[];
   if (command === "server") {
     const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
@@ -529,7 +531,7 @@ async function runTest(command: string, identity: Identity) {
     missingIsolatedDockerStores: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T34A_POSTGRES_URL,
     missingIsolatedTarget: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T33B_PUBLIC_URL };
   const result = spawnSync("npm", [...specification.args, "--", "--reporter=default", "--reporter=json", `--outputFile=${output}`,
-    ...(command === "server" ? [`--shard=${shard}`, "--includeTaskLocation"] : [])], { stdio: "inherit", env });
+    ...(command === "server" ? [...files, "--includeTaskLocation", "--reporter=./scripts/ci-server-inventory-reporter.ts"] : [])], { stdio: "inherit", env });
   options.finishedAt = Date.now();
   requireCi(result.status === 0 && !result.error, "TEST_COMMAND_FAILED");
   const bytes = readPrivateReport(output);
@@ -538,7 +540,7 @@ async function runTest(command: string, identity: Identity) {
   const native = { version: 1 as const, command, identity, ...summary, sha256: digest(bytes), filesSha256: digest(JSON.stringify(files.sort())) } as NativeSummary;
   if (command === "server") {
     const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
-    shards.recordServerExecution(JSON.parse(bytes.toString("utf8")), files, native);
+    shards.recordServerExecution(JSON.parse(bytes.toString("utf8")), files, native, JSON.parse(readPrivateReport(collectionOutput).toString("utf8")));
   }
   writeOutput("report", native);
   writeOutput("shadow", runShadowAdapter(identity, command, files, native));

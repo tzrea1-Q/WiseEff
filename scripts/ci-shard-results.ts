@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import type { Identity, NativeSummary } from "./ci-required-results";
 
 const { qualityLanes }: typeof import("../e2e/quality/quality-partition") = await import(new URL("../e2e/quality/quality-partition.ts", import.meta.url).href);
+const { balanceServerShards }: typeof import("./server-shard-plan") = await import(new URL("./server-shard-plan.ts", import.meta.url).href);
 export { qualityLanes };
 type Kind = "server" | "quality";
 type Inventory = { tests: string[]; warmup: string[]; files: string[] };
@@ -82,7 +83,9 @@ export function validateShardInventories(receipts: ShardReceipt[], kind: Kind, i
   for (const receipt of receipts) {
     requireShard(receipt.version === 1 && receipt.kind === kind && lanes.includes(receipt.lane), "LANE");
     requireShard(equal(receipt.identity, identity), "IDENTITY");
-    requireShard(equal(receipt.inventory, planned), "PLAN_MISMATCH");
+    requireShard(kind === "server" ? equal(receipt.inventory.files, planned.files) && equal(receipt.inventory.warmup, planned.warmup)
+      : equal(receipt.inventory, planned), "PLAN_MISMATCH");
+    if (kind === "server") requireShard(equal(receipt.inventory.tests, receipt.executed.tests), "COVERAGE");
     for (const entries of [receipt.inventory, receipt.executed]) {
       requireShard(Array.isArray(entries.tests) && entries.tests.length > 0 && entries.tests.every((id) => /^[a-f0-9]{64}$/.test(id)), "TESTS");
       requireShard(Array.isArray(entries.warmup) && new Set(entries.warmup).size === entries.warmup.length
@@ -93,12 +96,13 @@ export function validateShardInventories(receipts: ShardReceipt[], kind: Kind, i
     requireShard(equal(receipt.executed.warmup, planned.warmup), "WARMUP");
   }
   requireShard(kind === "quality" ? planned.warmup.length > 0 : planned.warmup.length === 0, "WARMUP");
+  const required = kind === "server" ? receipts.flatMap((receipt) => receipt.inventory.tests) : planned.tests;
   const executed = receipts.flatMap((receipt) => receipt.executed.tests.filter((id) => !planned.warmup.includes(id)));
-  requireShard(equal(sorted(executed), sorted(planned.tests.filter((id) => !planned.warmup.includes(id)))), "COVERAGE");
+  requireShard(equal(sorted(executed), sorted(required.filter((id) => !planned.warmup.includes(id)))), "COVERAGE");
   const files = receipts.flatMap((receipt) => receipt.executed.files);
   requireShard(equal(sorted([...new Set(files)]), planned.files), "FILES");
   if (kind === "server") requireShard(new Set(files).size === files.length, "FILE_OVERLAP");
-  return planned;
+  return kind === "server" ? { ...planned, tests: sorted(required) } : planned;
 }
 
 function receiptDirectory(): string {
@@ -117,25 +121,32 @@ function load(name: string): any {
 
 export function discoverServerInventory(identity: Identity): void {
   requireShard(/^[12]\/2$/.test(process.env.WISEEFF_CI_SERVER_SHARD ?? ""), "LANE");
-  const collect = (name: string, shard?: string) => {
-    const output = path.join(receiptDirectory(), name);
-    execFileSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.server.config.ts", "--includeTaskLocation", `--json=${output}`,
-      ...(shard ? [`--shard=${shard}`] : [])], { stdio: "inherit" });
-    return vitestInventory(JSON.parse(readFileSync(output, "utf8")), process.cwd());
-  };
-  save("discovery.json", { identity, inventory: collect("planned.json"), owned: collect("owned.json", process.env.WISEEFF_CI_SERVER_SHARD) });
+  const startedAt = Date.now();
+  const args = ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.server.config.ts"];
+  const listed = JSON.parse(execFileSync(process.execPath, [...args, "--filesOnly", "--json"], { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 }));
+  requireShard(Array.isArray(listed) && listed.length > 0, "DISCOVERY_EMPTY");
+  const files = listed.map((entry: { file: string }) => {
+    requireShard(entry !== null && typeof entry.file === "string", "DISCOVERY_FILE");
+    return relativeFile(entry.file, process.cwd());
+  }).sort();
+  const plan = balanceServerShards(files);
+  const selected = plan[Number(process.env.WISEEFF_CI_SERVER_SHARD!.split("/")[0]) - 1];
+  save("discovery.json", { identity, inventory: { tests: [], warmup: [], files }, owned: { files: selected.files } });
+  console.log(`CI backend discovery: ${Date.now() - startedAt} ms; shard ${process.env.WISEEFF_CI_SERVER_SHARD}: ${selected.files.length}/${files.length} files, scheduling weight ${selected.durationMs} ms (not wall time).`);
 }
 
 export function serverShardFiles(): string[] {
   return load("discovery.json").owned.files.map((file: string) => path.resolve(file));
 }
 
-export function recordServerExecution(report: unknown, files: string[], native: NativeSummary): void {
+export function recordServerExecution(report: unknown, files: string[], native: NativeSummary, collection: Parameters<typeof vitestInventory>[0]): void {
   const discovery = load("discovery.json");
   requireShard(equal(discovery.identity, native.identity), "IDENTITY");
+  const collected = vitestInventory(collection, process.cwd());
   const executed = vitestExecution(report, process.cwd());
-  requireShard(equal(discovery.owned, executed) && equal(sorted(files.map((file) => relativeFile(file, process.cwd()))), executed.files), "COVERAGE");
-  save("execution.json", { executed, native });
+  requireShard(equal(collected, executed) && equal(discovery.owned.files, collected.files)
+    && equal(sorted(files.map((file) => relativeFile(file, process.cwd()))), executed.files), "COVERAGE");
+  save("execution.json", { collected, executed, native });
 }
 
 export function finishServerReceipt(receipt: any, identity: Identity): void {
@@ -145,7 +156,7 @@ export function finishServerReceipt(receipt: any, identity: Identity): void {
   const execution = load("execution.json");
   requireShard(equal(discovery.identity, identity) && equal(execution.native, receipt.reports.server), "IDENTITY");
   save("receipt.json", { version: 1, kind: "server", lane: shard.split("/")[0],
-    identity, inventory: discovery.inventory, executed: execution.executed, receipt } satisfies ShardReceipt);
+    identity, inventory: { ...discovery.inventory, tests: execution.collected.tests }, executed: execution.executed, receipt } satisfies ShardReceipt);
 }
 
 async function runQuality() {

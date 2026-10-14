@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { assertShardJobs, type Identity } from "./ci-required-results";
+import { balanceServerShards } from "./server-shard-plan";
 import { finishServerReceipt, qualityLanes, playwrightInventory, validateShardInventories, vitestExecution, vitestInventory, type ShardReceipt } from "./ci-shard-results";
 
 const identity: Identity = {
@@ -16,7 +17,8 @@ function receipts(kind: "quality" | "server"): ShardReceipt[] {
   const warmup = kind === "quality" ? [testId(9)] : [];
   const inventory = { tests: [...lanes.map((_, index) => testId(index + 1)), ...warmup].sort(), warmup,
     files: [...lanes.map((lane) => `${lane}/test.ts`), ...(kind === "quality" ? ["runtime-warmup/test.ts"] : [])].sort() };
-  return lanes.map((lane, index) => ({ version: 1, kind, lane, identity, inventory,
+  return lanes.map((lane, index) => ({ version: 1, kind, lane, identity,
+    inventory: kind === "server" ? { ...inventory, tests: [testId(index + 1)] } : inventory,
     executed: { tests: [testId(index + 1), ...warmup].sort(), warmup,
       files: [`${lane}/test.ts`, ...(kind === "quality" ? ["runtime-warmup/test.ts"] : [])].sort() }, receipt: null }));
 }
@@ -90,31 +92,47 @@ describe("complete CI shard inventories", () => {
 });
 
 describe("native test discovery and execution", () => {
-  it("matches real unsharded Vitest list against two native shard reports", () => {
+  it("discovers the server-config inventory without setup and executes every owned file with setup", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "wiseeff-shard-native-"));
     try {
       const config = path.join(directory, "vitest.config.mjs");
-      writeFileSync(config, 'export default { test: { include: ["*.test.mjs"], environment: "node", maxWorkers: 1 } };');
-      for (const name of ["first", "second"]) writeFileSync(path.join(directory, `${name}.test.mjs`),
+      const setup = path.join(directory, "setup.mjs");
+      const marker = path.join(directory, "setup-runs.txt");
+      writeFileSync(setup, `import { appendFileSync } from "node:fs";
+export default () => { if (process.argv[2] === "list") throw new Error("Discovery ran global setup"); appendFileSync(${JSON.stringify(marker)}, "setup\\n"); };`);
+      writeFileSync(config, `import serverConfig from ${JSON.stringify(path.resolve("vitest.server.config.ts"))};
+export default { ...serverConfig, test: { ...serverConfig.test, setupFiles: [], maxWorkers: 1,
+globalSetup: serverConfig.test.globalSetup.length ? [${JSON.stringify(setup)}] : [] } };`);
+      mkdirSync(path.join(directory, "server"));
+      mkdirSync(path.join(directory, "node_modules/server"), { recursive: true });
+      writeFileSync(path.join(directory, "node_modules/server/excluded.test.ts"), 'throw new Error("Excluded file was loaded");');
+      for (const name of ["first", "second", "third", "fourth"]) writeFileSync(path.join(directory, "server", `${name}.test.ts`),
         `import { describe, test, expect } from ${JSON.stringify(path.resolve("node_modules/vitest/dist/index.js"))};\ndescribe("parent", () => { test.each([1, 2])("case %i", value => expect(value).toBeGreaterThan(0)); });`);
       const args = [path.resolve("node_modules/vitest/vitest.mjs"), "--config", config, "--root", directory, "--configLoader", "runner", "--includeTaskLocation"];
-      const listed = path.join(directory, "listed.json");
-      execFileSync(process.execPath, [args[0], "list", ...args.slice(1), `--json=${listed}`], { stdio: "pipe" });
-      const planned = vitestInventory(JSON.parse(readFileSync(listed, "utf8")), directory);
+      const listedFiles = JSON.parse(execFileSync(process.execPath, [args[0], "list", ...args.slice(1), "--filesOnly", "--json"], { encoding: "utf8" }));
+      expect(existsSync(marker)).toBe(false);
+      const allFiles = listedFiles.map((entry: { file: string }) => path.relative(directory, entry.file)).sort();
+      expect(allFiles).toHaveLength(4);
+      const plan = balanceServerShards(allFiles, 2, { "server/first.test.ts": 90, "server/second.test.ts": 80,
+        "server/third.test.ts": 20, "server/fourth.test.ts": 10 });
       const shards: ShardReceipt[] = [];
       for (const lane of ["1", "2"]) {
-        const ownedList = path.join(directory, `owned-${lane}.json`);
-        execFileSync(process.execPath, [args[0], "list", ...args.slice(1), `--shard=${lane}/2`, `--json=${ownedList}`], { stdio: "pipe" });
-        const owned = vitestInventory(JSON.parse(readFileSync(ownedList, "utf8")), directory);
+        const files = plan[Number(lane) - 1].files;
+        const collectionOutput = path.join(directory, `collection-${lane}.json`);
         const output = path.join(directory, `report-${lane}.json`);
-        execFileSync(process.execPath, [args[0], "run", ...args.slice(1), `--shard=${lane}/2`, "--reporter=json", `--outputFile=${output}`], { stdio: "pipe" });
+        execFileSync(process.execPath, [args[0], "run", ...args.slice(1), ...files.map((file) => path.resolve(directory, file)), "--reporter=json",
+          `--reporter=${path.resolve("scripts/ci-server-inventory-reporter.ts")}`, `--outputFile=${output}`],
+        { stdio: "pipe", env: { ...process.env, WISEEFF_CI_SERVER_INVENTORY_FILE: collectionOutput } });
+        const owned = vitestInventory(JSON.parse(readFileSync(collectionOutput, "utf8")), directory);
         const executed = vitestExecution(JSON.parse(readFileSync(output, "utf8")), directory);
         expect(owned).toEqual(executed);
-        expect(owned.files).toHaveLength(1);
-        shards.push({ version: 1, kind: "server", lane, identity, inventory: planned,
+        expect(owned.files).toEqual(files);
+        expect(owned.files).toHaveLength(2);
+        shards.push({ version: 1, kind: "server", lane, identity, inventory: { ...owned, files: allFiles },
           executed, receipt: null });
       }
-      expect(validateShardInventories(shards, "server", identity).tests).toHaveLength(4);
+      expect(validateShardInventories(shards, "server", identity).tests).toHaveLength(8);
+      expect(readFileSync(marker, "utf8")).toBe("setup\nsetup\n");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 30_000);
   const report = () => ({ errors: [], suites: [{ title: "visual.quality.spec.ts", specs: [{ title: "snapshot", file: "visual.quality.spec.ts", line: 4, column: 1, ok: true,

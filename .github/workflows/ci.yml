@@ -482,7 +482,7 @@ jobs:
         id: docs
         run: npm run docs:check
 
-      - name: Backend tests
+      - name: Backend tests (duration-balanced inventory)
         id: server
         run: node --experimental-strip-types scripts/ci-required-results.ts test server
       - name: Record complete L1 invocation
