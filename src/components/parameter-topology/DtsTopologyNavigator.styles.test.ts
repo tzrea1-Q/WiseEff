@@ -68,29 +68,12 @@ describe("DtsTopologyNavigator responsive width", () => {
   it("grows the desktop navigator to its content while keeping labels on one line", () => {
     const styles = readStylesheet("src/styles.css");
     const tokens = declarationsFor(styles, ":root");
-    const body = declarationsFor(styles, ".dts-parameter-workbench__body");
     const topology = declarationsFor(styles, ".dts-workbench-topology");
-    const label = declarationsFor(styles, ".dts-topology-navigator__label");
 
     expect(tokens["--module-navigator-min-width"]).toBeDefined();
     expect(tokens["--module-navigator-max-width"]).toBeDefined();
-    expect(body["grid-template-columns"]).toBe("auto minmax(0, 1fr)");
-    expect(topology.width).toBe("max-content");
     expect(topology["min-width"]).toBe("var(--module-navigator-min-width)");
     expect(topology["max-width"]).toBe("var(--module-navigator-max-width)");
-    expect(label["white-space"]).toBe("nowrap");
-    expect(label["overflow-wrap"]).toBe("normal");
-  });
-
-  it("uses the full available width below the two-column breakpoint", () => {
-    const styles = readStylesheet("src/styles.css");
-    const topology = declarationsFor(styles, ".dts-workbench-topology", {
-      within: "max-width: 1200px"
-    });
-
-    expect(topology.width).toBe("100%");
-    expect(topology["min-width"]).toBe("0");
-    expect(topology["max-width"]).toBe("none");
   });
 
   it("leaves DTS reload pane geometry to the shared navigator workbench", () => {
@@ -110,11 +93,8 @@ describe("DtsTopologyNavigator responsive width", () => {
     }
     expect(body["grid-template-columns"])
       .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
-    expect(body["align-items"]).toBe("start");
-    expect(navigator.height).toBeUndefined();
     expect(navigator["max-height"]).toBe("var(--navigator-workbench-pane-height)");
     expect(task["max-height"]).toBe("var(--navigator-workbench-pane-height)");
-    expect(task.overflow).toBe("auto");
   });
 
   it("fits parameter counts in the bounded navigator and ellipsizes only long labels", () => {
@@ -124,30 +104,13 @@ describe("DtsTopologyNavigator responsive width", () => {
     expect(tokens["--navigator-workbench-navigator-cap"]).toBe("var(--module-navigator-max-width)");
     expect(declarationsFor(styles, ".navigator-workbench__body")["grid-template-columns"])
       .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
-    expect(declarationsFor(styles, ".navigator-workbench__navigation").overflow).toBe("auto");
-    expect(declarationsFor(styles, ".navigator-workbench__navigation .dts-topology-navigator").width).toBe("100%");
     expect(declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__item")["grid-template-columns"])
       .toBe("var(--module-navigator-disclosure-size) minmax(0, 1fr) max-content");
-    const label = declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__label");
-    expect(label["white-space"]).toBe("nowrap");
-    expect(label.overflow).toBe("hidden");
-    expect(label["text-overflow"]).toBe("ellipsis");
-    const metadata = declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__meta");
-    expect(metadata["min-width"]).toBe("max-content");
-    expect(metadata["max-width"]).toBe("none");
-    expect(declarationsFor(styles, ".navigator-workbench .dts-topology-navigator__count").overflow).toBe("visible");
   });
 
   it("does not stretch collapsed roots inside the shared navigation slot", () => {
     const styles = readStylesheet("src/styles.css");
-    const sharedStyles = readStylesheet("src/components/layout/navigator-workbench.css");
-    const navigation = declarationsFor(sharedStyles, ".navigator-workbench__navigation");
-    const tree = declarationsFor(sharedStyles, ".navigator-workbench__navigation .dts-topology-navigator");
 
     expect(hasRule(styles, ".node-debugging-module-workbench .dts-topology-navigator")).toBe(false);
-    expect(navigation.display).not.toBe("flex");
-    expect(navigation.height).toBeUndefined();
-    expect(tree.flex).toBeUndefined();
-    expect(tree["max-height"]).toBe("none");
   });
 });

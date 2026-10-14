@@ -128,13 +128,9 @@ describe("permission-aware routing", () => {
     const css = readStylesheet("src/styles.css");
     const actionStyles = declarationsFor(css, ".permission-denied-page .permission-denied-action");
     const primaryStyles = declarationsFor(css, ".permission-denied-page .permission-denied-action.primary");
-
-    expect(actionStyles.display).toBe("inline-flex");
-    expect(actionStyles.border).toContain("1px solid");
     expect(actionStyles["border-radius"]).toBe("var(--radius-md)");
     expect(primaryStyles.background).toBe("var(--app-primary)");
     expect(primaryStyles.color).toBe("var(--primary-foreground)");
-    expect(primaryStyles["box-shadow"]).toBeTruthy();
   });
 });
 

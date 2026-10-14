@@ -26,6 +26,51 @@ function lint(source: string) {
 }
 
 describe("no-raw-css-text-assertions", () => {
+  it("rejects declaration-only assertions even when CSS is parsed first", () => {
+    const messages = lint(`
+      const css = readStylesheet("src/styles.css");
+      const button = declarationsFor(css, ".button");
+      const alias = button;
+      expect(alias.height).toBe("32px");
+      expect(declarationFor(css, ".button", "display")).toEqual("flex");
+      expect(declarationsFor(css, ".button")).toMatchObject({ overflow: "hidden" });
+    `);
+
+    expect(messages.map((message) => message.messageId)).toEqual([
+      "declarationAssertion", "declarationAssertion", "declarationAssertion"
+    ]);
+  });
+
+  it("keeps token-policy, contrast calculations and parser fixture tests", () => {
+    expect(lint(`
+      const css = readStylesheet("src/styles.css");
+      const tokens = declarationsFor(css, ":root");
+      expect(tokens["--space-8"]).toBe("32px");
+      for (const name of ["--space-8"]) expect(tokens[name]).toBe("32px");
+      expect(declarationsFor(css, ".button").color).toBe("var(--accent)");
+      expect(declarationsFor(css, ".button")["font-size"]).toMatch(/^var\\(--text-/);
+      expect(declarationFor(css, ":root", "--space-8")).toBe("32px");
+      expect(contrastRatio(tokens["--text"], tokens["--surface"])).toBeGreaterThanOrEqual(4.5);
+      expect(declarationsFor(".fixture { display: flex; }", ".fixture").display).toBe("flex");
+      expect(scanCssContent("src/styles.css", css)).toEqual([]);
+    `)).toEqual([]);
+  });
+
+  it("follows imported aliases, raw imports and derived declaration values", () => {
+    const messages = lint(`
+      import css from "./styles.css?raw";
+      import { declarationsFor as properties } from "./cssAssertions";
+      const button = properties(css, ".button");
+      expect(Number.parseInt(button.height, 10)).toBe(32);
+      expect(button.margin ?? "0").toBe("0");
+      expect(css.includes("display: flex")).toBe(true);
+      expect(css).toEqual(".button { display: flex; }");
+    `);
+
+    expect(messages.map((message) => message.messageId)).toEqual([
+      "declarationAssertion", "declarationAssertion", "rawCssAssertion", "rawCssAssertion"
+    ]);
+  });
   it("rejects raw matchers applied to CSS read directly from disk", () => {
     const messages = lint(`
       import { readFileSync } from "node:fs";
@@ -109,12 +154,11 @@ describe("no-raw-css-text-assertions", () => {
     ]);
   });
 
-  it("allows structural CSS queries and unrelated source contract tests", () => {
+  it("allows token queries and unrelated source contract tests", () => {
     const messages = lint(`
       const css = readStylesheet("src/styles.css");
       const declarations = declarationsFor(css, ".button");
       expect(declarations.background).toContain("var(--accent)");
-      expect(hasRule(css, ".button")).toBe(true);
 
       const routesSource = readFileSync("src/app/routes.tsx", "utf8");
       expect(routesSource).toContain("NoEntryPage");

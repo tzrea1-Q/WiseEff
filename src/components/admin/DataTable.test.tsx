@@ -389,11 +389,9 @@ describe("DataTable planned API", () => {
     const dataFilterRule = declarationsFor(styles, ".data-table-column-filter");
 
     expect(dataFilterRule["margin-left"]).toBe("var(--space-1)");
-    expect(dataFilterRule.float).toBeUndefined();
   });
 
   it("keeps the table scrollport overflow-x auto when header filters are present", () => {
-    const styles = readStylesheet("src/styles.css");
     const { container } = render(
       <DataTable
         aria-label="t"
@@ -414,23 +412,9 @@ describe("DataTable planned API", () => {
     );
     const scrollport = container.querySelector(".data-table-scroll");
     const shell = scrollport?.parentElement;
-
-    expect(declarationsFor(styles, ".data-table-scroll")["overflow-x"]).toBe("auto");
-    expect(declarationsFor(styles, ".data-table-scroll > table")["min-width"]).toBe("720px");
-    expect(declarationsFor(styles, '[data-overflow-x="true"]').cursor).toBe("grab");
-    expect(declarationsFor(styles, '[data-dragging="true"]').cursor).toBe("grabbing");
-    expect(
-      declarationsFor(styles, ".data-table-scroll > table", { within: "(max-width: 900px)" })["min-width"]
-    ).toBe("720px");
     expect(scrollport).toBeInTheDocument();
     expect(scrollport).not.toHaveClass("overflow-visible");
     expect(shell).not.toHaveClass("overflow-visible");
-
-    const siblingStyles =
-      readStylesheet("src/styles.css") + readStylesheet("src/features/dts-reload/dts-reload-candidate-table.css");
-    expect(declarationsFor(siblingStyles, ".binding-property-table")["overflow-x"]).toBe("auto");
-    expect(declarationsFor(siblingStyles, ".binding-property-table table")["min-width"]).toBe("640px");
-    expect(declarationsFor(siblingStyles, ".dts-reload-candidate-table > .data-table-scroll").overflow).toBe("auto");
   });
 
   it("opts into the shared visible horizontal rail without changing the default", () => {

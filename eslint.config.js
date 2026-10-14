@@ -56,7 +56,8 @@ export default [
     }
   },
   {
-    files: ["src/**/*.{test,spec}.{ts,tsx}"],
+    files: ["{src,scripts}/**/*.{test,spec}.{ts,tsx}"],
+    languageOptions: { parser: tsParser, sourceType: "module" },
     plugins: { wiseeff: wiseeffPlugin },
     rules: {
       "wiseeff/no-raw-css-text-assertions": "error"

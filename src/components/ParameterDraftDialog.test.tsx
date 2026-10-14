@@ -166,21 +166,15 @@ describe("ParameterDraftDialog", () => {
     const baseButtonRule = declarationsFor(styles, ".button");
     const baseSubtleRule = declarationsFor(styles, ".button.subtle");
     const baseSubtleHoverRule = declarationsFor(styles, ".button.subtle:hover:not(:disabled)");
-    const submitLinkRule = declarationsFor(styles, ".parameter-draft-dialog__submit-link");
     const tokens = declarationsFor(styles, ":root");
-
-    expect(baseButtonRule.display).toBe("inline-flex");
     expect(baseButtonRule["min-height"]).toBe("var(--space-8)");
     expect(tokens["--space-8"]).toBe("32px");
     expect(baseButtonRule.padding).toBe("0 var(--space-3)");
     expect(tokens["--space-3"]).toBe("12px");
     expect(baseButtonRule["border-radius"]).toBe("var(--radius-md)");
-    expect(baseButtonRule.cursor).toBe("pointer");
     expect(baseSubtleRule.background).toBe("var(--surface)");
     expect(baseSubtleRule["border-color"]).toBe("var(--border)");
     expect(baseSubtleHoverRule.background).toBe("var(--surface-sunken)");
-    expect(submitLinkRule.display).toBe("inline-flex");
-    expect(submitLinkRule.border).toBe("1px solid rgba(148, 163, 184, 0.64)");
   });
 
   it("does not render when closed", () => {

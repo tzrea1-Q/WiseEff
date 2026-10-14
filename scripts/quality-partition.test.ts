@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { consistencyReadOnlyRoutes, consistencyRoutes, selectConsistencyRoutes } from "../e2e/quality/consistency-routes";
-import { parseQualityLane, qualityLanes, selectQualityProjects } from "../e2e/quality/quality-partition";
+import { parseQualityLane, qualityLanes, selectQualityProjects, shouldRegisterConsistencyFixture } from "../e2e/quality/quality-partition";
 import { compactQualityRoutes } from "../e2e/quality/compact-routes";
 import { playwrightInventory, validateShardInventories, type ShardReceipt } from "./ci-shard-results";
 import type { Identity } from "./ci-required-results";
@@ -47,6 +47,20 @@ function registrationKeys(output: string) {
 }
 
 describe("quality partitions", () => {
+  it("assigns stylesheet fixtures exactly once across balanced consistency lanes", () => {
+    const registrations = Array.from({ length: 31 }, (_, index) => index);
+    const first = registrations.filter((index) => shouldRegisterConsistencyFixture("consistency-1", index));
+    const second = registrations.filter((index) => shouldRegisterConsistencyFixture("consistency-2", index));
+    expect(first[0]).toBe(0);
+    expect(second[0]).toBe(1);
+    expect([...first, ...second].sort((left, right) => left - right)).toEqual(registrations);
+    expect(Math.abs(first.length - second.length)).toBeLessThanOrEqual(1);
+    expect(registrations.every((index) => shouldRegisterConsistencyFixture(undefined, index))).toBe(true);
+    for (const lane of ["visual", "accessibility"] as const) {
+      expect(registrations.some((index) => shouldRegisterConsistencyFixture(lane, index))).toBe(false);
+    }
+  });
+
   it("accepts only exact lane names, with an unset lane retaining the full suite", () => {
     expect(parseQualityLane(undefined)).toBeUndefined();
     for (const lane of qualityLanes) expect(parseQualityLane(lane)).toBe(lane);
@@ -185,7 +199,7 @@ describe("quality partitions", () => {
       const tests = keys.filter((key) => JSON.parse(key)[0] !== "runtime-warmup");
       expect(tests.length).toBeGreaterThan(0);
       expect(keys.filter((key) => JSON.parse(key)[0] === "compact")).toEqual(lane === "visual" ? compact : []);
-      expect(titles(keys).filter((title) => title.startsWith("Bridge readiness"))).toEqual(lane === "consistency-1" ? bridgeTitles : []);
+      expect(titles(keys).filter((title) => title.startsWith("Bridge readiness on /"))).toEqual(lane === "consistency-1" ? bridgeTitles : []);
       expect(titles(keys).filter((title) => title.startsWith("asserts public home"))).toEqual(lane === "consistency-2" ? homeTitles : []);
       if (lane.startsWith("consistency-")) consistencyCounts.push(tests.length);
       receipts.push({ version: 1, kind: "quality", lane, identity, inventory,
@@ -193,6 +207,9 @@ describe("quality partitions", () => {
       partitioned.push(...tests);
     }
     expect(new Set(partitioned).size).toBe(partitioned.length);
+    const styleFixtures = unfiltered.filter((key) => JSON.parse(key)[1] === "styles.consistency.collector.spec.ts");
+    expect(styleFixtures).toHaveLength(31);
+    expect(partitioned.filter((key) => JSON.parse(key)[1] === "styles.consistency.collector.spec.ts").sort()).toEqual(styleFixtures.sort());
     expect(partitioned.sort()).toEqual(unfiltered.filter((key) => JSON.parse(key)[0] !== "runtime-warmup").sort());
     expect(Math.abs(consistencyCounts[0] - consistencyCounts[1])).toBeLessThanOrEqual(2);
     expect(validateShardInventories(receipts, "quality", identity)).toEqual(inventory);

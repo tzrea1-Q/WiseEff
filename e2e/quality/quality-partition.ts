@@ -1,6 +1,16 @@
 export const qualityLanes = ["visual", "consistency-1", "consistency-2", "accessibility"] as const;
 export type QualityLane = typeof qualityLanes[number];
 
+export function shouldRegisterConsistencyFixture(lane: QualityLane | undefined, index: number): boolean {
+  return lane === undefined || lane === (index % 2 === 0 ? "consistency-1" : "consistency-2");
+}
+
+export function consistencyTestMatch(lane: QualityLane | undefined): RegExp[] {
+  return lane === "consistency-1"
+    ? [/consistency\.quality\.spec\.ts/, /styles\.consistency\.collector\.spec\.ts/]
+    : [/consistency\.(quality|collector)\.spec\.ts/];
+}
+
 export function parseQualityLane(value: string | undefined): QualityLane | undefined {
   if (value === undefined) return undefined;
   const lane = qualityLanes.find((candidate) => candidate === value);
