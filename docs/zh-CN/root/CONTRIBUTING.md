@@ -37,6 +37,12 @@ WiseEff 的变更应保持产品可用、可测试、可审计。先读智能体
 
 ### 测试数据库隔离
 
+本地 quality 与 acceptance Playwright 配置支持 `WISEEFF_RUNTIME_LANE=<N>`（1–10000 的整数，不允许前导零）。提供 PostgreSQL `DATABASE_URL` 后，描述符选择 `<database>_lane_<N>`、API 端口 `20000 + 2*N`、前端端口 `20001 + 2*N`、`<OBJECT_STORE_ROOT>/lane-<N>`（默认 `.wiseeff-object-store/lane-<N>`），以及 `test-results/lanes/<N>/<quality|acceptance>` 和 `playwright-report/lanes/<N>/<quality|acceptance>`。这些设置会传递给浏览器 worker；嵌套 fixture 使用 `WISEEFF_TEST_DATABASE_PREFIX=pw_lane_<N>`。启动 Playwright 前，使用既有运行时准备流程创建并播种各 lane 数据库；描述符不会创建或重置数据库。并行运行必须使用不同 ID，quality 与 acceptance 同时运行也不例外；对象存储保持 local 模式。lane 不复用既有服务器，也不能与受控 Gate0 描述符或标志同时使用；既有受控运行时隔离保持不变。未选择 lane 时，现有默认值和覆盖变量不变。
+
+例如，导出基础 `DATABASE_URL` 后运行 `WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.quality.config.ts`，另一个工作树可使用相同基础 URL 和 lane 2。`WISEEFF_QUALITY_LANE` 仍独立选择 quality 项目。lane 的输出与报告目录优先于共享目录覆盖变量。直接运行 `npm run dev` 时遵循 `WISEEFF_FRONTEND_PORT`（默认 5173）与 `VITE_WISEEFF_API_BASE_URL`（默认 `http://127.0.0.1:8787`）；`npm run dev:api` 继续遵循 `PORT`（默认 8787）。Vite 的 API 与下载代理均使用选定的 API URL。
+
+lane 模式下，前端子进程的 `VITE_WISEEFF_API_BASE_URL` 使用自身 Vite 源站，使浏览器 API 与下载请求保持同源。`WISEEFF_DEV_API_PROXY_URL` 为 Vite 的 `/api` 与 `/downloads` 代理指定独立 API 上游。Node 侧浏览器 fixture 与播种工具仍使用直连 API URL。这样无需扩大 API 对 lane 端口的 CORS 权限，授权请求头也保持不变；非 lane 启动行为不变。手动启动 lane 前端时，同样需要区分浏览器基础 URL 与代理上游 URL。
+
 设置 `WISEEFF_TEST_DATABASE_PREFIX` 后，一次性切换后浏览器测试使用 `<prefix>_disposable_…`；未设置时保留 `wiseeff_acceptance_disposable_…`。手动运行可用 `WISEEFF_ACCEPTANCE_NESTED_API_PORT` 和 `WISEEFF_ACCEPTANCE_NESTED_FRONTEND_PORT` 固定嵌套 API/前端监听端口（1–65535 范围内的不同整数），canonical DTS reload 测试也遵循这两个覆盖变量。复用手动运行的端口时，设置 `WISEEFF_ACCEPTANCE_NO_START_RUNTIME=true`，使用 `--no-deps` 仅运行嵌套测试，不要同时在这些端口启动父运行时。受控设备的回环 socket 仍由测试独占并使用临时端口。CI 不设置端口覆盖，继续使用自动分配的隔离端口。
 
 PostgreSQL 测试工具（`server/testing/testDatabase.ts`）依次使用非空的 `TEST_DATABASE_URL`、`DATABASE_URL`，最后回退到本地 Compose 默认连接。同一集群上的并行工作树应在启动各自测试进程前设置不同的 `WISEEFF_TEST_DATABASE_PREFIX`。前缀会去除首尾空白；未设置或为空时默认 `wiseeff`。有效格式为 `^[a-z][a-z0-9_]{0,15}$`：1–16 个字符，以小写 ASCII 字母开头，后续仅允许小写 ASCII 字母、数字或下划线。无效前缀会在数据库准备前报错。

@@ -10,6 +10,7 @@ import { hdcApiBridge } from "./viteHdcApi";
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
 const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
+const apiProxyTarget = process.env.WISEEFF_DEV_API_PROXY_URL?.trim() || process.env.VITE_WISEEFF_API_BASE_URL?.trim() || "http://127.0.0.1:8787";
 
 function resolvePreviewAllowedHosts(): string[] | true {
   const configured = process.env.VITE_WISEEFF_ALLOWED_HOSTS?.split(",").map((value) => value.trim()).filter(Boolean);
@@ -86,17 +87,18 @@ export default defineConfig({
     allowedHosts: resolvePreviewAllowedHosts()
   },
   server: {
+    port: Number(process.env.WISEEFF_FRONTEND_PORT ?? 5173),
     allowedHosts: resolvePreviewAllowedHosts(),
     fs: {
       allow: [projectRoot, path.resolve(projectRoot, "../..")]
     },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: apiProxyTarget,
         changeOrigin: true
       },
       "/downloads": {
-        target: process.env.VITE_WISEEFF_API_BASE_URL?.trim() || "http://127.0.0.1:8787",
+        target: apiProxyTarget,
         changeOrigin: true
       },
       "/local-bridge": {
