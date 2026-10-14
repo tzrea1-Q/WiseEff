@@ -68,6 +68,8 @@ PostgreSQL 测试工具（`server/testing/testDatabase.ts`）依次使用非空�
 
 该前缀用于迁移模板（`<prefix>_test_tpl_…`）、临时模板构建（`<prefix>_test_tplbuild_…`）与 worker/临时数据库（`<prefix>_test_wk_…`）。提供该变量时，托管实例测试使用 `<prefix>_m…`；未设置时保留 `wiseeffm…`。旧模板和孤立 worker 清理仅匹配所选模板/worker 前缀，下划线按字面匹配；worker 收尾清理还匹配当前运行标识。使用工作树独占的前缀（例如 `review_fixes`），避免一次清理选中其他工作树的测试数据库。该设置不改变连接 URL、不授予权限，也不取消共享集群角色目录锁。
 
+`withTempDatabase` 默认独占克隆按迁移指纹命名的模板。普通 fixture 应省略 `migrate`；`migrate: true` 强制创建全新数据库并重放全部迁移，`migrate: false` 则保留空的全新数据库，供选择性升级或回填测试使用。迁移重放/模式等价性、集群角色守卫和真实提交并发场景仍使用全新数据库；这些显式选项及保留的手动数据库工厂在 `server/testing/testDatabase.test.ts` 中枚举断言。克隆自身持有的锁会在 fixture 回调前释放；显式持有的外层角色目录租约仍由原持有者管理。worker 数据库在整个运行期间保持有效，包括没有连接的间隔，仅由所属运行的收尾清理删除。
+
 WiseEff 以 PC 为主，可见修改默认验证受影响页面和状态的 `1440x900` 视口，不要求三设备走查。具体布局风险才补充较窄 PC 窗口；平板和手机按需启用。真实浏览器证据及专门验收边界见[界面质量检查清单](../developer/ui-quality-checklist.md)。
 
 ## 同类中文文档

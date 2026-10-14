@@ -77,14 +77,14 @@ export type TempDatabaseContext = {
 };
 
 export type WithTempDatabaseOptions = {
-  /** Identifier fragment baked into the generated database name: `wiseeff_<prefix>_<ts>_<rand>`. */
+  /** Label in disposable database names; template clones use the configured test namespace. */
   prefix: string;
   /**
-   * Execute every repository migration on a fresh database. Defaults to true.
+   * Defaults to "template": clone an exclusively owned, fully migrated database.
+   * Pass true to execute every repository migration on a fresh database.
    * Suites that replay migrations selectively (upgrade/backfill tests) pass false
    * and drive `applyMigrations`/their own subset against `migrationsDir` themselves.
-   * Ordinary fixtures may explicitly choose "template" for an exclusively cloned,
-   * fully migrated database. This does not replay cluster-shared role guards.
+   * Template cloning does not replay cluster-shared role guards.
    */
   migrate?: boolean | "template";
 };
@@ -102,7 +102,7 @@ export async function withTempDatabase<T>(
     /[^a-z0-9_]/gi,
     ""
   );
-  const template = options.migrate === "template"
+  const template = options.migrate === undefined || options.migrate === "template"
     ? await createEphemeralTestDatabase(options.prefix)
     : undefined;
   if (!template) {

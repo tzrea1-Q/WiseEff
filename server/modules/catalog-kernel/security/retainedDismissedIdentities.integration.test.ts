@@ -108,7 +108,7 @@ describe("retained historical identity owner / PostgreSQL capability", () => {
       }
       const upgradedFingerprint = await readCanonicalSchemaFingerprint(connectionString);
       expect(upgradedFingerprint).toBe(S2_SCH_LIVE_FINGERPRINT);
-      await withTempDatabase({ prefix: "retainedfresh" }, async ({ db: fresh, connectionString: freshUrl }) => {
+      await withTempDatabase({ prefix: "retainedfresh", migrate: true }, async ({ db: fresh, connectionString: freshUrl }) => {
         expect(await readCanonicalSchemaFingerprint(freshUrl)).toBe(upgradedFingerprint);
         process.stdout.write(`MOD_IDENTITY_SCHEMA_EVIDENCE ${JSON.stringify({ upgradedFingerprint,
           receipts: (await fresh.query("select name, checksum from schema_migrations order by name")).rows })}\n`);
