@@ -769,7 +769,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       && aggregateSteps[1]?.uses === "actions/setup-node@v4" && aggregateSteps[1]?.with?.["node-version-file"] === ".nvmrc"
       && aggregateSteps[1]?.with?.cache === undefined && download?.uses === "actions/download-artifact@v4"
       && download.if === `needs.detect.outputs.${flag} == 'true'`
-      && JSON.stringify(download.with) === JSON.stringify({ pattern: `wiseeff-ci-${kind}-\${{ github.run_attempt }}-*`, path: "${{ runner.temp }}/wiseeff-ci-shards" })
+      && JSON.stringify(download.with) === JSON.stringify({ pattern: `wiseeff-ci-${kind}-*-*`, path: "${{ runner.temp }}/wiseeff-ci-shards" })
       && results?.id === "results" && results.run === `${shardCli} aggregate ${kind}`
       && JSON.stringify(results.env) === JSON.stringify({ EFF_NEEDS: "${{ toJSON(needs) }}" })
       && aggregateSteps.every((step, index) => step["continue-on-error"] === undefined && (index === 2 || step.if === undefined)

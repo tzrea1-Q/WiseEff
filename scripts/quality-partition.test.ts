@@ -185,7 +185,7 @@ describe("quality partitions", () => {
     expect(compact).toHaveLength(compactQualityRoutes.length * 2);
     const identity: Identity = {
       event: "pull_request", mode: "", fullAcceptance: false, ref: "refs/pull/1142/merge",
-      base: "1".repeat(40), head: "2".repeat(40), sha: "3".repeat(40), tree: "4".repeat(40), runId: "100", attempt: "1"
+      base: "1".repeat(40), head: "2".repeat(40), sha: "3".repeat(40), tree: "4".repeat(40), repository: "tzrea1-Q/WiseEff", runId: "100", attempt: "1"
     };
     const inventory = playwrightInventory(JSON.parse(baseline.stdout), false);
     const receipts: ShardReceipt[] = [];

@@ -9,7 +9,7 @@ import { createShadowObservation, createUnavailableShadow } from "./ci-shadow";
 
 const identity = {
   event: "pull_request", mode: "", fullAcceptance: false, ref: "refs/pull/828/merge",
-  base: "1".repeat(40), head: "2".repeat(40), sha: "3".repeat(40), tree: "4".repeat(40), runId: "100", attempt: "1",
+  base: "1".repeat(40), head: "2".repeat(40), sha: "3".repeat(40), tree: "4".repeat(40), repository: "tzrea1-Q/WiseEff", runId: "100", attempt: "1",
 };
 const registry = [
   { id: "feedback-client", status: "observation-pending", risk: "R2", paths: [], consumers: [], dependencies: [], tasks: { "frontend-tests": ["src/"] }, browser: { spec: "e2e/client.spec.ts", pages: ["/"], roles: ["User"], flows: ["read"], environment: "owned-postgres-browser" } },
@@ -107,12 +107,12 @@ describe("CI shadow projection", () => {
       git(["merge", "--no-ff", "fixture-head", "-m", "fixture ordered merge"]);
       const sha = git(["rev-parse", "HEAD"]);
       const tree = git(["rev-parse", "HEAD^{tree}"]);
-      const identity = { event: "pull_request" as const, mode: "", fullAcceptance: false, ref: "refs/pull/828/merge", base, head, sha, tree, runId: "828", attempt: "1" };
+      const identity = { event: "pull_request" as const, mode: "", fullAcceptance: false, ref: "refs/pull/828/merge", base, head, sha, tree, repository: "tzrea1-Q/WiseEff", runId: "828", attempt: "1" };
       const runnerTemp = mkdtempSync(path.join(evidenceRoot, "runner-"));
       chmodSync(runnerTemp, 0o700);
       const w1Output = path.join(evidenceRoot, "w1-output");
       const env = { ...process.env, GITHUB_EVENT_NAME: identity.event, GITHUB_REF: identity.ref, GITHUB_SHA: identity.sha, GITHUB_RUN_ID: identity.runId,
-        GITHUB_RUN_ATTEMPT: identity.attempt, EFF_BASE_SHA: identity.base, EFF_HEAD_SHA: identity.head, EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false",
+        GITHUB_REPOSITORY: identity.repository, GITHUB_RUN_ATTEMPT: identity.attempt, EFF_BASE_SHA: identity.base, EFF_HEAD_SHA: identity.head, EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false",
         GITHUB_JOB: "l1-frontend", RUNNER_TEMP: runnerTemp, GITHUB_OUTPUT: w1Output, CI: "true" };
       const w1StartedAt = Date.now();
       const w1 = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "test", "frontend"], { cwd: root, env, encoding: "utf8" });
