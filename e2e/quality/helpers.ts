@@ -23,17 +23,7 @@ export function seedQualityRuntime(runScript: (script: string) => void = runNpmS
     return;
   }
 
-  for (const script of [
-    "db:migrate",
-    "reset:quality-runtime",
-    "db:seed:m0",
-    "db:seed:m1",
-    "db:seed:m2",
-    "db:seed:m3",
-    "seed:quality:admin-lists"
-  ]) {
-    runScript(script);
-  }
+  runScript("seed:browser");
   qualitySeeded = true;
 }
 

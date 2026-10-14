@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { runBrowserSeedScripts } from "./browser-seed-contract";
 import YAML from "yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -293,9 +294,10 @@ describe("quality runtime reset wiring", () => {
 
   it("resets transient user-governance state before quality gate seeding", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
-
-    expect(helpers).toContain("reset:quality-runtime");
-    expect(helpers.indexOf('"reset:quality-runtime"')).toBeLessThan(helpers.indexOf('"db:seed:m0"'));
+    const scripts: string[] = [];
+    runBrowserSeedScripts((script) => { scripts.push(script); });
+    expect(helpers).toContain('runScript("seed:browser")');
+    expect(scripts.indexOf("reset:quality-runtime")).toBeLessThan(scripts.indexOf("db:seed:all"));
   });
 
   it("does not invoke any base seed script in target read-only mode", () => {
@@ -313,10 +315,10 @@ describe("quality runtime reset wiring", () => {
     const runScript = vi.fn();
     seed(runScript);
     seed(runScript);
-    expect(runScript.mock.calls.map(([script]) => script)).toEqual([
-      "db:migrate", "reset:quality-runtime", "db:seed:m0", "db:seed:m1", "db:seed:m2", "db:seed:m3",
-      "seed:quality:admin-lists"
-    ]);
+    expect(runScript.mock.calls.map(([script]) => script)).toEqual(["seed:browser"]);
+    const scripts: string[] = [];
+    runBrowserSeedScripts((script) => { scripts.push(script); });
+    expect(scripts).toEqual(["db:migrate", "reset:quality-runtime", "db:seed:all", "seed:quality:admin-lists"]);
   });
 
   it("keeps the review fixture out of the skippable base seed lifecycle", () => {
@@ -340,7 +342,7 @@ describe("quality runtime reset wiring", () => {
     );
 
     expect(seedStep.run).toMatch(
-      /npm run db:seed:all\s+npm run --if-present seed:quality:admin-lists\s+echo "WISEEFF_QUALITY_SKIP_SEED=true"/,
+      /npm run seed:browser\s+echo "WISEEFF_QUALITY_SKIP_SEED=true"/,
     );
   });
 
