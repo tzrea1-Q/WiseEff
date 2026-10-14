@@ -35,6 +35,23 @@ WiseEff 的变更应保持产品可用、可测试、可审计。先读智能体
 
 编辑期间运行定向测试，交接前按受影响范围扩大验证；TypeScript、路由、Vite、共享类型变更保留 `npm run build`。文档变更仍运行 `npm run docs:check` 与 `git diff --check`。
 
+### 本地 Vitest 影响选择
+
+`test:impact` 只列出测试，不执行测试，也不启动 API、浏览器或测试数据库：
+
+```bash
+npm run test:impact -- src/DebuggingPage.tsx
+npm run --silent test:impact -- --base origin/main --json > /tmp/vitest-impact.json
+```
+
+传入仓库相对路径的变更文件，**或** `--base <commit>`。基线提交与当前工作树比较，包含已提交、已暂存、未暂存和未跟踪变更；重命名包含新旧路径。可运行的测试套件和静态门禁命令写入 stderr，JSON（`changedPaths`、`fullFallback`、`reasons`、`suites`、`gates`、`commands`）写入 stdout；`--json` 不再额外列出命令。通过管道读取 JSON 时使用 npm 的 `--silent`。
+
+选择器复用 frontend、server、scripts、Bridge 配置下 Vitest 的传递依赖关联测试发现能力。普通 scripts 文件只选择关联测试，不扩大到整套 scripts 测试；ops 和 packages 变更还会选中完整所属测试套件。局部组件或功能 CSS 变更选中全部 frontend 和 scripts 测试，避免遗漏读取文件的样式守卫。共享外壳/UI 基础组件、全局样式、明确列出的 CI/回执/分片/种子契约/运行时测试工具文件、配置、缺失/删除或未映射代码，以及依赖发现失败，均回退到四套完整测试。
+
+`docs/` 下或仓库根目录的 Markdown 只选择 `docs:check`，不加载 Vitest；运行手册 Markdown 还选择 `docs:runbook-commands:check`，复用现有运行手册命令校验器。OpenAPI/DTO schema 变更选择 `contract:check`，前端 CSS/TSX 选择 `ui:check`，工作流/CI 脚本选择 `acceptance:ci`。门禁实现文件变更还会在关联测试之外选中对应门禁：归属由 package 脚本命令、工具代码的相对导入，以及同一命名空间或共享这些工具模块的生成器推导。生成的 OpenAPI 工件只选择契约门禁。门禁名称在 `gates` 中去重，其可运行命令追加到 `commands`。
+
+只有 `suites` 和 `gates` 同时为空才算空选择；仅选择文档门禁是有效结果。空变更和必需完整测试套件清单缺失仍会报错。执行输出命令前检查 `fullFallback` 并遵守任务验证预算；该本地工具不替代 PR CI、浏览器验收或任何现有门禁。
+
 ### 测试数据库隔离
 
 本地 quality 与 acceptance Playwright 配置支持 `WISEEFF_RUNTIME_LANE=<N>`（1–10000 的整数，不允许前导零）。提供 PostgreSQL `DATABASE_URL` 后，描述符选择 `<database>_lane_<N>`、API 端口 `20000 + 2*N`、前端端口 `20001 + 2*N`、`<OBJECT_STORE_ROOT>/lane-<N>`（默认 `.wiseeff-object-store/lane-<N>`），以及 `test-results/lanes/<N>/<quality|acceptance>` 和 `playwright-report/lanes/<N>/<quality|acceptance>`。这些设置会传递给浏览器 worker；嵌套 fixture 使用 `WISEEFF_TEST_DATABASE_PREFIX=pw_lane_<N>`。启动 Playwright 前，使用既有运行时准备流程创建并播种各 lane 数据库；描述符不会创建或重置数据库。并行运行必须使用不同 ID，quality 与 acceptance 同时运行也不例外；对象存储保持 local 模式。lane 不复用既有服务器，也不能与受控 Gate0 描述符或标志同时使用；既有受控运行时隔离保持不变。未选择 lane 时，现有默认值和覆盖变量不变。

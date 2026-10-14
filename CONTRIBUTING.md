@@ -77,6 +77,23 @@ npm run build
 npm run docs:check
 ```
 
+### Local Vitest impact selection
+
+`test:impact` lists tests; it does not execute them or start the API, browsers, or test databases:
+
+```bash
+npm run test:impact -- src/DebuggingPage.tsx
+npm run --silent test:impact -- --base origin/main --json > /tmp/vitest-impact.json
+```
+
+Pass repository-relative changed files **or** `--base <commit>`. The base compares that commit with the current working tree, including committed, staged, unstaged, and untracked changes; renames include both paths. Runnable suite and static-gate commands go to stderr and JSON (`changedPaths`, `fullFallback`, `reasons`, `suites`, `gates`, `commands`) to stdout; `--json` suppresses the command listing. Use npm's `--silent` when piping JSON.
+
+Selection uses Vitest's transitive related-test discovery in the frontend, server, scripts, and Bridge configurations. Ordinary scripts select related tests, not the entire scripts suite; ops and package changes also select their complete owning suite. Local component/feature CSS selects all frontend and scripts tests so file-reading style guards are not missed. Shared shell/UI primitives, global styles, explicitly identified CI/receipt/partition/seed-contract/runtime harness files, configs, missing/deleted or unmapped code, and dependency-discovery failures select all four suites.
+
+Markdown under `docs/` or at the repository root selects `docs:check` without loading Vitest; runbook Markdown also selects `docs:runbook-commands:check`, which reuses the existing runbook-command validator. OpenAPI/DTO schema changes select `contract:check`, frontend CSS/TSX selects `ui:check`, and workflows/CI scripts select `acceptance:ci`. Gate implementation changes also select their gate alongside related tests: ownership is derived from package script commands, relative tooling imports, and generators in the same namespace or sharing those tooling helpers. The generated OpenAPI artifact selects only its contract gate. Gate names are deduplicated in `gates`, and their runnable commands are appended to `commands`.
+
+A selection is empty only when both `suites` and `gates` are empty; gate-only documentation changes are valid. Empty changes and missing required full-suite inventories still fail. Inspect `fullFallback` and respect the task's verification budget before running emitted commands; this local tool does not replace PR CI, browser acceptance, or any existing gate.
+
 ### Test database isolation
 
 Local quality and acceptance Playwright configs accept `WISEEFF_RUNTIME_LANE=<N>` (an integer 1–10000, without leading zeros). Supply a PostgreSQL `DATABASE_URL`: the descriptor selects `<database>_lane_<N>`, API port `20000 + 2*N`, frontend port `20001 + 2*N`, `<OBJECT_STORE_ROOT>/lane-<N>` (default `.wiseeff-object-store/lane-<N>`), and `test-results/lanes/<N>/<quality|acceptance>` plus `playwright-report/lanes/<N>/<quality|acceptance>`. It propagates these settings to browser workers and sets `WISEEFF_TEST_DATABASE_PREFIX=pw_lane_<N>` for nested fixtures. Provision and seed each lane database using the existing runtime setup before starting Playwright; the descriptor does not create or reset databases. Choose distinct IDs for simultaneous runs, including quality versus acceptance, and keep the object store in local mode. Lane runs refuse server reuse and cannot be combined with owned Gate0 descriptors/flags; existing owned runtime isolation stays unchanged. Without a lane, all existing defaults and overrides remain unchanged.
