@@ -753,7 +753,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       timeout: 20_000
     });
     await expect(workspace.getByRole("columnheader", { name: /所属模块/ })).toBeVisible();
-    await workspace.getByRole("button", { name: "DTS 源码" }).click();
+    await workspace.getByRole("tab", { name: "DTS 源码", exact: true }).click();
     await expect(workspace.getByRole("tree", { name: "业务模块树" })).toBeVisible({
       timeout: 20_000
     });
@@ -761,7 +761,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       timeout: 20_000
     });
     await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toHaveCount(0);
-    await workspace.getByRole("button", { name: "参数列表" }).click();
+    await workspace.getByRole("tab", { name: "参数列表", exact: true }).click();
     await expect(workspace.getByRole("region", { name: "DTS 参数列表" })).toBeVisible({
       timeout: 20_000
     });

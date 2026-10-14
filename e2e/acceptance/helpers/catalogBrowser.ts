@@ -177,10 +177,10 @@ export async function openDefinitionEditor(page: Page, request: APIRequestContex
   ).item;
   const table = region.getByRole("table", { name: "参数定义列表" });
   await expect(table).toBeVisible();
-  const edit = table.getByRole("button", { name: /^编辑 /u }).first();
+  const edit = table.getByRole("button", { name: permissions.authoringAllowed ? /^编辑 /u : /^查看 /u }).first();
   await expect(edit).toBeVisible({ timeout: 15_000 });
   await edit.click();
-  const dialog = page.getByRole("dialog", { name: /^编辑 / });
+  const dialog = page.getByRole("dialog", { name: permissions.authoringAllowed ? /^编辑 /u : /^查看 /u });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
   if (permissions.authoringAllowed) {
