@@ -33,7 +33,9 @@ WiseEff 的变更应保持产品可用、可测试、可审计。先读智能体
 
 ## 验证
 
-编辑期间运行定向测试，交接前按受影响范围扩大验证；TypeScript、路由、Vite、共享类型变更保留 `npm run build`。文档变更仍运行 `npm run docs:check` 与 `git diff --check`。
+遵循[验证分层](../developer/verification-matrix.md#验证分层)：编辑内循环、交接前、PR CI、合入和夜间。先运行 `npm run test:impact -- <changed-files>`（或 `--base <integration-base>`），使用其套件/门禁/浏览器命令，不手选清单。检查两个回退标志；完整覆盖超分配预算时交给协调者。仅在获准时使用隔离 `WISEEFF_RUNTIME_LANE` 浏览器运行；选择器与 lane 契约见下文。
+
+[智能体验证预算](../developer/verification-matrix.md#智能体验证预算)将定向反馈分配给实现者、昂贵门禁分配给协调者，不豁免门禁。TypeScript/Vite/路由/共享类型变更保留 `npm run build`；文档保留 `npm run docs:check` 和 `git diff --check`。精确 head 的 PR CI 及必需 `Merge bar` 与本地证据分开；main/夜间保留完整覆盖。
 
 ### 本地 Vitest 影响选择
 

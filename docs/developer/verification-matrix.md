@@ -4,6 +4,57 @@
 
 Use the narrowest command that proves the change while developing. Before finishing, broaden to the gate that matches the risk and touched surface.
 
+## Verification tiers
+
+This is the shared model for contributors and agents. Selection is not execution, and a local pass is not PR, merge, nightly, target-host, or production evidence. Accepted task and release contracts retain their additional gates.
+
+| Tier | Owner and required evidence |
+| --- | --- |
+| Inner loop | Implementer: run only the test files being changed; use `test:impact` to discover affected suites, static gates, quality routes and cross-route acceptance specs instead of guessing filenames. Behavior changes use red → green; prose does not need an artificial failing test. |
+| Pre-hand-off | Implementer: run the affected selection within the assigned budget, inspect the diff and report both fallback flags. Coordinator: run any selected gates or real API browser checks outside that budget, plus the required build for TypeScript/Vite/routing/shared-type changes. Documentation-only changes select `docs:check`, not Vitest or browsers. |
+| PR CI | Coordinator: inspect the actual workflow for the exact pushed head, including native selected jobs, receipts and required aggregates. Spec #1164 calls for impacted acceptance on PRs; the local selector does not install that CI policy. Until the CI integration lands, existing path selection and the `full-acceptance` label govern CI L2. |
+| Merge | Coordinator, only when authorized: require the real `Merge bar` success for the current candidate and all accepted task evidence. Pending, cancelled, old-head or `Merge bar (ignored label)` results cannot substitute. A local selection cannot waive a required job. |
+| Nightly | CI on `main`: retain full L1/L2 coverage on main pushes and nightly runs, including complete quality/backend inventories and owned Gate0 acceptance. Scoped local passes cannot replace this tier. |
+
+### Select once, execute the appropriate tier
+
+```bash
+# Explicit files, or the actual integration base plus all working-tree changes:
+npm run test:impact -- src/DebuggingPage.tsx
+npm run --silent test:impact -- --base origin/main --json > /tmp/wiseeff-impact.json
+# Inner loop: substitute the specific test file being changed.
+VITE_WISEEFF_RUNTIME_MODE=mock npx vitest run --configLoader runner <test-file>
+```
+
+Use the assigned integration base rather than `origin/main` when they differ. Read `suites`, `gates`, `commands` and `browser`; inspect **both** `fullFallback` and `browser.fullFallback`, with their reasons. Execute the emitted commands without dropping configs, warmup, cross-route specs or static gates. Shared, deleted, unmapped or failed-discovery changes fall back conservatively; if full coverage exceeds the assigned budget, hand it to the coordinator rather than narrowing it. Empty changes are an error, not acceptance. See [Contributing](../../CONTRIBUTING.md#local-vitest-impact-selection) for the selector contract.
+
+### Agent verification budget
+
+For a delegated ticket with a coordinator-owned expensive-gate budget, run checks sequentially. During edits, run only changed test files. After all edits, run one related pass over every changed source file, then lint those files and typecheck each affected project:
+
+```bash
+VITE_WISEEFF_RUNTIME_MODE=mock npx vitest related --run --configLoader runner <changed-source-files>
+npx eslint <changed-code-files>
+npx tsc -p tsconfig.app.json --noEmit
+npx tsc -p tsconfig.node.json --noEmit
+git diff --check
+```
+
+Run the app typecheck for `src/` TypeScript changes and the node typecheck for server/scripts/e2e/config TypeScript changes. A related pass covers its active Vitest configuration only: use `test:impact` to identify other suites/gates and explicitly hand any unrun selection to the coordinator. Documentation-only work needs neither a related pass, ESLint nor TypeScript checks; its selected `npm run docs:check` remains required, with execution assigned to the coordinator when the task reserves docs gates. A failing related pass may be fixed and rerun at most twice. Do not run full suites, builds, repo-wide lint, browser loops or concurrent test/build sessions under this budget. The coordinator runs expensive gates once per ticket; they are deferred, not removed. An unavailable environment or sandbox error is missing evidence, not a pass.
+
+### Isolated browser lanes
+
+For an authorized scoped browser run, first provision and seed a disposable lane database using [local setup](../../CONTRIBUTING.md#test-database-isolation). With the base PostgreSQL `DATABASE_URL` exported, use the exact grep and spec list emitted in `browser.commands`:
+
+```bash
+WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.quality.config.ts --grep '<browser.qualityGrep>'
+WISEEFF_RUNTIME_LANE=1 npx playwright test --config playwright.acceptance.config.ts <browser.acceptanceSpecs>
+# To execute one registered quality partition instead of all projects:
+WISEEFF_RUNTIME_LANE=1 WISEEFF_QUALITY_LANE=consistency-1 npx playwright test --config playwright.quality.config.ts --grep '<browser.qualityGrep>'
+```
+
+The placeholders are selector output, not literal arguments. Run all applicable quality partitions (`visual`, `consistency-1`, `consistency-2`, `accessibility`) when partitioning a selection. `WISEEFF_RUNTIME_LANE` isolates ports, database, object storage and reports; `WISEEFF_QUALITY_LANE` chooses coverage and does not isolate a runtime. Sequential quality/acceptance runs may reuse a lane; simultaneous runs require distinct runtime lane IDs. `WISEEFF_VITEST_LANES` is the total concurrent Vitest process count, not either browser lane setting. The descriptor does not provision databases and cannot be combined with owned Gate0 runtime controls. Scoped Playwright evidence is not full Gate0 evidence; keep controlled-runtime and receipt obligations unchanged. Visible changes require real API evidence at `1440x900`; mock tests, collection and metadata cannot replace execution. When browsers are reserved to the coordinator, report selected routes/specs and missing screenshots instead of launching them.
+
 ## Local Vitest worker budget
 
 When the coordinator runs concurrent Vitest lanes on one host, set `WISEEFF_VITEST_LANES` to the total number of simultaneous Vitest processes in every lane (not the runtime lane ID). For example, `WISEEFF_VITEST_LANES=3 npm test -- src/NodeDebuggingPage.test.tsx` shares the host's `availableParallelism()` across three lanes. A single process defaults to `1` lane.

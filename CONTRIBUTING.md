@@ -68,14 +68,9 @@ before marking a plan complete. Repository skills are optional task-specific aid
 
 ## Verification
 
-Use targeted tests while editing, then broaden according to risk:
+Follow the [verification tiers](docs/developer/verification-matrix.md#verification-tiers): inner loop, pre-hand-off, PR CI, merge and nightly. Start with `npm run test:impact -- <changed-files>` (or `--base <integration-base>`) and use its suite/gate/browser commands rather than a hand-picked list. Inspect both fallback flags; hand full coverage to the coordinator when it exceeds the assigned budget. Use isolated `WISEEFF_RUNTIME_LANE` browser runs only when authorized; the selector and lane contracts follow below.
 
-```bash
-npm test -- <affected-test-files>
-npm run test:server -- <affected-test-files>
-npm run build
-npm run docs:check
-```
+The [agent verification budget](docs/developer/verification-matrix.md#agent-verification-budget) assigns scoped feedback to the implementer and expensive gates to the coordinator; it does not waive them. Retain `npm run build` for TypeScript/Vite/routing/shared-type changes, and `npm run docs:check` plus `git diff --check` for documentation. Exact-head PR CI and required `Merge bar` remain separate from local evidence; main/nightly retain full coverage.
 
 ### Local Vitest impact selection
 
