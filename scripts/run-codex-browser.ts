@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { tmpdir, userInfo } from "node:os";
@@ -6,8 +6,15 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { parse } from "dotenv";
+import { createServer } from "node:net";
+import { request } from "node:http";
+import { setTimeout as wait } from "node:timers/promises";
 import { applyPlaywrightRuntimeLane } from "./playwright-runtime-lane";
 import { createVitestImpact, type selectBrowserImpact } from "./test-impact";
+import { buildPlaywrightWebServers } from "../playwright.shared";
+import { stopOwnedProcessGroup, waitForOwnedProcessGroupExit } from "./owned-process-group";
+import { createBearerTokenForUser } from "../e2e/acceptance/helpers/runtime";
+import { ACCEPTANCE_ORGANIZATION, castByRole } from "../e2e/acceptance/helpers/cast";
 
 type BrowserSelection = ReturnType<typeof selectBrowserImpact>;
 export type BrowserWorktree = { root: string; gitDir: string; commonDir: string; branch: string; head: string; dirty: boolean };
@@ -21,6 +28,8 @@ const browserSelectionSchema = z.object({ fullFallback: z.boolean(), reasons: z.
 const authNames = ["AUTH_TOKEN_ISSUER", "AUTH_TOKEN_HMAC_SECRET"] as const;
 const platformReason = "platform: Linux-only baselines";
 const skipSchema = z.object({ suite: z.enum(["quality", "acceptance"]), project: z.string().nullable(), file: z.string().nullable(), status: z.literal("skipped"), reason: z.literal(platformReason) });
+const blockSchema = z.object({ reason: z.enum(["lane ports in use", "lane port check failed", "authentication probe failed", "runtime startup failed", "runtime teardown failed", "runtime interrupted"]), suite: z.enum(["quality", "acceptance"]).nullable(), ports: z.array(z.number().int().positive()).optional(), httpStatus: z.number().int().nullable().optional() });
+type BrowserBlock = z.infer<typeof blockSchema>;
 const missingAuth = (env: NodeJS.ProcessEnv, selection: BrowserSelection) => selection.acceptanceSpecs.length ? authNames.filter((name) => !env[name]?.trim()) : [];
 const successfulRuns = (runs: z.infer<typeof runSchema>[]) => runs.length === 2 && runs.some((run) => run.status === "passed") && runs.every((run) => run.status !== "failed");
 const passedRun = (run: z.infer<typeof runSchema>, acceptanceSpecs: readonly string[]) => run.exitCode === 0 && !run.error && run.reportErrors === 0
@@ -30,17 +39,25 @@ const passedRun = (run: z.infer<typeof runSchema>, acceptanceSpecs: readonly str
     && test.attempts.at(-1)!.status === test.expectedStatus));
 
 export const codexBrowserEvidenceSchema = z.object({
-  version: z.literal(1), startedAt: z.string().datetime(), finishedAt: z.string().datetime(), status: z.union([z.enum(["passed", "failed"]), z.string().regex(/^blocked: missing AUTH_TOKEN_(?:ISSUER|HMAC_SECRET)(?:, AUTH_TOKEN_HMAC_SECRET)?$/)]),
+  version: z.literal(1), startedAt: z.string().datetime(), finishedAt: z.string().datetime(), status: z.union([z.enum(["passed", "failed"]), z.string().regex(/^blocked: (?:missing AUTH_TOKEN_(?:ISSUER|HMAC_SECRET)(?:, AUTH_TOKEN_HMAC_SECRET)?|lane ports in use|lane port check failed|authentication probe failed|runtime startup failed|runtime teardown failed|runtime interrupted)$/)]),
   worktree: z.object({ root: z.string(), branch: z.string(), head: z.string().regex(/^[a-f0-9]{40}$/), dirty: z.boolean() }),
   lane: z.object({ id: z.string(), baseURL: z.string().url(), apiURL: z.string().url(), databaseName: z.string(), objectStoreRoot: z.string(), outputDir: z.string(), reportDir: z.string() }),
   network: z.literal("macos-localhost-only"), selection: z.object({ changedPaths: z.array(z.string()).nonempty(), browser: browserSelectionSchema }),
   themes: z.array(z.enum(["light", "dark"])), runs: z.array(runSchema),
   missingConfig: z.array(z.enum(authNames)).default([]), skipped: z.array(skipSchema).default([]),
+  block: blockSchema.nullable().default(null),
   spotCheck: z.object({ reviewer: z.string().min(1), checkedAt: z.string().datetime(), outcome: z.enum(["passed", "failed"]), notes: z.string().min(1) }).nullable(),
 }).strict().superRefine((evidence, context) => {
   if (evidence.missingConfig.length) {
-    if (evidence.status !== `blocked: missing ${evidence.missingConfig.join(", ")}` || evidence.runs.length || evidence.themes.length) {
+    if (evidence.status !== `blocked: missing ${evidence.missingConfig.join(", ")}` || evidence.runs.length || evidence.themes.length || evidence.block) {
       context.addIssue({ code: "custom", message: "Missing configuration must block before browser runs." });
+    }
+    return;
+  }
+  if (evidence.block) {
+    if (evidence.status !== `blocked: ${evidence.block.reason}` || evidence.runs.length > 2
+      || evidence.runs.some((run, index) => run.suite !== (index === 0 ? "quality" : "acceptance") || (run.status === "passed") !== passedRun(run, evidence.selection.browser.acceptanceSpecs))) {
+      context.addIssue({ code: "custom", message: "Blocked evidence must match the preflight/teardown failure and completed runs." });
     }
     return;
   }
@@ -98,13 +115,13 @@ export function summarizeBrowserReport(plan: ReturnType<typeof planCodexBrowserR
   return run;
 }
 
-export function buildCodexBrowserEvidence(plan: ReturnType<typeof planCodexBrowserRun>, changedPaths: string[], runs: z.infer<typeof runSchema>[], startedAt = new Date().toISOString()) {
+export function buildCodexBrowserEvidence(plan: ReturnType<typeof planCodexBrowserRun>, changedPaths: string[], runs: z.infer<typeof runSchema>[], startedAt = new Date().toISOString(), block: BrowserBlock | null = null) {
   const { root, branch, head, dirty } = plan.worktree;
   const missingConfig = missingAuth(plan.env, plan.selection);
   return codexBrowserEvidenceSchema.parse({
-    version: 1, startedAt, finishedAt: new Date().toISOString(), status: missingConfig.length ? `blocked: missing ${missingConfig.join(", ")}` : successfulRuns(runs) ? "passed" : "failed",
+    version: 1, startedAt, finishedAt: new Date().toISOString(), status: missingConfig.length ? `blocked: missing ${missingConfig.join(", ")}` : block ? `blocked: ${block.reason}` : successfulRuns(runs) ? "passed" : "failed",
     worktree: { root, branch, head, dirty }, lane: plan.lane, network: "macos-localhost-only",
-    selection: { changedPaths, browser: plan.selection }, missingConfig, skipped: plan.skipped,
+    selection: { changedPaths, browser: plan.selection }, missingConfig, skipped: plan.skipped, block,
     themes: [...new Set(runs.flatMap((run) => run.tests.filter((test) => test.outcome !== "skipped" && test.attempts.length)
       .flatMap((test) => test.theme ? [test.theme] : [])))].sort(), runs, spotCheck: null,
   });
@@ -138,11 +155,19 @@ export function browserPlatformSkips(root: string, platform = process.platform):
 
 export function planCodexBrowserRun(worktree: BrowserWorktree, selection: BrowserSelection, environment: NodeJS.ProcessEnv, platform = process.platform) {
   if (platform !== "darwin") throw new Error("Localhost-only browser execution currently requires macOS sandbox-exec; no unrestricted fallback.");
+  if (!environment.WISEEFF_RUNTIME_LANE) throw new Error("An explicit WISEEFF_RUNTIME_LANE is required.");
+  const envFile = resolve(worktree.root, ".env");
+  const fileConfig = existsSync(envFile) ? parse(readFileSync(envFile, "utf8")) : {};
+  environment = { ...fileConfig, ...Object.fromEntries(Object.entries(environment).filter(([, value]) => value !== undefined)) };
+  const localFile = resolve(worktree.root, ".env.local");
+  const localConfig = existsSync(localFile) ? parse(readFileSync(localFile, "utf8")) : {};
+  for (const name of ["DATABASE_URL", "TEST_DATABASE_URL", "HOST", "PORT", "OBJECT_STORE_MODE", "OBJECT_STORE_ROOT", "WISEEFF_RUNTIME_LANE", "WISEEFF_API_PORT", "WISEEFF_FRONTEND_PORT", "VITE_WISEEFF_API_BASE_URL", "WISEEFF_ACCEPTANCE_FRONTEND_URL", "AUTH_MODE", "AUTH_PROVIDER", ...authNames]) {
+    if (localConfig[name] !== undefined) throw new Error(`Runtime override .env.local ${name} is not allowed.`);
+  }
   if (worktree.gitDir === worktree.commonDir || !relative(resolve(worktree.commonDir, "worktrees"), worktree.gitDir).match(/^[^./][^/]*$/)) {
     throw new Error("Run from a dedicated worktree, never the main checkout.");
   }
   if (!worktree.branch.startsWith("codex/")) throw new Error("A codex/<task> task branch is required.");
-  if (!environment.WISEEFF_RUNTIME_LANE) throw new Error("An explicit WISEEFF_RUNTIME_LANE is required.");
   for (const name of ["WISEEFF_QUALITY_LANE", "WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR", "WISEEFF_QUALITY_SNAPSHOT_ROOT"]) {
     if (environment[name]?.trim()) throw new Error(`Runtime override ${name} is not allowed.`);
   }
@@ -163,9 +188,9 @@ export function planCodexBrowserRun(worktree: BrowserWorktree, selection: Browse
   const skipped = browserPlatformSkips(worktree.root, platform).filter((skip) => skip.suite === "quality" || selection.acceptanceSpecs.some((file) => file === skip.file));
   selection = { ...selection, acceptanceSpecs: selection.acceptanceSpecs.filter((file) => !skipped.some((skip) => skip.file === file)) };
   const env: NodeJS.ProcessEnv = { ...environment, TMPDIR: userTempDirectory, HOST: "127.0.0.1", OBJECT_STORE_MODE: "local", WISEEFF_ACCEPTANCE_ENV_FILE: "/dev/null" };
-  const envFile = resolve(worktree.root, ".env");
-  const fileConfig = existsSync(envFile) ? parse(readFileSync(envFile, "utf8")) : {};
-  for (const name of authNames) env[name] ??= fileConfig[name];
+  for (const name of Object.keys(env)) if (/^(?:(?:https?|all)_proxy|npm_config_(?:https?_)?proxy)$/i.test(name)) delete env[name];
+  env.NO_PROXY = "*";
+  env.no_proxy = "*";
   const lane = applyPlaywrightRuntimeLane(env)!;
   const command = (suite: "quality" | "acceptance", filters: string[]) => ({
     suite,
@@ -189,7 +214,113 @@ export function planCodexBrowserRun(worktree: BrowserWorktree, selection: Browse
   };
 }
 
-type Launch = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: "inherit"; shell: false }) => { status: number | null; error?: Error; signal: NodeJS.Signals | null };
+type LaunchOptions = { cwd: string; env: NodeJS.ProcessEnv; stdio: "inherit"; shell: false; suite: "quality" | "acceptance" };
+type LaunchResult = { status: number | null; error?: Error; signal: NodeJS.Signals | null; block?: BrowserBlock };
+type Launch = (command: string, args: string[], options: LaunchOptions) => LaunchResult | Promise<LaunchResult>;
+
+async function probeLanePort(port: number): Promise<"free" | "busy" | "error"> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once("error", (error: NodeJS.ErrnoException) => resolve(error.code === "EADDRINUSE" ? "busy" : "error"));
+    server.listen({ host: "127.0.0.1", port, exclusive: true }, () => server.close((error) => resolve(error ? "error" : "free")));
+  });
+}
+
+export async function checkCodexLanePorts(plan: ReturnType<typeof planCodexBrowserRun>, probe = probeLanePort): Promise<BrowserBlock | null> {
+  const busy: number[] = [];
+  for (const url of [plan.lane.apiURL, plan.lane.baseURL]) {
+    const port = Number(new URL(url).port);
+    const status = await probe(port);
+    if (status === "error") return { reason: "lane port check failed", suite: null, ports: [port] };
+    if (status === "busy") busy.push(port);
+  }
+  return busy.length ? { reason: "lane ports in use", suite: null, ports: busy } : null;
+}
+
+async function localHttpStatus(url: string, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<number> {
+  const target = new URL(url);
+  if (target.protocol !== "http:" || target.hostname !== "127.0.0.1") throw new Error("Only lane loopback HTTP probes are allowed.");
+  return new Promise((resolve, reject) => {
+    const probe = request(target, { headers, signal }, (response) => { response.resume(); resolve(response.statusCode ?? 0); });
+    probe.setTimeout(4_000, () => probe.destroy(new Error("probe-timeout")));
+    probe.once("error", reject);
+    probe.end();
+  });
+}
+
+type SuiteRuntime = {
+  spawn: (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: "inherit"; shell: false; detached: true }) => ChildProcess;
+  stop: (child: ChildProcess) => Promise<void>;
+  request: typeof localHttpStatus;
+};
+
+export async function launchCodexBrowserSuite(command: string, args: string[], options: LaunchOptions, runtime: SuiteRuntime = { spawn, stop: stopOwnedProcessGroup, request: localHttpStatus }): Promise<LaunchResult> {
+  const children: ChildProcess[] = [];
+  const controller = new AbortController();
+  let interrupted: NodeJS.Signals | null = null;
+  const interrupt = (signal: NodeJS.Signals) => { interrupted = signal; controller.abort(new Error("interrupted")); };
+  const onInterrupt = () => interrupt("SIGINT");
+  const onTerminate = () => interrupt("SIGTERM");
+  process.once("SIGINT", onInterrupt);
+  process.once("SIGTERM", onTerminate);
+  let result: LaunchResult = { status: null, signal: null };
+  let stopping = false;
+  const start = (childArgs: string[], env: NodeJS.ProcessEnv) => {
+    const child = runtime.spawn(command, childArgs, { cwd: options.cwd, env, stdio: "inherit", shell: false, detached: true });
+    if (!child.pid) {
+      child.once("error", () => undefined);
+      throw new Error("runtime-launch-error");
+    }
+    children.push(child);
+    child.once("error", () => controller.abort(new Error("runtime-launch-error")));
+    return child;
+  };
+  try {
+    const servers = buildPlaywrightWebServers({ baseURL: options.env.WISEEFF_ACCEPTANCE_FRONTEND_URL!, apiURL: options.env.VITE_WISEEFF_API_BASE_URL!, reuseExistingServer: false,
+      ...(options.suite === "acceptance" ? { authMode: "production", includeXiaozeProactive: true, projectConfigurationWorkbenchEnabled: true } : {}),
+    }, options.env) as Array<{ env?: NodeJS.ProcessEnv; url?: string }>;
+    for (const [index, server] of servers.entries()) {
+      const serverArgs = index === 0
+        ? [process.execPath, resolve(options.cwd, "node_modules/tsx/dist/cli.mjs"), "watch", "server/index.ts"]
+        : [process.execPath, resolve(options.cwd, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", new URL(options.env.WISEEFF_ACCEPTANCE_FRONTEND_URL!).port, "--strictPort"];
+      const child = start([...args.slice(0, 2), ...serverArgs], { ...options.env, ...server.env });
+      child.once("close", () => { if (!stopping) controller.abort(new Error("runtime-exited")); });
+      const deadline = Date.now() + 60_000;
+      while (true) {
+        controller.signal.throwIfAborted();
+        try { if (await runtime.request(server.url!, {}, controller.signal) === 200) break; } catch { controller.signal.throwIfAborted(); }
+        if (Date.now() >= deadline) throw new Error("runtime-readiness-timeout");
+        await wait(100, undefined, { signal: controller.signal });
+      }
+    }
+    const actor = castByRole.admin;
+    const authorization = createBearerTokenForUser(actor.userId, actor.email, actor.name, ACCEPTANCE_ORGANIZATION.id, options.env);
+    let httpStatus: number | null = null;
+    if (authorization) {
+      for (const baseURL of [options.env.VITE_WISEEFF_API_BASE_URL, options.env.WISEEFF_ACCEPTANCE_FRONTEND_URL]) {
+        try { httpStatus = await runtime.request(`${baseURL}/api/v1/me`, { Authorization: authorization, "x-wiseeff-user": actor.userId }, controller.signal); } catch { httpStatus = null; }
+        if (httpStatus !== 200) break;
+      }
+    }
+    if (httpStatus !== 200) result.block = { reason: "authentication probe failed", suite: options.suite, httpStatus };
+    else {
+      const child = start(args, { ...options.env, WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true" });
+      result.status = await waitForOwnedProcessGroupExit(child, { signal: controller.signal });
+      result.signal = child.signalCode;
+    }
+  } catch {
+    result = { status: null, signal: interrupted, block: { reason: interrupted ? "runtime interrupted" : "runtime startup failed", suite: options.suite } };
+  } finally {
+    stopping = true;
+    for (const child of children.reverse()) {
+      try { await runtime.stop(child); }
+      catch { result.block = { reason: "runtime teardown failed", suite: options.suite }; }
+    }
+    process.removeListener("SIGINT", onInterrupt);
+    process.removeListener("SIGTERM", onTerminate);
+  }
+  return result;
+}
 
 function assertLocalDestination(root: string, destination: string) {
   let existing = resolve(root, destination);
@@ -198,7 +329,7 @@ function assertLocalDestination(root: string, destination: string) {
   if (actual !== root) worktreePath(root, actual);
 }
 
-export function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrowserRun>, changedPaths: string[], launch: Launch = spawnSync) {
+export async function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrowserRun>, changedPaths: string[], launch: Launch = launchCodexBrowserSuite, checkPorts = checkCodexLanePorts) {
   const root = realpathSync(plan.worktree.root);
   for (const destination of [plan.lane.outputDir, plan.lane.reportDir, plan.lane.objectStoreRoot,
     ...plan.commands.map((command) => command.report)]) assertLocalDestination(root, destination);
@@ -210,15 +341,20 @@ export function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrowserRun>
   try {
     assertLocalDestination(root, evidencePath);
     rmSync(evidencePath, { force: true });
-    const runs: z.infer<typeof runSchema>[] = missingAuth(plan.env, plan.selection).length ? [] : plan.commands.map((command) => {
+    const runs: z.infer<typeof runSchema>[] = [];
+    let block: BrowserBlock | null = null;
+    for (const command of missingAuth(plan.env, plan.selection).length ? [] : plan.commands) {
       if (command.suite === "acceptance" && !plan.selection.acceptanceSpecs.length) {
-        return { suite: command.suite, status: "skipped", exitCode: null, durationMs: 0, report: command.report, error: platformReason, reportErrors: 0, tests: [] };
+        runs.push({ suite: command.suite, status: "skipped", exitCode: null, durationMs: 0, report: command.report, error: platformReason, reportErrors: 0, tests: [] });
+        continue;
       }
+      block = await checkPorts(plan);
+      if (block) { block.suite = command.suite; break; }
       const reportPath = resolve(root, command.report);
       rmSync(reportPath, { force: true });
       const start = Date.now();
-      let result: ReturnType<Launch>;
-      try { result = launch(command.command, command.args, { cwd: root, env: plan.env, stdio: "inherit", shell: false }); }
+      let result: LaunchResult;
+      try { result = await launch(command.command, command.args, { cwd: root, env: plan.env, stdio: "inherit", shell: false, suite: command.suite }); }
       catch { result = { status: null, error: new Error("launch-error"), signal: null }; }
       let run: z.infer<typeof runSchema>;
       try {
@@ -228,9 +364,12 @@ export function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrowserRun>
         run.error = "invalid-report";
       }
       if (result.error || result.signal) { run.status = "failed"; run.error = result.signal ? "interrupted" : "launch-error"; }
-      return run;
-    });
-    const evidence = buildCodexBrowserEvidence(plan, changedPaths, runs, startedAt);
+      runs.push(run);
+      if (result.block) { block = result.block; break; }
+      if (result.signal) { block = { reason: "runtime interrupted", suite: command.suite }; break; }
+    }
+    if (!block && !missingAuth(plan.env, plan.selection).length) block = await checkPorts(plan);
+    const evidence = buildCodexBrowserEvidence(plan, changedPaths, runs, startedAt, block);
     const temporary = `${evidencePath}.tmp`;
     assertLocalDestination(root, temporary);
     writeFileSync(temporary, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
@@ -269,7 +408,7 @@ async function cli() {
   const selection = await createVitestImpact(paths, root);
   const plan = planCodexBrowserRun(worktree, selection.browser, process.env);
   if (!existsSync("/usr/bin/sandbox-exec")) throw new Error("sandbox-exec is unavailable; refusing unrestricted execution.");
-  const evidence = runCodexBrowserPlan(plan, selection.changedPaths);
+  const evidence = await runCodexBrowserPlan(plan, selection.changedPaths);
   console.log(`${evidence.status}: ${plan.lane.outputDir}/codex-browser-evidence.json (coordinator spot-check pending)`);
   process.exitCode = evidence.status === "passed" ? 0 : 1;
 }
