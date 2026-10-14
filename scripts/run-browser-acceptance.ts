@@ -40,6 +40,7 @@ import {
 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 import { OWNED_ACCEPTANCE_RUNTIME_FLAG_ENV } from "../e2e/acceptance/helpers/acceptanceEnvironment";
 import { sanitizeGate0DiagnosticText } from "./gate0-artifact-sanitizer";
+import { balanceAcceptanceShards } from "./acceptance-shard-plan";
 
 export { buildBrowserAcceptanceEvidence } from "../e2e/acceptance/helpers/evidence";
 
@@ -328,14 +329,22 @@ export function loadEnvContent(content: string, baseEnv: RuntimeEnv = process.en
 export function buildBrowserAcceptanceCommand(
   options: BrowserAcceptanceOptions,
   loadedEnv: RuntimeEnv = process.env,
-  evidenceRun?: EvidenceRunContext
+  evidenceRun?: EvidenceRunContext,
+  browserFiles?: readonly string[],
 ): CommandInvocation {
   const args = ["run", "acceptance:e2e", "--"];
 
   if (options.headed) {
     args.push("--headed");
   }
-  if (options.shard) args.push(`--shard=${validateAcceptanceShard(options.shard)}`);
+  if (options.shard) {
+    const [current, total] = validateAcceptanceShard(options.shard).split("/").map(Number);
+    if (!browserFiles) throw new Error("Balanced acceptance requires the full native browser inventory.");
+    const plan = balanceAcceptanceShards(browserFiles, total);
+    for (const file of [...plan[current - 1].files, "runtime-warmup.spec.ts"]) {
+      args.push(`(^|/)${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+    }
+  }
 
   return { command: npmCommand(), args, env: buildPlaywrightEnv(options, loadedEnv, evidenceRun) };
 }
@@ -626,9 +635,10 @@ async function main() {
         detail: "--skip-preflight was provided."
       };
 
-  const playwrightCommand = buildBrowserAcceptanceCommand(options, loadedEnv, evidenceRun);
   prepareEvidenceRun(evidenceRun);
   const fullTests = options.shard ? collectBrowserAcceptanceTests(buildBrowserAcceptanceCommand({ ...options, shard: undefined }, loadedEnv, evidenceRun)) : undefined;
+  const playwrightCommand = buildBrowserAcceptanceCommand(options, loadedEnv, evidenceRun,
+    fullTests ? [...new Set(fullTests.filter((test) => test.project === "Desktop Chrome").map((test) => test.file))] : undefined);
   const plannedTests = options.shard ? collectBrowserAcceptanceTests(playwrightCommand) : undefined;
   const plannedFiles = plannedTests?.filter((test) => test.project === "Desktop Chrome").map((test) => test.file);
   const operations = plannedFiles ? acceptanceShardOperations(plannedFiles, fullTests?.filter((test) => test.project === "Desktop Chrome").map((test) => test.file)) : acceptanceOperations;
