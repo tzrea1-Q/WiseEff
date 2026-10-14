@@ -37,6 +37,14 @@ Delegate independent investigation, disjoint implementation, or a required revie
 
 For ordinary work, open one integration-ready PR when the user has authorized delivery. Fix findings on that PR; closing and reopening is not an ordinary repair mechanism. Accepted sealed programs keep their explicit PR/seal lifecycle. Do not bypass required checks or fabricate a reviewer when only one agent is available.
 
+### Draft-PR CI early signal
+
+When PR creation and pushes are authorized, open the same PR as a draft early enough to receive integration feedback during implementation. After every push, the coordinator reads the CI run for that exact pushed head: check failed jobs and bounded logs immediately, fix integration failures before accumulating more work, and verify the final `Merge bar` result before marking the PR ready. A pending, cancelled, or older-head run is not current acceptance; draft status does not waive any gate.
+
+CI runs on PR open, synchronize and reopen, and on adding or removing `full-acceptance`. Unrelated label edits skip the expensive jobs and use a separate concurrency group so they cannot cancel active or pending PR CI. Their lightweight result is named `Merge bar (ignored label)`, not the required `Merge bar`; it does not replace the real gate result. Acceptance-label transitions rerun selection against the current label list. Pushes to `main`, nightly runs and manual acceptance modes retain their existing coverage.
+
+Every Chromium-installing job restores the browser cache by runner OS, architecture and installed Playwright version, then still installs Chromium with system dependencies on both cache hits and misses. For CI-hygiene changes, the coordinator records before/after setup timings in the PR: exact head/run/job, cache hit or miss, and durations for dependency installation, cache restore and browser/system-dependency installation. Compare like jobs and distinguish cold from warm runs; report unavailable measurements as missing, not as savings.
+
 After a rebase, retest affected behavior and required identifiers/artifacts. Use `npm run typecheck` for relevant TypeScript changes, and retain the final build gate. Do not force unrelated worktrees to reset or pull; synchronize a designated clean main worktree only when authorized.
 
 ## Completion
