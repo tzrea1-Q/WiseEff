@@ -1,12 +1,10 @@
-import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import pg from "pg";
 import { expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase } from "../../shared/database/client";
-import { applyMigrations, migrationsDir, adminConnectionString } from "../../testing/tempDatabase";
+import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { requestJson } from "../../test/testClient";
@@ -15,16 +13,12 @@ import { createConfigSet, addConfigSetFile } from "../parameter-files/configSetS
 import type { ProjectParameterBinding } from "../../../src/domain/parameter-topology/types";
 
 it.each([false, true])("assembled workbench API preserves exact source identity and pending staging (label override: %s)", async (labelOverride) => {
-  const databaseName = `t1062_http_${randomUUID().replaceAll("-", "")}`;
-  const admin = new pg.Client({ connectionString: adminConnectionString() });
-  await admin.connect();
-  await admin.query(`create database "${databaseName}"`);
-  const db = createPostgresDatabase(adminConnectionString(databaseName));
+  const database = await createEphemeralTestDatabase("t1062http");
+  const db = createPostgresDatabase(database.url);
   const root = await mkdtemp(join(tmpdir(), "t1062-http-"));
   const auth = makeTestAuthContext({ userId: "t1062-user", organizationId: "t1062-org",
     permissions: ["parameter:view", "parameter:edit", "admin:access"] });
   try {
-    await applyMigrations(db, migrationsDir);
     await db.query("insert into organizations(id,name) values ('t1062-org','Workbench')");
     await db.query("insert into users(id,organization_id,name,title,is_active) values ('t1062-user','t1062-org','Editor','Admin',true)");
     await db.query("insert into projects(id,organization_id,name,code,status) values ('t1062-project','t1062-org','Workbench','T1062','initialized')");
@@ -74,8 +68,7 @@ it.each([false, true])("assembled workbench API preserves exact source identity 
     expect((await list()).body.items).toEqual(before.body.items);
   } finally {
     await db.close();
-    await admin.query(`drop database "${databaseName}"`);
-    await admin.end();
+    await database.drop();
     await rm(root, { recursive: true, force: true });
   }
 }, 120_000);

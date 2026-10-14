@@ -1987,7 +1987,7 @@ describe("0138 Catalog role migration paths", () => {
     let fresh = "";
     let upgrade = "";
 
-    await withTempDatabase({ prefix: "pcat_rbac_fresh" }, async ({ db }) => {
+    await withTempDatabase({ prefix: "pcat_rbac_fresh", migrate: true }, async ({ db }) => {
       fresh = await aclFingerprint(db);
     });
 

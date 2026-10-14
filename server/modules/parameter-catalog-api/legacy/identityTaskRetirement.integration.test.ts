@@ -1,12 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import pg from "pg";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
 
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../../shared/database/client";
 import { createRetirementTestHarness } from "../../../testing/parameterCatalog/retirementHarness";
 import { requestJson } from "../../../test/testClient";
-import { applyMigrations } from "../../../shared/database/migrations";
+import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
 import { seedM0Foundation } from "../../../../scripts/seed-m0";
 import { seedPublishedCatalog } from "../../../testing/parameterCatalog/seedPublishedCatalog";
 import { captureCurrentCatalogPin } from "../../catalog-publication/runtime";
@@ -23,17 +20,11 @@ const specTaskId = "t1068-historical-spec";
 describe("assembled identity task read-window retirement", () => {
   let db: RootDatabase;
   let harness: ReturnType<typeof createRetirementTestHarness>;
-  let admin: pg.Client;
-  const databaseName = `${process.env.WISEEFF_TEST_DATABASE_PREFIX ?? "t1068"}_tasks_${process.pid}_${randomUUID().slice(0, 8)}`;
+  let database: EphemeralTestDatabase | undefined;
 
   beforeAll(async () => {
-    const url = new URL(process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL!);
-    admin = new pg.Client({ connectionString: url.toString() });
-    await admin.connect();
-    await admin.query(`create database "${databaseName}"`);
-    url.pathname = `/${databaseName}`;
-    db = createPostgresDatabase(url.toString());
-    await applyMigrations(db, path.resolve("server/migrations"));
+    database = await createEphemeralTestDatabase("t1068");
+    db = createPostgresDatabase(database.url);
     await seedM0Foundation(db);
     await db.query(`insert into users (id, organization_id, name, email, title, is_active)
       values ('t1068-org-admin', 'org-chargelab', 'Org Admin', 't1068-admin@example.com', 'Admin', true)`);
@@ -70,8 +61,7 @@ describe("assembled identity task read-window retirement", () => {
 
   afterAll(async () => {
     await db?.close();
-    await admin?.query(`drop database if exists "${databaseName}"`);
-    await admin?.end();
+    await database?.drop();
   });
 
   it.each([

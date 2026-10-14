@@ -3,6 +3,7 @@ import pg from "pg";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import ts from "typescript";
 
 import type { QueryResult } from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
@@ -53,6 +54,90 @@ describe("test database query scheduling", () => {
 });
 
 const databaseAvailable = await isTestDatabaseAvailable();
+
+describe("fresh database fixture policy", () => {
+  it("enumerates migration replay, role guard, concurrency, and database lifecycle callers", async () => {
+    const fresh: Record<string, string[]> = {};
+    const manual: string[] = [];
+    const root = path.dirname(path.dirname(migrationsDir));
+    for (const directory of ["server", "scripts", "e2e"]) {
+      for (const file of (await fs.readdir(path.join(root, directory), { recursive: true }))
+        .filter((name) => /\.(test|spec)\.ts$/.test(name))) {
+        const relative = `${directory}/${file}`;
+        const source = ts.createSourceFile(relative, await fs.readFile(path.join(root, relative), "utf8"), ts.ScriptTarget.Latest, true);
+        const helpers = source.statements.filter(ts.isImportDeclaration).flatMap((statement) => {
+          const bindings = statement.importClause?.namedBindings;
+          return ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text.endsWith("/tempDatabase")
+            && bindings && ts.isNamedImports(bindings)
+            ? bindings.elements.filter((element) => (element.propertyName ?? element.name).text === "withTempDatabase")
+              .map((element) => element.name.text)
+            : [];
+        });
+        let createsFresh = false;
+        const visit = (node: ts.Node) => {
+          if (ts.isCallExpression(node)) {
+            if (ts.isIdentifier(node.expression) && helpers.includes(node.expression.text)) {
+              const options = node.arguments[0];
+              expect(ts.isObjectLiteralExpression(options)).toBe(true);
+              if (ts.isObjectLiteralExpression(options)) {
+                const properties = options.properties.filter(ts.isPropertyAssignment);
+                const mode = properties.find((property) => property.name.getText(source) === "migrate")?.initializer;
+                if (mode?.kind === ts.SyntaxKind.TrueKeyword || mode?.kind === ts.SyntaxKind.FalseKeyword) {
+                  const prefix = properties.find((property) => property.name.getText(source) === "prefix")?.initializer;
+                  expect(prefix && ts.isStringLiteral(prefix)).toBe(true);
+                  if (prefix && ts.isStringLiteral(prefix)) (fresh[relative] ??= []).push(`${prefix.text}:${mode.getText(source)}`);
+                }
+              }
+            }
+            const sql = node.arguments[0];
+            if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "query" && sql) {
+              const text = ts.isStringLiteralLike(sql) ? sql.text : ts.isTemplateExpression(sql) ? sql.head.text : "";
+              if (/^create database /i.test(text.trimStart())) createsFresh = true;
+            }
+          }
+          ts.forEachChild(node, visit);
+        };
+        visit(source);
+        if (createsFresh) manual.push(relative);
+      }
+    }
+    for (const prefixes of Object.values(fresh)) prefixes.sort();
+    expect(fresh).toEqual({
+      "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts": [
+        "wayfinder671_checksums:false", "wayfinder671_external_source:false", "wayfinder671_external_target_source:false",
+        "wayfinder671_fdw_secret:false", "wayfinder671_import_cleanup:false", "wayfinder671_import_rollback:false",
+        "wayfinder671_legacy_twin:false", "wayfinder671_log_scan:false", "wayfinder671_nonempty:false",
+        "wayfinder671_psql_gexec:false", "wayfinder671_psql_lexer:false", "wayfinder671_rollback:false",
+        "wayfinder671_source:false", "wayfinder671_unknown:false", "wayfinder671_zero_source:false"
+      ],
+      "server/modules/agent/xiaoze/durableAgentResume.integration.test.ts": ["xiaoze_concurrent_admission:true", "xiaoze_owned_backend_loss:true"],
+      "server/modules/catalog-kernel/schema/catalogSchemaPrivileges.integration.test.ts": ["pcat_compat:false", "pcat_floor:false", "pcat_fresh:false", "pcat_upgrade:false"],
+      "server/modules/catalog-kernel/security/catalogRoles.integration.test.ts": ["pcat_rbac_0138_replay:false", "pcat_rbac_0170_upgrade:false", "pcat_rbac_0179:false", "pcat_rbac_0179_v1:false", "pcat_rbac_floor:false", "pcat_rbac_fresh:true", "pcat_rbac_missing:false", "pcat_rbac_upgrade:false"],
+      "server/modules/catalog-kernel/security/retainedDismissedIdentities.integration.test.ts": ["retainedfresh:true", "retainedids:false"],
+      "server/modules/catalog-publication/persistence/schema.integration.test.ts": ["cp02pop:false"],
+      "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false"],
+      "server/modules/parameter-bindings/binding/propertyDeleteMigration.integration.test.ts": ["deleteupgrade:false"],
+      "server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts": ["src_occ_0151:false"],
+      "server/modules/parameter-catalog-migration/sourceOccurrenceGuard.integration.test.ts": ["srcintegrityupgrade:false"],
+      "server/modules/parameter-files/canonicalJsonSource.integration.test.ts": ["json_digest_upgrade:false"],
+      "server/modules/parameter-kernel/parameterIdentityMode.integration.test.ts": ["test_t1080ci2_identity:false"],
+      "server/modules/parameter-specs/specReviewTenantEvidence.integration.test.ts": ["mig0055:false"],
+      "server/modules/parameter-topology/manifestBackfillMigration.test.ts": ["mig0054:false"],
+      "server/modules/parameter-topology/migration.test.ts": ["mig14-provenance-matrix:false", "mig14-red-constraints:false", "mig14-upgrade:false"],
+      "server/modules/parameter-topology/schemaMigration.test.ts": ["schema_mig:false"],
+      "server/modules/parameters/moduleParentRepairMigration.test.ts": ["mig0109:false"],
+      "server/modules/release-verification/core/migration.integration.test.ts": ["s10per:false"],
+      "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]
+    });
+    expect(manual.sort()).toEqual([
+      "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
+      "server/modules/parameter-files/canonicalReleaseReadinessHttp.integration.test.ts",
+      "server/modules/parameter-specs/populatedUpgrade.integration.test.ts",
+      "server/shared/database/migrations.test.ts",
+      "server/testing/parameterCatalog/database.test.ts"
+    ]);
+  });
+});
 
 describe("literal test database namespace isolation", () => {
   it.each([
@@ -397,6 +482,31 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
 });
 
 describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () => {
+  it("defaults to a complete clone and releases the template lock before the callback", async () => {
+    const applicationName = `template_callback_${process.pid}`;
+    vi.stubEnv("PGAPPNAME", applicationName);
+    try {
+      const receipts = await withTempDatabase({ prefix: "tplcontrol", migrate: "template" }, async ({ db }) =>
+        (await db.query("select name, checksum, applied_at from schema_migrations order by name")).rows
+      );
+      await withTempDatabase({ prefix: "tpldefault" }, async ({ db, connectionString }) => {
+        expect(isEphemeralTestDatabaseName(new URL(connectionString).pathname.slice(1))).toBe(true);
+        expect((await db.query("select count(*)::int as count from schema_migrations")).rows[0].count).toBeGreaterThan(0);
+        expect((await db.query("select name, checksum, applied_at from schema_migrations order by name")).rows)
+          .toEqual(receipts);
+        expect(await applyTestMigrations(db, migrationsDir)).toEqual([]);
+        await withAdminClient(async (observer) => {
+          expect((await observer.query(`
+            select count(*)::int as count from pg_locks locks
+              join pg_stat_activity activity on activity.pid = locks.pid
+             where locktype = 'advisory' and database = (select oid from pg_database where datname = 'postgres')
+               and classid = 0 and objid = $1 and objsubid = 1 and granted and application_name = $2
+          `, [4_201_659, applicationName])).rows).toEqual([{ count: 0 }]);
+        });
+      });
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it("uses a new fingerprint for changed SQL and never publishes a failed build", async () => {
     const worker = await createInMemoryTestDatabase();
     const workerIdentity = (await worker.query("select oid from pg_database where datname = current_database()")).rows;
@@ -515,7 +625,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
         .map(({ name }) => name)).toEqual(constraintNames);
       cloneSchema = await readCanonicalSchemaFingerprint(connectionString);
     });
-    await withTempDatabase({ prefix: "freshcompare" }, async ({ db, connectionString }) => {
+    await withTempDatabase({ prefix: "freshcompare", migrate: true }, async ({ db, connectionString }) => {
       expect((await db.query("select name, checksum from schema_migrations order by name")).rows).toEqual(cloneReceipts);
       expect((await db.query("select id,name from organizations order by id")).rows).toEqual(cloneOrganizations);
       expect(await acl(db)).toEqual(cloneAcl);
@@ -587,12 +697,12 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     await expect(withTestClusterRoleCatalogLock(async () => "released")).resolves.toBe("released");
   });
 
-  it("preserves default fresh role guards when a cluster role is invalid", async () => {
+  it("preserves explicit fresh role guards when a cluster role is invalid", async () => {
     await withTestClusterRoleCatalogLock(async () => {
       await withAdminClient(async (admin) => {
         await admin.query("alter role catalog_legacy_identity_reader_role login");
         try {
-          await expect(withTempDatabase({ prefix: "freshguard" }, async () => {
+          await expect(withTempDatabase({ prefix: "freshguard", migrate: true }, async () => {
             throw new Error("callback must not run");
           })).rejects.toMatchObject({ code: "P0001" });
         } finally { await admin.query("alter role catalog_legacy_identity_reader_role nologin"); }

@@ -6,19 +6,13 @@
  * return inside the transaction (committing those writes); this asserts, against a real database,
  * that a dry run leaves the module set unchanged.
  */
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import pg from "pg";
 import { describe, expect, it } from "vitest";
 
-import { createDatabase, type Database } from "../../shared/database/client";
-import { applyMigrations } from "../../shared/database/migrations";
+import type { Database } from "../../shared/database/client";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { withTempDatabase as withSharedTempDatabase } from "../../testing/tempDatabase";
 import type { AuthContext } from "../auth/types";
 import { recomputeBindingModules } from "./service";
-
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const migrationsDir = path.join(projectRoot, "server", "migrations");
 
 const ORG = "org-recompute-dryrun";
 const USER = "user-recompute-dryrun";
@@ -32,49 +26,8 @@ const BINDING = "binding-recompute-dryrun";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
-function resolveTestDatabaseUrl() {
-  return (
-    process.env.TEST_DATABASE_URL?.trim() ||
-    process.env.DATABASE_URL?.trim() ||
-    "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
-  );
-}
-function adminConnectionString(database = "postgres") {
-  const url = new URL(resolveTestDatabaseUrl());
-  url.pathname = `/${database}`;
-  return url.toString();
-}
-async function withAdminClient<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: adminConnectionString("postgres") });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
-}
 async function withTempDatabase(fn: (db: Database) => Promise<void>) {
-  const dbName = `wiseeff_rdr_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(/[^a-z0-9_]/gi, "");
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-  const client = new pg.Client({ connectionString: adminConnectionString(dbName) });
-  await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
-  try {
-    await applyMigrations(db, migrationsDir);
-    await fn(db);
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
+  await withSharedTempDatabase({ prefix: "rdr" }, ({ db }) => fn(db));
 }
 
 function makeAuth(): AuthContext {

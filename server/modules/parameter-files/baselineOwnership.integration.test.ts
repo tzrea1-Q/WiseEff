@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createWiseEffServer } from "../../app";
@@ -8,7 +7,7 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { seedCoreGraph } from "../../testing/fixtures";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
-import { adminConnectionString, applyMigrations, migrationsDir } from "../../testing/tempDatabase";
+import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
 import { captureConfigurationSourceState, installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -25,9 +24,9 @@ const organizationId = "org-baseline-ownership";
 const projectId = "project-baseline-ownership";
 const userId = "user-baseline-ownership";
 const schemaId = "wiseeff.baseline.limits";
-const databaseName = `${process.env.WISEEFF_TEST_DATABASE_PREFIX ?? "t1065"}_${randomUUID().replaceAll("-", "")}`;
 
 describe("assembled baseline source ownership API", () => {
+  let database: EphemeralTestDatabase | undefined;
   let db: ReturnType<typeof createPostgresDatabase>;
   let server: ReturnType<typeof createWiseEffServer>;
   let canonical: { baselineId: string; fileId: string; configSetId: string; versionId: string };
@@ -68,15 +67,8 @@ describe("assembled baseline source ownership API", () => {
   }
 
   beforeAll(async () => {
-    const admin = new pg.Client({ connectionString: adminConnectionString() });
-    await admin.connect();
-    try {
-      await admin.query(`create database ${databaseName}`);
-    } finally {
-      await admin.end();
-    }
-    db = createPostgresDatabase(adminConnectionString(databaseName));
-    await applyMigrations(db, migrationsDir);
+    database = await createEphemeralTestDatabase("t1065");
+    db = createPostgresDatabase(database.url);
     await seedCoreGraph(db, {
       organization: { id: organizationId }, users: [{ id: userId }], projects: [{ id: projectId }]
     });
@@ -98,13 +90,7 @@ describe("assembled baseline source ownership API", () => {
 
   afterAll(async () => {
     await db?.close();
-    const admin = new pg.Client({ connectionString: adminConnectionString() });
-    await admin.connect();
-    try {
-      await admin.query(`drop database if exists ${databaseName}`);
-    } finally {
-      await admin.end();
-    }
+    await database?.drop();
   });
 
   it("exposes canonical ownership and drift, refusing rollback without changing source truth", async () => {
