@@ -38,11 +38,9 @@ const apiSession = {
 };
 const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc" as const, label: "API Gateway Target" };
 
-function confirmHighRiskWriteIfPrompted() {
-  const confirm = screen.queryByRole("button", { name: /^确认写入$/ });
-  if (confirm) {
-    fireEvent.click(confirm);
-  }
+async function confirmHighRiskWriteIfPrompted() {
+  const dialog = await screen.findByRole("dialog", { name: "确认高风险节点写入" });
+  fireEvent.click(within(dialog).getByRole("button", { name: /^确认写入$/ }));
 }
 
 /** Connected-state label of the seeded mock gateway story (Mock Bridge · MOCK-AURORA-001). */
@@ -1047,13 +1045,13 @@ describe("/node-debugging", () => {
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
     const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "3700" } });
-    fireEvent.click(within(dialog).getAllByRole("button").at(-1) as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
     await within(row).findByText(/^写入已执行$/);
     expect(currentValueCell(row)).toHaveTextContent("3600");
 
-    delayedRead.resolve({
+    await act(async () => delayedRead.resolve({
       ok: true,
       value: "3651",
       stdout: "3651\n",
@@ -1069,7 +1067,7 @@ describe("/node-debugging", () => {
         durationMs: 7,
         createdAt: "2026-05-27T09:00:03.000Z"
       }
-    });
+    }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: /节点操作记录/ })).toHaveTextContent("10 条"));
     expect(currentValueCell(row)).toHaveTextContent("3600");
@@ -1445,7 +1443,8 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    await userEvent.click(await screen.findByRole("tab", { name: "ADB" }));
+    await screen.findByText(/已连接：API Gateway Target/);
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     const renameInput = await screen.findByDisplayValue("Laptop");
     fireEvent.change(renameInput, { target: { value: "Desk-PC" } });
@@ -1813,7 +1812,7 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    expect(screen.queryByRole("dialog", { name: /确认写入节点/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "确认高风险节点写入" })).not.toBeInTheDocument();
     await within(row).findByText(/^写入已执行$/);
     expect(currentValueCell(row)).toHaveTextContent("3700");
   });

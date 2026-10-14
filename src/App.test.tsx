@@ -55,8 +55,10 @@ it("replaces legacy module bookmarks and restores governance tabs on browser Bac
   await waitFor(() => expect(window.location.search).toBe("?q=power&tab=registry"));
   expect(window.history.length).toBe(historyLength + 1);
   window.history.back();
-  await waitFor(() => expect(window.location.search).toBe("?q=power&tab=queue"));
-  expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+  await waitFor(() => {
+    expect(window.location.search).toBe("?q=power&tab=queue");
+    expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+  });
 });
 
 it("waits for the settings leave dialog before changing a shell route", async () => {
@@ -212,7 +214,10 @@ it("waits for live projects before reading their initialization state", async ()
       upsertDraft: vi.fn(), previewSnapshot: vi.fn(), submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
   await waitFor(() => expect(repository.listProjects).toHaveBeenCalled());
   expect(getInitialization).not.toHaveBeenCalled();
-  resolveProjects([{ ...initialState.configDraft.projects[0], id: "live-only-project" }]);
+  await act(async () => {
+    resolveProjects([{ ...initialState.configDraft.projects[0], id: "live-only-project" }]);
+    await projects;
+  });
   await waitFor(() => expect(getInitialization).toHaveBeenCalledWith("live-only-project"));
   expect(getInitialization.mock.calls.every(([id]) => id === "live-only-project")).toBe(true);
 });

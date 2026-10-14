@@ -46,7 +46,9 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
       await refreshReady;
       return [{ ...nodeRound, status: "已撤回" }];
     });
-    const withdrawSubmissionRound = vi.fn().mockResolvedValue(undefined);
+    let finishWithdrawal!: () => void;
+    const withdrawal = new Promise<void>((resolve) => { finishWithdrawal = resolve; });
+    const withdrawSubmissionRound = vi.fn(() => withdrawal);
     const runtime = { parameterRepository: { listSubmissionRounds }, parameterCatalogRepository: {
       listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [] })
     } } as unknown as AppRuntime;
@@ -63,11 +65,15 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
     await user.click(within(tracking).getByRole("button", { name: "撤回本轮提交" }));
     await user.click(await screen.findByRole("button", { name: "确认撤回" }));
     await waitFor(() => expect(withdrawSubmissionRound).toHaveBeenCalledWith("node-round"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(listSubmissionRounds).toHaveBeenCalledTimes(1);
+    await act(async () => { finishWithdrawal(); await withdrawal; });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(listSubmissionRounds).toHaveBeenCalledTimes(2));
     expect(screen.getByRole("status")).toHaveTextContent("正在加载审核队列");
     await user.click(screen.getByRole("tab", { name: "已处理" }));
-    await act(async () => { finishRefresh(); });
+    expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
+    await act(async () => { finishRefresh(); await refreshReady; });
     await waitFor(() => expect(screen.getByRole("button", { name: "撤回本轮提交" })).toBeDisabled());
   });
 

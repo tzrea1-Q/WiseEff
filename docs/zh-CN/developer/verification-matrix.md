@@ -4,6 +4,14 @@
 
 这是日常开发文档，帮助开发者完成本地启动、环境配置、验证选择和验收覆盖判断。
 
+## 本地 Vitest worker 预算
+
+协调者在同一主机并发运行 Vitest 泳道时，应为每条泳道设置 `WISEEFF_VITEST_LANES`，其值为同时运行的 Vitest 进程总数，而非运行时泳道 ID。例如，`WISEEFF_VITEST_LANES=3 npm test -- src/NodeDebuggingPage.test.tsx` 会将主机的 `availableParallelism()` 分给三条泳道。单进程默认使用 `1` 条泳道。
+
+前端和 Bridge 默认最多四个 worker；server 保留半数 CPU、最多四个 worker 的默认值；scripts 保持串行。每个上限还受 `floor(availableParallelism / lanes)` 限制，最少一个 worker。`VITEST_SERVER_MAX_WORKERS` 仍可设置，但不能超过每条泳道的 CPU 预算。两个设置均须为正安全整数。使用此预算时不要覆盖 `--maxWorkers`。泳道数超过可用 CPU 时仍需协调者串行调度，因为每条泳道最少需要一个 worker。
+
+负载敏感的 DOM 测试应等待界面就绪，并在 `act` 内完成受控 Promise，而不是把请求开始、URL 改变或固定 sleep 当作完成。保留原有断言和超时。重复的隔离运行、并发负载运行及 PR CI 仍由协调者提供验收证据，与局部本地通过结果分开。
+
 ## 使用方式
 
 L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` 产物是有界的工作流状态快照，与经过安全门禁的各分片完整 ZIP 分开。它记录候选初始化前实测的 checkout SHA/tree、workflow SHA、PR head/base（非 PR 事件使用 push 前驱或定时运行的 head），以及执行、归档、完整上传的结果。首版内部阶段、清理和测试数量仍是 unknown，不读取候选报告或原始日志。发布器失败时只生成 `DIAGNOSTIC_REJECTED`；后备诊断或上传成功不能覆盖先前失败。诊断自身上传在快照中为 pending，最终状态见 Actions 和作业摘要；runner 丢失时可能 incomplete。完整产物的大小、所有权及安全要求保持不变。
