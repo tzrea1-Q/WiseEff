@@ -15,6 +15,7 @@ import { buildPlaywrightWebServers, resolveApiAuthorization } from "../playwrigh
 import { stopOwnedProcessGroup, waitForOwnedProcessGroupExit } from "./owned-process-group";
 import { createBearerTokenForUser } from "../e2e/acceptance/helpers/runtime";
 import { ACCEPTANCE_ORGANIZATION, castByRole } from "../e2e/acceptance/helpers/cast";
+import { developmentAuthContext } from "../server/modules/auth/routes";
 
 type BrowserSelection = ReturnType<typeof selectBrowserImpact>;
 export type BrowserWorktree = { root: string; gitDir: string; commonDir: string; branch: string; head: string; dirty: boolean };
@@ -134,6 +135,7 @@ const tsxIpcDirectory = JSON.stringify(resolve(userTempDirectory, `tsx-${process
 const localhostProfile = `(version 1)
 (allow default)
 (deny network*)
+(allow system-socket (socket-domain AF_UNIX))
 (allow network-bind (local ip "localhost:*"))
 (allow network-inbound (local ip "localhost:*"))
 (allow network-outbound (remote ip "localhost:*"))
@@ -284,6 +286,12 @@ export async function launchCodexBrowserSuite(command: string, args: string[], o
     }, options.env) as Array<{ env?: NodeJS.ProcessEnv; url?: string }>;
     const apiEnv = { ...options.env, ...servers[0].env };
     const browserEnv = { ...options.env, ...servers[1].env };
+    if (options.suite === "quality" && options.env.WISEEFF_QUALITY_SKIP_SEED !== "true") {
+      const seed = start([...args.slice(0, 2), process.execPath, resolve(options.cwd, "node_modules/tsx/dist/cli.mjs"), "scripts/browser-seed-contract.ts"], options.env);
+      if (await waitForOwnedProcessGroupExit(seed, { signal: controller.signal }) !== 0) throw new Error("quality-seed-failed");
+      await runtime.stop(seed);
+      children.pop();
+    }
     for (const [index, server] of servers.entries()) {
       const serverArgs = index === 0
         ? [process.execPath, resolve(options.cwd, "node_modules/tsx/dist/cli.mjs"), "watch", "server/index.ts"]
@@ -297,13 +305,14 @@ export async function launchCodexBrowserSuite(command: string, args: string[], o
         if (Date.now() >= deadline) throw new Error("runtime-readiness-timeout");
         await wait(100, undefined, { signal: controller.signal });
       }
+      if (index === 1 && await runtime.request(new URL("/src/main.tsx", server.url).href, {}, controller.signal) !== 200) throw new Error("frontend-transform-failed");
     }
     const actor = castByRole.admin;
     const mode = apiEnv.AUTH_MODE === "development" ? "development" : "production";
     const authorization = mode === "development" ? undefined : options.suite === "quality"
       ? resolveApiAuthorization(browserEnv)
       : createBearerTokenForUser(actor.userId, actor.email, actor.name, ACCEPTANCE_ORGANIZATION.id, apiEnv);
-    const headers: Record<string, string> = mode === "development" ? { "x-wiseeff-user": actor.userId } : authorization ? { Authorization: authorization } : {};
+    const headers: Record<string, string> = mode === "development" ? { "x-wiseeff-user": options.suite === "quality" ? developmentAuthContext.user.id : actor.userId } : authorization ? { Authorization: authorization } : {};
     let httpStatus: number | null = null;
     for (const baseURL of [options.env.VITE_WISEEFF_API_BASE_URL, options.env.WISEEFF_ACCEPTANCE_FRONTEND_URL]) {
       try { httpStatus = await runtime.request(`${baseURL}/api/v1/me`, headers, controller.signal); } catch { httpStatus = null; }
@@ -312,7 +321,7 @@ export async function launchCodexBrowserSuite(command: string, args: string[], o
     result.authProbe = { suite: options.suite, mode, mechanism: mode === "development" ? "development-header" : "bearer", httpStatus };
     if (httpStatus !== 200) result.block = { reason: "authentication probe failed", suite: options.suite, httpStatus };
     else {
-      const child = start(args, { ...options.env, WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true" });
+      const child = start(args, { ...options.env, WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true", ...(options.suite === "quality" ? { WISEEFF_QUALITY_SKIP_SEED: "true" } : {}) });
       result.status = await waitForOwnedProcessGroupExit(child, { signal: controller.signal });
       result.signal = child.signalCode;
     }

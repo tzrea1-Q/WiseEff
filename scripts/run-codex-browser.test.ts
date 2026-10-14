@@ -2,12 +2,18 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync,
 import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { EventEmitter } from "node:events";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { browserPlatformSkips, buildCodexBrowserEvidence, checkCodexLanePorts, codexBrowserEvidenceSchema, launchCodexBrowserSuite, planCodexBrowserRun, runCodexBrowserPlan, summarizeBrowserReport } from "./run-codex-browser";
 import { selectBrowserImpact } from "./test-impact";
 import { buildPlaywrightWebServers } from "../playwright.shared";
 import { createBearerTokenForUser } from "../e2e/acceptance/helpers/runtime";
 import { castByRole } from "../e2e/acceptance/helpers/cast";
+import { developmentAuthContext } from "../server/modules/auth/routes";
+
+vi.mock("../e2e/acceptance/helpers/cast", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../e2e/acceptance/helpers/cast")>();
+  return { ...actual, castByRole: { ...actual.castByRole, admin: { ...actual.castByRole.admin, userId: "acceptance-only-admin" } } };
+});
 
 const worktree = {
   root: "/tmp/task", gitDir: "/tmp/main/.git/worktrees/task", commonDir: "/tmp/main/.git",
@@ -26,9 +32,10 @@ describe("Codex browser runner", () => {
     try {
       const plan = planCodexBrowserRun({ ...worktree, root }, selection, { ...environment, AUTH_MODE: "development" }, "darwin");
       let sequence = 0;
+      let seeded = false;
       const result = await runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], (command, args, options) => launchCodexBrowserSuite(command, args, options, {
         spawn: (executable, childArgs, childOptions) => {
-          const name = childArgs.includes("server/index.ts") ? "api" : childArgs.includes("--strictPort") ? "frontend" : "tests";
+          const name = childArgs.includes("scripts/browser-seed-contract.ts") ? "seed" : childArgs.includes("server/index.ts") ? "api" : childArgs.includes("--strictPort") ? "frontend" : "tests";
           events.push(`${options.suite}:start:${name}`);
           expect(executable).toBe("/usr/bin/sandbox-exec");
           expect(childArgs.slice(0, 2)).toEqual(args.slice(0, 2));
@@ -38,8 +45,10 @@ describe("Codex browser runner", () => {
           const child = Object.assign(new EventEmitter(), { pid: ++sequence, exitCode: null, signalCode: null, label: `${options.suite}:${name}` });
           if (name === "tests") {
             expect(childOptions.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME).toBe("true");
+            if (options.suite === "quality") expect(childOptions.env.WISEEFF_QUALITY_SKIP_SEED).toBe("true");
             queueMicrotask(() => child.emit("close", 1, null));
           }
+          if (name === "seed") queueMicrotask(() => { seeded = true; child.emit("close", 0, null); });
           return child;
         },
         request: async (url, headers) => {
@@ -47,7 +56,8 @@ describe("Codex browser runner", () => {
             events.push(`${options.suite}:auth:${new URL(url).port}`);
             expect([`${plan.lane.apiURL}/api/v1/me`, `${plan.lane.baseURL}/api/v1/me`]).toContain(url);
             const actor = castByRole.admin;
-            expect(headers).toEqual(options.suite === "quality" ? { "x-wiseeff-user": actor.userId } : {
+            expect(seeded).toBe(true);
+            expect(headers).toEqual(options.suite === "quality" ? { "x-wiseeff-user": developmentAuthContext.user.id } : {
               Authorization: createBearerTokenForUser(actor.userId, actor.email, actor.name, undefined, plan.env),
             });
           }
@@ -61,7 +71,7 @@ describe("Codex browser runner", () => {
         { suite: "acceptance", mode: "production", mechanism: "bearer", httpStatus: 200 },
       ]);
       expect(events).toEqual([
-        "ports", "quality:start:api", "quality:start:frontend", "quality:auth:20014", "quality:auth:20015", "quality:start:tests", "stop:quality:tests", "stop:quality:frontend", "stop:quality:api",
+        "ports", "quality:start:seed", "stop:quality:seed", "quality:start:api", "quality:start:frontend", "quality:auth:20014", "quality:auth:20015", "quality:start:tests", "stop:quality:tests", "stop:quality:frontend", "stop:quality:api",
         "ports", "acceptance:start:api", "acceptance:start:frontend", "acceptance:auth:20014", "acceptance:auth:20015", "acceptance:start:tests", "stop:acceptance:tests", "stop:acceptance:frontend", "stop:acceptance:api", "ports",
       ]);
     } finally { rmSync(root, { recursive: true, force: true }); }
@@ -72,7 +82,7 @@ describe("Codex browser runner", () => {
     { AUTH_MODE: "production", VITE_WISEEFF_API_AUTHORIZATION: "Bearer quality-browser-token", M5_SMOKE_AUTHORIZATION: "Bearer unused-smoke-token" },
     { AUTH_MODE: "production", M5_SMOKE_AUTHORIZATION: "Bearer quality-browser-token" },
   ])("probes quality with its effective browser auth without inventing a token: %j", async (authEnv) => {
-    const plan = planCodexBrowserRun(worktree, selection, { ...environment, ...authEnv }, "darwin");
+    const plan = planCodexBrowserRun(worktree, selection, { ...environment, ...authEnv, WISEEFF_QUALITY_SKIP_SEED: "true" }, "darwin");
     const probes: string[] = [];
     let launches = 0;
     const result = await launchCodexBrowserSuite(plan.commands[0].command, plan.commands[0].args, {
@@ -86,7 +96,7 @@ describe("Codex browser runner", () => {
       request: async (url, headers) => {
         if (url.endsWith("/api/v1/me")) {
           probes.push(url);
-          expect(headers).toEqual(authEnv.AUTH_MODE === "development" ? { "x-wiseeff-user": castByRole.admin.userId } : { Authorization: "Bearer quality-browser-token" });
+          expect(headers).toEqual(authEnv.AUTH_MODE === "development" ? { "x-wiseeff-user": developmentAuthContext.user.id } : { Authorization: "Bearer quality-browser-token" });
         }
         return 200;
       },
@@ -100,7 +110,7 @@ describe("Codex browser runner", () => {
   it("blocks busy lane ports and failed authenticated probes before tests, and still tears down servers", async () => {
     const root = realpathSync(mkdtempSync(resolve(tmpdir(), "codex-browser-")));
     try {
-      const plan = planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin");
+      const plan = planCodexBrowserRun({ ...worktree, root }, selection, { ...environment, WISEEFF_QUALITY_SKIP_SEED: "true" }, "darwin");
       const checked: number[] = [];
       const busy = await checkCodexLanePorts(plan, async (port) => { checked.push(port); return port === 20015 ? "busy" : "free"; });
       expect(checked).toEqual([20014, 20015]);
@@ -124,10 +134,37 @@ describe("Codex browser runner", () => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
+  it.each(["seed", "transform"])("blocks a failed %s before auth or browser tests and cleans up", async (failure) => {
+    const plan = planCodexBrowserRun(worktree, selection, environment, "darwin");
+    const started: string[] = [];
+    const stopped: string[] = [];
+    const result = await launchCodexBrowserSuite(plan.commands[0].command, plan.commands[0].args, {
+      cwd: worktree.root, env: plan.env, stdio: "inherit", shell: false, suite: "quality",
+    }, {
+      spawn: (_command, args) => {
+        const name = args.includes("scripts/browser-seed-contract.ts") ? "seed" : args.includes("server/index.ts") ? "api" : args.includes("--strictPort") ? "frontend" : "tests";
+        started.push(name);
+        const child = Object.assign(new EventEmitter(), { pid: started.length, label: name, exitCode: null, signalCode: null });
+        if (name === "seed") queueMicrotask(() => child.emit("close", failure === "seed" ? 1 : 0, null));
+        if (name === "tests") queueMicrotask(() => child.emit("close", 0, null));
+        return child;
+      },
+      request: async (url) => {
+        expect(url).not.toContain("/api/v1/me");
+        return url.endsWith("/src/main.tsx") ? 500 : 200;
+      },
+      stop: async (child) => { stopped.push(child.label); },
+    });
+    expect(result.block).toEqual({ suite: "quality", reason: "runtime startup failed" });
+    expect(started).toEqual(failure === "seed" ? ["seed"] : ["seed", "api", "frontend"]);
+    expect(stopped).toEqual(failure === "seed" ? ["seed"] : ["seed", "frontend", "api"]);
+    expect(result.authProbe).toBeUndefined();
+  });
+
   it("does not start the next suite when process-group cleanup fails, and does not leak cleanup errors", async () => {
     const root = realpathSync(mkdtempSync(resolve(tmpdir(), "codex-browser-")));
     try {
-      const plan = planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin");
+      const plan = planCodexBrowserRun({ ...worktree, root }, selection, { ...environment, WISEEFF_QUALITY_SKIP_SEED: "true" }, "darwin");
       let launches = 0;
       const stopped: number[] = [];
       const evidence = await runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], (command, args, options) => launchCodexBrowserSuite(command, args, options, {
@@ -209,13 +246,15 @@ describe("Codex browser runner", () => {
       expect(JSON.stringify(await runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], () => ({ status: 1, signal: null }), async () => null))).not.toMatch(/file-secret|file-issuer|test-issuer|test-hmac-secret/);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
-  it("allows tsx Unix-socket IPC only in the user's temp directory while retaining loopback-only IP rules", () => {
+  it("allows Node/esbuild AF_UNIX creation and temp-scoped tsx IPC while retaining loopback-only IP rules", () => {
     const plan = planCodexBrowserRun(worktree, selection, environment, "darwin");
     const profile = plan.commands[0].args[1];
     const temporary = realpathSync(tmpdir());
     const ipcPath = JSON.stringify(resolve(temporary, `tsx-${process.geteuid?.() ?? userInfo().username}`));
     expect(plan.env.TMPDIR).toBe(temporary);
+    expect(profile).toContain("(allow default)");
     expect(profile).toContain("(deny network*)");
+    expect(profile.match(/^\(allow system-socket[^\n]+/gm)).toEqual(["(allow system-socket (socket-domain AF_UNIX))"]);
     expect(profile.match(/^\(allow network[^\n]+/gm)).toEqual([
       '(allow network-bind (local ip "localhost:*"))',
       '(allow network-inbound (local ip "localhost:*"))',
