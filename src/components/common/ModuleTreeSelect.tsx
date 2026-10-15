@@ -56,7 +56,7 @@ export function ModuleTreeSelect({
   includeRootOption = false,
   rootOptionLabel = placeholder ?? "根级（无父模块）"
 }: ModuleTreeSelectProps) {
-  const withinModal = useContext(ModalPopupContext);
+  const modalPopup = useContext(ModalPopupContext);
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -176,7 +176,7 @@ export function ModuleTreeSelect({
   const menuContent = open ? (
     <div
       ref={menuRef}
-      className={`dropdown-menu module-tree-menu${portalMenu ? " module-tree-menu--portal" : ""}${portalMenu && withinModal ? " select-menu--modal" : ""}`}
+      className={`dropdown-menu module-tree-menu${portalMenu ? " module-tree-menu--portal" : ""}${portalMenu && modalPopup ? " select-menu--modal" : ""}`}
       role="tree"
       tabIndex={-1}
       aria-label={`${label}树形选项`}
