@@ -48,7 +48,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
       else result.problems.push(`Missing changed file: ${file}`);
       continue;
     }
-    const actual = relative(root, realpathSync(absolute));
+    const actual = relative(root, realpathSync(absolute)).replaceAll("\\", "/");
     if (actual === ".." || actual.startsWith("../") || isAbsolute(actual)) { result.problems.push(`Changed file escapes the repository: ${file}`); continue; }
     if (!/\.[cm]?[jt]sx?$/.test(file)) {
       entry.lint = entry.typecheck = { status: "excluded", reason: "Not JavaScript/TypeScript; use the existing affected gates and test selection." };
