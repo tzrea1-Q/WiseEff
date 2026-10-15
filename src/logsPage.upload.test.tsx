@@ -1,3 +1,5 @@
+import { selectControlOption } from "@/test/selectControlOption";
+import userEvent from "@testing-library/user-event";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reducer } from "@/application/state/appState";
@@ -200,12 +202,12 @@ describe("LogsPage api upload wiring", () => {
 
     openUploadDialog();
     await waitFor(() => expect(repository.listLogDomains).toHaveBeenCalled());
-    const domainSelect = (await screen.findByLabelText(/业务域/)) as HTMLSelectElement;
-    expect(within(domainSelect).getByRole("option", { name: /未分类/ })).toBeInTheDocument();
-    await waitFor(() => expect(within(domainSelect).getByRole("option", { name: "charging-power" })).toBeInTheDocument());
+    const domainSelect = await screen.findByLabelText(/业务域/);
+    await userEvent.click(domainSelect);
+    expect(screen.getByRole("option", { name: /未分类/ })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("option", { name: "charging-power" }));
 
     vi.useFakeTimers();
-    fireEvent.change(domainSelect, { target: { value: "domain-charging" } });
     chooseFile(file);
     await confirmSelectedFile();
 
@@ -230,13 +232,13 @@ describe("LogsPage api upload wiring", () => {
     await waitForApiRuntime(repository);
     vi.mocked(parameters.listParameters).mockClear();
     openUploadDialog();
-    await screen.findByRole("option", { name: "CAN · Canonical project" });
-    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
-    await screen.findByRole("option", { name: "Canonical current parameter · /limit · binding-current" });
+    await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), project.id);
+    await userEvent.click(await screen.findByLabelText("项目参数"));
+    const selectedBindingOption = await screen.findByRole("option", { name: "Canonical current parameter · /limit · binding-current" });
     expect(listProtectedProjectBindings).toHaveBeenCalledWith(project.id);
     expect(parameters.listParameters).not.toHaveBeenCalled();
     expect(screen.queryByRole("option", { name: /Foreign parameter|Incomplete parameter/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("项目参数"), { target: { value: binding.id } });
+    await userEvent.click(selectedBindingOption);
     vi.useFakeTimers();
     const file = new File(["line"], "canonical.log", { type: "text/plain" });
     chooseFile(file);
@@ -253,8 +255,7 @@ describe("LogsPage api upload wiring", () => {
       listProtectedProjectBindings: vi.fn().mockRejectedValue(new Error("Parameter reader unavailable")) });
     await waitForApiRuntime(repository);
     openUploadDialog();
-    await screen.findByRole("option", { name: "ERR · Unavailable project" });
-    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
+    await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), project.id);
     await screen.findByRole("button", { name: "重试加载关联参数" });
     vi.useFakeTimers();
     const file = new File(["line"], "unassociated.log", { type: "text/plain" });
@@ -262,7 +263,10 @@ describe("LogsPage api upload wiring", () => {
     await act(async () => { vi.advanceTimersByTime(250); });
     expect(screen.getByRole("button", { name: "确认上传" })).toBeDisabled();
     expect(repository.uploadLog).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: "" } });
+    // The file-validation timer has settled; use real event timing for the Radix menu.
+    vi.useRealTimers();
+    await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), "");
+    vi.useFakeTimers();
     await confirmSelectedFile();
     expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "" });
   });
@@ -283,14 +287,14 @@ describe("LogsPage api upload wiring", () => {
     listProtectedProjectBindings.mockImplementation((projectId: string) =>
       projectId === "project-a" ? delayed.promise : Promise.resolve({ items: [second] }));
     openUploadDialog();
-    await screen.findByRole("option", { name: "A · First project" });
     const projectSelect = screen.getByLabelText("关联参数的项目（可选）");
-    fireEvent.change(projectSelect, { target: { value: "project-a" } });
-    fireEvent.change(projectSelect, { target: { value: "project-b" } });
-    await screen.findByRole("option", { name: "Selected project parameter · /limit · binding-b" });
+    await selectControlOption(projectSelect, "project-a");
+    await selectControlOption(projectSelect, "project-b");
     await act(async () => { delayed.resolve({ items: [first] }); await delayed.promise; });
+    await userEvent.click(screen.getByLabelText("项目参数"));
+    const currentBindingOption = await screen.findByRole("option", { name: "Selected project parameter · /limit · binding-b" });
     expect(screen.queryByRole("option", { name: /Old project parameter/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("项目参数"), { target: { value: "binding-b" } });
+    await userEvent.click(currentBindingOption);
     vi.useFakeTimers();
     chooseFile(new File(["line"], "second-project.log", { type: "text/plain" }));
     await confirmSelectedFile();
@@ -306,8 +310,7 @@ describe("LogsPage api upload wiring", () => {
     await waitForApiRuntime(repository);
     vi.mocked(parameters.listParameters).mockClear();
     const dialog = openUploadDialog();
-    await screen.findByRole("option", { name: "CAN · Canonical project" });
-    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: project.id } });
+    await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), project.id);
     await screen.findByRole("button", { name: "重试加载关联参数" });
     expect(within(dialog).getByRole("alert")).toHaveTextContent("加载项目参数失败；请重试或取消关联。");
     expect(parameters.listParameters).not.toHaveBeenCalled();
@@ -317,7 +320,10 @@ describe("LogsPage api upload wiring", () => {
     await act(async () => { vi.advanceTimersByTime(250); });
     expect(screen.getByRole("button", { name: "确认上传" })).toBeDisabled();
     expect(repository.uploadLog).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("关联参数的项目（可选）"), { target: { value: "" } });
+    // The file-validation timer has settled; use real event timing for the Radix menu.
+    vi.useRealTimers();
+    await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), "");
+    vi.useFakeTimers();
     await confirmSelectedFile();
     expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "" });
   });
@@ -643,7 +649,7 @@ describe("LogsPage api feedback wiring", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
     const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
-    fireEvent.change(within(dialog).getByLabelText("置信度反馈"), { target: { value: "low" } });
+    await selectControlOption(within(dialog).getByLabelText("置信度反馈"), "low");
     fireEvent.change(within(dialog).getByLabelText("可能存在的问题"), {
       target: { value: "证据链缺少温控阈值来源" }
     });
@@ -669,7 +675,7 @@ describe("LogsPage api feedback wiring", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
     const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
-    fireEvent.change(within(dialog).getByLabelText("置信度反馈"), { target: { value: "high" } });
+    await selectControlOption(within(dialog).getByLabelText("置信度反馈"), "high");
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 
     await waitFor(() => {

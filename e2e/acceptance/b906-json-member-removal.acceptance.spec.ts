@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "playwright/test";
@@ -95,7 +96,7 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
         const dialog = page.getByRole("dialog", { name: "提交 JSON 成员删除审核" });
         await expect(dialog.getByRole("list", { name: "提交前成员概览" }).getByRole("listitem")).toHaveCount(2);
         await dialog.getByRole("textbox", { name: "修改原因" }).fill(reason);
-        await dialog.getByRole("combobox", { name: "指定软件审核人" }).selectOption(acceptanceCast.sunMei.userId);
+        await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
         const submitted = page.waitForResponse((response) => response.request().method() === "POST"
           && response.url().endsWith("/api/v2/projects/aurora/parameter-value-change-requests/member-removals"));
         await dialog.getByRole("button", { name: "提交冻结证明审核" }).click();

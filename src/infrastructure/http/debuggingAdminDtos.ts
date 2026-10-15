@@ -74,6 +74,10 @@ export type DebugAdminNodeWriteDto = {
   canonicalBinding?: DebugAdminNodeDto["canonicalBinding"];
 };
 
+export type DebugAdminNodePatchDto = Partial<DebugAdminNodeWriteDto> & {
+  archiveProtocols?: DebugConnectionProtocol[];
+};
+
 export type DebugAdminModuleDto = FlatModuleNode;
 
 export function debugAdminModuleFromDto(dto: DebugAdminModuleDto): FlatModuleNode {

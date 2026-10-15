@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { Eye, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Dispatch } from "react";
@@ -465,15 +466,8 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
           </label>
           <label>
             <span>负责人</span>
-            <select value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)}>
-              {state.users
-                .filter((user) => user.isActive)
-                .map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-            </select>
+            <SelectControl value={ownerUserId} onValueChange={setOwnerUserId} ariaLabel="负责人"
+              options={state.users.filter((user) => user.isActive).map((user) => ({ value: user.id, label: user.name }))} />
           </label>
         </div>
       </section>

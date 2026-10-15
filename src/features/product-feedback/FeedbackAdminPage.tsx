@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
@@ -239,34 +240,20 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
         })}
           filterBar={
             <>
-              <select
-                aria-label="状态筛选"
+              <SelectControl<ProductFeedbackStatus | "all">
+                ariaLabel="状态筛选"
                 value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as ProductFeedbackStatus | "all")}
-                className="compact-filter-control"
-                data-compact-control="filter"
-              >
-                <option value="all">全部状态</option>
-                {productFeedbackStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {productFeedbackStatusLabels[status]}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="类型筛选"
+                onValueChange={setStatusFilter}
+                size="filter"
+                options={[{ value: "all", label: "全部状态" }, ...productFeedbackStatuses.map((status) => ({ value: status, label: productFeedbackStatusLabels[status] }))]}
+              />
+              <SelectControl<ProductFeedbackType | "all">
+                ariaLabel="类型筛选"
                 value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value as ProductFeedbackType | "all")}
-                className="compact-filter-control"
-                data-compact-control="filter"
-              >
-                <option value="all">全部类型</option>
-                {productFeedbackTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {productFeedbackTypeLabels[type]}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setTypeFilter}
+                size="filter"
+                options={[{ value: "all", label: "全部类型" }, ...productFeedbackTypes.map((type) => ({ value: type, label: productFeedbackTypeLabels[type] }))]}
+              />
               <SearchField
                 className="feedback-admin-search"
                 value={query}

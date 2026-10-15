@@ -1719,9 +1719,9 @@ describe("ApiProjectTopologyWorkspace", () => {
     const submission = await screen.findByRole("region", { name: "参数修改提交" });
     expect(within(submission).getByRole("heading", { name: "本轮已修改" })).toBeVisible();
     await waitFor(() => expect(listWorkflowAssignees).toHaveBeenCalledWith("aurora"));
-    expect(await within(submission).findByLabelText("硬件 MDE")).toHaveValue("u-hw");
-    expect(within(submission).getByLabelText("软件 MDE")).toHaveValue("u-sw");
-    expect(within(submission).getByLabelText("软件开发")).toHaveValue("u-user");
+    expect(await within(submission).findByLabelText("硬件 MDE")).toHaveAttribute("data-value", "u-hw");
+    expect(within(submission).getByLabelText("软件 MDE")).toHaveAttribute("data-value", "u-sw");
+    expect(within(submission).getByLabelText("软件开发")).toHaveAttribute("data-value", "u-user");
     const submitButton = within(submission).getByRole("button", { name: /^提交审核/ });
     await waitFor(() => expect(submitButton).toBeEnabled());
     fireEvent.click(submitButton);

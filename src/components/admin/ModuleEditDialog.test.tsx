@@ -6,6 +6,21 @@ import { ModuleEditDialog } from "./ModuleEditDialog";
 afterEach(() => cleanup());
 
 describe("ModuleEditDialog", () => {
+  it("uses scoped help and preserves edits until discard is explicitly confirmed", () => {
+    const onCancel = vi.fn();
+    render(<ModuleEditDialog module={{ name: "Power" }} existingNames={[]} description="维护节点模块。" onSave={vi.fn()} onCancel={onCancel} />);
+    expect(screen.getByRole("dialog")).toHaveAccessibleDescription("维护节点模块。");
+    expect(screen.queryByText(/共享参数库/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("模块名称"), { target: { value: "Battery" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByLabelText("模块名称")).toHaveValue("Battery");
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    fireEvent.click(screen.getByRole("button", { name: "放弃修改" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
   it("keeps historical driver identity read-only even for mock admins", () => {
     const onSave = vi.fn();
     render(<ModuleEditDialog module={{ name: "SC8562", description: "", scope: "", kind: "driver-group" }}

@@ -1,3 +1,4 @@
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { spawnSync } from "node:child_process";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -486,8 +487,8 @@ async function uploadLogThroughUi(page: Page, filePath: string, question?: strin
   await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
   const dialog = page.getByRole("dialog", { name: "上传日志" });
   if (domainName) {
-    await expect(dialog.locator("#upload-log-domain option", { hasText: domainName })).toHaveCount(1, { timeout: 10_000 });
-    await dialog.locator("#upload-log-domain").selectOption({ label: domainName });
+    await expect.poll(async () => (await readSelectControlOptions(dialog.locator("#upload-log-domain"))).filter((option) => option.label.includes(domainName)).length, { timeout: 10_000 }).toBe(1);
+    await selectControlOption(dialog.locator("#upload-log-domain"), { label: domainName });
   }
   await dialog.getByLabel("选择日志文件").setInputFiles(filePath);
   if (question) {

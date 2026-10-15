@@ -1,0 +1,48 @@
+.debug-module-management-dialog .param-admin-module-col-name {
+  width: 64%;
+}
+
+.debug-module-management-dialog .param-admin-module-col-count {
+  width: 14%;
+}
+
+.debug-module-management-dialog .param-admin-module-col-actions,
+.debug-module-management-dialog .param-admin-module-table th:last-child,
+.debug-module-management-dialog .param-admin-module-table td:last-child {
+  width: 22%;
+}
+
+.debug-module-management-dialog .param-admin-module-parameters-row td {
+  background: var(--surface-muted);
+}
+
+.debug-module-management-dialog .param-admin-module-parameter-meta strong {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.debug-module-management-dialog .param-admin-module-item-actions {
+  align-self: center;
+}
+.debug-module-management-dialog,
+.debug-module-editor-dialog,
+.debug-module-move-dialog {
+  gap: 0;
+  padding: 0;
+}
+
+.debug-module-management-dialog .submission-dialog-head,
+.debug-module-editor-dialog .submission-dialog-head,
+.debug-module-move-dialog .submission-dialog-head {
+  padding: var(--space-5);
+}
+
+.debug-module-management-dialog .dialog-actions,
+.debug-module-editor-dialog .dialog-actions,
+.debug-module-move-dialog .dialog-actions {
+  margin-top: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-top: var(--stroke-hairline) solid var(--border);
+}

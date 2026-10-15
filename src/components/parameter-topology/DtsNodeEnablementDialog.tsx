@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { SelectControl } from "@/components/common/SelectControl";
 import { CircleX } from "lucide-react";
 
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -212,16 +213,15 @@ export function DtsNodeEnablementDialog({
                   <p className="dts-node-enablement-dialog__hint">
                     项目实测习惯为 <code>{measuredSpelling}</code>
                   </p>
-                  <select
+                  <SelectControl
                     id={spellingId}
-                    aria-label="status 拼写"
+                    ariaLabel="status 拼写"
                     value={spellingOverride}
                     disabled={busy}
-                    onChange={(event) => setSpellingOverride(event.target.value as "ok" | "okay")}
-                  >
-                    <option value="ok">ok</option>
-                    <option value="okay">okay</option>
-                  </select>
+                    withinModal
+                    onValueChange={setSpellingOverride}
+                    options={[{ value: "ok", label: "ok" }, { value: "okay", label: "okay" }]}
+                  />
                 </div>
               ) : null}
 
@@ -279,7 +279,7 @@ export function DtsNodeEnablementDialog({
           {showEditForm ? (
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               className="dts-node-enablement-dialog__unstated"
               disabled={busy || !reasonReady}
               onClick={() => void submitTarget("unstated")}

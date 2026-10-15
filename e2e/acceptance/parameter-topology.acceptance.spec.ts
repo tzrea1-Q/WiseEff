@@ -1,3 +1,4 @@
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
@@ -1152,12 +1153,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(submissionPanel.getByLabel("硬件 MDE", { exact: true })).toHaveCount(0);
     await expect(submissionPanel.getByLabel("软件开发", { exact: true })).toHaveCount(0);
     const optionTexts = async (select: typeof softwareCommitterAssignee) =>
-      (await select.locator("option").allTextContents()).map((text) => text.trim()).sort();
-    await expect(softwareCommitterAssignee).not.toHaveValue("");
+      (await readSelectControlOptions(select)).map((option) => option.label).sort();
+    await expect(softwareCommitterAssignee).not.toHaveAttribute("data-value", "");
     await expect.poll(() => optionTexts(softwareCommitterAssignee)).toEqual(["Sun Mei", "软件审核池（未指定）"]);
-    await expect(softwareCommitterAssignee).not.toContainText("Xu Yun");
-    await expect(softwareCommitterAssignee).not.toContainText("Tao Lin");
-    await expect(softwareCommitterAssignee).not.toContainText("Liu Min");
+    const eligibleAssignees = await optionTexts(softwareCommitterAssignee);
+    expect(eligibleAssignees).not.toContain("Xu Yun");
+    expect(eligibleAssignees).not.toContain("Tao Lin");
+    expect(eligibleAssignees).not.toContain("Liu Min");
     await recordOperationEvidence({
       operationId: "PARAM-ASSIGNEE-001",
       title: "binding workflow assignee defaults are eligible",
@@ -1196,8 +1198,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       ],
       notes: "The visible canonical selector exposed only the exact project-scoped eligible software committer; no hardware or developer stage selector exists."
     });
-    await softwareCommitterAssignee.selectOption("u-sun-mei");
-    await expect(softwareCommitterAssignee).toHaveValue("u-sun-mei");
+    await selectControlOption(softwareCommitterAssignee, "u-sun-mei");
+    await expect(softwareCommitterAssignee).toHaveAttribute("data-value", "u-sun-mei");
     const submitRoundPromise = page.waitForResponse((response) =>
       response.request().method() === "POST" && /parameter-value-drafts\/[^/]+\/submit$/.test(response.url())
     );
@@ -2538,9 +2540,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
       const nodeTray = page.getByRole("region", { name: "参数修改提交" });
       await nodeTray.getByRole("article").filter({ hasText: "gpio_int" }).getByRole("button", { name: "移出本轮修改" }).click();
-      await nodeTray.getByLabel("硬件 MDE", { exact: true }).selectOption("u-wang-jie");
-      await nodeTray.getByLabel("软件 MDE", { exact: true }).selectOption("u-sun-mei");
-      await nodeTray.getByLabel("软件开发", { exact: true }).selectOption("u-liu-min");
+      await selectControlOption(nodeTray.getByLabel("硬件 MDE", { exact: true }), "u-wang-jie");
+      await selectControlOption(nodeTray.getByLabel("软件 MDE", { exact: true }), "u-sun-mei");
+      await selectControlOption(nodeTray.getByLabel("软件开发", { exact: true }), "u-liu-min");
       const nodeSubmitPromise = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith("/parameter-submission-rounds"));
       await nodeTray.getByRole("button", { name: "提交审核（1 项）" }).click();
@@ -2549,7 +2551,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const nodeRound = ((await nodeSubmit.json()) as { item: { id: string; items: Array<{ requestId: string }> } }).item;
       const nodeRequestId = nodeRound.items[0]!.requestId;
       await page.goto(`${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
-      await page.getByRole("combobox", { name: "变更类型", exact: true }).selectOption("legacy");
+      await selectControlOption(page.getByRole("combobox", { name: "变更类型", exact: true }), "legacy");
       const nodeSubmissionRow = page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${nodeRound.id}"]`);
       await expect(nodeSubmissionRow).toContainText("旧版");
       await nodeSubmissionRow.getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
@@ -2649,7 +2651,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
       await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
       await page.getByRole("tablist", { name: "审阅视角" }).getByRole("tab", { name: "已处理", exact: true }).click();
-      await page.getByRole("combobox", { name: "变更类型", exact: true }).selectOption("legacy");
+      await selectControlOption(page.getByRole("combobox", { name: "变更类型", exact: true }), "legacy");
       await nodeSubmissionRow.getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
       await expect(nodeTracking).toContainText(disableReason);
       await expect(nodeTracking.getByRole("button", { name: "撤回本轮提交" })).toBeDisabled();

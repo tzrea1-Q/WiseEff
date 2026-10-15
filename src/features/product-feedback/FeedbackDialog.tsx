@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ClipboardEvent as ReactClipboardEvent, ReactNode } from "react";
+import type { ClipboardEvent as ReactClipboardEvent } from "react";
 import { CircleX, Save, Trash2, Upload } from "lucide-react";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type {
@@ -19,7 +19,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SelectControl } from "@/components/common/SelectControl";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { MyFeedbackView } from "./MyFeedbackView";
@@ -42,12 +42,6 @@ type PastedFeedbackImage = {
   id: string;
   file: File;
   objectUrl: string;
-};
-
-type SelectOption<Value extends string = string> = {
-  value: Value;
-  label: ReactNode;
-  disabled?: boolean;
 };
 
 export function FeedbackDialog({
@@ -442,6 +436,7 @@ export function FeedbackDialog({
                 <Label htmlFor="feedback-type">反馈类型</Label>
                 <SelectControl
                   id="feedback-type"
+                  withinModal
                   ariaLabel="反馈类型"
                   value={feedbackType}
                   onValueChange={setFeedbackType}
@@ -596,41 +591,6 @@ export function FeedbackDialog({
         onConfirm={confirmDiscard}
       />
     </Dialog>
-  );
-}
-
-function SelectControl<Value extends string>({
-  value,
-  onValueChange,
-  options,
-  ariaLabel,
-  id,
-  className,
-  placeholder,
-  disabled
-}: {
-  value: Value;
-  onValueChange: (value: Value) => void;
-  options: SelectOption<Value>[];
-  ariaLabel?: string;
-  id?: string;
-  className?: string;
-  placeholder?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)} disabled={disabled}>
-      <SelectTrigger id={id} aria-label={ariaLabel} className={className} data-value={value}>
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }
 

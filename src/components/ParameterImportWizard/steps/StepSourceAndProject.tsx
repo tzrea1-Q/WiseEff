@@ -7,6 +7,7 @@ import { useRef, useState, type DragEvent } from "react";
 import type { Project } from "@/domain/prototype/types";
 import { cn } from "@/lib/utils";
 import { PasteImportContentDialog } from "./PasteImportContentDialog";
+import { SelectControl } from "@/components/common/SelectControl";
 
 export const IMPORT_SOURCE_FILE_ACCEPT = ".xlsx,.csv,.json,.dts,.dtsi,.txt";
 
@@ -110,16 +111,10 @@ export function StepSourceAndProject({
       <div className="parameter-import-wizard-grid">
         <label>
           <span>目标项目</span>
-          <select value={targetProjectId} onChange={(event) => onTargetProjectChange(event.target.value)}>
-            <option value="" disabled>
-              请选择目标项目
-            </option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}（{project.code}）
-              </option>
-            ))}
-          </select>
+          <SelectControl ariaLabel="目标项目" withinModal value={targetProjectId} onValueChange={onTargetProjectChange} options={[
+            { value: "", label: "请选择目标项目", disabled: true },
+            ...projects.map((project) => ({ value: project.id, label: `${project.name}（${project.code}）` }))
+          ]} />
         </label>
         <div className="parameter-import-wizard-new-project">
           <button type="button" className="button subtle" onClick={onCreateProject}>

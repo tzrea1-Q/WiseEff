@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "playwright/test";
@@ -99,7 +100,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
         }
         await expect(dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem")).toHaveCount(2);
         await dialog.getByRole("textbox", { name: "修改原因" }).fill(reason);
-        await dialog.getByRole("combobox", { name: "指定软件审核人" }).selectOption(acceptanceCast.sunMei.userId);
+        await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
         if (reason === "浏览器批量批准") {
           await expect.poll(() => dialog.evaluate((node) => node.getAnimations().every((animation) => animation.playState === "finished"))).toBe(true);
           await page.screenshot({ path: testInfo.outputPath("b906-batch-submit-dialog-1440x900.png") });

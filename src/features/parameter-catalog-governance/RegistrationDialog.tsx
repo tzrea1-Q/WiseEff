@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useRef, useState } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -234,24 +235,20 @@ export function RegistrationDialog({
                       <>
                         <label>
                           {governanceCopy.parentPlacement}
-                          <select
-                            aria-label={governanceCopy.parentPlacement}
+                          <SelectControl
+                            ariaLabel={governanceCopy.parentPlacement}
                             value={parentPlacementId}
-                            onChange={(event) => {
-                              const nextId = event.target.value;
+                            onValueChange={(value) => {
+                              const nextId = value;
                               setParentPlacementId(nextId);
                               const option = placementOptions.find((item) => item.id === nextId);
                               if (option) {
                                 setDisplayName(option.displayName);
                               }
                             }}
-                          >
-                            {placementOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.displayName}
-                              </option>
-                            ))}
-                          </select>
+                            withinModal
+                            options={placementOptions.map((option) => ({ value: option.id, label: option.displayName }))}
+                          />
                         </label>
                         <label>
                           {governanceCopy.placementDisplayName}
@@ -266,20 +263,16 @@ export function RegistrationDialog({
                     {moduleOptions.length > 0 ? (
                       <label>
                         目标模块
-                        <select
-                          aria-label="目标模块"
+                        <SelectControl
+                          ariaLabel="目标模块"
                           value={destinationModuleId}
-                          onChange={(event) => setDestinationModuleId(event.target.value)}
-                        >
-                          <option value="">请选择目标模块</option>
-                          {moduleOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.impactSummary
-                                ? `${option.displayName} · ${option.impactSummary}`
-                                : option.displayName}
-                            </option>
-                          ))}
-                        </select>
+                          onValueChange={(value) => setDestinationModuleId(value)}
+                          withinModal
+                          options={[{ value: "", label: "请选择目标模块" }, ...moduleOptions.map((option) => ({
+                            value: option.id,
+                            label: option.impactSummary ? `${option.displayName} · ${option.impactSummary}` : option.displayName
+                          }))]}
+                        />
                       </label>
                     ) : null}
                     {subjectImpact ? (

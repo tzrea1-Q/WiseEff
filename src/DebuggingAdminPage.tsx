@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PageProps } from "@/app/routes";
-import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
+import { readDebugNodeCatalogSearch, writeDebugNodeCatalogSearch } from "@/application/debugging/debugNodeCatalogSearch";
 import { ArchiveDebugNodeDialog } from "@/components/admin/ArchiveDebugNodeDialog";
 import { DeleteDebugNodeDialog } from "@/components/admin/DeleteDebugNodeDialog";
 import { DebugModuleManagementDialog } from "@/components/admin/DebugModuleManagementDialog";
-import { DebugNodeBindingsDialog } from "@/components/admin/DebugNodeBindingsDialog";
 import { DebugNodeEditorDialog, type DebugNodeDraft } from "@/components/admin/DebugNodeEditorDialog";
 import { DebugNodeLibraryTable, type DebugNodeLibrarySearch } from "@/components/admin/DebugNodeLibraryTable";
-import { useTopBarActions } from "@/components/layout";
 import { bindingForProtocol } from "@/debugAdminDraft";
 import { buildDebugModuleTree, countDebugNodesByModuleId } from "@/debugAdminModules";
 import type { DebugConnectionProtocol, DebugNodeProtocolBinding, DebugNodeRegistryEntry, DebugParameter } from "@/domain/debugging/types";
@@ -15,7 +13,6 @@ import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import {
   formatDebugAdminBindingSaveError,
   getBindingNodePathValidationError,
-  normalizeBindingNodePath
 } from "@/domain/debugging/bindingNodePath";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import { ReloadConfigurationAdminPanel } from "@/components/admin/ReloadConfigurationAdminPanel";
@@ -35,6 +32,7 @@ import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import "./components/admin/debug-admin-nodes.css";
 
 function readFileText(file: File) {
   if (typeof file.text === "function") {
@@ -128,6 +126,8 @@ function nodeWriteBodyFromDraft(draft: DebugNodeDraft) {
     moduleId: draft.moduleId,
     module: draft.module,
     enabled: draft.enabled,
+    ...(draft.bindings?.length ? { bindings: draft.bindings } : {}),
+    ...(draft.archiveProtocols?.length ? { archiveProtocols: draft.archiveProtocols } : {}),
     ...(draft.canonicalBinding !== undefined ? { canonicalBinding: draft.canonicalBinding } : {})
   };
 }
@@ -224,6 +224,7 @@ export function DebuggingAdminPage({
   state,
   dispatch,
   onNavigate,
+  search = "",
   area = "parameter",
   runtimeMode = wiseEffRuntimeMode,
   debuggingAdminClient,
@@ -246,25 +247,24 @@ export function DebuggingAdminPage({
   const [deleteError, setDeleteError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [saveFlash, setSaveFlash] = useState(false);
-  const [nodeSearch, setNodeSearch] = useState<DebugNodeLibrarySearch>({
-    q: "",
-    protocol: "all",
-    modules: [],
-    sort: "name-asc"
-  });
+  const [nodeSearch, setNodeSearch] = useState<DebugNodeLibrarySearch>(() => readDebugNodeCatalogSearch(search));
+  useEffect(() => setNodeSearch(readDebugNodeCatalogSearch(search)), [search]);
+  const updateNodeSearch = (patch: Partial<DebugNodeLibrarySearch>) => {
+    const next = { ...nodeSearch, ...patch, page: patch.page ?? 1 };
+    setNodeSearch(next);
+    onNavigate(`/debugging-admin/nodes${writeDebugNodeCatalogSearch(search, next)}${window.location.hash}`, { replace: patch.q !== undefined });
+  };
 
   const [mockDisabledNodeIds, setMockDisabledNodeIds] = useState<Set<string>>(() => new Set());
   const [mockDeletedNodeIds, setMockDeletedNodeIds] = useState<Set<string>>(() => new Set());
   const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
   const [editorNodeId, setEditorNodeId] = useState<string | null>(null);
-  const [bindingsNodeId, setBindingsNodeId] = useState<string | null>(null);
-  const [bindingsDraft, setBindingsDraft] = useState<DebugNodeProtocolBinding[]>([]);
   const [disableNodeId, setDisableNodeId] = useState<string | null>(null);
   const [deleteNodeId, setDeleteNodeId] = useState<string | null>(null);
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
   const [adminModuleNodes, setAdminModuleNodes] = useState<FlatModuleNode[]>([]);
   const editorNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
-  const bindingsNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
+  const saveInFlightRef = useRef(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const deleteInFlightRef = useRef(false);
   const importInFlightRef = useRef(false);
@@ -371,46 +371,17 @@ export function DebuggingAdminPage({
     });
   };
 
-  const mergeAdminNodeBindings = (nodeId: string, binding: DebugNodeProtocolBinding) => {
-    setAdminNodes((nodes) =>
-      nodes.map((node) => {
-        if (node.id !== nodeId) {
-          return node;
-        }
-        const others = node.bindings.filter((item) => item.protocol !== binding.protocol);
-        return { ...node, bindings: [...others, binding] };
-      })
-    );
-  };
-
   const editorNode = useMemo(() => {
     if (!editorNodeId) return null;
     return library.find((node) => node.id === editorNodeId) ?? null;
   }, [editorNodeId, library]);
   editorNodeRef.current = editorNode;
 
-  const bindingsNode = useMemo(() => {
-    if (!bindingsNodeId) return null;
-    return library.find((node) => node.id === bindingsNodeId) ?? null;
-  }, [bindingsNodeId, library]);
-  bindingsNodeRef.current = bindingsNode;
-
-  useEffect(() => {
-    if (!bindingsNodeId) {
-      setBindingsDraft([]);
-    }
-  }, [bindingsNodeId]);
-
-  const openBindingsDialog = (nodeId: string) => {
-    const node = library.find((item) => item.id === nodeId);
-    if (!node) {
-      return;
-    }
-    setBindingsDraft(node.bindings ?? []);
-    setBindingsNodeId(nodeId);
-  };
-
   const saveMockNode = (draft: DebugNodeDraft, existingNode?: DebugNodeRegistryEntry | null) => {
+    let bindings = existingNode?.bindings ?? [];
+    for (const binding of draft.bindings ?? []) bindings = mergeNodeBinding(bindings, binding.protocol, binding);
+    bindings = bindings.map((binding) => draft.archiveProtocols?.includes(binding.protocol) ? { ...binding, enabled: false } : binding);
+    const preferred = bindingForProtocol(bindings, "hdc");
     if (existingNode) {
       dispatch({
         type: "UPDATE_DEBUG_PARAMETER",
@@ -421,7 +392,12 @@ export function DebuggingAdminPage({
           detailedDescription: draft.detailedDescription,
           writeFormatExample: draft.writeFormatExample,
           writeFormatHint: draft.writeFormatHint,
-          module: draft.module
+          module: draft.module,
+          moduleId: draft.moduleId,
+          enabled: draft.enabled,
+          bindings,
+          nodePath: preferred.nodePath,
+          accessMode: preferred.accessMode
         }
       });
       setMockDisabledNodeIds((current) => {
@@ -444,8 +420,11 @@ export function DebuggingAdminPage({
         detailedDescription: draft.detailedDescription,
         writeFormatExample: draft.writeFormatExample,
         writeFormatHint: draft.writeFormatHint,
-        nodePath: "",
-        accessMode: "RO",
+        nodePath: preferred.nodePath,
+        accessMode: preferred.accessMode,
+        bindings,
+        enabled: draft.enabled,
+        moduleId: draft.moduleId,
         key: `debug.node.${Date.now()}`,
         module: draft.module || "Device Lab",
         currentValue: "",
@@ -454,27 +433,16 @@ export function DebuggingAdminPage({
         range: "",
         risk: "Low",
         status: "已同步"
-      } as never
-    });
-  };
-
-  const saveMockBindings = (nodeId: string, bindings: DebugNodeProtocolBinding[]) => {
-    const preferred = bindingForProtocol(bindings, "hdc");
-    dispatch({
-      type: "UPDATE_DEBUG_PARAMETER",
-      parameterId: nodeId,
-      patch: {
-        bindings,
-        nodePath: preferred.nodePath,
-        accessMode: preferred.accessMode
-      } as never
+      }
     });
   };
 
   const saveNode = async (draft: DebugNodeDraft) => {
+    if (saveInFlightRef.current) return;
     const existingNode = editorNodeRef.current;
     if (isApiMode) {
       if (!debuggingAdminClient || !canEditAdminCatalog) return;
+      saveInFlightRef.current = true;
       setAdminLoading(true);
       setAdminError("");
       setSaveStatus("");
@@ -487,9 +455,12 @@ export function DebuggingAdminPage({
         setEditorMode(null);
         setEditorNodeId(null);
         flashSaved("已保存");
-      } catch {
-        setAdminError("保存调试节点失败。");
+      } catch (error) {
+        const pathIssue = error instanceof WiseEffApiError && Array.isArray(error.details.issues) && error.details.issues.some((issue) =>
+          issue && typeof issue === "object" && "path" in issue && Array.isArray(issue.path) && issue.path.includes("nodePath"));
+        setAdminError(pathIssue ? formatDebugAdminBindingSaveError(error) : "保存节点配置失败，当前输入已保留。");
       } finally {
+        saveInFlightRef.current = false;
         setAdminLoading(false);
       }
       return;
@@ -498,72 +469,6 @@ export function DebuggingAdminPage({
     saveMockNode(draft, existingNode);
     setEditorMode(null);
     setEditorNodeId(null);
-    flashSaved("已保存");
-  };
-
-  const saveNodeBinding = async (protocol: DebugConnectionProtocol) => {
-    const node = bindingsNodeRef.current;
-    if (!node || !debuggingAdminClient || !canEditAdminCatalog) {
-      return;
-    }
-
-    const binding = bindingForProtocol(bindingsDraft, protocol);
-    const pathError = getBindingNodePathValidationError(binding.nodePath);
-    if (pathError) {
-      setAdminError(pathError);
-      return;
-    }
-
-    setAdminLoading(true);
-    setAdminError("");
-    try {
-      const saved = await debuggingAdminClient.upsertNodeBinding(node.id, protocol, {
-        ...binding,
-        nodePath: normalizeBindingNodePath(binding.nodePath)
-      });
-      mergeAdminNodeBindings(node.id, saved);
-      setBindingsDraft((current) => mergeNodeBinding(current, protocol, saved));
-      flashSaved("已保存 binding");
-    } catch (error) {
-      setAdminError(formatDebugAdminBindingSaveError(error, "保存节点 binding 失败。"));
-    } finally {
-      setAdminLoading(false);
-    }
-  };
-
-  const archiveNodeBinding = async (protocol: DebugConnectionProtocol) => {
-    const node = bindingsNodeRef.current;
-    if (!node || !debuggingAdminClient || !canEditAdminCatalog) {
-      return;
-    }
-
-    setAdminLoading(true);
-    setAdminError("");
-    try {
-      const saved = await debuggingAdminClient.archiveNodeBinding(node.id, protocol);
-      mergeAdminNodeBindings(node.id, saved);
-      setBindingsDraft((current) => mergeNodeBinding(current, protocol, saved));
-      flashSaved("已归档 binding");
-    } catch {
-      setAdminError("归档节点 binding 失败。");
-    } finally {
-      setAdminLoading(false);
-    }
-  };
-
-  const saveBindingsDialog = () => {
-    const node = bindingsNodeRef.current;
-    if (!node) {
-      return;
-    }
-
-    if (isApiMode) {
-      setBindingsNodeId(null);
-      return;
-    }
-
-    saveMockBindings(node.id, bindingsDraft);
-    setBindingsNodeId(null);
     flashSaved("已保存");
   };
 
@@ -583,8 +488,9 @@ export function DebuggingAdminPage({
         });
         await reloadAdminModules();
         flashSaved("模块已创建");
-      } catch {
+      } catch (error) {
         setAdminError("创建模块失败。");
+        throw error;
       } finally {
         setAdminLoading(false);
       }
@@ -617,8 +523,9 @@ export function DebuggingAdminPage({
         const nodes = await debuggingAdminClient.listNodes({ includeArchived: true });
         setAdminNodes(nodes);
         flashSaved("模块已更新");
-      } catch {
+      } catch (error) {
         setAdminError("更新模块失败。");
+        throw error;
       } finally {
         setAdminLoading(false);
       }
@@ -686,8 +593,9 @@ export function DebuggingAdminPage({
         await debuggingAdminClient.deleteModule(moduleId);
         await reloadAdminModules();
         flashSaved("模块已删除");
-      } catch {
+      } catch (error) {
         setAdminError("删除模块失败。");
+        throw error;
       } finally {
         setAdminLoading(false);
       }
@@ -925,30 +833,13 @@ export function DebuggingAdminPage({
     flashSaved("节点已删除");
   };
 
-  const nodeCount = library.length;
-  const enabledCount = library.filter((node) => node.enabled).length;
-  const onlineDevices = state.devices.filter((device) => device.status === "已连接").length;
-  const kpiItems: KpiItem[] = [
-    { id: "nodes", label: "可调节点", value: nodeCount },
-    { id: "enabled-nodes", label: "已启用", value: enabledCount },
-    { id: "online-devices", label: "在线设备", value: `${onlineDevices}/${state.devices.length}` },
-    { id: "last-save", label: "最近保存", value: saveStatus || "—" }
-  ];
-
-  useTopBarActions(
-    area === "nodes" ? (
-      <div className="debug-admin-strip debug-admin-strip--topbar">
-        <span className={`debug-admin-save-indicator${saveFlash || saveStatus ? " visible" : ""}`}>{saveStatus || "✓ 已自动保存"}</span>
-      </div>
-    ) : null,
-    [area, saveFlash, saveStatus]
-  );
+  const missingBindings = library.filter((node) => !node.bindings.some((binding) => binding.enabled && !getBindingNodePathValidationError(binding.nodePath))).length;
 
   const disableTarget = disableNodeId ? library.find((node) => node.id === disableNodeId) : null;
   const deleteTarget = deleteNodeId ? library.find((node) => node.id === deleteNodeId) : null;
 
   return (
-    <div className="debug-admin-shell param-admin-shell">
+    <div className={`debug-admin-shell param-admin-shell${area === "nodes" ? " debug-admin-nodes" : ""}`}>
       <DebuggingAdminScopeNav active={area} onNavigate={onNavigate} />
       {area === "parameter" ? (
         <main className="param-admin-main" aria-label="参数调试">
@@ -963,9 +854,17 @@ export function DebuggingAdminPage({
         </main>
       ) : (
         <>
-          <KpiStrip items={kpiItems} />
+          <div className="debug-node-overview">
+            <dl className="debug-node-summary" aria-label="节点目录概览">
+              <div><dt>节点总数</dt><dd>{adminLoading && library.length === 0 ? "—" : library.length}</dd></div>
+              <div><dt>已启用</dt><dd>{adminLoading && library.length === 0 ? "—" : library.filter((node) => node.enabled).length}</dd></div>
+              <div><dt>模块</dt><dd>{adminLoading && moduleNodes.length === 0 ? "—" : moduleNodes.length}</dd></div>
+              <div><dt>待配置路径</dt><dd>{adminLoading && library.length === 0 ? "—" : missingBindings}</dd></div>
+            </dl>
+            <span className="debug-node-feedback" role="status" title={saveFlash ? saveStatus : undefined}>{saveFlash ? saveStatus : ""}</span>
+          </div>
           <main className="param-admin-main" aria-label="节点调试">
-            {adminError ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
+            {adminError && !editorMode && !moduleDialogOpen ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
             {isApiMode && !canEditAdminCatalog ? (
               <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p>
             ) : null}
@@ -973,12 +872,12 @@ export function DebuggingAdminPage({
               nodes={library}
               moduleNodes={moduleNodes}
               search={nodeSearch}
-              onUpdateSearch={(patch) => setNodeSearch((current) => ({ ...current, ...patch }))}
+              onUpdateSearch={updateNodeSearch}
               onEdit={(nodeId) => {
+                setAdminError("");
                 setEditorMode("edit");
                 setEditorNodeId(nodeId);
               }}
-              onEditBindings={openBindingsDialog}
               onDisable={setDisableNodeId}
               onDelete={(nodeId) => {
                 setAdminError("");
@@ -986,10 +885,11 @@ export function DebuggingAdminPage({
                 setDeleteNodeId(nodeId);
               }}
               onCreate={() => {
+                setAdminError("");
                 setEditorMode("create");
                 setEditorNodeId(null);
               }}
-              onManageModules={() => setModuleDialogOpen(true)}
+              onManageModules={() => { setAdminError(""); setModuleDialogOpen(true); }}
               onExport={() => void exportCatalog()}
               onImport={() => importInputRef.current?.click()}
               canEdit={canEditAdminCatalog}
@@ -1018,6 +918,7 @@ export function DebuggingAdminPage({
             loading={catalogImportLoading}
             submitting={catalogImportSubmitting}
             error={catalogImportError}
+            targetOrganizationName="当前组织"
             notice={catalogImportNotice}
             onCancel={closeCatalogImport}
             onConfirm={() => void confirmCatalogImport()}
@@ -1034,6 +935,7 @@ export function DebuggingAdminPage({
             node={editorNode}
             moduleNodes={moduleNodes}
             loading={adminLoading}
+            error={adminError}
             canEdit={canEditAdminCatalog}
             parameterRepository={parameterRepository}
             parameterCatalogRepository={parameterCatalogRepository}
@@ -1043,22 +945,6 @@ export function DebuggingAdminPage({
               setEditorNodeId(null);
             }}
           />
-
-          {bindingsNode ? (
-            <DebugNodeBindingsDialog
-              nodeName={bindingsNode.name}
-              draft={bindingsDraft}
-              nodeId={bindingsNode.id}
-              isApiMode={isApiMode}
-              canEdit={canEditAdminCatalog}
-              loading={adminLoading}
-              onBindingChange={(protocol, patch) => setBindingsDraft((current) => mergeNodeBinding(current, protocol, patch))}
-              onSave={saveBindingsDialog}
-              onSaveBinding={(protocol) => void saveNodeBinding(protocol)}
-              onArchiveBinding={(protocol) => void archiveNodeBinding(protocol)}
-              onClose={() => setBindingsNodeId(null)}
-            />
-          ) : null}
 
           <ArchiveDebugNodeDialog
             open={Boolean(disableTarget)}
@@ -1094,9 +980,9 @@ export function DebuggingAdminPage({
             canEdit={canEditAdminCatalog}
             onClose={() => setModuleDialogOpen(false)}
             onAddModule={addDebugModule}
-            onUpdateModule={(moduleId, patch) => void updateDebugModule(moduleId, patch)}
+            onUpdateModule={updateDebugModule}
             onMoveModule={moveDebugModule}
-            onDeleteModule={(moduleId) => void deleteDebugModule(moduleId)}
+            onDeleteModule={deleteDebugModule}
             onEditNode={openNodeEditorFromModule}
             onDeleteNode={openNodeDeleteFromModule}
           />

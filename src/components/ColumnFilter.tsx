@@ -124,10 +124,10 @@ export function ColumnFilter(props: ColumnFilterProps) {
       setOpen(false);
       triggerRef.current?.focus();
     };
-    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", closeOnEscape, true);
     return () => {
       window.removeEventListener("mousedown", closeOnOutsideClick);
-      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("keydown", closeOnEscape, true);
     };
   }, [open]);
 

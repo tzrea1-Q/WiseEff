@@ -209,7 +209,7 @@ export function ProjectAdminTable({
               {filtersActive ? (
                 <Button
                   aria-label="清除筛选"
-                  variant="ghost" size="sm"
+                  variant="outline" size="sm"
                   type="button"
                   onClick={() => onUpdateSearch({ q: "", statuses: [] })}
                 >

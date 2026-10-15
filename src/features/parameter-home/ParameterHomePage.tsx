@@ -203,7 +203,7 @@ export function ParameterHomePage({
             ))}
             </div>
             {projectOptions.length === 0 ? <p>当前没有可查看的项目。</p> : null}
-            <Button type="button" variant="ghost" onClick={() => setProjectDestination(null)}>取消</Button>
+            <Button type="button" variant="outline" onClick={() => setProjectDestination(null)}>取消</Button>
           </>
         )}
       </ModalDialog>

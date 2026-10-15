@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import type { ConfigSetRole } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterFileCandidate } from "@/application/ports/ParameterFileRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -73,17 +74,14 @@ export function WorkbenchCandidateActivateDialog({
         !activeCandidate?.fileId ? (
           <label className="configuration-workbench__activate-role">
             <span>新文件成员角色</span>
-            <select
+            <SelectControl
               value={activateRole}
               disabled={activating}
-              onChange={(event) => onActivateRoleChange(event.target.value as ConfigSetRole)}
-            >
-              {(Object.keys(ROLE_LABELS) as ConfigSetRole[]).map((role) => (
-                <option key={role} value={role}>
-                  {ROLE_LABELS[role]}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => onActivateRoleChange(value as ConfigSetRole)}
+              ariaLabel="新文件成员角色"
+              withinModal
+              options={(Object.keys(ROLE_LABELS) as ConfigSetRole[]).map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
+            />
             <small>将加入配置集 {configSetName ?? "（未选择）"}，不会隐式创建其他成员关系。</small>
           </label>
         ) : null

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleX } from "lucide-react";
 
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SelectControl } from "@/components/common/SelectControl";
 import { DiffCodeBlock } from "@/components/parameter-compare/ParameterDiffViews";
 import {
   buildBindingCompareOverview,
@@ -37,7 +38,7 @@ export function DtsBindingCompareDialog({
   onUseCompareAsDraft
 }: DtsBindingCompareDialogProps) {
   const [targetBindingId, setTargetBindingId] = useState<string | null>(null);
-  const targetSelectRef = useRef<HTMLSelectElement | null>(null);
+  const targetSelectRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setTargetBindingId(defaultBindingCompareTargetId(peers));
@@ -98,21 +99,19 @@ export function DtsBindingCompareDialog({
               <div className="dts-binding-compare__head">
                 <label className="dts-binding-compare__target">
                   <span>目标配置实例</span>
-                  <select
+                  <SelectControl
                     ref={targetSelectRef}
-                    aria-label="对比目标配置实例"
+                    ariaLabel="对比目标配置实例"
                     value={targetBindingId ?? ""}
-                    onChange={(event) => setTargetBindingId(event.target.value || null)}
-                  >
-                    {targetBindingId === null ? <option value="">请选择配置实例</option> : null}
-                    {comparison.peers.map((peer) => (
-                      <option key={peer.comparisonKey} value={peer.comparisonKey}>
-                        {bindingComparePeerDisplayLabel(peer)
+                    withinModal
+                    onValueChange={(value) => setTargetBindingId(value || null)}
+                    options={[
+                      ...(targetBindingId === null ? [{ value: "", label: "请选择配置实例" }] : []),
+                      ...comparison.peers.map((peer) => ({ value: peer.comparisonKey, label: bindingComparePeerDisplayLabel(peer)
                           ? `${peer.projectName} · ${bindingComparePeerDisplayLabel(peer)}`
-                          : peer.projectName}
-                      </option>
-                    ))}
-                  </select>
+                          : peer.projectName }))
+                    ]}
+                  />
                 </label>
               </div>
 

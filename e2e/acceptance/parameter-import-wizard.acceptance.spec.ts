@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type Page } from "playwright/test";
 
@@ -133,7 +134,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await expect(wizard.getByRole("region", { name: "选择来源与目标项目" })).toBeVisible();
     const projectSelect = wizard.getByRole("combobox", { name: "目标项目" });
     await expect(projectSelect).toBeVisible();
-    await projectSelect.selectOption(projectId);
+    await selectControlOption(projectSelect, projectId);
     await wizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
     const pasteDialog = page.getByRole("dialog", { name: "粘贴导入内容" });
     await pasteDialog.getByLabel("导入内容").fill(importPayload);
@@ -304,7 +305,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await openImport.click();
     const wizard = page.getByRole("dialog", { name: "批量参数导入" });
     await expect(wizard).toBeVisible();
-    await wizard.getByRole("combobox", { name: "目标项目" }).selectOption(projectId);
+    await selectControlOption(wizard.getByRole("combobox", { name: "目标项目" }), projectId);
     await wizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
     const pasteDialog = page.getByRole("dialog", { name: "粘贴导入内容" });
     await pasteDialog.getByLabel("导入内容").fill(unmatchedPayload);

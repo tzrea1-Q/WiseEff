@@ -47,7 +47,6 @@ function renderTable(
       search={{ q: "", protocol: "all", modules: [], sort: "name-asc" }}
       onUpdateSearch={onUpdateSearch}
       onEdit={onEdit}
-      onEditBindings={override.onEditBindings ?? vi.fn()}
       onDisable={override.onDisable ?? vi.fn()}
       onDelete={override.onDelete ?? vi.fn()}
       {...override}
@@ -57,6 +56,32 @@ function renderTable(
 }
 
 describe("DebugNodeLibraryTable", () => {
+  it("uses one editor entry and keeps only node lifecycle actions in the overflow", async () => {
+    const onEdit = vi.fn();
+    renderTable({ onEdit });
+    const row = screen.getByRole("row", { name: /Fast charge current/ });
+    await userEvent.click(within(row).getByRole("button", { name: "编辑", exact: true }));
+    expect(onEdit).toHaveBeenCalledWith("node-1");
+    await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+    expect(screen.queryByRole("menuitem", { name: "路径绑定" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "禁用 Fast charge current" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "删除 Fast charge current" })).toBeInTheDocument();
+  });
+  it("retains existing rows during a catalog refresh", () => {
+    renderTable({ loading: true });
+    expect(screen.getByText("Fast charge current")).toBeInTheDocument();
+    expect(screen.queryByLabelText("正在加载可调节点")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("协议筛选")).toBeDisabled();
+  });
+  it("exposes protocol, access and full paths without opening the binding editor", () => {
+    renderTable();
+    const row = screen.getByRole("row", { name: /Fast charge current/ });
+    expect(within(row).getByText("HDC")).toBeInTheDocument();
+    expect(within(row).getByText("读写")).toBeInTheDocument();
+    expect(within(row).getByTitle("/sys/hdc/current")).toHaveTextContent("/sys/hdc/current");
+    expect(within(row).getByText("未配置")).toBeInTheDocument();
+    expect(within(row).getByTitle("Charge current node")).toBeInTheDocument();
+  });
   it("keeps destructive actions in the overflow menu without opening the row editor", async () => {
     const onDelete = vi.fn();
     const onEdit = vi.fn();
@@ -125,13 +150,13 @@ describe("DebugNodeLibraryTable", () => {
 
   it("does not open edit when a row action is clicked", async () => {
     const onEdit = vi.fn();
-    const onEditBindings = vi.fn();
-    renderTable({ onEdit, onEditBindings });
+    const onDisable = vi.fn();
+    renderTable({ onEdit, onDisable });
 
     await userEvent.click(within(screen.getByRole("row", { name: /Fast charge current/ })).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "禁用 Fast charge current" }));
 
-    expect(onEditBindings).toHaveBeenCalledWith("node-1");
+    expect(onDisable).toHaveBeenCalledWith("node-1");
     expect(onEdit).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { selectControlOption } from "@/test/selectControlOption";
 
 import type { ParameterModule, ParameterModuleMapping } from "@/domain/parameter-topology/moduleRegistry";
 import { ModuleAttributionTree } from "./ModuleAttributionTree";
@@ -305,9 +306,7 @@ describe("ModuleAttributionTree", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
     const editDialog = screen.getByRole("dialog", { name: "Power" });
-    fireEvent.change(within(editDialog).getByLabelText("模块重要性"), {
-      target: { value: "low" }
-    });
+    await selectControlOption(within(editDialog).getByLabelText("模块重要性"), "low");
     fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(onUpdateModule).toHaveBeenCalledTimes(1));
@@ -338,9 +337,7 @@ describe("ModuleAttributionTree", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
     const editDialog = screen.getByRole("dialog", { name: "Power" });
-    fireEvent.change(within(editDialog).getByLabelText("模块重要性"), {
-      target: { value: "low" }
-    });
+    await selectControlOption(within(editDialog).getByLabelText("模块重要性"), "low");
     fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
 
     // Pending: dialog stays open until the mutation settles.
@@ -351,7 +348,7 @@ describe("ModuleAttributionTree", () => {
     });
   });
 
-  it("edits importance inside the module dialog, not on the tree row", () => {
+  it("edits importance inside the module dialog, not on the tree row", async () => {
     const onUpdateModule = vi.fn();
 
     render(
@@ -373,10 +370,8 @@ describe("ModuleAttributionTree", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
     const editDialog = screen.getByRole("dialog", { name: "Power" });
-    expect(within(editDialog).getByLabelText("模块重要性")).toHaveValue("high");
-    fireEvent.change(within(editDialog).getByLabelText("模块重要性"), {
-      target: { value: "low" }
-    });
+    expect(within(editDialog).getByLabelText("模块重要性")).toHaveAttribute("data-value", "high");
+    await selectControlOption(within(editDialog).getByLabelText("模块重要性"), "low");
     fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
     expect(onUpdateModule).toHaveBeenCalledWith("mod-power", {
       name: "Power",
@@ -407,9 +402,7 @@ describe("ModuleAttributionTree", () => {
     fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "热管理" }
     });
-    fireEvent.change(within(createDialog).getByLabelText("模块重要性"), {
-      target: { value: "high" }
-    });
+    await selectControlOption(within(createDialog).getByLabelText("模块重要性"), "high");
     fireEvent.change(within(createDialog).getByLabelText("模块展示描述"), {
       target: { value: "散热相关" }
     });

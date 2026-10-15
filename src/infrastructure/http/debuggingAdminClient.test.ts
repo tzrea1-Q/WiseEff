@@ -13,6 +13,26 @@ function createApiClientMock() {
 }
 
 describe("debugging admin client", () => {
+  it("sends metadata, changed bindings and explicit archives through one node PATCH", async () => {
+    const apiClient = createApiClientMock();
+    apiClient.patch.mockResolvedValue({ item: {
+      id: "node/1", name: "Battery limit", description: "", module: "Battery", enabled: true,
+      bindings: [
+        { protocol: "hdc", nodePath: "/sys/battery/limit", accessMode: "RW", enabled: true, notes: "primary" },
+        { protocol: "adb", nodePath: "/sys/adb/limit", accessMode: "RO", enabled: false, notes: "retained" }
+      ]
+    } });
+    const input = {
+      name: "Battery limit",
+      bindings: [{ protocol: "hdc" as const, nodePath: "/sys/battery/limit", accessMode: "RW" as const, enabled: true, notes: "primary" }],
+      archiveProtocols: ["adb" as const]
+    };
+    const saved = await createDebuggingAdminClient(apiClient as never).updateNode("node/1", input);
+    expect(apiClient.patch).toHaveBeenCalledExactlyOnceWith("/api/v1/debugging/admin/nodes/node%2F1", input);
+    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiClient.post).not.toHaveBeenCalled();
+    expect(saved.bindings).toEqual(expect.arrayContaining([expect.objectContaining({ protocol: "adb", enabled: false, notes: "retained" })]));
+  });
   it("exposes only node-catalog administration, not legacy parameter administration", () => {
     const client = createDebuggingAdminClient(createApiClientMock() as never);
     type LegacyParameterAdminMethod =

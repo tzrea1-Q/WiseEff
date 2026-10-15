@@ -1,6 +1,7 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SelectControl } from "@/components/common/SelectControl";
 import {
   EDITABLE_PROJECT_STATUSES,
   PROJECT_ADMIN_STATUS_LABELS,
@@ -100,18 +101,15 @@ export function ProjectAdminFormDialog({
           {statusEditable ? (
             <label>
               <span>项目状态</span>
-              <select
+              <SelectControl
+                ariaLabel="项目状态"
                 className="project-admin-form-select"
                 value={status}
-                onChange={(event) => setStatus(event.target.value)}
+                onValueChange={setStatus}
                 disabled={loading}
-              >
-                {EDITABLE_PROJECT_STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {PROJECT_ADMIN_STATUS_LABELS[value]}
-                  </option>
-                ))}
-              </select>
+                withinModal
+                options={EDITABLE_PROJECT_STATUSES.map((value) => ({ value, label: PROJECT_ADMIN_STATUS_LABELS[value] }))}
+              />
             </label>
           ) : mode === "edit" && readOnlyStatusLabel ? (
             <label>

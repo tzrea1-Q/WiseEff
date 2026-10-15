@@ -1,4 +1,5 @@
 import powerManagementConfigJson from "./config/power-management.json";
+import type { DebugNodeProtocolBinding } from "@/domain/debugging/types";
 import {
   legacyModuleIdFromName,
   type FlatModuleNode
@@ -53,6 +54,8 @@ export type PowerManagementDebugParameter = {
   module: string;
   moduleId?: string;
   modulePath?: string[];
+  enabled?: boolean;
+  bindings?: DebugNodeProtocolBinding[];
   currentValue: string;
   targetValue: string;
   unit: string;
@@ -715,7 +718,7 @@ export function deleteDebugParameter(config: PowerManagementConfig, parameterId:
 export function updateDebugParameter(
   config: PowerManagementConfig,
   parameterId: string,
-  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "description" | "detailedDescription" | "module" | "unit" | "range" | "risk" | "status" | "nodePath" | "accessMode">>
+  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "description" | "detailedDescription" | "writeFormatExample" | "writeFormatHint" | "module" | "moduleId" | "enabled" | "bindings" | "unit" | "range" | "risk" | "status" | "nodePath" | "accessMode">>
 ) {
   return {
     ...config,

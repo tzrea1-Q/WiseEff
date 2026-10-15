@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -483,17 +484,13 @@ export function DefinitionEditorBody({
                   <span className="definition-editor__field-label">
                     主体 <span className="definition-editor__required" aria-hidden="true">*</span>
                   </span>
-                  <select
+                  <SelectControl
                     value={subjectId}
-                    aria-label="主体"
-                    onChange={(event) => setSubjectId(event.target.value)}
-                  >
-                    {selectableSubjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.canonicalName}
-                      </option>
-                    ))}
-                  </select>
+                    ariaLabel="主体"
+                    onValueChange={(value) => setSubjectId(value)}
+                    withinModal
+                    options={selectableSubjects.map((subject) => ({ value: subject.id, label: subject.canonicalName }))}
+                  />
                 </label>
                 <label className="definition-editor__field">
                   <span className="definition-editor__field-label">
@@ -525,19 +522,15 @@ export function DefinitionEditorBody({
                 </label>
                 <label className="definition-editor__field">
                   <span className="definition-editor__field-label">取值形状</span>
-                  <select
+                  <SelectControl
                     value={content.valueType}
-                    aria-label="取值形状"
-                    onChange={(event) =>
-                      setContent({ ...content, valueType: event.target.value as PublicationValueType })
+                    ariaLabel="取值形状"
+                    onValueChange={(value) =>
+                      setContent({ ...content, valueType: value as PublicationValueType })
                     }
-                  >
-                    {schemaValueTypes.map((type) => (
-                      <option key={type} value={type}>
-                        {schemaValueTypeLabels[type]}
-                      </option>
-                    ))}
-                  </select>
+                    withinModal
+                    options={schemaValueTypes.map((type) => ({ value: type, label: schemaValueTypeLabels[type] }))}
+                  />
                 </label>
                 {content.valueType === "integer" || content.valueType === "number" ? (
                   <div className="definition-editor__range-group">

@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type Page } from "playwright/test";
 
@@ -293,7 +294,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await filterUsersTo(page, "Liu Min");
     const liuRow = table.getByRole("row").filter({ hasText: "Liu Min" });
-    await expect(liuRow.getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveValue("software-user");
+    await expect(liuRow.getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveAttribute("data-value", "software-user");
     await filterUsersTo(page, "Tao Lin");
     await expect(table.getByRole("row").filter({ hasText: "Tao Lin" }).getByRole("button", { name: "启用" })).toBeVisible();
 
@@ -304,10 +305,10 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await filterUsersTo(page, "Wang Jie");
     const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
-    await wangRole.selectOption("software-committer");
+    await selectControlOption(wangRole, "software-committer");
     // Role changes now require an explicit governance confirmation (HCI trust repair wave 1).
     await page.getByRole("button", { name: "确认调整" }).click();
-    await expect(wangRole).toHaveValue("software-committer");
+    await expect(wangRole).toHaveAttribute("data-value", "software-committer");
 
     const auditVisible = await apiExposesPermissionAudit(page, "u-wang-jie", "software-committer");
     if (!auditVisible && databaseUrl) {
@@ -352,13 +353,13 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await filterUsersTo(page, "Wang Jie");
     const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
 
-    await wangRole.selectOption("software-committer");
+    await selectControlOption(wangRole, "software-committer");
     // Role changes require confirmation, but selecting the already-current value
     // (left behind by the previous test) does not open the dialog — confirm only
     // when the governance ConfirmDialog actually appears.
     const roleConfirm = page.getByRole("button", { name: "确认调整" });
     await roleConfirm.click({ timeout: 5_000 }).catch(() => undefined);
-    await expect(wangRole).toHaveValue("software-committer");
+    await expect(wangRole).toHaveAttribute("data-value", "software-committer");
 
     await page.getByRole("button", { name: "添加用户" }).click();
     const addUserDialog = page.getByRole("dialog", { name: "添加用户" });
@@ -368,7 +369,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await addUserDialog.getByLabel("职务").fill("Acceptance Test Engineer");
     await addUserDialog.getByLabel("初始密码").fill(acceptanceUserPassword);
     await addUserDialog.getByLabel("确认密码").fill(acceptanceUserPassword);
-    await addUserDialog.getByLabel("初始角色").selectOption("software-user");
+    await selectControlOption(addUserDialog.getByLabel("初始角色"), "software-user");
     await addUserDialog.getByRole("button", { name: "创建用户" }).click();
     await expect(addUserDialog).not.toBeVisible();
 
@@ -376,7 +377,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const chenRow = table.getByRole("row").filter({ hasText: createdAcceptanceUsername });
     await expect(chenRow).toBeVisible();
     await expect(chenRow).toContainText(createdAcceptanceUsername);
-    await expect(chenRow.getByRole("combobox", { name: "调整 Chen Rui 的角色" })).toHaveValue("software-user");
+    await expect(chenRow.getByRole("combobox", { name: "调整 Chen Rui 的角色" })).toHaveAttribute("data-value", "software-user");
     await expect(chenRow.getByRole("button", { name: "停用" })).toBeVisible();
 
     const usersApi = await expectSuccessfulApiGet<{ items: GovernedUserApiItem[] }>(page, "/api/v1/users");

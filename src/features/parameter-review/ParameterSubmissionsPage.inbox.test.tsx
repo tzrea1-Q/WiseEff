@@ -165,7 +165,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
     window.history.pushState(null, "", "/parameter-submissions?project=aurora&legacyRequest=pending-round&view=pending&type=legacy");
     fireEvent.popState(window);
     expect(await screen.findByRole("heading", { level: 2, name: "待处理节点" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveValue("legacy");
+    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveAttribute("data-value", "legacy");
     window.history.pushState(null, "", `/parameter-submissions${search}&view=history`);
     fireEvent.popState(window);
     expect(await screen.findByRole("heading", { level: 2, name: "已处理参数" })).toBeInTheDocument();

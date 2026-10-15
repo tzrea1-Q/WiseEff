@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { CircleX } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
@@ -958,21 +959,17 @@ export function CatalogPage({
             <nav className="parameter-catalog__pagination" aria-label={catalogPaginationLabel}>
               <label className="parameter-catalog__page-size">
                 <span>{catalogPageSizeLabel}</span>
-                <select
+                <SelectControl
                   className="compact-filter-control"
-                  data-compact-control="pagination"
-                  value={pageSize}
-                  aria-label={catalogPageSizeLabel}
-                  onChange={(event) =>
-                    changePageSize(parseCatalogPageSize(event.target.value) ?? CATALOG_DEFAULT_PAGE_SIZE)
+                  value={String(pageSize)}
+                  ariaLabel={catalogPageSizeLabel}
+                  onValueChange={(value) =>
+                    changePageSize(parseCatalogPageSize(value) ?? CATALOG_DEFAULT_PAGE_SIZE)
                   }
-                >
-                  {CATALOG_PAGE_SIZES.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
+                  size="filter"
+                  compactControl="pagination"
+                  options={CATALOG_PAGE_SIZES.map((size) => ({ value: String(size), label: size }))}
+                />
               </label>
               <div className="parameter-catalog__page-buttons">
                 <button

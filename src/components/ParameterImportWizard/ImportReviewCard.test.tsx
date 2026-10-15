@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { selectControlOption } from "@/test/selectControlOption";
 import { ImportReviewCard } from "./ImportReviewCard";
 import type { ReviewedImportRow } from "@/application/parameters/import/types";
 import type { ParameterRecord, Project } from "@/domain/prototype/types";
@@ -115,12 +116,12 @@ describe("ImportReviewCard", () => {
     expect(onConfirmNew).not.toHaveBeenCalled();
   });
 
-  it("requires a module before it can be confirmed for needs-module rows", () => {
+  it("requires a module before it can be confirmed for needs-module rows", async () => {
     const { onUpdate } = renderCard({ row: buildRow({ module: "", status: "needs-module", existingParameter: undefined }) });
 
     expect(screen.getByRole("button", { name: "确认模块" })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("补全模块"), { target: { value: "Charging Policy" } });
+    await selectControlOption(screen.getByLabelText("补全模块"), "Charging Policy");
     fireEvent.click(screen.getByRole("button", { name: "确认模块" }));
 
     expect(onUpdate).toHaveBeenCalledWith("import-row-1", { module: "Charging Policy" });

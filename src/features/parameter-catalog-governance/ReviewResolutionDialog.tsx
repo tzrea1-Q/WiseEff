@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useRef, useState } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -206,18 +207,13 @@ export function ReviewResolutionDialog({
                     {resolutionType === "register-subject" && item.candidates.length > 1 ? (
                       <label>
                         选择候选主体
-                        <select
-                          aria-label="选择候选主体"
+                        <SelectControl
+                          ariaLabel="选择候选主体"
                           value={subjectId}
-                          onChange={(event) => setSubjectId(event.target.value)}
-                        >
-                          <option value="">请选择候选主体</option>
-                          {item.candidates.map((candidate) => (
-                            <option key={candidate.subjectId} value={candidate.subjectId}>
-                              {candidate.subjectId}
-                            </option>
-                          ))}
-                        </select>
+                          onValueChange={(value) => setSubjectId(value)}
+                          withinModal
+                          options={[{ value: "", label: "请选择候选主体" }, ...item.candidates.map((candidate) => ({ value: candidate.subjectId, label: candidate.subjectId }))]}
+                        />
                       </label>
                     ) : null}
                     {resolutionType === "register-subject" ? (

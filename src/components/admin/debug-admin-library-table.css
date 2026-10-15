@@ -5,6 +5,132 @@
   min-width: 0;
 }
 
+.debug-node-catalog-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.debug-admin-library-table .debug-node-catalog-filters {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.debug-node-catalog-filters > .search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: calc(var(--space-16) * 7);
+}
+
+.debug-node-catalog-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.debug-node-catalog-filters .parameters-table-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-admin-library-table .admin-list-page .data-table-scroll > .debug-node-catalog-table {
+  table-layout: fixed;
+  min-width: 0;
+  width: 100%;
+}
+
+.debug-node-catalog-table th:nth-child(1) { width: 26%; }
+.debug-node-catalog-table th:nth-child(2) { width: 16%; }
+.debug-node-catalog-table th:nth-child(3) { width: 37%; }
+.debug-node-catalog-table th:nth-child(4) { width: 8%; }
+.debug-node-catalog-table th:nth-child(5) { width: 13%; }
+
+.debug-admin-library-table .debug-node-catalog-table td:first-child {
+  max-width: none;
+}
+
+.debug-admin-library-table .debug-node-catalog-table td {
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+}
+
+.debug-admin-library-name > strong,
+.debug-admin-library-name > small,
+.debug-node-module-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-node-binding-summary {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.debug-node-binding-summary__row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}
+
+.debug-node-protocol {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.debug-node-access {
+  color: var(--text-muted);
+}
+
+.debug-node-binding-summary code {
+  font-family: var(--font-code);
+  font-size: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-node-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.debug-node-status::before {
+  content: "";
+  width: var(--space-1);
+  height: var(--space-1);
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+.debug-node-status[data-enabled="true"] {
+  color: var(--success);
+}
+
+.debug-admin-library-table .section-empty {
+  align-items: center;
+  justify-items: center;
+  padding: var(--space-6);
+}
+
+.debug-admin-library-table .section-empty > [data-slot="button"] {
+  align-self: center;
+  width: auto;
+}
+
 .debug-admin-library-table .debug-admin-library-name strong {
   color: var(--text);
   font-weight: 600;

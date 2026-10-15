@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { ProductFeedback, ProductFeedbackType } from "@/domain/productFeedback/types";
 import { FeedbackDialog } from "./FeedbackDialog";
@@ -53,14 +54,9 @@ function pasteImages(pasteZone: HTMLElement, files: File[]) {
   fireEvent.paste(pasteZone, { clipboardData: { files } });
 }
 
-function changeSelectValue(trigger: HTMLElement, optionName: string) {
-  if (trigger instanceof HTMLSelectElement) {
-    fireEvent.change(trigger, { target: { value: optionName } });
-    return;
-  }
-
-  fireEvent.click(trigger);
-  fireEvent.click(screen.getByRole("option", { name: optionName }));
+async function changeSelectValue(trigger: HTMLElement, optionName: string) {
+  await userEvent.click(trigger);
+  await userEvent.click(screen.getByRole("option", { name: optionName }));
 }
 
 afterEach(() => {
@@ -123,7 +119,7 @@ describe("FeedbackDialog", () => {
     renderDialog(repository);
 
     const dialog = screen.getByRole("dialog", { name: "问题反馈" });
-    changeSelectValue(within(dialog).getByLabelText("反馈类型"), "导出/提交异常");
+    await changeSelectValue(within(dialog).getByLabelText("反馈类型"), "导出/提交异常");
     fireEvent.change(within(dialog).getByLabelText("问题描述"), { target: { value: " 导出按钮提交后没有提示 " } });
     pasteImages(within(dialog).getByText("粘贴上传截图").closest("section") as HTMLElement, [imageFile(1), imageFile(2)]);
 

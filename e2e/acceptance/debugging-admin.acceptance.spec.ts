@@ -1,7 +1,7 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "playwright/test";
+import { expect, test, type Page, type Request } from "playwright/test";
 import type { Client } from "pg";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
@@ -248,32 +248,8 @@ function nodeRow(page: Page, name: string) {
   return page.getByRole("row").filter({ hasText: name });
 }
 
-function savedIndicator(page: Page) {
-  return page.getByRole("toolbar", { name: "调试管理后台页面操作" }).getByText("已保存");
-}
-
-async function configureProtocolBindings(page: Page, nodeName: string, suffix: string) {
-  await nodeRow(page, nodeName).getByRole("button", { name: /：更多$/ }).click();
-  await page.getByRole("menuitem", { name: "路径绑定" }).click();
-  // ModalDialog names the bindings dialog by its visible <h2>, which is the node name.
-  const bindingsDialog = page.getByRole("dialog", { name: nodeName });
-
-  const hdcPanel = bindingsDialog.locator(".debug-admin-binding-panel").filter({ hasText: "HDC" });
-  await hdcPanel.getByLabel("HDC 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/hdc`);
-  await hdcPanel.getByRole("checkbox").check();
-  await bindingsDialog.getByRole("button", { name: "保存 HDC binding" }).click();
-  await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
-
-  const adbPanel = bindingsDialog.locator(".debug-admin-binding-panel").filter({ hasText: "ADB" });
-  await adbPanel.getByLabel("ADB 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/adb`);
-  await adbPanel.getByRole("checkbox").check();
-  await bindingsDialog.getByRole("button", { name: "保存 ADB binding" }).click();
-  await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
-
-  // In API mode the bindings dialog's footer action is 关闭 (the icon close button is
-  // aria-labelled "关闭协议节点绑定", so match the exact footer label).
-  await bindingsDialog.getByRole("button", { name: "关闭", exact: true }).click();
-  await expect(bindingsDialog).not.toBeVisible({ timeout: 30_000 });
+function savedIndicator(page: Page, message = "已保存") {
+  return page.getByRole("status").filter({ hasText: new RegExp(`^${message}$`) });
 }
 
 test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
@@ -298,21 +274,54 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await expect(page.getByRole("table", { name: "可调节点目录" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "新增节点" })).toBeEnabled();
 
+    await page.getByRole("button", { name: "模块管理", exact: true }).click();
+    const moduleDialog = page.getByRole("dialog", { name: "模块管理", exact: true });
+    const moduleActions = moduleDialog.getByRole("group", { name: "Battery Charging 操作", exact: true });
+    await moduleActions.getByRole("button", { name: "Battery Charging 更多操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: "查看节点", exact: true }).click();
+    await expect(moduleDialog.getByLabel("Battery Charging 节点列表")).toBeVisible();
+    await moduleActions.getByRole("button", { name: "编辑", exact: true }).click();
+    const moduleEditor = page.getByRole("dialog", { name: "Battery Charging", exact: true });
+    await expect(moduleEditor).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await moduleEditor.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(moduleDialog.getByLabel("Battery Charging 节点列表")).toBeVisible();
+    await moduleDialog.getByRole("button", { name: "完成", exact: true }).click();
+
     await page.getByRole("button", { name: "新增节点" }).click();
     const createDialog = page.getByRole("dialog", { name: "创建节点" });
     await createDialog.getByLabel("名称").fill(nodeName);
+    await createDialog.getByRole("button", { name: "模块", exact: true }).click();
+    await page.getByRole("tree", { name: "选择模块树形选项" }).getByRole("button", { name: "Battery Charging", exact: true }).click();
+    await expect(createDialog.getByRole("button", { name: "模块", exact: true })).toContainText("Battery Charging");
     await createDialog.getByLabel("简述").fill("Acceptance debug node");
+    await createDialog.getByLabel("HDC 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/hdc-initial`);
+    await createDialog.getByLabel("ADB 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/adb`);
+    await createDialog.getByRole("checkbox", { name: "启用 HDC 协议" }).check();
+    await createDialog.getByRole("checkbox", { name: "启用 ADB 协议" }).check();
+    const createResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/debugging/admin/nodes");
     await createDialog.getByRole("button", { name: "保存" }).click();
+    const createResponse = await createResponsePromise;
+    expect(createResponse.status()).toBe(201);
+    expect(createResponse.request().postDataJSON().bindings).toHaveLength(2);
     await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
-
-    await configureProtocolBindings(page, nodeName, suffix);
     await expect(nodeRow(page, nodeName)).toBeVisible();
 
     await nodeRow(page, nodeName).getByRole("button", { name: "编辑" }).click();
     const definitionDialog = page.getByRole("dialog", { name: "编辑节点" });
+    await expect(definitionDialog.getByRole("button", { name: "模块", exact: true })).toContainText("Battery Charging");
     await definitionDialog.getByLabel("名称").fill(editedName);
+    await definitionDialog.getByLabel("HDC 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/hdc`);
+    await definitionDialog.locator("summary").filter({ hasText: "详细描述" }).click();
     await definitionDialog.getByLabel("详细描述").fill("Acceptance node detailed description");
+    const updateResponsePromise = page.waitForResponse((response) => response.request().method() === "PATCH" && /\/debugging\/admin\/nodes\/[^/]+$/.test(new URL(response.url()).pathname));
     await definitionDialog.getByRole("button", { name: "保存" }).click();
+    const updateResponse = await updateResponsePromise;
+    expect(updateResponse.ok()).toBe(true);
+    expect(updateResponse.request().postDataJSON()).toMatchObject({
+      name: editedName,
+      bindings: [{ protocol: "hdc", nodePath: `/tmp/wiseeff/acceptance/${suffix}/hdc` }]
+    });
     await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
     await expect(definitionDialog).not.toBeVisible({ timeout: 30_000 });
     await expect(nodeRow(page, editedName)).toBeVisible();
@@ -380,7 +389,9 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
 
     const importDialog = page.getByRole("dialog", { name: "导入预览" });
     await expect(importDialog).toBeVisible({ timeout: 30_000 });
-    await expect(importDialog.getByText("org-chargelab")).toBeVisible();
+    await expect(importDialog.getByText("当前组织", { exact: true })).toBeVisible();
+    await importDialog.getByText("文件与组织标识", { exact: true }).click();
+    await expect(importDialog.locator(".debug-catalog-import-dialog__technical dl > div").filter({ hasText: "目标组织 ID" }).locator("dd")).toHaveText("org-chargelab");
     await expect(importDialog.getByText(/节点：.*更新 1/)).toBeVisible();
 
     const importResponsePromise = page.waitForResponse(
@@ -417,7 +428,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     });
     await expect(importDialog).not.toBeVisible({ timeout: 30_000 });
     await expect(
-      page.getByRole("toolbar", { name: "调试管理后台页面操作" }).getByText(/^已导入：/)
+      page.getByRole("status").filter({ hasText: /^已导入：/ })
     ).toBeVisible({ timeout: 30_000 });
 
     // Re-read the persisted state and re-export: the file now round-trips as unchanged.
@@ -440,6 +451,35 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     expect(rePreviewBody.item.nodes.updated).toBe(0);
     expect(rePreviewBody.item.nodes.created).toBe(0);
 
+    // A server-valid unchanged preview is a UI no-op: it must not send an import.
+    // Keep the API's canSubmit contract above; the UI additionally requires actual changes.
+    const noOpImportRequests: string[] = [];
+    const observeNoOpImport = (request: Request) => {
+      if (request.method() === "POST" && new URL(request.url()).pathname === "/api/v1/debugging/admin/catalog/import") {
+        noOpImportRequests.push(request.url());
+      }
+    };
+    page.on("request", observeNoOpImport);
+    try {
+      const noOpPreviewResponse = page.waitForResponse((response) =>
+        response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/debugging/admin/catalog/import-preview"
+      );
+      await page.getByLabel("导入节点文件").setInputFiles({
+        name: "unchanged-debug-node-catalog.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(reExportBody.item.document))
+      });
+      expect((await noOpPreviewResponse).ok()).toBe(true);
+      await expect(importDialog.getByRole("status")).toContainText("无需更新：文件内容与当前节点库一致。");
+      await expect(importDialog.getByRole("button", { name: "无需导入" })).toBeDisabled();
+      await expect(importDialog.locator('[data-classification="conflict"]')).toHaveAttribute("data-has-conflicts", "false");
+      await importDialog.getByRole("button", { name: "完成", exact: true }).click();
+      await expect(importDialog).not.toBeVisible();
+      expect(noOpImportRequests).toEqual([]);
+    } finally {
+      page.off("request", observeNoOpImport);
+    }
+
     const listResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/nodes?includeArchived=true"), {
       headers: smokeHeaders()
     });
@@ -455,20 +495,38 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     expect(created!.bindings.some((binding) => binding.protocol === "hdc" && binding.enabled)).toBe(true);
     expect(created!.bindings.some((binding) => binding.protocol === "adb" && binding.enabled)).toBe(true);
 
-    const bindingResponse = await page.request.post(
-      apiRoute(`/api/v1/debugging/admin/nodes/${encodeURIComponent(created!.id)}/bindings/adb/archive`),
-      { headers: smokeHeaders(), data: {} }
-    );
+    await nodeRow(page, editedName).getByRole("button", { name: "编辑", exact: true }).click();
+    const archiveEditor = page.getByRole("dialog", { name: "编辑节点", exact: true });
+    await archiveEditor.getByRole("button", { name: "ADB 更多配置", exact: true }).click();
+    await archiveEditor.getByRole("button", { name: "归档 ADB 绑定", exact: true }).click();
+    const archiveConfirmation = page.getByRole("dialog", { name: "归档 ADB 绑定？", exact: true });
+    const archiveWrites: Request[] = [];
+    const recordArchiveWrite = (request: Request) => {
+      if (["PATCH", "POST", "PUT"].includes(request.method()) && new URL(request.url()).pathname.includes(`/admin/nodes/${created!.id}`)) archiveWrites.push(request);
+    };
+    page.on("request", recordArchiveWrite);
+    await archiveConfirmation.getByRole("button", { name: "标记待归档", exact: true }).click();
+    await expect(archiveEditor.getByRole("region", { name: "ADB 协议配置", exact: true }).getByText("待归档", { exact: true })).toBeVisible();
+    expect(archiveWrites).toHaveLength(0);
+    const bindingResponsePromise = page.waitForResponse((response) => response.request().method() === "PATCH" && new URL(response.url()).pathname === `/api/v1/debugging/admin/nodes/${created!.id}`);
+    await archiveEditor.getByRole("button", { name: "保存", exact: true }).click();
+    const bindingResponse = await bindingResponsePromise;
+    page.off("request", recordArchiveWrite);
     expect(bindingResponse.ok()).toBe(true);
-    const bindingBody = (await bindingResponse.json()) as { item: { protocol: string; enabled: boolean } };
-    expect(bindingBody.item).toMatchObject({ protocol: "adb", enabled: false });
+    expect(archiveWrites).toHaveLength(1);
+    expect(bindingResponse.request().postDataJSON().archiveProtocols).toEqual(["adb"]);
+    const bindingBody = (await bindingResponse.json()) as { item: AdminNodeDto };
+    expect(bindingBody.item.bindings.find((binding) => binding.protocol === "adb")).toMatchObject({
+      protocol: "adb", enabled: false, nodePath: `/tmp/wiseeff/acceptance/${suffix}/adb`
+    });
+    await expect(archiveEditor).toBeHidden();
 
     await page.reload();
     await expect(page.getByText(editedName)).toBeVisible({ timeout: 30_000 });
     await nodeRow(page, editedName).getByRole("button", { name: /：更多$/ }).click();
     await page.getByRole("menuitem", { name: `禁用 ${editedName}` }).click();
     await page.getByRole("button", { name: /^禁用$/ }).click();
-    await expect(page.getByRole("toolbar", { name: "调试管理后台页面操作" }).getByText("已禁用")).toBeVisible({ timeout: 30_000 });
+    await expect(savedIndicator(page, "已禁用")).toBeVisible({ timeout: 30_000 });
 
     const restoreResponse = await page.request.patch(apiRoute(`/api/v1/debugging/admin/nodes/${encodeURIComponent(created!.id)}`), {
       headers: smokeHeaders(),
@@ -617,8 +675,8 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     );
     await page.reload();
     await expect(nodeRow(page, editedName)).toBeVisible({ timeout: 30_000 });
-    const nodeKpi = page.locator(".kpi-item").filter({ hasText: "可调节点" });
-    const nodeCountBeforeDelete = Number(await nodeKpi.locator(".kpi-value").innerText());
+    const nodeCount = page.getByLabel("节点目录概览").locator("div").filter({ hasText: "节点总数" }).locator("dd");
+    const nodeCountBeforeDelete = Number(await nodeCount.innerText());
     await nodeRow(page, editedName).getByRole("button", { name: /：更多$/ }).click();
     await page.getByRole("menuitem", { name: `删除 ${editedName}` }).click();
     const deleteDialog = page.getByRole("dialog", { name: /永久删除节点/ });
@@ -627,7 +685,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     const deleteResponse = await deleteResponsePromise;
     expect(deleteResponse.status()).toBe(204);
     await expect(nodeRow(page, editedName)).toHaveCount(0);
-    await expect(nodeKpi.locator(".kpi-value")).toHaveText(String(nodeCountBeforeDelete - 1));
+    await expect(nodeCount).toHaveText(String(nodeCountBeforeDelete - 1));
 
     const postDeleteListResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/nodes?includeArchived=true"), {
       headers: smokeHeaders()
@@ -788,8 +846,8 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
           responseSummary: `created item found with bindings=${created!.bindings.length}`
         }),
         summarizeApiResponse(bindingResponse, {
-          method: "POST",
-          path: `/api/v1/debugging/admin/nodes/${created!.id}/bindings/adb/archive`,
+          method: "PATCH",
+          path: `/api/v1/debugging/admin/nodes/${created!.id}`,
           responseSummary: "ADB binding archived through admin API"
         }),
         summarizeApiResponse(restoreResponse, {
@@ -843,7 +901,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
         exportAuditSummary,
         importAuditSummary
       ],
-      notes: "Admin UI created and edited a logical debug node, downloaded the complete v2 node catalog, uploaded the downloaded file, previewed the classified merge in the dialog, confirmed the merge, re-read the persisted node through the API and re-exported the catalog to prove the file round-trips as unchanged. Verified exact count metadata and absence of raw node paths for catalog and node-delete audit events, configured HDC/ADB paths, archived the ADB binding, disabled and re-enabled the node, and permanently deleted both unreferenced and historical nodes with binding/operation cascades. No HDC device claim is made."
+      notes: "Admin UI created and edited a logical debug node, selected its module and verified the edit dialog retained that selection, downloaded the complete v2 node catalog, uploaded the downloaded file, previewed the classified merge in the dialog, confirmed the merge, re-read the persisted node through the API and re-exported the catalog to prove the file round-trips as unchanged. Uploaded that unchanged file through the UI and verified disabled import plus zero import requests. Verified exact count metadata and absence of raw node paths for catalog and node-delete audit events, configured HDC/ADB paths, archived the ADB binding, disabled and re-enabled the node, and permanently deleted both unreferenced and historical nodes with binding/operation cascades. No HDC device claim is made."
     });
   });
 });

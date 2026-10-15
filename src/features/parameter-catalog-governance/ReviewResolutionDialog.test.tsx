@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -92,8 +93,8 @@ describe("ReviewResolutionDialog", () => {
     expect(resolveReviewItem).not.toHaveBeenCalled();
 
     const candidates = screen.getByRole("combobox", { name: "选择候选主体" });
-    expect(candidates).toHaveValue("");
-    await user.selectOptions(candidates, selectedSubjectId);
+    expect(candidates).toHaveAttribute("data-value", "");
+    await selectControlOption(candidates, selectedSubjectId);
     await user.clear(screen.getByLabelText("原因"));
     await user.type(screen.getByLabelText("原因"), "   ");
     expect(proceed).toBeDisabled();

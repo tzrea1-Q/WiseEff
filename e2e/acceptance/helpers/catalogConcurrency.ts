@@ -1,3 +1,4 @@
+import { selectControlOption } from "./selectControl";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { expect, type Page, type Request, type TestInfo } from "playwright/test";
@@ -314,7 +315,7 @@ export async function collectProposalOperationTrace(page: Page, testInfo: TestIn
     await page.goto(`${runtime.frontendUrl}/parameter-admin/specs`);
     await dismissXiaozeHint(page);
     const panel = page.getByRole("region", { name: "定义修订", exact: true });
-    await panel.getByRole("combobox", { name: "变更类型" }).selectOption("content");
+    await selectControlOption(panel.getByRole("combobox", { name: "变更类型" }), "content");
     await panel.getByRole("textbox", { name: "原因" }).fill("R2 identical browser operation trace");
     await panel.getByRole("button", { name: "继续确认", exact: true }).click();
     await confirmGovernanceDialog(page, "确认提出修订");

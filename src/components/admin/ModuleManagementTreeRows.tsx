@@ -2,10 +2,13 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 import type { FlatModuleNode, ModuleTreeNode } from "@/domain/modules/moduleTree";
 import { ModuleManagementRowActions } from "./ModuleManagementRowActions";
+import { RowActionMenu } from "@/components/common/RowActionMenu";
 
 export type ModuleManagementTreeRowsProps<TItem> = {
   node: ModuleTreeNode;
   depth: number;
+  canEdit?: boolean;
+  withinModal?: boolean;
   moduleNodes: readonly FlatModuleNode[];
   expandedTreeIds: ReadonlySet<string>;
   expandedDetailId: string | null;
@@ -23,7 +26,7 @@ export type ModuleManagementTreeRowsProps<TItem> = {
   onAddChild: (moduleId: string) => void;
   onEdit: (moduleId: string) => void;
   onMove: (moduleId: string) => void;
-  onDelete: (moduleId: string) => void;
+  onDelete: (moduleId: string) => void | Promise<void>;
   onEditItem: (itemId: string) => void;
   onDeleteItem?: (itemId: string) => void;
   renderItemMeta: (item: TItem) => ReactNode;
@@ -33,6 +36,8 @@ export type ModuleManagementTreeRowsProps<TItem> = {
 export function ModuleManagementTreeRows<TItem>({
   node,
   depth,
+  canEdit = true,
+  withinModal = false,
   moduleNodes,
   expandedTreeIds,
   expandedDetailId,
@@ -63,7 +68,7 @@ export function ModuleManagementTreeRows<TItem>({
 
   return (
     <Fragment key={node.id}>
-      <tr className={depth > 0 ? "param-admin-module-row is-child" : "param-admin-module-row"}>
+      <tr data-module-id={node.id} className={depth > 0 ? "param-admin-module-row is-child" : "param-admin-module-row"}>
         <td>
           <div className="param-admin-module-name-cell" style={{ paddingLeft: depth > 0 ? `${depth * 24}px` : undefined }}>
             <div className="param-admin-module-name-row">
@@ -103,6 +108,8 @@ export function ModuleManagementTreeRows<TItem>({
         </td>
         <td>
           <ModuleManagementRowActions
+            canEdit={canEdit}
+            withinModal={withinModal}
             canDelete={itemCount === 0 && node.children.length === 0}
             deleteDisabledReason={deleteDisabledReason}
             itemCount={itemCount}
@@ -129,20 +136,16 @@ export function ModuleManagementTreeRows<TItem>({
                   <li key={getItemId(item)}>
                     {renderItemMeta(item)}
                     <div className="param-admin-module-item-actions">
-                      <button className="button subtle" type="button" onClick={() => onEditItem(getItemId(item))}>
-                        {editItemLabel}
-                      </button>
-                      {onDeleteItem && deleteItemLabel ? (
-                        <button
-                          className="button danger"
-                          type="button"
-                          disabled={Boolean(deleteItemDisabledReason)}
-                          title={deleteItemDisabledReason}
-                          onClick={() => onDeleteItem(getItemId(item))}
-                        >
-                          {deleteItemLabel}
-                        </button>
-                      ) : null}
+                      <RowActionMenu
+                        label={`${node.name} 条目操作`}
+                        withinModal={withinModal}
+                        primaryAction={{ id: "edit", label: editItemLabel, disabled: !canEdit, onSelect: () => onEditItem(getItemId(item)) }}
+                        items={onDeleteItem && deleteItemLabel ? [{
+                          id: "delete", label: deleteItemLabel, destructive: true,
+                          disabled: !canEdit || Boolean(deleteItemDisabledReason), title: deleteItemDisabledReason,
+                          onRequestConfirmation: () => onDeleteItem(getItemId(item))
+                        }] : []}
+                      />
                     </div>
                   </li>
                 ))}
@@ -156,6 +159,8 @@ export function ModuleManagementTreeRows<TItem>({
             <ModuleManagementTreeRows
               key={child.id}
               depth={depth + 1}
+              canEdit={canEdit}
+              withinModal={withinModal}
               deleteDisabledReason={deleteDisabledReason}
               detailCountLabel={detailCountLabel}
               detailListLabel={detailListLabel}

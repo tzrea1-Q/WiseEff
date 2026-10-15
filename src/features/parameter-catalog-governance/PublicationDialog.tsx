@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -567,16 +568,15 @@ export function PublicationDialog({
                       <>
                         <label>
                           {publicationCopy.subjectKindPick}
-                          <select
-                            aria-label={publicationCopy.subjectKindPick}
+                          <SelectControl
+                            ariaLabel={publicationCopy.subjectKindPick}
                             value={draft.subjectKind}
-                            onChange={(event) =>
-                              patchDraft({ subjectKind: event.target.value as PublicationSubjectKind })
+                            onValueChange={(value) =>
+                              patchDraft({ subjectKind: value as PublicationSubjectKind })
                             }
-                          >
-                            <option value="driver">{publicationCopy.driver}</option>
-                            <option value="node-type">{publicationCopy.nodeType}</option>
-                          </select>
+                            withinModal
+                            options={[{ value: "driver", label: publicationCopy.driver }, { value: "node-type", label: publicationCopy.nodeType }]}
+                          />
                         </label>
                         <label>
                           {publicationCopy.selectorValue}
@@ -590,41 +590,35 @@ export function PublicationDialog({
                           <>
                             <label>
                               {publicationCopy.nature}
-                              <select
-                                aria-label={publicationCopy.nature}
+                              <SelectControl
+                                ariaLabel={publicationCopy.nature}
                                 value={draft.nature}
-                                onChange={(event) =>
-                                  patchDraft({ nature: event.target.value as PublicationDraft["nature"] })
+                                onValueChange={(value) =>
+                                  patchDraft({ nature: value as PublicationDraft["nature"] })
                                 }
-                              >
-                                {publicationDriverNatures.map((nature) => (
-                                  <option key={nature} value={nature}>
-                                    {nature === "physical-device"
-                                      ? publicationCopy.naturePhysical
-                                      : publicationCopy.natureLogical}
-                                  </option>
-                                ))}
-                              </select>
+                                withinModal
+                                options={publicationDriverNatures.map((nature) => ({
+                                  value: nature,
+                                  label: nature === "physical-device" ? publicationCopy.naturePhysical : publicationCopy.natureLogical
+                                }))}
+                              />
                             </label>
                             <label>
                               {publicationCopy.cardinality}
-                              <select
-                                aria-label={publicationCopy.cardinality}
+                              <SelectControl
+                                ariaLabel={publicationCopy.cardinality}
                                 value={draft.cardinality}
-                                onChange={(event) =>
+                                onValueChange={(value) =>
                                   patchDraft({
-                                    cardinality: event.target.value as PublicationDraft["cardinality"]
+                                    cardinality: value as PublicationDraft["cardinality"]
                                   })
                                 }
-                              >
-                                {publicationDriverCardinalities.map((cardinality) => (
-                                  <option key={cardinality} value={cardinality}>
-                                    {cardinality === "multiple"
-                                      ? publicationCopy.cardinalityMultiple
-                                      : publicationCopy.cardinalitySingleton}
-                                  </option>
-                                ))}
-                              </select>
+                                withinModal
+                                options={publicationDriverCardinalities.map((cardinality) => ({
+                                  value: cardinality,
+                                  label: cardinality === "multiple" ? publicationCopy.cardinalityMultiple : publicationCopy.cardinalitySingleton
+                                }))}
+                              />
                             </label>
                           </>
                         ) : null}
@@ -634,18 +628,18 @@ export function PublicationDialog({
                       <>
                         <label>
                           {publicationCopy.definition}
-                          <select
-                            aria-label={publicationCopy.definition}
+                          <SelectControl
+                            ariaLabel={publicationCopy.definition}
                             value={draft.definitionId}
-                            onChange={(event) => {
-                              const next = definitions.find((item) => item.id === event.target.value);
+                            onValueChange={(value) => {
+                              const next = definitions.find((item) => item.id === value);
                               const schema = next?.currentRevision.valueShape.schema as {
                                 type?: string;
                                 minimum?: number;
                                 maximum?: number;
                               } | undefined;
                               patchDraft({
-                                definitionId: event.target.value,
+                                definitionId: value,
                                 subjectId: next?.subject.id ?? "",
                                 propertyKey: next?.propertyKey ?? "",
                                 displayName: next?.propertyKey ?? "",
@@ -659,47 +653,39 @@ export function PublicationDialog({
                                 unit: ""
                               });
                             }}
-                          >
-                            <option value="">选择定义</option>
-                            {definitions.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.subject.canonicalName} · {item.propertyKey}
-                              </option>
-                            ))}
-                          </select>
+                            withinModal
+                            options={[{ value: "", label: "选择定义" }, ...definitions.map((item) => ({
+                              value: item.id,
+                              label: `${item.subject.canonicalName} · ${item.propertyKey}`
+                            }))]}
+                          />
                         </label>
                         <label>
                           {publicationCopy.reviseClass}
-                          <select
-                            aria-label={publicationCopy.reviseClass}
+                          <SelectControl
+                            ariaLabel={publicationCopy.reviseClass}
                             value={draft.reviseClass}
-                            onChange={(event) =>
-                              patchDraft({ reviseClass: event.target.value as PublicationReviseClass })
+                            onValueChange={(value) =>
+                              patchDraft({ reviseClass: value as PublicationReviseClass })
                             }
-                          >
-                            <option value="documentation">{publicationCopy.reviseDocumentation}</option>
-                            <option value="semantic">{publicationCopy.reviseSemantic}</option>
-                          </select>
+                            withinModal
+                            options={[{ value: "documentation", label: publicationCopy.reviseDocumentation }, { value: "semantic", label: publicationCopy.reviseSemantic }]}
+                          />
                         </label>
                         {draft.reviseClass === "semantic" ? <p>{publicationCopy.catalogNotAdopted}</p> : null}
                       </>
                     ) : (
                     <label>
                       {publicationCopy.subject}
-                      <select
-                        aria-label={publicationCopy.subject}
+                      <SelectControl
+                        ariaLabel={publicationCopy.subject}
                         value={draft.subjectId}
-                        aria-invalid={fieldError?.input === "subjectId"}
-                        aria-describedby={fieldError?.input === "subjectId" ? fieldMessageId : describedById}
-                        onChange={(event) => patchDraft({ subjectId: event.target.value })}
-                      >
-                        <option value="">选择主体</option>
-                        {publishedSubjects.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.canonicalName}
-                          </option>
-                        ))}
-                      </select>
+                        ariaInvalid={fieldError?.input === "subjectId"}
+                        ariaDescribedBy={fieldError?.input === "subjectId" ? fieldMessageId : describedById}
+                        onValueChange={(value) => patchDraft({ subjectId: value })}
+                        withinModal
+                        options={[{ value: "", label: "选择主体" }, ...publishedSubjects.map((item) => ({ value: item.id, label: item.canonicalName }))]}
+                      />
                     </label>
                     )}
                     {selectedSubject && draft.mode === "create-definition" ? (
@@ -748,20 +734,16 @@ export function PublicationDialog({
                     </label>
                     <label>
                       {publicationCopy.valueType}
-                      <select
-                        aria-label={publicationCopy.valueType}
+                      <SelectControl
+                        ariaLabel={publicationCopy.valueType}
                         value={draft.valueType}
                         disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
-                        onChange={(event) =>
-                          patchDraft({ valueType: event.target.value as PublicationValueType })
+                        onValueChange={(value) =>
+                          patchDraft({ valueType: value as PublicationValueType })
                         }
-                      >
-                        {publicationSupportedValueTypes.map((type) => (
-                          <option key={type} value={type}>
-                            {publicationValueTypeLabel(type)}
-                          </option>
-                        ))}
-                      </select>
+                        withinModal
+                        options={publicationSupportedValueTypes.map((type) => ({ value: type, label: publicationValueTypeLabel(type) }))}
+                      />
                     </label>
                     {draft.valueType === "integer" || draft.valueType === "number" ? (
                       <>

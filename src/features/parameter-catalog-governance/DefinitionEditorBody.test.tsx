@@ -314,7 +314,7 @@ describe("DefinitionEditorBody", () => {
     expect(screen.getByLabelText("显示名")).toHaveValue("新定义");
     expect(screen.getByLabelText("说明")).toHaveValue("新定义的说明");
     expect(screen.getByLabelText("单位")).toHaveValue("mA");
-    expect(screen.getByLabelText("取值形状")).toHaveValue("integer");
+    expect(screen.getByLabelText("取值形状")).toHaveAttribute("data-value", "integer");
     expect(screen.getByLabelText("最小值")).toHaveValue("2");
     expect(screen.getByLabelText("最大值")).toHaveValue("8");
     expect(screen.getByLabelText("受影响项目")).toHaveValue("");

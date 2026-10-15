@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -71,7 +72,7 @@ describe("ProposalPanel", () => {
     const user = userEvent.setup();
     const region = await screen.findByRole("region", { name: "定义修订" });
     expect(within(region).getByText("不会在此界面生成参数定义")).toBeVisible();
-    await user.selectOptions(screen.getByLabelText("变更类型"), "documentation");
+    await selectControlOption(screen.getByLabelText("变更类型"), "documentation");
     await user.type(screen.getByLabelText("原因"), "补充文档");
     await confirmAction("确认提出修订");
     await waitFor(() => expect(createProposal).toHaveBeenCalledTimes(1));

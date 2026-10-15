@@ -9,6 +9,7 @@ import { useAuditEvents, useAuditTraceEvents } from "@/hooks/useAuditEvents";
 import type { AuditEvent } from "@/domain/prototype/types";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { SearchField } from "@/components/common/SearchField";
+import { SelectControl } from "@/components/common/SelectControl";
 
 const severityLabels: Record<string, string> = { High: "高", Medium: "中", Low: "低", info: "信息" };
 
@@ -125,55 +126,37 @@ export function AuditWorkspace({
               />
               <label className="audit-workspace-select-wrap">
                 <span>模块</span>
-                <select
-                  className="compact-filter-control"
-                  data-compact-control="filter"
+                <SelectControl
+                  size="filter"
                   value={query.appGroup}
-                  onChange={(event) => onQueryChange?.({ appGroup: event.target.value as AuditQueryState["appGroup"] })}
-                  aria-label="模块筛选"
-                >
-                  {auditAppGroups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(value) => onQueryChange?.({ appGroup: value as AuditQueryState["appGroup"] })}
+                  ariaLabel="模块筛选"
+                  options={auditAppGroups.map((group) => ({ value: group.id, label: group.label }))}
+                />
               </label>
               {projects.length > 0 ? (
                 <label className="audit-workspace-select-wrap">
                   <span>项目</span>
-                  <select
-                    className="compact-filter-control"
-                    data-compact-control="filter"
+                  <SelectControl
+                    size="filter"
                     value={query.projectId ?? ""}
-                    onChange={(event) =>
-                      onQueryChange?.({ projectId: event.target.value ? event.target.value : undefined })
+                    onValueChange={(value) =>
+                      onQueryChange?.({ projectId: value || undefined })
                     }
-                    aria-label="项目筛选"
-                  >
-                    <option value="">全部项目</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.code ?? project.name}
-                      </option>
-                    ))}
-                  </select>
+                    ariaLabel="项目筛选"
+                    options={[{ value: "", label: "全部项目" }, ...projects.map((project) => ({ value: project.id, label: project.code ?? project.name }))]}
+                  />
                 </label>
               ) : null}
               <label className="audit-workspace-select-wrap">
                 <span>时间</span>
-                <select
-                  className="compact-filter-control"
-                  data-compact-control="filter"
+                <SelectControl
+                  size="filter"
                   value={query.timeWindow}
-                  onChange={(event) => onQueryChange?.({ timeWindow: event.target.value as AuditQueryState["timeWindow"] })}
-                  aria-label="时间范围筛选"
-                >
-                  <option value="all">全部时间</option>
-                  <option value="today">今天</option>
-                  <option value="7d">近 7 天</option>
-                  <option value="30d">近 30 天</option>
-                </select>
+                  onValueChange={(value) => onQueryChange?.({ timeWindow: value as AuditQueryState["timeWindow"] })}
+                  ariaLabel="时间范围筛选"
+                  options={[{ value: "all", label: "全部时间" }, { value: "today", label: "今天" }, { value: "7d", label: "近 7 天" }, { value: "30d", label: "近 30 天" }]}
+                />
               </label>
               <ViewSwitch
                 variant="toggle"

@@ -9,17 +9,13 @@ import { SectionSkeleton } from "@/components/common/SectionState";
 import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
-import type { DebugConnectionProtocol, DebugNodeRegistryEntry } from "@/domain/debugging/types";
-import { nodeBindingStatus } from "@/debugAdminDraft";
+import type { DebugNodeRegistryEntry } from "@/domain/debugging/types";
+import type { DebugNodeLibrarySearch } from "@/application/debugging/debugNodeCatalogSearch";
+import { bindingForProtocol, nodeBindingStatus } from "@/debugAdminDraft";
 import { debugNodeModuleId, filterDebugNodesByModuleTree, modulePathLabelForDebugNode } from "@/debugAdminModules";
 import "./debug-admin-library-table.css";
 
-export type DebugNodeLibrarySearch = {
-  q: string;
-  protocol: "all" | DebugConnectionProtocol;
-  modules: string[];
-  sort: "name-asc" | string;
-};
+export type { DebugNodeLibrarySearch } from "@/application/debugging/debugNodeCatalogSearch";
 
 const PROTOCOL_OPTIONS: Array<{ value: DebugNodeLibrarySearch["protocol"]; label: string }> = [
   { value: "all", label: "协议 · 全部" },
@@ -62,7 +58,6 @@ export type DebugNodeLibraryTableProps = {
   search: DebugNodeLibrarySearch;
   onUpdateSearch: (patch: Partial<DebugNodeLibrarySearch>) => void;
   onEdit: (nodeId: string) => void;
-  onEditBindings: (nodeId: string) => void;
   onDisable: (nodeId: string) => void;
   onDelete: (nodeId: string) => void;
   onCreate?: () => void;
@@ -79,7 +74,6 @@ export function DebugNodeLibraryTable({
   search,
   onUpdateSearch,
   onEdit,
-  onEditBindings,
   onDisable,
   onDelete,
   onCreate,
@@ -118,9 +112,10 @@ export function DebugNodeLibraryTable({
   };
 
   return (
-    <section className="debug-admin-library-table" aria-label="可调节点目录">
+    <section className="debug-admin-library-table" aria-label="可调节点目录" aria-busy={loading}>
       <AdminListPage label="可调节点目录"
-        tableState={loading ? <SectionSkeleton label="正在加载可调节点" /> : undefined}
+        headerContent={<h2 className="debug-node-catalog-title">可调节点目录</h2>}
+        tableState={loading && nodes.length === 0 ? <SectionSkeleton label="正在加载可调节点" /> : undefined}
         headerActions={
         <div className="param-admin-library-heading-actions">
           {onExport ? (
@@ -157,7 +152,9 @@ export function DebugNodeLibraryTable({
           ) : null}
         </div>}
         table={{
-          rows: loading ? [] : filtered, rowKey: (node) => node.id, pageSize: LIBRARY_PAGE_SIZE,
+          rows: filtered, rowKey: (node) => node.id, pageSize: LIBRARY_PAGE_SIZE,
+          page: search.page, onPageChange: (page) => onUpdateSearch({ page }),
+          tableClassName: "debug-node-catalog-table",
           sort: tableSort, onSort: (key) => {
             const nextDirection = tableSort.key === key && tableSort.direction === "asc" ? "desc" : "asc";
             onUpdateSearch({ sort: `${key}-${nextDirection}` });
@@ -171,8 +168,8 @@ export function DebugNodeLibraryTable({
               sortAccessor: (node) => node.name,
               render: (node) => (
                 <div className="debug-admin-library-name">
-                  <strong>{node.name}</strong>
-                  {node.description ? <small>{node.description}</small> : null}
+                  <strong title={node.name}>{node.name}</strong>
+                  {node.description ? <small title={node.description}>{node.description}</small> : null}
                 </div>
               )
             },
@@ -192,14 +189,29 @@ export function DebugNodeLibraryTable({
                 />
               ),
               sortAccessor: (node) => modulePathLabelForDebugNode(node, moduleNodes),
-              render: (node) => modulePathLabelForDebugNode(node, moduleNodes) || "—"
+              render: (node) => <span className="debug-node-module-path" title={modulePathLabelForDebugNode(node, moduleNodes)}>{modulePathLabelForDebugNode(node, moduleNodes) || "未分配模块"}</span>
+            },
+            {
+              key: "bindings",
+              header: "协议与节点路径",
+              render: (node) => <div className="debug-node-binding-summary">
+                {(["hdc", "adb"] as const).map((protocol) => {
+                  const binding = bindingForProtocol(node.bindings, protocol);
+                  const status = nodeBindingStatus(node.bindings, protocol);
+                  return <div className="debug-node-binding-summary__row" key={protocol} data-state={status}>
+                    <span className="debug-node-protocol">{protocol.toUpperCase()}</span>
+                    <span className="debug-node-access">{status === "missing" ? "未配置" : status === "disabled" ? "已停用" : ({ RO: "只读", WO: "只写", RW: "读写" }[binding.accessMode])}</span>
+                    {status !== "missing" ? <code title={binding.nodePath}>{binding.nodePath}</code> : null}
+                  </div>;
+                })}
+              </div>
             },
             {
               key: "status",
               header: "状态",
               sortAccessor: (node) => (node.enabled ? 0 : 1),
               render: (node) => (
-                <span className={`debug-admin-coverage-badge${node.enabled ? "" : " disabled"}`}>
+                <span className="debug-node-status" data-enabled={node.enabled}>
                   {node.enabled ? "启用" : "已禁用"}
                 </span>
               )
@@ -207,7 +219,7 @@ export function DebugNodeLibraryTable({
           ]
         }}
         filterBar={
-          <div className="parameters-table-toolbar">
+          <div className="debug-node-catalog-filters">
             <SearchField
               value={search.q}
               onValueChange={(value) => onUpdateSearch({ q: value })}
@@ -215,7 +227,7 @@ export function DebugNodeLibraryTable({
               ariaLabel="搜索可调节点"
               disabled={loading}
             />
-            <div className="parameters-table-filters param-admin-library-filters">
+            <div className="debug-node-catalog-filter-actions">
               <LibrarySelectFilter
                 ariaLabel="协议筛选"
                 disabled={loading}
@@ -241,7 +253,6 @@ export function DebugNodeLibraryTable({
           label: `${node.name} 操作`,
           primaryAction: { id: "edit", label: "编辑", disabled: !canEdit || loading, onSelect: () => onEdit(node.id) },
           items: [
-            { id: "bindings", label: "路径绑定", disabled: !canEdit || loading, onSelect: () => onEditBindings(node.id) },
             { id: "disable", label: "禁用", ariaLabel: `禁用 ${node.name}`, destructive: true,
               disabled: !canEdit || !node.enabled || loading, onRequestConfirmation: () => onDisable(node.id) },
             { id: "delete", label: "删除", ariaLabel: `删除 ${node.name}`, destructive: true,

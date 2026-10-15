@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
@@ -1168,33 +1169,18 @@ function ParameterSubmissionDialog({
         <div className="submission-assignee-grid" aria-label="后续流程处理人">
           <label>
             <span>硬件 MDE</span>
-            <select value={hardwareCommitterId} onChange={(event) => setHardwareCommitterId(event.target.value)} aria-label="硬件 MDE">
-              {candidates.hardwareCommitters.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name}
-                </option>
-              ))}
-            </select>
+            <SelectControl value={hardwareCommitterId} onValueChange={setHardwareCommitterId} ariaLabel="硬件 MDE" withinModal
+              options={candidates.hardwareCommitters.map((user) => ({ value: user.id, label: user.name }))} />
           </label>
           <label>
             <span>软件 MDE</span>
-            <select value={softwareCommitterId} onChange={(event) => setSoftwareCommitterId(event.target.value)} aria-label="软件 MDE">
-              {candidates.softwareCommitters.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name}
-                </option>
-              ))}
-            </select>
+            <SelectControl value={softwareCommitterId} onValueChange={setSoftwareCommitterId} ariaLabel="软件 MDE" withinModal
+              options={candidates.softwareCommitters.map((user) => ({ value: user.id, label: user.name }))} />
           </label>
           <label>
             <span>软件开发</span>
-            <select value={softwareUserId} onChange={(event) => setSoftwareUserId(event.target.value)} aria-label="软件开发">
-              {candidates.softwareUsers.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name}
-                </option>
-              ))}
-            </select>
+            <SelectControl value={softwareUserId} onValueChange={setSoftwareUserId} ariaLabel="软件开发" withinModal
+              options={candidates.softwareUsers.map((user) => ({ value: user.id, label: user.name }))} />
           </label>
         </div>
         <div className="submission-diff-list">

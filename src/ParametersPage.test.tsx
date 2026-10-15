@@ -1,3 +1,5 @@
+import { selectControlOption } from "@/test/selectControlOption";
+import userEvent from "@testing-library/user-event";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -1069,9 +1071,9 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
     const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
-    fireEvent.change(within(dialog).getByLabelText("硬件 MDE"), { target: { value: "u-wang-jie" } });
-    fireEvent.change(within(dialog).getByLabelText("软件 MDE"), { target: { value: "u-sun-mei" } });
-    fireEvent.change(within(dialog).getByLabelText("软件开发"), { target: { value: "u-sun-mei" } });
+    await selectControlOption(within(dialog).getByLabelText("硬件 MDE"), "u-wang-jie");
+    await selectControlOption(within(dialog).getByLabelText("软件 MDE"), "u-sun-mei");
+    await selectControlOption(within(dialog).getByLabelText("软件开发"), "u-sun-mei");
     fireEvent.click(document.body.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
 
     await waitFor(() => expect(parameterActions.submitChanges).toHaveBeenCalledWith({
@@ -1331,7 +1333,7 @@ describe("ParametersPage · 提交契约", () => {
     expect(complexHeadingRuleIndex).toBeGreaterThan(genericHeadingRuleIndex);
   });
 
-  it("提交预览要求选择硬件 MDE、软件 MDE 和软件开发，且软件节点可选同一人", () => {
+  it("提交预览要求选择硬件 MDE、软件 MDE 和软件开发，且软件节点可选同一人", async () => {
     const dispatch = vi.fn();
     renderPage(dispatch);
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
@@ -1342,9 +1344,9 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
 
     const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
-    fireEvent.change(within(dialog).getByLabelText("硬件 MDE"), { target: { value: "u-wang-jie" } });
-    fireEvent.change(within(dialog).getByLabelText("软件 MDE"), { target: { value: "u-sun-mei" } });
-    fireEvent.change(within(dialog).getByLabelText("软件开发"), { target: { value: "u-sun-mei" } });
+    await selectControlOption(within(dialog).getByLabelText("硬件 MDE"), "u-wang-jie");
+    await selectControlOption(within(dialog).getByLabelText("软件 MDE"), "u-sun-mei");
+    await selectControlOption(within(dialog).getByLabelText("软件开发"), "u-sun-mei");
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
 
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
@@ -1368,12 +1370,12 @@ describe("ParametersPage · 提交契约", () => {
 
     const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
 
-    expect(within(dialog).getByLabelText("硬件 MDE")).toHaveValue("u-wang-jie");
-    expect(within(dialog).getByLabelText("软件 MDE")).toHaveValue("u-sun-mei");
-    expect(within(dialog).getByLabelText("软件开发")).toHaveValue("u-liu-min");
+    expect(within(dialog).getByLabelText("硬件 MDE")).toHaveAttribute("data-value", "u-wang-jie");
+    expect(within(dialog).getByLabelText("软件 MDE")).toHaveAttribute("data-value", "u-sun-mei");
+    expect(within(dialog).getByLabelText("软件开发")).toHaveAttribute("data-value", "u-liu-min");
   });
 
-  it("提交预览下拉栏隐藏不符合槽位权限的用户", () => {
+  it("提交预览下拉栏隐藏不符合槽位权限的用户", async () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.change(screen.getByLabelText("修改原因"), {
@@ -1383,13 +1385,16 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
 
     const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
-    const hardwareOptions = within(within(dialog).getByLabelText("硬件 MDE")).getAllByRole("option");
-    const softwareCommitterOptions = within(within(dialog).getByLabelText("软件 MDE")).getAllByRole("option");
-    const softwareUserOptions = within(within(dialog).getByLabelText("软件开发")).getAllByRole("option");
-
-    expect(hardwareOptions.map((option) => option.textContent)).toEqual(["Wang Jie", "Li Peng"]);
-    expect(softwareCommitterOptions.map((option) => option.textContent)).toEqual(["Sun Mei"]);
-    expect(softwareUserOptions.map((option) => option.textContent)).toEqual(["Liu Min", "Chen Na", "Sun Mei"]);
+    for (const [label, expectedNames] of [
+      ["硬件 MDE", ["Wang Jie", "Li Peng"]],
+      ["软件 MDE", ["Sun Mei"]],
+      ["软件开发", ["Liu Min", "Chen Na", "Sun Mei"]]
+    ] as const) {
+      await userEvent.click(within(dialog).getByLabelText(label));
+      const listbox = screen.getByRole("listbox");
+      expect(within(listbox).getAllByRole("option").map((option) => option.textContent)).toEqual(expectedNames);
+      fireEvent.keyDown(listbox, { key: "Escape" });
+    }
   });
 
   it("聚焦未勾选行后再勾选，不会继承上一行的修改原因", () => {

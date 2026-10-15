@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { selectControlOption } from "@/test/selectControlOption";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -56,6 +57,13 @@ function surface(catalog: ParameterCatalogRepository) {
   />;
 }
 
+async function readSubjectOptions() {
+  await userEvent.click(screen.getByRole("combobox", { name: "主体" }));
+  const options = within(await screen.findByRole("listbox")).queryAllByRole("option");
+  await userEvent.keyboard("{Escape}");
+  return options;
+}
+
 describe("CatalogOrganizationSurface editor subject collection", () => {
   it("supplies all 101 subjects to the real editor selection boundary", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
@@ -67,10 +75,11 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
     await act(async () => second.resolve(lastPage));
     const select = screen.getByRole("combobox", { name: "主体" });
-    expect(await within(select).findByRole("option", { name: laterSubject.canonicalName })).toHaveValue(laterSubject.id);
-    expect(within(select).getAllByRole("option")).toHaveLength(101);
-    await user.selectOptions(select, laterSubject.id);
-    expect(select).toHaveValue(laterSubject.id);
+    const options = await readSubjectOptions();
+    expect(options.find((option) => option.textContent === laterSubject.canonicalName)).toHaveAttribute("data-value", laterSubject.id);
+    expect(options).toHaveLength(101);
+    await selectControlOption(select, laterSubject.id);
+    expect(select).toHaveAttribute("data-value", laterSubject.id);
     expect(read.mock.calls.map(([query]) => query)).toEqual([{ limit: 100 }, { limit: 100, cursor: "page-2" }]);
   });
 
@@ -88,17 +97,17 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     await user.clear(property);
     await user.type(property, "preserved-draft");
     expect(screen.getByRole("status", { name: "正在读取主体列表" })).toBeVisible();
-    expect(within(screen.getByRole("combobox", { name: "主体" })).queryAllByRole("option")).toHaveLength(0);
+    expect(await readSubjectOptions()).toHaveLength(0);
     await act(async () => second.reject(new Error("private transport diagnostic")));
     const error = await screen.findByRole("alert");
     expect(error).toHaveTextContent("无法读取主体列表，请重试。");
     expect(error).not.toHaveTextContent("private transport diagnostic");
-    expect(within(screen.getByRole("combobox", { name: "主体" })).queryAllByRole("option")).toHaveLength(0);
+    expect(await readSubjectOptions()).toHaveLength(0);
     await user.click(within(error).getByRole("button", { name: "重试" }));
     expect(screen.getByRole("status", { name: "正在读取主体列表" })).toBeVisible();
     await act(async () => retrySecond.resolve(lastPage));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
-    expect(within(screen.getByRole("combobox", { name: "主体" })).getAllByRole("option")).toHaveLength(101);
+    expect(await readSubjectOptions()).toHaveLength(101);
     expect(screen.getByRole("textbox", { name: "属性键" })).toBe(property);
     expect(property).toHaveValue("preserved-draft");
     expect(publicationRead).toHaveBeenCalledTimes(1);
@@ -111,11 +120,15 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     render(surface(ports.catalog));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
-    await screen.findByRole("option", { name: laterSubject.canonicalName });
+    await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取主体列表" })).not.toBeInTheDocument());
+    expect(await readSubjectOptions()).toHaveLength(101);
     await user.click(screen.getByRole("button", { name: "刷新目录" }));
     await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
-    await waitFor(() => expect(within(screen.getByRole("combobox", { name: "主体" })).getAllByRole("option")).toHaveLength(1));
-    expect(screen.queryByRole("option", { name: laterSubject.canonicalName })).not.toBeInTheDocument();
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取主体列表" })).not.toBeInTheDocument());
+    const options = await readSubjectOptions();
+    expect(options).toHaveLength(1);
+    expect(options.some((option) => option.textContent === laterSubject.canonicalName)).toBe(false);
     expect(read).toHaveBeenLastCalledWith({ limit: 100 });
   });
 
@@ -130,11 +143,12 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     vi.spyOn(newPorts.catalog, "listSubjects").mockResolvedValue(lastPage);
     view.rerender(surface(newPorts.catalog));
     await userEvent.setup().click(screen.getByRole("button", { name: "打开定义编辑器" }));
-    const select = screen.getByRole("combobox", { name: "主体" });
-    await within(select).findByRole("option", { name: laterSubject.canonicalName });
+    await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取主体列表" })).not.toBeInTheDocument());
+    expect((await readSubjectOptions()).find((option) => option.textContent === laterSubject.canonicalName)).toHaveAttribute("data-value", laterSubject.id);
     await act(async () => outcome === "success" ? stale.resolve({ ...lastPage, items: firstSubjects }) : stale.reject(new Error("stale")));
-    expect(within(select).getAllByRole("option")).toHaveLength(1);
-    expect(within(select).getByRole("option", { name: laterSubject.canonicalName })).toHaveValue(laterSubject.id);
+    const options = await readSubjectOptions();
+    expect(options).toHaveLength(1);
+    expect(options.find((option) => option.textContent === laterSubject.canonicalName)).toHaveAttribute("data-value", laterSubject.id);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

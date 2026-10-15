@@ -15,6 +15,7 @@ import type {
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
 export type ModuleEditSavePatch = ParameterModuleDraft & {
   importance?: ModuleImportance;
@@ -34,6 +35,8 @@ export function ModuleEditDialog({
   showImportance = false,
   busy = false,
   error = null,
+  description,
+  className = "",
   onSave,
   onCancel,
   canAdmin = false,
@@ -48,6 +51,9 @@ export function ModuleEditDialog({
   busy?: boolean;
   /** Save failure — the dialog stays open and shows it in place. */
   error?: string | null;
+  /** Context-specific help for consumers outside parameter management. */
+  description?: string;
+  className?: string;
   onSave: (patch: ModuleEditSavePatch) => void;
   onCancel: () => void;
   canAdmin?: boolean;
@@ -62,6 +68,7 @@ export function ModuleEditDialog({
     scope: module.scope ?? ""
   });
   const [importance, setImportance] = useState<ModuleImportance>(module.importance ?? "medium");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const moduleDetailsReadOnly = module.kind === "driver-group" || module.kind === "node-type";
   const showCanonicalPlacementEntry =
     moduleDetailsReadOnly &&
@@ -84,30 +91,36 @@ export function ModuleEditDialog({
     draft.scope.trim() !== (module.scope ?? "").trim() ||
     (importanceVisible && importance !== (module.importance ?? "medium"));
   const canSave = !moduleDetailsReadOnly && canSubmit && isDirty;
+  const requestClose = () => {
+    if (busy) return;
+    if (isDirty && !moduleDetailsReadOnly) setConfirmDiscard(true);
+    else onCancel();
+  };
 
   return (
     <>
       <ModalDialog
-        open
-        onDismiss={onCancel}
-        className="submission-dialog param-admin-module-edit-dialog"
+        open={!confirmDiscard}
+        onDismiss={busy ? undefined : requestClose}
+        className={`submission-dialog param-admin-module-edit-dialog ${className}`}
         backdropClassName="param-admin-modal-backdrop"
+        describedBy
       >
-        {({ titleId }) => (
+        {({ titleId, descriptionId }) => (
           <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">模块修改</span>
             <h2 id={titleId}>{module.name}</h2>
-            <p>
+            <p id={descriptionId}>
               {moduleDetailsReadOnly
                 ? "历史模块名称与详情仅供溯源；规范主体登记与归属由规范面板管理。"
-                : showImportance
+                : description ?? (showImportance
                     ? "更新模块名称、重要性、描述与适用范围。"
-                    : "更新模块名称、描述与适用范围。修改名称会同步更新共享参数库中的模块归属。"}
+                    : "更新模块名称、描述与适用范围。修改名称会同步更新共享参数库中的模块归属。")}
             </p>
           </div>
-          <button type="button" className="audit-dialog-close-icon" onClick={onCancel} aria-label="关闭">
+          <button type="button" className="audit-dialog-close-icon" onClick={requestClose} disabled={busy} aria-label="关闭">
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </div>
@@ -188,7 +201,7 @@ export function ModuleEditDialog({
               currentName={module.name}
               existingNames={existingNames}
               module={draft}
-              readOnly={moduleDetailsReadOnly}
+              readOnly={moduleDetailsReadOnly || busy}
               showImportance={importanceVisible}
               importance={importance}
               onImportanceChange={setImportance}
@@ -204,7 +217,7 @@ export function ModuleEditDialog({
             </p>
           ) : null}
           <div className="dialog-actions">
-            <button className="button subtle" type="button" onClick={onCancel} disabled={busy}>
+            <button className="button subtle" type="button" onClick={requestClose} disabled={busy}>
               取消
             </button>
             {!moduleDetailsReadOnly && isDirty ? (
@@ -213,7 +226,7 @@ export function ModuleEditDialog({
                 type="button"
                 disabled={!canSave || busy}
                 onClick={() => {
-                  if (!canSave) {
+                  if (!canSave || busy) {
                     return;
                   }
                   onSave({
@@ -226,7 +239,7 @@ export function ModuleEditDialog({
                   });
                 }}
               >
-                保存
+                {busy ? "保存中…" : "保存"}
               </button>
             ) : (
               <button className="button primary" type="button" onClick={onCancel} disabled={busy}>
@@ -237,7 +250,10 @@ export function ModuleEditDialog({
           </>
         )}
       </ModalDialog>
-
+      <ConfirmDialog open={confirmDiscard} title="放弃模块修改？"
+        description="未保存的修改将丢失。可以继续编辑，或放弃修改并返回。"
+        confirmLabel="放弃修改" cancelLabel="继续编辑"
+        onCancel={() => setConfirmDiscard(false)} onConfirm={onCancel} />
     </>
   );
 }

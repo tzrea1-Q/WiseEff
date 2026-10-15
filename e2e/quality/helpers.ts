@@ -350,7 +350,8 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
       const records = page.getByRole("table", { name: "日志分析记录" });
       await expect(records.getByText("charging-foldback.log").or(records.getByText("当前时间窗口内暂无日志")).first()).toBeVisible({ timeout });
     } else if (routePath === "/debugging-admin/nodes") {
-      await expect(page.locator(".debug-admin-coverage-badge").first()).toBeVisible({ timeout });
+      await expect(page.locator(".debug-admin-library-table")).toHaveAttribute("aria-busy", "false", { timeout });
+      await expect(page.getByRole("table", { name: "可调节点目录" }).getByText("Cycle count", { exact: true })).toBeVisible({ timeout });
     }
     await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
     return;

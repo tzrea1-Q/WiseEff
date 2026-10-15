@@ -27,6 +27,10 @@
   outline: none;
 }
 
+.row-action-menu__content--modal {
+  z-index: var(--z-modal-backdrop-nested);
+}
+
 .row-action-menu__description {
   width: 100%;
   max-width: var(--admin-list-name-max-width);

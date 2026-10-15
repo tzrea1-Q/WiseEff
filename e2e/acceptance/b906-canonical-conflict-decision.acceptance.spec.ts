@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "playwright/test";
@@ -227,7 +228,7 @@ for (const [format, choice, decision] of [
         await page.screenshot({ path: testInfo.outputPath(`b906-${format}-${choice}-selection-1440x900.png`) });
         const selectedDigest = await conflict.getByText("选中证明", { exact: false }).locator("code").textContent();
         await conflict.getByRole("textbox", { name: "决策理由" }).fill(`${format} ${choice} 页面决策`);
-        await conflict.getByRole("combobox", { name: "指定软件审核人" }).selectOption(acceptanceCast.sunMei.userId);
+        await selectControlOption(conflict.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
         if (decision === "stale-submit") {
           const old = (await db.query<{ storage_key: string; checksum: string; size_bytes: number; parsed_index: unknown }>(
             "select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",

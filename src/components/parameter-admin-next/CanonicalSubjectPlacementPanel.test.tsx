@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -342,7 +343,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     const user = userEvent.setup();
     await user.click(within(nodeRow).getByRole("button", { name: "登记主体：vendor,node" }));
     expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
-    await user.selectOptions(screen.getByLabelText("目标模块"), "issue897-node");
+    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-node");
     await user.click(screen.getByRole("button", { name: "继续确认" }));
     const confirmation = await screen.findByRole("dialog", { name: "确认登记主体" });
     await user.click(within(confirmation).getByRole("checkbox"));
@@ -387,7 +388,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
       "registration-driver"
     );
     expect(screen.getByText(/14 个有效定义、1 个当前 Binding、1 个项目/)).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("目标模块"), "issue897-driver-b");
+    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-driver-b");
     await user.click(screen.getByRole("button", { name: "继续确认" }));
     const confirmation = await screen.findByRole("dialog", { name: "确认调整放置" });
     await user.click(within(confirmation).getByRole("checkbox"));

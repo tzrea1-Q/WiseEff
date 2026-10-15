@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { writeFile } from "node:fs/promises";
 import pg from "pg";
@@ -436,7 +437,7 @@ test.describe("Issue 897 canonical module ownership", () => {
 
     await expect(canonicalSubject.getByText("归属：Canonical source", { exact: true })).toBeVisible();
     await canonicalSubject.getByRole("button", { name: "调整归属：issue897,canonical-only", exact: true }).click();
-    await page.getByRole("combobox", { name: "目标模块" }).selectOption("issue897-canonical-b");
+    await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-canonical-b");
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
     await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
     const canonicalMove = page.waitForResponse(response =>
@@ -580,7 +581,7 @@ test.describe("Issue 897 canonical module ownership", () => {
       ["issue897-node", "issue897-node"]
     ]) {
       await page.getByRole("button", { name: `登记主体：${subjectName}`, exact: true }).click();
-      await page.getByRole("combobox", { name: "目标模块" }).selectOption(moduleId);
+      await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), moduleId);
       await page.getByRole("button", { name: "继续确认", exact: true }).click();
       await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
       await page.getByRole("button", { name: "确认登记", exact: true }).click();
@@ -592,7 +593,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(priorEtag).toMatch(/^".+:\d+"$/);
     await driver.getByRole("button", { name: "调整归属：acme,power", exact: true }).click();
     await expect(page.getByText(/本主体 121 个有效定义、1 个当前/)).toBeVisible();
-    await page.getByRole("combobox", { name: "目标模块" }).selectOption("issue897-driver-b");
+    await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-driver-b");
     await page.screenshot({ path: info.outputPath("canonical-placement-impact.png"), animations: "disabled" });
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
     await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();

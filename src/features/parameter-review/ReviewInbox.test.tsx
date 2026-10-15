@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialState } from "@/mockData";
@@ -47,7 +48,7 @@ describe("unified review inbox", () => {
     inbox();
     expect(screen.getAllByText("暂无待审核请求")).toHaveLength(1);
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
-    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveAttribute("data-value", "all");
     fireEvent.click(screen.getByRole("button", { name: "查看已处理记录" }));
     expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
     expect(window.location.search).toContain("view=history");
@@ -77,9 +78,9 @@ describe("unified review inbox", () => {
     expect(window.location.search).toContain("legacyRequest=newer");
   });
 
-  it("names an empty type filter and clears it without another empty panel", () => {
+  it("names an empty type filter and clears it without another empty panel", async () => {
     inbox([older]);
-    fireEvent.change(screen.getByRole("combobox", { name: "变更类型" }), { target: { value: "value" } });
+    await selectControlOption(screen.getByRole("combobox", { name: "变更类型" }), "value");
     expect(screen.getByText("软件配置筛选下暂无请求")).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "审阅详情" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
@@ -104,7 +105,7 @@ describe("unified review inbox", () => {
     window.history.pushState(null, "", "/parameter-review?legacyRequest=older&view=pending&type=all");
     fireEvent.popState(window);
     expect(screen.getByRole("heading", { name: "调整电压详情" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveAttribute("data-value", "all");
   });
 
   it("combines canonical and legacy requests by age and restores member deep links", async () => {
@@ -123,7 +124,7 @@ describe("unified review inbox", () => {
     const rows = within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row").slice(1);
     expect(rows.map((row) => row.getAttribute("data-review-row-id"))).toEqual(["member-old", "older", "value-new"]);
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
-    fireEvent.change(screen.getByRole("combobox", { name: "变更类型" }), { target: { value: "value" } });
+    await selectControlOption(screen.getByRole("combobox", { name: "变更类型" }), "value");
     expect(await screen.findByRole("heading", { name: "软件详情 value-new" })).toBeInTheDocument();
     expect(window.location.search).toContain("type=value");
     window.history.pushState(null, "", "/parameter-review?memberRequest=member-old&view=pending&type=member");
@@ -140,7 +141,7 @@ describe("unified review inbox", () => {
 
   it("treats an unknown type URL as all types", () => {
     inbox([], "?type=constructor");
-    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveAttribute("data-value", "all");
     expect(screen.getByText("暂无待审核请求")).toBeInTheDocument();
   });
 

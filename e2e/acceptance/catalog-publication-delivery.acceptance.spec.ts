@@ -1,3 +1,4 @@
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import { expect, test, type Page, type TestInfo } from "playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -173,14 +174,10 @@ const publishDefinition = async (
   const dialog = page.getByRole("dialog", { name: "向已发布主体新增定义" });
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   const subjects = dialog.getByLabel("已发布主体");
-  await expect.poll(async () => subjects.locator("option").count(), { timeout: 30_000 }).toBeGreaterThan(1);
-  const optionValues = await subjects.locator("option").evaluateAll((els) =>
-    els
-      .map((el) => (el as HTMLOptionElement).value)
-      .filter((value) => value.length > 0),
-  );
+  await expect.poll(async () => (await readSelectControlOptions(subjects)).length, { timeout: 30_000 }).toBeGreaterThan(1);
+  const optionValues = (await readSelectControlOptions(subjects)).map((option) => option.value).filter(Boolean);
   expect(optionValues, `published subjects: ${optionValues.join(",")}`).toContain(evidence.subjectId);
-  await subjects.selectOption(evidence.subjectId);
+  await selectControlOption(subjects, evidence.subjectId);
   await dialog.getByLabel("属性键").fill(propertyKey);
   await dialog.getByLabel("显示名称").fill(displayName);
   await dialog.getByLabel("说明").fill("隔离交付 M1 新增定义。");

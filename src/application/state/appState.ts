@@ -70,6 +70,9 @@ type DebugParameterEditorDraft = {
   writeFormatExample?: string;
   writeFormatHint?: string;
   module: string;
+  moduleId?: string;
+  enabled?: boolean;
+  bindings?: DebugParameter["bindings"];
   currentValue: string;
   targetValue: string;
   unit: string;

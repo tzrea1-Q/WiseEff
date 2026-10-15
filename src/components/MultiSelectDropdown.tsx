@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import "./common/select-control.css";
 
 export type DropdownOption = {
   value: string;
@@ -20,6 +22,7 @@ export function MultiSelectDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -32,9 +35,17 @@ export function MultiSelectDropdown({
       }
     };
 
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
     window.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleEscape, true);
     return () => {
       window.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleEscape, true);
     };
   }, [open]);
 
@@ -49,14 +60,16 @@ export function MultiSelectDropdown({
   return (
     <div className="dropdown-root" ref={rootRef}>
       <button
+        ref={triggerRef}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className={compact ? "dropdown-trigger compact-filter-control" : "dropdown-trigger"}
+        className={`dropdown-trigger select-control${compact ? " compact-filter-control" : ""}`}
         data-compact-control={compact ? "filter" : undefined}
         type="button"
         onClick={() => setOpen((current) => !current)}
       >
-        {label}{value.length > 0 ? ` (${value.length})` : ""} ▾
+        <span>{label}{value.length > 0 ? ` (${value.length})` : ""}</span>
+        <ChevronDown aria-hidden="true" className="select-control__chevron" />
       </button>
       {open ? (
         <div className="dropdown-menu" role="listbox" aria-multiselectable="true">

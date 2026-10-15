@@ -525,6 +525,27 @@ describe("debugging routes", () => {
     );
   });
 
+  it("PATCH /api/v1/debugging/admin/nodes/:nodeId forwards a single metadata, binding and archive save", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = debugNodeWithBindingsRecord({ id: "node-1" });
+    serviceMocks.updateAdminDebugNode.mockResolvedValue(item);
+    const patch = {
+      name: "Updated node",
+      bindings: [{ protocol: "hdc", nodePath: "/sys/updated", accessMode: "RW", enabled: true }],
+      archiveProtocols: ["adb"]
+    };
+    const response = await requestJson<{ item: DebugNodeWithBindingsRecord }>(
+      makeServer({ db, gateway }), "/api/v1/debugging/admin/nodes/node-1",
+      { method: "PATCH", body: JSON.stringify(patch) }
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item });
+    expect(serviceMocks.updateAdminDebugNode).toHaveBeenCalledWith(
+      makeAuth(), { nodeId: "node-1", ...patch }, { requestId: "test-request" }
+    );
+  });
+
   it("DELETE /api/v1/debugging/admin/nodes/:nodeId permanently deletes a debug node", async () => {
     const db = makeDb();
     const gateway = makeGateway();

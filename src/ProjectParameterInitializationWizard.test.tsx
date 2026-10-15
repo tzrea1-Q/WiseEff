@@ -654,7 +654,7 @@ describe("ProjectParameterInitializationWizard", () => {
 
   it("styles table filter menus as compact floating panels", () => {
     const styles = readStylesheet("src/styles.css");
-    const menuRule = declarationsFor(styles, ".parameters-column-filter__menu");
+    const menuRule = declarationsFor(readStylesheet("src/components/common/select-control.css"), ".parameters-column-filter__menu");
     const menuHeadRule = declarationsFor(styles, ".parameters-column-filter__menu-head");
     const optionLabelRule = declarationsFor(styles, ".parameters-column-filter__options label");
 

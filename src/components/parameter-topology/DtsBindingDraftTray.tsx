@@ -6,6 +6,7 @@ import type {
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
+import { SelectControl } from "@/components/common/SelectControl";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import { presentError } from "@/infrastructure/http/presentError";
 
@@ -436,10 +437,10 @@ export function DtsBindingDraftTray({
         <div className="submission-assignee-grid" aria-label="软件审核处理人">
           <label>
             软件 MDE
-            <select aria-label="软件 MDE" value={softwareCommitterId} disabled={submitting || submitted} onChange={(event) => setSoftwareCommitterId(event.target.value)}>
-              <option value="">软件审核池（未指定）</option>
-              {displayedCandidates.softwareCommitters.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
-            </select>
+            <SelectControl ariaLabel="软件 MDE" value={softwareCommitterId} disabled={submitting || submitted} onValueChange={setSoftwareCommitterId} options={[
+              { value: "", label: "软件审核池（未指定）" },
+              ...displayedCandidates.softwareCommitters.map((candidate) => ({ value: candidate.id, label: candidate.name }))
+            ]} />
           </label>
         </div>
       ) : null}
@@ -447,24 +448,24 @@ export function DtsBindingDraftTray({
         <div className="submission-assignee-grid" aria-label="后续流程处理人">
           <label>
             硬件 MDE
-            <select aria-label="硬件 MDE" value={hardwareCommitterId} disabled={submitting || submitted} onChange={(event) => setHardwareCommitterId(event.target.value)}>
-              {displayedCandidates.hardwareCommitters.length === 0 ? <option value="">无可用候选人</option> : null}
-              {displayedCandidates.hardwareCommitters.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
-            </select>
+            <SelectControl ariaLabel="硬件 MDE" value={hardwareCommitterId} disabled={submitting || submitted} onValueChange={setHardwareCommitterId} options={[
+              ...(displayedCandidates.hardwareCommitters.length === 0 ? [{ value: "", label: "无可用候选人" }] : []),
+              ...displayedCandidates.hardwareCommitters.map((candidate) => ({ value: candidate.id, label: candidate.name }))
+            ]} />
           </label>
           <label>
             软件 MDE
-            <select aria-label="软件 MDE" value={softwareCommitterId} disabled={submitting || submitted} onChange={(event) => setSoftwareCommitterId(event.target.value)}>
-              {displayedCandidates.softwareCommitters.length === 0 ? <option value="">无可用候选人</option> : null}
-              {displayedCandidates.softwareCommitters.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
-            </select>
+            <SelectControl ariaLabel="软件 MDE" value={softwareCommitterId} disabled={submitting || submitted} onValueChange={setSoftwareCommitterId} options={[
+              ...(displayedCandidates.softwareCommitters.length === 0 ? [{ value: "", label: "无可用候选人" }] : []),
+              ...displayedCandidates.softwareCommitters.map((candidate) => ({ value: candidate.id, label: candidate.name }))
+            ]} />
           </label>
           <label>
             软件开发
-            <select aria-label="软件开发" value={softwareUserId} disabled={submitting || submitted} onChange={(event) => setSoftwareUserId(event.target.value)}>
-              {displayedCandidates.softwareUsers.length === 0 ? <option value="">无可用候选人</option> : null}
-              {displayedCandidates.softwareUsers.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
-            </select>
+            <SelectControl ariaLabel="软件开发" value={softwareUserId} disabled={submitting || submitted} onValueChange={setSoftwareUserId} options={[
+              ...(displayedCandidates.softwareUsers.length === 0 ? [{ value: "", label: "无可用候选人" }] : []),
+              ...displayedCandidates.softwareUsers.map((candidate) => ({ value: candidate.id, label: candidate.name }))
+            ]} />
           </label>
         </div>
       ) : null}

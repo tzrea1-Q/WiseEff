@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { CheckCircle2, CircleX, ImageIcon, PlayCircle, PlusCircle, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ProductFeedbackAppendProgressInput } from "@/application/ports/ProductFeedbackRepository";
@@ -511,18 +512,15 @@ export function FeedbackAdminDrawer({
           <div className="space-y-3 py-2 text-sm">
             <div>
               <label htmlFor="resolve-resolution-code" className="text-xs font-medium text-muted-foreground">解决结论 *</label>
-              <select
+              <SelectControl
                 id="resolve-resolution-code"
                 value={resolutionCode}
-                onChange={(e) => setResolutionCode(e.target.value as ProductFeedbackResolutionCode)}
-                className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs"
-              >
-                {productFeedbackResolutionCodes.map((code) => (
-                  <option key={code} value={code}>
-                    {productFeedbackResolutionLabels[code]}
-                  </option>
-                ))}
-              </select>
+                ariaLabel="解决结论"
+                withinModal
+                onValueChange={setResolutionCode}
+                className="mt-1"
+                options={productFeedbackResolutionCodes.map((code) => ({ value: code, label: productFeedbackResolutionLabels[code] }))}
+              />
             </div>
             <div>
               <label htmlFor="resolve-public-msg" className="text-xs font-medium text-muted-foreground">对外公开说明 *</label>

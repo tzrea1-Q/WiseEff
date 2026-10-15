@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParameterFileCandidate, ParameterFileRepository, ParameterFileSourcePreview } from "@/application/ports/ParameterFileRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -152,11 +153,10 @@ export function CanonicalBatchSubmitDialog({ projectId, currentUserId, candidate
         </> : null}
       </li>)}</ol>
       <label>修改原因<textarea value={reason} onChange={(event) => { requestId.current = crypto.randomUUID(); frozenBody.current = null; frozenReleaseId.current = null; setReason(event.target.value); }} disabled={busy || attempted} /></label>
-      <label>指定软件审核人<select value={reviewerId} disabled={busy || loading || attempted}
-        onChange={(event) => { requestId.current = crypto.randomUUID(); frozenBody.current = null; frozenReleaseId.current = null; setReviewerId(event.target.value); }}>
-        {reviewers.length ? reviewers.map((reviewer) => <option key={reviewer.userId} value={reviewer.userId}>{reviewer.name}（{reviewer.userId}）</option>)
-          : <option value="">没有可用的另一名软件审核人</option>}
-      </select></label>
+      <label>指定软件审核人<SelectControl value={reviewerId} disabled={busy || loading || attempted} ariaLabel="指定软件审核人" withinModal
+        onValueChange={(value) => { requestId.current = crypto.randomUUID(); frozenBody.current = null; frozenReleaseId.current = null; setReviewerId(value); }}
+        options={reviewers.length ? reviewers.map((reviewer) => ({ value: reviewer.userId, label: `${reviewer.name}（${reviewer.userId}）` }))
+          : [{ value: "", label: "没有可用的另一名软件审核人" }]} /></label>
       {loading ? <p role="status">正在加载可指派审核人…</p> : null}
       {current?.request && (current.request.status === "pending" || current.request.status === "approved") ?
         <button type="button" className="button subtle" onClick={() => onSubmitted(current.request!.id)}>查看已有审核</button> : null}

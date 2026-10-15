@@ -615,7 +615,7 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
     fireEvent.click(within(importRegion).getByRole("button", { name: "打开批量参数导入" }));
 
     const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
-    expect(within(dialog).getByLabelText("目标项目")).toHaveValue(initialState.activeProjectId);
+    expect(within(dialog).getByLabelText("目标项目")).toHaveAttribute("data-value", initialState.activeProjectId);
     expect(dialog.querySelector('input[type="file"]')).toHaveAttribute(
       "accept",
       ".xlsx,.csv,.json,.dts,.dtsi,.txt"
