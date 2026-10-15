@@ -89,8 +89,9 @@ function runSeedScript(script: string) {
   if (result.status !== 0) {
     const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
     const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const errorCode = result.error && "code" in result.error && typeof result.error.code === "string" ? result.error.code : "unknown";
     const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
+      ? `child_process error: ${errorCode} ${result.error.message ?? ""}`.trimEnd()
       : "";
 
     throw new Error(

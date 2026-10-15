@@ -46,7 +46,7 @@ type AuditApiItem = {
   metadata?: Record<string, unknown>;
 };
 
-function authHeaders(userId?: string) {
+function authHeaders(userId?: string): Record<string, string> {
   if (userId === submitterUserId) {
     return authHeadersForUser(submitterUserId, "pfb.acceptance@chargelab.cn", "PFB Acceptance User");
   }
