@@ -648,11 +648,16 @@ function AppShell({
     () => new Set()
   );
   const [apiRuntimeSynced, setApiRuntimeSynced] = useState(runtimeMode !== "api");
+  const [apiRuntimePending, setApiRuntimePending] = useState<ReadonlySet<ApiRuntimeDataDomain>>(
+    () => new Set(runtimeMode === "api" ? ["parameters", "logs", "debugging"] : [])
+  );
   const [apiRuntimeRetrying, setApiRuntimeRetrying] = useState(false);
   const domainDataHydratedRef = useRef(false);
+  const apiRuntimeGeneration = useRef(0);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
+      const generation = ++apiRuntimeGeneration.current;
       domainDataHydratedRef.current = true;
       const runtimeRoleId = migrateLegacyRoleId(roleId);
       const debuggingProtocol = pageKeyRef.current === "node-debugging" ? readInitialNodeDebuggingProtocol() : "hdc";
@@ -660,32 +665,36 @@ function AppShell({
       const debuggingRefresh = canUseDebugging
         ? debuggingActions.refresh({ protocol: debuggingProtocol }, { notifyOnFailure: false })
         : Promise.resolve("skipped" as const);
-      const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
-        parameterActions.refresh({ notifyOnFailure: false }),
-        logActions.refresh(undefined, { notifyOnFailure: false }),
-        debuggingRefresh
+      setApiRuntimePending(new Set(["parameters", "logs", "debugging"]));
+      const settleDomain = async (domain: ApiRuntimeDataDomain, request: Promise<unknown>) => {
+        let failed = false;
+        try {
+          const result = await request;
+          failed = domain === "parameters" && Boolean(result && typeof result === "object" && "notification" in result);
+        } catch {
+          failed = true;
+        }
+        if (cancelledRef?.current || generation !== apiRuntimeGeneration.current) return;
+        // Settle domains independently: unrelated device discovery must not hold a page's controls.
+        if (failed) dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain });
+        setApiRuntimeFailures((current) => {
+          const next = new Set(current);
+          if (failed) next.add(domain);
+          else next.delete(domain);
+          return next;
+        });
+        setApiRuntimePending((current) => {
+          const next = new Set(current);
+          next.delete(domain);
+          return next;
+        });
+        if (domain === "parameters") setApiRuntimeSynced(true);
+      };
+      await Promise.all([
+        settleDomain("parameters", parameterActions.refresh({ notifyOnFailure: false })),
+        settleDomain("logs", logActions.refresh(undefined, { notifyOnFailure: false })),
+        settleDomain("debugging", debuggingRefresh)
       ]);
-      if (cancelledRef?.current) return;
-      // Failed domains drop to empty slices + a persistent page banner. Demo data
-      // must never stand in for live data in API mode.
-      const failures = new Set<ApiRuntimeDataDomain>();
-      if (
-        parameterRefreshResult.status === "rejected" ||
-        (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
-      ) {
-        failures.add("parameters");
-        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
-      }
-      if (logRefreshResult.status === "rejected") {
-        failures.add("logs");
-        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "logs" });
-      }
-      if (canUseDebugging && debuggingRefreshResult.status === "rejected") {
-        failures.add("debugging");
-        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
-      }
-      setApiRuntimeFailures(failures);
-      setApiRuntimeSynced(true);
     },
     [debuggingActions, logActions, parameterActions]
   );
@@ -1081,13 +1090,19 @@ function AppShell({
     logs: "日志",
     debugging: "调试"
   };
+  const pageRuntimeDomain: ApiRuntimeDataDomain | null = page.group === "参数管理" || page.key === "dts-reload"
+    ? "parameters"
+    : page.group === "日志分析" ? "logs" : page.group === "调试平台" ? "debugging" : null;
+  const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain
+    ? "ready"
+    : apiRuntimePending.has(pageRuntimeDomain) ? "loading" : apiRuntimeFailures.has(pageRuntimeDomain) ? "error" : "ready";
   const apiRuntimeStatusBanner =
-    runtimeMode !== "api" || isPlatformHome ? null : apiRuntimeFailures.size > 0 ? (
+    pageRuntimeState === "error" && pageRuntimeDomain ? (
       <div className="api-runtime-error-banner" role="alert" aria-live="assertive">
         <AlertTriangle size={18} aria-hidden="true" />
         <div className="api-runtime-error-banner__body">
           <strong>
-            无法连接雷泽{[...apiRuntimeFailures].map((domain) => apiRuntimeDomainLabels[domain]).join("、")} API，当前无数据
+            无法连接雷泽{apiRuntimeDomainLabels[pageRuntimeDomain]} API，当前无数据
           </strong>
           <p>为避免误读，连接失败时不展示演示数据；请确认后端服务可用后重试。</p>
         </div>
@@ -1100,7 +1115,7 @@ function AppShell({
           {apiRuntimeRetrying ? "重试中…" : "重试"}
         </button>
       </div>
-    ) : !apiRuntimeSynced ? (
+    ) : pageRuntimeState === "loading" ? (
       <div className="api-runtime-sync-banner" role="status">
         <LoaderCircle size={16} className="api-runtime-sync-banner__spinner" aria-hidden="true" />
         正在连接雷泽服务，加载真实数据…
@@ -1149,7 +1164,7 @@ function AppShell({
         ) : null}
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
           {isPlatformHome ? (
-            <div className="main-content home-content">
+            <div className="main-content home-content" data-runtime-state="ready">
               {proactiveInsightsBanner}
               <PageRouter
                 page={page}
@@ -1192,10 +1207,12 @@ function AppShell({
               className="main-content"
               tabIndex={-1}
               aria-label={isParameterHome ? "参数管理首页" : page.title}
+              data-runtime-state={pageRuntimeState}
+              aria-busy={pageRuntimeState === "loading"}
             >
               {apiRuntimeStatusBanner}
               {proactiveInsightsBanner}
-              <div className="page-content">
+              <div className="page-content" inert={pageRuntimeState === "loading"}>
                 <PageRouter
                   page={page}
                   onFeedback={() => setFeedbackOpen(true)}

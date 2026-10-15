@@ -1654,6 +1654,39 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(debuggingCleared.configDraft.debugParameters).toEqual([]);
   });
 
+  it("keeps initial interaction unavailable until its domain settles without waiting for unrelated devices", async () => {
+    let completeProjects!: (projects: typeof initialState.configDraft.projects) => void;
+    let failDevices!: (error: Error) => void;
+    const projects = new Promise<typeof initialState.configDraft.projects>((resolve) => { completeProjects = resolve; });
+    const devices = new Promise<never>((_, reject) => { failDevices = reject; });
+    const parameterRepository = createTestParameterRepository({ listProjects: vi.fn(() => projects) });
+    const { container } = renderApp({
+      path: "/parameter-home",
+      runtimeMode: "api",
+      ports: {
+        authClient: createTestAuthClient("admin"),
+        parameterRepository,
+        debuggingGateway: createAppDebuggingGateway({ listDevices: vi.fn(() => devices) })
+      }
+    });
+    try {
+      await waitFor(() => expect(parameterRepository.listProjects).toHaveBeenCalled());
+      const main = screen.getByRole("main");
+      expect(main).toHaveAttribute("data-runtime-state", "loading");
+      expect(main).toHaveAttribute("aria-busy", "true");
+      expect(container.querySelector(".page-content")).toHaveAttribute("inert");
+      await act(async () => { completeProjects([apiProject]); });
+      await waitFor(() => expect(main).toHaveAttribute("data-runtime-state", "ready"));
+      expect(main).toHaveAttribute("aria-busy", "false");
+      expect(container.querySelector(".page-content")).not.toHaveAttribute("inert");
+      await act(async () => { failDevices(new Error("optional devices unavailable")); });
+      expect(main).toHaveAttribute("data-runtime-state", "ready");
+      expect(container.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
+    } finally {
+      await act(async () => { completeProjects([apiProject]); failDevices(new Error("test settled")); });
+    }
+  });
+
   it("shows a persistent no-data banner when API refresh fails and recovers via retry", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const listProjects = vi.fn()
@@ -1680,6 +1713,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(banner).toHaveAttribute("role", "alert");
     expect(banner).toHaveTextContent("无法连接雷泽参数 API，当前无数据");
     expect(banner).toHaveTextContent("不展示演示数据");
+    expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "error");
 
     fireEvent.click(within(banner).getByRole("button", { name: "重试" }));
 
@@ -1687,6 +1721,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       expect(document.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
     });
     expect(listProjects.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "ready");
   });
 
   it("dismisses the newest notification and leaves the rest of the queue", () => {
