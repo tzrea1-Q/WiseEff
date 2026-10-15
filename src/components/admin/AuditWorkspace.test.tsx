@@ -1,6 +1,6 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, isInaccessible, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuditWorkspace } from "./AuditWorkspace";
 import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency-collector";
 import { requireRowActionVisibility } from "../../../e2e/quality/consistency-assertions";
@@ -19,56 +19,70 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("keeps advanced kind selection as a draft until apply and resets it with its keyed form", async () => {
-  const user = userEvent.setup();
-  const onQueryChange = vi.fn();
+describe("advanced audit kind filter", () => {
   const base: AuditQueryState = { appGroup: "all", severity: "all", search: "", timeWindow: "all" };
-  const workspace = (query: AuditQueryState) => <AuditWorkspace isApiMode={false} query={query} onQueryChange={onQueryChange}
+  const workspace = (query: AuditQueryState, onQueryChange: (patch: Partial<AuditQueryState>) => void) => <AuditWorkspace isApiMode={false} query={query} onQueryChange={onQueryChange}
     mockEvents={[
       { id: "parameter", app: "parameters", kind: "parameter-update", action: "参数更新", actor: "用户", severity: "Low", time: "刚刚" },
       { id: "role", app: "user-permissions", kind: "user-role-change", action: "角色变更", actor: "用户", severity: "Low", time: "刚刚" },
     ]} />;
-  const { rerender } = render(workspace(base));
   const kind = () => screen.getByRole("combobox", { name: "事件类型筛选" });
-  const chooseKind = async (label: string) => {
+  const chooseKind = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
     await user.click(kind());
-    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: label }));
+    const menu = screen.getByRole("listbox");
+    // Check the chosen option's accessibility without recalculating names/styles for every sibling.
+    const labelText = within(menu).getByText(label, { exact: true });
+    const option = labelText.closest('[role="option"]');
+    expect(option).toHaveAccessibleName(label);
+    expect(isInaccessible(option!)).toBe(false);
+    await user.click(labelText);
   };
-  await user.click(screen.getByRole("button", { name: /^更多筛选/ }));
-  await chooseKind("参数更新");
-  expect(kind()).toHaveTextContent("参数更新");
-  expect(onQueryChange).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: /^更多筛选/ }));
-  await user.click(screen.getByRole("button", { name: /^更多筛选/ }));
-  expect(kind()).toHaveTextContent("全部类型");
 
-  await chooseKind("参数更新");
-  await user.click(screen.getByRole("button", { name: "应用筛选" }));
-  expect(onQueryChange).toHaveBeenCalledTimes(1);
-  expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "parameter-update", eventId: undefined }));
-  rerender(workspace({ ...base, kind: "parameter-update" }));
-  onQueryChange.mockClear();
-  await chooseKind("删除参数");
-  expect(onQueryChange).not.toHaveBeenCalled();
-  rerender(workspace({ ...base, kind: "user-role-change" }));
-  expect(kind()).toHaveTextContent("角色变更");
-  await chooseKind("全部类型");
-  expect(onQueryChange).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "应用筛选" }));
-  expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: undefined }));
-  rerender(workspace(base));
-  rerender(workspace({ ...base, kind: "user-role-change" }));
-  expect(kind()).toHaveTextContent("角色变更");
-  onQueryChange.mockClear();
-  await user.click(screen.getByRole("button", { name: "清除筛选条件" }));
-  expect(onQueryChange).toHaveBeenCalledTimes(1);
-  expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: undefined }));
-  rerender(workspace(base));
-  expect(kind()).toHaveTextContent("全部类型");
-  rerender(workspace({ ...base, kind: "future-kind" }));
-  expect(kind()).toHaveTextContent("全部类型");
-  await user.click(screen.getByRole("button", { name: "应用筛选" }));
-  expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: undefined }));
+  it("keeps selection as a draft, discards it on close, and submits it only on apply", async () => {
+    const user = userEvent.setup();
+    const onQueryChange = vi.fn();
+    render(workspace(base, onQueryChange));
+    await user.click(screen.getByRole("button", { name: /^更多筛选/ }));
+    await chooseKind(user, "参数更新");
+    expect(kind()).toHaveTextContent("参数更新");
+    expect(onQueryChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /^更多筛选/ }));
+    await user.click(screen.getByRole("button", { name: /^更多筛选/ }));
+    expect(kind()).toHaveTextContent("全部类型");
+
+    await chooseKind(user, "参数更新");
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
+    expect(onQueryChange).toHaveBeenCalledTimes(1);
+    expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "parameter-update", eventId: undefined }));
+  });
+
+  it("resets drafts on URL changes and restores empty, clear and unknown-kind values", async () => {
+    const user = userEvent.setup();
+    const onQueryChange = vi.fn();
+    const { rerender } = render(workspace({ ...base, kind: "parameter-update" }, onQueryChange));
+    await user.click(screen.getByRole("button", { name: /^更多筛选/ }));
+    await chooseKind(user, "删除参数");
+    expect(onQueryChange).not.toHaveBeenCalled();
+    rerender(workspace({ ...base, kind: "user-role-change" }, onQueryChange));
+    expect(kind()).toHaveTextContent("角色变更");
+    await chooseKind(user, "全部类型");
+    expect(onQueryChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
+    expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: undefined }));
+    rerender(workspace(base, onQueryChange));
+    rerender(workspace({ ...base, kind: "user-role-change" }, onQueryChange));
+    expect(kind()).toHaveTextContent("角色变更");
+    onQueryChange.mockClear();
+    await user.click(screen.getByRole("button", { name: "清除筛选条件" }));
+    expect(onQueryChange).toHaveBeenCalledTimes(1);
+    expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: undefined }));
+    rerender(workspace(base, onQueryChange));
+    expect(kind()).toHaveTextContent("全部类型");
+    rerender(workspace({ ...base, kind: "future-kind" }, onQueryChange));
+    expect(kind()).toHaveTextContent("全部类型");
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
+    expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: undefined }));
+  });
 });
 
 it("keeps the severity menu available while server filters reload so another level can be selected", async () => {
