@@ -180,7 +180,7 @@ describe("equivalent fixed L1 scheduling", () => {
       const outputs = workflow.jobs[jobId].outputs;
       if (mutation === "missing") delete outputs[output];
       if (mutation === "wrong") {
-        const wrongStep = stepId === "bridge" ? "scripts" : stepId === "server" ? "frontend" : "server";
+        const wrongStep = stepId === "bridge" ? "scripts" : "server";
         outputs[output] = "${{ steps." + wrongStep + ".outputs.shadow }}";
       }
       if (mutation === "hardcoded") outputs[output] = "shadow";
