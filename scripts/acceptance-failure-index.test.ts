@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const roots: string[] = [];
 const sha = "1".repeat(40);
 const source = "e2e/acceptance/example.spec.ts";
+const publisherPath = path.resolve("scripts/acceptance-failure-index.py");
 const policy = {
   acceptedBase: "2".repeat(40),
   identity: { runId: "123", attempt: "1", shard: "2", executedSha: sha, tree: "3".repeat(40) },
@@ -73,9 +74,70 @@ function project(value: Awaited<ReturnType<typeof fixture>>) {
   return { record: JSON.parse(text), text, exitCode, stderr };
 }
 
+function inspect(value: Awaited<ReturnType<typeof fixture>>, checkout = sha, attempt = "1", base = policy.acceptedBase) {
+  let exitCode = 0;
+  let text = "";
+  try {
+    text = execFileSync("/usr/bin/python3", ["-I", publisherPath, "--inspect", value.output, "123", attempt, "2", checkout, base],
+      { cwd: value.root, env: { PATH: process.env.PATH }, timeout: 5_000, encoding: "utf8", stdio: "pipe" });
+  } catch (error) {
+    const failure = error as { status: number; stdout: Buffer };
+    exitCode = failure.status;
+    text = failure.stdout.toString();
+  }
+  return { record: JSON.parse(text || "null"), text, exitCode };
+}
+
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
 
 describe("accepted-base compact acceptance failure index", () => {
+  it("inspects only bounded fields for an exact expected run, attempt, shard and checkout", async () => {
+    const value = await fixture();
+    project(value);
+    const { record: inspected, text: output } = inspect(value);
+    expect(inspected?.status).toBe("generated");
+    expect(inspected?.identityVerified).toBe(true);
+    expect(inspected?.classification).toBe("unknown");
+    expect(inspected?.failures[0].category).toBe("TEST_FAILED");
+    expect(inspected?.failures[0].source).toBe("unverified");
+    expect(output).not.toContain("SYNTHETIC_SECRET");
+  });
+  it.each(["corrupt", "oversize", "wrong-head", "wrong-attempt", "wrong-base", "bad-tree", "hostile-path", "unknown-category", "missing"])("keeps %s navigation unavailable without displaying downloaded strings", async (mutation) => {
+    const value = await fixture();
+    const projected = project(value).record;
+    if (mutation === "corrupt") writeFileSync(value.output, "{SYNTHETIC_SECRET");
+    if (mutation === "oversize") writeFileSync(value.output, "SYNTHETIC_SECRET".repeat(20000));
+    if (mutation === "hostile-path") {
+      projected.failures[0].source.file = "../../SYNTHETIC_SECRET";
+      writeFileSync(value.output, JSON.stringify(projected));
+    }
+    if (mutation === "unknown-category") {
+      projected.failures[0].category = "SYNTHETIC_SECRET";
+      writeFileSync(value.output, JSON.stringify(projected));
+    }
+    if (mutation === "wrong-base") {
+      projected.acceptedBase = "9".repeat(40);
+      writeFileSync(value.output, JSON.stringify(projected));
+    }
+    if (mutation === "bad-tree") {
+      projected.identity.tree = "SYNTHETIC_SECRET";
+      writeFileSync(value.output, JSON.stringify(projected));
+    }
+    if (mutation === "missing") rmSync(value.output);
+    const { record, text, exitCode } = inspect(value, mutation === "wrong-head" ? "9".repeat(40) : sha,
+      mutation === "wrong-attempt" ? "2" : "1");
+    expect(exitCode).toBe(1);
+    expect(record).toMatchObject({ status: "unavailable", identityVerified: false, code: "INDEX_UNAVAILABLE", failures: [] });
+    expect(text).not.toContain("SYNTHETIC_SECRET");
+  });
+  it("shows a missing accepted publisher honestly without treating artifact readability as acceptance", async () => {
+    const value = await fixture();
+    writeFileSync(value.output, JSON.stringify({ schemaVersion: 1, scope: "accepted-base-failure-index",
+      status: "unavailable", code: "BASE_PUBLISHER_UNAVAILABLE", failures: [], title: "SYNTHETIC_SECRET" }));
+    const { record, text } = inspect(value);
+    expect(record).toMatchObject({ status: "unavailable", identityVerified: false, classification: "unknown", failures: [] });
+    expect(text).not.toContain("SYNTHETIC_SECRET");
+  });
   it("projects a known failed case from sealed evidence without copying titles or exception text", async () => {
     const value = await fixture();
     const { record, text, exitCode } = project(value);
@@ -164,6 +226,8 @@ describe("accepted-base compact acceptance failure index", () => {
     expect(published.exitCode).toBe(0);
     expect(published.record.status).toBe("generated");
     expect(published.record.failures[0].source).toEqual({ file: source, line: 1, column: 1 });
+    expect(inspect({ ...value, output: published.outputs.path }, base, "1", base).record.failures[0].source)
+      .toEqual({ file: source, line: 1, column: 1 });
     const unsafeArchive = workflowStep("acceptance_index", value.root, { ...publishEnv, EFF_ARCHIVE: "failure" });
     expect(unsafeArchive.record.code).toBe("SAFE_ARCHIVE_UNAVAILABLE");
     chmodSync(stagedPolicy, 0o600);

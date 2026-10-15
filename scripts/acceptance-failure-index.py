@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 import re
 import signal
 import stat
+import subprocess
 import sys
 import zipfile
 
@@ -163,5 +164,76 @@ def main():
     return code
 
 
+def inspect_index(args):
+    """Display a small validated projection; never print downloaded JSON verbatim."""
+    output = {"scope": "diagnostic-only", "status": "unavailable", "code": "INDEX_UNAVAILABLE",
+              "identityVerified": False, "classification": "unknown", "failures": []}
+    try:
+        require(len(args) == 6)
+        filename, run, attempt, shard, checkout, base = args
+        require(re.fullmatch(r"[1-9][0-9]{0,19}", run) is not None
+                and re.fullmatch(r"[1-9][0-9]{0,9}", attempt) is not None
+                and shard in ("1", "2", "3", "4") and re.fullmatch(r"[0-9a-f]{40}", checkout) is not None
+                and re.fullmatch(r"[0-9a-f]{40}", base) is not None)
+        with os.fdopen(os.open(filename, os.O_RDONLY | os.O_NOFOLLOW), "rb") as stream:
+            require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode))
+            data = stream.read(LIMIT + 1)
+        require(len(data) <= LIMIT)
+        record = json.loads(data)
+        require(record["schemaVersion"] == 1 and record["scope"] == "accepted-base-failure-index")
+        if record.get("status") in ("unavailable", "rejected"):
+            require(record.get("code") in ("BASE_PUBLISHER_UNAVAILABLE", "SAFE_ARCHIVE_UNAVAILABLE", "REPORT_UNAVAILABLE", "INDEX_REJECTED"))
+            output["code"] = record["code"]
+            return output, 0
+        identity = record["identity"]
+        require(set(identity) == {"runId", "attempt", "shard", "executedSha", "tree"}
+                and re.fullmatch(r"[0-9a-f]{40}", identity["tree"]) is not None)
+        require(all(identity.get(key) == value for key, value in
+                    (("runId", run), ("attempt", attempt), ("shard", shard), ("executedSha", checkout))))
+        require(record["status"] == "generated" and record["code"] == "INDEX_GENERATED"
+                and record["acceptedBase"] == base
+                and re.fullmatch(r"[0-9a-f]{64}", record["archiveSha256"]) is not None
+                and isinstance(record["failures"], list) and len(record["failures"]) <= 500)
+        # Missing Git objects leave locators unknown. No fetch, checkout or candidate execution.
+        def inventory(revision):
+            try:
+                value = subprocess.run(["/usr/bin/git", "--no-replace-objects", "ls-tree", "-rz", revision,
+                                        "--", "e2e/acceptance", "e2e/quality"], check=True,
+                                       capture_output=True, timeout=2).stdout
+                require(len(value) <= 1048576)
+                return {row.split(b"\t", 1)[1].decode("ascii"): row.split(b"\t", 1)[0].split()[2]
+                        for row in value.split(b"\0") if row and row.startswith(b"100644 blob ")}
+            except Exception:
+                return {}
+        accepted, executed = inventory(base), inventory(checkout)
+        rows = []
+        def integer(value, maximum):
+            require(type(value) is int and 0 <= value <= maximum)
+            return value
+        for failure in record["failures"]:
+            require(re.fullmatch(r"[0-9a-f]{64}", failure["caseId"]) is not None
+                    and failure["phase"] in PROJECTS and failure["category"] in CATEGORIES.values())
+            location = failure["source"]
+            name = location["file"]
+            require(re.fullmatch(r"e2e/(?:acceptance|quality)/[A-Za-z0-9_./-]+\.spec\.ts", name) is not None
+                    and ".." not in name.split("/"))
+            line, column = integer(location["line"], 1000000), integer(location["column"], 1000000)
+            count = integer(failure["count"], 10000)
+            require(line > 0 and column > 0 and count > 0)
+            rows.append({"caseId": failure["caseId"], "phase": failure["phase"], "category": failure["category"],
+                         "count": count, "report": {"entry": integer(failure["report"]["entry"], 9999)},
+                         "source": {"file": name, "line": line, "column": column}
+                         if name in accepted and accepted[name] == executed.get(name) else "unverified"})
+        output.update(status="generated", code="INDEX_GENERATED", identityVerified=True, failures=rows,
+                      archiveSha256=record["archiveSha256"], unmappedFailures=integer(record["unmappedFailures"], 10000))
+        return output, 0
+    except Exception:
+        return output, 1
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--inspect"]:
+        inspected, exit_code = inspect_index(sys.argv[2:])
+        print(json.dumps(inspected))
+        sys.exit(exit_code)
     sys.exit(main())

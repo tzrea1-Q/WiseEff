@@ -83,6 +83,24 @@ L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` �
 
 修改这些通道时运行 `npm run test:scripts -- scripts/acceptance-failure-index.test.ts scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` 和 `npm run acceptance:ci`。测试提取并执行实际工作流内的隔离发布器，合成失败只证明诊断行为，不是完整验收通过。新增有界步骤均计入 L2 平台预算（下界 154 分钟、作业上限仍为 155 分钟），Gate0 owner 及原安全扫描/上传预算不变。此调度包络不是实测耗时：专项累计中位数/P95 和 runner 时间预算应沿正常可比运行测量，不能凭单次夹具宣称达标，也不能缩减覆盖以满足预算。
 
+### 紧凑失败索引导航
+
+候选失败时打开现有诊断上传终态的作业摘要：紧凑产物链接在前，完整安全归档可用时链接在后。从该次摘要填写 `run`、`attempt`、`shard`、`checkout` 和 `base`；`checkout` 是实际观测的 checkout SHA，可能与 PR head 不同；`base` 是工作流接受基线的 SHA。作为当前证据前，确认运行仍属于当前 PR head：
+
+```sh
+gh run view "$run" --attempt "$attempt" --json headSha,status,conclusion
+gh pr view "$pr" --json headRefOid
+index_dir=$(mktemp -d)
+gh run download "$run" --name "wiseeff-failure-index-${run}-${attempt}-acceptance-local-non-hdc-shard-${shard}" --dir "$index_dir"
+python3 -I scripts/acceptance-failure-index.py --inspect "$index_dir/index.json" "$run" "$attempt" "$shard" "$checkout" "$base"
+```
+
+检查器仅读取该有界文件并显示受控字段。损坏、缺失或旧身份保持 unavailable；能够读取拒绝/不可用产物不代表已诊断或已通过。只有本地可验证接受基线与实际 checkout 的 Git blob 相等时才显示源码定位；缺少对象保持 `unverified`，不会 fetch 或改变 checkout。已生成索引提供类别和经校验的报告条目序号，调查前根因分类仍是未知。需要深入证据时，使用同一摘要中的精确完整归档链接，核对 ZIP SHA-256 与检查结果一致，再打开相应报告条目及截图/trace 引用。安全归档拒绝或缺失时不回退原始日志。首先只下载精确的紧凑产物，读取校验后的投影，不原样展示下载的 JSON。
+
+演示两分钟目标时，记录产物发布时间、成功导航时间及 run/attempt/shard。首次基线没有接受发布器时只能证明 unavailable 导航；实际受信索引的正向耗时和累计 CI 预算仍待正常运行证据。此路径不增加 CI 步骤、依赖安装或浏览器运行。
+
+### L2 浏览器分片
+
 L2 浏览器验收使用 `--shard=i/4` 分为四个独立 Gate0 作业，各自拥有 PostgreSQL 服务及运行时。视觉验收仅在分片 1 执行，浏览器预热依赖在每个分片执行。执行前由原生 Playwright 收集确定非空测试清单及按文件划分的工作流/操作证据义务，结果清单必须一致；整套静态覆盖检查及所有运行时归属证据检查继续保留。每个必须自动验收的操作只能有一个浏览器 spec 所有者。分片不发布最新完整证据指针。稳定的 `Acceptance local non-HDC` 汇总门要求矩阵全部成功，或由成功的 detect 有意跳过矩阵，之后 `Merge bar` 才能通过。不带参数的 `npm run acceptance:gate0` 仍在本地执行两个完整阶段。
 
 分片执行前，不分片的原生测试收集必须仍包含所有必需操作的浏览器所有者。分片参数仅用于具备有效归属描述符及归属输出路径的本地非 HDC 运行；独立、target 或 full-pilot 片段不能覆盖完整运行证据。收集、清单及其他阶段命令失败均进入 Gate0 的结构化失败清单，即使原生报告中没有失败测试结果。

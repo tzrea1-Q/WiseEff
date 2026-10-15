@@ -51,4 +51,16 @@ After a rebase, retest affected behavior and required identifiers/artifacts. Use
 
 ## Completion
 
+In the existing PR description, keep three evidence-derived rows separate. Include the source head/tree, environment and actual commands/counts next to regression evidence; selector output alone has `testExecution: not-run`.
+
+| State | Evidence that completes it | Missing or contrary evidence |
+| --- | --- | --- |
+| Effect approved | The human's explicit approval of the applicable rendered behavior, with its scope/version. Mark not applicable only when there is no visible change. | Pending approval stays pending; approval of an earlier UI does not approve a later change. |
+| Affected regression complete | Every selected required check actually passed for the current source/environment; API/browser/PostgreSQL evidence retains its own scope. | List failed, unrun, cancelled or unavailable checks. A partial pass is partial, and stale evidence is historical. |
+| Merge ready | The current pushed candidate's real `Merge bar`, all task-required checks/artifacts, and applicable independent review are complete; required effect approval is present. | Pending/failed/skipped-required checks, an older head, missing review or approval prevent readiness. |
+
+For example, approved UI with a failed regression is **approved / failed / not ready**; passed affected checks with CI still running is **approval as observed / complete / pending**; a selected command with no execution is **approval as observed / not run / not ready**. These are PR reporting states, not a new approval service or acceptance granted by a diagnostic artifact.
+
+When CI fails, use the exact run/attempt/shard compact link in the existing diagnostic-settlement summary, then follow the [bounded diagnostic navigation](../developer/verification-matrix.md#compact-failure-index-navigation). Record failure classification as **product regression**, **test/harness**, **environment/infrastructure**, **intended baseline change**, or **unknown**, with supporting evidence. A locator or category such as `TEST_FAILED` does not establish root cause. Shared-root-cause fixes include sibling callers before the next stable candidate. Visual replacements still require explicit approval for every image and normal Linux comparison.
+
 Report changed behavior, actual checks and failures/skips, missing external evidence, and actual PR/merge status. No release, target-host, or production claim follows automatically from local or Hosted results.

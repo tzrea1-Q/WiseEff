@@ -81,6 +81,24 @@ The compact index is limited to 256 KiB per shard. Staging and projection share 
 
 For changes to these channels, run `npm run test:scripts -- scripts/acceptance-failure-index.test.ts scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` and `npm run acceptance:ci`. These extract and exercise the real isolated workflow publisher; synthetic failures are diagnostic checks, not full acceptance. All bounded diagnostic steps count toward the L2 platform budget (154-minute floor, unchanged 155-minute job ceiling); the Gate0 owner and existing scan/upload allowances are unchanged. This scheduling envelope is not observed runtime: measure the initiative's cumulative median/P95 and runner-time budgets using comparable natural runs; do not claim them from one fixture or shorten coverage to fit them.
 
+### Compact failure index navigation
+
+For a failed candidate, open the existing diagnostic-settlement job summary: the compact artifact is linked first, followed by the full safe archive when available. Set `run`, `attempt`, `shard`, `checkout` and `base` from that exact summary; `checkout` is the observed checkout SHA, which can differ from the PR head. `base` is the workflow's accepted-base SHA. Confirm the run still belongs to the current PR head before treating it as current evidence:
+
+```sh
+gh run view "$run" --attempt "$attempt" --json headSha,status,conclusion
+gh pr view "$pr" --json headRefOid
+index_dir=$(mktemp -d)
+gh run download "$run" --name "wiseeff-failure-index-${run}-${attempt}-acceptance-local-non-hdc-shard-${shard}" --dir "$index_dir"
+python3 -I scripts/acceptance-failure-index.py --inspect "$index_dir/index.json" "$run" "$attempt" "$shard" "$checkout" "$base"
+```
+
+The inspector reads only that bounded file and prints controlled fields. Corrupt/missing/stale identities return unavailable; readable rejection/unavailable artifacts are not diagnoses or passes. Source locators appear only when local accepted/executed Git blobs can be verified equal; missing objects remain `unverified` without fetching or changing the checkout. A generated index reports categories and validated report-entry ordinals; root-cause classification remains unknown until investigated. If deeper evidence is needed, use the exact full-archive link in the same summary, match its ZIP SHA-256 to the inspected index, then open the corresponding report entry and its screenshot/trace references. A refused/missing safe archive has no raw-log fallback. Download only the exact compact artifact first and inspect its validated projection rather than displaying downloaded JSON verbatim.
+
+Record artifact publication and successful navigation timestamps plus run/attempt/shard when demonstrating the two-minute target. The first base without the accepted publisher only demonstrates unavailable navigation; positive trusted-index latency and cumulative CI budgets remain pending natural evidence. This path adds no CI step, dependency installation or browser run.
+
+### L2 browser partitions
+
 L2 browser acceptance runs in four independent Gate0 jobs with `--shard=i/4`; each owns its PostgreSQL service and runtime. Visual acceptance runs only in shard 1, and the browser warmup dependency runs in every shard. Before execution, native Playwright collection defines each shard's nonempty test inventory and file-scoped workflow/operation obligations; report inventory must match, whole-suite static coverage and all owned evidence checks remain required. Every required automated operation must have exactly one browser-spec owner. Shard runs never publish the latest-full-evidence pointer. The stable `Acceptance local non-HDC` aggregate requires matrix success, or a matrix skipped by successful detection, before `Merge bar` can pass. `npm run acceptance:gate0` without arguments still runs both complete phases locally.
 
 The unsharded native collection must still include every required operation's browser owner before any shard executes. Shard arguments are restricted to local non-HDC runs with a validated owned descriptor and owned output paths; standalone/target/full-pilot fragments cannot overwrite full-run evidence. Collection, inventory, and other phase-command failures are included in Gate0's structured failure inventory even when the native report contains no failing test result.

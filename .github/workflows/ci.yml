@@ -1109,10 +1109,15 @@ jobs:
           except Exception:
               record = {"schemaVersion": 1, "scope": "accepted-base-failure-index", "status": "rejected",
                         "code": "INDEX_REJECTED", "failures": []}
+          if record.get("code") not in ("INDEX_GENERATED", "REPORT_UNAVAILABLE", "BASE_PUBLISHER_UNAVAILABLE", "SAFE_ARCHIVE_UNAVAILABLE", "INDEX_REJECTED"):
+              record = {"schemaVersion": 1, "scope": "accepted-base-failure-index", "status": "rejected",
+                        "code": "INDEX_REJECTED", "failures": []}
+              exit_code = 1
           destination.write_text(json.dumps(record) + "\n")
           destination.chmod(0o400)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("path=" + str(destination) + "\n")
+              output.write("code=" + record["code"] + "\n")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
               output.write("Compact acceptance failure index: " + record["code"] + ". Diagnostic data; not acceptance.\n")
           sys.exit(exit_code)
@@ -1261,19 +1266,62 @@ jobs:
           retention-days: 7
 
       - name: Settle diagnostic upload outcome
+        id: acceptance_diagnostic_settle
         if: always()
         timeout-minutes: 1
         shell: /usr/bin/python3 -I {0}
         env:
           EFF_UPLOAD: ${{ steps.acceptance_diagnostic_upload.outcome }}
+          EFF_INDEX_UPLOAD: ${{ steps.acceptance_index_upload.outcome }}
+          EFF_INDEX_CODE: ${{ steps.acceptance_index.outputs.code }}
+          EFF_INDEX_URL: ${{ steps.acceptance_index_upload.outputs.artifact-url }}
+          EFF_ARCHIVE_UPLOAD: ${{ steps.acceptance_evidence_upload.outcome }}
+          EFF_ARCHIVE_URL: ${{ steps.acceptance_evidence_upload.outputs.artifact-url }}
+          EFF_SERVER: ${{ github.server_url }}
+          EFF_REPOSITORY: ${{ github.repository }}
+          EFF_RUN_ID: ${{ github.run_id }}
+          EFF_ATTEMPT: ${{ github.run_attempt }}
+          EFF_SHARD: ${{ matrix.shard }}
+          EFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          EFF_EXECUTED_SHA: ${{ steps.acceptance_execution_identity.outputs.sha }}
         run: |
-          import os, sys
+          import os, re, sys
           try:
               status = os.environ.get("EFF_UPLOAD", "")
               if status not in ("success", "failure", "cancelled", "skipped"):
                   status = "unknown"
               with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
                   output.write("Minimal diagnostic upload: " + status + "\n")
+                  try:
+                      def known(key, pattern):
+                          value = os.environ.get(key, "")
+                          if not re.fullmatch(pattern, value):
+                              raise ValueError()
+                          return value
+                      run = known("EFF_RUN_ID", r"[1-9][0-9]{0,19}")
+                      attempt = known("EFF_ATTEMPT", r"[1-9][0-9]{0,9}")
+                      shard = known("EFF_SHARD", r"[1-4]")
+                      server = known("EFF_SERVER", r"https://[A-Za-z0-9.-]+")
+                      repository = known("EFF_REPOSITORY", r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+                      def artifact(key, outcome):
+                          value = os.environ.get(key, "")
+                          prefix = server + "/" + repository + "/actions/runs/" + run + "/artifacts/"
+                          return value if os.environ.get(outcome) == "success" and value.startswith(prefix) and re.fullmatch(r"[1-9][0-9]{0,19}", value[len(prefix):]) else None
+                      code = os.environ.get("EFF_INDEX_CODE", "")
+                      if code not in ("INDEX_GENERATED", "REPORT_UNAVAILABLE", "BASE_PUBLISHER_UNAVAILABLE", "SAFE_ARCHIVE_UNAVAILABLE", "INDEX_REJECTED"):
+                          code = "INDEX_UNAVAILABLE"
+                      output.write("\nDiagnostic navigation — run " + run + " / attempt " + attempt + " / shard " + shard + ".\n\n")
+                      for key, label in (("EFF_HEAD_SHA", "PR/push head"), ("EFF_EXECUTED_SHA", "Observed checkout"), ("EFF_BASE_SHA", "Accepted base")):
+                          value = os.environ.get(key, "")
+                          output.write(label + ": `" + (value if re.fullmatch(r"[0-9a-f]{40}", value) else "unknown") + "`\n\n")
+                      for key, label, outcome in (("EFF_INDEX_URL", "Compact failure index (" + code + ")", "EFF_INDEX_UPLOAD"),
+                                                  ("EFF_ARCHIVE_URL", "Full sanitized archive", "EFF_ARCHIVE_UPLOAD")):
+                          url = artifact(key, outcome)
+                          output.write(("[" + label + "](" + url + ")" if url else label + ": unavailable") + "\n\n")
+                      output.write("Diagnostic data only; failure classification stays unknown until investigated. Current head/checks and human approval remain separate.\n")
+                  except Exception:
+                      output.write("Compact index navigation unavailable: missing or invalid workflow context. No raw-log fallback.\n")
               if status != "success":
                   sys.exit(1)
           except Exception:
