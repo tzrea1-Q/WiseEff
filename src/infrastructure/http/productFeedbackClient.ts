@@ -3,12 +3,16 @@ import type {
   ProductFeedbackDraftPatchInput,
   ProductFeedbackDraftSubmitInput,
   ProductFeedbackListQuery,
+  ProductFeedbackMineQuery,
+  ProductFeedbackUpdateInput,
   ProductFeedbackRepository,
   ProductFeedbackStats,
   ProductFeedbackSubmitInput
 } from "@/application/ports/ProductFeedbackRepository";
 import type {
   ProductFeedback,
+  ProductFeedbackAssignee,
+  ProductFeedbackPriority,
   ProductFeedbackAttachment,
   ProductFeedbackAttachmentContentType,
   ProductFeedbackProgressEvent,
@@ -43,7 +47,7 @@ export type ProductFeedbackAttachmentDto = {
 export type ProductFeedbackDto = {
   id: string;
   organizationId: string;
-  submitterUserId: string | null;
+  submitterUserId?: string | null;
   submitter?: { id: string | null; name: string; username: string | null };
   pagePath: string;
   pageTitle: string;
@@ -51,7 +55,10 @@ export type ProductFeedbackDto = {
   description: string;
   status: ProductFeedbackStatus;
   resolutionCode?: ProductFeedbackResolutionCode | null;
-  adminNote: string | null;
+  adminNote?: string | null;
+  priority?: ProductFeedbackPriority;
+  assigneeUserId?: string | null;
+  assignee?: ProductFeedbackAssignee | null;
   submittedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +87,7 @@ function buildProductFeedbackPath(query?: ProductFeedbackListQuery) {
   if (query?.createdFrom) params.set("createdFrom", query.createdFrom);
   if (query?.createdTo) params.set("createdTo", query.createdTo);
   if (query?.cursor) params.set("cursor", query.cursor);
+  if (query?.limit) params.set("limit", String(query.limit));
   return appendQuery("/api/v1/product-feedback", params);
 }
 
@@ -122,7 +130,10 @@ function productFeedbackFromDto(dto: ProductFeedbackDto): ProductFeedback {
     description: dto.description,
     status: dto.status,
     resolutionCode: dto.resolutionCode ?? null,
-    adminNote: dto.adminNote,
+    adminNote: dto.adminNote ?? null,
+    priority: dto.priority ?? "normal",
+    assigneeUserId: dto.assigneeUserId ?? null,
+    assignee: dto.assignee ?? null,
     submittedAt: dto.submittedAt ?? null,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
@@ -162,17 +173,16 @@ async function submitBody(input: ProductFeedbackSubmitInput) {
   };
 }
 
-function patchBody(patch: { status?: ProductFeedbackStatus; adminNote?: string | null }) {
-  return {
-    ...(patch.status !== undefined ? { status: patch.status } : {}),
-    ...(patch.adminNote !== undefined ? { adminNote: patch.adminNote } : {})
-  };
+function patchBody(patch: ProductFeedbackUpdateInput) {
+  return patch;
 }
 
-function buildMinePath(query?: { cursor?: string; limit?: number }) {
+function buildMinePath(query?: ProductFeedbackMineQuery) {
   const params = new URLSearchParams();
   if (query?.cursor) params.set("cursor", query.cursor);
   if (query?.limit) params.set("limit", String(query.limit));
+  if (query?.q) params.set("q", query.q);
+  if (query?.status) params.set("status", query.status);
   return appendQuery("/api/v1/product-feedback/mine", params);
 }
 
@@ -251,6 +261,17 @@ export function createHttpProductFeedbackRepository(
     },
     async getStats() {
       return apiClient.get<ProductFeedbackStats>("/api/v1/product-feedback/stats");
+    },
+    async listAssignees() {
+      const response = await apiClient.get<ListEnvelope<ProductFeedbackAssignee>>("/api/v1/product-feedback/assignees");
+      return response.items;
+    },
+    async replyToMine(id, input) {
+      const response = await apiClient.post<ItemEnvelope<ProductFeedbackDto>>(
+        `${routeMineFeedbackPath(id)}/replies`,
+        { message: input.message, reopen: input.reopen, attachments: await attachmentsBody(input.files) }
+      );
+      return productFeedbackFromDto(response.item);
     },
     async getAttachmentObjectUrl(feedbackId, attachmentId) {
       const response = await apiClient.raw(routeAttachmentContentPath(feedbackId, attachmentId), {

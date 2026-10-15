@@ -76,7 +76,7 @@ describe("canonical JSON member removal review", () => {
       projectId="project-1" repository={repo} currentUserId={currentUserId} canReview
       detailOnly initialRequestId={pending.id} onSelectRequest={onSelectRequest} onRequestsChanged={onRequestsChanged} />
     </StrictMode>);
-    fireEvent.click(await screen.findByRole("button", { name: decision === "withdraw" ? "撤回成员删除" : "驳回成员删除" }));
+    await userEvent.click(await screen.findByRole("button", { name: decision === "withdraw" ? "撤回成员删除" : "驳回成员删除" }));
     if (decision === "reject") {
       fireEvent.change(screen.getByLabelText("驳回原因"), { target: { value: "保留此成员" } });
       fireEvent.click(screen.getByRole("button", { name: "确认驳回" }));

@@ -219,7 +219,7 @@ export async function stableMasks(page: Page, routePath = ""): Promise<Locator[]
   }
 
   if (routePath === "/feedback-admin") {
-    masks.push(page.getByRole("table", { name: "产品反馈记录" }).locator('td[data-label="创建时间"]'));
+    masks.push(page.getByRole("table", { name: "产品反馈记录" }).locator('td[data-label="最近更新"]'));
   }
 
   if (routePath === "/parameter-admin") {

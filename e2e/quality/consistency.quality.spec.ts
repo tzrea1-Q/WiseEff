@@ -213,7 +213,7 @@ for (const route of consistencyReadOnlyRoutes) {
         }
         if (routePath === "/feedback-admin") {
           const tops = await page.locator('main [role="combobox"], main .feedback-admin-search').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
-          expect(tops).toHaveLength(3);
+          expect(tops).toHaveLength(4);
           expect(Math.max(...tops) - Math.min(...tops), "feedback filters must share one toolbar row on desktop").toBeLessThanOrEqual(2);
         }
         if (routePath === "/parameters") {
@@ -348,7 +348,7 @@ for (const route of consistencyReadOnlyRoutes) {
           }
           requirePrimaryActionColors(measurements, route.path);
           if (route.required.includes("adminLists")) {
-            const needsOverflow = routePath !== "/audit" && (!collectionPaths.includes(routePath)
+            const needsOverflow = !["/audit", "/feedback-admin"].includes(routePath) && (!collectionPaths.includes(routePath)
               || (routePath === "/knowledge-admin" && new URL(page.url()).searchParams.get("tab") !== "index"));
             requireAdminListGeometry(measurements.adminLists, route.path, needsOverflow);
             if (routePath === "/audit") {
@@ -359,6 +359,12 @@ for (const route of consistencyReadOnlyRoutes) {
               for (const actionCell of await page.locator('td[data-label="操作"]').all()) {
                 await expect(actionCell.getByRole("button", { name: "查看", exact: true })).toHaveCount(1);
               }
+            }
+            if (routePath === "/feedback-admin") {
+              for (const list of measurements.adminLists) for (const row of list.rows) {
+                expect(row.actions).toEqual([expect.objectContaining({ overflow: false, destructive: false, height: 28 })]);
+              }
+              await expect(page.getByRole("button", { name: "刷新", exact: true })).toHaveAttribute("data-variant", "outline");
             }
             if (collectionPaths.includes(routePath)) {
               expect(measurements.adminLists).toHaveLength(1);

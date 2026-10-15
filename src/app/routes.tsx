@@ -45,6 +45,7 @@ import { PlatformConsolePage } from "@/PlatformConsolePage";
 import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
+import { FeedbackCenterPage } from "@/features/product-feedback/FeedbackCenterPage";
 import { KnowledgeAdminPage } from "@/features/knowledge/KnowledgeAdminPage";
 import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { parseDtsReloadHandoffQuery } from "@/domain/dtsReload/handoff";
@@ -83,6 +84,7 @@ export type PageProps = {
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string, options?: { replace?: boolean }) => void;
   search: string;
+  onSearchChange?: (search: string) => void;
   debuggingActions?: DebuggingRuntimeActions;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
@@ -135,6 +137,7 @@ export function PageRouter({
   dispatch,
   onNavigate,
   search,
+  onSearchChange,
   debuggingActions,
   logActions,
   parameterActions,
@@ -404,7 +407,9 @@ export function PageRouter({
         />
       );
     case "feedback-admin":
-      return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} /> : null;
+      return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} search={search} onSearchChange={onSearchChange} /> : null;
+    case "feedback":
+      return productFeedbackRepository ? <FeedbackCenterPage productFeedbackRepository={productFeedbackRepository} search={search} onSearchChange={onSearchChange} /> : null;
     case "knowledge":
       return knowledgeRepository && knowledgeCapability ? (
         <KnowledgePage

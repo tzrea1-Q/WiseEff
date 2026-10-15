@@ -1,4 +1,6 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import pg from "pg";
 import { describe, expect, it } from "vitest";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
@@ -49,8 +51,24 @@ describe("retained historical identity owner / PostgreSQL capability", () => {
       await db.query(`alter default privileges grant select on tables to ${capability}`);
       await expect(applyMigrations(db, migrationsDir)).rejects.toThrow("unapproved pre-existing capabilities");
       await db.query(`alter default privileges revoke select on tables from ${capability}`);
-      expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+      expect(await applyMigrations(db, migrationsDir, {
+        through: "0182_legacy_dismissed_identity_reader.sql",
+      })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
       expect((await db.query("select name, checksum from schema_migrations where name < '0182' order by name")).rows).toEqual(oldReceipts);
+      expect(await snapshot()).toEqual(before);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+      const historical = (await db.query("select name, checksum from schema_migrations order by name")).rows;
+      const files = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
+      expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));
+      const current = (await db.query<{ name: string; checksum: string }>(
+        "select name, checksum from schema_migrations order by name",
+      )).rows;
+      expect(current.map(({ name }) => name)).toEqual(files);
+      expect(current.slice(0, historical.length)).toEqual(historical);
+      for (const { name, checksum } of current) {
+        expect(checksum).toBe(createHash("sha256").update(await readFile(join(migrationsDir, name), "utf8")).digest("hex"));
+      }
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
       expect(await snapshot()).toEqual(before);
       const owner = (await db.query<{ owner: string; prosecdef: boolean; provolatile: string; proconfig: string[]; public_execute: boolean }>(`
         select pg_catalog.pg_get_userbyid(p.proowner) as owner, p.prosecdef, p.provolatile, p.proconfig,
@@ -110,6 +128,7 @@ describe("retained historical identity owner / PostgreSQL capability", () => {
       expect(upgradedFingerprint).toBe(S2_SCH_LIVE_FINGERPRINT);
       await withTempDatabase({ prefix: "retainedfresh", migrate: true }, async ({ db: fresh, connectionString: freshUrl }) => {
         expect(await readCanonicalSchemaFingerprint(freshUrl)).toBe(upgradedFingerprint);
+        expect((await fresh.query<{ name: string }>("select name from schema_migrations order by name")).rows.map(({ name }) => name)).toEqual(files);
         process.stdout.write(`MOD_IDENTITY_SCHEMA_EVIDENCE ${JSON.stringify({ upgradedFingerprint,
           receipts: (await fresh.query("select name, checksum from schema_migrations order by name")).rows })}\n`);
       });

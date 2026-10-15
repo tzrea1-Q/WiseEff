@@ -1,5 +1,7 @@
 import type {
   ProductFeedback,
+  ProductFeedbackAssignee,
+  ProductFeedbackPriority,
   ProductFeedbackResolutionCode,
   ProductFeedbackStats,
   ProductFeedbackStatus,
@@ -45,6 +47,24 @@ export type ProductFeedbackAppendProgressInput = {
   internalMessage?: string | null;
 };
 
+export type ProductFeedbackUpdateInput = {
+  status?: ProductFeedbackStatus;
+  adminNote?: string | null;
+  resolutionCode?: ProductFeedbackResolutionCode | null;
+  publicMessage?: string | null;
+  priority?: ProductFeedbackPriority;
+  assigneeUserId?: string | null;
+};
+
+export type ProductFeedbackMineQuery = {
+  cursor?: string;
+  limit?: number;
+  q?: string;
+  status?: "draft" | ProductFeedbackStatus;
+};
+
+export type ProductFeedbackReplyInput = { message: string; files: File[]; reopen?: boolean };
+
 export type { ProductFeedbackStats };
 
 export type ProductFeedbackListQuery = {
@@ -55,13 +75,15 @@ export type ProductFeedbackListQuery = {
   createdFrom?: string;
   createdTo?: string;
   cursor?: string;
+  limit?: number;
 };
 
 export interface ProductFeedbackRepository {
   submit(input: ProductFeedbackSubmitInput): Promise<ProductFeedback>;
   list(query?: ProductFeedbackListQuery): Promise<{ items: ProductFeedback[]; nextCursor?: string }>;
   get(id: string): Promise<ProductFeedback | null>;
-  update(id: string, patch: { status?: ProductFeedbackStatus; adminNote?: string | null }): Promise<ProductFeedback>;
+  update(id: string, patch: ProductFeedbackUpdateInput): Promise<ProductFeedback>;
+  listAssignees?(): Promise<ProductFeedbackAssignee[]>;
   appendProgress?(id: string, input: ProductFeedbackAppendProgressInput): Promise<ProductFeedback>;
   getStats?(): Promise<ProductFeedbackStats>;
   getAttachmentObjectUrl(feedbackId: string, attachmentId: string): Promise<string>;
@@ -70,7 +92,8 @@ export interface ProductFeedbackRepository {
   saveDraft?(id: string, input: ProductFeedbackDraftPatchInput): Promise<ProductFeedback>;
   deleteDraft?(id: string): Promise<{ ok: boolean }>;
   submitDraft?(id: string, input?: ProductFeedbackDraftSubmitInput): Promise<ProductFeedback>;
-  listMine?(query?: { cursor?: string; limit?: number }): Promise<{ items: ProductFeedback[]; nextCursor?: string }>;
+  listMine?(query?: ProductFeedbackMineQuery): Promise<{ items: ProductFeedback[]; nextCursor?: string }>;
+  replyToMine?(id: string, input: ProductFeedbackReplyInput): Promise<ProductFeedback>;
   getMine?(id: string): Promise<ProductFeedback | null>;
   getMineAttachmentObjectUrl?(feedbackId: string, attachmentId: string): Promise<string>;
 }

@@ -220,15 +220,24 @@ Every project, module, and parameter row uses the same behavioral `DashboardHots
 
 ## Product Feedback
 
-Internal Beta feedback is organization-scoped and separate from log-analysis feedback. Any active authenticated user can submit feedback from the sidebar `FeedbackDialog`; admin triage and attachment reads require `admin:access`.
+Internal Beta feedback is organization-scoped and separate from log-analysis feedback. Active authenticated users can submit feedback, maintain their own drafts and follow up through the feedback center. The `mine` and draft routes require ownership; admin triage, assignment choices and admin attachment reads require `admin:access`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1/product-feedback` | Create product feedback with optional image attachments. Returns `201 { item }`. |
 | `GET` | `/api/v1/product-feedback` | Admin list with optional `status`, `feedbackType`, `q`, `pagePath`, `createdFrom`, `createdTo`, `cursor`, and `limit` filters. |
 | `GET` | `/api/v1/product-feedback/:id` | Admin detail for one feedback record and ordered attachments. |
-| `PATCH` | `/api/v1/product-feedback/:id` | Admin triage update for `status` and/or `adminNote`. |
+| `PATCH` | `/api/v1/product-feedback/:id` | Save `priority` (`low`, `normal`, `high`), nullable `assigneeUserId`, or a legacy status/note update. Assignment requires an active administrator in the same organization. Status updates use the audited progress rules below. |
+| `GET` | `/api/v1/product-feedback/assignees` | Eligible organization administrators: `{ items: [{ id, name, username }] }`; username is nullable. |
+| `GET` | `/api/v1/product-feedback/stats` | Counts of all submitted records by status; drafts are excluded. |
+| `POST` | `/api/v1/product-feedback/:id/progress` | Append `publicMessage` and/or private `internalMessage` (each at most 2000 characters), with optional `toStatus` and `resolutionCode`. |
+| `GET` | `/api/v1/product-feedback/mine` | Owner-only history, including drafts. Supports `q`, `status` (including `draft`), `cursor`, and `limit`. |
+| `GET` | `/api/v1/product-feedback/mine/:id` | Owner-only public detail. Internal notes and actor IDs are excluded. |
+| `POST` | `/api/v1/product-feedback/mine/:id/replies` | Owner-only submitted feedback supplement: `{ message, attachments?, reopen? }`; returns `201 { item }`. The nonblank message is at most 2000 characters. Attachments are additive; `reopen: true` requires resolved or closed feedback. Closed feedback cannot receive a supplement without reopening. |
+| `POST` / `PATCH` / `DELETE` | `/api/v1/product-feedback/drafts`; `/drafts/:id` | Create, save or delete an owned draft. Draft creation permits partial fields; save accepts `retainedAttachmentIds` (including an empty array) and `newAttachments`. Submitted feedback is immutable through these routes. |
+| `POST` | `/api/v1/product-feedback/drafts/:id/submit` | Submit an owned draft, optionally finalizing page context, type and description. |
 | `GET` | `/api/v1/product-feedback/:id/attachments/:attachmentId/content` | Admin image content response for one attachment. |
+| `GET` | `/api/v1/product-feedback/mine/:id/attachments/:attachmentId/content` | Owner-only image content for an owned feedback or draft. |
 
 Create body:
 
@@ -248,7 +257,11 @@ Create body:
 }
 ```
 
-`feedbackType` is one of `experience`, `data`, `export_submit`, or `feature`. `status` is `open`, `in_progress`, or `closed`; the service allows `open -> in_progress -> closed` and rejects updates after `closed`. Attachments accept `image/png`, `image/jpeg`, and `image/webp`, with up to 5 images, 5 MB per image, and 15 MB total.
+`feedbackType` is one of `experience`, `data`, `export_submit`, or `feature`. The usual flow is `open -> in_progress -> resolved -> closed`; open or processing feedback can also be closed directly. Resolving or closing requires a resolution code and public explanation. Resolved or closed feedback can reopen to `in_progress` with a public reason, clearing its previous resolution. Closed records permit routing changes; progress requires reopening. Legacy note edits preserve earlier text in the private journal.
+
+Both lists return `{ items, nextCursor }`, where `nextCursor` is an opaque base64url string or null. Pass it back unchanged; timestamp precision is preserved. Limits range from 1 to 100, defaulting to 50. User progress includes `author: submitter | team`; internal-only events and actor IDs are absent. Public admin progress and status changes notify the submitter with a `/feedback?id=...` link; private-only notes do not notify.
+
+Attachments accept `image/png`, `image/jpeg`, and `image/webp`, with up to 5 images, 5 MB per image, and 15 MB total across original and supplemental images. Removing a draft attachment detaches its authorized reference; shared content-addressed image bytes remain until reference-aware garbage collection is available.
 
 ## Knowledge Base
 

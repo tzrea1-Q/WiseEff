@@ -18,6 +18,12 @@ export const progressEventKinds = [
 
 export type ProductFeedbackType = (typeof productFeedbackTypes)[number];
 export type ProductFeedbackStatus = (typeof productFeedbackStatuses)[number];
+export const productFeedbackPriorities = ["high", "normal", "low"] as const;
+export type ProductFeedbackPriority = (typeof productFeedbackPriorities)[number];
+export const productFeedbackPriorityLabels: Record<ProductFeedbackPriority, string> = {
+  high: "高优先级", normal: "普通", low: "低优先级"
+};
+export type ProductFeedbackAssignee = { id: string; name: string; username: string | null };
 export type ProductFeedbackResolutionCode = (typeof productFeedbackResolutionCodes)[number];
 export type ProductFeedbackProgressEventKind = (typeof progressEventKinds)[number];
 export type ProductFeedbackAttachmentContentType = "image/png" | "image/jpeg" | "image/webp";
@@ -42,6 +48,7 @@ export type ProductFeedbackProgressEvent = {
   id: string;
   feedbackId: string;
   actorUserId?: string | null;
+  author?: "submitter" | "team";
   kind: ProductFeedbackProgressEventKind;
   fromStatus?: ProductFeedbackStatus | null;
   toStatus?: ProductFeedbackStatus | null;
@@ -62,6 +69,9 @@ export type ProductFeedback = {
   status: ProductFeedbackStatus;
   resolutionCode?: ProductFeedbackResolutionCode | null;
   adminNote: string | null;
+  priority?: ProductFeedbackPriority;
+  assigneeUserId?: string | null;
+  assignee?: ProductFeedbackAssignee | null;
   submittedAt?: string | null;
   createdAt: string;
   updatedAt: string;

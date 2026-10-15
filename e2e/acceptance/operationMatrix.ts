@@ -139,7 +139,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "product-feedback",
     route: "/feedback-admin",
     roles: ["Admin"],
-    action: "List product feedback, open detail, advance status from open to in_progress to closed, and save an admin note.",
+    action: "List product feedback, open detail, advance status from open through in_progress and resolved to closed, and preserve the internal note in the progress journal.",
     coverage: "automated",
     acceptanceIds: ["PFB-ADMIN-001"],
     specFiles: ["e2e/acceptance/product-feedback.acceptance.spec.ts"],
