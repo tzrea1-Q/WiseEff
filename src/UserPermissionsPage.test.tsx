@@ -11,6 +11,7 @@ import type { PlatformRoleId } from "./domain/users/types";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
 });
 
 function renderPage(search = "") {
@@ -63,6 +64,16 @@ function registrationRoleRequest(overrides: Partial<RegistrationRoleRequest> = {
 
 async function openApprovalsWorkspace() {
   await userEvent.click(screen.getByRole("tab", { name: /注册申请/ }));
+}
+
+async function openMemberDetails(name: string) {
+  await userEvent.click(screen.getByRole("button", { name: `查看 ${name} 的成员资料` }));
+  return screen.getByRole("dialog", { name: `${name} · 成员资料` });
+}
+
+async function openActivationAction(row: HTMLElement, name: "停用" | "启用") {
+  await userEvent.click(within(row).getByRole("button", { name: /：更多$/ }));
+  await userEvent.click(screen.getByRole("menuitem", { name }));
 }
 
 describe("UserPermissionsPage", () => {
@@ -119,9 +130,10 @@ describe("UserPermissionsPage", () => {
 
     expect(screen.getByRole("region", { name: "用户权限" })).toBeInTheDocument();
     expect(screen.queryByLabelText("角色权限说明")).not.toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "调整 Xu Yun 的角色" })).toHaveAttribute("data-value", "admin");
-    expect(screen.getByRole("combobox", { name: "调整 Wang Jie 的角色" })).toHaveAttribute("data-value", "hardware-committer");
-    expect(screen.getByRole("combobox", { name: "调整 Sun Mei 的角色" })).toHaveAttribute("data-value", "software-committer");
+    expect(within(screen.getByText("Xu Yun").closest("tr")!).getByText("管理员")).toBeInTheDocument();
+    expect(within(screen.getByText("Wang Jie").closest("tr")!).getByText("硬件MDE")).toBeInTheDocument();
+    expect(within(screen.getByText("Sun Mei").closest("tr")!).getByText("软件MDE")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /调整.*的角色/ })).not.toBeInTheDocument();
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
   });
 
@@ -133,55 +145,132 @@ describe("UserPermissionsPage", () => {
     expect(within(row).queryByText("xu@chargelab.cn")).not.toBeInTheDocument();
   });
 
-  it("shows role capabilities only while a role cell is hovered", async () => {
+  it("shows role capabilities in member details without exposing editing controls in the table", async () => {
     renderPage();
     const row = screen.getByText("Liu Min").closest("tr")!;
-    const roleCell = within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }).closest(
-      ".user-permissions-role-control"
-    )! as HTMLElement;
-
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-
-    await userEvent.hover(roleCell);
-
-    const tooltip = screen.getByRole("tooltip", { name: "软件开发角色权限" });
-    expect(within(tooltip).getByRole("heading", { name: "软件开发" })).toBeInTheDocument();
+    expect(within(row).queryByRole("combobox")).not.toBeInTheDocument();
+    const dialog = await openMemberDetails("Liu Min");
+    expect(within(dialog).getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveAttribute("data-value", "software-user");
     expect(
-      within(tooltip).getByText("软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。")
+      within(dialog).getByText("软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。")
     ).toBeInTheDocument();
-    expect(within(tooltip).getByText("查看参数")).toBeInTheDocument();
-    expect(within(tooltip).getByText("修改参数")).toBeInTheDocument();
-    expect(within(tooltip).getByText("使用调试平台")).toBeInTheDocument();
-    expect(within(tooltip).getByText("上传日志智能分析")).toBeInTheDocument();
-    expect(within(tooltip).queryByText("parameter:view")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "硬件开发" })).not.toBeInTheDocument();
-
-    await userEvent.unhover(roleCell);
-
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("parameter:view")).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("shows role capabilities when a role selector receives keyboard focus", async () => {
+  it("keeps the role selector and its capabilities reachable by keyboard in member details", async () => {
     renderPage();
-    const row = screen.getByText("Wang Jie").closest("tr")!;
-    const roleSelect = within(row).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
-
+    const button = screen.getByRole("button", { name: "查看 Wang Jie 的成员资料" });
+    act(() => button.focus());
+    await userEvent.keyboard("{Enter}");
+    const dialog = screen.getByRole("dialog", { name: "Wang Jie · 成员资料" });
+    const roleSelect = within(dialog).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
+    expect(roleSelect).toHaveAttribute("data-value", "hardware-committer");
     act(() => roleSelect.focus());
-
-    const tooltip = screen.getByRole("tooltip", { name: "硬件MDE角色权限" });
-    expect(within(tooltip).getByRole("heading", { name: "硬件MDE" })).toBeInTheDocument();
-    expect(within(tooltip).getByText("包含硬件开发权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
-    expect(within(tooltip).getByText("审阅参数提交")).toBeInTheDocument();
-
-    act(() => roleSelect.blur());
-
-    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
+    expect(roleSelect).toHaveFocus();
+    expect(within(dialog).getByText("包含硬件开发权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
   });
 
   it("ignores unrelated URL search params when filtering users", () => {
     renderPage("?foo=bar");
 
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
+  });
+
+  it("restores search, column filters and sorting from the URL and preserves unrelated query values", async () => {
+    window.history.replaceState(null, "", "/organization/members?q=Liu&roles=software-user&statuses=active&sort=lastActive&dir=desc&keep=1");
+    renderPage(window.location.search);
+
+    expect(screen.getByRole("searchbox", { name: "搜索用户" })).toHaveValue("Liu");
+    expect(screen.getByText("Liu Min")).toBeInTheDocument();
+    expect(screen.queryByText("Xu Yun")).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /最近活跃/ })).toHaveAttribute("aria-sort", "descending");
+    expect(within(screen.getByRole("search", { name: "用户筛选" })).getByRole("status")).toHaveTextContent("找到 1 / 9 位成员");
+
+    const roleHeader = screen.getByRole("columnheader", { name: /组织角色/ });
+    await userEvent.click(within(roleHeader).getByRole("button", { name: "筛选组织角色" }));
+    expect(within(roleHeader).getByRole("checkbox", { name: "软件开发" })).toBeChecked();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", { name: "清除筛选条件" }));
+    expect(screen.getByText("Xu Yun")).toBeInTheDocument();
+    const cleared = new URLSearchParams(window.location.search);
+    expect(cleared.has("q")).toBe(false);
+    expect(cleared.has("roles")).toBe(false);
+    expect(cleared.has("statuses")).toBe(false);
+    expect(cleared.get("keep")).toBe("1");
+    expect(cleared.get("sort")).toBe("lastActive");
+
+    act(() => {
+      window.history.pushState(null, "", "/organization/members?q=Xu&roles=admin");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.getByRole("searchbox", { name: "搜索用户" })).toHaveValue("Xu");
+    expect(screen.getByText("Xu Yun")).toBeInTheDocument();
+    expect(screen.queryByText("Liu Min")).not.toBeInTheDocument();
+  });
+
+  it("restores pagination from the URL and resets to the first page when search changes", async () => {
+    const base = createPrototypeState();
+    const state = { ...base, activeRoleId: "admin", users: Array.from({ length: 12 }, (_, index) => ({
+      ...base.users[0], id: `u-page-${index}`, name: `Member ${String(index).padStart(2, "0")}`
+    })) };
+    window.history.replaceState(null, "", "/organization/members?page=2");
+    render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search={window.location.search} />);
+
+    expect(screen.getByText(/第 2 \/ 2 页 · 共 12 条/)).toBeInTheDocument();
+    expect(screen.getByText("Member 10")).toBeInTheDocument();
+    expect(screen.queryByText("Member 00")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole("searchbox", { name: "搜索用户" }), "Member 00");
+    expect(screen.getByText("Member 00")).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).has("page")).toBe(false);
+  });
+
+  it("uses the complete organization role set to display and grant platform authority", async () => {
+    const base = createPrototypeState();
+    const state = { ...base, activeRoleId: "admin", users: base.users.map((user) => user.id === base.currentUserId ? {
+      ...user, roleId: "admin" as const, roles: [{ projectId: null, roleId: "admin" as const }, { projectId: null, roleId: "platform-admin" as const }]
+    } : user) };
+    render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+
+    const actorRow = screen.getByText("Xu Yun").closest("tr")!;
+    expect(within(actorRow).getByText(/平台超级管理员/)).toHaveAttribute("title", "管理员、平台超级管理员");
+    expect(within(actorRow).getByText("+1")).toBeInTheDocument();
+    const details = await openMemberDetails("Liu Min");
+    await userEvent.click(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" }));
+    expect(screen.getByRole("option", { name: "平台超级管理员" })).toBeInTheDocument();
+  });
+
+  it("protects a platform administrator with multiple organization roles from ordinary administrators", async () => {
+    const base = createPrototypeState();
+    const state = { ...base, activeRoleId: "admin", users: base.users.map((user) => user.id === "u-liu-min" ? {
+      ...user, roleId: "admin" as const, roles: [{ projectId: null, roleId: "admin" as const }, { projectId: null, roleId: "platform-admin" as const }]
+    } : user) };
+    render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+    const details = await openMemberDetails("Liu Min");
+    expect(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" })).toBeDisabled();
+    expect(details).toHaveTextContent("只有平台超级管理员可以调整此账号的角色。");
+    await userEvent.click(within(details).getByRole("button", { name: "关闭" }));
+    await userEvent.click(within(screen.getByText("Liu Min").closest("tr")!).getByRole("button", { name: /：更多$/ }));
+    const disableItem = screen.getByRole("menuitem", { name: /^停用/ });
+    expect(disableItem).toHaveAttribute("aria-disabled", "true");
+    expect(disableItem).toHaveTextContent("只有平台超级管理员可以停用平台超级管理员。");
+    expect(screen.getByRole("menuitem", { name: "注销 Liu Min" })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("matches any granted organization role when filtering a member with multiple roles", async () => {
+    const base = createPrototypeState();
+    const state = { ...base, activeRoleId: "admin", users: base.users.map((user) => user.id === base.currentUserId ? {
+      ...user, roleId: "admin" as const, roles: [{ projectId: null, roleId: "admin" as const }, { projectId: null, roleId: "platform-admin" as const }]
+    } : user) };
+    render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+    const header = screen.getByRole("columnheader", { name: /组织角色/ });
+    await userEvent.click(within(header).getByRole("button", { name: "筛选组织角色" }));
+    await userEvent.click(within(header).getByRole("checkbox", { name: "管理员" }));
+
+    expect(screen.getByText("Xu Yun")).toBeInTheDocument();
+    expect(within(screen.getByText("Xu Yun").closest("tr")!).getByText(/平台超级管理员/)).toBeInTheDocument();
+    expect(screen.queryByText("Liu Min")).not.toBeInTheDocument();
   });
 
   it("uses the operational permissions layout classes with the shared table shell", () => {
@@ -193,18 +282,19 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
   });
 
-  it("renders user filters as grouped toolbar fields", () => {
+  it("keeps search and result counts in the toolbar without duplicate role or status selectors", () => {
     renderPage();
 
     const filters = screen.getByRole("search", { name: "用户筛选" });
     const fields = filters.querySelectorAll(".user-permissions-filter-field");
 
     expect(filters).toHaveClass("user-permissions-filters");
-    expect(fields).toHaveLength(3);
+    expect(fields).toHaveLength(1);
     expect(fields[0]).toHaveClass("user-permissions-filter-field--search");
     expect(within(fields[0] as HTMLElement).getByText("搜索")).toHaveClass("user-permissions-filter-label");
-    expect(within(fields[1] as HTMLElement).getByText("角色")).toHaveClass("user-permissions-filter-label");
-    expect(within(fields[2] as HTMLElement).getByText("状态")).toHaveClass("user-permissions-filter-label");
+    expect(within(filters).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(within(filters).getByRole("status")).toHaveTextContent("共 9 位成员");
+    expect(within(filters).queryByRole("button", { name: "刷新成员" })).not.toBeInTheDocument();
   });
 
   it("keeps fixed user permissions copy localized", async () => {
@@ -213,6 +303,7 @@ describe("UserPermissionsPage", () => {
       createUser: vi.fn(async () => undefined),
       assignUserRole: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn(async () => [])
     });
 
@@ -220,7 +311,7 @@ describe("UserPermissionsPage", () => {
 
     expect(page).toHaveTextContent("添加用户");
     expect(page).toHaveTextContent("搜索");
-    expect(page).toHaveTextContent("账号库");
+    expect(page).toHaveTextContent("成员列表");
     expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
     expect(page).toHaveTextContent("硬件开发");
     expect(page).toHaveTextContent("软件开发");
@@ -229,7 +320,8 @@ describe("UserPermissionsPage", () => {
 
     await openApprovalsWorkspace();
 
-    expect(page).toHaveTextContent("角色申请");
+    expect(page).toHaveTextContent("注册申请");
+    expect(screen.getByRole("radiogroup", { name: "申请范围" })).toBeInTheDocument();
     expect(page).not.toHaveTextContent("Add user");
     expect(page).not.toHaveTextContent("Search users");
     expect(page).not.toHaveTextContent("All roles");
@@ -241,6 +333,7 @@ describe("UserPermissionsPage", () => {
     expect(page).not.toHaveTextContent("硬件提交人");
     expect(page).not.toHaveTextContent("软件提交人");
 
+    await userEvent.click(screen.getByRole("tab", { name: "成员列表" }));
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
 
     const dialog = screen.getByRole("dialog", { name: "添加用户" });
@@ -299,7 +392,8 @@ describe("UserPermissionsPage", () => {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(() => creation),
       assignUserRole: vi.fn(async () => undefined),
-      setUserActive: vi.fn(async () => undefined)
+      setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => undefined)
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
 
@@ -320,7 +414,14 @@ describe("UserPermissionsPage", () => {
       roleId: "hardware-user"
     });
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_USER" }));
+    const pendingDialog = screen.getByRole("dialog", { name: "添加用户" });
+    expect(within(pendingDialog).getByRole("button", { name: "创建中…" })).toBeDisabled();
+    expect(within(pendingDialog).getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(within(pendingDialog).getByLabelText("姓名")).toBeDisabled();
+    fireEvent.submit(pendingDialog.querySelector("form")!);
+    await userEvent.keyboard("{Escape}");
     expect(screen.getByRole("dialog", { name: "添加用户" })).toBeInTheDocument();
+    expect(userGovernanceActions.createUser).toHaveBeenCalledTimes(1);
     resolveCreation(createdUser);
     await waitFor(() => expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_USER",
@@ -350,6 +451,23 @@ describe("UserPermissionsPage", () => {
       title: "",
       roleId: "hardware-user"
     }));
+  });
+
+  it("discards a cancelled new-account draft including credentials and the selected role", async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Discarded User" } });
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "discarded.user" } });
+    fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "Discarded@2026" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "Discarded@2026" } });
+    await selectControlOption(screen.getByLabelText("初始角色"), "software-user");
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+    await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
+    expect(screen.getByLabelText("姓名")).toHaveValue("");
+    expect(screen.getByLabelText("用户名")).toHaveValue("");
+    expect(screen.getByLabelText("初始密码")).toHaveValue("");
+    expect(screen.getByLabelText("确认密码")).toHaveValue("");
+    expect(screen.getByLabelText("初始角色")).toHaveAttribute("data-value", "hardware-user");
   });
 
   it("keeps the add user dialog open when required account fields are empty", async () => {
@@ -417,7 +535,8 @@ describe("UserPermissionsPage", () => {
     const { dispatch } = renderPage();
     const row = screen.getByText("Liu Min").closest("tr")!;
 
-    await selectControlOption(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    const details = await openMemberDetails("Liu Min");
+    await selectControlOption(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
     // Nothing happens before confirmation.
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
     const roleDialog = screen.getByRole("dialog", { name: "确认调整用户角色" });
@@ -431,7 +550,9 @@ describe("UserPermissionsPage", () => {
       roleId: "software-committer"
     });
 
-    await userEvent.click(within(row).getByRole("button", { name: "停用" }));
+    expect(screen.getByRole("dialog", { name: "Liu Min · 成员资料" })).toBeInTheDocument();
+    await userEvent.click(within(details).getByRole("button", { name: "关闭" }));
+    await openActivationAction(row, "停用");
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "TOGGLE_USER_ACTIVE" }));
     const disableDialog = screen.getByRole("dialog", { name: "确认停用用户" });
     await userEvent.click(within(disableDialog).getByRole("button", { name: "确认停用" }));
@@ -449,27 +570,70 @@ describe("UserPermissionsPage", () => {
       listUsers: vi.fn(async () => []),
       createUser: vi.fn(async () => undefined),
       assignUserRole: vi.fn(() => roleChange),
-      setUserActive: vi.fn(async () => undefined)
+      setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => undefined)
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
     const row = screen.getByText("Liu Min").closest("tr")!;
 
-    await selectControlOption(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    const details = await openMemberDetails("Liu Min");
+    await selectControlOption(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
     await userEvent.click(
       within(screen.getByRole("dialog", { name: "确认调整用户角色" })).getByRole("button", { name: "确认调整" })
     );
     expect(screen.getByRole("dialog", { name: "确认调整用户角色" })).toBeInTheDocument();
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
     await act(async () => { finishRoleChange(); await roleChange; });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "确认调整用户角色" })).not.toBeInTheDocument();
     expect(dispatch).toHaveBeenCalledWith({ type: "ASSIGN_USER_ROLE", userId: "u-liu-min", roleId: "software-committer" });
-    await userEvent.click(within(row).getByRole("button", { name: "停用" }));
+    expect(screen.getByRole("dialog", { name: "Liu Min · 成员资料" })).toBeInTheDocument();
+    await userEvent.click(within(details).getByRole("button", { name: "关闭" }));
+    await openActivationAction(row, "停用");
     await userEvent.click(
       within(screen.getByRole("dialog", { name: "确认停用用户" })).getByRole("button", { name: "确认停用" })
     );
 
     expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer");
     expect(userGovernanceActions.setUserActive).toHaveBeenCalledWith("u-liu-min", false);
+  });
+
+  it("saves member profile edits including clearing an optional title through the governance action", async () => {
+    const base = createPrototypeState();
+    const member = base.users.find((user) => user.id === "u-liu-min")!;
+    const updated = { ...member, title: "" };
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      updateUserProfile: vi.fn(async () => updated)
+    };
+    const { dispatch } = renderPageWithActions(actions);
+    const dialog = await openMemberDetails("Liu Min");
+    expect(within(dialog).queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("职务（选填）"), { target: { value: "" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    expect(actions.updateUserProfile).toHaveBeenCalledWith("u-liu-min", { name: "Liu Min", title: "" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATE_USERS", users: base.users.map((user) => user.id === updated.id ? updated : user) });
+    expect(within(dialog).getByRole("status")).toHaveTextContent("成员资料已保存。");
+  });
+
+  it("protects unsaved member profile edits when closing the details dialog", async () => {
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      updateUserProfile: vi.fn()
+    };
+    renderPageWithActions(actions);
+    const dialog = await openMemberDetails("Liu Min");
+    fireEvent.change(within(dialog).getByLabelText("姓名"), { target: { value: "Unsaved Name" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    const confirm = screen.getByRole("dialog", { name: "放弃未保存的更改？" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "继续编辑" }));
+    expect(within(dialog).getByLabelText("姓名")).toHaveValue("Unsaved Name");
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "放弃未保存的更改？" })).getByRole("button", { name: "放弃并离开" }));
+    expect(screen.queryByRole("dialog", { name: "Liu Min · 成员资料" })).not.toBeInTheDocument();
+    expect(actions.updateUserProfile).not.toHaveBeenCalled();
   });
 
   it("confirms permanent deletion before calling the backend and removing the user", async () => {
@@ -489,7 +653,9 @@ describe("UserPermissionsPage", () => {
     expect(userGovernanceActions.deleteUser).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
     expect(dialog).toHaveTextContent("永久删除");
-    expect(dialog).toHaveTextContent("用户引用会自动变为 null");
+    expect(dialog).toHaveTextContent("业务与审计历史记录会保留");
+    expect(dialog).toHaveTextContent("历史记录中的用户关联会解除");
+    expect(dialog).toHaveTextContent("此操作不可恢复");
     await userEvent.click(within(dialog).getByRole("button", { name: "确认注销" }));
 
     expect(userGovernanceActions.deleteUser).toHaveBeenCalledWith("u-liu-min");
@@ -540,6 +706,7 @@ describe("UserPermissionsPage", () => {
       createUser: vi.fn(async () => undefined),
       assignUserRole: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => undefined),
       resetUserPassword: vi.fn(async () => undefined)
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
@@ -567,12 +734,12 @@ describe("UserPermissionsPage", () => {
       assignUserRole: vi.fn(async () => {
         throw new Error("不能移除最后一名管理员。");
       }),
-      setUserActive: vi.fn(async () => undefined)
+      setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => undefined)
     };
     const { dispatch } = renderPageWithActions(userGovernanceActions);
-    const row = screen.getByText("Liu Min").closest("tr")!;
-
-    await selectControlOption(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    const details = await openMemberDetails("Liu Min");
+    await selectControlOption(within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
     const dialog = screen.getByRole("dialog", { name: "确认调整用户角色" });
     await userEvent.click(within(dialog).getByRole("button", { name: "确认调整" }));
 
@@ -587,6 +754,7 @@ describe("UserPermissionsPage", () => {
       createUser: vi.fn(async () => undefined),
       assignUserRole: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn(async () => [
         registrationRoleRequest(),
         registrationRoleRequest({
@@ -615,7 +783,7 @@ describe("UserPermissionsPage", () => {
         decidedByUserId: "u-admin"
       }))
     };
-    renderPageWithActions(userGovernanceActions);
+    const { dispatch } = renderPageWithActions(userGovernanceActions);
 
     await openApprovalsWorkspace();
 
@@ -635,10 +803,95 @@ describe("UserPermissionsPage", () => {
     expect(within(rejectRequest).queryByRole("button", { name: "Reject Reject Candidate" })).not.toBeInTheDocument();
 
     await userEvent.click(within(approveRequest).getByRole("button", { name: "通过" }));
+    expect(userGovernanceActions.approveRegistrationRoleRequest).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "通过注册申请？" })).getByRole("button", { name: "通过并启用" }));
     expect(userGovernanceActions.approveRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-1");
+    expect(dispatch).toHaveBeenCalledWith({ type: "ASSIGN_USER_ROLE", userId: "u-candidate", roleId: "software-committer" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "TOGGLE_USER_ACTIVE", userId: "u-candidate", isActive: true });
+    await waitFor(() => expect(userGovernanceActions.listUsers).toHaveBeenCalledTimes(2));
 
     await userEvent.click(within(rejectRequest).getByRole("button", { name: "拒绝" }));
+    expect(userGovernanceActions.rejectRegistrationRoleRequest).not.toHaveBeenCalled();
+    await userEvent.click(within(screen.getByRole("dialog", { name: "拒绝注册申请？" })).getByRole("button", { name: "确认拒绝" }));
     expect(userGovernanceActions.rejectRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-2");
+  });
+
+  it("shows request loading and retry states without claiming an empty approval queue", async () => {
+    let rejectLoad!: (failure: Error) => void;
+    const loading = new Promise<RegistrationRoleRequest[]>((_resolve, reject) => { rejectLoad = reject; });
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn().mockImplementationOnce(() => loading).mockResolvedValue([])
+    };
+    renderPageWithActions(actions);
+    await openApprovalsWorkspace();
+    expect(screen.getByRole("status", { name: "正在加载注册申请" })).toBeInTheDocument();
+    expect(screen.queryByText("暂无待处理角色申请。")).not.toBeInTheDocument();
+    await act(async () => { rejectLoad(new Error("申请服务不可用")); await loading.catch(() => undefined); });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("申请服务不可用");
+    expect(screen.queryByText("暂无待处理角色申请。")).not.toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole("button", { name: "重试" }));
+    expect(await screen.findByText("暂无待处理角色申请。")).toBeInTheDocument();
+    expect(actions.listRegistrationRoleRequests).toHaveBeenNthCalledWith(2, "pending");
+  });
+
+  it("restores the approval history workspace from the URL and keeps decided requests read-only", async () => {
+    window.history.replaceState(null, "", "/organization/members?tab=approvals&requests=decided");
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async (status) => status === "decided" ? [registrationRoleRequest({
+        organizationName: "研发组织", status: "approved", decidedAt: "2026-06-12T00:01:00.000Z", decidedByUserId: "u-admin"
+      })] : [])
+    };
+    render(<UserPermissionsPage state={{ ...createPrototypeState(), activeRoleId: "admin" }} dispatch={vi.fn()}
+      onNavigate={vi.fn()} search={window.location.search} userGovernanceActions={actions} userDirectoryStatus="ready" />);
+
+    expect(screen.getByRole("tab", { name: /注册申请/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("radio", { name: "处理历史" })).toBeChecked();
+    expect(await screen.findByText("Committer Candidate")).toBeInTheDocument();
+    expect(screen.getByText("研发组织")).toBeInTheDocument();
+    expect(screen.getByText("已通过")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "拒绝" })).not.toBeInTheDocument();
+    expect(actions.listRegistrationRoleRequests).toHaveBeenCalledWith("decided");
+    await userEvent.click(screen.getByRole("radio", { name: "待处理" }));
+    expect(await screen.findByText("暂无待处理角色申请。")).toBeInTheDocument();
+    expect(actions.listRegistrationRoleRequests).toHaveBeenLastCalledWith("pending");
+    expect(new URLSearchParams(window.location.search).has("requests")).toBe(false);
+  });
+
+  it("waits for approval success before changing member roles or activation and preserves server refusals", async () => {
+    let rejectApproval!: (failure: Error) => void;
+    const approval = new Promise<RegistrationRoleRequest>((_resolve, reject) => { rejectApproval = reject; });
+    const actions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []), createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined), setUserActive: vi.fn(async () => undefined), deleteUser: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async () => [registrationRoleRequest({ organizationName: "软件组织" })]),
+      approveRegistrationRoleRequest: vi.fn(() => approval)
+    };
+    const { dispatch } = renderPageWithActions(actions);
+    await openApprovalsWorkspace();
+    await userEvent.click(await screen.findByRole("button", { name: "通过" }));
+    const dialog = screen.getByRole("dialog", { name: "通过注册申请？" });
+    expect(dialog).toHaveTextContent("软件组织");
+    expect(dialog).toHaveTextContent("通过后立即启用账号");
+    await userEvent.click(within(dialog).getByRole("button", { name: "通过并启用" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "TOGGLE_USER_ACTIVE" }));
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
+    expect(dialog).toBeInTheDocument();
+    await act(async () => { rejectApproval(new Error("服务端拒绝审批")); await approval.catch(() => undefined); });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("服务端拒绝审批");
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "TOGGLE_USER_ACTIVE" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.getByText("Committer Candidate")).toBeInTheDocument();
+    expect(actions.listUsers).toHaveBeenCalledTimes(1);
   });
 
   it("switches between account and approval workspaces instead of stacking both sections", async () => {
@@ -647,10 +900,11 @@ describe("UserPermissionsPage", () => {
       createUser: vi.fn(async () => undefined),
       assignUserRole: vi.fn(async () => undefined),
       setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => undefined),
       listRegistrationRoleRequests: vi.fn(async () => [registrationRoleRequest()])
     });
 
-    expect(screen.getByRole("tab", { name: /账号库/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /成员列表/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("search", { name: "用户筛选" })).toBeInTheDocument();
     expect(screen.queryByRole("tabpanel", { name: /注册申请/ })).not.toBeInTheDocument();
 
@@ -658,7 +912,7 @@ describe("UserPermissionsPage", () => {
       expect(screen.getByText(/当前有.*条注册角色申请待处理/)).toBeInTheDocument();
     });
 
-    const accounts = screen.getByRole("tab", { name: /账号库/ });
+    const accounts = screen.getByRole("tab", { name: /成员列表/ });
     const approvals = screen.getByRole("tab", { name: /注册申请/ });
     expect(document.getElementById(approvals.getAttribute("aria-controls")!)).toHaveAttribute("hidden");
     accounts.focus();
@@ -675,38 +929,39 @@ describe("UserPermissionsPage", () => {
     expect(screen.queryByRole("table", { name: "平台用户" })).not.toBeInTheDocument();
   });
 
-  it("uses compact table styling for row role selectors", () => {
+  it("renders compact role labels in the table and moves the selector into member details", async () => {
     renderPage();
     const row = screen.getByText("Liu Min").closest("tr")!;
-    const roleCell = within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }).closest("td");
-    const roleSelect = within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" });
-
-    expect(screen.getByRole("columnheader", { name: /组织角色/ })).toHaveClass("user-permissions-role-header");
-    expect(roleCell).toHaveClass("user-permissions-role-cell");
+    expect(within(row).getByText("软件开发")).toHaveClass("member-role-label");
+    expect(within(row).queryByRole("combobox")).not.toBeInTheDocument();
+    const details = await openMemberDetails("Liu Min");
+    const roleSelect = within(details).getByRole("combobox", { name: "调整 Liu Min 的角色" });
     expect(roleSelect).toHaveClass("user-permissions-role-select");
   });
 
-  it("shows activation actions without repeating the user name", () => {
+  it("shows activation actions in overflow without repeating the user name", async () => {
     renderPage();
     const activeUserRow = screen.getByText("Liu Min").closest("tr")!;
     const disabledUserRow = screen.getByText("Tao Lin").closest("tr")!;
 
-    expect(within(activeUserRow).getByRole("button", { name: "停用" })).toBeInTheDocument();
-    expect(within(disabledUserRow).getByRole("button", { name: "启用" })).toBeInTheDocument();
+    expect(within(activeUserRow).queryByRole("button", { name: "停用" })).not.toBeInTheDocument();
+    expect(within(disabledUserRow).queryByRole("button", { name: "启用" })).not.toBeInTheDocument();
     expect(within(activeUserRow).queryByRole("button", { name: "停用 Liu Min" })).not.toBeInTheDocument();
     expect(within(disabledUserRow).queryByRole("button", { name: "启用 Tao Lin" })).not.toBeInTheDocument();
+    await userEvent.click(within(activeUserRow).getByRole("button", { name: /：更多$/ }));
+    expect(screen.getByRole("menuitem", { name: "停用" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(within(disabledUserRow).getByRole("button", { name: /：更多$/ }));
+    expect(screen.getByRole("menuitem", { name: "启用" })).toBeInTheDocument();
   });
 
-  it("supports header filters on every user table data column", async () => {
+  it("keeps only role and status header filters and sorts recent activity", async () => {
     renderPage();
 
     const table = screen.getByRole("table", { name: "平台用户" });
     const checks: Array<[string, string, string]> = [
-      ["用户", "筛选用户", "Xu Yun"],
-      ["职务", "筛选职务", "Platform Owner"],
       ["组织角色", "筛选组织角色", "管理员"],
-      ["状态", "筛选状态", "启用"],
-      ["最近活跃", "筛选最近活跃", "刚刚"]
+      ["状态", "筛选状态", "启用"]
     ];
 
     for (const [headerName, buttonName, optionName] of checks) {
@@ -715,6 +970,13 @@ describe("UserPermissionsPage", () => {
       expect(within(header).getByRole("checkbox", { name: optionName })).toBeInTheDocument();
       await userEvent.click(within(header).getByRole("button", { name: buttonName }));
     }
+
+    expect(within(table).queryByRole("button", { name: "筛选用户" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: "筛选职务" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: "筛选最近活跃" })).not.toBeInTheDocument();
+    const activityHeader = within(table).getByRole("columnheader", { name: /最近活跃/ });
+    await userEvent.click(within(activityHeader).getByRole("button", { name: "最近活跃" }));
+    expect(activityHeader).toHaveAttribute("aria-sort", "ascending");
 
     const roleHeader = within(table).getByRole("columnheader", { name: /组织角色/ });
     await userEvent.click(within(roleHeader).getByRole("button", { name: "筛选组织角色" }));
@@ -729,34 +991,23 @@ describe("UserPermissionsPage", () => {
 
     const table = screen.getByRole("table", { name: "平台用户" });
     const userHeader = within(table).getByRole("columnheader", { name: /用户/ });
-    expect(userHeader).toHaveAttribute("aria-sort", "none");
-
-    await userEvent.click(within(userHeader).getByRole("button", { name: "用户" }));
     expect(userHeader).toHaveAttribute("aria-sort", "ascending");
 
     await userEvent.click(within(userHeader).getByRole("button", { name: "用户" }));
     expect(userHeader).toHaveAttribute("aria-sort", "descending");
+
+    await userEvent.click(within(userHeader).getByRole("button", { name: "用户" }));
+    expect(userHeader).toHaveAttribute("aria-sort", "ascending");
   });
 
   it("shows an empty state when search filters match no accounts", async () => {
     renderPage();
 
-    await userEvent.type(screen.getByPlaceholderText("搜索用户"), "不存在的账号名");
+    await userEvent.type(screen.getByRole("searchbox", { name: "搜索用户" }), "不存在的账号名");
 
     const table = screen.getByRole("table", { name: "平台用户" });
     expect(within(table).getByText("没有符合筛选条件的用户，请调整搜索或筛选条件。")).toBeInTheDocument();
     expect(within(table).queryByText("Xu Yun")).not.toBeInTheDocument();
-  });
-
-  it("keeps role selectors wide enough for split committer role names", () => {
-    const css = readStylesheet("src/styles.css");
-    const roleCellStyles = declarationsFor(css, ".user-permissions-role-cell");
-    const roleSelectStyles = declarationsFor(css, ".user-permissions-role-select");
-    const roleTooltipStyles = declarationsFor(css, ".user-permissions-role-tooltip");
-    expect(roleCellStyles.width).toBe("var(--admin-list-role-cell-width)");
-    expect(roleSelectStyles["min-width"]).toBe("var(--admin-list-role-control-width)");
-    expect(roleSelectStyles.width).toBe("var(--admin-list-role-control-width)");
-    expect(roleTooltipStyles["max-height"]).toBe("calc(100vh - var(--space-8))");
   });
 
   it("gives user management action buttons visible chrome instead of text-only controls", () => {
@@ -812,14 +1063,13 @@ describe("UserPermissionsPage", () => {
 
     render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
 
-    // 11 users paginate at 10 per page in the shared table shell.
+    // 11 users still paginate at 10 per page in the shared table shell.
     expect(screen.getByText(/第 1 \/ 2 页 · 共 11 条/)).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "调整 Legacy Reviewer 的角色" })).toHaveAttribute("data-value", "software-committer");
-
-    await userEvent.click(screen.getByRole("button", { name: "下一页" }));
-    expect(screen.getByRole("combobox", { name: "调整 Legacy Viewer 的角色" })).toHaveAttribute("data-value", "hardware-user");
-
-    await selectControlOption(screen.getByLabelText("角色"), "software-committer");
+    expect(within(screen.getByText("Legacy Reviewer").closest("tr")!).getByText("软件MDE")).toBeInTheDocument();
+    expect(within(screen.getByText("Legacy Viewer").closest("tr")!).getByText("硬件开发")).toBeInTheDocument();
+    const roleHeader = screen.getByRole("columnheader", { name: /组织角色/ });
+    await userEvent.click(within(roleHeader).getByRole("button", { name: "筛选组织角色" }));
+    await userEvent.click(within(roleHeader).getByRole("checkbox", { name: "软件MDE" }));
 
     expect(screen.getByText("Legacy Reviewer")).toBeInTheDocument();
     expect(screen.queryByText("Legacy Viewer")).not.toBeInTheDocument();

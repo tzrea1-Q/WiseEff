@@ -1,4 +1,4 @@
-import type { PlatformRoleId, UserAccount } from "@/domain/users/types";
+import { pickPrimaryPlatformRoleId, type PlatformRoleId, type UserAccount } from "@/domain/users/types";
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient, type DefaultApiClientOptions } from "./defaultApiClient";
 
@@ -25,6 +25,7 @@ type UserGovernanceDto = {
 export type RegistrationRoleRequestDto = {
   id: string;
   organizationId: string;
+  organizationName?: string;
   userId: string;
   userName: string;
   username: string | null;
@@ -86,14 +87,14 @@ export type UpdateOrganizationRolesInput = {
 export const createDefaultUserGovernanceApiClient = (options: DefaultApiClientOptions = {}) => createDefaultApiClient(options);
 
 function userFromDto(dto: UserGovernanceDto): UserAccount {
-  const primaryOrgRole = dto.roles.find((r) => r.projectId === null) ?? dto.roles[0];
+  const organizationRoles = dto.roles.filter((role) => role.projectId === null);
   return {
     id: dto.id,
     name: dto.name,
     ...(dto.email ? { email: dto.email } : {}),
     ...(dto.username ? { username: dto.username } : {}),
     title: dto.title,
-    roleId: primaryOrgRole?.roleId ?? "guest",
+    roleId: pickPrimaryPlatformRoleId(organizationRoles.map((role) => role.roleId)),
     roles: dto.roles,
     isActive: dto.isActive,
     createdAt: dto.createdAt,
@@ -140,9 +141,12 @@ export function createUserGovernanceClient(
       return userFromDto(response.item);
     },
     async getProjectWorkflowRoleBindings(projectId: string): Promise<ProjectWorkflowRoleBindingsDto> {
-      return apiClient.get<ProjectWorkflowRoleBindingsDto>(
+      const response = await apiClient.get<Omit<ProjectWorkflowRoleBindingsDto, "bindings"> & {
+        bindings: Array<Omit<ProjectWorkflowRoleBindingItem, "name" | "email" | "title"> & { userName: string }>;
+      }>(
         `/api/v1/projects/${encodeURIComponent(projectId)}/workflow-role-bindings`
       );
+      return { ...response, bindings: response.bindings.map((binding) => ({ ...binding, name: binding.userName, email: null, title: "" })) };
     },
     async updateProjectWorkflowRoleBindings(
       projectId: string,
@@ -160,6 +164,10 @@ export function createUserGovernanceClient(
       });
       return userFromDto(response.item);
     },
+    async updateUserProfile(userId: string, input: { name: string; title: string }) {
+      const response = await apiClient.patch<ItemEnvelope<UserGovernanceDto>>(`/api/v1/users/${encodeURIComponent(userId)}`, input);
+      return userFromDto(response.item);
+    },
     async deleteUser(userId: string) {
       await apiClient.delete<null>(`/api/v1/users/${encodeURIComponent(userId)}`);
     },
@@ -170,8 +178,8 @@ export function createUserGovernanceClient(
       );
       return userFromDto(response.item);
     },
-    async listRegistrationRoleRequests() {
-      const response = await apiClient.get<ItemsEnvelope<RegistrationRoleRequestDto>>("/api/v1/users/registration-role-requests");
+    async listRegistrationRoleRequests(status: "pending" | "decided" = "pending") {
+      const response = await apiClient.get<ItemsEnvelope<RegistrationRoleRequestDto>>(`/api/v1/users/registration-role-requests${status === "decided" ? "?status=decided" : ""}`);
       return response.items;
     },
     async approveRegistrationRoleRequest(requestId: string) {

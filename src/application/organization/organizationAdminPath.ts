@@ -6,8 +6,8 @@ export const ORGANIZATION_ADMIN_LEGACY_PATH = "/user-permissions";
 
 export const ORGANIZATION_ADMIN_UI = {
   scopeNavAria: "组织管理范围",
-  profileScope: "组织管理",
-  membersScope: "人员管理",
+  profileScope: "组织信息",
+  membersScope: "成员与权限",
   profileSubtitle: "维护本组织档案与显示名称",
   membersSubtitle: "维护成员、角色权限和注册申请",
   profileMainAria: "组织管理",

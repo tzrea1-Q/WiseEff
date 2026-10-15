@@ -19,14 +19,13 @@ import {
   getUserProjectWorkflowRoles,
   findPasswordCredentialByUsername,
   listActiveAdminUserIds,
-  listAllPendingRegistrationRoleRequests,
+  listRegistrationRoleRequestsByScope,
   insertUser,
   insertPasswordCredential,
   lockUserById,
   updateOrganizationRoles,
   updatePasswordCredential,
   updateProjectWorkflowRoles,
-  listPendingRegistrationRoleRequests,
   listUsers,
   replaceRoleBindings,
   updateOrganizationName,
@@ -37,6 +36,7 @@ import { notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/p
 import { revokeLocalUserSessions } from "../auth/localAuth";
 import type {
   CreateUserInput,
+  RegistrationRoleRequestListStatus,
   ProjectWorkflowRoleBindingsDto,
   ProjectWorkflowRoleId,
   ReplaceUserRolesInput,
@@ -551,13 +551,18 @@ export async function replaceUserRoles(
   });
 }
 
-export async function listRegistrationRoleRequests(db: Queryable, auth: AuthContext) {
+export async function listRegistrationRoleRequests(
+  db: Queryable,
+  auth: AuthContext,
+  status: RegistrationRoleRequestListStatus = "pending"
+) {
   requireUserManager(auth);
   // Cross-organization visibility is a platform-admin capability; an org admin
   // only governs registrations inside their own tenant.
-  return callerHasPlatformAdmin(auth)
-    ? listAllPendingRegistrationRoleRequests(db)
-    : listPendingRegistrationRoleRequests(db, auth.organization.id);
+  return listRegistrationRoleRequestsByScope(db, {
+    organizationId: callerHasPlatformAdmin(auth) ? undefined : auth.organization.id,
+    status
+  });
 }
 
 export async function approveRegistrationRoleRequest(

@@ -294,21 +294,34 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await filterUsersTo(page, "Liu Min");
     const liuRow = table.getByRole("row").filter({ hasText: "Liu Min" });
-    await expect(liuRow.getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveAttribute("data-value", "software-user");
+    await liuRow.getByRole("button", { name: "查看 Liu Min 的成员资料" }).click();
+    const liuDialog = page.getByRole("dialog", { name: "Liu Min · 成员资料" });
+    await expect(liuDialog.getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveAttribute("data-value", "software-user");
+    await liuDialog.getByRole("button", { name: "关闭", exact: true }).click();
     await filterUsersTo(page, "Tao Lin");
-    await expect(table.getByRole("row").filter({ hasText: "Tao Lin" }).getByRole("button", { name: "启用" })).toBeVisible();
+    await table.getByRole("row").filter({ hasText: "Tao Lin" }).getByRole("button", { name: /：更多$/ }).click();
+    await expect(page.getByRole("menuitem", { name: "启用", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     await filterUsersTo(page, "Xu Yun");
     const currentAdminRow = table.getByRole("row").filter({ hasText: "Xu Yun" });
-    await expect(currentAdminRow.getByRole("combobox", { name: "调整 Xu Yun 的角色" })).toBeDisabled();
-    await expect(currentAdminRow.getByRole("button", { name: "停用" })).toBeDisabled();
+    await currentAdminRow.getByRole("button", { name: "查看 Xu Yun 的成员资料" }).click();
+    const currentAdminDialog = page.getByRole("dialog", { name: "Xu Yun · 成员资料" });
+    await expect(currentAdminDialog.getByRole("combobox", { name: "调整 Xu Yun 的角色" })).toBeDisabled();
+    await currentAdminDialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await currentAdminRow.getByRole("button", { name: /：更多$/ }).click();
+    await expect(page.getByRole("menuitem", { name: /^停用/ })).toBeDisabled();
+    await page.keyboard.press("Escape");
 
     await filterUsersTo(page, "Wang Jie");
-    const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
+    await table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("button", { name: "查看 Wang Jie 的成员资料" }).click();
+    const wangDialog = page.getByRole("dialog", { name: "Wang Jie · 成员资料" });
+    const wangRole = wangDialog.getByRole("combobox", { name: "调整 Wang Jie 的角色" });
     await selectControlOption(wangRole, "software-committer");
     // Role changes now require an explicit governance confirmation (HCI trust repair wave 1).
     await page.getByRole("button", { name: "确认调整" }).click();
     await expect(wangRole).toHaveAttribute("data-value", "software-committer");
+    await wangDialog.getByRole("button", { name: "关闭", exact: true }).click();
 
     const auditVisible = await apiExposesPermissionAudit(page, "u-wang-jie", "software-committer");
     if (!auditVisible && databaseUrl) {
@@ -351,7 +364,9 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
     const table = page.getByRole("table", { name: "平台用户" });
     await filterUsersTo(page, "Wang Jie");
-    const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
+    await table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("button", { name: "查看 Wang Jie 的成员资料" }).click();
+    const wangDialog = page.getByRole("dialog", { name: "Wang Jie · 成员资料" });
+    const wangRole = wangDialog.getByRole("combobox", { name: "调整 Wang Jie 的角色" });
 
     await selectControlOption(wangRole, "software-committer");
     // Role changes require confirmation, but selecting the already-current value
@@ -360,6 +375,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const roleConfirm = page.getByRole("button", { name: "确认调整" });
     await roleConfirm.click({ timeout: 5_000 }).catch(() => undefined);
     await expect(wangRole).toHaveAttribute("data-value", "software-committer");
+    await wangDialog.getByRole("button", { name: "关闭", exact: true }).click();
 
     await page.getByRole("button", { name: "添加用户" }).click();
     const addUserDialog = page.getByRole("dialog", { name: "添加用户" });
@@ -377,8 +393,13 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const chenRow = table.getByRole("row").filter({ hasText: createdAcceptanceUsername });
     await expect(chenRow).toBeVisible();
     await expect(chenRow).toContainText(createdAcceptanceUsername);
-    await expect(chenRow.getByRole("combobox", { name: "调整 Chen Rui 的角色" })).toHaveAttribute("data-value", "software-user");
-    await expect(chenRow.getByRole("button", { name: "停用" })).toBeVisible();
+    await chenRow.getByRole("button", { name: "查看 Chen Rui 的成员资料" }).click();
+    const chenDialog = page.getByRole("dialog", { name: "Chen Rui · 成员资料" });
+    await expect(chenDialog.getByRole("combobox", { name: "调整 Chen Rui 的角色" })).toHaveAttribute("data-value", "software-user");
+    await chenDialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await chenRow.getByRole("button", { name: /：更多$/ }).click();
+    await expect(page.getByRole("menuitem", { name: "停用", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     const usersApi = await expectSuccessfulApiGet<{ items: GovernedUserApiItem[] }>(page, "/api/v1/users");
     const createdUser = usersApi.body.items.find((user) => user.username === createdAcceptanceUsername);

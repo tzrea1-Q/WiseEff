@@ -326,6 +326,7 @@ describe("user governance routes", () => {
           {
             id: "registration-role-request-1",
             organization_id: "org-chargelab",
+            organization_name: "ChargeLab",
             user_id: "u-candidate",
             user_name: "Committer Candidate",
             username: "committer.candidate",
@@ -343,6 +344,7 @@ describe("user governance routes", () => {
           {
             id: "registration-role-request-1",
             organization_id: "org-chargelab",
+            organization_name: "ChargeLab",
             user_id: "u-candidate",
             user_name: "Committer Candidate",
             username: "committer.candidate",
@@ -395,13 +397,48 @@ describe("user governance routes", () => {
     expect(list.body.items[0]).toMatchObject({
       id: "registration-role-request-1",
       requestedRoleId: "hardware-committer",
-      username: "committer.candidate"
+      username: "committer.candidate",
+      organizationName: "ChargeLab"
     });
     expect(approve.status).toBe(200);
-    expect(approve.body.item).toMatchObject({ id: "registration-role-request-1", status: "approved" });
+    expect(approve.body.item).toMatchObject({ id: "registration-role-request-1", status: "approved", organizationName: "ChargeLab" });
     expect(reject.status).toBe(200);
-    expect(reject.body.item).toMatchObject({ id: "registration-role-request-1", status: "rejected" });
+    expect(reject.body.item).toMatchObject({ id: "registration-role-request-1", status: "rejected", organizationName: "ChargeLab" });
     expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+  });
+
+  it("lists decided registration requests with organization names and validates the status filter", async () => {
+    const { calls, db } = makeDb((text) => text.includes("from local_registration_role_requests") ? [{
+      id: "approved-request",
+      organization_id: "org-chargelab",
+      organization_name: "ChargeLab",
+      user_id: "u-candidate",
+      user_name: "Candidate",
+      username: "candidate",
+      current_role_id: "hardware-user",
+      requested_role_id: "hardware-committer",
+      status: "approved",
+      created_at: "2026-06-12T00:00:00.000Z",
+      decided_at: "2026-06-12T00:01:00.000Z",
+      decided_by_user_id: "u-admin"
+    }] : []);
+    const server = createWiseEffServer({ db, auth: { mode: "production", verifier: { verify: async () => adminAuth } } });
+    const response = await requestJson<{ items: Array<{ organizationName: string; status: string }> }>(
+      server, "/api/v1/users/registration-role-requests?status=decided", { headers: { Authorization: "Bearer admin" } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toEqual([expect.objectContaining({ organizationName: "ChargeLab", status: "approved" })]);
+    const query = calls.find((call) => call.text.includes("from local_registration_role_requests"));
+    expect(query?.text).toContain("in ('approved', 'rejected')");
+    expect(query?.values).toEqual(["org-chargelab"]);
+
+    const invalid = await requestJson<{ error: { code: string } }>(
+      server, "/api/v1/users/registration-role-requests?status=all", { headers: { Authorization: "Bearer admin" } }
+    );
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error.code).toBe("VALIDATION_FAILED");
+    expect(calls.filter((call) => call.text.includes("from local_registration_role_requests"))).toHaveLength(1);
   });
 
   it("returns the home organization for an authenticated member", async () => {

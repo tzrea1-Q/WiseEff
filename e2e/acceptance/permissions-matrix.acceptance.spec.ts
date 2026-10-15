@@ -6,6 +6,7 @@ import { disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCu
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
+import { readSelectControlOptions } from "./helpers/selectControl";
 import {
   createBindingDraftViaApi,
   defaultWorkflowAssignees,
@@ -130,15 +131,19 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
     await page.getByRole("button", { name: "添加用户" }).click();
     const addUserDialog = page.getByRole("dialog", { name: "添加用户" });
     await expect(addUserDialog).toBeVisible();
-    await expect(addUserDialog.getByRole("option", { name: "平台超级管理员" })).toHaveCount(0);
+    expect(await readSelectControlOptions(addUserDialog.getByLabel("初始角色")))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ value: "platform-admin" })]));
     await addUserDialog.getByRole("button", { name: "取消" }).click();
 
     // The accounts table is a paginated DataTable (10 rows per page); narrow via
     // the search filter so Zhao Heng's row is on the visible page.
     await page.getByRole("search", { name: "用户筛选" }).getByLabel("搜索").fill("Zhao Heng");
-    const assignableSelect = page.getByLabel("调整 Zhao Heng 的角色");
+    await page.getByRole("button", { name: "查看 Zhao Heng 的成员资料" }).click();
+    const memberDialog = page.getByRole("dialog", { name: "Zhao Heng · 成员资料" });
+    const assignableSelect = memberDialog.getByLabel("调整 Zhao Heng 的角色");
     await expect(assignableSelect).toBeVisible();
-    await expect(assignableSelect.getByRole("option", { name: "平台超级管理员" })).toHaveCount(0);
+    expect(await readSelectControlOptions(assignableSelect))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ value: "platform-admin" })]));
 
     const grantResponse = await page.request.put(apiRoute(`/api/v1/users/${acceptanceAdminOnlyUser.userId}/roles`), {
       headers: authHeadersForUser(

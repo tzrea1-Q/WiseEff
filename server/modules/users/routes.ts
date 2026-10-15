@@ -22,6 +22,7 @@ import {
 } from "./service";
 import {
   createUserBodySchema,
+  listRegistrationRoleRequestsQuerySchema,
   replaceUserRolesBodySchema,
   resetUserPasswordBodySchema,
   updateOrganizationBodySchema,
@@ -106,7 +107,8 @@ export function registerUserRoutes(
   router.get("/api/v1/users/registration-role-requests", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const items = await listRegistrationRoleRequests(db, auth);
+    const query = parseWithSchema(listRegistrationRoleRequestsQuerySchema, request.query);
+    const items = await listRegistrationRoleRequests(db, auth, query.status);
 
     return { status: 200, body: { items } };
   });

@@ -167,6 +167,18 @@ test.describe("M5.11 responsive quality gate", () => {
     const userDialog = page.getByRole("dialog", { name: "添加用户" });
     await expect(userDialog).toBeVisible();
     await expectNoHorizontalOverflow(page);
+    await userDialog.getByRole("button", { name: "取消", exact: true }).click();
+
+    await page.getByRole("button", { name: /^查看 .+ 的成员资料$/ }).first().click();
+    const memberDialog = page.getByRole("dialog", { name: / · 成员资料$/ });
+    const roleSelector = memberDialog.getByRole("combobox", { name: /调整 .+ 的角色/ });
+    await expect(roleSelector).toBeVisible();
+    const roleBounds = await roleSelector.boundingBox();
+    const containerBounds = await memberDialog.getByRole("region", { name: "组织角色与权限" }).boundingBox();
+    expect(roleBounds).not.toBeNull();
+    expect(containerBounds).not.toBeNull();
+    expect(Math.abs(roleBounds!.width - containerBounds!.width)).toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page);
   });
 
   for (const viewport of viewports) {

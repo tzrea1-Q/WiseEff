@@ -307,6 +307,8 @@ Xiaoze（小泽，唯一 Agent）：
 - 组织管理是一个侧栏入口、两条范围对等页（与调试后台相同）：`/organization`（组织档案，`GET`/`PATCH /api/v1/organization`）和 `/organization/members`（人员管理）。页面 key 仍是 `user-permissions`。`/user-permissions` 永久重定向到 `/organization/members` 并保留查询串。人员页在 API mode 下通过 `/api/v1/users` 读写用户治理，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。若目录响应不含当前调用者，状态只保留 `/api/v1/me` 返回的真实当前用户以稳定外壳身份，不会恢复演示用户。治理 action 提供 `resetUserPassword` 时，成员行可打开重置密码弹窗，提交 `POST /api/v1/users/:userId/password`，并提示该用户全部会话已退出。符合条件的非当前用户行还提供不可逆的“注销”：确认后调用 `DELETE /api/v1/users/:userId`，仅在收到 `204` 后移除列表行；后端拒绝时保留弹窗并显示错误。弹窗明确说明账号自有数据会清除，业务与审计历史保留且用户引用变为 `null`。
 - 前端权限检查只是 UX，后端仍必须执行 authz、self-lockout 防护和 audit。
 
+组织范围导航使用“组织信息”和“成员与权限”。组织信息使用有宽度上限的表单、字段内校验、保存成功反馈和共享未保存导航保护。成员表只展示角色、项目职责摘要；“查看”打开成员资料、组织角色及该成员的项目职责配置。主角色取组织级绑定中最高角色，筛选匹配任一已授予的组织角色，项目绑定不会变成组织授权。搜索、角色与状态筛选、排序、分页和申请工作区通过 URL 恢复。创建账号期间阻止重复提交和关闭，取消会清空草稿。注册申请提供加载、重试、待处理和历史状态；`GET /api/v1/users/registration-role-requests?status=decided` 返回已通过或拒绝记录，默认仍只返回待处理申请。申请显示组织名称及时间，决定前需确认，批准后刷新成员名录及启用状态。资料编辑调用 `PATCH /api/v1/users/:userId`，允许清空选填职务。服务端鉴权、组织边界、审计和自保护规则保持权威。
+
 ## 快捷键与地标
 
 应用壳和 `/parameter-review` 遵循 macOS 感知的快捷键约定（TD-097 切片；其它页保持既有辅助键）：
