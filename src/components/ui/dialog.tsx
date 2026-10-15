@@ -4,6 +4,7 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { ModalPopupContext } from "@/components/common/ModalPopupContext"
 
 function Dialog({
   ...props
@@ -71,7 +72,7 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
+        <ModalPopupContext.Provider value={true}>{children}</ModalPopupContext.Provider>
         {!hideDefaultCloseButton && (
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button

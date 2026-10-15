@@ -193,6 +193,10 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 ## 多层级模块树
 
+**共享弹层兼容试点（#1189）。** `ModalDialog`、`DialogContent` 和 `SheetContent` 自动提供弹层归属。其下的 `SelectControl` / 直接使用的 `SelectContent`、`RowActionMenu`，以及 portal 模式的 `ModuleTreeSelect` 自动使用已声明的模态层级，调用方无需传入 `withinModal`。树选择器需要避开祖先容器裁剪时保留 `portalMenu`。行内选择器按内容取宽；表单字段显式传入 `className="w-full"` 或使用已有字段宽度规则。标签、校验关联、空值和禁用语义保持不变。
+
+试点仅移除节点编辑器和调试模块菜单的手动模态标记。`withinModal` 在两批调用方迁移期间继续兼容：先迁移调试／日志／反馈／账户（#1190），再迁移参数治理／导入／配置工作台（#1191）；两批完成后才删除兼容转发（#1192）。弹层关闭后焦点回到触发器；Escape 先关闭弹层，再关闭所属弹窗。焦点约束、背景 inert、滚动锁和 pending 操作的关闭行为仍由既有弹窗原语负责。
+
 参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`（展开/折叠、搜索、路径标签、单选与多选）；共享树筛选由 `TreeFilterOptions` 和稳定 ID 选择工具提供，各业务域仍传入自己的注册表和范围。
 
 - `/parameters`：模块筛选与分组使用 `moduleId` 子树包含；深链 `?module=<moduleId>`。

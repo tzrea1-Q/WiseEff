@@ -301,11 +301,16 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await createDialog.getByLabel("ADB 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/adb`);
     await createDialog.getByRole("checkbox", { name: "启用 HDC 协议" }).check();
     await createDialog.getByRole("checkbox", { name: "启用 ADB 协议" }).check();
+    const access = createDialog.getByRole("combobox", { name: "HDC 访问模式", exact: true });
+    await access.click();
+    await page.getByRole("option", { name: "RW · 读写", exact: true }).click();
+    await expect(access).toBeFocused();
     const createResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/debugging/admin/nodes");
     await createDialog.getByRole("button", { name: "保存" }).click();
     const createResponse = await createResponsePromise;
     expect(createResponse.status()).toBe(201);
     expect(createResponse.request().postDataJSON().bindings).toHaveLength(2);
+    expect(createResponse.request().postDataJSON().bindings).toContainEqual(expect.objectContaining({ protocol: "hdc", accessMode: "RW" }));
     await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
     await expect(nodeRow(page, nodeName)).toBeVisible();
 

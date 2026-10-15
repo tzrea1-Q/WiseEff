@@ -228,12 +228,47 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(editor.getByLabel("ADB 节点路径", { exact: true })).toBeVisible();
           await expect(editor.getByRole("button", { name: "保存", exact: true })).toHaveCount(1);
           expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+          const access = editor.getByRole("combobox", { name: "HDC 访问模式", exact: true });
+          const initialAccess = await access.getAttribute("data-value");
+          await access.click();
+          await page.getByRole("option", { name: new RegExp(`^${initialAccess} ·`) }).click();
+          await expect(access).toHaveAttribute("data-value", initialAccess!);
+          await expect(access).toBeFocused();
+          await access.press("ArrowDown");
+          await expect(page.getByRole("listbox")).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(page.getByRole("listbox")).toBeHidden();
+          await expect(editor).toBeVisible();
+          await expect(access).toBeFocused();
           await assertAccessibilitySemantics(page, testInfo, `unified-node-editor-${theme}`);
           await testInfo.attach(`unified-node-editor-${theme}`, {
             contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
+          const name = editor.getByRole("textbox", { name: "名称", exact: true });
+          await name.fill(`${await name.inputValue()}未保存`);
           await editor.getByRole("button", { name: "取消", exact: true }).click();
+          const discard = page.getByRole("dialog", { name: "放弃未保存的更改？", exact: true });
+          await expect(discard).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(discard).toBeHidden();
+          await expect(editor).toBeVisible();
+          await expect(editor.getByRole("button", { name: "取消", exact: true })).toBeFocused();
+          await editor.getByRole("button", { name: "取消", exact: true }).click();
+          await discard.getByRole("button", { name: "放弃并关闭", exact: true }).click();
           await expect(editor).toBeHidden();
+          await page.getByRole("button", { name: "模块管理", exact: true }).click();
+          const modules = page.getByRole("dialog", { name: "模块管理", exact: true });
+          const more = modules.getByRole("button", { name: "Battery Charging 更多操作", exact: true });
+          await more.click();
+          await page.getByRole("menuitem", { name: "查看节点", exact: true }).click();
+          await expect(modules.getByLabel("Battery Charging 节点列表")).toBeVisible();
+          await more.press("ArrowDown");
+          await expect(page.getByRole("menu")).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(page.getByRole("menu")).toBeHidden();
+          await expect(modules).toBeVisible();
+          await expect(more).toBeFocused();
+          await modules.getByRole("button", { name: "完成", exact: true }).click();
         }
         if (route.required.includes("settingsForms")) {
           const form = page.locator(".settings-form-page");

@@ -229,7 +229,6 @@ export function DebugModuleManagementDialog({
                       key={node.id}
                       depth={0}
                       canEdit={canEdit}
-                      withinModal
                       deleteDisabledReason="仍有子模块或节点引用，无法删除"
                       detailCountLabel={(count) => `${count} 个节点`}
                       detailListLabel={(moduleName) => `${moduleName} 节点列表`}

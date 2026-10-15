@@ -250,6 +250,10 @@ New projects are created with `initialization_status = not_initialized`. Creator
 
 ## Hierarchical Module Trees
 
+**Shared popup compatibility trial (#1189).** `ModalDialog`, `DialogContent` and `SheetContent` supply popup ownership automatically. Descendant `SelectControl` / direct `SelectContent`, `RowActionMenu`, and portaled `ModuleTreeSelect` use the declared modal layer; a consumer does not pass `withinModal`. Keep `portalMenu` for a tree picker that must escape ancestor overflow. Inline selectors size to their content; form fields explicitly supply `className="w-full"` or their existing field-width rule. Preserve labels, validation associations, empty values and disabled behavior.
+
+The trial removes manual modal flags only from the node editor and debugging-module menu. `withinModal` remains supported during the two consumer migrations: debugging/logs/feedback/accounts (#1190), then parameter governance/import/configuration workbench (#1191). Delete compatibility forwarding only after both migrations (#1192). Popup dismissal returns focus to its trigger; Escape closes the popup before its owning dialog. Dialog focus containment, background inertness, scroll locking and pending-operation dismissal remain owned by the existing dialog primitives.
+
 Parameter and debugging domains each maintain an independent org-scoped module tree. Shared picker UI lives in `src/components/common/ModuleTreeSelect.tsx` (expand/collapse, search, breadcrumb labels, single- and multi-select modes); shared tree filtering is provided by `TreeFilterOptions`, `ColumnFilter mode="tree"`, and stable-ID selection utilities, so each domain still supplies its own registry and scope.
 
 - `/parameters` — module filter and library grouping use `moduleId` with subtree include (parent selection returns descendant parameters). Deep links use `?module=<moduleId>`.

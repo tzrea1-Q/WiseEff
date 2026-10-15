@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import { TreeFilterOptions } from "./TreeFilterOptions";
 import { ChevronDown } from "lucide-react";
 import "./select-control.css";
+import { ModalPopupContext } from "./ModalPopupContext";
 
 export type ModuleTreeSelectMode = "single" | "multi-filter";
 
@@ -55,6 +56,7 @@ export function ModuleTreeSelect({
   includeRootOption = false,
   rootOptionLabel = placeholder ?? "根级（无父模块）"
 }: ModuleTreeSelectProps) {
+  const withinModal = useContext(ModalPopupContext);
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -163,6 +165,7 @@ export function ModuleTreeSelect({
     if (mode === "single") {
       onChange(id);
       setOpen(false);
+      triggerRef.current?.focus();
     }
   };
 
@@ -173,7 +176,7 @@ export function ModuleTreeSelect({
   const menuContent = open ? (
     <div
       ref={menuRef}
-      className={`dropdown-menu module-tree-menu${portalMenu ? " module-tree-menu--portal" : ""}`}
+      className={`dropdown-menu module-tree-menu${portalMenu ? " module-tree-menu--portal" : ""}${portalMenu && withinModal ? " select-menu--modal" : ""}`}
       role="tree"
       tabIndex={-1}
       aria-label={`${label}树形选项`}
