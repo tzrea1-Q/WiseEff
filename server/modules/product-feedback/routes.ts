@@ -17,6 +17,8 @@ import {
   getProductFeedbackStats,
   listMyProductFeedback,
   listProductFeedback,
+  listProductFeedbackAssignees,
+  replyToProductFeedback,
   saveProductFeedbackDraft,
   submitProductFeedbackDraft,
   updateProductFeedback
@@ -29,6 +31,7 @@ import {
   listProductFeedbackQuerySchema,
   patchProductFeedbackBodySchema,
   patchProductFeedbackDraftBodySchema,
+  replyToProductFeedbackBodySchema,
   submitProductFeedbackDraftBodySchema
 } from "./schemas";
 
@@ -142,7 +145,10 @@ export function registerProductFeedbackRoutes(
       cursor: parseMyCursor(query.cursor)
     });
 
-    return { status: 200, body: result };
+    return { status: 200, body: {
+      ...result,
+      nextCursor: result.nextCursor ? Buffer.from(JSON.stringify(result.nextCursor)).toString("base64url") : null
+    } };
   });
 
   router.get("/api/v1/product-feedback/mine/:id", async (request) => {
@@ -152,6 +158,16 @@ export function registerProductFeedbackRoutes(
     const item = await getMyProductFeedback(db, auth, params.id);
 
     return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/product-feedback/mine/:id/replies", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
+    const body = parseWithSchema(replyToProductFeedbackBodySchema, request.body);
+    const item = await replyToProductFeedback(db, objectStore, auth, params.id, body, { requestId: request.requestId });
+    return { status: 201, body: { item } };
   });
 
   router.get("/api/v1/product-feedback/mine/:id/attachments/:attachmentId/content", async (request) => {
@@ -219,7 +235,10 @@ export function registerProductFeedbackRoutes(
       cursor: parseCursor(query.cursor)
     });
 
-    return { status: 200, body: result };
+    return { status: 200, body: {
+      ...result,
+      nextCursor: result.nextCursor ? Buffer.from(JSON.stringify(result.nextCursor)).toString("base64url") : null
+    } };
   });
 
   router.get("/api/v1/product-feedback/stats", async (request) => {
@@ -228,6 +247,12 @@ export function registerProductFeedbackRoutes(
     const stats = await getProductFeedbackStats(db, auth);
 
     return { status: 200, body: stats };
+  });
+
+  router.get("/api/v1/product-feedback/assignees", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await listProductFeedbackAssignees(db, auth) };
   });
 
   router.get("/api/v1/product-feedback/:id", async (request) => {

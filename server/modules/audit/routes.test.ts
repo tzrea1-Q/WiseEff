@@ -46,6 +46,47 @@ describe("audit routes", () => {
     vi.clearAllMocks();
   });
 
+  it("passes eventId and info read filters under the authenticated organization and still rejects info writes", async () => {
+    vi.mocked(repository.listAuditEvents).mockResolvedValue({ items: [], nextCursor: null });
+    const server = createWiseEffServer({
+      db: makeDb({ roleId: "admin" }),
+      auth: { mode: "production", verifier: { verify: async () => ({
+        user: { id: "u-auditor", organizationId: "org-prod", name: "Auditor", email: "auditor@example.com", title: "Auditor", isActive: true },
+        organization: { id: "org-prod", name: "Pilot Org" },
+        roles: [{ projectId: "aurora", roleId: "admin" }],
+        permissions: ["admin:access"]
+      }) } }
+    });
+    const response = await requestJson(server, "/api/v1/audit-events?eventId=event-1&severity=info&organizationId=foreign");
+    expect(response.status).toBe(200);
+    expect(repository.listAuditEvents).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ organizationId: "org-prod", eventId: "event-1", severity: "info" }));
+    const multi = await requestJson(server, "/api/v1/audit-events?severities=High,Medium&organizationId=foreign");
+    expect(multi.status).toBe(200);
+    expect(repository.listAuditEvents).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ organizationId: "org-prod", severities: ["High", "Medium"] }));
+    for (const severities of ["High,invalid", "", "High,Medium,Low,info,High"]) {
+      vi.mocked(repository.listAuditEvents).mockClear();
+      const invalid = await requestJson(server, `/api/v1/audit-events?severities=${severities}`);
+      expect(invalid.status).toBe(400);
+      expect(repository.listAuditEvents).not.toHaveBeenCalled();
+    }
+    const write = await requestJson(server, "/api/v1/audit-events", {
+      method: "POST", body: JSON.stringify({ app: "parameter-admin", kind: "export", action: "export", severity: "info" })
+    });
+    expect(write.status).toBe(400);
+    expect(repository.createAuditEvent).not.toHaveBeenCalled();
+    for (const dateQuery of [
+      "from=not-a-date", "to=2026-02-31T00%3A00%3A00.000Z",
+      "from=2026-10-16T00%3A00%3A00.000Z&to=2026-10-15T00%3A00%3A00.000Z"
+    ]) {
+      vi.mocked(repository.listAuditEvents).mockClear();
+      const invalid = await requestJson(server, `/api/v1/audit-events?${dateQuery}`);
+      expect(invalid.status).toBe(400);
+      expect(repository.listAuditEvents).not.toHaveBeenCalled();
+    }
+    const dates = await requestJson(server, "/api/v1/audit-events?from=2026-10-15T00%3A00%3A00.000Z&to=2026-10-16T00%3A00%3A00.000Z");
+    expect(dates.status).toBe(200);
+  });
+
   it("rejects audit creation without a database adapter", async () => {
     const response = await requestJson<{ error: { code: string } }>(createWiseEffServer(), "/api/v1/audit-events", {
       method: "POST",

@@ -293,7 +293,8 @@ export function collectConsistencyMeasurements() {
       const element = list.querySelector(selector);
       return element && visible(element) ? bounds(element) : null;
     };
-    const primaryAction = header?.querySelector('[data-primary-action="true"],[data-slot="button"][data-variant="default"],.button.primary');
+    const primaryAction = header?.querySelector('[data-primary-action="true"],[data-slot="button"][data-variant="default"],.button.primary')
+      ?? header?.querySelector('.admin-list-page__header-actions [data-slot="button"]');
     const rows = [...list.querySelectorAll("tbody tr")].filter((row) => visible(row) && !row.querySelector("td[colspan]"));
     return {
       root: bounds(list), header: header && visible(header) ? bounds(header) : null,

@@ -11449,6 +11449,86 @@
         "tags": [
           "product-feedback"
         ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "in_progress",
+                "resolved",
+                "closed"
+              ]
+            }
+          },
+          {
+            "name": "feedbackType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "experience",
+                "data",
+                "export_submit",
+                "feature"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pagePath",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque base64url nextCursor returned by the previous page.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "1–100; defaults to 50.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -11484,7 +11564,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateProductFeedbackRequest"
+                "$ref": "#/components/schemas/CreateProductFeedbackDraftRequest"
               }
             }
           }
@@ -11495,7 +11575,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductFeedbackResponse"
+                  "$ref": "#/components/schemas/ProductFeedbackUserResponse"
                 }
               }
             }
@@ -11534,7 +11614,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PatchProductFeedbackRequest"
+                "$ref": "#/components/schemas/PatchProductFeedbackDraftRequest"
               }
             }
           }
@@ -11545,7 +11625,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductFeedbackResponse"
+                  "$ref": "#/components/schemas/ProductFeedbackUserResponse"
                 }
               }
             }
@@ -11586,7 +11666,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeleteResponse"
+                  "$ref": "#/components/schemas/DeleteProductFeedbackDraftResponse"
                 }
               }
             }
@@ -11628,7 +11708,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateProductFeedbackRequest"
+                "$ref": "#/components/schemas/SubmitProductFeedbackDraftRequest"
               }
             }
           }
@@ -11639,7 +11719,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductFeedbackResponse"
+                  "$ref": "#/components/schemas/ProductFeedbackUserResponse"
                 }
               }
             }
@@ -11666,13 +11746,57 @@
         "tags": [
           "product-feedback"
         ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search the current user's description or source page.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "open",
+                "in_progress",
+                "resolved",
+                "closed"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque base64url nextCursor returned by the previous page.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "1–100; defaults to 50.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductFeedbackListResponse"
+                  "$ref": "#/components/schemas/ProductFeedbackUserListResponse"
                 }
               }
             }
@@ -11712,7 +11836,60 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductFeedbackResponse"
+                  "$ref": "#/components/schemas/ProductFeedbackUserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/product-feedback/mine/{id}/replies": {
+      "post": {
+        "operationId": "productFeedback.replyToMine",
+        "summary": "Submitter adds public details and optional images, or reopens resolved/closed feedback",
+        "tags": [
+          "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplyToProductFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackUserResponse"
                 }
               }
             }
@@ -11798,6 +11975,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProductFeedbackStatsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/product-feedback/assignees": {
+      "get": {
+        "operationId": "productFeedback.assignees",
+        "summary": "List active administrators eligible for assignment in the authenticated organization",
+        "tags": [
+          "product-feedback"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackAssigneesResponse"
                 }
               }
             }
@@ -29664,31 +29871,1606 @@
       },
       "CreateProductFeedbackRequest": {
         "type": "object",
+        "properties": {
+          "pagePath": {
+            "type": "string"
+          },
+          "pageTitle": {
+            "type": "string"
+          },
+          "feedbackType": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "data",
+              "export_submit",
+              "feature"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileName": {
+                  "type": "string"
+                },
+                "contentType": {
+                  "type": "string",
+                  "enum": [
+                    "image/png",
+                    "image/jpeg",
+                    "image/webp"
+                  ]
+                },
+                "contentBase64": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fileName",
+                "contentType",
+                "contentBase64"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "pagePath",
+          "pageTitle",
+          "feedbackType",
+          "description"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "CreateProductFeedbackRequest"
       },
       "ProductFeedbackResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "pagePath": {
+                "type": "string"
+              },
+              "pageTitle": {
+                "type": "string"
+              },
+              "feedbackType": {
+                "type": "string",
+                "enum": [
+                  "experience",
+                  "data",
+                  "export_submit",
+                  "feature"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "in_progress",
+                  "resolved",
+                  "closed"
+                ]
+              },
+              "resolutionCode": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "completed",
+                  "duplicate",
+                  "cannot_reproduce",
+                  "not_planned",
+                  "invalid",
+                  "other"
+                ]
+              },
+              "submittedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "feedbackId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "storageKey": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "contentType": {
+                      "type": "string",
+                      "enum": [
+                        "image/png",
+                        "image/jpeg",
+                        "image/webp"
+                      ]
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "checksum": {
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "feedbackId",
+                    "organizationId",
+                    "storageKey",
+                    "fileName",
+                    "contentType",
+                    "sizeBytes",
+                    "checksum",
+                    "sortOrder",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "progressEvents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "feedbackId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "submitted",
+                        "status_changed",
+                        "progress",
+                        "reopened",
+                        "legacy_note"
+                      ]
+                    },
+                    "fromStatus": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "open",
+                        "in_progress",
+                        "resolved",
+                        "closed"
+                      ]
+                    },
+                    "toStatus": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "open",
+                        "in_progress",
+                        "resolved",
+                        "closed"
+                      ]
+                    },
+                    "resolutionCode": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "completed",
+                        "duplicate",
+                        "cannot_reproduce",
+                        "not_planned",
+                        "invalid",
+                        "other"
+                      ]
+                    },
+                    "publicMessage": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "author": {
+                      "type": "string",
+                      "enum": [
+                        "submitter",
+                        "team"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "actorUserId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "internalMessage": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "feedbackId",
+                    "kind",
+                    "fromStatus",
+                    "toStatus",
+                    "resolutionCode",
+                    "publicMessage",
+                    "createdAt",
+                    "actorUserId",
+                    "internalMessage"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "latestPublicProgress": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "submitterUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "submitter": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "username"
+                ],
+                "additionalProperties": false
+              },
+              "adminNote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "priority": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "normal",
+                  "high"
+                ]
+              },
+              "assigneeUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assignee": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "username"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "pagePath",
+              "pageTitle",
+              "feedbackType",
+              "description",
+              "status",
+              "resolutionCode",
+              "submittedAt",
+              "createdAt",
+              "updatedAt",
+              "attachments",
+              "progressEvents",
+              "submitterUserId",
+              "submitter",
+              "adminNote",
+              "priority",
+              "assigneeUserId",
+              "assignee"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ProductFeedbackResponse"
       },
-      "PatchProductFeedbackRequest": {
+      "CreateProductFeedbackDraftRequest": {
         "type": "object",
-        "x-wiseeff-schema": "PatchProductFeedbackRequest"
+        "properties": {
+          "pagePath": {
+            "type": "string"
+          },
+          "pageTitle": {
+            "type": "string"
+          },
+          "feedbackType": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "data",
+              "export_submit",
+              "feature"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileName": {
+                  "type": "string"
+                },
+                "contentType": {
+                  "type": "string",
+                  "enum": [
+                    "image/png",
+                    "image/jpeg",
+                    "image/webp"
+                  ]
+                },
+                "contentBase64": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fileName",
+                "contentType",
+                "contentBase64"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CreateProductFeedbackDraftRequest"
       },
-      "ProductFeedbackListResponse": {
+      "ProductFeedbackUserResponse": {
         "type": "object",
-        "x-wiseeff-schema": "ProductFeedbackListResponse"
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "pagePath": {
+                "type": "string"
+              },
+              "pageTitle": {
+                "type": "string"
+              },
+              "feedbackType": {
+                "type": "string",
+                "enum": [
+                  "experience",
+                  "data",
+                  "export_submit",
+                  "feature"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "in_progress",
+                  "resolved",
+                  "closed"
+                ]
+              },
+              "resolutionCode": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "completed",
+                  "duplicate",
+                  "cannot_reproduce",
+                  "not_planned",
+                  "invalid",
+                  "other"
+                ]
+              },
+              "submittedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "feedbackId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "storageKey": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "contentType": {
+                      "type": "string",
+                      "enum": [
+                        "image/png",
+                        "image/jpeg",
+                        "image/webp"
+                      ]
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "checksum": {
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "feedbackId",
+                    "organizationId",
+                    "storageKey",
+                    "fileName",
+                    "contentType",
+                    "sizeBytes",
+                    "checksum",
+                    "sortOrder",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "progressEvents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "feedbackId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "submitted",
+                        "status_changed",
+                        "progress",
+                        "reopened",
+                        "legacy_note"
+                      ]
+                    },
+                    "fromStatus": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "open",
+                        "in_progress",
+                        "resolved",
+                        "closed"
+                      ]
+                    },
+                    "toStatus": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "open",
+                        "in_progress",
+                        "resolved",
+                        "closed"
+                      ]
+                    },
+                    "resolutionCode": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "completed",
+                        "duplicate",
+                        "cannot_reproduce",
+                        "not_planned",
+                        "invalid",
+                        "other"
+                      ]
+                    },
+                    "publicMessage": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "author": {
+                      "type": "string",
+                      "enum": [
+                        "submitter",
+                        "team"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "feedbackId",
+                    "kind",
+                    "fromStatus",
+                    "toStatus",
+                    "resolutionCode",
+                    "publicMessage",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "latestPublicProgress": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "pagePath",
+              "pageTitle",
+              "feedbackType",
+              "description",
+              "status",
+              "resolutionCode",
+              "submittedAt",
+              "createdAt",
+              "updatedAt",
+              "attachments",
+              "progressEvents"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProductFeedbackUserResponse"
+      },
+      "PatchProductFeedbackDraftRequest": {
+        "type": "object",
+        "properties": {
+          "pagePath": {
+            "type": "string"
+          },
+          "pageTitle": {
+            "type": "string"
+          },
+          "feedbackType": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "data",
+              "export_submit",
+              "feature"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "retainedAttachmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "newAttachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileName": {
+                  "type": "string"
+                },
+                "contentType": {
+                  "type": "string",
+                  "enum": [
+                    "image/png",
+                    "image/jpeg",
+                    "image/webp"
+                  ]
+                },
+                "contentBase64": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fileName",
+                "contentType",
+                "contentBase64"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "PatchProductFeedbackDraftRequest"
+      },
+      "DeleteProductFeedbackDraftResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "DeleteProductFeedbackDraftResponse"
+      },
+      "SubmitProductFeedbackDraftRequest": {
+        "type": "object",
+        "properties": {
+          "pagePath": {
+            "type": "string"
+          },
+          "pageTitle": {
+            "type": "string"
+          },
+          "feedbackType": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "data",
+              "export_submit",
+              "feature"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SubmitProductFeedbackDraftRequest"
+      },
+      "ProductFeedbackUserListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "pagePath": {
+                  "type": "string"
+                },
+                "pageTitle": {
+                  "type": "string"
+                },
+                "feedbackType": {
+                  "type": "string",
+                  "enum": [
+                    "experience",
+                    "data",
+                    "export_submit",
+                    "feature"
+                  ]
+                },
+                "description": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "in_progress",
+                    "resolved",
+                    "closed"
+                  ]
+                },
+                "resolutionCode": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "completed",
+                    "duplicate",
+                    "cannot_reproduce",
+                    "not_planned",
+                    "invalid",
+                    "other"
+                  ]
+                },
+                "submittedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "attachments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "feedbackId": {
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "type": "string"
+                      },
+                      "storageKey": {
+                        "type": "string"
+                      },
+                      "fileName": {
+                        "type": "string"
+                      },
+                      "contentType": {
+                        "type": "string",
+                        "enum": [
+                          "image/png",
+                          "image/jpeg",
+                          "image/webp"
+                        ]
+                      },
+                      "sizeBytes": {
+                        "type": "number"
+                      },
+                      "checksum": {
+                        "type": "string"
+                      },
+                      "sortOrder": {
+                        "type": "number"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "feedbackId",
+                      "organizationId",
+                      "storageKey",
+                      "fileName",
+                      "contentType",
+                      "sizeBytes",
+                      "checksum",
+                      "sortOrder",
+                      "createdAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "progressEvents": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "feedbackId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "submitted",
+                          "status_changed",
+                          "progress",
+                          "reopened",
+                          "legacy_note"
+                        ]
+                      },
+                      "fromStatus": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "open",
+                          "in_progress",
+                          "resolved",
+                          "closed"
+                        ]
+                      },
+                      "toStatus": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "open",
+                          "in_progress",
+                          "resolved",
+                          "closed"
+                        ]
+                      },
+                      "resolutionCode": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "completed",
+                          "duplicate",
+                          "cannot_reproduce",
+                          "not_planned",
+                          "invalid",
+                          "other"
+                        ]
+                      },
+                      "publicMessage": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "author": {
+                        "type": "string",
+                        "enum": [
+                          "submitter",
+                          "team"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "feedbackId",
+                      "kind",
+                      "fromStatus",
+                      "toStatus",
+                      "resolutionCode",
+                      "publicMessage",
+                      "createdAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "latestPublicProgress": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "organizationId",
+                "pagePath",
+                "pageTitle",
+                "feedbackType",
+                "description",
+                "status",
+                "resolutionCode",
+                "submittedAt",
+                "createdAt",
+                "updatedAt",
+                "attachments",
+                "progressEvents"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProductFeedbackUserListResponse"
       },
       "BinaryAttachment": {
         "type": "string",
         "format": "binary",
         "x-wiseeff-schema": "BinaryAttachment"
       },
+      "ReplyToProductFeedbackRequest": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileName": {
+                  "type": "string"
+                },
+                "contentType": {
+                  "type": "string",
+                  "enum": [
+                    "image/png",
+                    "image/jpeg",
+                    "image/webp"
+                  ]
+                },
+                "contentBase64": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fileName",
+                "contentType",
+                "contentBase64"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "reopen": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ReplyToProductFeedbackRequest"
+      },
+      "ProductFeedbackListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "pagePath": {
+                  "type": "string"
+                },
+                "pageTitle": {
+                  "type": "string"
+                },
+                "feedbackType": {
+                  "type": "string",
+                  "enum": [
+                    "experience",
+                    "data",
+                    "export_submit",
+                    "feature"
+                  ]
+                },
+                "description": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "in_progress",
+                    "resolved",
+                    "closed"
+                  ]
+                },
+                "resolutionCode": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "completed",
+                    "duplicate",
+                    "cannot_reproduce",
+                    "not_planned",
+                    "invalid",
+                    "other"
+                  ]
+                },
+                "submittedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "attachments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "feedbackId": {
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "type": "string"
+                      },
+                      "storageKey": {
+                        "type": "string"
+                      },
+                      "fileName": {
+                        "type": "string"
+                      },
+                      "contentType": {
+                        "type": "string",
+                        "enum": [
+                          "image/png",
+                          "image/jpeg",
+                          "image/webp"
+                        ]
+                      },
+                      "sizeBytes": {
+                        "type": "number"
+                      },
+                      "checksum": {
+                        "type": "string"
+                      },
+                      "sortOrder": {
+                        "type": "number"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "feedbackId",
+                      "organizationId",
+                      "storageKey",
+                      "fileName",
+                      "contentType",
+                      "sizeBytes",
+                      "checksum",
+                      "sortOrder",
+                      "createdAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "progressEvents": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "feedbackId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "submitted",
+                          "status_changed",
+                          "progress",
+                          "reopened",
+                          "legacy_note"
+                        ]
+                      },
+                      "fromStatus": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "open",
+                          "in_progress",
+                          "resolved",
+                          "closed"
+                        ]
+                      },
+                      "toStatus": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "open",
+                          "in_progress",
+                          "resolved",
+                          "closed"
+                        ]
+                      },
+                      "resolutionCode": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "completed",
+                          "duplicate",
+                          "cannot_reproduce",
+                          "not_planned",
+                          "invalid",
+                          "other"
+                        ]
+                      },
+                      "publicMessage": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "author": {
+                        "type": "string",
+                        "enum": [
+                          "submitter",
+                          "team"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "actorUserId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "internalMessage": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "feedbackId",
+                      "kind",
+                      "fromStatus",
+                      "toStatus",
+                      "resolutionCode",
+                      "publicMessage",
+                      "createdAt",
+                      "actorUserId",
+                      "internalMessage"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "latestPublicProgress": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "submitterUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "submitter": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "username"
+                  ],
+                  "additionalProperties": false
+                },
+                "adminNote": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "priority": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "normal",
+                    "high"
+                  ]
+                },
+                "assigneeUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "assignee": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "username"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "organizationId",
+                "pagePath",
+                "pageTitle",
+                "feedbackType",
+                "description",
+                "status",
+                "resolutionCode",
+                "submittedAt",
+                "createdAt",
+                "updatedAt",
+                "attachments",
+                "progressEvents",
+                "submitterUserId",
+                "submitter",
+                "adminNote",
+                "priority",
+                "assigneeUserId",
+                "assignee"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProductFeedbackListResponse"
+      },
       "ProductFeedbackStatsResponse": {
         "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "open": {
+            "type": "number"
+          },
+          "inProgress": {
+            "type": "number"
+          },
+          "resolved": {
+            "type": "number"
+          },
+          "closed": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "total",
+          "open",
+          "inProgress",
+          "resolved",
+          "closed"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ProductFeedbackStatsResponse"
+      },
+      "ProductFeedbackAssigneesResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "username"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProductFeedbackAssigneesResponse"
+      },
+      "PatchProductFeedbackRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_progress",
+              "resolved",
+              "closed"
+            ]
+          },
+          "adminNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publicMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolutionCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "completed",
+              "duplicate",
+              "cannot_reproduce",
+              "not_planned",
+              "invalid",
+              "other"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "assigneeUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "PatchProductFeedbackRequest"
       },
       "AppendProductFeedbackProgressRequest": {
         "type": "object",
+        "properties": {
+          "toStatus": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_progress",
+              "resolved",
+              "closed"
+            ]
+          },
+          "resolutionCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "completed",
+              "duplicate",
+              "cannot_reproduce",
+              "not_planned",
+              "invalid",
+              "other"
+            ]
+          },
+          "publicMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "internalMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false,
         "x-wiseeff-schema": "AppendProductFeedbackProgressRequest"
       },
       "CreateKnowledgeEntryRequest": {

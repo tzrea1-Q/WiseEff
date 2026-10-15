@@ -37,6 +37,33 @@ function toOpenApiMethod(method: string): OpenApiMethod {
 }
 
 describe("M5 OpenAPI contract", () => {
+  it("publishes feedback owner replies, assignment choices, opaque pagination and private/admin response separation", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths["/api/v1/product-feedback/assignees"]?.get?.responses["200"]).toMatchObject({
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ProductFeedbackAssigneesResponse" } } }
+    });
+    expect(document.paths["/api/v1/product-feedback/mine/{id}/replies"]?.post).toMatchObject({
+      requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/ReplyToProductFeedbackRequest" } } } },
+      responses: { "201": { content: { "application/json": { schema: { $ref: "#/components/schemas/ProductFeedbackUserResponse" } } } } }
+    });
+    expect(document.paths["/api/v1/product-feedback/mine"]?.get?.parameters).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "q", in: "query" }),
+      expect.objectContaining({ name: "status", in: "query", schema: { type: "string", enum: ["draft", "open", "in_progress", "resolved", "closed"] } })
+    ]));
+    const schemas = document.components.schemas as Record<string, any>;
+    expect(schemas.ProductFeedbackListResponse.properties.nextCursor.type).toEqual(["string", "null"]);
+    expect(schemas.ProductFeedbackUserListResponse.properties.nextCursor.type).toEqual(["string", "null"]);
+    const user = schemas.ProductFeedbackUserResponse.properties.item.properties;
+    expect(user).not.toHaveProperty("adminNote");
+    expect(user.progressEvents.items.properties).not.toHaveProperty("internalMessage");
+    expect(user.progressEvents.items.properties).not.toHaveProperty("actorUserId");
+    expect(user.progressEvents.items.properties.author.enum).toEqual(["submitter", "team"]);
+    expect(schemas.ProductFeedbackResponse.properties.item.properties.priority.enum).toEqual(["low", "normal", "high"]);
+    expect(schemas.PatchProductFeedbackDraftRequest.properties).toHaveProperty("retainedAttachmentIds");
+    expect(schemas.PatchProductFeedbackDraftRequest.properties).not.toHaveProperty("adminNote");
+    expect(schemas.ReplyToProductFeedbackRequest.required).toEqual(["message"]);
+  });
+
   it.each(routeManifest.filter((route) =>
     (parameterCatalogLegacyWriteRouteIds as readonly string[]).includes(route.id),
   ))("$id documents only the retirement contract, not a success request body", (route) => {

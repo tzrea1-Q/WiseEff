@@ -19,7 +19,6 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/organization": ["section"],
   "/organization/members": ["section", "tabs"],
   "/parameter-home": ["toggle"],
-  "/audit": ["toggle"],
   "/logs": ["tabs"],
   "/parameters": ["tabs"],
   "/debugging-admin": ["section"],

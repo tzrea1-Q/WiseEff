@@ -7,10 +7,11 @@ describe("quality visual masks", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
     const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");
 
-    for (const [route, label] of [["/parameter-admin/projects", "最近更新"], ["/feedback-admin", "创建时间"]]) {
+    for (const [route, table] of [["/parameter-admin/projects", "项目管理列表"], ["/feedback-admin", "产品反馈记录"]]) {
       expect(helpers).toContain(`routePath === "${route}"`);
-      expect(helpers.match(new RegExp(`td\\[data-label="${label}"\\]`, "g"))).toHaveLength(1);
+      expect(helpers).toContain(`page.getByRole("table", { name: "${table}" }).locator('td[data-label="最近更新"]')`);
     }
+    expect(helpers.match(/td\[data-label="最近更新"\]/g)).toHaveLength(2);
     expect(helpers).toContain('name: "产品反馈记录"');
     expect(visualSpec).toContain('route.path === "/feedback-admin"');
     expect(visualSpec).toContain("await expect(mask.first()).toBeVisible()");

@@ -173,6 +173,16 @@ describe.skipIf(!databaseAvailable)("audit repository", () => {
     expect(result.items.map((item) => item.id)).toEqual(["audit-match"]);
   });
 
+  it("ORs selected severities without broadening organization or project scope", async () => {
+    for (const severity of ["High", "Medium", "Low"] as const) {
+      await createAuditEvent(db, auditInput({ id: severity, severity }));
+    }
+    await createAuditEvent(db, auditInput({ id: "other-project", severity: "High", projectId: null }));
+    await createAuditEvent(db, auditInput({ id: "other-organization", severity: "Medium", organizationId: "org-hardware-department", projectId: null, actorUserId: null }));
+    const result = await listAuditEvents(db, { organizationId: "org-chargelab", projectId: "aurora", severities: ["High", "Medium"] });
+    expect(result.items.map((item) => item.id).sort()).toEqual(["High", "Medium"]);
+  });
+
   it("pushes q down as an escaped ILIKE across action, kind, target id, and actor name", async () => {
     await db.query(
       `insert into users (id, organization_id, name, email, title, is_active)
@@ -205,7 +215,7 @@ describe.skipIf(!databaseAvailable)("audit repository", () => {
     expect(result.items.map((item) => item.id).sort()).toEqual(["audit-1", "audit-2"]);
   });
 
-  it("returns nextCursor when more rows exist than limit and pages by created_at", async () => {
+  it("returns an opaque nextCursor and retains timestamp-only client compatibility", async () => {
     // Inserted out of chronological order: newest-first output must come from
     // created_at ordering, not insertion order.
     await createAuditEvent(db, auditInput({ id: "audit-middle", kind: "parameter-submit" }));
@@ -217,7 +227,13 @@ describe.skipIf(!databaseAvailable)("audit repository", () => {
 
     const firstPage = await listAuditEvents(db, { organizationId: "org-chargelab", limit: 1 });
     expect(firstPage.items.map((item) => item.id)).toEqual(["audit-newest"]);
-    expect(firstPage.nextCursor).toBe(firstPage.items[0].createdAt);
+    expect(JSON.parse(Buffer.from(firstPage.nextCursor!, "base64url").toString())).toEqual([
+      "2026-05-25T00:00:00.000000Z", "audit-newest"
+    ]);
+    const legacyPage = await listAuditEvents(db, {
+      organizationId: "org-chargelab", cursor: firstPage.items[0].createdAt, limit: 1
+    });
+    expect(legacyPage.items.map((item) => item.id)).toEqual(["audit-middle"]);
 
     const secondPage = await listAuditEvents(db, {
       organizationId: "org-chargelab",
@@ -234,5 +250,75 @@ describe.skipIf(!databaseAvailable)("audit repository", () => {
     });
     expect(lastPage.items.map((item) => item.id)).toEqual(["audit-oldest"]);
     expect(lastPage.nextCursor).toBeNull();
+  });
+
+  it("matches the displayed Chinese action/kind names and system/Agent names", async () => {
+    await createAuditEvent(db, auditInput({ id: "applied", action: "value-change-applied", actorType: "system", actorUserId: null }));
+    await createAuditEvent(db, auditInput({ id: "agent", app: "debugging", kind: "agent-tool", actorType: "agent", actorUserId: null }));
+    for (const q of ["参数值变更已应用", "value-change-applied", "系统", "System"]) {
+      expect((await listAuditEvents(db, { organizationId: "org-chargelab", q })).items.map((item) => item.id)).toEqual(["applied"]);
+    }
+    for (const q of ["Agent 工具调用", "小泽", "智能助手"]) {
+      expect((await listAuditEvents(db, { organizationId: "org-chargelab", q })).items.map((item) => item.id)).toEqual(["agent"]);
+    }
+  });
+
+  it("reads info events without expanding the write severity contract", async () => {
+    await createAuditEvent(db, auditInput({ id: "information" }));
+    await db.query("update audit_events set severity = 'info' where id = 'information'");
+    await createAuditEvent(db, auditInput({ id: "low" }));
+    const result = await listAuditEvents(db, { organizationId: "org-chargelab", severity: "info" });
+    expect(result.items.map((item) => [item.id, item.severity])).toEqual([["information", "info"]]);
+  });
+
+  it("searches the same Chinese module labels displayed by the UI", async () => {
+    await createAuditEvent(db, auditInput({ id: "auth", app: "auth" }));
+    await createAuditEvent(db, auditInput({ id: "bindings", app: "parameter-bindings" }));
+    await createAuditEvent(db, auditInput({ id: "unclassified", app: "new-unclassified-app" }));
+    expect((await listAuditEvents(db, { organizationId: "org-chargelab", q: "账号与登录" })).items.map((item) => item.id)).toEqual(["auth"]);
+    expect((await listAuditEvents(db, { organizationId: "org-chargelab", q: "参数绑定" })).items.map((item) => item.id)).toEqual(["bindings"]);
+    expect((await listAuditEvents(db, { organizationId: "org-chargelab", q: "未分类模块" })).items.map((item) => item.id)).toEqual(["unclassified"]);
+  });
+
+  it("scopes event lookup and current project/actor names to the authenticated tenant", async () => {
+    await seedCoreGraph(db, {
+      organization: { id: "org-hardware-department", name: "Hardware Department" },
+      users: [{ id: "foreign-user", name: "Foreign Secret" }],
+      projects: [{ id: "foreign-project", name: "Foreign Secret", code: "SECRET" }]
+    });
+    await createAuditEvent(db, auditInput({ id: "local" }));
+    await createAuditEvent(db, auditInput({ id: "mismatched-owner", projectId: "foreign-project", actorUserId: "foreign-user" }));
+    await createAuditEvent(db, auditInput({ id: "foreign", organizationId: "org-hardware-department", projectId: "foreign-project", actorUserId: "foreign-user" }));
+    expect((await listAuditEvents(db, { organizationId: "org-chargelab", eventId: "foreign" })).items).toEqual([]);
+    expect((await listAuditEvents(db, { organizationId: "org-chargelab", eventId: "local" })).items[0]).toMatchObject({ projectName: "Aurora", projectCode: "AURORA", actorName: "Xu Yun" });
+    const mismatched = (await listAuditEvents(db, { organizationId: "org-chargelab", eventId: "mismatched-owner" })).items[0];
+    expect(mismatched.actorName).toBeNull();
+    expect(mismatched.projectName).toBeUndefined();
+    expect(mismatched.projectCode).toBeUndefined();
+    expect((await listAuditEvents(db, { organizationId: "org-chargelab", q: "Foreign Secret" })).items).toEqual([]);
+    expect((await listAuditEvents(db, { organizationId: "org-chargelab", q: "Aurora" })).items.map((item) => item.id)).toEqual(["local"]);
+  });
+
+  it("pages all tied timestamps without losing rows or truncating PostgreSQL microseconds", async () => {
+    await db.query(`insert into audit_events (
+      id, organization_id, project_id, actor_type, app, kind, action, severity, metadata, trace_id, created_at
+    ) select 'tied-' || lpad(n::text, 3, '0'), 'org-chargelab', 'aurora', 'system',
+      'parameter-bindings', 'project-value', 'project-value-appended', 'info', '{}'::jsonb,
+      'trace-tied', '2026-05-25T00:00:00.000123Z'::timestamptz from generate_series(1, 360) n`);
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listAuditEvents(db, { organizationId: "org-chargelab", limit: 50, cursor });
+      ids.push(...page.items.map((item) => item.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(ids).toHaveLength(360);
+    expect(new Set(ids).size).toBe(360);
+    expect(ids[0]).toBe("tied-360");
+    expect(ids.at(-1)).toBe("tied-001");
+  });
+
+  it.each(["nonsense", "2026-invalid", "2026-02-31T00:00:00.000Z", Buffer.from(JSON.stringify(["not-a-date", "id"])).toString("base64url")])("rejects invalid cursor %s as a validation error", async (cursor) => {
+    await expect(listAuditEvents(db, { organizationId: "org-chargelab", cursor })).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
   });
 });

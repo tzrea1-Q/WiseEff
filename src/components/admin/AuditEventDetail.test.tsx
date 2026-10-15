@@ -31,6 +31,13 @@ describe("AuditEventDetail", () => {
     expect(screen.getByText("trace-1")).toBeInTheDocument();
   });
 
+  it("keeps informational and unknown severity labels visible", () => {
+    const { rerender } = render(<AuditEventDetail event={{ ...event, severity: "info" }} />);
+    expect(screen.getByText("信息")).toBeInTheDocument();
+    rerender(<AuditEventDetail event={{ ...event, severity: "future" as AuditEventView["severity"] }} />);
+    expect(screen.getByText("未知")).toBeInTheDocument();
+  });
+
   it("renders status transition metadata", () => {
     render(
       <AuditEventDetail

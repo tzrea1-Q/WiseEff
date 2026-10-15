@@ -1,14 +1,40 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { AuditWorkspace } from "./AuditWorkspace";
 import type { AuditEvent } from "@/domain/prototype/types";
 import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency-collector";
 import { requireRowActionVisibility } from "../../../e2e/quality/consistency-assertions";
+import * as auditHttp from "@/infrastructure/http/auditClient";
+import type { AuditEventListResponse } from "@/domain/audit/types";
+import { useState } from "react";
+import type { AuditQueryState } from "@/hooks/useAuditEvents";
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it("keeps the severity menu available while server filters reload so another level can be selected", async () => {
+  const listAuditEvents = vi.fn().mockResolvedValueOnce({ items: [], nextCursor: null })
+    .mockImplementation(() => new Promise(() => {}));
+  vi.spyOn(auditHttp, "createAuditClient").mockReturnValue({ listAuditEvents });
+  function Workspace() {
+    const [query, setQuery] = useState<AuditQueryState>({ appGroup: "all", severity: "all", search: "", timeWindow: "all" });
+    return <AuditWorkspace isApiMode mockEvents={[]} query={query} onQueryChange={(patch) => setQuery((current) => ({ ...current, ...patch }))} />;
+  }
+  render(<Workspace />);
+  await waitFor(() => expect(screen.queryByLabelText("正在加载审计记录")).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "筛选严重度" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "高", exact: true }));
+  expect(screen.getByRole("checkbox", { name: "高", exact: true })).toBeChecked();
+  expect(screen.getByLabelText("正在加载审计记录")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("checkbox", { name: "中", exact: true }));
+  expect(screen.getByRole("checkbox", { name: "中", exact: true })).toBeChecked();
+  expect(listAuditEvents).toHaveBeenLastCalledWith(expect.objectContaining({ severities: ["High", "Medium"] }));
+  await userEvent.click(screen.getByRole("button", { name: "清除", exact: true }));
+  expect(screen.getByRole("checkbox", { name: "高", exact: true })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "中", exact: true })).not.toBeChecked();
 });
 
 it.each([{ severity: "info", label: "信息" }, { severity: undefined, label: "未记录" }])("keeps audit row status measurable for wire severity $severity", ({ severity, label }) => {
@@ -24,11 +50,11 @@ it.each([{ severity: "info", label: "信息" }, { severity: undefined, label: "�
   const measurements = collectConsistencyMeasurements();
   expect(() => requireRowActionVisibility(measurements.rowActions, "/audit")).not.toThrow();
   expect(within(screen.getByRole("table", { name: "审计事件" })).getByText(label)).toBeVisible();
-  expect(measurements.rowActions[0].actions).toHaveLength(2);
+  expect(measurements.rowActions[0].actions).toHaveLength(1);
   expect(measurements.rowActions[0].statuses).toHaveLength(1);
 });
 
-it("opens the selected audit from a table action without changing query state", async () => {
+it("opens the selected audit and writes its shareable ID without replacing filters", async () => {
   const onQueryChange = vi.fn();
   render(<AuditWorkspace isApiMode={false} onQueryChange={onQueryChange}
     query={{ appGroup: "all", severity: "all", search: "", timeWindow: "all" }}
@@ -37,7 +63,7 @@ it("opens the selected audit from a table action without changing query state", 
   const table = screen.getByRole("table", { name: "审计事件" });
   await userEvent.click(within(table).getByRole("button", { name: "查看" }));
   expect(screen.getByRole("dialog")).toBeInTheDocument();
-  expect(onQueryChange).not.toHaveBeenCalled();
+  expect(onQueryChange).toHaveBeenCalledWith({ eventId: "audit-1" });
 });
 
 it("exports Chinese labels and untouched event codes in separate CSV columns", async () => {
@@ -54,4 +80,52 @@ it("exports Chinese labels and untouched event codes in separate CSV columns", a
   expect(csv).toContain("类型,类型标识,操作,操作标识,操作人");
   expect(csv).toContain('"参数值变更已应用","value-change-applied"');
   expect(csv).toContain('"拓扑治理","parameter-topology-governance"');
+});
+
+it("shows one continuous list without duplicate more menus or misleading page totals", () => {
+  render(<AuditWorkspace isApiMode={false} query={{ appGroup: "all", severity: "all", search: "", timeWindow: "all" }}
+    mockEvents={Array.from({ length: 25 }, (_, index) => ({ id: String(index), app: "parameters", kind: "parameter-update",
+      action: "更新参数", actor: "用户", severity: "Low", time: "刚刚" }))} />);
+  expect(screen.getAllByRole("button", { name: "查看", exact: true })).toHaveLength(25);
+  expect(screen.queryByRole("button", { name: "下一页", exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /更多$/ })).not.toBeInTheDocument();
+  expect(screen.getAllByText(/已加载 25 条/).length).toBeGreaterThan(0);
+});
+
+it("can select a related event outside the filtered list and filter its full chain once", async () => {
+  const onQueryChange = vi.fn();
+  render(<AuditWorkspace isApiMode={false} onQueryChange={onQueryChange}
+    query={{ appGroup: "all", severity: "all", search: "主事件", timeWindow: "all" }}
+    mockEvents={[
+      { id: "one", app: "parameters", kind: "parameter-update", action: "主事件", actor: "用户", severity: "Low", time: "刚刚", traceId: "trace-one" },
+      { id: "outside", app: "parameters", kind: "parameter-review-advance", action: "相关审阅", actor: "审阅人", severity: "Low", time: "刚刚", traceId: "trace-one" }
+    ]} />);
+  await userEvent.click(screen.getByRole("button", { name: "查看", exact: true }));
+  await userEvent.click(within(screen.getByLabelText("关联事件")).getByRole("button", { name: /相关审阅/ }));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(within(screen.getByRole("dialog")).getByRole("heading", { level: 3 })).toHaveTextContent("相关审阅");
+  onQueryChange.mockClear();
+  await userEvent.click(screen.getByRole("button", { name: "查看完整链路", exact: true }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(onQueryChange).toHaveBeenCalledTimes(1);
+  expect(onQueryChange).toHaveBeenLastCalledWith(expect.objectContaining({ traceId: "trace-one", eventId: undefined, search: "", appGroup: "all", severity: "all" }));
+});
+
+it("cancels a stale export if the URL filter changes before it finishes", async () => {
+  let resolveExport!: (value: AuditEventListResponse) => void;
+  const item = { id: "audit-api", organizationId: "org", projectId: null, actorUserId: null, actorType: "system" as const,
+    app: "parameter-bindings", kind: "project-value", action: "project-value-appended", severity: "info" as const,
+    targetType: "project-value", targetId: "value", metadata: {}, traceId: "trace", createdAt: "2026-10-15T00:00:00Z" };
+  const listAuditEvents = vi.fn().mockImplementation((params) => params.limit === 100
+    ? new Promise((resolve) => { resolveExport = resolve; }) : Promise.resolve({ items: [item], nextCursor: null }));
+  vi.spyOn(auditHttp, "createAuditClient").mockReturnValue({ listAuditEvents });
+  const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  const query = { appGroup: "all" as const, severity: "all" as const, search: "", timeWindow: "all" as const };
+  const { rerender } = render(<AuditWorkspace isApiMode mockEvents={[]} query={query} />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "导出 CSV" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "导出 CSV" }));
+  rerender(<AuditWorkspace isApiMode mockEvents={[]} query={{ ...query, search: "new-filter" }} />);
+  await act(async () => { resolveExport({ items: [item], nextCursor: null }); });
+  expect(download).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert")).toHaveTextContent("筛选条件已变化，本次导出已取消");
 });

@@ -1,632 +1,233 @@
+import { ArrowLeft, CheckCircle2, ChevronRight, CircleX, LockKeyhole, MessageSquare, Pencil, PlayCircle, RefreshCw, RotateCcw, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import type { ProductFeedbackAppendProgressInput, ProductFeedbackUpdateInput } from "@/application/ports/ProductFeedbackRepository";
+import type { ProductFeedback, ProductFeedbackResolutionCode } from "@/domain/productFeedback/types";
+import { productFeedbackResolutionCodes, productFeedbackResolutionLabels, productFeedbackTypeLabels } from "@/domain/productFeedback/types";
 import { SelectControl } from "@/components/common/SelectControl";
-import { CheckCircle2, CircleX, ImageIcon, PlayCircle, PlusCircle, RotateCcw } from "lucide-react";
-import { useEffect, useState } from "react";
-import type { ProductFeedbackAppendProgressInput } from "@/application/ports/ProductFeedbackRepository";
-import type {
-  ProductFeedback,
-  ProductFeedbackResolutionCode,
-  ProductFeedbackStatus
-} from "@/domain/productFeedback/types";
-import {
-  productFeedbackResolutionCodes,
-  productFeedbackResolutionLabels,
-  productFeedbackStatusLabels,
-  productFeedbackTypeLabels
-} from "@/domain/productFeedback/types";
 import { presentError } from "@/infrastructure/http/presentError";
+import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
+import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { ModalDialog } from "@/components/common/ModalDialog";
+import { SectionSkeleton } from "@/components/common/SectionState";
 import { Textarea } from "@/components/ui/textarea";
+import { ViewSwitch } from "@/components/ui/view-switch";
+import { FeedbackAttachments } from "./FeedbackAttachments";
+import { FeedbackStatusBadge } from "./FeedbackStatusBadge";
+import { FeedbackProgressTimeline } from "./FeedbackProgressTimeline";
+import "./feedback-admin.css";
+
+type Assignee = { id: string; name: string; username: string | null };
+type Action = "resolve" | "close" | "reopen";
+const actionLabels = { resolve: "标记解决", close: "关闭反馈", reopen: "重新打开" };
+const confirmLabels = { resolve: "确认解决", close: "确认关闭", reopen: "确认重新打开" };
+const priorityLabels = { low: "低优先级", normal: "普通优先级", high: "高优先级" };
 
 export type FeedbackAdminDrawerProps = {
   feedback: ProductFeedback | null;
   open: boolean;
   onClose: () => void;
-  onUpdate: (id: string, patch: { status?: ProductFeedbackStatus; adminNote?: string | null }) => Promise<ProductFeedback>;
+  onUpdate: (id: string, patch: ProductFeedbackUpdateInput) => Promise<ProductFeedback>;
   onAppendProgress?: (id: string, input: ProductFeedbackAppendProgressInput) => Promise<ProductFeedback>;
   getAttachmentObjectUrl: (feedbackId: string, attachmentId: string) => Promise<string>;
+  onRefresh?: () => Promise<ProductFeedback | null>;
+  loading?: boolean;
+  loadError?: string;
+  listAssignees?: () => Promise<Assignee[]>;
 };
 
-type AttachmentPreview = {
-  id: string;
-  fileName: string;
-  objectUrl: string;
-};
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
-
-function nextStatusAction(status: ProductFeedbackStatus) {
-  if (status === "open") return { label: "开始处理", status: "in_progress" as const, icon: PlayCircle };
-  if (status === "in_progress") return { label: "关闭反馈", status: "closed" as const, icon: CheckCircle2 };
-  return null;
-}
-
-export function FeedbackAdminDrawer({
-  feedback,
-  open,
-  onClose,
-  onUpdate,
-  onAppendProgress,
-  getAttachmentObjectUrl
-}: FeedbackAdminDrawerProps) {
-  const [adminNote, setAdminNote] = useState("");
-  const [previews, setPreviews] = useState<AttachmentPreview[]>([]);
-  const [expandedPreview, setExpandedPreview] = useState<AttachmentPreview | null>(null);
+export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppendProgress, getAttachmentObjectUrl, onRefresh, loading = false, loadError = "", listAssignees }: FeedbackAdminDrawerProps) {
+  const [action, setAction] = useState<Action | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
+  const [resolutionCode, setResolutionCode] = useState<ProductFeedbackResolutionCode>("completed");
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyMode, setReplyMode] = useState<"public" | "internal">("public");
+  const [replies, setReplies] = useState({ public: "", internal: "" });
+  const [editingTriage, setEditingTriage] = useState(false);
+  const [priority, setPriority] = useState<"low" | "normal" | "high">("normal");
+  const [assigneeUserId, setAssigneeUserId] = useState("");
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const [assigneesLoading, setAssigneesLoading] = useState(false);
+  const [assigneesError, setAssigneesError] = useState("");
+  const [assigneesAttempt, setAssigneesAttempt] = useState(0);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-
-  // New progress workflow dialogs
-  const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
-  const [resolutionCode, setResolutionCode] = useState<ProductFeedbackResolutionCode>("completed");
-  const [resolvePublicMessage, setResolvePublicMessage] = useState("");
-  const [resolveInternalMessage, setResolveInternalMessage] = useState("");
-
-  const [progressDialogOpen, setProgressDialogOpen] = useState(false);
-  const [progressPublicMessage, setProgressPublicMessage] = useState("");
-  const [progressInternalMessage, setProgressInternalMessage] = useState("");
-
-  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
-  const [reopenReason, setReopenReason] = useState("");
+  const [taskError, setTaskError] = useState("");
+  const [triageError, setTriageError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [discardTarget, setDiscardTarget] = useState<"page" | "action" | null>(null);
+  const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const replyRef = useRef<HTMLTextAreaElement>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const triageDirty = editingTriage && Boolean(feedback && (priority !== (feedback.priority ?? "normal") || assigneeUserId !== (feedback.assigneeUserId ?? "")));
+  const dirty = Boolean(replies.public.trim() || replies.internal.trim() || triageDirty || (action && actionMessage.trim()));
 
   useEffect(() => {
-    setAdminNote(feedback?.adminNote ?? "");
-    setErrorMessage("");
-    setExpandedPreview(null);
-  }, [feedback?.id, feedback?.adminNote]);
-
+    setAction(null); setActionMessage(""); setReplies({ public: "", internal: "" }); setReplyOpen(false); setReplyMode("public");
+    setEditingTriage(false); setErrorMessage(""); setTaskError(""); setTriageError(""); setSuccessMessage(""); setDiscardTarget(null);
+    if (open) headingRef.current?.focus();
+  }, [feedback?.id, open]);
   useEffect(() => {
-    if (!open) {
-      setExpandedPreview(null);
-      setResolveDialogOpen(false);
-      setProgressDialogOpen(false);
-      setReopenDialogOpen(false);
-    }
-  }, [open]);
-
+    setPriority(feedback?.priority ?? "normal"); setAssigneeUserId(feedback?.assigneeUserId ?? "");
+  }, [feedback?.id, feedback?.priority, feedback?.assigneeUserId]);
+  useEffect(() => { if (replyOpen) replyRef.current?.focus(); }, [replyOpen, replyMode]);
   useEffect(() => {
     let active = true;
-    setPreviews([]);
-
-    if (!feedback || feedback.attachments.length === 0) {
-      return undefined;
-    }
-
-    void Promise.all(
-      feedback.attachments
-        .slice()
-        .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map(async (attachment) => ({
-          id: attachment.id,
-          fileName: attachment.fileName,
-          objectUrl: await getAttachmentObjectUrl(feedback.id, attachment.id)
-        }))
-    )
-      .then((nextPreviews) => {
-        if (active) setPreviews(nextPreviews);
-      })
-      .catch(() => {
-        if (active) setErrorMessage("截图加载失败，请稍后重试。");
-      });
-
-    return () => {
-      active = false;
+    if (!open || !editingTriage || !listAssignees) return;
+    setAssigneesLoading(true); setAssigneesError("");
+    void listAssignees().then((result) => { if (active) setAssignees(result); })
+      .catch(() => { if (active) setAssigneesError("负责人列表加载失败，请重试。"); })
+      .finally(() => { if (active) setAssigneesLoading(false); });
+    return () => { active = false; };
+  }, [open, editingTriage, listAssignees, assigneesAttempt]);
+  useEffect(() => {
+    if (!open || (!dirty && !pending)) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    const guardLeave = (event: Event) => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      if (pending) return;
+      if (!leaveDecision.current) {
+        let resolve!: (allowed: boolean) => void;
+        const promise = new Promise<boolean>((complete) => { resolve = complete; });
+        leaveDecision.current = { promise, resolve };
+      }
+      (event as CustomEvent<SettingsLeaveRequest>).detail.decision = leaveDecision.current.promise;
+      setDiscardTarget("page");
     };
-  }, [feedback, getAttachmentObjectUrl]);
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("wiseeff:settings-before-leave", guardLeave);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("wiseeff:settings-before-leave", guardLeave);
+      leaveDecision.current?.resolve(false); leaveDecision.current = null;
+    };
+  }, [dirty, open, pending]);
 
-  if (!feedback) {
-    return null;
-  }
-
-  const action = nextStatusAction(feedback.status);
-  const readOnly = feedback.status === "closed";
-  const ActionIcon = action?.icon;
-
-  const handleStatusAction = async () => {
-    if (!action) return;
-    setPending(true);
-    setErrorMessage("");
+  if (!open) return null;
+  const description = feedback?.description.trim() ?? "";
+  const firstLine = description.split("\n")[0];
+  const title = firstLine?.slice(0, 100) || "反馈详情";
+  const body = firstLine && firstLine.length <= 100 ? description.slice(firstLine.length).trim() : description;
+  const author = feedback?.submitter ? feedback.submitter.username ? `${feedback.submitter.name} (@${feedback.submitter.username})` : feedback.submitter.name : feedback?.submitterUserId === null ? "已注销用户" : "内测用户";
+  const locked = pending || loading;
+  const requestClose = () => { if (!pending) { if (dirty) setDiscardTarget("page"); else onClose(); } };
+  const cancelAction = () => { setAction(null); setActionMessage(""); setTaskError(""); };
+  const openAction = (next: Action) => { setResolutionCode(feedback?.resolutionCode ?? "completed"); setActionMessage(""); setTaskError(""); setAction(next); };
+  const append = async (input: ProductFeedbackAppendProgressInput) => {
+    if (!feedback || !onAppendProgress) throw new Error("当前环境暂不支持保存处理记录，请刷新后重试。");
+    return onAppendProgress(feedback.id, input);
+  };
+  const startProcessing = async () => {
+    if (locked) return;
+    setPending(true); setErrorMessage(""); setSuccessMessage("");
+    try { await append({ toStatus: "in_progress", publicMessage: null, internalMessage: null }); setSuccessMessage("已开始处理。"); }
+    catch (error) { setErrorMessage(presentError(error, "开始处理失败，请重试。")); }
+    finally { setPending(false); }
+  };
+  const saveReply = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (locked || feedback?.status === "closed" || !replies[replyMode].trim()) return;
+    const mode = replyMode;
+    setPending(true); setErrorMessage(""); setSuccessMessage("");
     try {
-      // The current admin note is submitted together with the status change.
-      await onUpdate(feedback.id, {
-        status: action.status,
-        adminNote: adminNote.trim() || null
-      });
-      setCloseConfirmOpen(false);
-    } catch (error) {
-      setErrorMessage(presentError(error, "反馈状态更新失败，请稍后重试。"));
-    } finally {
-      setPending(false);
-    }
+      await append({ publicMessage: mode === "public" ? replies.public.trim() : null, internalMessage: mode === "internal" ? replies.internal.trim() : null });
+      setReplies((current) => ({ ...current, [mode]: "" }));
+      if (!replies[mode === "public" ? "internal" : "public"].trim()) setReplyOpen(false);
+      setSuccessMessage(mode === "public" ? "回复已发送，提交人会收到通知。" : "内部备注已保存。");
+    } catch (error) { setErrorMessage(presentError(error, "保存失败，请重试。")); }
+    finally { setPending(false); }
   };
-
-  const handlePrimaryAction = () => {
-    if (!action) return;
-    if (action.status === "closed") {
-      // Closing is irreversible (the feedback becomes read-only) — confirm first.
-      setCloseConfirmOpen(true);
-      return;
-    }
-    void handleStatusAction();
-  };
-
-  const handleResolve = async () => {
-    if (!resolvePublicMessage.trim()) {
-      setErrorMessage("请填写对外公开说明。");
-      return;
-    }
-    setPending(true);
-    setErrorMessage("");
+  const saveAction = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!action || locked) return;
+    if (!actionMessage.trim()) { setTaskError(action === "reopen" ? "请填写重新打开原因。" : "请填写处理说明。"); reasonRef.current?.focus(); return; }
+    if (action !== "reopen" && !productFeedbackResolutionCodes.includes(resolutionCode)) { setTaskError("请选择有效的处理结论。"); return; }
+    setPending(true); setTaskError(""); setSuccessMessage("");
     try {
-      if (onAppendProgress) {
-        await onAppendProgress(feedback.id, {
-          toStatus: "resolved",
-          resolutionCode,
-          publicMessage: resolvePublicMessage.trim(),
-          internalMessage: resolveInternalMessage.trim() || null
-        });
-      } else {
-        await onUpdate(feedback.id, {
-          status: "resolved",
-          adminNote: resolvePublicMessage.trim()
-        });
-      }
-      setResolveDialogOpen(false);
-    } catch (error) {
-      setErrorMessage(presentError(error, "标记解决失败，请稍后重试。"));
-    } finally {
-      setPending(false);
-    }
+      await append({ toStatus: action === "resolve" ? "resolved" : action === "close" ? "closed" : "in_progress", ...(action !== "reopen" ? { resolutionCode } : {}), publicMessage: actionMessage.trim(), internalMessage: null });
+      setSuccessMessage(action === "resolve" ? "反馈已标记为已解决。" : action === "close" ? "反馈已关闭。" : "反馈已重新打开。"); cancelAction();
+    } catch (error) { setTaskError(presentError(error, "操作失败，请重试。")); }
+    finally { setPending(false); }
   };
-
-  const handleAddProgress = async () => {
-    if (!progressPublicMessage.trim() && !progressInternalMessage.trim()) {
-      setErrorMessage("请至少填写公开进展或内部备注中的一项。");
-      return;
-    }
-    setPending(true);
-    setErrorMessage("");
-    try {
-      if (onAppendProgress) {
-        await onAppendProgress(feedback.id, {
-          publicMessage: progressPublicMessage.trim() || null,
-          internalMessage: progressInternalMessage.trim() || null
-        });
-      } else {
-        await onUpdate(feedback.id, {
-          adminNote: (progressInternalMessage.trim() || progressPublicMessage.trim()) ?? null
-        });
-      }
-      setProgressDialogOpen(false);
-      setProgressPublicMessage("");
-      setProgressInternalMessage("");
-    } catch (error) {
-      setErrorMessage(presentError(error, "添加进展失败，请稍后重试。"));
-    } finally {
-      setPending(false);
-    }
+  const saveTriage = async () => {
+    if (!feedback || locked || !triageDirty) return;
+    if (assigneeUserId && assigneeUserId !== feedback.assigneeUserId && !assignees.some((item) => item.id === assigneeUserId)) { setTriageError("请选择列表中的负责人。"); return; }
+    setPending(true); setTriageError(""); setSuccessMessage("");
+    try { await onUpdate(feedback.id, { priority, assigneeUserId: assigneeUserId || null }); setEditingTriage(false); setSuccessMessage("处理安排已保存。"); }
+    catch (error) { setTriageError(presentError(error, "处理安排保存失败，请重试。")); }
+    finally { setPending(false); }
   };
+  const beginReply = (mode: "public" | "internal") => { setReplyMode(mode); setReplyOpen(true); setErrorMessage(""); setSuccessMessage(""); };
 
-  const handleReopen = async () => {
-    if (!reopenReason.trim()) {
-      setErrorMessage("请填写重新打开原因。");
-      return;
-    }
-    setPending(true);
-    setErrorMessage("");
-    try {
-      if (onAppendProgress) {
-        await onAppendProgress(feedback.id, {
-          toStatus: "in_progress",
-          publicMessage: reopenReason.trim()
-        });
-      } else {
-        await onUpdate(feedback.id, {
-          status: "in_progress",
-          adminNote: reopenReason.trim()
-        });
-      }
-      setReopenDialogOpen(false);
-      setReopenReason("");
-    } catch (error) {
-      setErrorMessage(presentError(error, "重新打开失败，请稍后重试。"));
-    } finally {
-      setPending(false);
-    }
-  };
-
-  return (
-    <>
-      <Dialog
-        open={open}
-        onOpenChange={(isOpen) => {
-          // Keep the detail dialog mounted while its irreversible close confirmation
-          // is stacked above it, so the confirmation can complete safely.
-          if (!isOpen && !closeConfirmOpen) onClose();
-        }}
-      >
-        <DialogContent
-          className="feedback-admin-dialog flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
-          showCloseButton={false}
-        >
-          <div className="flex flex-row items-start gap-3 border-b border-border p-4">
-            <div className="min-w-0 flex-1 space-y-1">
-              <span className="text-xs font-medium text-primary">{productFeedbackStatusLabels[feedback.status]}</span>
-              <DialogTitle className="truncate text-base">{feedback.pageTitle}</DialogTitle>
-              <DialogDescription className="text-xs">
-                {productFeedbackTypeLabels[feedback.feedbackType]} · {feedback.pagePath} · {formatDateTime(feedback.createdAt)}
-              </DialogDescription>
-            </div>
-            <DialogClose asChild>
-              <button type="button" className="audit-dialog-close-icon" aria-label="关闭">
-                <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
-              </button>
-            </DialogClose>
-          </div>
-
-        <div className="flex-1 space-y-4 overflow-y-auto p-4">
-          <section>
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground">问题描述</h4>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">{feedback.description}</p>
-          </section>
-
-          <section className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 text-xs sm:grid-cols-3">
-            <div>
-              <span className="text-muted-foreground">页面路径</span>
-              <p className="mt-1 font-mono text-foreground">{feedback.pagePath}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">提交人</span>
-              <p className="mt-1 text-foreground">
-                {feedback.submitter
-                  ? feedback.submitter.username
-                    ? `${feedback.submitter.name} (@${feedback.submitter.username})`
-                    : feedback.submitter.name
-                  : feedback.submitterUserId === null
-                    ? "已注销用户"
-                    : feedback.submitterUserId ?? "内测用户"}
-              </p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">更新时间</span>
-              <p className="mt-1 text-foreground">{formatDateTime(feedback.updatedAt)}</p>
-            </div>
-          </section>
-
-          <section>
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground">
-              处理进展记录{feedback.progressEvents ? `（${feedback.progressEvents.length}）` : ""}
-            </h4>
-            {!feedback.progressEvents || feedback.progressEvents.length === 0 ? (
-              <p className="mt-2 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">暂无进展记录。</p>
-            ) : (
-              <div className="mt-2 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-                {feedback.progressEvents.map((event) => (
-                  <div key={event.id} className="border-l-2 border-primary/40 pl-3 py-1 text-xs space-y-1">
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span className="font-medium text-foreground">
-                        {event.kind === "submitted" && "用户提交反馈"}
-                        {event.kind === "status_changed" &&
-                          `状态变更：${event.fromStatus ? productFeedbackStatusLabels[event.fromStatus] : ""} → ${event.toStatus ? productFeedbackStatusLabels[event.toStatus] : ""}`}
-                        {event.kind === "reopened" && "重新打开反馈"}
-                        {event.kind === "progress" && "处理进展"}
-                        {event.kind === "legacy_note" && "处理备注"}
-                      </span>
-                      <span>{formatDateTime(event.createdAt)}</span>
-                    </div>
-                    {event.resolutionCode && (
-                      <p className="text-muted-foreground">
-                        解决结论：<span className="font-medium text-foreground">{productFeedbackResolutionLabels[event.resolutionCode]}</span>
-                      </p>
-                    )}
-                    {event.publicMessage && (
-                      <div className="rounded bg-background/80 p-2 text-foreground">
-                        <span className="text-[10px] font-semibold text-primary uppercase mr-1">公开进展:</span>
-                        {event.publicMessage}
-                      </div>
-                    )}
-                    {event.internalMessage && (
-                      <div className="rounded bg-amber-500/10 p-2 text-amber-950 dark:text-amber-200">
-                        <span className="text-[10px] font-semibold text-amber-600 uppercase mr-1">内部备注:</span>
-                        {event.internalMessage}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section>
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground">截图附件（{feedback.attachments.length}）</h4>
-            {feedback.attachments.length === 0 ? (
-              <p className="mt-2 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">未附加截图。</p>
-            ) : previews.length > 0 ? (
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                {previews.map((preview) => (
-                  <figure key={preview.id} className="overflow-hidden rounded-lg border border-border bg-card">
-                    <button
-                      type="button"
-                      className="block w-full cursor-zoom-in transition-opacity hover:opacity-90"
-                      aria-label={`放大查看 ${preview.fileName}`}
-                      onClick={() => setExpandedPreview(preview)}
-                    >
-                      <img src={preview.objectUrl} alt={`反馈截图 ${preview.fileName}`} className="h-32 w-full object-cover" />
-                    </button>
-                    <figcaption className="truncate px-2 py-1.5 text-xs text-muted-foreground">{preview.fileName}</figcaption>
-                  </figure>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 flex items-center gap-2 rounded-lg border border-border p-3 text-xs text-muted-foreground">
-                <ImageIcon className="size-4" />
-                正在加载截图...
-              </p>
-            )}
-          </section>
-
-          <section>
-            <label htmlFor="feedback-admin-note" className="text-xs font-semibold uppercase text-muted-foreground">
-              处理备注
-            </label>
-            <Textarea
-              id="feedback-admin-note"
-              value={adminNote}
-              rows={5}
-              disabled={readOnly || pending}
-              onChange={(event) => setAdminNote(event.target.value)}
-              placeholder="记录处理结论、责任人或后续动作"
-              className="mt-2"
-            />
-            {readOnly ? <p className="mt-2 text-xs text-muted-foreground">已关闭的反馈仅可查看。</p> : null}
-          </section>
-
-          {errorMessage ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{errorMessage}</p> : null}
+  return <>
+    <article className="feedback-record" aria-label={title} aria-busy={locked || undefined}>
+      <header className="feedback-record-toolbar">
+        <Button variant="ghost" size="sm" disabled={pending} onClick={requestClose}><ArrowLeft data-icon="inline-start" />返回反馈列表</Button>
+        <div className="feedback-record-toolbar-actions">
+          {onRefresh && <Button variant="ghost" size="icon" aria-label="刷新反馈详情" disabled={locked || dirty} onClick={() => void onRefresh()}><RefreshCw className="size-4" /></Button>}
+          {feedback?.status === "resolved" && <Button variant="ghost" size="sm" disabled={locked} onClick={() => openAction("reopen")}><RotateCcw data-icon="inline-start" />重新打开</Button>}
+          {feedback && <Button size="sm" disabled={locked} onClick={() => feedback.status === "open" ? void startProcessing() : openAction(feedback.status === "in_progress" ? "resolve" : feedback.status === "resolved" ? "close" : "reopen")}>
+            {feedback.status === "open" ? <PlayCircle data-icon="inline-start" /> : feedback.status === "closed" ? <RotateCcw data-icon="inline-start" /> : <CheckCircle2 data-icon="inline-start" />}
+            {feedback.status === "open" ? "开始处理" : feedback.status === "in_progress" ? "标记解决" : feedback.status === "resolved" ? "关闭反馈" : "重新打开"}
+          </Button>}
         </div>
-
-        <div className="flex flex-wrap items-center gap-2 border-t border-border p-4">
-          {action && ActionIcon ? (
-            <Button size="sm" onClick={handlePrimaryAction} disabled={pending} aria-busy={pending || undefined}>
-              <ActionIcon data-icon="inline-start" />
-              {pending ? "处理中..." : action.label}
-            </Button>
-          ) : null}
-
-          {feedback.status === "in_progress" && (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setResolvePublicMessage("");
-                  setResolveInternalMessage("");
-                  setResolveDialogOpen(true);
-                }}
-                disabled={pending}
-              >
-                <CheckCircle2 data-icon="inline-start" />
-                标记解决
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setProgressPublicMessage("");
-                  setProgressInternalMessage("");
-                  setProgressDialogOpen(true);
-                }}
-                disabled={pending}
-              >
-                <PlusCircle data-icon="inline-start" />
-                添加进展
-              </Button>
-            </>
-          )}
-
-          {(feedback.status === "resolved" || feedback.status === "closed") && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setReopenReason("");
-                setReopenDialogOpen(true);
-              }}
-              disabled={pending}
-            >
-              <RotateCcw data-icon="inline-start" />
-              重新打开
-            </Button>
-          )}
+      </header>
+      {loadError && <div className="feedback-record-notice" role="alert">{loadError}{onRefresh && <Button variant="ghost" size="sm" disabled={locked || dirty} onClick={() => void onRefresh()}>重新加载详情</Button>}</div>}
+      {loading && !feedback && <div className="feedback-record-content"><SectionSkeleton label="正在加载反馈详情" /></div>}
+      {feedback && <div className="feedback-record-grid">
+        <div className="feedback-record-content">
+          <section className="feedback-record-issue">
+            <div className="feedback-record-eyebrow"><FeedbackStatusBadge status={feedback.status} resolutionCode={feedback.resolutionCode} /><span>{productFeedbackTypeLabels[feedback.feedbackType]}</span></div>
+            <h2 ref={headingRef} tabIndex={-1}>{title}</h2>
+            <p className="feedback-record-byline">{author}<span>提交于 <time dateTime={feedback.submittedAt ?? feedback.createdAt} title={formatAbsolute(feedback.submittedAt ?? feedback.createdAt)}>{formatRelativeOrAbsolute(feedback.submittedAt ?? feedback.createdAt)}</time></span></p>
+            {body && <p className="feedback-record-description">{body}</p>}
+            {feedback.attachments.length > 0 && <div className="feedback-record-evidence"><h3>附件 <span>{feedback.attachments.length}</span></h3><FeedbackAttachments feedbackId={feedback.id} attachments={feedback.attachments} getAttachmentObjectUrl={getAttachmentObjectUrl} /></div>}
+          </section>
+          <section className="feedback-record-conversation" aria-label="沟通与进展">
+            <div className="feedback-record-section-heading"><h3>沟通与进展</h3><span>{feedback.progressEvents?.length ?? 0} 条记录</span></div>
+            {replyOpen ? <form className="feedback-record-reply" onSubmit={saveReply}>
+              <div className="feedback-record-reply-head"><ViewSwitch variant="toggle" ariaLabel="回复可见范围" value={replyMode} onValueChange={(mode) => { setReplyMode(mode as "public" | "internal"); setErrorMessage(""); }} items={[{ value: "public", label: `公开回复${replies.public.trim() ? " · 未发送" : ""}`, disabled: locked }, { value: "internal", label: `内部备注${replies.internal.trim() ? " · 未保存" : ""}`, disabled: locked }]} /></div>
+              <label className="sr-only" htmlFor="feedback-reply">{replyMode === "public" ? "公开回复" : "内部备注"}</label>
+              <Textarea ref={replyRef} id="feedback-reply" rows={3} value={replies[replyMode]} maxLength={2000} disabled={locked || feedback.status === "closed"} onChange={(event) => { setReplies((current) => ({ ...current, [replyMode]: event.target.value })); setErrorMessage(""); }} placeholder={replyMode === "public" ? "向提交人说明进展，或询问更多信息…" : "记录排查线索或交接信息，仅管理员可见…"} />
+              <p className="feedback-record-reply-visibility">{replyMode === "internal" ? <LockKeyhole size={13} /> : <MessageSquare size={13} />}{feedback.status === "closed" ? "反馈已关闭，未发送的内容仍保留。重新打开后可继续发送。" : replyMode === "public" ? "提交人可见，发送后会通知对方" : "仅管理员可见，不通知提交人"}</p>
+              {errorMessage && <p className="feedback-admin-inline-error" role="alert">{errorMessage}</p>}
+              <div className="feedback-record-reply-actions"><span>{replies[replyMode].length} / 2000</span><Button type="button" variant="ghost" size="sm" disabled={locked} onClick={() => { setReplies({ public: "", internal: "" }); setReplyOpen(false); setErrorMessage(""); }}>取消</Button><Button type="submit" size="sm" disabled={locked || feedback.status === "closed" || !replies[replyMode].trim()}><Send data-icon="inline-start" />{pending ? "保存中…" : replyMode === "public" ? "发送回复" : "保存内部备注"}</Button></div>
+            </form> : feedback.status !== "closed" ? <div className="feedback-record-reply-prompt"><button type="button" disabled={locked} onClick={() => beginReply("public")}><MessageSquare size={17} /><span>回复提交人…</span><ChevronRight size={15} /></button><Button variant="ghost" size="sm" disabled={locked} onClick={() => beginReply("internal")}><LockKeyhole data-icon="inline-start" />写内部备注</Button></div> : <p className="feedback-record-closed">反馈已关闭。需要继续沟通时，可在右上角重新打开。</p>}
+            {errorMessage && !replyOpen && <p className="feedback-admin-inline-error" role="alert">{errorMessage}</p>}
+            {successMessage && <p className="feedback-record-success" role="status">{successMessage}</p>}
+            <FeedbackProgressTimeline key={feedback.id} events={feedback.progressEvents} isAdmin initialVisibleCount={4} />
+            {feedback.adminNote && !feedback.progressEvents?.some((event) => event.internalMessage === feedback.adminNote) && <div className="feedback-admin-legacy-note"><h4>历史内部备注</h4><p>{feedback.adminNote}</p></div>}
+          </section>
         </div>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmDialog
-        open={closeConfirmOpen}
-        title="确认关闭反馈"
-        description={
-          <p>
-            关闭「{feedback.pageTitle}」后该反馈进入只读状态，不能再编辑状态或备注；
-            当前填写的处理备注将随关闭一并保存。
-          </p>
-        }
-        confirmLabel="确认关闭"
-        tone="danger"
-        pending={pending}
-        pendingLabel="关闭中…"
-        error={errorMessage}
-        onCancel={() => {
-          if (pending) return;
-          setCloseConfirmOpen(false);
-        }}
-        onConfirm={() => void handleStatusAction()}
-      />
-
-      <Dialog open={expandedPreview !== null} onOpenChange={(isOpen) => !isOpen && setExpandedPreview(null)}>
-        <DialogContent
-          className="feedback-attachment-preview-dialog sm:max-w-[min(1100px,calc(100vw-48px))]"
-          showCloseButton={false}
-        >
-          <div className="feedback-attachment-preview-dialog-head">
-            <div className="feedback-attachment-preview-dialog-head-text">
-              <DialogTitle>反馈截图预览</DialogTitle>
-              <DialogDescription>{expandedPreview?.fileName ?? "反馈截图"}</DialogDescription>
-            </div>
-            <button
-              type="button"
-              className="audit-dialog-close-icon"
-              aria-label="关闭"
-              onClick={() => setExpandedPreview(null)}
-            >
-              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </div>
-          {expandedPreview ? (
-            <div className="feedback-attachment-preview-dialog-body">
-              <img
-                src={expandedPreview.objectUrl}
-                alt={`反馈截图 ${expandedPreview.fileName}`}
-                className="max-h-[min(78vh,calc(100vh-180px))] w-full rounded-md object-contain"
-              />
-              <p className="truncate text-center text-xs text-muted-foreground">{expandedPreview.fileName}</p>
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      {/* Resolve Dialog */}
-      <Dialog open={resolveDialogOpen} onOpenChange={setResolveDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogTitle>标记反馈为已解决</DialogTitle>
-          <DialogDescription>
-            解决反馈需要选择解决结论并填写对外公开说明，提交人可在我的反馈中查看处理结果。
-          </DialogDescription>
-          <div className="space-y-3 py-2 text-sm">
-            <div>
-              <label htmlFor="resolve-resolution-code" className="text-xs font-medium text-muted-foreground">解决结论 *</label>
-              <SelectControl
-                id="resolve-resolution-code"
-                value={resolutionCode}
-                ariaLabel="解决结论"
-                onValueChange={setResolutionCode}
-                className="mt-1 w-full"
-                options={productFeedbackResolutionCodes.map((code) => ({ value: code, label: productFeedbackResolutionLabels[code] }))}
-              />
-            </div>
-            <div>
-              <label htmlFor="resolve-public-msg" className="text-xs font-medium text-muted-foreground">对外公开说明 *</label>
-              <Textarea
-                id="resolve-public-msg"
-                value={resolvePublicMessage}
-                onChange={(e) => setResolvePublicMessage(e.target.value)}
-                placeholder="例如：已在 v2.5.1 版本修复此问题"
-                rows={3}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <label htmlFor="resolve-internal-msg" className="text-xs font-medium text-muted-foreground">内部处理备注（可选）</label>
-              <Textarea
-                id="resolve-internal-msg"
-                value={resolveInternalMessage}
-                onChange={(e) => setResolveInternalMessage(e.target.value)}
-                placeholder="仅管理员可见的内部排查或沟通记录..."
-                rows={2}
-                className="mt-1"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => setResolveDialogOpen(false)} disabled={pending}>
-              取消
-            </Button>
-            <Button size="sm" onClick={() => void handleResolve()} disabled={pending}>
-              {pending ? "提交中..." : "确认解决"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Progress Dialog */}
-      <Dialog open={progressDialogOpen} onOpenChange={setProgressDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogTitle>添加处理进展</DialogTitle>
-          <DialogDescription>
-            记录最新的排查或处理进展。公开进展对反馈提交人可见，内部备注仅管理员可见。
-          </DialogDescription>
-          <div className="space-y-3 py-2 text-sm">
-            <div>
-              <label htmlFor="progress-public-msg" className="text-xs font-medium text-muted-foreground">公开进展（提交人可见）</label>
-              <Textarea
-                id="progress-public-msg"
-                value={progressPublicMessage}
-                onChange={(e) => setProgressPublicMessage(e.target.value)}
-                placeholder="向用户同步的处理进展..."
-                rows={3}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <label htmlFor="progress-internal-msg" className="text-xs font-medium text-muted-foreground">内部备注（仅管理员可见）</label>
-              <Textarea
-                id="progress-internal-msg"
-                value={progressInternalMessage}
-                onChange={(e) => setProgressInternalMessage(e.target.value)}
-                placeholder="内部讨论、排查结论或责任人记录..."
-                rows={2}
-                className="mt-1"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => setProgressDialogOpen(false)} disabled={pending}>
-              取消
-            </Button>
-            <Button size="sm" onClick={() => void handleAddProgress()} disabled={pending}>
-              {pending ? "提交中..." : "添加记录"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Reopen Dialog */}
-      <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogTitle>重新打开反馈</DialogTitle>
-          <DialogDescription>
-            重新将反馈置为处理中状态。需填写说明，作为公开进展同步给提交人。
-          </DialogDescription>
-          <div className="space-y-3 py-2 text-sm">
-            <div>
-              <label htmlFor="reopen-reason" className="text-xs font-medium text-muted-foreground">重新打开原因 *</label>
-              <Textarea
-                id="reopen-reason"
-                value={reopenReason}
-                onChange={(e) => setReopenReason(e.target.value)}
-                placeholder="说明为何重新打开（例如：问题在特定机型仍复现）..."
-                rows={3}
-                className="mt-1"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => setReopenDialogOpen(false)} disabled={pending}>
-              取消
-            </Button>
-            <Button size="sm" onClick={() => void handleReopen()} disabled={pending}>
-              {pending ? "提交中..." : "确认重新打开"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
+        <aside className="feedback-record-aside" aria-label="反馈信息">
+          <section><div className="feedback-record-section-heading"><h3>处理安排</h3><Button variant="ghost" size="sm" disabled={locked || editingTriage} onClick={() => { setEditingTriage(true); setTriageError(""); }}><Pencil data-icon="inline-start" />编辑</Button></div>
+            {editingTriage ? <div className="feedback-record-triage-editor">
+              <div className="feedback-admin-field"><label htmlFor="feedback-priority">优先级</label><SelectControl id="feedback-priority" ariaLabel="优先级" value={priority} onValueChange={setPriority} disabled={locked} options={Object.entries(priorityLabels).map(([value, label]) => ({ value: value as typeof priority, label }))} /></div>
+              <div className="feedback-admin-field"><label htmlFor="feedback-assignee">负责人</label><SelectControl id="feedback-assignee" ariaLabel="负责人" value={assigneeUserId} onValueChange={setAssigneeUserId} disabled={locked || assigneesLoading || Boolean(assigneesError) || !listAssignees} options={[{ value: "", label: "未分配负责人" }, ...assignees.map((item) => ({ value: item.id, label: item.name })), ...(assigneeUserId && !assignees.some((item) => item.id === assigneeUserId) ? [{ value: assigneeUserId, label: feedback.assignee?.name ?? "当前负责人" }] : [])]} /></div>
+              {assigneesLoading && <p className="feedback-admin-help" role="status">正在加载负责人…</p>}{assigneesError && <p className="feedback-admin-inline-error" role="alert">{assigneesError}<Button variant="ghost" size="sm" onClick={() => setAssigneesAttempt((attempt) => attempt + 1)}>重试</Button></p>}{!listAssignees && <p className="feedback-admin-help">当前环境暂不支持调整负责人。</p>}
+              {triageError && <p className="feedback-admin-inline-error" role="alert">{triageError}</p>}
+              <div className="feedback-record-triage-actions"><Button variant="ghost" size="sm" disabled={locked} onClick={() => { setPriority(feedback.priority ?? "normal"); setAssigneeUserId(feedback.assigneeUserId ?? ""); setEditingTriage(false); }}>取消</Button><Button variant="outline" size="sm" disabled={locked || !triageDirty} onClick={() => void saveTriage()}>保存安排</Button></div>
+            </div> : <dl className="feedback-record-properties"><div><dt>负责人</dt><dd>{feedback.assignee?.name ?? "未分配"}</dd></div><div><dt>优先级</dt><dd data-priority={feedback.priority ?? "normal"}>{priorityLabels[feedback.priority ?? "normal"]}</dd></div></dl>}
+          </section>
+          <section><h3>问题来源</h3><p className="feedback-record-source">{feedback.pageTitle}<code>{feedback.pagePath}</code></p></section>
+          <section><h3>最近更新</h3><time className="feedback-record-updated" dateTime={feedback.updatedAt} title={formatAbsolute(feedback.updatedAt)}>{formatRelativeOrAbsolute(feedback.updatedAt)}</time></section>
+        </aside>
+      </div>}
+    </article>
+    <ModalDialog open={action !== null} className="feedback-action-dialog" onDismiss={pending ? undefined : () => actionMessage.trim() ? setDiscardTarget("action") : cancelAction()} initialFocusRef={reasonRef} describedBy>
+      {({ titleId, descriptionId }) => <form onSubmit={saveAction}>
+        <header className="feedback-action-head"><div><h2 id={titleId}>{action ? actionLabels[action] : "处理反馈"}</h2><p id={descriptionId}>{action === "reopen" ? "说明为什么需要继续处理，提交人会收到通知。" : action === "close" ? "关闭后仍可重新打开，处理记录会保留。" : "填写处理结果，提交人会收到通知。"}</p></div><Button type="button" variant="ghost" size="icon" aria-label="关闭操作窗口" disabled={pending} onClick={() => actionMessage.trim() ? setDiscardTarget("action") : cancelAction()}><CircleX size={18} /></Button></header>
+        <div className="feedback-action-fields">
+          {action !== "reopen" && <div className="feedback-admin-field"><label htmlFor="feedback-resolution">处理结论</label><SelectControl id="feedback-resolution" ariaLabel="处理结论" value={resolutionCode} onValueChange={setResolutionCode} disabled={pending} options={productFeedbackResolutionCodes.map((value) => ({ value, label: productFeedbackResolutionLabels[value] }))} /></div>}
+          <div className="feedback-admin-field"><label htmlFor="feedback-action-message">{action === "reopen" ? "重新打开原因" : "处理说明"}</label><Textarea ref={reasonRef} id="feedback-action-message" rows={4} maxLength={2000} disabled={pending} value={actionMessage} onChange={(event) => { setActionMessage(event.target.value); setTaskError(""); }} placeholder={action === "reopen" ? "还有什么问题需要继续跟进？" : "说明处理结果及需要用户确认的事项…"} aria-invalid={Boolean(taskError) || undefined} aria-describedby={taskError ? "feedback-task-error" : undefined} /><p className="feedback-admin-help">提交人可见 · {actionMessage.length} / 2000</p></div>
+          {taskError && <p id="feedback-task-error" className="feedback-admin-inline-error" role="alert">{taskError}</p>}
+        </div>
+        <footer className="feedback-action-footer"><Button type="button" variant="ghost" disabled={pending} onClick={cancelAction}>取消</Button><Button type="submit" disabled={pending}>{pending ? "保存中…" : action ? confirmLabels[action] : "确认"}</Button></footer>
+      </form>}
+    </ModalDialog>
+    <ConfirmDialog open={discardTarget !== null} title="放弃未保存的修改？" description={discardTarget === "action" ? "尚未提交的处理说明将丢失。" : "尚未发送的回复、内部备注或处理安排将丢失。"} confirmLabel={discardTarget === "action" ? "放弃说明" : "放弃并返回"} cancelLabel="继续编辑" pending={pending} onCancel={() => { leaveDecision.current?.resolve(false); leaveDecision.current = null; setDiscardTarget(null); }} onConfirm={() => { const target = discardTarget; const decision = leaveDecision.current; leaveDecision.current = null; setDiscardTarget(null); if (target === "action") cancelAction(); else if (decision) decision.resolve(true); else onClose(); }} />
+  </>;
 }

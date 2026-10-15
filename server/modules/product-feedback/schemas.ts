@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { feedbackResolutionCodes, feedbackStatuses, feedbackTypes } from "./types";
+import { feedbackPriorities, feedbackResolutionCodes, feedbackStatuses, feedbackTypes } from "./types";
 
 const nonEmptyString = z.string().min(1);
 const base64String = nonEmptyString.refine(
@@ -42,16 +42,28 @@ export const listProductFeedbackQuerySchema = z.object({
 export const patchProductFeedbackBodySchema = z
   .object({
     status: z.enum(feedbackStatuses).optional(),
-    adminNote: z.string().max(2000).nullable().optional()
+    adminNote: z.string().max(2000).nullable().optional(),
+    publicMessage: z.string().max(2000).nullable().optional(),
+    resolutionCode: z.enum(feedbackResolutionCodes).nullable().optional(),
+    priority: z.enum(feedbackPriorities).optional(),
+    assigneeUserId: nonEmptyString.nullable().optional()
   })
   .refine(
-    (value) => Object.prototype.hasOwnProperty.call(value, "status") || Object.prototype.hasOwnProperty.call(value, "adminNote"),
-    { message: "Expected status or adminNote." }
+    (value) => Object.keys(value).length > 0,
+    { message: "Expected at least one feedback field." }
   );
 
 export const listMyFeedbackQuerySchema = z.object({
+  q: z.string().max(4000).optional(),
+  status: z.enum([...feedbackStatuses, "draft"]).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional()
+});
+
+export const replyToProductFeedbackBodySchema = z.object({
+  message: z.string().trim().min(1).max(2000),
+  attachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional(),
+  reopen: z.boolean().optional()
 });
 
 export type ProductFeedbackAttachmentBody = z.infer<typeof productFeedbackAttachmentBodySchema>;

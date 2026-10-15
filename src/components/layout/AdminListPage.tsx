@@ -10,7 +10,7 @@ type AdminListPageProps<Row> = {
   headerContent?: ReactNode;
   filterBar: ReactNode;
   notice?: ReactNode;
-  table: Omit<DataTableProps<Row>, "toolbar" | "emptyState" | "renderRowActions" | "compactControls">;
+  table: Omit<DataTableProps<Row>, "toolbar" | "renderRowActions" | "compactControls">;
   rowActions?: (row: Row) => RowActionMenuProps;
   emptyState: Required<Pick<ComponentProps<typeof SectionEmpty>, "message" | "actionLabel" | "onAction">>;
   detailDrawer?: ReactNode;
@@ -33,7 +33,7 @@ export function AdminListPage<Row>({ label, headerActions, headerContent, filter
       {headerActions || headerContent ? <AdminListPageHeader label={label} content={headerContent ?? label} actions={headerActions} /> : null}
       {notice ? <div className="admin-list-page__notice">{notice}</div> : null}
       {filterBar ? <div className="admin-list-page__filters" role="group" aria-label={`${label}筛选`}>{filterBar}</div> : null}
-      {tableState ?? <DataTable {...table} compactControls visibleScrollRail emptyState={<SectionEmpty {...emptyState} />}
+      {tableState ?? <DataTable {...table} compactControls visibleScrollRail emptyState={table.emptyState ?? <SectionEmpty {...emptyState} />}
         renderRowActions={rowActions ? (row) => <RowActionMenu {...rowActions(row)} /> : undefined} />}
       {detailDrawer}
     </section>
