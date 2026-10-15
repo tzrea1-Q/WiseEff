@@ -46,6 +46,15 @@ function businessUrl(event: AuditEventView) {
   return "/parameters?" + params.toString();
 }
 
+function AuditKindField({ initialKind = "" }: { initialKind?: string }) {
+  const [kind, setKind] = useState(() => Object.hasOwn(AUDIT_KIND_LABELS, initialKind) ? initialKind : "");
+  return <label><span>事件类型</span>
+    <SelectControl className="w-full" value={kind} onValueChange={setKind} ariaLabel="事件类型筛选"
+      options={[{ value: "", label: "全部类型" }, ...Object.entries(AUDIT_KIND_LABELS).map(([value, label]) => ({ value, label }))]} />
+    <input type="hidden" name="kind" value={kind} />
+  </label>;
+}
+
 export function AuditWorkspace({ mockEvents, isApiMode, query, onQueryChange, projects = [] }: AuditWorkspaceProps) {
   const [localSearch, setLocalSearch] = useState(query.search);
   const [detailEventId, setDetailEventId] = useState<string | null>(query.eventId ?? null);
@@ -220,9 +229,7 @@ export function AuditWorkspace({ mockEvents, isApiMode, query, onQueryChange, pr
               <label><span>开始时间（本地时间）</span><input type="datetime-local" name="from" defaultValue={localDateInput(query.from)} required /></label>
               <label><span>结束时间（本地时间）</span><input type="datetime-local" name="to" defaultValue={localDateInput(query.to)} required /></label>
             </> : null}
-            <label><span>事件类型</span><select name="kind" defaultValue={query.kind ?? ""} aria-label="事件类型筛选">
-              <option value="">全部类型</option>{Object.entries(AUDIT_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select></label>
+            <AuditKindField initialKind={query.kind} />
             <label><span>对象 ID</span><input name="targetId" defaultValue={query.targetId} maxLength={200} placeholder="精确匹配对象 ID" /></label>
             <label><span>链路 ID</span><input name="traceId" defaultValue={query.traceId} maxLength={200} placeholder="精确匹配链路 ID" /></label>
             <button type="submit" className="button subtle">应用筛选</button>
