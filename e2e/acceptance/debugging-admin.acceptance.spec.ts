@@ -10,6 +10,7 @@ import { acceptanceCast } from "./helpers/cast";
 import { CATALOG_VIEWPORTS, assertNoPageOverflow, catalogScreenshot } from "./helpers/catalogBrowser";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
 
 useBrowserDiagnostics(test);
 
@@ -272,6 +273,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
 
     await page.goto("/debugging-admin/nodes");
     await expect(page.getByRole("table", { name: "可调节点目录" })).toBeVisible({ timeout: 30_000 });
+    await prepareInteractionSurface(page);
     await expect(page.getByRole("button", { name: "新增节点" })).toBeEnabled();
 
     await page.getByRole("button", { name: "模块管理", exact: true }).click();
@@ -523,6 +525,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
 
     await page.reload();
     await expect(page.getByText(editedName)).toBeVisible({ timeout: 30_000 });
+    await prepareInteractionSurface(page);
     await nodeRow(page, editedName).getByRole("button", { name: /：更多$/ }).click();
     await page.getByRole("menuitem", { name: `禁用 ${editedName}` }).click();
     await page.getByRole("button", { name: /^禁用$/ }).click();
@@ -675,6 +678,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     );
     await page.reload();
     await expect(nodeRow(page, editedName)).toBeVisible({ timeout: 30_000 });
+    await prepareInteractionSurface(page);
     const nodeCount = page.getByLabel("节点目录概览").locator("div").filter({ hasText: "节点总数" }).locator("dd");
     const nodeCountBeforeDelete = Number(await nodeCount.innerText());
     await nodeRow(page, editedName).getByRole("button", { name: /：更多$/ }).click();
@@ -1281,6 +1285,7 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto("/debugging-admin/nodes");
       await expect(page.getByRole("table", { name: "可调节点目录" })).toBeVisible({ timeout: 30_000 });
+      await prepareInteractionSurface(page);
       await assertNoPageOverflow(page);
 
       await page.getByLabel("导入节点文件").setInputFiles({
