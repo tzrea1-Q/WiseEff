@@ -498,7 +498,7 @@ describe("createDebuggingRuntimeActions", () => {
     const gateway = createGateway({
       writeNode: vi.fn(async (input) => {
         callOrder.push(input.nodeId ?? "");
-        return { ok: true, value: input.value, verified: true, operation: { ...writeOperation, id: `op-${input.nodeId}`, parameterId: input.nodeId } };
+        return { ok: true, value: input.value, verified: true, writeOutcome: "executed" as const, readbackOutcome: "observed" as const, operation: { ...writeOperation, id: `op-${input.nodeId}`, parameterId: input.nodeId } };
       })
     });
     const actions = createDebuggingRuntimeActions({
@@ -550,6 +550,8 @@ describe("createDebuggingRuntimeActions", () => {
           ok: true,
           value: input.value,
           verified: true,
+          writeOutcome: "executed" as const,
+          readbackOutcome: "observed" as const,
           operation: { ...writeOperation, id: `op-${input.nodeId}`, parameterId: input.nodeId }
         };
       })
@@ -589,6 +591,8 @@ describe("createDebuggingRuntimeActions", () => {
         ok: true,
         value: input.value,
         verified: true,
+        writeOutcome: "executed" as const,
+        readbackOutcome: "observed" as const,
         operation: { ...writeOperation, id: `op-${input.nodeId}`, parameterId: input.nodeId }
       }))
     });

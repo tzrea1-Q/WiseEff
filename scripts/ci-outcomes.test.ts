@@ -86,3 +86,8 @@ it("keeps missing or invalid timestamps and absent jobs unknown, including epoch
   expect(compareCiOutcomes(cohort, Array(5).fill(zero), Array(5).fill(zero)).greenMedian)
     .toEqual({ beforeSeconds: 0, afterSeconds: 0, deltaSeconds: 0, percentChange: null });
 });
+
+it.each(["success", "cancelled"] as const)("keeps cancelled cost unknown when a %s run has no job inventory", (conclusion) => {
+  expect(compareCiOutcomes(cohort, [], [run(100, { conclusion, jobs: [] })]).after)
+    .toMatchObject({ runnerSeconds: null, unknownCostRuns: 1, knownJobSeconds: 0, cancelledKnownJobSeconds: 0, cancelledJobSeconds: null });
+});

@@ -47,6 +47,7 @@ const apiPreviewBatch = {
 function createRepository(overrides: Partial<ParameterRepository> = {}): ParameterRepository {
   return {
     listProjects: vi.fn().mockResolvedValue(apiProjects),
+    listParameterModules: vi.fn().mockResolvedValue([]),
     listParameters: vi.fn().mockResolvedValue([apiParameter]),
     getParameter: vi.fn().mockResolvedValue(apiParameter),
     listParameterHistory: vi.fn().mockResolvedValue([]),
@@ -55,6 +56,7 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
     deleteDraft: vi.fn().mockResolvedValue(undefined),
     listChangeRequests: vi.fn().mockResolvedValue([apiChangeRequest]),
     listSubmissionRounds: vi.fn().mockResolvedValue([apiRound]),
+    listWorkflowAssignees: vi.fn().mockResolvedValue({ hardwareCommitters: [], softwareCommitters: [], softwareUsers: [] }),
     submitParameterChanges: vi.fn().mockResolvedValue(apiRound),
     withdrawSubmissionRound: vi.fn().mockResolvedValue({ ...apiRound, status: "已撤回" }),
     reviewChange: vi.fn().mockResolvedValue(apiChangeRequest),

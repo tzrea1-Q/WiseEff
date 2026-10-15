@@ -41,6 +41,7 @@ function summarize(runs: readonly CiObservation[]) {
     const durations = jobs.map((job) => seconds(job.startedAt, job.completedAt));
     const known = durations.reduce<number>((sum, duration) => sum + (duration ?? 0), 0);
     knownJobSeconds += known;
+    if (jobs.length === 0) unknownCancelledJobs++;
     jobs.forEach((job, index) => {
       if (run.conclusion !== "cancelled" && job.conclusion !== "cancelled" && !job.replaced) return;
       const duration = durations[index];

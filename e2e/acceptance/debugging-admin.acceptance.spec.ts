@@ -273,13 +273,13 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     let fetched!: () => void;
     const releaseResponse = new Promise<void>((resolve) => { release = resolve; });
     const responseFetched = new Promise<void>((resolve) => { fetched = resolve; });
-    let holdFirst = true;
-    let failNext = false;
+    let failCatalog = false;
     let releaseDevices!: () => void;
     let deviceFetched!: () => void;
     const deviceGate = new Promise<void>((resolve) => { releaseDevices = resolve; });
     const deviceResponseFetched = new Promise<void>((resolve) => { deviceFetched = resolve; });
-    const optionalTasks: Promise<void>[] = [];
+    const routeTasks: Promise<void>[] = [];
+    let settledRoutes: PromiseSettledResult<void>[] = [];
     const optionalDevices = (url: URL) => url.pathname === "/api/v1/debugging/devices";
     await page.route(optionalDevices, (route) => {
       const task = (async () => {
@@ -288,23 +288,23 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
         await deviceGate;
         if (!route.request().failure()) await route.fulfill({ response });
       })();
-      optionalTasks.push(task);
+      routeTasks.push(task);
       return task;
     });
     const bootstrapNodes = (url: URL) => url.pathname === "/api/v1/debugging/admin/modules";
-    await page.route(bootstrapNodes, async (route) => {
-      if (failNext) {
-        failNext = false;
-        await route.fulfill({ status: 503, json: { error: { code: "INTERNAL_ERROR", message: "Controlled bootstrap failure" } } });
-        return;
-      }
-      const response = await route.fetch();
-      if (holdFirst) {
-        holdFirst = false;
+    await page.route(bootstrapNodes, (route) => {
+      const task = (async () => {
+        if (failCatalog) {
+          await route.fulfill({ status: 503, json: { error: { code: "INTERNAL_ERROR", message: "Controlled bootstrap failure" } } });
+          return;
+        }
+        const response = await route.fetch();
         fetched();
         await releaseResponse;
-      }
-      await route.fulfill({ response });
+        if (!route.request().failure()) await route.fulfill({ response });
+      })();
+      routeTasks.push(task);
+      return task;
     });
     try {
       await page.goto("/debugging-admin/nodes");
@@ -314,7 +314,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       await expect(main).toHaveAttribute("data-runtime-state", "loading");
       await expect(page.getByRole("status").filter({ hasText: "正在加载可调节点目录" })).toBeVisible();
       // Required catalog data is held; the actual action is rendered but unavailable.
-      const create = main.locator("button").filter({ hasText: /^新增节点$/ });
+      const create = main.locator('[role="group"][aria-label="可调节点目录操作"] button').filter({ hasText: /^新增节点$/ });
       await expect(create).toBeVisible();
       const target = await create.boundingBox();
       expect(target).not.toBeNull();
@@ -337,24 +337,30 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       await expect(more).toBeFocused();
 
       expectedApiFailures.push({ method: "GET", path: "/api/v1/debugging/admin/modules", status: 503 });
-      failNext = true;
+      failCatalog = true;
       await page.reload();
       await expect(main).toHaveAttribute("data-runtime-state", "error");
       const failure = page.getByRole("alert").filter({ hasText: "无法加载可调节点目录" });
       await expect(failure).toBeVisible();
+      await create.click();
+      await expect(editor).toBeVisible();
+      await editor.getByRole("button", { name: "取消", exact: true }).click();
+      await expect(failure).toBeVisible();
+      failCatalog = false;
       await failure.getByRole("button", { name: "重试", exact: true }).click();
       await expect(main).toHaveAttribute("data-runtime-state", "ready");
       await expect(failure).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "新增节点", exact: true })).toBeEnabled();
+      await expect(create).toBeEnabled();
     } finally {
       release();
       releaseDevices();
-      await Promise.all(optionalTasks);
-      await page.mouse.up();
       await page.unroute(bootstrapNodes);
       await page.unroute(optionalDevices);
+      settledRoutes = await Promise.allSettled(routeTasks);
+      await page.mouse.up();
       expectedApiFailures.length = 0;
     }
+    expect(settledRoutes.filter((result) => result.status === "rejected")).toEqual([]);
   });
 
   test("debugging admin manages an API-backed HDC/ADB catalog node", async ({ page }, testInfo) => {

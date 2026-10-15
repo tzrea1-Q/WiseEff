@@ -1674,7 +1674,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       await act(async () => { completeModules({ items: [{ name: "Battery Charging", description: "", scope: "" }] }); });
       await waitFor(() => expect(catalog).toHaveAttribute("data-runtime-state", "ready"));
       expect(catalog).not.toHaveAttribute("inert");
-      expect(screen.getByRole("button", { name: "新增节点", exact: true })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /^新增节点$/ })).toBeEnabled();
     } finally {
       await act(async () => { completeModules({ items: [] }); releaseDevices(); });
     }

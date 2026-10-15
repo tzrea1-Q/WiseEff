@@ -320,7 +320,6 @@ export function DebuggingAdminPage({
     }
     if (!debuggingAdminClient) {
       setCatalogRuntimeState("error");
-      setAdminError("无法加载可调节点目录。");
       return;
     }
 
@@ -340,7 +339,6 @@ export function DebuggingAdminPage({
       })
       .catch(() => {
         if (!cancelled) {
-          setAdminError("无法加载可调节点目录。");
           setCatalogRuntimeState("error");
         }
       })
@@ -879,9 +877,10 @@ export function DebuggingAdminPage({
           {catalogRuntimeState === "loading" ? <div className="api-runtime-sync-banner" role="status">正在加载可调节点目录…</div> : null}
           <main className="param-admin-main" aria-label="节点调试" data-runtime-state={catalogRuntimeState}
             aria-busy={catalogRuntimeState === "loading"} inert={catalogRuntimeState === "loading"}>
-            {adminError && !editorMode && !moduleDialogOpen ? <p className="debug-admin-error" role="alert">{adminError}
-              {catalogRuntimeState === "error" ? <button type="button" className="button" onClick={() => setCatalogLoadAttempt((attempt) => attempt + 1)}>重试</button> : null}
+            {catalogRuntimeState === "error" ? <p className="debug-admin-error" role="alert">无法加载可调节点目录。
+              <button type="button" className="button" onClick={() => setCatalogLoadAttempt((attempt) => attempt + 1)}>重试</button>
             </p> : null}
+            {adminError && !editorMode && !moduleDialogOpen ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
             {isApiMode && !canEditAdminCatalog ? (
               <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p>
             ) : null}
