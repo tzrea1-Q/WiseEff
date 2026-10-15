@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { ProductFeedback, ProductFeedbackType } from "@/domain/productFeedback/types";
 import { FeedbackDialog } from "./FeedbackDialog";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 
 function feedback(overrides: Partial<ProductFeedback> = {}): ProductFeedback {
   return {
@@ -134,7 +135,7 @@ describe("FeedbackDialog", () => {
         files: [expect.objectContaining({ name: "feedback-1.png" }), expect.objectContaining({ name: "feedback-2.png" })]
       })
     );
-    expect(screen.getByText("反馈已记录，并附带 2 张粘贴截图。")).toBeInTheDocument();
+    expect(screen.getByText("反馈已记录，并附带 2 张截图。")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("问题描述")).toHaveValue("");
     expect(within(dialog).queryByAltText("问题反馈截图预览")).not.toBeInTheDocument();
   });
@@ -235,7 +236,8 @@ describe("FeedbackDialog", () => {
 
     const dialog = screen.getByRole("dialog", { name: "问题反馈" });
     const mineTab = within(dialog).getByRole("tab", { name: /我的反馈/ });
-    fireEvent.click(mineTab);
+    await userEvent.click(mineTab);
+    expect(within(dialog).queryByRole("link", { name: "在反馈中心打开" })).not.toBeInTheDocument();
 
     expect(await within(dialog).findByText("日志分析")).toBeInTheDocument();
     expect(within(dialog).getByText("日志加载很慢")).toBeInTheDocument();
@@ -243,7 +245,7 @@ describe("FeedbackDialog", () => {
 
     // Click row to view detail
     fireEvent.click(within(dialog).getByText("日志分析"));
-    expect(await within(dialog).findByText("处理进展时间轴")).toBeInTheDocument();
+    expect(await within(dialog).findByText("处理记录")).toBeInTheDocument();
     expect(within(dialog).getByText("已排查到是解析线程瓶颈")).toBeInTheDocument();
 
     // Click back to list
@@ -301,7 +303,7 @@ describe("FeedbackDialog", () => {
     renderDialog(createFeedbackRepository({ listMine, submitDraft }));
 
     const dialog = screen.getByRole("dialog", { name: "问题反馈" });
-    fireEvent.click(within(dialog).getByRole("tab", { name: /我的反馈/ }));
+    await userEvent.click(within(dialog).getByRole("tab", { name: /我的反馈/ }));
 
     expect(await within(dialog).findByText("先写了一半的草稿")).toBeInTheDocument();
     const editBtn = within(dialog).getByRole("button", { name: "继续编辑" });
@@ -321,5 +323,168 @@ describe("FeedbackDialog", () => {
         })
       )
     );
+  });
+
+  it("saves the empty retained attachment set and preserves a draft's original page before submission", async () => {
+    const draft = feedback({ id: "draft-origin", pagePath: "/feedback-admin", pageTitle: "反馈管理", description: "原页面的问题", submittedAt: null,
+      attachments: [{ id: "shot-1", feedbackId: "draft-origin", fileName: "original.png", contentType: "image/png", sizeBytes: 100, sortOrder: 0, createdAt: "2026-07-08T00:00:00.000Z" }] });
+    const saveDraft = vi.fn().mockResolvedValue({ ...draft, attachments: [] });
+    const submitDraft = vi.fn().mockResolvedValue({ ...draft, submittedAt: "2026-07-08T01:00:00.000Z", attachments: [] });
+    const repository = createFeedbackRepository({ saveDraft, submitDraft, getMineAttachmentObjectUrl: vi.fn().mockResolvedValue("blob:original") });
+    render(<FeedbackDialog open pagePath="/parameter-home" pageTitle="参数首页" initialDraft={draft} productFeedbackRepository={repository} onOpenChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "移除截图 original.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交反馈" }));
+    await waitFor(() => expect(submitDraft).toHaveBeenCalledWith("draft-origin", expect.objectContaining({ pagePath: "/feedback-admin", pageTitle: "反馈管理" })));
+    expect(saveDraft).toHaveBeenCalledWith("draft-origin", expect.objectContaining({ pagePath: "/feedback-admin", retainedAttachmentIds: [], newFiles: [] }));
+    expect(saveDraft.mock.invocationCallOrder[0]).toBeLessThan(submitDraft.mock.invocationCallOrder[0]!);
+  });
+
+  it("tracks the saved baseline, only warns for later changes, and disables editing during a save", async () => {
+    let finishSave!: (value: ProductFeedback) => void;
+    const createDraft = vi.fn().mockImplementation(() => new Promise<ProductFeedback>((resolve) => { finishSave = resolve; }));
+    const { onOpenChange } = renderDialog(createFeedbackRepository({ createDraft }));
+    fireEvent.change(screen.getByLabelText("问题描述"), { target: { value: "草稿内容" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    expect(screen.getByLabelText("问题描述")).toBeDisabled();
+    finishSave(feedback({ id: "saved", submittedAt: null, description: "草稿内容" }));
+    expect(await screen.findByText("草稿已保存")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "关闭" })[0]!);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByRole("dialog", { name: "放弃当前反馈？" })).not.toBeInTheDocument();
+  });
+
+  it("marks saved drafts as changed and protects them when switching to a different draft", async () => {
+    const draft = feedback({ id: "draft-a", description: "已保存内容", submittedAt: null });
+    const other = feedback({ id: "draft-b", description: "另一份草稿", submittedAt: null });
+    const repository = createFeedbackRepository({ listMine: vi.fn().mockResolvedValue({ items: [other] }) });
+    render(<FeedbackDialog open pagePath="/parameter-home" pageTitle="参数首页" initialDraft={draft} productFeedbackRepository={repository} onOpenChange={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("问题描述"), { target: { value: "还没保存的新内容" } });
+    expect(screen.getByText("有未保存的修改")).toBeInTheDocument();
+    expect(screen.queryByText("草稿已保存")).not.toBeInTheDocument();
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    await userEvent.click(screen.getByRole("tab", { name: /我的反馈/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "继续编辑" }));
+    const confirm = await screen.findByRole("dialog", { name: "切换到其他草稿？" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "继续填写" }));
+    await userEvent.click(screen.getByRole("tab", { name: /提交反馈/ }));
+    expect(screen.getByLabelText("问题描述")).toHaveValue("还没保存的新内容");
+  });
+
+  it("supports keyboard tab activation and keeps both tab-panel targets available", async () => {
+    renderDialog(createFeedbackRepository({ listMine: vi.fn().mockResolvedValue({ items: [] }) }));
+    const compose = screen.getByRole("tab", { name: "提交反馈" });
+    const mine = screen.getByRole("tab", { name: "我的反馈" });
+    compose.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(mine).toHaveFocus();
+    expect(compose).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{Enter}");
+    expect(mine).toHaveAttribute("aria-selected", "true");
+    for (const tab of [compose, mine]) expect(document.getElementById(tab.getAttribute("aria-controls")!)).toHaveAttribute("aria-labelledby", tab.id);
+    expect(await screen.findByText("暂无提交记录或草稿")).toBeInTheDocument();
+  });
+
+  it("accepts file selection and validates size without discarding the written description", async () => {
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:chosen");
+    renderDialog();
+    fireEvent.change(screen.getByLabelText("问题描述"), { target: { value: "上传文件中的问题" } });
+    const tooLarge = new File([new Uint8Array(5 * 1024 * 1024 + 1)], "large.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("选择反馈截图"), { target: { files: [tooLarge] } });
+    expect(screen.getByRole("alert")).toHaveTextContent("单张截图不能超过 5 MB");
+    expect(createUrl).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("选择反馈截图"), { target: { files: [imageFile(1)] } });
+    expect(screen.getByAltText("问题反馈截图预览")).toBeInTheDocument();
+    expect(screen.getByLabelText("问题描述")).toHaveValue("上传文件中的问题");
+    await userEvent.click(screen.getByRole("button", { name: "放大截图 feedback-1.png" }));
+    expect(screen.getByRole("dialog", { name: "feedback-1.png" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "下载截图" })).toHaveAttribute("download", "feedback-1.png");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "feedback-1.png" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "问题反馈" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "放弃当前反馈？" })).not.toBeInTheDocument();
+  });
+
+  it("uses the existing SPA leave guard to preserve unsaved composition until confirmed", async () => {
+    const { onOpenChange } = renderDialog();
+    fireEvent.change(screen.getByLabelText("问题描述"), { target: { value: "未保存的反馈" } });
+    let decision: boolean | Promise<boolean> = false;
+    act(() => { decision = requestSettingsLeave(); });
+    await userEvent.click(within(screen.getByRole("dialog", { name: "放弃当前反馈？" })).getByRole("button", { name: "继续填写" }));
+    expect(await decision).toBe(false);
+    expect(screen.getByLabelText("问题描述")).toHaveValue("未保存的反馈");
+    act(() => { decision = requestSettingsLeave(); });
+    await userEvent.click(within(screen.getByRole("dialog", { name: "放弃当前反馈？" })).getByRole("button", { name: "放弃反馈" }));
+    expect(await decision).toBe(true);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("accepts a screenshot dropped onto the description without adding it twice", () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:dropped");
+    renderDialog();
+    fireEvent.drop(screen.getByLabelText("问题描述"), { dataTransfer: { files: [imageFile(1)] } });
+    expect(screen.getAllByAltText("问题反馈截图预览")).toHaveLength(1);
+  });
+
+  it("preserves unsent replies across tabs and blocks outer close and tabs while a reply is sending", async () => {
+    const submitted = feedback({ id: "submitted", description: "列表中的问题", submittedAt: "2026-07-08T00:00:00.000Z" });
+    let complete!: (value: ProductFeedback) => void;
+    const replyToMine = vi.fn().mockImplementation(() => new Promise<ProductFeedback>((resolve) => { complete = resolve; }));
+    const { onOpenChange } = renderDialog(createFeedbackRepository({ listMine: vi.fn().mockResolvedValue({ items: [submitted] }), getMine: vi.fn().mockResolvedValue(submitted), replyToMine }));
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    await userEvent.click(within(dialog).getByRole("tab", { name: /我的反馈/ }));
+    await userEvent.click(await within(dialog).findByRole("button", { name: "查看反馈：列表中的问题" }));
+    await userEvent.click(await within(dialog).findByRole("button", { name: "补充说明", exact: true }));
+    fireEvent.change(await within(dialog).findByLabelText("补充说明"), { target: { value: "留待发送的补充" } });
+    await userEvent.click(within(dialog).getByRole("tab", { name: "提交反馈" }));
+    await userEvent.click(within(dialog).getByRole("tab", { name: /我的反馈/ }));
+    expect(within(dialog).getByLabelText("补充说明")).toHaveValue("留待发送的补充");
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    const confirm = screen.getByRole("dialog", { name: "放弃当前反馈？" });
+    expect(confirm).toHaveTextContent("未发送的补充说明和新截图也将丢失");
+    await userEvent.click(within(confirm).getByRole("button", { name: "继续填写" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "发送补充" }));
+    expect(within(dialog).getByRole("button", { name: "关闭" })).toBeDisabled();
+    expect(within(dialog).getByRole("tab", { name: "提交反馈" })).toBeDisabled();
+    const linkClick = new MouseEvent("click", { bubbles: true, cancelable: true });
+    act(() => { within(dialog).getByRole("link", { name: "反馈详情链接" }).dispatchEvent(linkClick); });
+    expect(linkClick.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("dialog", { name: "放弃当前反馈？" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    await act(async () => complete(submitted));
+    expect(await within(dialog).findByText("补充说明已发送。")).toBeInTheDocument();
+  });
+
+  it("blocks tab changes while loading a draft so a late draft cannot overwrite a new composition", async () => {
+    const draft = feedback({ id: "slow-draft", submittedAt: null, description: "慢速返回的草稿" });
+    let complete!: (value: ProductFeedback) => void;
+    renderDialog(createFeedbackRepository({ listMine: vi.fn().mockResolvedValue({ items: [draft] }),
+      getMine: vi.fn().mockImplementation(() => new Promise<ProductFeedback>((resolve) => { complete = resolve; })) }));
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    await userEvent.click(within(dialog).getByRole("tab", { name: /我的反馈/ }));
+    await userEvent.click(await within(dialog).findByRole("button", { name: "继续编辑" }));
+    expect(within(dialog).getByRole("tab", { name: "提交反馈" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "关闭" })).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("tab", { name: "提交反馈" }));
+    expect(within(dialog).getByRole("tab", { name: /我的反馈/ })).toHaveAttribute("aria-selected", "true");
+    await act(async () => complete(draft));
+    expect(within(dialog).getByLabelText("问题描述")).toHaveValue("慢速返回的草稿");
+  });
+
+  it("closes and releases a local screenshot preview after approved SPA leave", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:local-preview");
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const { onOpenChange } = renderDialog();
+    fireEvent.change(screen.getByLabelText("选择反馈截图"), { target: { files: [imageFile(1)] } });
+    await userEvent.click(screen.getByRole("button", { name: "放大截图 feedback-1.png" }));
+    let decision: boolean | Promise<boolean> = false;
+    act(() => { decision = requestSettingsLeave(); });
+    await userEvent.click(within(screen.getByRole("dialog", { name: "放弃当前反馈？" })).getByRole("button", { name: "放弃反馈" }));
+    expect(await decision).toBe(true);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByRole("dialog", { name: "feedback-1.png" })).not.toBeInTheDocument();
+    expect(revoke).toHaveBeenCalledWith("blob:local-preview");
   });
 });

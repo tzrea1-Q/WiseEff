@@ -4,6 +4,7 @@ import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWr
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
+import { notifyUsers } from "../notifications/service";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { requireProductFeedbackAdmin, requireProductFeedbackSubmit } from "./policy";
@@ -41,6 +42,7 @@ import type {
   ProductFeedbackStatus,
   ProductFeedbackType,
   ProductFeedbackUserDto,
+  ReplyToProductFeedbackInput,
   SaveProductFeedbackDraftInput,
   SubmitProductFeedbackDraftInput,
   UpdateProductFeedbackPatch
@@ -62,12 +64,6 @@ const MAX_ATTACHMENT_COUNT = 5;
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const SUPPORTED_CONTENT_TYPES = new Set<ProductFeedbackAttachmentContentType>(["image/png", "image/jpeg", "image/webp"]);
-const ALLOWED: Record<ProductFeedbackStatus, ProductFeedbackStatus[]> = {
-  open: ["in_progress"],
-  in_progress: ["closed"],
-  resolved: ["closed"],
-  closed: []
-};
 
 function hasPatchKey<Key extends keyof UpdateProductFeedbackPatch>(patch: UpdateProductFeedbackPatch, key: Key) {
   return Object.prototype.hasOwnProperty.call(patch, key);
@@ -148,19 +144,6 @@ async function createProductFeedbackAudit(
       ...input.metadata
     }
   });
-}
-
-function assertTransition(current: ProductFeedbackStatus, next: ProductFeedbackStatus) {
-  if (current === "closed") {
-    throw new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.");
-  }
-  if (current === next) return;
-  if (!ALLOWED[current].includes(next)) {
-    throw new ApiError("VALIDATION_FAILED", `Illegal product feedback status transition: ${current} -> ${next}.`, {
-      currentStatus: current,
-      nextStatus: next
-    });
-  }
 }
 
 export async function createProductFeedback(
@@ -284,21 +267,55 @@ export async function updateProductFeedback(
   requireProductFeedbackAdmin(auth);
 
   return db.transaction(async (tx) => {
-    const existing = await getFeedbackById(tx, auth, feedbackId);
-    if (!existing || existing.submittedAt === null) {
+    const existing = await getFeedbackForUpdate(tx, auth, feedbackId);
+    if (!existing) {
       throw productFeedbackNotFound(feedbackId);
-    }
-    if (existing.status === "closed") {
-      throw new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.");
     }
 
     const normalizedPatch: UpdateProductFeedbackPatch = {};
-    if (hasPatchKey(patch, "status") && patch.status) {
-      assertTransition(existing.status, patch.status);
-      normalizedPatch.status = patch.status;
-    }
+    let internalMessage: string | null | undefined;
     if (hasPatchKey(patch, "adminNote")) {
-      normalizedPatch.adminNote = patch.adminNote === "" ? null : patch.adminNote ?? null;
+      if (existing.status === "closed" && patch.status !== "in_progress") {
+        throw new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated without reopening.");
+      }
+      normalizedPatch.adminNote = patch.adminNote?.trim() || null;
+      if (normalizedPatch.adminNote !== existing.admin_note) {
+        if (existing.admin_note?.trim()) {
+          const archived = await tx.query(`
+            select id from product_feedback_progress_events
+            where organization_id = $1 and feedback_id = $2 and internal_message = $3 limit 1
+          `, [auth.organization.id, feedbackId, existing.admin_note]);
+          if (archived.rows.length === 0) {
+            await insertProgressEvent(tx, auth, {
+              id: randomUUID(), feedbackId, actorUserId: auth.user.id, kind: "legacy_note",
+              fromStatus: existing.status, toStatus: existing.status,
+              resolutionCode: existing.resolution_code, internalMessage: existing.admin_note,
+              createdAt: existing.updated_at instanceof Date ? existing.updated_at.toISOString() : existing.updated_at
+            });
+          }
+        }
+        internalMessage = normalizedPatch.adminNote ?? "处理备注已清空";
+      }
+    }
+    if (patch.priority !== undefined) normalizedPatch.priority = patch.priority;
+    if (hasPatchKey(patch, "assigneeUserId")) {
+      if (patch.assigneeUserId) {
+        const choices = await listProductFeedbackAssignees(tx, auth);
+        if (!choices.items.some((user) => user.id === patch.assigneeUserId)) {
+          throw new ApiError("VALIDATION_FAILED", "Assignee must be an active administrator in this organization.");
+        }
+      }
+      normalizedPatch.assigneeUserId = patch.assigneeUserId ?? null;
+    }
+    if ((patch.status && patch.status !== existing.status) || patch.publicMessage?.trim() || internalMessage) {
+      await appendProductFeedbackProgress(tx, auth, feedbackId, {
+        toStatus: patch.status,
+        resolutionCode: patch.resolutionCode,
+        publicMessage: patch.publicMessage,
+        internalMessage
+      }, context);
+    } else if (patch.resolutionCode !== undefined) {
+      throw new ApiError("VALIDATION_FAILED", "Resolution code requires a progress update.");
     }
 
     const updated = await updateFeedback(tx, auth, feedbackId, normalizedPatch);
@@ -314,7 +331,9 @@ export async function updateProductFeedback(
         feedback: updated,
         metadata: {
           previousStatus: existing.status,
-          nextStatus: updated.status
+          nextStatus: updated.status,
+          priority: updated.priority,
+          assigneeUserId: updated.assigneeUserId
         }
       },
       context
@@ -494,20 +513,13 @@ export async function saveProductFeedbackDraft(
     return item;
   });
 
-  for (const discarded of discardedAttachments) {
-    try {
-      await objectStore.delete?.(discarded.storageKey);
-    } catch {
-      // Best-effort cleanup
-    }
-  }
-
+  // ponytail: shared content-addressed images stay until reference-aware garbage collection exists.
   return updated;
 }
 
 export async function deleteProductFeedbackDraft(
   db: Database,
-  objectStore: ObjectStore,
+  _objectStore: ObjectStore,
   auth: AuthContext,
   draftId: string
 ): Promise<{ ok: boolean }> {
@@ -522,7 +534,7 @@ export async function deleteProductFeedbackDraft(
     });
   }
 
-  const { ok, storageKeys } = await db.transaction(async (tx) => {
+  const { ok } = await db.transaction(async (tx) => {
     return deleteDraft(tx, auth, draftId);
   });
 
@@ -530,14 +542,7 @@ export async function deleteProductFeedbackDraft(
     throw productFeedbackNotFound(draftId);
   }
 
-  for (const key of storageKeys) {
-    try {
-      await objectStore.delete?.(key);
-    } catch {
-      // Best-effort cleanup
-    }
-  }
-
+  // Shared object keys can still belong to submitted feedback or uploaded logs.
   return { ok: true };
 }
 
@@ -612,6 +617,9 @@ export function validateProgressTransition(
     }
     const nextResolutionCode =
       input.resolutionCode !== undefined ? input.resolutionCode : existing.resolution_code;
+    if (nextResolutionCode !== existing.resolution_code) {
+      throw new ApiError("VALIDATION_FAILED", "Resolution code can only change with the feedback status.");
+    }
     return {
       nextStatus,
       nextResolutionCode,
@@ -619,90 +627,29 @@ export function validateProgressTransition(
     };
   }
 
-  // Next status differs from current status
-  if (current === "open" && nextStatus === "in_progress") {
-    return {
-      nextStatus,
-      nextResolutionCode: null,
-      kind: "status_changed"
-    };
+  const allowed: Record<ProductFeedbackStatus, ProductFeedbackStatus[]> = {
+    open: ["in_progress", "closed"],
+    in_progress: ["resolved", "closed"],
+    resolved: ["closed", "in_progress"],
+    closed: ["in_progress"]
+  };
+  if (!allowed[current].includes(nextStatus)) {
+    throw new ApiError("VALIDATION_FAILED", `Illegal product feedback status transition: ${current} -> ${nextStatus}.`, {
+      currentStatus: current, nextStatus
+    });
   }
-
-  if (current === "open" && nextStatus === "closed") {
-    const resolutionCode = input.resolutionCode ?? existing.resolution_code;
-    if (!resolutionCode) {
-      throw new ApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.");
-    }
-    return {
-      nextStatus,
-      nextResolutionCode: resolutionCode,
-      kind: "status_changed"
-    };
+  if (nextStatus === "resolved" || nextStatus === "closed") {
+    const nextResolutionCode = input.resolutionCode ?? existing.resolution_code;
+    const action = nextStatus === "resolved" ? "resolving" : "closing";
+    if (!nextResolutionCode) throw new ApiError("VALIDATION_FAILED", `Resolution code is required when ${action} feedback.`);
+    if (!publicMessage) throw new ApiError("VALIDATION_FAILED", `Public message is required when ${action} feedback.`);
+    return { nextStatus, nextResolutionCode, kind: "status_changed" };
   }
-
-  if (current === "in_progress" && nextStatus === "resolved") {
-    const resolutionCode = input.resolutionCode ?? existing.resolution_code;
-    if (!resolutionCode) {
-      throw new ApiError("VALIDATION_FAILED", "Resolution code is required when resolving feedback.");
-    }
-    if (!publicMessage) {
-      throw new ApiError("VALIDATION_FAILED", "Public message is required when resolving feedback.");
-    }
-    return {
-      nextStatus,
-      nextResolutionCode: resolutionCode,
-      kind: "status_changed"
-    };
+  const reopened = current === "resolved" || current === "closed";
+  if (reopened && !publicMessage) {
+    throw new ApiError("VALIDATION_FAILED", "An explanation is required when reopening feedback.");
   }
-
-  if (current === "in_progress" && nextStatus === "closed") {
-    const resolutionCode = input.resolutionCode ?? existing.resolution_code;
-    if (!resolutionCode) {
-      throw new ApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.");
-    }
-    return {
-      nextStatus,
-      nextResolutionCode: resolutionCode,
-      kind: "status_changed"
-    };
-  }
-
-  if (current === "resolved" && nextStatus === "closed") {
-    const resolutionCode = input.resolutionCode ?? existing.resolution_code;
-    return {
-      nextStatus,
-      nextResolutionCode: resolutionCode,
-      kind: "status_changed"
-    };
-  }
-
-  if (current === "resolved" && nextStatus === "in_progress") {
-    if (!publicMessage && !internalMessage) {
-      throw new ApiError("VALIDATION_FAILED", "An explanation is required when reopening feedback.");
-    }
-    return {
-      nextStatus,
-      nextResolutionCode: null,
-      kind: "reopened"
-    };
-  }
-
-  if (current === "closed" && nextStatus === "in_progress") {
-    if (!publicMessage && !internalMessage) {
-      throw new ApiError("VALIDATION_FAILED", "An explanation is required when reopening feedback.");
-    }
-    return {
-      nextStatus,
-      nextResolutionCode: null,
-      kind: "reopened"
-    };
-  }
-
-  throw new ApiError(
-    "VALIDATION_FAILED",
-    `Illegal product feedback status transition: ${current} -> ${nextStatus}.`,
-    { currentStatus: current, nextStatus }
-  );
+  return { nextStatus, nextResolutionCode: null, kind: reopened ? "reopened" : "status_changed" };
 }
 
 export async function appendProductFeedbackProgress(
@@ -721,15 +668,15 @@ export async function appendProductFeedbackProgress(
     }
 
     const { nextStatus, nextResolutionCode, kind } = validateProgressTransition(existing, input);
-    const publicMessage = input.publicMessage?.trim() || null;
+    const publicMessage = input.publicMessage?.trim() ||
+      (nextStatus !== existing.status && nextStatus === "in_progress" ? "反馈已开始处理" : null);
     const internalMessage = input.internalMessage?.trim() || null;
 
-    if (nextStatus !== existing.status || nextResolutionCode !== existing.resolution_code) {
-      await updateFeedbackProgressStatus(tx, auth, feedbackId, nextStatus, nextResolutionCode);
-    }
+    await updateFeedbackProgressStatus(tx, auth, feedbackId, nextStatus, nextResolutionCode);
 
+    const progressId = randomUUID();
     await insertProgressEvent(tx, auth, {
-      id: randomUUID(),
+      id: progressId,
       feedbackId,
       actorUserId: auth.user.id,
       kind,
@@ -739,6 +686,21 @@ export async function appendProductFeedbackProgress(
       publicMessage,
       internalMessage
     });
+
+    if (publicMessage && existing.submitter_user_id) {
+      await notifyUsers(tx, {
+        organizationId: auth.organization.id,
+        recipientUserIds: [existing.submitter_user_id],
+        category: "product-feedback.progress",
+        title: nextStatus === "resolved" ? "问题反馈已解决" : "问题反馈有新进展",
+        body: publicMessage,
+        severity: nextStatus === "resolved" ? "success" : "info",
+        actionUrl: `/feedback?id=${encodeURIComponent(feedbackId)}`,
+        sourceKind: "product-feedback-progress",
+        sourceId: progressId,
+        metadata: { feedbackId, status: nextStatus }
+      });
+    }
 
     await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "product-feedback",
@@ -771,5 +733,88 @@ export async function getProductFeedbackStats(
 ): Promise<ProductFeedbackStatsDto> {
   requireProductFeedbackAdmin(auth);
   return getFeedbackStats(db, auth);
+}
+
+export async function listProductFeedbackAssignees(db: Queryable, auth: AuthContext) {
+  requireProductFeedbackAdmin(auth);
+  const result = await db.query<{ id: string; name: string; username: string | null }>(`
+    select users.id, users.name, credentials.username
+    from users
+    left join user_password_credentials credentials on credentials.user_id = users.id
+    where users.organization_id = $1 and users.is_active
+      and exists (
+        select 1 from user_role_bindings binding join roles on roles.id = binding.role_id
+        where binding.user_id = users.id and binding.organization_id = $1
+          and 'admin:access' = any(roles.permissions)
+      )
+    order by users.name, users.id
+  `, [auth.organization.id]);
+  return { items: result.rows };
+}
+
+export async function replyToProductFeedback(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  feedbackId: string,
+  input: ReplyToProductFeedbackInput,
+  context: ProductFeedbackServiceContext = {}
+): Promise<ProductFeedbackUserDto> {
+  requireProductFeedbackSubmit(auth);
+  const message = input.message.trim();
+  if (!message || message.length > 2000) {
+    throw new ApiError("VALIDATION_FAILED", "Reply must contain between 1 and 2000 characters.");
+  }
+  const decoded = decodeAndValidateAttachments(input.attachments);
+  return db.transaction(async (tx) => {
+    const existing = await getFeedbackForUpdate(tx, auth, feedbackId);
+    if (!existing || existing.submitter_user_id !== auth.user.id) throw productFeedbackNotFound(feedbackId);
+    if (existing.status === "closed" && !input.reopen) {
+      throw new ApiError("VALIDATION_FAILED", "Closed feedback must be reopened before replying.");
+    }
+    if (input.reopen && existing.status !== "resolved" && existing.status !== "closed") {
+      throw new ApiError("VALIDATION_FAILED", "Only resolved or closed feedback can be reopened.");
+    }
+    const current = await getMyFeedbackById(tx, auth, feedbackId);
+    if (!current) throw productFeedbackNotFound(feedbackId);
+    if (current.attachments.length + decoded.length > MAX_ATTACHMENT_COUNT) {
+      throw new ApiError("VALIDATION_FAILED", "Product feedback supports up to 5 attachments.");
+    }
+    const totalBytes = current.attachments.reduce((sum, item) => sum + item.sizeBytes, 0) +
+      decoded.reduce((sum, item) => sum + item.bytes.byteLength, 0);
+    if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+      throw new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit.");
+    }
+    for (const [index, attachment] of decoded.entries()) {
+      const stored = await objectStore.put({
+        organizationId: auth.organization.id,
+        fileName: attachment.fileName,
+        contentType: attachment.contentType,
+        bytes: attachment.bytes
+      });
+      await insertAttachments(tx, auth, feedbackId, [{
+        id: randomUUID(), storageKey: stored.storageKey, fileName: stored.fileName,
+        contentType: attachment.contentType, sizeBytes: stored.fileSizeBytes,
+        checksum: stored.checksumSha256, sortOrder: current.attachments.length + index
+      }]);
+    }
+    const nextStatus = input.reopen ? "in_progress" : existing.status;
+    const resolutionCode = input.reopen ? null : existing.resolution_code;
+    await updateFeedbackProgressStatus(tx, auth, feedbackId, nextStatus, resolutionCode);
+    await insertProgressEvent(tx, auth, {
+      id: randomUUID(), feedbackId, actorUserId: auth.user.id,
+      author: "submitter",
+      kind: input.reopen ? "reopened" : "progress",
+      fromStatus: existing.status, toStatus: nextStatus, resolutionCode, publicMessage: message
+    });
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+      app: "product-feedback", kind: "product-feedback-reply", action: "update", severity: "Medium",
+      projectId: null, targetType: "product-feedback", targetId: feedbackId,
+      metadata: { previousStatus: existing.status, nextStatus, attachmentCount: decoded.length }
+    });
+    const updated = await getMyFeedbackById(tx, auth, feedbackId);
+    if (!updated) throw productFeedbackNotFound(feedbackId);
+    return updated;
+  });
 }
 

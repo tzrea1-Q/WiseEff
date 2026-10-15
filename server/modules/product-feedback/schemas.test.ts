@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   createProductFeedbackBodySchema,
   listProductFeedbackQuerySchema,
-  patchProductFeedbackBodySchema
+  listMyFeedbackQuerySchema,
+  patchProductFeedbackBodySchema,
+  replyToProductFeedbackBodySchema
 } from "./schemas";
 
 function validAttachment(overrides: Record<string, unknown> = {}) {
@@ -92,5 +94,20 @@ describe("product feedback schemas", () => {
     expect(patchProductFeedbackBodySchema.safeParse({ status: "in_progress" }).success).toBe(true);
     expect(patchProductFeedbackBodySchema.safeParse({ adminNote: "" }).success).toBe(true);
     expect(patchProductFeedbackBodySchema.parse({ adminNote: null })).toEqual({ adminNote: null });
+  });
+
+  it("validates triage fields and my-feedback draft filtering", () => {
+    expect(patchProductFeedbackBodySchema.parse({ priority: "high", assigneeUserId: null })).toEqual({ priority: "high", assigneeUserId: null });
+    expect(patchProductFeedbackBodySchema.safeParse({ priority: "urgent" }).success).toBe(false);
+    expect(patchProductFeedbackBodySchema.safeParse({ assigneeUserId: "" }).success).toBe(false);
+    expect(listMyFeedbackQuerySchema.parse({ q: "button", status: "draft" })).toEqual({ q: "button", status: "draft" });
+    expect(listMyFeedbackQuerySchema.safeParse({ status: "unknown" }).success).toBe(false);
+  });
+
+  it("requires a reply message and keeps attachment validation", () => {
+    expect(replyToProductFeedbackBodySchema.parse({ message: " More details ", reopen: true })).toEqual({ message: "More details", reopen: true });
+    expect(replyToProductFeedbackBodySchema.safeParse({ message: " " }).success).toBe(false);
+    expect(replyToProductFeedbackBodySchema.safeParse({ message: "x".repeat(2001) }).success).toBe(false);
+    expect(replyToProductFeedbackBodySchema.safeParse({ message: "Details", attachments: [validAttachment({ contentBase64: "bad" })] }).success).toBe(false);
   });
 });

@@ -1097,41 +1097,47 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "productFeedback.createDraft": {
     summary: "Create product feedback draft",
     tags: ["product-feedback"],
-    requestBody: "CreateProductFeedbackRequest",
-    responseBody: "ProductFeedbackResponse",
+    requestBody: "CreateProductFeedbackDraftRequest",
+    responseBody: "ProductFeedbackUserResponse",
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse" }
   },
   "productFeedback.patchDraft": {
     summary: "Update product feedback draft",
     tags: ["product-feedback"],
-    requestBody: "PatchProductFeedbackRequest",
-    responseBody: "ProductFeedbackResponse",
+    requestBody: "PatchProductFeedbackDraftRequest",
+    responseBody: "ProductFeedbackUserResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "productFeedback.deleteDraft": {
     summary: "Delete product feedback draft",
     tags: ["product-feedback"],
-    responseBody: "DeleteResponse",
+    responseBody: "DeleteProductFeedbackDraftResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "productFeedback.submitDraft": {
     summary: "Submit product feedback draft",
     tags: ["product-feedback"],
-    requestBody: "CreateProductFeedbackRequest",
-    responseBody: "ProductFeedbackResponse",
+    requestBody: "SubmitProductFeedbackDraftRequest",
+    responseBody: "ProductFeedbackUserResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "productFeedback.listMine": {
     summary: "List current user product feedback and drafts",
     tags: ["product-feedback"],
-    responseBody: "ProductFeedbackListResponse",
+    responseBody: "ProductFeedbackUserListResponse",
+    requestParameters: [
+      { name: "q", in: "query", description: "Search the current user's description or source page." },
+      { name: "status", in: "query", schema: { type: "string", enum: ["draft", "open", "in_progress", "resolved", "closed"] } },
+      { name: "cursor", in: "query", description: "Opaque base64url nextCursor returned by the previous page." },
+      { name: "limit", in: "query", schema: { type: "integer" }, description: "1–100; defaults to 50." }
+    ],
     additionalResponses: { "403": "ErrorResponse" }
   },
   "productFeedback.getMine": {
     summary: "Get current user product feedback or draft",
     tags: ["product-feedback"],
-    responseBody: "ProductFeedbackResponse",
+    responseBody: "ProductFeedbackUserResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "productFeedback.mineAttachmentContent": {
@@ -1141,16 +1147,38 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseMedia: "binary",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "productFeedback.replyToMine": {
+    summary: "Submitter adds public details and optional images, or reopens resolved/closed feedback",
+    tags: ["product-feedback"],
+    requestBody: "ReplyToProductFeedbackRequest",
+    responseBody: "ProductFeedbackUserResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "productFeedback.list": {
     summary: "List product feedback",
     tags: ["product-feedback"],
     responseBody: "ProductFeedbackListResponse",
+    requestParameters: [
+      { name: "status", in: "query", schema: { type: "string", enum: ["open", "in_progress", "resolved", "closed"] } },
+      { name: "feedbackType", in: "query", schema: { type: "string", enum: ["experience", "data", "export_submit", "feature"] } },
+      { name: "q", in: "query" }, { name: "pagePath", in: "query" },
+      { name: "createdFrom", in: "query" }, { name: "createdTo", in: "query" },
+      { name: "cursor", in: "query", description: "Opaque base64url nextCursor returned by the previous page." },
+      { name: "limit", in: "query", schema: { type: "integer" }, description: "1–100; defaults to 50." }
+    ],
     additionalResponses: { "403": "ErrorResponse" }
   },
   "productFeedback.stats": {
     summary: "Get product feedback statistics",
     tags: ["product-feedback"],
     responseBody: "ProductFeedbackStatsResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "productFeedback.assignees": {
+    summary: "List active administrators eligible for assignment in the authenticated organization",
+    tags: ["product-feedback"],
+    responseBody: "ProductFeedbackAssigneesResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
   "productFeedback.get": {

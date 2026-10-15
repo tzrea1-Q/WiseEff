@@ -407,7 +407,7 @@ GET  /api/v1/jobs/:jobId/events
 
 ## 7. Product Feedback
 
-Internal Beta「问题反馈」与日志分析反馈分离，按认证用户的 `organization_id` 隔离。活跃登录用户可以从侧边栏 `FeedbackDialog` 提交；列表、详情、状态流转和附件读取只开放给具备 `admin:access` 的管理员。
+Internal Beta「问题反馈」与日志分析反馈分离，按认证用户的 `organization_id` 隔离。活跃登录用户可以提交反馈、维护自己的草稿，并在反馈中心补充信息。`mine` 和草稿接口校验提交人身份；管理员分诊、负责人列表及管理员附件读取要求 `admin:access`。
 
 ```text
 POST  /api/v1/product-feedback
@@ -422,8 +422,17 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `POST` | `/api/v1/product-feedback` | 创建问题反馈，可带图片附件；返回 `201 { item }`。 |
 | `GET` | `/api/v1/product-feedback` | Admin 列表；支持 `status`、`feedbackType`、`q`、`pagePath`、`createdFrom`、`createdTo`、`cursor`、`limit`。 |
 | `GET` | `/api/v1/product-feedback/:id` | Admin 详情，包含按顺序排列的附件 metadata。 |
-| `PATCH` | `/api/v1/product-feedback/:id` | Admin 处理反馈，更新 `status` 和/或 `adminNote`。 |
+| `PATCH` | `/api/v1/product-feedback/:id` | 保存 `priority`（`low`、`normal`、`high`）、可空 `assigneeUserId`，或兼容旧状态／备注更新。负责人必须是同组织的活跃管理员；状态更新复用下述审计进展规则。 |
+| `GET` | `/api/v1/product-feedback/assignees` | 返回本组织可分配的管理员：`{ items: [{ id, name, username }] }`，username 可为空。 |
+| `GET` | `/api/v1/product-feedback/stats` | 按状态统计全部已提交反馈，不包含草稿。 |
+| `POST` | `/api/v1/product-feedback/:id/progress` | 追加 `publicMessage` 和／或私有 `internalMessage`（各最多 2000 字符），可同时指定 `toStatus` 和 `resolutionCode`。 |
+| `GET` | `/api/v1/product-feedback/mine` | 本人的反馈与草稿；支持 `q`、`status`（含 `draft`）、`cursor` 和 `limit`。 |
+| `GET` | `/api/v1/product-feedback/mine/:id` | 本人的公开详情，不返回内部备注和操作人 ID。 |
+| `POST` | `/api/v1/product-feedback/mine/:id/replies` | 提交人为已提交反馈补充 `{ message, attachments?, reopen? }`；返回 `201 { item }`。message 必须非空，最多 2000 字符；附件为追加。`reopen: true` 仅适用于已解决／已关闭反馈；已关闭时必须重新打开才能补充。 |
+| `POST` / `PATCH` / `DELETE` | `/api/v1/product-feedback/drafts`；`/drafts/:id` | 创建、保存或删除本人草稿；创建允许部分字段，保存接受 `retainedAttachmentIds`（包括空数组）和 `newAttachments`。已提交反馈不可通过这些接口编辑。 |
+| `POST` | `/api/v1/product-feedback/drafts/:id/submit` | 提交本人草稿，可同时更新页面来源、类型和描述。 |
 | `GET` | `/api/v1/product-feedback/:id/attachments/:attachmentId/content` | Admin 读取单个图片附件内容。 |
+| `GET` | `/api/v1/product-feedback/mine/:id/attachments/:attachmentId/content` | 读取本人反馈或草稿的图片内容。 |
 
 创建反馈：
 
@@ -443,7 +452,11 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 }
 ```
 
-`feedbackType` 可为 `experience`、`data`、`export_submit`、`feature`。`status` 可为 `open`、`in_progress`、`closed`，状态流转为 `open -> in_progress -> closed`；`closed` 后不允许继续更新。附件只接受 `image/png`、`image/jpeg`、`image/webp`，最多 5 张，单张 5 MB，总量 15 MB。
+`feedbackType` 可为 `experience`、`data`、`export_submit`、`feature`。常规流转为 `open -> in_progress -> resolved -> closed`，待处理或处理中也可直接关闭。解决、关闭必须提供结论和公开说明；已解决／已关闭可通过公开原因重新打开为 `in_progress`，并清空旧结论。已关闭记录允许调整分诊安排，追加进展须先重新打开。兼容旧备注的修改会将原文保留在私有时间轴中。
+
+两类列表均返回 `{ items, nextCursor }`，nextCursor 为不透明的 base64url 字符串或 null，应原样传回，保留时间戳精度。limit 范围为 1–100，默认 50。公开进展包含 `author: submitter | team`，不包含内部记录和操作人 ID。管理员公开进展与状态变化通过现有通知提供 `/feedback?id=...` 入口，纯内部备注不发送通知。
+
+附件只接受 `image/png`、`image/jpeg`、`image/webp`；原始与补充附件合计最多 5 张，单张 5 MB，总量 15 MB。移除草稿附件只解除授权引用；共享的内容寻址图片须等待具备引用检查的垃圾回收机制后再物理删除。
 
 ## 7.1 知识库
 

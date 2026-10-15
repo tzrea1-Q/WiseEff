@@ -292,16 +292,16 @@ describe.skipIf(!databaseAvailable)("product feedback repository", () => {
 
   it("listFeedback returns nextCursor only when more rows exist and slices the extra row", async () => {
     await insertFeedback(db, auth(), feedbackInput(FEEDBACK_3));
-    await setCreatedAt(FEEDBACK_3, "2026-07-08T10:00:00.000Z");
+    await setCreatedAt(FEEDBACK_3, "2026-07-08T09:00:00.123457Z");
     await insertFeedback(db, auth(), feedbackInput(FEEDBACK_2));
-    await setCreatedAt(FEEDBACK_2, "2026-07-08T09:00:00.000Z");
+    await setCreatedAt(FEEDBACK_2, "2026-07-08T09:00:00.123456Z");
     await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
-    await setCreatedAt(FEEDBACK_1, "2026-07-08T08:00:00.000Z");
+    await setCreatedAt(FEEDBACK_1, "2026-07-08T09:00:00.123455Z");
 
     const result = await listFeedback(db, auth(), { limit: 2 });
 
     expect(result.items.map((item) => item.id)).toEqual([FEEDBACK_3, FEEDBACK_2]);
-    expect(result.nextCursor).toEqual({ createdAt: "2026-07-08T09:00:00.000Z", id: FEEDBACK_2 });
+    expect(result.nextCursor).toEqual({ createdAt: "2026-07-08T09:00:00.123456Z", id: FEEDBACK_2 });
 
     const nextPage = await listFeedback(db, auth(), { limit: 2, cursor: result.nextCursor! });
     expect(nextPage.items.map((item) => item.id)).toEqual([FEEDBACK_1]);

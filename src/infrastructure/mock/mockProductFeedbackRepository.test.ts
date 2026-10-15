@@ -2,6 +2,30 @@ import { describe, expect, it } from "vitest";
 import { createMockProductFeedbackRepository } from "./mockProductFeedbackRepository";
 
 describe("createMockProductFeedbackRepository drafts", () => {
+  it("persists and clears legacy notes through the progress journal", async () => {
+    const repo = createMockProductFeedbackRepository();
+    const feedback = await repo.submit({ pagePath: "/feedback", pageTitle: "我的反馈", feedbackType: "experience", description: "问题", files: [] });
+    const noted = await repo.update(feedback.id, { adminNote: "  排查记录  " });
+    expect(noted.adminNote).toBe("排查记录");
+    expect(noted.progressEvents?.at(-1)?.internalMessage).toBe("排查记录");
+    const cleared = await repo.update(feedback.id, { adminNote: null });
+    expect(cleared.adminNote).toBeNull();
+    expect(cleared.progressEvents?.at(-1)?.internalMessage).toBe("处理备注已清空");
+    expect((await repo.get(feedback.id))?.adminNote).toBeNull();
+    expect(cleared.progressEvents?.some((event) => event.internalMessage === "排查记录")).toBe(true);
+  });
+
+  it("rejects reopening active feedback without changing its journal", async () => {
+    const repo = createMockProductFeedbackRepository();
+    const feedback = await repo.submit({ pagePath: "/feedback", pageTitle: "我的反馈", feedbackType: "experience", description: "问题", files: [] });
+    for (const status of ["open", "in_progress"] as const) {
+      if (status === "in_progress") await repo.update(feedback.id, { status });
+      const before = await repo.get(feedback.id);
+      await expect(repo.replyToMine!(feedback.id, { message: "追问", files: [], reopen: true })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+      expect(await repo.get(feedback.id)).toEqual(before);
+    }
+  });
+
   it("supports draft creation, editing, deleting, and submitting", async () => {
     const repo = createMockProductFeedbackRepository();
 

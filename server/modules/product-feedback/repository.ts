@@ -12,6 +12,7 @@ import type {
   ProductFeedbackDto,
   ProductFeedbackProgressEventAdminDto,
   ProductFeedbackProgressEventKind,
+  ProductFeedbackPriority,
   ProductFeedbackProgressEventUserDto,
   ProductFeedbackResolutionCode,
   ProductFeedbackStatsDto,
@@ -35,9 +36,15 @@ export type ProductFeedbackRow = {
   status: ProductFeedbackStatus;
   resolution_code: ProductFeedbackResolutionCode | null;
   admin_note: string | null;
+  priority?: ProductFeedbackPriority;
+  assignee_user_id?: string | null;
+  assignee_name?: string | null;
+  assignee_username?: string | null;
   submitted_at: string | Date | null;
   created_at: string | Date;
   updated_at: string | Date;
+  cursor_created_at?: string;
+  cursor_updated_at?: string;
 };
 
 type ProductFeedbackAttachmentRow = {
@@ -58,6 +65,7 @@ type ProductFeedbackProgressEventRow = {
   organization_id: string;
   feedback_id: string;
   actor_user_id: string | null;
+  author?: "submitter" | "team";
   kind: ProductFeedbackProgressEventKind;
   from_status: ProductFeedbackStatus | null;
   to_status: ProductFeedbackStatus | null;
@@ -71,6 +79,7 @@ export type InsertProductFeedbackProgressEventInput = {
   id: string;
   feedbackId: string;
   actorUserId?: string | null;
+  author?: "submitter" | "team";
   kind: ProductFeedbackProgressEventKind;
   fromStatus?: ProductFeedbackStatus | null;
   toStatus?: ProductFeedbackStatus | null;
@@ -123,6 +132,7 @@ function toProgressEventUserDto(row: ProductFeedbackProgressEventRow): ProductFe
     toStatus: row.to_status,
     resolutionCode: row.resolution_code,
     publicMessage: row.public_message,
+    author: row.author ?? (row.kind === "submitted" ? "submitter" : "team"),
     createdAt: dateTimeToIso(row.created_at)
   };
 }
@@ -160,6 +170,13 @@ function toFeedbackAdminDto(
     status: row.status,
     resolutionCode: row.resolution_code,
     adminNote: row.admin_note,
+    priority: row.priority ?? "normal",
+    assigneeUserId: row.assignee_user_id ?? null,
+    assignee: row.assignee_user_id ? {
+      id: row.assignee_user_id,
+      name: row.assignee_name ?? "已注销用户",
+      username: row.assignee_username ?? null
+    } : null,
     submittedAt: row.submitted_at ? dateTimeToIso(row.submitted_at) : null,
     createdAt: dateTimeToIso(row.created_at),
     updatedAt: dateTimeToIso(row.updated_at),
@@ -234,11 +251,12 @@ async function loadAdminProgressEventsForFeedback(
 
   const eventResult = await db.query<ProductFeedbackProgressEventRow>(
     `
-    select *
-    from product_feedback_progress_events
-    where organization_id = $1
-      and feedback_id = any($2::uuid[])
-    order by feedback_id, created_at asc, id asc
+    select events.*
+    from product_feedback_progress_events events
+    join product_feedback feedback on feedback.id = events.feedback_id and feedback.organization_id = events.organization_id
+    where events.organization_id = $1
+      and events.feedback_id = any($2::uuid[])
+    order by events.feedback_id, events.created_at asc, events.id asc
     `,
     [auth.organization.id, feedbackIds]
   );
@@ -264,11 +282,13 @@ async function loadUserProgressEventsForFeedback(
 
   const eventResult = await db.query<ProductFeedbackProgressEventRow>(
     `
-    select *
-    from product_feedback_progress_events
-    where organization_id = $1
-      and feedback_id = any($2::uuid[])
-    order by feedback_id, created_at asc, id asc
+    select events.*
+    from product_feedback_progress_events events
+    join product_feedback feedback on feedback.id = events.feedback_id and feedback.organization_id = events.organization_id
+    where events.organization_id = $1
+      and events.feedback_id = any($2::uuid[])
+      and (events.public_message is not null or events.from_status is distinct from events.to_status)
+    order by events.feedback_id, events.created_at asc, events.id asc
     `,
     [auth.organization.id, feedbackIds]
   );
@@ -306,10 +326,11 @@ export async function insertProgressEvent(
     input.toStatus ?? null,
     input.resolutionCode ?? null,
     input.publicMessage ?? null,
-    input.internalMessage ?? null
+    input.internalMessage ?? null,
+    input.author ?? (input.kind === "submitted" ? "submitter" : "team")
   ];
 
-  const dateClause = input.createdAt ? `, $11` : ", now()";
+  const dateClause = input.createdAt ? `, $12` : ", now()";
   if (input.createdAt) {
     values.push(input.createdAt);
   }
@@ -317,9 +338,9 @@ export async function insertProgressEvent(
   const result = await db.query<ProductFeedbackProgressEventRow>(
     `
     insert into product_feedback_progress_events (
-      id, organization_id, feedback_id, actor_user_id, kind, from_status, to_status, resolution_code, public_message, internal_message, created_at
+      id, organization_id, feedback_id, actor_user_id, kind, from_status, to_status, resolution_code, public_message, internal_message, author, created_at
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10${dateClause})
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11${dateClause})
     returning *
     `,
     values
@@ -440,11 +461,17 @@ export async function getFeedbackById(
       feedback.status,
       feedback.resolution_code,
       feedback.admin_note,
+      feedback.priority,
+      feedback.assignee_user_id,
+      assignee.name as assignee_name,
+      assignee_credentials.username as assignee_username,
       feedback.submitted_at,
       feedback.created_at,
       feedback.updated_at
     from product_feedback feedback
     left join users on users.id = feedback.submitter_user_id
+    left join users assignee on assignee.id = feedback.assignee_user_id and assignee.organization_id = feedback.organization_id
+    left join user_password_credentials assignee_credentials on assignee_credentials.user_id = assignee.id
     left join user_password_credentials upc on upc.user_id = feedback.submitter_user_id
     where feedback.organization_id = $1
       and feedback.id = $2
@@ -564,11 +591,18 @@ export async function listFeedback(
       feedback.status,
       feedback.resolution_code,
       feedback.admin_note,
+      feedback.priority,
+      feedback.assignee_user_id,
+      assignee.name as assignee_name,
+      assignee_credentials.username as assignee_username,
       feedback.submitted_at,
       feedback.created_at,
-      feedback.updated_at
+      feedback.updated_at,
+      to_char(feedback.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
     from product_feedback feedback
     left join users on users.id = feedback.submitter_user_id
+    left join users assignee on assignee.id = feedback.assignee_user_id and assignee.organization_id = feedback.organization_id
+    left join user_password_credentials assignee_credentials on assignee_credentials.user_id = assignee.id
     left join user_password_credentials upc on upc.user_id = feedback.submitter_user_id
     where ${where.join("\n      and ")}
     order by feedback.created_at desc, feedback.id desc
@@ -589,10 +623,10 @@ export async function listFeedback(
   const items = slicedRows.map((row) =>
     toFeedbackAdminDto(row, attachmentsMap.get(row.id) ?? [], eventsMap.get(row.id) ?? [])
   );
-  const last = items.at(-1);
+  const last = slicedRows.at(-1);
   return {
     items,
-    nextCursor: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null
+    nextCursor: hasMore && last ? { createdAt: last.cursor_created_at ?? dateTimeToIso(last.created_at), id: last.id } : null
   };
 }
 
@@ -606,6 +640,16 @@ export async function listMyFeedback(
     "feedback.organization_id = $1",
     "feedback.submitter_user_id = $2"
   ];
+
+  if (query.status === "draft") {
+    where.push("feedback.submitted_at is null");
+  } else if (query.status) {
+    where.push("feedback.submitted_at is not null");
+    addCondition(where, values, (p) => `feedback.status = ${p}`, query.status);
+  }
+  if (query.q?.trim()) {
+    addCondition(where, values, (p) => `(feedback.description ilike ${p} or feedback.page_title ilike ${p} or feedback.page_path ilike ${p})`, `%${query.q.trim()}%`);
+  }
 
   if (query.cursor) {
     values.push(query.cursor.updatedAt, query.cursor.id);
@@ -631,7 +675,8 @@ export async function listMyFeedback(
       null as admin_note,
       feedback.submitted_at,
       feedback.created_at,
-      feedback.updated_at
+      feedback.updated_at,
+      to_char(feedback.updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_updated_at
     from product_feedback feedback
     where ${where.join("\n      and ")}
     order by feedback.updated_at desc, feedback.id desc
@@ -652,10 +697,10 @@ export async function listMyFeedback(
   const items = slicedRows.map((row) =>
     toFeedbackUserDto(row, attachmentsMap.get(row.id) ?? [], eventsMap.get(row.id) ?? [])
   );
-  const last = items.at(-1);
+  const last = slicedRows.at(-1);
   return {
     items,
-    nextCursor: hasMore && last ? { updatedAt: last.updatedAt, id: last.id } : null
+    nextCursor: hasMore && last ? { updatedAt: last.cursor_updated_at ?? dateTimeToIso(last.updated_at), id: last.id } : null
   };
 }
 
@@ -675,6 +720,14 @@ export async function updateFeedback(
   if (hasPatchKey(patch, "adminNote")) {
     values.push(patch.adminNote ?? null);
     sets.push(`admin_note = $${values.length}`);
+  }
+  if (hasPatchKey(patch, "priority")) {
+    values.push(patch.priority);
+    sets.push(`priority = $${values.length}`);
+  }
+  if (hasPatchKey(patch, "assigneeUserId")) {
+    values.push(patch.assigneeUserId ?? null);
+    sets.push(`assignee_user_id = $${values.length}`);
   }
 
   const setClause = [...sets, "updated_at = now()"].join(",\n      ");
@@ -919,11 +972,17 @@ export async function getFeedbackForUpdate(
       feedback.status,
       feedback.resolution_code,
       feedback.admin_note,
+      feedback.priority,
+      feedback.assignee_user_id,
+      assignee.name as assignee_name,
+      assignee_credentials.username as assignee_username,
       feedback.submitted_at,
       feedback.created_at,
       feedback.updated_at
     from product_feedback feedback
     left join users on users.id = feedback.submitter_user_id
+    left join users assignee on assignee.id = feedback.assignee_user_id and assignee.organization_id = feedback.organization_id
+    left join user_password_credentials assignee_credentials on assignee_credentials.user_id = assignee.id
     left join user_password_credentials upc on upc.user_id = feedback.submitter_user_id
     where feedback.organization_id = $1
       and feedback.id = $2

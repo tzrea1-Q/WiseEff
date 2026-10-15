@@ -14,7 +14,8 @@ type StoredAttachment = ProductFeedbackAttachment & { file?: File };
 function cloneFeedback(feedback: ProductFeedback): ProductFeedback {
   return {
     ...feedback,
-    attachments: feedback.attachments.map((attachment) => ({ ...attachment }))
+    attachments: feedback.attachments.map((attachment) => ({ ...attachment })),
+    progressEvents: feedback.progressEvents?.map((event) => ({ ...event }))
   };
 }
 
@@ -59,6 +60,12 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
   let counter = initialItems.length;
   const attachmentFiles = new Map<string, File>();
   let items = initialItems.map(cloneFeedback);
+  const getAttachmentObjectUrl = async (feedbackId: string, attachmentId: string) => {
+    assertFeedbackExists(items.find((item) => item.id === feedbackId), feedbackId);
+    const file = attachmentFiles.get(`${feedbackId}:${attachmentId}`);
+    if (!file) throw mockApiError("NOT_FOUND", `Product feedback attachment not found: ${attachmentId}`, { attachmentId });
+    return createFallbackObjectUrl(file);
+  };
 
   return {
     async submit(input) {
@@ -118,24 +125,35 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
         items.find((item) => item.id === id && item.submittedAt !== null),
         id
       );
+      if (existing.status === "closed" && Object.prototype.hasOwnProperty.call(patch, "adminNote") && patch.status !== "in_progress") {
+        throw mockApiError("VALIDATION_FAILED", "关闭后的备注需要重新打开反馈后才能更新。");
+      }
       if (patch.status && !isValidStatusTransition(existing.status, patch.status)) {
         throw mockApiError("CONFLICT", `Illegal product feedback status transition: ${existing.status} -> ${patch.status}`, { status: existing.status, patchStatus: patch.status });
       }
+      let current = existing;
+      const hasNote = Object.prototype.hasOwnProperty.call(patch, "adminNote");
+      const adminNote = patch.adminNote?.trim() || null;
+      const internalMessage = hasNote && adminNote !== existing.adminNote ? adminNote ?? "处理备注已清空" : undefined;
+      if ((patch.status && patch.status !== existing.status) || internalMessage || patch.publicMessage?.trim()) {
+        current = await this.appendProgress!(id, {
+          toStatus: patch.status,
+          resolutionCode: patch.resolutionCode,
+          publicMessage: patch.publicMessage,
+          internalMessage
+        });
+      }
       const updated: ProductFeedback = {
-        ...existing,
-        ...(patch.status ? { status: patch.status } : {}),
-        ...(patch.adminNote !== undefined ? { adminNote: patch.adminNote } : {}),
+        ...current,
+        ...(hasNote ? { adminNote } : {}),
+        ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+        ...(patch.assigneeUserId !== undefined ? { assigneeUserId: patch.assigneeUserId, assignee: null } : {}),
         updatedAt: MOCK_PRODUCT_FEEDBACK_NOW
       };
       items = items.map((item) => (item.id === id ? updated : item));
       return cloneFeedback(updated);
     },
-    async getAttachmentObjectUrl(feedbackId, attachmentId) {
-      assertFeedbackExists(items.find((item) => item.id === feedbackId), feedbackId);
-      const file = attachmentFiles.get(`${feedbackId}:${attachmentId}`);
-      if (!file) throw mockApiError("NOT_FOUND", `Product feedback attachment not found: ${attachmentId}`, { attachmentId });
-      return createFallbackObjectUrl(file);
-    },
+    getAttachmentObjectUrl,
 
     async createDraft(input = {}) {
       counter += 1;
@@ -269,8 +287,42 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
       return cloneFeedback(updated);
     },
 
-    async listMine() {
-      return { items: items.map(cloneFeedback) };
+    async listMine(query) {
+      const filtered = items.filter((item) => {
+        if (query?.status === "draft" ? item.submittedAt != null : query?.status && (item.submittedAt == null || item.status !== query.status)) return false;
+        return !query?.q || includesText(`${item.pageTitle} ${item.pagePath} ${item.description}`, query.q);
+      });
+      const offset = Math.max(0, Number(query?.cursor) || 0);
+      const limit = query?.limit ?? 50;
+      return { items: filtered.slice(offset, offset + limit).map(cloneFeedback),
+        ...(offset + limit < filtered.length ? { nextCursor: String(offset + limit) } : {}) };
+    },
+
+    async listAssignees() { return []; },
+
+    async replyToMine(id, input) {
+      const existing = assertFeedbackExists(items.find((item) => item.id === id && item.submittedAt != null), id);
+      if (!input.message.trim()) throw mockApiError("VALIDATION_FAILED", "请填写补充说明。");
+      if (input.reopen && existing.status !== "resolved" && existing.status !== "closed") {
+        throw mockApiError("VALIDATION_FAILED", "只有已解决或已关闭的反馈才能重新打开。");
+      }
+      if (input.files.length + existing.attachments.length > 5 || input.files.some((file) => file.size > 5 * 1024 * 1024) || input.files.reduce((sum, file) => sum + file.size, existing.attachments.reduce((sum, file) => sum + file.sizeBytes, 0)) > 15 * 1024 * 1024) {
+        throw mockApiError("VALIDATION_FAILED", "截图超过数量或大小限制。");
+      }
+      const updated = await this.appendProgress!(id, {
+        publicMessage: input.message,
+        ...(input.reopen ? { toStatus: "in_progress" } : {})
+      });
+      const attachments = input.files.map((file, index): ProductFeedbackAttachment => {
+        const attachmentId = `${id}-reply-${Date.now()}-${index}`;
+        attachmentFiles.set(`${id}:${attachmentId}`, file);
+        return { id: attachmentId, feedbackId: id, fileName: file.name, contentType: file.type as ProductFeedbackAttachment["contentType"], sizeBytes: file.size, sortOrder: existing.attachments.length + index, createdAt: MOCK_PRODUCT_FEEDBACK_NOW };
+      });
+      updated.attachments = [...updated.attachments, ...attachments];
+      const last = updated.progressEvents?.at(-1);
+      if (last) last.author = "submitter";
+      items = items.map((item) => item.id === id ? updated : item);
+      return cloneFeedback(updated);
     },
 
     async getMine(id) {
@@ -278,9 +330,7 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
       return feedback ? cloneFeedback(feedback) : null;
     },
 
-    async getMineAttachmentObjectUrl(feedbackId, attachmentId) {
-      return this.getAttachmentObjectUrl(feedbackId, attachmentId);
-    },
+    getMineAttachmentObjectUrl: getAttachmentObjectUrl,
 
     async getStats() {
       const submitted = items.filter((item) => item.submittedAt !== null && item.submittedAt !== undefined);
@@ -324,8 +374,8 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
           nextResolutionCode = null;
         } else if (current === "open" && nextStatus === "closed") {
           const res = input.resolutionCode ?? existing.resolutionCode;
-          if (!res) {
-            throw mockApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.");
+          if (!res || !publicMessage) {
+            throw mockApiError("VALIDATION_FAILED", "关闭反馈需要结论与公开说明。");
           }
           kind = "status_changed";
           nextResolutionCode = res;
@@ -341,16 +391,19 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
           nextResolutionCode = res;
         } else if (current === "in_progress" && nextStatus === "closed") {
           const res = input.resolutionCode ?? existing.resolutionCode;
-          if (!res) {
-            throw mockApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.");
+          if (!res || !publicMessage) {
+            throw mockApiError("VALIDATION_FAILED", "关闭反馈需要结论与公开说明。");
           }
           kind = "status_changed";
           nextResolutionCode = res;
         } else if (current === "resolved" && nextStatus === "closed") {
+          if (!(input.resolutionCode ?? existing.resolutionCode) || !publicMessage) {
+            throw mockApiError("VALIDATION_FAILED", "关闭反馈需要结论与公开说明。");
+          }
           kind = "status_changed";
           nextResolutionCode = input.resolutionCode ?? existing.resolutionCode ?? null;
         } else if ((current === "resolved" || current === "closed") && nextStatus === "in_progress") {
-          if (!publicMessage && !internalMessage) {
+          if (!publicMessage) {
             throw mockApiError("VALIDATION_FAILED", "An explanation is required when reopening feedback.");
           }
           kind = "reopened";
@@ -364,6 +417,7 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
         id: `${id}-event-${(existing.progressEvents?.length ?? 0) + 1}`,
         feedbackId: id,
         kind,
+        author: "team" as const,
         fromStatus: current,
         toStatus: nextStatus,
         resolutionCode: nextResolutionCode,

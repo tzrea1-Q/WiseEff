@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import { ApiError } from "../../shared/http/errors";
+import { createPostgresDatabase } from "../../shared/database/client";
 import { makeTestAuthContext, type TestAuthContextOverrides } from "../../testing/authContext";
 import {
   createInMemoryTestDatabase,
+  createEphemeralTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
@@ -22,6 +24,8 @@ import {
   getProductFeedbackStats,
   listMyProductFeedback,
   listProductFeedback,
+  listProductFeedbackAssignees,
+  replyToProductFeedback,
   saveProductFeedbackDraft,
   submitProductFeedbackDraft,
   updateProductFeedback
@@ -253,29 +257,32 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     expect(await feedbackCount()).toBe(0);
   });
 
-  it("allows open to in_progress and rejects skip or closed updates", async () => {
+  it("records legacy status updates and requires a resolution and public explanation for closing", async () => {
     const { objectStore } = makeObjectStore();
     const open = await createProductFeedback(db, objectStore, auth(), createInput());
 
     const updated = await updateProductFeedback(db, adminAuth(), open.id, { status: "in_progress", adminNote: null });
     expect(updated.status).toBe("in_progress");
     expect(updated.adminNote).toBeNull();
+    expect(updated.progressEvents).toContainEqual(expect.objectContaining({ fromStatus: "open", toStatus: "in_progress", author: "team" }));
     await expect(getProductFeedback(db, adminAuth(), open.id)).resolves.toMatchObject({
       status: "in_progress",
       adminNote: null
     });
 
-    // open -> closed skips in_progress and is refused; the row stays open.
+    // Closing cannot bypass the shared resolution contract.
     const skipped = await createProductFeedback(db, objectStore, auth(), createInput());
     await expect(updateProductFeedback(db, adminAuth(), skipped.id, { status: "closed" })).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Illegal product feedback status transition: open -> closed.")
+      new ApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.")
     );
     await expect(getProductFeedback(db, adminAuth(), skipped.id)).resolves.toMatchObject({ status: "open" });
 
     // A closed row cannot be updated further, even to change the admin note.
-    await updateProductFeedback(db, adminAuth(), updated.id, { status: "closed" });
+    await updateProductFeedback(db, adminAuth(), updated.id, {
+      status: "closed", resolutionCode: "completed", publicMessage: "Verified and closed."
+    });
     await expect(updateProductFeedback(db, adminAuth(), updated.id, { adminNote: "Already handled." })).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.")
+      new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated without reopening.")
     );
   });
 
@@ -314,12 +321,14 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
       open.id,
       {
         status: "closed",
+        resolutionCode: "completed",
+        publicMessage: "Fixed in the next release.",
         adminNote: "Fixed in the next release."
       },
       { requestId: "request-feedback-update-1" }
     );
 
-    const audit = (await auditEvents()).find((event) => event.trace_id === "request-feedback-update-1");
+    const audit = (await auditEvents()).find((event) => event.trace_id === "request-feedback-update-1" && event.kind === "product-feedback-update");
     expect(audit).toMatchObject({
       app: "product-feedback",
       kind: "product-feedback-update",
@@ -429,7 +438,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     );
     expect(saved.description).toBe("Draft text in progress");
     expect(saved.attachments).toHaveLength(2);
-    expect(deleteFn).toHaveBeenCalledTimes(1); // discarded initial.png cleaned up
+    expect(deleteFn).not.toHaveBeenCalled(); // Content-addressed images may still have other references.
     expect(await auditEvents()).toHaveLength(0); // still no audit event
 
     // 3. Draft submission requires non-empty description
@@ -493,7 +502,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
 
     const deleteResult = await deleteProductFeedbackDraft(db, objectStore, auth(), draft2.id);
     expect(deleteResult).toEqual({ ok: true });
-    expect(deleteFn).toHaveBeenCalledTimes(1);
+    expect(deleteFn).not.toHaveBeenCalled();
 
     await expect(getMyProductFeedback(db, auth(), draft2.id)).rejects.toMatchObject(
       new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: draft2.id })
@@ -566,6 +575,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     const closed = await appendProductFeedbackProgress(db, adminAuth(), submitted.id, {
       toStatus: "closed",
       resolutionCode: "duplicate",
+      publicMessage: "Tracked in the original feedback.",
       internalMessage: "Dupe of #123"
     });
     expect(closed.status).toBe("closed");
@@ -625,6 +635,178 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     await expect(
       appendProductFeedbackProgress(db, auth(), submitted.id, { toStatus: "in_progress" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("filters my feedback on the server, separates drafts, and follows the filtered cursor", async () => {
+    const { objectStore } = makeObjectStore();
+    for (let i = 0; i < 52; i++) {
+      await createProductFeedback(db, objectStore, auth(), createInput({ description: `Findable issue ${i}` }));
+    }
+    const draft = await createProductFeedbackDraft(db, objectStore, auth(), { description: "Findable draft" });
+    const page = await listMyProductFeedback(db, auth(), { q: "Findable", status: "open", limit: 50 });
+    expect(page.items).toHaveLength(50);
+    expect(page.nextCursor).not.toBeNull();
+    const next = await listMyProductFeedback(db, auth(), { q: "Findable", status: "open", limit: 50, cursor: page.nextCursor! });
+    expect(next.items).toHaveLength(2);
+    expect(new Set([...page.items, ...next.items].map((item) => item.id)).size).toBe(52);
+    expect((await listMyProductFeedback(db, auth(), { status: "draft", q: "Findable" })).items.map((item) => item.id)).toEqual([draft.id]);
+    expect((await listMyProductFeedback(db, auth(), { q: "does-not-exist" })).items).toEqual([]);
+    expect((await listMyProductFeedback(db, auth({ userId: "another-user" }), { q: "Findable" })).items).toEqual([]);
+  });
+
+  it("assigns only active administrators from the same organization and stores triage fields", async () => {
+    const { objectStore } = makeObjectStore();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1" }, users: [
+        { id: "admin-1", name: "Admin One", email: "admin1@example.com" },
+        { id: "inactive-admin", name: "Inactive", email: "inactive@example.com", isActive: false }
+      ]
+    });
+    await seedCoreGraph(db, { organization: { id: "org-2" }, users: [{ id: "foreign-admin", email: "foreign@example.com" }] });
+    for (const [id, org] of [["admin-1", "org-1"], ["inactive-admin", "org-1"], ["foreign-admin", "org-2"]]) {
+      await db.query("insert into user_role_bindings (id, user_id, organization_id, role_id) values ($1, $1, $2, 'admin')", [id, org]);
+    }
+    const choices = await listProductFeedbackAssignees(db, adminAuth());
+    expect(choices.items).toEqual([{ id: "admin-1", name: "Admin One", username: null }]);
+    await expect(listProductFeedbackAssignees(db, auth())).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const item = await createProductFeedback(db, objectStore, auth(), createInput());
+    for (const id of ["user-1", "inactive-admin", "foreign-admin", "missing"]) {
+      await expect(updateProductFeedback(db, adminAuth(), item.id, { assigneeUserId: id })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    }
+    const updated = await updateProductFeedback(db, adminAuth(), item.id, { priority: "high", assigneeUserId: "admin-1" });
+    expect(updated).toMatchObject({ priority: "high", assigneeUserId: "admin-1", assignee: { id: "admin-1", name: "Admin One" } });
+    expect((await listProductFeedback(db, adminAuth())).items[0].assigneeUserId).toBe("admin-1");
+    expect(await updateProductFeedback(db, adminAuth(), item.id, { assigneeUserId: null })).toMatchObject({ assigneeUserId: null, assignee: null });
+    expect(await getMyProductFeedback(db, auth(), item.id)).not.toHaveProperty("assigneeUserId");
+  });
+
+  it("notifies on public admin progress and status changes while keeping internal notes private", async () => {
+    const { objectStore } = makeObjectStore();
+    const item = await createProductFeedback(db, objectStore, auth(), createInput());
+    await updateProductFeedback(db, adminAuth(), item.id, { adminNote: "private triage" });
+    expect((await getMyProductFeedback(db, auth(), item.id)).progressEvents).toHaveLength(1);
+    expect((await db.query("select * from user_notifications where organization_id = 'org-1'")).rows).toHaveLength(0);
+    await updateProductFeedback(db, adminAuth(), item.id, { status: "in_progress" });
+    await appendProductFeedbackProgress(db, adminAuth(), item.id, { publicMessage: "We have a fix", internalMessage: "private debug details" });
+    const events = (await getMyProductFeedback(db, auth(), item.id)).progressEvents;
+    expect(events).toHaveLength(3);
+    expect(events.find((event) => event.publicMessage === "We have a fix")).toMatchObject({ author: "team" });
+    expect(JSON.stringify(events)).not.toContain("private");
+    expect(JSON.stringify(events)).not.toContain("actorUserId");
+    const notifications = (await db.query<{ action_url: string; body: string }>("select action_url, body from user_notifications where organization_id = 'org-1' order by created_at, id")).rows;
+    expect(notifications).toHaveLength(2);
+    expect(notifications.every((notification) => notification.action_url === `/feedback?id=${item.id}`)).toBe(true);
+    expect(JSON.stringify(notifications)).not.toContain("private");
+  });
+
+  it("allows submitter replies, additive evidence and explicit reopening while preserving tenancy and privacy", async () => {
+    const { objectStore, put } = makeObjectStore();
+    const item = await createProductFeedback(db, objectStore, auth(), createInput({ attachments: [attachmentInput("first.png")] }));
+    const replied = await replyToProductFeedback(db, objectStore, auth(), item.id, { message: "More details", attachments: [attachmentInput("second.png")] });
+    expect(replied.attachments).toHaveLength(2);
+    expect(replied.progressEvents).toContainEqual(expect.objectContaining({ publicMessage: "More details", author: "submitter" }));
+    expect(JSON.stringify(replied.progressEvents)).not.toContain("actorUserId");
+    const stranger = auth({ userId: "stranger" });
+    await expect(replyToProductFeedback(db, objectStore, stranger, item.id, { message: "No access" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(replyToProductFeedback(db, objectStore, auth({ organizationId: "org-2" }), item.id, { message: "No access" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const draft = await createProductFeedbackDraft(db, objectStore, auth(), { description: "Draft" });
+    await expect(replyToProductFeedback(db, objectStore, auth(), draft.id, { message: "Draft reply" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(replyToProductFeedback(db, objectStore, auth(), item.id, { message: " " })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await expect(replyToProductFeedback(db, objectStore, auth(), item.id, { message: "Already open", reopen: true })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await updateProductFeedback(db, adminAuth(), item.id, { status: "closed", resolutionCode: "completed", publicMessage: "Verified" });
+    await expect(replyToProductFeedback(db, objectStore, auth(), item.id, { message: "Still broken" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    const reopened = await replyToProductFeedback(db, objectStore, auth(), item.id, { message: "Still broken", reopen: true });
+    expect(reopened).toMatchObject({ status: "in_progress", resolutionCode: null });
+    expect(reopened.progressEvents).toContainEqual(expect.objectContaining({ kind: "reopened", publicMessage: "Still broken", author: "submitter" }));
+    expect(put).toHaveBeenCalledTimes(2);
+    expect((await auditEvents()).some((event) => event.kind === "product-feedback-reply")).toBe(true);
+  });
+
+  it("enforces total reply attachment limits before storing any new file", async () => {
+    const { objectStore, put } = makeObjectStore();
+    const item = await createProductFeedback(db, objectStore, auth(), createInput({ attachments: [attachmentInput("first.png")] }));
+    put.mockClear();
+    await expect(replyToProductFeedback(db, objectStore, auth(), item.id, {
+      message: "More", attachments: Array.from({ length: 5 }, (_, index) => attachmentInput(`shot-${index}.png`))
+    })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await expect(replyToProductFeedback(db, objectStore, auth(), item.id, {
+      message: "More", attachments: [attachmentInput("large.png", 5 * 1024 * 1024 + 1)]
+    })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await db.query("update product_feedback_attachments set size_bytes = $1 where feedback_id = $2", [15 * 1024 * 1024, item.id]);
+    await expect(replyToProductFeedback(db, objectStore, auth(), item.id, {
+      message: "More", attachments: [attachmentInput("extra.png")]
+    })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(put).not.toHaveBeenCalled();
+    expect((await getMyProductFeedback(db, auth(), item.id)).progressEvents).toHaveLength(1);
+  });
+
+  it("rejects clearing closed notes and preserves historical notes in the private journal when edited", async () => {
+    const { objectStore } = makeObjectStore();
+    const item = await createProductFeedback(db, objectStore, auth(), createInput());
+    // Simulate a legacy note written after the original migration backfill.
+    await db.query("update product_feedback set admin_note = 'Legacy investigation' where id = $1", [item.id]);
+    const cleared = await updateProductFeedback(db, adminAuth(), item.id, { adminNote: null });
+    expect(cleared.adminNote).toBeNull();
+    expect(cleared.progressEvents).toContainEqual(expect.objectContaining({ kind: "legacy_note", internalMessage: "Legacy investigation" }));
+    expect(cleared.progressEvents).toContainEqual(expect.objectContaining({ kind: "progress", internalMessage: "处理备注已清空" }));
+    expect(JSON.stringify((await getMyProductFeedback(db, auth(), item.id)).progressEvents)).not.toContain("Legacy investigation");
+    await updateProductFeedback(db, adminAuth(), item.id, { status: "closed", resolutionCode: "completed", publicMessage: "Done", adminNote: "Final private note" });
+    for (const adminNote of [null, "", " ", "replacement"]) {
+      await expect(updateProductFeedback(db, adminAuth(), item.id, { adminNote })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    }
+    expect(await updateProductFeedback(db, adminAuth(), item.id, { priority: "low" })).toMatchObject({ status: "closed", priority: "low", adminNote: "Final private note" });
+    const reopened = await updateProductFeedback(db, adminAuth(), item.id, { status: "in_progress", publicMessage: "Need another check", adminNote: null });
+    expect(reopened.status).toBe("in_progress");
+    expect(reopened.progressEvents).toContainEqual(expect.objectContaining({ internalMessage: "Final private note" }));
+  });
+
+  it("detaches draft images without deleting content shared by submitted feedback", async () => {
+    const { objectStore, deleteFn } = makeObjectStore();
+    const image = attachmentInput("shared.png");
+    const submitted = await createProductFeedback(db, objectStore, auth(), createInput({ attachments: [image] }));
+    const draft = await createProductFeedbackDraft(db, objectStore, auth(), { attachments: [image] });
+    expect(draft.attachments[0].storageKey).toBe(submitted.attachments[0].storageKey);
+    await saveProductFeedbackDraft(db, objectStore, auth(), draft.id, { retainedAttachmentIds: [] });
+    expect((await getMyProductFeedback(db, auth(), draft.id)).attachments).toEqual([]);
+    const draft2 = await createProductFeedbackDraft(db, objectStore, auth(), { attachments: [image] });
+    await deleteProductFeedbackDraft(db, objectStore, auth(), draft2.id);
+    expect(deleteFn).not.toHaveBeenCalled();
+    await expect(getMyProductFeedbackAttachmentContent(db, objectStore, auth(), submitted.id, submitted.attachments[0].id)).resolves.toMatchObject({ bytes: Buffer.from("stored-image") });
+  });
+
+  it("serializes concurrent replies so additive attachments cannot exceed the feedback limit", async () => {
+    const isolated = await createEphemeralTestDatabase("fbreply");
+    const concurrentDb = createPostgresDatabase(isolated.url);
+    try {
+      await seedCoreGraph(concurrentDb, { organization: { id: "org-1" }, users: [{ id: "user-1", email: "riley@example.com" }] });
+      const { objectStore } = makeObjectStore();
+      const item = await createProductFeedback(concurrentDb, objectStore, auth(), createInput({
+        attachments: Array.from({ length: 4 }, (_, index) => attachmentInput(`original-${index}.png`))
+      }));
+      const replies = await Promise.allSettled(Array.from({ length: 8 }, (_, index) => replyToProductFeedback(
+        concurrentDb, objectStore, auth(), item.id,
+        { message: `Concurrent reply ${index}`, attachments: [attachmentInput(`extra-${index}.png`)] }
+      )));
+      expect(replies.filter((reply) => reply.status === "fulfilled")).toHaveLength(1);
+      const rejected = replies.filter((reply) => reply.status === "rejected");
+      expect(rejected).toHaveLength(7);
+      expect(rejected.every((reply) => reply.status === "rejected" && reply.reason instanceof ApiError && reply.reason.code === "VALIDATION_FAILED")).toBe(true);
+      const final = await getMyProductFeedback(concurrentDb, auth(), item.id);
+      expect(final.attachments).toHaveLength(5);
+      expect(final.progressEvents).toHaveLength(2);
+    } finally {
+      await concurrentDb.close();
+      await isolated.drop();
+    }
+  });
+
+  it("requires a public explanation when closing via progress or legacy PATCH and when reopening", async () => {
+    const { objectStore } = makeObjectStore();
+    const item = await createProductFeedback(db, objectStore, auth(), createInput());
+    await expect(updateProductFeedback(db, adminAuth(), item.id, { status: "closed", resolutionCode: "invalid" })).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("Public message") });
+    await expect(appendProductFeedbackProgress(db, adminAuth(), item.id, { toStatus: "closed", resolutionCode: "invalid", internalMessage: "private" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await appendProductFeedbackProgress(db, adminAuth(), item.id, { toStatus: "closed", resolutionCode: "invalid", publicMessage: "Not enough information" });
+    await expect(appendProductFeedbackProgress(db, adminAuth(), item.id, { toStatus: "in_progress", internalMessage: "private" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
   it("getProductFeedbackStats: counts by status", async () => {

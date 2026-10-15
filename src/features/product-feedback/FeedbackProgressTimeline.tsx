@@ -1,28 +1,26 @@
+import { useId, useState } from "react";
+import { Check, ChevronDown, LockKeyhole, MessageSquare, RotateCcw } from "lucide-react";
 import type { ProductFeedbackProgressEvent } from "@/domain/productFeedback/types";
 import {
   productFeedbackResolutionLabels,
-  productFeedbackStatusLabels
 } from "@/domain/productFeedback/types";
 import { cn } from "@/lib/utils";
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
+import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
+import "./feedback-timeline.css";
 
 export function FeedbackProgressTimeline({
   events,
   isAdmin = false,
-  className
+  className,
+  initialVisibleCount
 }: {
   events?: ProductFeedbackProgressEvent[] | null;
   isAdmin?: boolean;
   className?: string;
+  initialVisibleCount?: number;
 }) {
+  const listId = useId();
+  const [expandedFor, setExpandedFor] = useState<string | null>(null);
   if (!events || events.length === 0) {
     return (
       <p className={cn("rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground", className)}>
@@ -50,43 +48,51 @@ export function FeedbackProgressTimeline({
     );
   }
 
+  const hiddenCount = Math.max(0, visibleEvents.length - Math.max(1, initialVisibleCount ?? visibleEvents.length));
+  const feedbackId = visibleEvents[0].feedbackId;
+  const expanded = expandedFor === feedbackId;
+  const shownEvents = (expanded ? [...visibleEvents] : visibleEvents.slice(hiddenCount)).reverse();
   return (
-    <div className={cn("space-y-2 rounded-lg border border-border bg-muted/20 p-3", className)}>
-      {visibleEvents.map((event) => (
-        <div key={event.id} className="border-l-2 border-primary/40 pl-3 py-1 text-xs space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
+    <div className={cn("feedback-timeline-wrap", className)}>
+    <ol id={listId} aria-label="反馈处理记录" className="feedback-timeline">
+      {shownEvents.map((event) => (
+        <li key={event.id} className="feedback-timeline__event">
+          <div className="feedback-timeline__marker" aria-hidden="true">{event.kind === "reopened" ? <RotateCcw size={13} /> : event.kind === "submitted" || event.kind === "status_changed" ? <Check size={13} /> : event.internalMessage && !event.publicMessage ? <LockKeyhole size={13} /> : <MessageSquare size={13} />}</div>
+          <div className="feedback-timeline__content">
+          <div className="feedback-timeline__heading">
             <span className="font-medium text-foreground">
               {event.kind === "submitted" && "反馈已提交"}
-              {event.kind === "status_changed" &&
-                `状态变更：${event.fromStatus ? productFeedbackStatusLabels[event.fromStatus] : ""} → ${event.toStatus ? productFeedbackStatusLabels[event.toStatus] : ""}`}
+              {event.kind === "status_changed" && (event.toStatus === "in_progress" ? "开始处理" : event.toStatus === "resolved" ? "已标记解决" : event.toStatus === "closed" ? "已关闭反馈" : "状态已更新")}
               {event.kind === "reopened" && "重新打开反馈"}
-              {event.kind === "progress" && "处理进展"}
-              {event.kind === "legacy_note" && "处理备注"}
+              {event.kind === "progress" && (event.author === "submitter" ? "提交人补充" : !event.publicMessage && event.internalMessage ? "内部备注" : "团队回复")}
+              {event.kind === "legacy_note" && "历史内部备注"}
             </span>
-            <span>{formatDateTime(event.createdAt)}</span>
+            <time dateTime={event.createdAt} title={formatAbsolute(event.createdAt)}>{formatRelativeOrAbsolute(event.createdAt)}</time>
           </div>
 
-          {event.resolutionCode && (
+          {event.resolutionCode && event.resolutionCode !== "completed" && (
             <p className="text-muted-foreground">
-              解决结论：<span className="font-medium text-foreground">{productFeedbackResolutionLabels[event.resolutionCode]}</span>
+              {productFeedbackResolutionLabels[event.resolutionCode]}
             </p>
           )}
 
-          {event.publicMessage && (
-            <div className="rounded bg-background/80 p-2 text-foreground">
-              <span className="text-[10px] font-semibold text-primary uppercase mr-1">处理进展:</span>
+          {event.publicMessage && !(event.kind === "submitted" && event.publicMessage === "反馈已提交") && (
+            <div className="feedback-timeline__message">
               {event.publicMessage}
             </div>
           )}
 
           {isAdmin && event.internalMessage && (
-            <div className="rounded bg-amber-500/10 p-2 text-amber-950 dark:text-amber-200">
-              <span className="text-[10px] font-semibold text-amber-600 uppercase mr-1">内部备注:</span>
-              {event.internalMessage}
+            <div className="feedback-timeline__message feedback-timeline__message--internal">
+              <span className="feedback-timeline__private-label"><LockKeyhole size={12} />仅管理员可见</span>
+              <p>{event.internalMessage}</p>
             </div>
           )}
-        </div>
+          </div>
+        </li>
       ))}
+    </ol>
+      {hiddenCount > 0 && <button type="button" className="feedback-timeline__expand" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpandedFor(expanded ? null : feedbackId)}><ChevronDown size={14} />{expanded ? "收起较早记录" : `查看更早的 ${hiddenCount} 条记录`}</button>}
     </div>
   );
 }
