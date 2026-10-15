@@ -203,7 +203,7 @@ export default [{ files: ["**/*.{ts,tsx}"], languageOptions: { parser }, rules: 
       ["app", ["src/**/*.ts"]], ["node", ["server/**/*.ts", "scripts/**/*.ts", "*.ts"]],
       ["tests.node", ["server/**/*.ts", "scripts/**/*.ts", "packages/**/*.ts"]],
       ["tests.browser", ["src/**/*.ts", "e2e/**/*.ts"]],
-    ]) write(`tsconfig.${name}.json`, JSON.stringify({ compilerOptions: { target: "ES2023", types: [], skipLibCheck: true, noEmit: true }, include }));
+    ]) write(`tsconfig.${name}.json`, JSON.stringify({ compilerOptions: { target: "ES2023", lib: ["ES2023"], types: [], skipLibCheck: true, noEmit: true }, include }));
     write("never-run.ts", "throw new Error('Global setup must not run');");
     write("e2e/acceptance/example.spec.ts", "page.goto('/organization');");
     write("src/shared/value.ts", "export const value = 42;");

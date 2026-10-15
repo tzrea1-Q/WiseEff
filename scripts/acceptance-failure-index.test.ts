@@ -91,6 +91,7 @@ function inspect(value: Awaited<ReturnType<typeof fixture>>, checkout = sha, att
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
 
 describe("accepted-base compact acceptance failure index", () => {
+  let inspectorProjection: string | undefined;
   it("inspects only bounded fields for an exact expected run, attempt, shard and checkout", async () => {
     const value = await fixture();
     project(value);
@@ -104,7 +105,9 @@ describe("accepted-base compact acceptance failure index", () => {
   });
   it.each(["corrupt", "oversize", "wrong-head", "wrong-attempt", "wrong-base", "bad-tree", "wrong-tree", "hostile-path", "unknown-category", "missing"])("keeps %s navigation unavailable without displaying downloaded strings", async (mutation) => {
     const value = await fixture();
-    const projected = project(value).record;
+    const projectedText = inspectorProjection ??= project(value).text;
+    const projected = JSON.parse(projectedText);
+    writeFileSync(value.output, projectedText);
     if (mutation === "corrupt") writeFileSync(value.output, "{SYNTHETIC_SECRET");
     if (mutation === "oversize") writeFileSync(value.output, "SYNTHETIC_SECRET".repeat(20000));
     if (mutation === "hostile-path") {
