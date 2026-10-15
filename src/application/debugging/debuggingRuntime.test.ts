@@ -109,6 +109,23 @@ function createGateway(overrides: Partial<DebuggingGateway> = {}): DebuggingGate
 }
 
 describe("createDebuggingRuntimeActions", () => {
+  it.each([false, true])("lets only the latest refresh publish when an older request fails=%s", async (fails) => {
+    let complete!: (devices: DebugDeviceSnapshot[]) => void;
+    let reject!: (error: Error) => void;
+    const old = new Promise<DebugDeviceSnapshot[]>((resolve, fail) => { complete = resolve; reject = fail; });
+    const newer = { ...apiDevice, name: "newer device" };
+    const dispatch = vi.fn();
+    const actions = createDebuggingRuntimeActions({ mode: "api", dispatch, getState: () => initialState,
+      gateway: createGateway({ listDevices: vi.fn().mockReturnValueOnce(old).mockResolvedValue([newer]) }) });
+    const first = actions.refresh();
+    await actions.refresh();
+    if (fails) reject(new Error("older request failed"));
+    else complete([apiDevice]);
+    await expect(first).resolves.toBeUndefined();
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_DEBUG_RUNTIME", devices: [expect.objectContaining({ name: "newer device" })] }));
+  });
+
   it("dispatches existing reducer actions in mock mode", async () => {
     const dispatch = vi.fn();
     const actions = createDebuggingRuntimeActions({

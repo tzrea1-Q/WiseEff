@@ -165,6 +165,8 @@ GitHub Actions **Re-run failed jobs** 支持无需全量重跑的恢复（2026-1
 
 ## 有界浏览器夹具检查
 
+L2 平台包络保持作业上限 155 分钟，必须严格大于 5 分钟平台开销、73 分钟有界 pre-Gate0、60 分钟 owner 及 16 分钟有界 post-Gate0 安全/上传/诊断步骤之和（下界 154 分钟）。这是现有检查器/工作流的预算，不是实测耗时，也未改变 owner、安全封装或上传义务。
+
 EFF 夹具工作复用原有自有 Gate0 runtime 与原生验收配置，保持一个 worker、仅模拟器调试及原 warmup 依赖。有界回归集包括 `product-feedback.acceptance.spec.ts` 原三项、`parameter-files.acceptance.spec.ts` 的上传/列表/同步项，以及 `debugging-simulator.acceptance.spec.ts` 的读/写/替代回读/回滚/审计项：五个场景加 warmup，必须取得六项实际原生结果，且无跳过或 flaky。保留嵌套临时语义 runtime 的清理 manifest 和产物 finalizer。旧 SHA 结果、无 descriptor 运行及模拟器回滚不能当作当前 main 全量或目标/设备验收。本次夹具修复不引入分片、重试、golden 更新或覆盖裁剪。
 
 ## 补充命令
