@@ -145,6 +145,11 @@ it("makes the ordinary lint entry point fail on an untracked semantically broken
   write(".gitignore", "node_modules\nwork\n");
   write("src/original.ts", "export const original = 1;");
   write("scripts/original.test.ts", "export const original = 1;");
+  const configLoads = join(root, "work/config-loads");
+  mkdirSync(join(root, "work"));
+  write("eslint.config.js", `import { appendFileSync } from "node:fs";
+appendFileSync(${JSON.stringify(configLoads)}, "loaded\\n");
+${readFileSync(join(root, "eslint.config.js"), "utf8")}`);
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
   git("init", "--initial-branch=main");
   git("add", ".");
@@ -157,6 +162,8 @@ it("makes the ordinary lint entry point fail on an untracked semantically broken
   });
   expect(child.status, child.stderr).toBe(1);
   expect(child.stdout + child.stderr).toContain("TS2322");
+  expect(readFileSync(configLoads, "utf8").trim().split("\n")).toHaveLength(1);
+  rmSync(configLoads);
   const changes = readStaticChanges(root);
   expect(changes.paths).toEqual(["server/example.test.ts"]);
   write("server/example.test.ts", "export const count: number = 1;");
@@ -167,6 +174,14 @@ it("makes the ordinary lint entry point fail on an untracked semantically broken
   expect(valid.status, valid.stderr).toBe(0);
   expect(valid.stdout).toContain('"status": "passed"');
   expect(valid.stdout).toContain("Checked by the successful original ESLint src/scripts-test pass in this invocation.");
+  expect(readFileSync(configLoads, "utf8").trim().split("\n")).toHaveLength(1);
+  write("src/original.ts", "export function value() { return 1; return 2; }");
+  const lintFailure = spawnSync(process.execPath, ["--import", createRequire(import.meta.url).resolve("tsx"), join(repository, "scripts/run-cached-tool.ts"), "eslint"], {
+    cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "", WISEEFF_STATIC_BASE: "HEAD", WISEEFF_TOOL_CACHE_DIR: join(root, "work/cache") },
+  });
+  expect(lintFailure.status, lintFailure.stdout + lintFailure.stderr).toBe(1);
+  expect(lintFailure.stdout).toContain("no-unreachable");
+  expect(lintFailure.stdout).not.toContain('"staticCoverage"');
   rmSync(join(root, "src/original.ts"));
   const removed = readStaticChanges(root);
   expect(removed.deletedPaths).toEqual(["src/original.ts"]);
