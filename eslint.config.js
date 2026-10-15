@@ -24,6 +24,23 @@ const wiseeffPlugin = {
 
 export default [
   {
+    files: ["{server,scripts,ops,e2e,packages}/**/*.{ts,tsx,js,mjs}", "*.{ts,js,mjs}"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { ecmaFeatures: { jsx: true } },
+      sourceType: "module"
+    },
+    // Environment-neutral correctness rules; JSX/hooks policy remains scoped to src.
+    rules: {
+      "no-unreachable": "error",
+      "no-unsafe-finally": "error",
+      "no-dupe-else-if": "error",
+      "no-async-promise-executor": "error",
+      "constructor-super": "error",
+      "valid-typeof": "error"
+    }
+  },
+  {
     files: ["src/**/*.{ts,tsx}"],
     languageOptions: {
       parser: tsParser,

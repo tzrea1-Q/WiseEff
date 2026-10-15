@@ -30,8 +30,26 @@ export function buildCachedToolInvocation(tool: "tsc" | "eslint", env: NodeJS.Pr
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const tool = process.argv[2];
   if (tool !== "tsc" && tool !== "eslint") throw new Error("Expected tsc or eslint.");
+  const extra = process.argv.slice(3);
+  let base = process.env.WISEEFF_STATIC_BASE || "HEAD";
+  const baseIndex = extra.indexOf("--base");
+  if (tool === "eslint" && baseIndex >= 0) {
+    if (!extra[baseIndex + 1] || extra[baseIndex + 1].startsWith("--") || extra.lastIndexOf("--base") !== baseIndex) throw new Error("Expected one --base <commit>.");
+    base = extra[baseIndex + 1];
+    extra.splice(baseIndex, 2);
+  }
   const invocation = buildCachedToolInvocation(tool);
-  const result = spawnSync(process.execPath, [invocation.bin, ...invocation.args, ...process.argv.slice(3)], { stdio: "inherit" });
+  const result = spawnSync(process.execPath, [invocation.bin, ...invocation.args, ...extra], { stdio: "inherit" });
   if (result.error) throw result.error;
+  if (tool === "eslint" && result.status === 0) {
+    const { inspectStaticCoverage, readStaticChanges } = await import("./check-static-coverage");
+    const changes = readStaticChanges(process.cwd(), base);
+    if (changes.paths.length) {
+      const coverage = await inspectStaticCoverage(changes.paths, process.cwd(), { execute: true, deletedPaths: changes.deletedPaths });
+      console.log(JSON.stringify({ base: changes.base, staticCoverage: coverage }, null, 2));
+      process.exit(coverage.status === "failed" ? 1 : 0);
+    }
+    console.log("No changed files: additional static coverage is not applicable; no changed-file acceptance claimed.");
+  }
   process.exit(result.status ?? 1);
 }

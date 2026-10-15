@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page, type Request } from "playwright/test";
 import type { Client } from "pg";
-import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { authHeadersForUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
@@ -12,7 +12,9 @@ import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operati
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
 
-useBrowserDiagnostics(test);
+const expectedApiFailures: ExpectedApiFailure[] = [];
+useBrowserDiagnostics(test, { expectedApiFailures });
+test.beforeEach(() => { expectedApiFailures.length = 0; });
 
 const acceptanceNodeNamePrefix = "Acceptance debug node";
 
@@ -262,6 +264,71 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await withPgClient(async (client) => {
       await cleanupAcceptanceCatalogRows(client);
     });
+  });
+
+  test("keeps bootstrap pointer gestures unavailable and recovers after API retry", async ({ page }) => {
+    // Fault injection holds an actual API response; this case deliberately bypasses the ready helper.
+    let release!: () => void;
+    let fetched!: () => void;
+    const releaseResponse = new Promise<void>((resolve) => { release = resolve; });
+    const responseFetched = new Promise<void>((resolve) => { fetched = resolve; });
+    let holdFirst = true;
+    let failNext = false;
+    const bootstrapNodes = (url: URL) => url.pathname === "/api/v1/debugging/nodes";
+    await page.route(bootstrapNodes, async (route) => {
+      if (failNext) {
+        failNext = false;
+        await route.fulfill({ status: 503, json: { error: { code: "INTERNAL_ERROR", message: "Controlled bootstrap failure" } } });
+        return;
+      }
+      const response = await route.fetch();
+      if (holdFirst) {
+        holdFirst = false;
+        fetched();
+        await releaseResponse;
+      }
+      await route.fulfill({ response });
+    });
+    try {
+      await page.goto("/debugging-admin/nodes");
+      await responseFetched;
+      const main = page.locator("#main-content");
+      await expect(main).toHaveAttribute("data-runtime-state", "loading");
+      await expect(page.getByRole("status").filter({ hasText: "正在连接雷泽服务" })).toBeVisible();
+      // The table is rendered but inert, so target the actual geometry without an actionability wait.
+      const more = page.locator('table[aria-label="可调节点目录"] button[aria-haspopup="menu"]').first();
+      await expect(more).toBeVisible();
+      const target = await more.boundingBox();
+      expect(target).not.toBeNull();
+      await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2);
+      await page.mouse.down();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      release();
+      await expect(main).toHaveAttribute("data-runtime-state", "ready");
+      await page.mouse.up();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await more.click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(more).toBeFocused();
+
+      expectedApiFailures.push({ method: "GET", path: "/api/v1/debugging/nodes", status: 503 });
+      failNext = true;
+      await page.reload();
+      await expect(main).toHaveAttribute("data-runtime-state", "error");
+      const failure = page.getByRole("alert").filter({ hasText: "无法连接雷泽调试 API" });
+      await expect(failure).toBeVisible();
+      await failure.getByRole("button", { name: "重试", exact: true }).click();
+      await expect(main).toHaveAttribute("data-runtime-state", "ready");
+      await expect(failure).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "新增节点", exact: true })).toBeEnabled();
+    } finally {
+      release();
+      await page.mouse.up();
+      await page.unroute(bootstrapNodes);
+      expectedApiFailures.length = 0;
+    }
   });
 
   test("debugging admin manages an API-backed HDC/ADB catalog node", async ({ page }, testInfo) => {
