@@ -2,6 +2,7 @@ import type { Page } from "playwright/test";
 
 import { createBearerTokenForUser, smokeHeaders } from "./runtime";
 import { ACCEPTANCE_ORGANIZATION, castByRole, roleLabels, type AcceptanceRoleId } from "./cast";
+import { waitForInteractionSurfaceReady } from "./interactionSurface";
 
 export type { AcceptanceRoleId } from "./cast";
 export { createBearerTokenForUser } from "./runtime";
@@ -25,6 +26,7 @@ async function writeBrowserTokenBeforeRoute(page: Page, token: string, route: st
     [LOCAL_AUTH_TOKEN_STORAGE_KEY, token] as const,
   );
   await page.goto(route, { waitUntil: "domcontentloaded" });
+  await waitForInteractionSurfaceReady(page);
 }
 
 export function acceptanceRoleLabel(roleId: AcceptanceRoleId) {

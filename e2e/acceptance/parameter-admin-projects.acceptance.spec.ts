@@ -133,7 +133,40 @@ test.describe("parameter-admin project list", () => {
       }
 
       await page.setViewportSize({ width: 1440, height: 900 });
-      await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
+      let releaseBindings!: () => void;
+      let bindingsFetched!: () => void;
+      const bindingsGate = new Promise<void>((resolve) => { releaseBindings = resolve; });
+      const bindingsResponseFetched = new Promise<void>((resolve) => { bindingsFetched = resolve; });
+      const routeTasks: Promise<void>[] = [];
+      const requiredBindings = (url: URL) => url.pathname === "/api/v2/projects/aurora/parameter-bindings";
+      await page.route(requiredBindings, (route) => {
+        const task = (async () => {
+          const response = await route.fetch();
+          bindingsFetched();
+          await bindingsGate;
+          if (!route.request().failure()) await route.fulfill({ response });
+        })();
+        routeTasks.push(task);
+        return task;
+      });
+      let signInSettled = false;
+      const signIn = signInBrowserAsRole(page, "admin", "/parameter-admin/projects")
+        .finally(() => { signInSettled = true; });
+      try {
+        await bindingsResponseFetched;
+        await page.waitForLoadState("domcontentloaded");
+        await expect(page.locator("#main-content")).toHaveAttribute("data-runtime-state", "loading");
+        await expect(page.locator("#main-content > .page-content")).toHaveAttribute("inert", "");
+        expect(signInSettled).toBe(false);
+      } finally {
+        releaseBindings();
+        try { await signIn; }
+        finally {
+          await page.unroute(requiredBindings);
+          const settledRoutes = await Promise.allSettled(routeTasks);
+          expect(settledRoutes.filter((result) => result.status === "rejected")).toEqual([]);
+        }
+      }
       await dismissXiaozeHint(page);
       await expect(page.getByRole("region", { name: "项目清单", exact: true })).toBeVisible({ timeout: 30_000 });
 
