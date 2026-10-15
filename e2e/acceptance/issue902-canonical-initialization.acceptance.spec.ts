@@ -113,6 +113,8 @@ test.describe("issue902 canonical-only JSON project initialization", () => {
     await expect(wizard).toBeVisible();
     await wizard.getByLabel("项目名称", { exact: true }).fill(targetProjectName);
     await wizard.getByLabel("项目代号", { exact: true }).fill(targetProjectCode);
+    await wizard.getByRole("combobox", { name: "负责人", exact: true }).click();
+    await page.getByRole("option", { selected: true }).click();
     await wizard.getByRole("button", { name: "下一步", exact: true }).click();
     await wizard.getByLabel(sourceProjectName, { exact: true }).check();
     const previewed = page.waitForResponse(response => response.request().method() === "POST"
