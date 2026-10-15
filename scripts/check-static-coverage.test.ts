@@ -59,7 +59,9 @@ it("reports real repository test projects without pretending selection executed 
 it("uses browser globals only in the browser test environment", async () => {
   write("e2e/example.spec.ts", 'export const label = document.title;');
   write("server/example.test.ts", 'export const label = document.title;');
-  const node = await inspectStaticCoverage(["e2e/example.spec.ts", "server/example.test.ts"], root, { execute: true });
+  write("src/example.ts", 'export const label = document.title;');
+  write("tsconfig.app.json", JSON.stringify({ compilerOptions: { target: "ES2023", lib: ["ES2023", "DOM"], types: [], strict: true, noEmit: true }, include: ["src/**/*.ts"] }));
+  const node = await inspectStaticCoverage(["e2e/example.spec.ts", "server/example.test.ts", "src/example.ts"], root, { execute: true });
   expect(node.status).toBe("failed");
   expect(node.problems.join("\n")).toContain("document");
   expect(node.problems.every((problem) => problem.startsWith("server/example.test.ts:"))).toBe(true);
@@ -108,11 +110,13 @@ it("makes the ordinary lint entry point fail on an untracked semantically broken
   const changes = readStaticChanges(root);
   expect(changes.paths).toEqual(["server/example.test.ts"]);
   write("server/example.test.ts", "export const count: number = 1;");
-  const valid = spawnSync(process.execPath, ["--import", createRequire(import.meta.url).resolve("tsx"), join(repository, "scripts/run-cached-tool.ts"), "eslint", "--base", "HEAD"], {
+  write("src/original.ts", "export const original = 2;");
+  const valid = spawnSync(process.execPath, ["--import", createRequire(import.meta.url).resolve("tsx"), join(repository, "scripts/run-cached-tool.ts"), "eslint", "--base", "HEAD", "--no-cache"], {
     cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "", WISEEFF_STATIC_BASE: "not-a-commit", WISEEFF_TOOL_CACHE_DIR: join(root, "work/cache") },
   });
   expect(valid.status, valid.stderr).toBe(0);
   expect(valid.stdout).toContain('"status": "passed"');
+  expect(valid.stdout).toContain("Checked by the successful original ESLint src/scripts-test pass in this invocation.");
   rmSync(join(root, "src/original.ts"));
   const removed = readStaticChanges(root);
   expect(removed.deletedPaths).toEqual(["src/original.ts"]);
