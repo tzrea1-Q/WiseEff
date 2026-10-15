@@ -85,14 +85,14 @@ L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` �
 
 ### 紧凑失败索引导航
 
-候选失败时打开现有诊断上传终态的作业摘要：紧凑产物链接在前，完整安全归档可用时链接在后。从该次摘要填写 `run`、`attempt`、`shard`、`checkout` 和 `base`；`checkout` 是实际观测的 checkout SHA，可能与 PR head 不同；`base` 是工作流接受基线的 SHA。作为当前证据前，确认运行仍属于当前 PR head：
+候选失败时打开现有诊断上传终态的作业摘要：紧凑产物链接在前，完整安全归档可用时链接在后。从该次摘要填写 `run`、`attempt`、`shard`、`checkout`、`base` 和 `tree`；`checkout`、`tree` 是实际观测的 checkout SHA/tree，可能与 PR head 不同；`base` 是工作流接受基线的 SHA。缺失观测身份时保持不可用。作为当前证据前，确认运行仍属于当前 PR head：
 
 ```sh
 gh run view "$run" --attempt "$attempt" --json headSha,status,conclusion
 gh pr view "$pr" --json headRefOid
 index_dir=$(mktemp -d)
 gh run download "$run" --name "wiseeff-failure-index-${run}-${attempt}-acceptance-local-non-hdc-shard-${shard}" --dir "$index_dir"
-python3 -I scripts/acceptance-failure-index.py --inspect "$index_dir/index.json" "$run" "$attempt" "$shard" "$checkout" "$base"
+python3 -I scripts/acceptance-failure-index.py --inspect "$index_dir/index.json" "$run" "$attempt" "$shard" "$checkout" "$base" "$tree"
 ```
 
 检查器仅读取该有界文件并显示受控字段。损坏、缺失或旧身份保持 unavailable；能够读取拒绝/不可用产物不代表已诊断或已通过。只有本地可验证接受基线与实际 checkout 的 Git blob 相等时才显示源码定位；缺少对象保持 `unverified`，不会 fetch 或改变 checkout。已生成索引提供类别和经校验的报告条目序号，调查前根因分类仍是未知。需要深入证据时，使用同一摘要中的精确完整归档链接，核对 ZIP SHA-256 与检查结果一致，再打开相应报告条目及截图/trace 引用。安全归档拒绝或缺失时不回退原始日志。首先只下载精确的紧凑产物，读取校验后的投影，不原样展示下载的 JSON。

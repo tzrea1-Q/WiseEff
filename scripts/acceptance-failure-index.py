@@ -169,12 +169,13 @@ def inspect_index(args):
     output = {"scope": "diagnostic-only", "status": "unavailable", "code": "INDEX_UNAVAILABLE",
               "identityVerified": False, "classification": "unknown", "failures": []}
     try:
-        require(len(args) == 6)
-        filename, run, attempt, shard, checkout, base = args
+        require(len(args) == 7)
+        filename, run, attempt, shard, checkout, base, tree = args
         require(re.fullmatch(r"[1-9][0-9]{0,19}", run) is not None
                 and re.fullmatch(r"[1-9][0-9]{0,9}", attempt) is not None
                 and shard in ("1", "2", "3", "4") and re.fullmatch(r"[0-9a-f]{40}", checkout) is not None
-                and re.fullmatch(r"[0-9a-f]{40}", base) is not None)
+                and re.fullmatch(r"[0-9a-f]{40}", base) is not None
+                and re.fullmatch(r"[0-9a-f]{40}", tree) is not None)
         with os.fdopen(os.open(filename, os.O_RDONLY | os.O_NOFOLLOW), "rb") as stream:
             require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode))
             data = stream.read(LIMIT + 1)
@@ -187,7 +188,7 @@ def inspect_index(args):
             return output, 0
         identity = record["identity"]
         require(set(identity) == {"runId", "attempt", "shard", "executedSha", "tree"}
-                and re.fullmatch(r"[0-9a-f]{40}", identity["tree"]) is not None)
+                and identity["tree"] == tree)
         require(all(identity.get(key) == value for key, value in
                     (("runId", run), ("attempt", attempt), ("shard", shard), ("executedSha", checkout))))
         require(record["status"] == "generated" and record["code"] == "INDEX_GENERATED"

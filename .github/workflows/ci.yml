@@ -1285,6 +1285,7 @@ jobs:
           EFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           EFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
           EFF_EXECUTED_SHA: ${{ steps.acceptance_execution_identity.outputs.sha }}
+          EFF_TREE: ${{ steps.acceptance_execution_identity.outputs.tree }}
         run: |
           import os, re, sys
           try:
@@ -1312,7 +1313,7 @@ jobs:
                       if code not in ("INDEX_GENERATED", "REPORT_UNAVAILABLE", "BASE_PUBLISHER_UNAVAILABLE", "SAFE_ARCHIVE_UNAVAILABLE", "INDEX_REJECTED"):
                           code = "INDEX_UNAVAILABLE"
                       output.write("\nDiagnostic navigation — run " + run + " / attempt " + attempt + " / shard " + shard + ".\n\n")
-                      for key, label in (("EFF_HEAD_SHA", "PR/push head"), ("EFF_EXECUTED_SHA", "Observed checkout"), ("EFF_BASE_SHA", "Accepted base")):
+                      for key, label in (("EFF_HEAD_SHA", "PR/push head"), ("EFF_EXECUTED_SHA", "Observed checkout"), ("EFF_BASE_SHA", "Accepted base"), ("EFF_TREE", "Observed tree")):
                           value = os.environ.get(key, "")
                           output.write(label + ": `" + (value if re.fullmatch(r"[0-9a-f]{40}", value) else "unknown") + "`\n\n")
                       for key, label, outcome in (("EFF_INDEX_URL", "Compact failure index (" + code + ")", "EFF_INDEX_UPLOAD"),
