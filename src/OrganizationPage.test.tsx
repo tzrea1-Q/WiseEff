@@ -51,7 +51,7 @@ describe("OrganizationPage", () => {
     renderOrganizationPage(createOrganizationActions());
 
     const scopeNav = screen.getByRole("navigation", { name: "组织管理范围" });
-    expect(within(scopeNav).getByRole("button", { name: "组织管理" })).toHaveAttribute("aria-current", "page");
+    expect(within(scopeNav).getByRole("button", { name: "组织信息" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByRole("region", { name: "组织档案" })).toBeInTheDocument();
     expect(screen.getByLabelText("显示名称")).toHaveValue("ChargeLab");
     expect(screen.getByText("org-chargelab")).toBeInTheDocument();
@@ -63,7 +63,7 @@ describe("OrganizationPage", () => {
     renderOrganizationPage(createOrganizationActions(), { area: "members" });
 
     const scopeNav = screen.getByRole("navigation", { name: "组织管理范围" });
-    expect(within(scopeNav).getByRole("button", { name: "人员管理" })).toHaveAttribute("aria-current", "page");
+    expect(within(scopeNav).getByRole("button", { name: "成员与权限" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "用户权限" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "组织档案" })).not.toBeInTheDocument();
@@ -73,7 +73,7 @@ describe("OrganizationPage", () => {
     const onNavigate = vi.fn();
     renderOrganizationPage(createOrganizationActions(), { onNavigate });
 
-    fireEvent.click(screen.getByRole("button", { name: "人员管理" }));
+    fireEvent.click(screen.getByRole("button", { name: "成员与权限" }));
     expect(onNavigate).toHaveBeenCalledWith("/organization/members");
   });
 
@@ -81,8 +81,8 @@ describe("OrganizationPage", () => {
     const onNavigate = vi.fn();
     renderOrganizationPage(createOrganizationActions(), { area, onNavigate });
     const navigation = screen.getByRole("navigation", { name: "组织管理范围" });
-    const profile = within(navigation).getByRole("button", { name: "组织管理" });
-    const members = within(navigation).getByRole("button", { name: "人员管理" });
+    const profile = within(navigation).getByRole("button", { name: "组织信息" });
+    const members = within(navigation).getByRole("button", { name: "成员与权限" });
     profile.focus();
     await userEvent.keyboard("{ArrowRight}");
     expect(members).toHaveFocus();
@@ -117,6 +117,10 @@ describe("OrganizationPage", () => {
       createdAt: "2026-01-15T00:00:00.000Z"
     });
     expect(screen.getByText("org-chargelab")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("组织名称已保存。");
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    fireEvent.change(nameInput, { target: { value: "新的草稿" } });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("keeps the saved name when auth-context refresh fails", async () => {
@@ -160,6 +164,8 @@ describe("OrganizationPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("显示名称不能为空。");
     expect(nameInput).toHaveAttribute("aria-invalid", "true");
     expect(nameInput).toHaveAccessibleDescription("显示名称不能为空。");
+    expect(nameInput).toHaveFocus();
+    expect(screen.queryByRole("alert", { name: "保存错误摘要" })).not.toBeInTheDocument();
     expect(organizationActions.updateOrganization).not.toHaveBeenCalled();
   });
 

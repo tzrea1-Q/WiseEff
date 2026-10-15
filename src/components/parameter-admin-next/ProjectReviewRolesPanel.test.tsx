@@ -66,6 +66,43 @@ function createMockClient(overrides: Partial<any> = {}) {
 }
 
 describe("ProjectReviewRolesPanel", () => {
+  it("scopes member editing by userId and preserves every other member binding", async () => {
+    let bindings: ProjectWorkflowRoleBindingsDto = {
+      ...mockBindings,
+      bindings: [...mockBindings.bindings, {
+        userId: "u-2", name: "User Two", username: "user.two", email: "user2@example.com",
+        title: "SW Engineer", isActive: true, roles: ["software-committer"]
+      }]
+    };
+    const peerBinding = bindings.bindings[1];
+    const client = createMockClient({
+      getProjectWorkflowRoleBindings: vi.fn(async () => bindings),
+      updateProjectWorkflowRoleBindings: vi.fn(async (projectId: string, userId: string, input: { roles: ProjectWorkflowRoleBindingsDto["bindings"][number]["roles"] }) => {
+        bindings = { ...bindings, bindings: bindings.bindings.map((binding) => binding.userId === userId ? { ...binding, roles: input.roles } : binding) };
+        return { item: { projectId, userId, roles: input.roles } };
+      })
+    });
+    const onBack = vi.fn();
+    render(<ProjectReviewRolesPanel projectId="aurora" userId="u-1" backLabel="返回成员资料" onBack={onBack} userGovernanceClient={client as any} />);
+    const table = await screen.findByRole("table", { name: "组织成员职责授权" });
+    expect(within(table).getByText("User One")).toBeVisible();
+    expect(within(table).queryByText("User Two")).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox", { name: "搜索成员" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "审核职责候选池" })).getAllByText("User Two")).toHaveLength(2);
+    await userEvent.click(within(table).getByRole("checkbox", { name: "为 User One 配置 软件 MDE" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    const confirmation = screen.getByRole("dialog", { name: "确认更新项目审核角色" });
+    expect(within(confirmation).queryByText("User Two")).not.toBeInTheDocument();
+    await userEvent.click(within(confirmation).getByRole("button", { name: "确认保存" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保存", exact: true })).not.toBeInTheDocument());
+    expect(client.updateProjectWorkflowRoleBindings).toHaveBeenCalledExactlyOnceWith("aurora", "u-1", {
+      roles: ["hardware-committer", "software-committer"], expectedRoles: ["hardware-committer"]
+    });
+    expect(bindings.bindings.find((binding) => binding.userId === "u-2")).toBe(peerBinding);
+    await userEvent.click(screen.getByRole("button", { name: "返回成员资料" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves the deep-linked member search and confirmed-save locator contract", async () => {
     const client = createMockClient({
       getProjectWorkflowRoleBindings: vi.fn().mockResolvedValueOnce({ ...mockBindings, bindings: [] })

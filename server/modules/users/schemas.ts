@@ -10,6 +10,10 @@ const roleIdSchema = z.enum([
   "platform-admin"
 ]);
 
+export const listRegistrationRoleRequestsQuerySchema = z.object({
+  status: z.enum(["pending", "decided"]).default("pending")
+});
+
 export const roleBindingSchema = z.object({
   projectId: z.string().min(1).nullable().optional(),
   roleId: roleIdSchema
@@ -26,7 +30,7 @@ export const createUserBodySchema = z.object({
 export const updateUserBodySchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  title: z.string().min(1).optional()
+  title: z.string().optional()
 });
 
 export const updateUserActiveBodySchema = z.object({
