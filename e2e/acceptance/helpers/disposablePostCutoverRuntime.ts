@@ -130,7 +130,7 @@ export type FinalizeDisposableRuntimeResourcesInput = {
 };
 
 export function disposableRuntimeOutcomeFromTestInfo(
-  testInfo: { status: string; expectedStatus: string },
+  testInfo: { status?: string; expectedStatus: string },
 ): DisposableRuntimeOutcome {
   return testInfo.status === testInfo.expectedStatus ? "success" : "failure";
 }

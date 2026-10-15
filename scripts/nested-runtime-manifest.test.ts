@@ -320,6 +320,7 @@ describe("Gate0 nested disposable runtime contract", () => {
     });
     expect(disposableRuntimeOutcomeFromTestInfo({ status: "failed", expectedStatus: "passed" })).toBe("failure");
     expect(disposableRuntimeOutcomeFromTestInfo({ status: "passed", expectedStatus: "passed" })).toBe("success");
+    expect(disposableRuntimeOutcomeFromTestInfo({ expectedStatus: "passed" })).toBe("failure");
   });
 
   it("records secret-free child resources and exact lifecycle in the parent run manifest", () => {

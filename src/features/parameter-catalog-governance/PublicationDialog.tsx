@@ -574,7 +574,6 @@ export function PublicationDialog({
                             onValueChange={(value) =>
                               patchDraft({ subjectKind: value as PublicationSubjectKind })
                             }
-                            withinModal
                             options={[{ value: "driver", label: publicationCopy.driver }, { value: "node-type", label: publicationCopy.nodeType }]}
                           />
                         </label>
@@ -596,7 +595,6 @@ export function PublicationDialog({
                                 onValueChange={(value) =>
                                   patchDraft({ nature: value as PublicationDraft["nature"] })
                                 }
-                                withinModal
                                 options={publicationDriverNatures.map((nature) => ({
                                   value: nature,
                                   label: nature === "physical-device" ? publicationCopy.naturePhysical : publicationCopy.natureLogical
@@ -613,7 +611,6 @@ export function PublicationDialog({
                                     cardinality: value as PublicationDraft["cardinality"]
                                   })
                                 }
-                                withinModal
                                 options={publicationDriverCardinalities.map((cardinality) => ({
                                   value: cardinality,
                                   label: cardinality === "multiple" ? publicationCopy.cardinalityMultiple : publicationCopy.cardinalitySingleton
@@ -653,7 +650,6 @@ export function PublicationDialog({
                                 unit: ""
                               });
                             }}
-                            withinModal
                             options={[{ value: "", label: "选择定义" }, ...definitions.map((item) => ({
                               value: item.id,
                               label: `${item.subject.canonicalName} · ${item.propertyKey}`
@@ -668,7 +664,6 @@ export function PublicationDialog({
                             onValueChange={(value) =>
                               patchDraft({ reviseClass: value as PublicationReviseClass })
                             }
-                            withinModal
                             options={[{ value: "documentation", label: publicationCopy.reviseDocumentation }, { value: "semantic", label: publicationCopy.reviseSemantic }]}
                           />
                         </label>
@@ -683,7 +678,6 @@ export function PublicationDialog({
                         ariaInvalid={fieldError?.input === "subjectId"}
                         ariaDescribedBy={fieldError?.input === "subjectId" ? fieldMessageId : describedById}
                         onValueChange={(value) => patchDraft({ subjectId: value })}
-                        withinModal
                         options={[{ value: "", label: "选择主体" }, ...publishedSubjects.map((item) => ({ value: item.id, label: item.canonicalName }))]}
                       />
                     </label>
@@ -741,7 +735,6 @@ export function PublicationDialog({
                         onValueChange={(value) =>
                           patchDraft({ valueType: value as PublicationValueType })
                         }
-                        withinModal
                         options={publicationSupportedValueTypes.map((type) => ({ value: type, label: publicationValueTypeLabel(type) }))}
                       />
                     </label>

@@ -153,7 +153,7 @@ export function CanonicalBatchSubmitDialog({ projectId, currentUserId, candidate
         </> : null}
       </li>)}</ol>
       <label>修改原因<textarea value={reason} onChange={(event) => { requestId.current = crypto.randomUUID(); frozenBody.current = null; frozenReleaseId.current = null; setReason(event.target.value); }} disabled={busy || attempted} /></label>
-      <label>指定软件审核人<SelectControl value={reviewerId} disabled={busy || loading || attempted} ariaLabel="指定软件审核人" withinModal
+      <label>指定软件审核人<SelectControl value={reviewerId} disabled={busy || loading || attempted} ariaLabel="指定软件审核人"
         onValueChange={(value) => { requestId.current = crypto.randomUUID(); frozenBody.current = null; frozenReleaseId.current = null; setReviewerId(value); }}
         options={reviewers.length ? reviewers.map((reviewer) => ({ value: reviewer.userId, label: `${reviewer.name}（${reviewer.userId}）` }))
           : [{ value: "", label: "没有可用的另一名软件审核人" }]} /></label>

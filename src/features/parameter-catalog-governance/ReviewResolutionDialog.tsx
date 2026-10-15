@@ -211,7 +211,6 @@ export function ReviewResolutionDialog({
                           ariaLabel="选择候选主体"
                           value={subjectId}
                           onValueChange={(value) => setSubjectId(value)}
-                          withinModal
                           options={[{ value: "", label: "请选择候选主体" }, ...item.candidates.map((candidate) => ({ value: candidate.subjectId, label: candidate.subjectId }))]}
                         />
                       </label>

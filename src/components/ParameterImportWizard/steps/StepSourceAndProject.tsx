@@ -111,7 +111,7 @@ export function StepSourceAndProject({
       <div className="parameter-import-wizard-grid">
         <label>
           <span>目标项目</span>
-          <SelectControl ariaLabel="目标项目" withinModal value={targetProjectId} onValueChange={onTargetProjectChange} options={[
+          <SelectControl ariaLabel="目标项目" value={targetProjectId} onValueChange={onTargetProjectChange} options={[
             { value: "", label: "请选择目标项目", disabled: true },
             ...projects.map((project) => ({ value: project.id, label: `${project.name}（${project.code}）` }))
           ]} />
