@@ -871,6 +871,8 @@ jobs:
       - name: Check out repository
         timeout-minutes: 5
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Observe acceptance execution identity
         id: acceptance_execution_identity
@@ -891,6 +893,86 @@ jobs:
                   output.write("sha=" + values[0] + "\ntree=" + values[1] + "\n")
           except Exception:
               sys.exit("EXECUTION_IDENTITY_UNAVAILABLE")
+
+      - name: Stage accepted failure index publisher
+        id: acceptance_index_stage
+        timeout-minutes: 1
+        shell: /usr/bin/python3 -I {0}
+        env:
+          EFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          EFF_RUN_ID: ${{ github.run_id }}
+          EFF_ATTEMPT: ${{ github.run_attempt }}
+          EFF_SHARD: ${{ matrix.shard }}
+          EFF_EXECUTED_SHA: ${{ steps.acceptance_execution_identity.outputs.sha }}
+          EFF_TREE: ${{ steps.acceptance_execution_identity.outputs.tree }}
+        run: |
+          import hashlib, json, os, pathlib, re, signal, subprocess, sys, tempfile, time
+          started = time.monotonic()
+          def expired(_signal, _frame):
+              raise TimeoutError()
+          signal.signal(signal.SIGALRM, expired)
+          signal.setitimer(signal.ITIMER_REAL, 4.5)
+          directory = pathlib.Path(tempfile.mkdtemp(prefix="wiseeff-failure-index-", dir=os.environ["RUNNER_TEMP"]))
+          destination = directory / "index.json"
+          record = {"schemaVersion": 1, "scope": "accepted-base-failure-index", "status": "unavailable",
+                    "code": "BASE_PUBLISHER_UNAVAILABLE", "failures": []}
+          publisher_digest = policy_digest = ""
+          try:
+              base = os.environ.get("EFF_BASE_SHA", "")
+              if not re.fullmatch(r"[0-9a-f]{40}", base) or base == "0" * 40:
+                  raise ValueError()
+              def git(*args, data=None):
+                  return subprocess.run(["/usr/bin/git", *args], input=data, capture_output=True, check=True, timeout=3).stdout
+              git("merge-base", "--is-ancestor", base, "HEAD")
+              publisher = git("show", base + ":scripts/acceptance-failure-index.py")
+              record.update(status="rejected", code="POLICY_REJECTED")
+              if not 0 < len(publisher) <= 65536:
+                  raise ValueError()
+              def inventory(revision):
+                  rows = git("ls-tree", "-rlz", revision, "--", "e2e/acceptance", "e2e/quality").split(b"\0")
+                  return {row.split(b"\t", 1)[1].decode("ascii"): row.split(b"\t", 1)[0].split()[2:4]
+                          for row in rows if row and row.startswith(b"100644 blob ")}
+              current = inventory("HEAD")
+              sources = {}
+              matched = [(name, value) for name, value in inventory(base).items()
+                         if re.fullmatch(r"e2e/(?:acceptance|quality)/[A-Za-z0-9_./-]+\.spec\.ts", name)
+                         and current.get(name) == value]
+              if len(matched) > 1000 or sum(int(value[1]) for _, value in matched) > 16777216:
+                  raise ValueError()
+              blobs = git("cat-file", "--batch", data=b"\n".join(value[0] for _, value in matched) + b"\n") if matched else b""
+              for name, value in matched:
+                  header, blobs = blobs.split(b"\n", 1)
+                  size = int(value[1])
+                  if header.split() != [value[0], b"blob", value[1]] or size > 1048576:
+                      raise ValueError()
+                  source, blobs = blobs[:size].decode("utf-8"), blobs[size + 1:]
+                  locations = []
+                  for line, content in enumerate(source.splitlines(), 1):
+                      for match in re.finditer(r"\btest(?:\.(?:only|skip|fixme))?\s*\(", content):
+                          locations.append([line, len(content[:match.start()].encode("utf-16-le")) // 2 + 1])
+                  sources[name] = locations
+              identity = {key: os.environ.get(env, "") for key, env in
+                          (("runId", "EFF_RUN_ID"), ("attempt", "EFF_ATTEMPT"), ("shard", "EFF_SHARD"),
+                           ("executedSha", "EFF_EXECUTED_SHA"), ("tree", "EFF_TREE"))}
+              policy = json.dumps({"acceptedBase": base, "identity": identity, "sources": sources}, sort_keys=True).encode()
+              if len(policy) > 1048576:
+                  raise ValueError()
+              (directory / "publisher.py").write_bytes(publisher)
+              (directory / "policy.json").write_bytes(policy)
+              publisher_digest = hashlib.sha256(publisher).hexdigest()
+              policy_digest = hashlib.sha256(policy).hexdigest()
+              record.update(status="unavailable", code="PUBLICATION_NOT_RUN")
+          except Exception:
+              pass
+          signal.setitimer(signal.ITIMER_REAL, 0)
+          destination.write_text(json.dumps(record) + "\n")
+          for item in directory.iterdir():
+              item.chmod(0o400)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("path=" + str(destination) + "\ndirectory=" + str(directory) + "\n")
+              output.write("publisher_digest=" + publisher_digest + "\npolicy_digest=" + policy_digest + "\n")
+              output.write("processing_ms=" + str(int((time.monotonic() - started) * 1000) + 1) + "\n")
+          sys.exit(1 if record["status"] == "rejected" else 0)
 
       - name: Set up Node.js
         timeout-minutes: 5
@@ -957,6 +1039,91 @@ jobs:
           path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
           if-no-files-found: error
           compression-level: 0
+
+      - name: Generate accepted-base failure index
+        id: acceptance_index
+        if: always()
+        timeout-minutes: 1
+        shell: /usr/bin/python3 -I {0}
+        env:
+          EFF_INDEX_DIRECTORY: ${{ steps.acceptance_index_stage.outputs.directory }}
+          EFF_INDEX_STAGE: ${{ steps.acceptance_index_stage.outcome }}
+          EFF_INDEX_STAGE_MS: ${{ steps.acceptance_index_stage.outputs.processing_ms }}
+          EFF_INDEX_PUBLISHER_DIGEST: ${{ steps.acceptance_index_stage.outputs.publisher_digest }}
+          EFF_INDEX_POLICY_DIGEST: ${{ steps.acceptance_index_stage.outputs.policy_digest }}
+          EFF_ARCHIVE: ${{ steps.acceptance_artifact_safety.outcome }}
+        run: |
+          import hashlib, json, os, pathlib, re, stat, subprocess, sys, tempfile, time
+          started = time.monotonic()
+          directory = pathlib.Path(tempfile.mkdtemp(prefix="wiseeff-index-publication-", dir=os.environ["RUNNER_TEMP"]))
+          destination = directory / "index.json"
+          record = {"schemaVersion": 1, "scope": "accepted-base-failure-index", "status": "rejected",
+                    "code": "INDEX_REJECTED", "failures": []}
+          exit_code = 1
+          try:
+              staged = pathlib.Path(os.environ.get("EFF_INDEX_DIRECTORY", ""))
+              if (staged.is_symlink() or not staged.is_dir() or not staged.name.startswith("wiseeff-failure-index-")
+                      or staged.parent.resolve() != pathlib.Path(os.environ["RUNNER_TEMP"]).resolve()):
+                  raise ValueError()
+              if os.environ.get("EFF_INDEX_STAGE") != "success":
+                  raise ValueError()
+              hashes = [os.environ.get("EFF_INDEX_PUBLISHER_DIGEST", ""), os.environ.get("EFF_INDEX_POLICY_DIGEST", "")]
+              if hashes == ["", ""]:
+                  record.update(status="unavailable", code="BASE_PUBLISHER_UNAVAILABLE")
+                  exit_code = 0
+              else:
+                  elapsed = os.environ.get("EFF_INDEX_STAGE_MS", "")
+                  if not re.fullmatch(r"[0-9]{1,5}", elapsed) or int(elapsed) >= 4500:
+                      raise ValueError()
+                  for name, expected, limit in zip(("publisher.py", "policy.json"), hashes, (65536, 1048576)):
+                      if not re.fullmatch(r"[0-9a-f]{64}", expected):
+                          raise ValueError()
+                      descriptor = os.open(staged / name, os.O_RDONLY | os.O_NOFOLLOW)
+                      with os.fdopen(descriptor, "rb") as source:
+                          if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                              raise ValueError()
+                          content = source.read(limit + 1)
+                      if len(content) > limit or hashlib.sha256(content).hexdigest() != expected:
+                          raise ValueError()
+                      (directory / name).write_bytes(content)
+                  if os.environ.get("EFF_ARCHIVE") != "success":
+                      record.update(status="unavailable", code="SAFE_ARCHIVE_UNAVAILABLE")
+                      exit_code = 0
+                  else:
+                      budget_ms = 4500 - int(elapsed) - int((time.monotonic() - started) * 1000)
+                      if budget_ms <= 0:
+                          raise ValueError()
+                      result = subprocess.run(["/usr/bin/python3", "-I", str(directory / "publisher.py"),
+                                               "test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip",
+                                               str(directory / "policy.json"), str(destination)],
+                                              env={"PATH": "/usr/bin:/bin", "WISEEFF_FAILURE_INDEX_BUDGET_MS": str(budget_ms)},
+                                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=budget_ms / 1000 + 0.2)
+                      if destination.is_symlink() or not destination.is_file() or destination.stat().st_size > 262144:
+                          raise ValueError()
+                      record = json.loads(destination.read_bytes())
+                      if record.get("status") not in ("generated", "unavailable", "rejected"):
+                          raise ValueError()
+                      exit_code = result.returncode
+          except Exception:
+              record = {"schemaVersion": 1, "scope": "accepted-base-failure-index", "status": "rejected",
+                        "code": "INDEX_REJECTED", "failures": []}
+          destination.write_text(json.dumps(record) + "\n")
+          destination.chmod(0o400)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("path=" + str(destination) + "\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+              output.write("Compact acceptance failure index: " + record["code"] + ". Diagnostic data; not acceptance.\n")
+          sys.exit(exit_code)
+
+      - name: Upload compact failure index
+        id: acceptance_index_upload
+        if: always()
+        timeout-minutes: 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-failure-index-${{ github.run_id }}-${{ github.run_attempt }}-acceptance-local-non-hdc-shard-${{ matrix.shard }}
+          path: ${{ steps.acceptance_index.outputs.path }}
+          if-no-files-found: error
 
       # Bootstrap publisher: only workflow-owned context, never candidate files,
       # reports, titles, paths, exceptions or environment dumps. Internal cleanup

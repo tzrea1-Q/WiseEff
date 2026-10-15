@@ -67,7 +67,11 @@ WISEEFF_RUNTIME_LANE=1 WISEEFF_QUALITY_LANE=consistency-1 npx playwright test --
 
 L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` 产物是有界的工作流状态快照，与经过安全门禁的各分片完整 ZIP 分开。它记录候选初始化前实测的 checkout SHA/tree、workflow SHA、PR head/base（非 PR 事件使用 push 前驱或定时运行的 head），以及执行、归档、完整上传的结果。首版内部阶段、清理和测试数量仍是 unknown，不读取候选报告或原始日志。发布器失败时只生成 `DIAGNOSTIC_REJECTED`；后备诊断或上传成功不能覆盖先前失败。诊断自身上传在快照中为 pending，最终状态见 Actions 和作业摘要；runner 丢失时可能 incomplete。完整产物的大小、所有权及安全要求保持不变。
 
-修改此通道时运行 `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` 和 `npm run acceptance:ci`。测试提取并执行实际工作流内的隔离发布器，合成失败只证明诊断行为，不是完整验收通过。新增有界步骤均计入 L2 平台预算（下界 151 分钟、作业上限 155 分钟），Gate0 owner 及原安全扫描/上传预算不变。
+独立的 `wiseeff-failure-index-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` 产物只用于诊断，不是验收回执。候选初始化前，隔离工作流从 PR 接受基线、push 前驱或定时运行的 head 暂存仅使用标准库的发布器，将发布器和源码清单摘要分别绑定到工作流输出。只有接受基线与实际 checkout 的 Git blob 一致的源码声明才能映射；新增或改变的文件明确保持 unmapped。动态用例标题按可信声明 ID 聚合，不复制标题。完整 immutable ZIP 安全步骤成功后，经摘要校验的发布器从只读 ZIP 读取有界既有报告，输出受控状态类别、经校验的源码位置，以及绑定归档 SHA-256 的 ZIP 报告条目序号。标题、断言文本、任意路径及日志保持抑制；上述 bootstrap 通道仍仅接受工作流状态。
+
+每个分片的紧凑索引上限为 256 KiB。暂存和投影共用 4.5 秒处理额度，暂存实测耗时绑定到工作流输出，隔离调用只获得剩余额度，为五秒本地处理预算预留调用开销。接受基线没有发布器时输出 `BASE_PUBLISHER_UNAVAILABLE`；归档安全拒绝时输出 `SAFE_ARCHIVE_UNAVAILABLE`；损坏、超限、被替换或不安全输入输出固定 `INDEX_REJECTED`。既有执行、安全和上传失败仍然失败。首次引入发布器的 PR 不能宣称发布器已存在于接受基线：接受前的真实候选 CI 只验证 unavailable/拒绝路径；实际受信发布、产物导航耗时及可比 CI 成本分布仍待证据。优先读取 Actions 中的紧凑产物，确需报告、截图或 trace 时再下载完整安全归档。报告条目序号对应原 ZIP 中央目录顺序。
+
+修改这些通道时运行 `npm run test:scripts -- scripts/acceptance-failure-index.test.ts scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` 和 `npm run acceptance:ci`。测试提取并执行实际工作流内的隔离发布器，合成失败只证明诊断行为，不是完整验收通过。新增有界步骤均计入 L2 平台预算（下界 154 分钟、作业上限仍为 155 分钟），Gate0 owner 及原安全扫描/上传预算不变。此调度包络不是实测耗时：专项累计中位数/P95 和 runner 时间预算应沿正常可比运行测量，不能凭单次夹具宣称达标，也不能缩减覆盖以满足预算。
 
 L2 浏览器验收使用 `--shard=i/4` 分为四个独立 Gate0 作业，各自拥有 PostgreSQL 服务及运行时。视觉验收仅在分片 1 执行，浏览器预热依赖在每个分片执行。执行前由原生 Playwright 收集确定非空测试清单及按文件划分的工作流/操作证据义务，结果清单必须一致；整套静态覆盖检查及所有运行时归属证据检查继续保留。每个必须自动验收的操作只能有一个浏览器 spec 所有者。分片不发布最新完整证据指针。稳定的 `Acceptance local non-HDC` 汇总门要求矩阵全部成功，或由成功的 detect 有意跳过矩阵，之后 `Merge bar` 才能通过。不带参数的 `npm run acceptance:gate0` 仍在本地执行两个完整阶段。
 
