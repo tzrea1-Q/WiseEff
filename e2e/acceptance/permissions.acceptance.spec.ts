@@ -296,6 +296,30 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const liuRow = table.getByRole("row").filter({ hasText: "Liu Min" });
     await liuRow.getByRole("button", { name: "查看 Liu Min 的成员资料" }).click();
     const liuDialog = page.getByRole("dialog", { name: "Liu Min · 成员资料" });
+    const originalProfile = {
+      name: await liuDialog.getByLabel("姓名", { exact: true }).inputValue(),
+      title: await liuDialog.getByLabel("职务（选填）").inputValue()
+    };
+    const profileDialog = page.getByRole("dialog", { name: / · 成员资料$/ });
+    for (const profile of [{ name: "Liu Min Updated", title: "Senior Engineer" }, originalProfile]) {
+      await profileDialog.getByLabel("姓名", { exact: true }).fill(`  ${profile.name}  `);
+      await profileDialog.getByLabel("职务（选填）").fill(`  ${profile.title}  `);
+      const savedResponse = page.waitForResponse((response) => response.request().method() === "PATCH"
+        && new URL(response.url()).pathname === "/api/v1/users/u-liu-min");
+      await profileDialog.getByRole("button", { name: "保存", exact: true }).click();
+      const response = await savedResponse;
+      expect(response.status()).toBe(200);
+      const saved = (await response.json()) as { item: { name: string; title: string } };
+      expect(saved.item).toMatchObject(profile);
+      await expect(profileDialog.getByRole("status")).toHaveText("成员资料已保存。");
+      await expect(profileDialog.getByLabel("姓名", { exact: true })).toHaveValue(saved.item.name);
+      await expect(profileDialog.getByLabel("职务（选填）")).toHaveValue(saved.item.title);
+      await expect(profileDialog.getByRole("button", { name: "保存", exact: true })).toHaveCount(0);
+      await profileDialog.getByRole("button", { name: "关闭", exact: true }).click();
+      await expect(profileDialog).toHaveCount(0);
+      await expect(page.getByRole("dialog", { name: "放弃未保存的更改？" })).toHaveCount(0);
+      await liuRow.getByRole("button", { name: `查看 ${profile.name} 的成员资料` }).click();
+    }
     await expect(liuDialog.getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveAttribute("data-value", "software-user");
     await liuDialog.getByRole("button", { name: "关闭", exact: true }).click();
     await filterUsersTo(page, "Tao Lin");
