@@ -5148,7 +5148,7 @@ td small {
 }
 
 .user-permissions-role-select {
-  display: block;
+  display: inline-flex;
   width: var(--admin-list-role-control-width);
   min-width: var(--admin-list-role-control-width);
   min-height: var(--space-8);
@@ -7420,7 +7420,7 @@ td small {
   color: var(--outline-strong);
 }
 
-.dts-reload-page .dts-reload-project-select select {
+.dts-reload-page .dts-reload-project-select [data-slot="select-trigger"] {
   min-width: 200px;
 }
 

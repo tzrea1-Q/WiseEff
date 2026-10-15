@@ -57,7 +57,7 @@ export function SelectControl<Value extends string>({
   const selectValue = value === "" && !options.some((option) => option.value === "") ? "" : VALUE_PREFIX + value;
   return (
     <Select value={selectValue} onValueChange={(nextValue) => onValueChange(nextValue.slice(VALUE_PREFIX.length) as Value)} disabled={disabled}>
-      <SelectTrigger ref={ref} id={id} data-value={value} data-compact-control={compactControl ?? (size === "filter" ? "filter" : undefined)} size={size} title={title} onFocus={onFocus} onBlur={onBlur} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-invalid={ariaInvalid} aria-describedby={ariaDescribedBy} aria-required={ariaRequired} className={cn("w-full", className)}>
+      <SelectTrigger ref={ref} id={id} data-value={value} data-compact-control={compactControl ?? (size === "filter" ? "filter" : undefined)} size={size} title={title} onFocus={onFocus} onBlur={onBlur} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-invalid={ariaInvalid} aria-describedby={ariaDescribedBy} aria-required={ariaRequired} className={className}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent

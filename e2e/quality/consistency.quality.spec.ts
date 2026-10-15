@@ -177,6 +177,27 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+        for (const trigger of await page.locator('[data-slot="select-trigger"]').all()) {
+          if (!await trigger.isVisible()) continue;
+          const centers = await trigger.evaluate((element) => [...element.querySelectorAll('[data-slot="select-value"], .select-control__chevron')].map((child) => {
+            const rect = child.getBoundingClientRect();
+            return rect.top + rect.height / 2;
+          }));
+          if (centers.length === 2) expect(Math.abs(centers[0]! - centers[1]!), "select text and chevron must stay on one line").toBeLessThanOrEqual(2);
+        }
+        if (routePath === "/feedback-admin") {
+          const tops = await page.locator('main [role="combobox"], main .feedback-admin-search').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
+          expect(tops).toHaveLength(3);
+          expect(Math.max(...tops) - Math.min(...tops), "feedback filters must share one toolbar row on desktop").toBeLessThanOrEqual(2);
+        }
+        if (routePath === "/parameters") {
+          const centers = await page.locator('.topbar-project-select, .topbar-user-trigger').evaluateAll((elements) => elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.top + rect.height / 2;
+          }));
+          expect(centers).toHaveLength(2);
+          expect(Math.abs(centers[0]! - centers[1]!), "project selector must not wrap the desktop header").toBeLessThanOrEqual(2);
+        }
         if (routePath === "/debugging-admin/nodes" || routePath === "/node-debugging") {
           const trigger = page.getByRole("button", { name: "筛选模块", exact: true });
           await trigger.click();

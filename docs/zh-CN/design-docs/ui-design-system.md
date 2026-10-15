@@ -241,6 +241,7 @@ hover 与 focus-visible 必须保持视觉可区分（不得合并成同一条�
 - 最小高度 32px、`--radius-sm`、令牌化边框、按上文规则显示焦点环、可见 label 或 `aria-label`、错误文案经 `aria-describedby` 关联。
 - PC 筛选、排序及分页条数选择器显式使用 `.compact-filter-control`（原生）或 `SelectTrigger size="filter"`（自定义），共享唯一的 32px 边框盒高度（`--space-8`）、边框、圆角、字体和箭头契约。分页操作复用默认 32px `.button` 原语，不使用 `sm` 变体。仅为这些控件标记 `data-compact-control="filter"`、`"sort"` 或 `"pagination"` 以供一致性测量。搜索组合框、模块导航、表头排序按钮、表单字段和对话框保留各自的原语；页面局部规则仅添加布局，不重复定义紧凑控件的几何或外观。
 - 普通单选字段统一使用 `src/components/common/SelectControl.tsx`，底层复用现有 Radix Select 原语。不得新增原生 `<select>` 或重复的页面局部包装。空选项、原始业务 ID、禁用选项、可访问名称和错误说明均通过共享控件传递；`withinModal` 使 portal 列表显示在弹窗之上。紧凑分页保留 `data-compact-control="pagination"` 标记。原生日期/文件选择器保留原生弹层，但触发器需样式化。
+- 选择器触发器默认按内容确定宽度。表单网格和纵向布局可将其拉伸，仅在字段确有需要时显式指定宽度。不得统一强制全宽，避免顶栏和筛选栏换行。迁移原生字段时，同步更新仍指向 `select` 的布局选择器。
 - 单选、树形和多选共享 `select-control.css` 的触发器及弹层外观：32px 字段、可见边框、小圆角、统一箭头，以及相同的弹层背景、边框、阴影和选中颜色。树展开、搜索、复选及清除保留各自的任务语义。页面 CSS 可调整容器位置和宽度，不得重新绘制共享控件。
 
 ### 弹窗

@@ -518,7 +518,7 @@ export function FeedbackAdminDrawer({
                 ariaLabel="解决结论"
                 withinModal
                 onValueChange={setResolutionCode}
-                className="mt-1"
+                className="mt-1 w-full"
                 options={productFeedbackResolutionCodes.map((code) => ({ value: code, label: productFeedbackResolutionLabels[code] }))}
               />
             </div>

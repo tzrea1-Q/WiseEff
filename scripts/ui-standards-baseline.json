@@ -2,11 +2,11 @@
   "description": "Ratchet baseline for `npm run ui:check`. Counts may only go down: when a rule's live count drops below its baseline, run `npm run ui:check -- --update-baseline` in the same change. Rules at 0 are hard-forbidden and must never ratchet up. Structure: rule id -> { count, note?, files? }.",
   "rules": {
     "raw-color": {
-      "count": 634,
+      "count": 624,
       "note": "Stock from the pre-P3 monolith; P3 (motion/chart/dark wiring) reduces it in parallel. Ratchet down after each merge.",
       "files": {
         "src/linear-template/linear-template.css": 35,
-        "src/styles.css": 599
+        "src/styles.css": 589
       }
     },
     "raw-z-index": {
@@ -26,20 +26,20 @@
       }
     },
     "raw-shadow": {
-      "count": 98,
+      "count": 90,
       "note": "Stock outside var(--shadow-1..3)/var(--ring); migrate to elevation tokens.",
       "files": {
         "src/linear-template/linear-template.css": 8,
-        "src/styles.css": 90
+        "src/styles.css": 82
       }
     },
     "raw-spacing": {
-      "count": 786,
+      "count": 779,
       "note": "Off-grid spacing stock after wave 3 exact --space-* burn; ratchet down as rem/em/off-grid px are migrated.",
       "files": {
         "src/features/agent/xiaozeAssistantMarkdown.css": 1,
         "src/linear-template/linear-template.css": 25,
-        "src/styles.css": 760
+        "src/styles.css": 753
       }
     },
     "raw-radius": {
