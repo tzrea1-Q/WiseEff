@@ -127,7 +127,6 @@ export function CreateDebugParameterDialog({
                   value={draft.risk}
                   onValueChange={(risk) => setDraft((current) => ({ ...current, risk }))}
                   disabled={fieldsDisabled}
-                  withinModal
                   options={[
                     { value: "High", label: "高" },
                     { value: "Medium", label: "中" },
