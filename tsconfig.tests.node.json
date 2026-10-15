@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["server/**/*.ts", "scripts/**/*.ts", "ops/**/*.ts", "packages/**/*.ts", "*.ts"],
+  "exclude": ["node_modules", "src", "e2e"]
+}

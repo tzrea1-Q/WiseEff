@@ -42,6 +42,15 @@ describe("writable tool caches", () => {
     expect(result.messages.map(({ ruleId }) => ruleId)).toContain("wiseeff/no-raw-css-text-assertions");
     expect(result.errorCount).toBe(1);
   });
+
+  it("checks Node and browser test code instead of accepting ignored-file warnings", async () => {
+    const eslint = new ESLint();
+    for (const filePath of ["server/coverage.test.ts", "e2e/coverage.spec.ts", "ops/coverage.ts"]) {
+      const [result] = await eslint.lintText("export function value() { return 1; return 2; }", { filePath });
+      expect(result.messages.map(({ ruleId }) => ruleId), filePath).toContain("no-unreachable");
+      expect(result.errorCount).toBe(1);
+    }
+  });
 });
 
 it("provides an isolated local Postgres profile matching every CI Postgres image", () => {

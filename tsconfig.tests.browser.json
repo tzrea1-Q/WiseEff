@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client", "@testing-library/jest-dom/vitest"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts", "src/**/*.spec.tsx", "src/**/testHelpers.ts", "src/test/**/*.ts", "e2e/**/*.ts", "playwright*.ts"],
+  "exclude": ["node_modules", "src/vite-env.d.ts"]
+}
