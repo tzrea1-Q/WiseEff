@@ -1539,10 +1539,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await page.getByRole("treeitem", { name: new RegExp(primaryFileName) }).click();
       const syncButton = inspector.getByRole("button", { name: "手动同步" });
       await expect(syncButton).toBeVisible();
-      await syncButton.evaluate((el) => {
-        el.scrollIntoView({ block: "nearest", inline: "nearest" });
-        (el as HTMLButtonElement).click();
-      });
+      await expect(syncButton).toBeEnabled();
+      const manualSyncResponsePromise = page.waitForResponse((response) => response.request().method() === "POST"
+        && new URL(response.url()).pathname === `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/sync`);
+      await syncButton.click();
+      expect((await manualSyncResponsePromise).ok()).toBe(true);
       await expect(page.getByRole("region", { name: "配置任务" })).toContainText(primaryFileName);
 
       await page.getByRole("button", { name: "更多" }).click();
@@ -2049,7 +2050,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         canRelease: cleared.canRelease, canCreateBaseline: cleared.canCreateBaseline,
         blockerCodes: cleared.blockers.map((blocker: { code: string }) => blocker.code) });
       await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "true");
-      expect(cleared.blockers.map((blocker) => blocker.code)).not.toContain("pending-change");
+      expect(cleared.blockers.map((blocker: { code: string }) => blocker.code)).not.toContain("pending-change");
       await expect(page.getByRole("region", { name: "发布就绪问题" }).locator('[data-code="pending-change"]')).toHaveCount(0);
       expect(cleared.canCreateBaseline).toBe(true);
       expect(cleared.canRelease).toBe(true);

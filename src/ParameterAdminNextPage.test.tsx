@@ -8,7 +8,7 @@ import type { ParameterTopologyRepository } from "@/application/ports/ParameterT
 import { fillPasteImportContent } from "./components/ParameterImportWizard/testHelpers";
 import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mock/mockParameterModuleRegistryRepository";
 import { initialState } from "@/mockData";
-import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
+import { ParameterAdminNextPage, type ParameterAdminNextPageProps } from "./ParameterAdminNextPage";
 import { createMockCatalogPorts } from "@/application/parameter-catalog";
 import { CATALOG_ORGANIZATION_ID } from "@/application/parameter-catalog/fixtures";
 import { createTestParameterTopologyRepository, withPortSpies } from "./test/harness";
@@ -72,10 +72,10 @@ function renderPage(options: {
   path?: string;
   repository?: ParameterTopologyRepository;
   moduleRegistry?: ParameterModuleRegistryRepository;
-  onNavigate?: ReturnType<typeof vi.fn>;
+  onNavigate?: ReturnType<typeof vi.fn<ParameterAdminNextPageProps["onNavigate"]>>;
   area?: "organization" | "projects";
   parameterActions?: ParameterPageActions;
-  dispatch?: ReturnType<typeof vi.fn>;
+  dispatch?: ReturnType<typeof vi.fn<NonNullable<ParameterAdminNextPageProps["dispatch"]>>>;
   runtimeMode?: "mock" | "api";
   parameterFileRepository?: import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
   dtsStructuredRepository?: import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository;
@@ -181,7 +181,7 @@ describe("ParameterAdminNextPage · shell", () => {
     const nav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(nav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
   });
 });
@@ -849,7 +849,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       ])
     });
     const page = renderPage({
-      path: "/parameter-admin/specs/identity-mapping?projectId=project-teaching",
+      path: "/parameter-admin/specs/identity-mapping?project=aurora&projectId=project-teaching",
       repository,
       state: { ...initialState, activeRoleId: "admin" },
       sessionRoles: [{ roleId: "admin", projectId: null }],
@@ -860,9 +860,19 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       } as AppRuntime,
       catalogOrganizationId: CATALOG_ORGANIZATION_ID
     });
-    const destination = "/parameter-admin/specs?projectId=project-teaching&review=open";
+    page.onNavigate.mockImplementation(page.rerender);
+    const destination = "/parameter-admin/specs?project=aurora&projectId=project-teaching&review=open";
     await waitFor(() => expect(page.onNavigate).toHaveBeenCalledWith(destination));
-    page.rerender(destination);
+    await waitFor(() => {
+      const pinned = new URL(window.location.href);
+      expect(pinned.pathname).toBe("/parameter-admin/specs");
+      expect(pinned.searchParams.get("catalogReleaseId")).toBeTruthy();
+      expect(pinned.searchParams.get("project")).toBe("aurora");
+      expect(pinned.searchParams.get("projectId")).toBe("project-teaching");
+      expect(pinned.searchParams.get("review")).toBe("open");
+    });
+    await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" }))
+      .toHaveAttribute("data-catalog-state", "ready"));
 
     const dialog = await screen.findByRole("dialog", { name: "待处理工作" });
     const queue = await within(dialog).findByRole("region", { name: "待审核事项" });
@@ -911,7 +921,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
       area: "projects"
     });
 
-    expect(await screen.findByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "项目清单" })).toBeInTheDocument();
     const firstOpen = screen.getAllByRole("button", { name: /配置工作台/ })[0]!;
     fireEvent.click(firstOpen);
 
