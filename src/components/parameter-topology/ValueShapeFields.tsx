@@ -192,7 +192,6 @@ export function ValueShapeFields({
             ariaLabel="值形状 valueShape"
             value={kind}
             disabled={disabled}
-            withinModal
             onValueChange={(value) => setKind(coerceValueShapeKind(value))}
             options={VALUE_SHAPE_OPTIONS}
           />

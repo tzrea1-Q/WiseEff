@@ -246,7 +246,6 @@ export function RegistrationDialog({
                                 setDisplayName(option.displayName);
                               }
                             }}
-                            withinModal
                             options={placementOptions.map((option) => ({ value: option.id, label: option.displayName }))}
                           />
                         </label>
@@ -267,7 +266,6 @@ export function RegistrationDialog({
                           ariaLabel="目标模块"
                           value={destinationModuleId}
                           onValueChange={(value) => setDestinationModuleId(value)}
-                          withinModal
                           options={[{ value: "", label: "请选择目标模块" }, ...moduleOptions.map((option) => ({
                             value: option.id,
                             label: option.impactSummary ? `${option.displayName} · ${option.impactSummary}` : option.displayName

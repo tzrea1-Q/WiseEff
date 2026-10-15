@@ -18,9 +18,9 @@ describe("ModuleTreeSelect", () => {
     render(<ModalDialog open className="confirm-dialog" onDismiss={onDismiss}>
       {({ titleId }) => <><h2 id={titleId}>模块编辑</h2><ModuleTreeSelect mode="single" label="模块" nodes={nodes} value="" onChange={onChange} portalMenu /></>}
     </ModalDialog>);
-    const trigger = screen.getByRole("button", { name: "模块", exact: true });
+    const trigger = screen.getByRole("button", { name: "模块" });
     await user.click(trigger);
-    await user.click(within(screen.getByRole("tree")).getByRole("button", { name: "充电", exact: true }));
+    await user.click(within(screen.getByRole("tree")).getByRole("button", { name: "充电" }));
     expect(onChange).toHaveBeenCalledWith("pm-c");
     expect(screen.queryByRole("tree")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
