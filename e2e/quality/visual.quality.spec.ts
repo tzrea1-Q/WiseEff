@@ -266,7 +266,7 @@ test.describe("M5.11 interaction-state visual gate", () => {
     await expectProductionFirstUser(page);
     const sortButton = table.getByRole("button", { name: "用户", exact: true });
     await focusViaKeyboard(page, sortButton);
-    await expect(table.locator("thead th").first()).toHaveAttribute("aria-sort", "none");
+    await expect(table.locator("thead th").first()).toHaveAttribute("aria-sort", "ascending");
 
     await test.step("quality:capture", async () => expect(table.locator("thead tr")).toHaveScreenshot("state-table-sort-header-focus.png", {
       mask: await stableMasks(page)
