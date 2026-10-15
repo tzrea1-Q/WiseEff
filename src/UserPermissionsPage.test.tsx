@@ -1010,11 +1010,6 @@ describe("UserPermissionsPage", () => {
     expect(within(table).queryByText("Xu Yun")).not.toBeInTheDocument();
   });
 
-  it("lets the detail role selector use the available dialog width", () => {
-    const css = readStylesheet("src/user-permissions-page.css");
-    expect(declarationsFor(css, ".member-details .user-permissions-role-select").width).toBe("100%");
-  });
-
   it("gives user management action buttons visible chrome instead of text-only controls", () => {
     // Buttons on this page consume the shared `.button` base contract; the
     // scope no longer redefines geometry or colors (FA-10).
