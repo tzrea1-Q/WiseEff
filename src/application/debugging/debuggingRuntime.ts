@@ -271,6 +271,7 @@ export function createDebuggingRuntimeActions({
   dispatch,
   getState
 }: DebuggingRuntimeOptions): DebuggingRuntimeActions {
+  let refreshGeneration = 0;
   const refresh = async (
     query?: { protocol?: DebugConnectionProtocol },
     options?: { notifyOnFailure?: boolean }
@@ -278,6 +279,7 @@ export function createDebuggingRuntimeActions({
     if (mode !== "api") {
       return;
     }
+    const generation = ++refreshGeneration;
 
     const load = async () => {
       const api = requireGateway(gateway);
@@ -289,6 +291,7 @@ export function createDebuggingRuntimeActions({
           : api.listParameters?.(parameterQuery) ?? Promise.resolve([])
       ]);
 
+      if (generation !== refreshGeneration) return;
       dispatch({
         type: "HYDRATE_DEBUG_RUNTIME",
         devices: devices.map(deviceFromApi),
@@ -297,11 +300,13 @@ export function createDebuggingRuntimeActions({
     };
 
     // Callers such as the page-level API banner own the failure projection.
-    if (options?.notifyOnFailure === false) {
+    try {
       await load();
-      return;
+    } catch (error) {
+      if (generation !== refreshGeneration) return;
+      if (options?.notifyOnFailure === false) throw error;
+      throw notifyFailure(dispatch, error);
     }
-    await runApi(dispatch, load);
   };
 
   return {

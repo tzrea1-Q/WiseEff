@@ -1083,7 +1083,7 @@ function AppShell({
   };
   const pageRuntimeDomain: ApiRuntimeDataDomain | null = page.group === "参数管理" || page.key === "dts-reload"
     ? "parameters"
-    : page.group === "日志分析" ? "logs" : page.group === "调试平台" ? "debugging" : null;
+    : page.group === "日志分析" ? "logs" : page.group === "调试平台" && page.key !== "debugging-admin" ? "debugging" : null;
   const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain
     ? "ready"
     : apiRuntimePending.has(pageRuntimeDomain) ? "loading" : apiRuntimeFailures.has(pageRuntimeDomain) ? "error" : "ready";

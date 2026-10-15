@@ -23,6 +23,22 @@ it("keeps overlapping runner attempts, failures and cancellations separate from 
   expect(observed.greenP95).toBeNull();
 });
 
+it("retains cancelled and explicitly replaced attempt cost inside a surviving run without double counting", () => {
+  const jobs: CiObservation["jobs"] = [
+    { startedAt: stamp(0), completedAt: stamp(30), conclusion: "cancelled", required: true },
+    { startedAt: stamp(30), completedAt: stamp(100), conclusion: "success", required: true }
+  ];
+  expect(compareCiOutcomes(cohort, [], [run(100, { jobs })]).after)
+    .toMatchObject({ runnerSeconds: 100, cancelledKnownJobSeconds: 30 });
+  expect(compareCiOutcomes(cohort, [], [run(100, { conclusion: "cancelled", jobs })]).after)
+    .toMatchObject({ runnerSeconds: 100, cancelledKnownJobSeconds: 100 });
+  const replaced = [{ ...jobs[0]!, conclusion: "success" as const, replaced: true }, jobs[1]!];
+  expect(compareCiOutcomes(cohort, [], [run(100, { jobs: replaced })]).after)
+    .toMatchObject({ runnerSeconds: 100, cancelledKnownJobSeconds: 30, cancelledJobSeconds: 30 });
+  expect(compareCiOutcomes(cohort, [], [run(100, { jobs: [{ ...replaced[0]!, completedAt: null }, replaced[1]!] })]).after)
+    .toMatchObject({ runnerSeconds: null, cancelledKnownJobSeconds: 0, cancelledJobSeconds: null, knownJobSeconds: 70 });
+});
+
 it("requires five matched observations on both sides for medians and twenty for nearest-rank P95", () => {
   const before = Array.from({ length: 20 }, (_, index) => run((index + 1) * 10));
   const after = Array.from({ length: 20 }, (_, index) => run((index + 1) * 11));
@@ -69,4 +85,9 @@ it("keeps missing or invalid timestamps and absent jobs unknown, including epoch
     jobs: [{ startedAt: epoch, completedAt: epoch, conclusion: "success", required: true }] });
   expect(compareCiOutcomes(cohort, Array(5).fill(zero), Array(5).fill(zero)).greenMedian)
     .toEqual({ beforeSeconds: 0, afterSeconds: 0, deltaSeconds: 0, percentChange: null });
+});
+
+it.each(["success", "cancelled"] as const)("keeps cancelled cost unknown when a %s run has no job inventory", (conclusion) => {
+  expect(compareCiOutcomes(cohort, [], [run(100, { conclusion, jobs: [] })]).after)
+    .toMatchObject({ runnerSeconds: null, unknownCostRuns: 1, knownJobSeconds: 0, cancelledKnownJobSeconds: 0, cancelledJobSeconds: null });
 });

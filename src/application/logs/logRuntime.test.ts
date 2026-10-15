@@ -75,6 +75,22 @@ function createFile(name = "api-upload.log") {
 }
 
 describe("createLogRuntimeActions", () => {
+  it.each([false, true])("lets only the latest refresh publish when an older request fails=%s", async (fails) => {
+    let complete!: (logs: LogRecord[]) => void;
+    let reject!: (error: Error) => void;
+    const old = new Promise<LogRecord[]>((resolve, fail) => { complete = resolve; reject = fail; });
+    const newer = { ...apiLog, fileName: "newer.log" };
+    const dispatch = vi.fn();
+    const actions = createLogRuntimeActions({ mode: "api", dispatch, getState: () => initialState,
+      repository: createRepository({ listLogs: vi.fn().mockReturnValueOnce(old).mockResolvedValue([newer]) }) });
+    const first = actions.refresh();
+    await actions.refresh();
+    if (fails) reject(new Error("older request failed"));
+    else complete([apiLog]);
+    await expect(first).resolves.toBeUndefined();
+    expect(dispatch.mock.calls).toEqual([[{ type: "HYDRATE_LOG_RUNTIME", logs: [newer] }]]);
+  });
+
   it("dispatches the existing upload simulation in mock mode", async () => {
     const dispatch = vi.fn();
     const actions = createLogRuntimeActions({ mode: "mock", dispatch, getState: () => initialState });

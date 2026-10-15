@@ -1655,6 +1655,33 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(debuggingCleared.configDraft.debugParameters).toEqual([]);
   });
 
+  it("waits for the catalog owner while optional device discovery remains pending", async () => {
+    let completeModules!: (value: { items: { name: string; scope: string; description: string }[] }) => void;
+    let releaseDevices!: () => void;
+    const modules = new Promise<{ items: { name: string; scope: string; description: string }[] }>((resolve) => { completeModules = resolve; });
+    const devices = new Promise<never[]>((resolve) => { releaseDevices = () => resolve([]); });
+    const api = createAppDebuggingAdminApiMock();
+    api.get.mockImplementation((path: string) => path === "/api/v1/debugging/admin/modules" ? modules : Promise.resolve({ items: [api.seedNode] }));
+    const { container } = renderApp({ path: "/debugging-admin/nodes", runtimeMode: "api", ports: {
+      authClient: createTestAuthClient("admin"), debuggingAdminClient: createDebuggingAdminClient(api as never),
+      debuggingGateway: createAppDebuggingGateway({ listDevices: vi.fn(() => devices) })
+    } });
+    try {
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/debugging/admin/modules"));
+      const shell = container.querySelector("#main-content");
+      const catalog = container.querySelector('main[aria-label="节点调试"]');
+      expect(shell).toHaveAttribute("data-runtime-state", "ready");
+      expect(catalog).toHaveAttribute("data-runtime-state", "loading");
+      expect(catalog).toHaveAttribute("inert");
+      await act(async () => { completeModules({ items: [{ name: "Battery Charging", description: "", scope: "" }] }); });
+      await waitFor(() => expect(catalog).toHaveAttribute("data-runtime-state", "ready"));
+      expect(catalog).not.toHaveAttribute("inert");
+      expect(screen.getByRole("button", { name: /^新增节点$/ })).toBeEnabled();
+    } finally {
+      await act(async () => { completeModules({ items: [] }); releaseDevices(); });
+    }
+  });
+
   it("keeps initial interaction unavailable until its domain settles without waiting for unrelated devices", async () => {
     let completeProjects!: (projects: typeof initialState.configDraft.projects) => void;
     let failDevices!: (error: Error) => void;

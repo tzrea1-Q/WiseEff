@@ -17,6 +17,8 @@ export type CiObservation = {
     completedAt: string | null;
     conclusion: "success" | "failure" | "cancelled" | "skipped" | null;
     required: boolean;
+    /** Explicit provenance when a later attempt replaced this job; never infer from its name. */
+    replaced?: boolean;
   }[];
 };
 
@@ -33,13 +35,19 @@ function seconds(start: string | null, end: string | null) {
 
 function summarize(runs: readonly CiObservation[]) {
   const greenSeconds: number[] = [], executionSeconds: number[] = [], runnerSamples: number[] = [];
-  let knownJobSeconds = 0, cancelledKnownJobSeconds = 0, unknownCostRuns = 0;
+  let knownJobSeconds = 0, cancelledKnownJobSeconds = 0, unknownCostRuns = 0, unknownCancelledJobs = 0;
   for (const run of runs) {
     const jobs = run.jobs.filter((job) => job.conclusion !== "skipped");
     const durations = jobs.map((job) => seconds(job.startedAt, job.completedAt));
     const known = durations.reduce<number>((sum, duration) => sum + (duration ?? 0), 0);
     knownJobSeconds += known;
-    if (run.conclusion === "cancelled") cancelledKnownJobSeconds += known;
+    if (jobs.length === 0) unknownCancelledJobs++;
+    jobs.forEach((job, index) => {
+      if (run.conclusion !== "cancelled" && job.conclusion !== "cancelled" && !job.replaced) return;
+      const duration = durations[index];
+      if (duration === null || duration === undefined) unknownCancelledJobs++;
+      else cancelledKnownJobSeconds += duration;
+    });
     if (jobs.length === 0 || durations.includes(null)) unknownCostRuns++;
     else runnerSamples.push(known);
     if (run.conclusion !== "success") continue;
@@ -54,6 +62,7 @@ function summarize(runs: readonly CiObservation[]) {
   }
   return { runs: runs.length, successfulTimedRuns: greenSeconds.length, greenSeconds, executionSeconds,
     runnerSamples, knownJobSeconds, cancelledKnownJobSeconds, unknownCostRuns,
+    cancelledJobSeconds: unknownCancelledJobs ? null : cancelledKnownJobSeconds,
     runnerSeconds: unknownCostRuns ? null : knownJobSeconds };
 }
 

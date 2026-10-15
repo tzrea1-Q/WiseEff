@@ -49,7 +49,8 @@ export async function dismissXiaozeToggleHint(page: Page) {
 export async function prepareInteractionSurface(page: Page) {
   // The owning domain settles independently of optional/background requests.
   // Loading/error transition tests intentionally exercise the surface without this helper.
-  await expect(page.locator("[data-runtime-state]")).toHaveAttribute("data-runtime-state", "ready");
+  await expect(page.locator("[data-runtime-state]").first()).toBeAttached();
+  await expect(page.locator('[data-runtime-state]:not([data-runtime-state="ready"])')).toHaveCount(0);
   await dismissCopilotDevOverlays(page);
   await closeXiaozePopupIfOpen(page);
   await dismissCopilotDevOverlays(page);
