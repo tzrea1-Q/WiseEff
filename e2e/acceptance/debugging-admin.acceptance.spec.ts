@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page, type Request } from "playwright/test";
 import type { Client } from "pg";
-import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { authHeadersForUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
@@ -12,7 +12,9 @@ import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operati
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
 
-useBrowserDiagnostics(test);
+const expectedApiFailures: ExpectedApiFailure[] = [];
+useBrowserDiagnostics(test, { expectedApiFailures });
+test.beforeEach(() => { expectedApiFailures.length = 0; });
 
 const acceptanceNodeNamePrefix = "Acceptance debug node";
 
@@ -276,7 +278,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await page.route(bootstrapNodes, async (route) => {
       if (failNext) {
         failNext = false;
-        await route.abort("failed");
+        await route.fulfill({ status: 503, json: { error: { code: "INTERNAL_ERROR", message: "Controlled bootstrap failure" } } });
         return;
       }
       const response = await route.fetch();
@@ -311,6 +313,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       await page.keyboard.press("Escape");
       await expect(more).toBeFocused();
 
+      expectedApiFailures.push({ method: "GET", path: "/api/v1/debugging/nodes", status: 503 });
       failNext = true;
       await page.reload();
       await expect(main).toHaveAttribute("data-runtime-state", "error");
@@ -324,6 +327,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       release();
       await page.mouse.up();
       await page.unroute(bootstrapNodes);
+      expectedApiFailures.length = 0;
     }
   });
 
