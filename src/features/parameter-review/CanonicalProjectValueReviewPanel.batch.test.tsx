@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -343,11 +343,13 @@ describe("canonical batch reviewer", () => {
 
   it("discovers the assigned pending batch in the queue and rejects once", async () => {
     const repo = repository();
-    vi.mocked(repo.listProjectValueBatchChangeRequests!).mockResolvedValue({ items: [batch] } as never);
+    vi.mocked(repo.listProjectValueBatchChangeRequests!).mockResolvedValueOnce({ items: [batch] } as never)
+      .mockResolvedValue({ items: [{ ...batch, status: "rejected" }] } as never);
     vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValueOnce({ item: batch } as never)
       .mockResolvedValue({ item: { ...batch, status: "rejected" } } as never);
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo} currentUserId="reviewer-1" />);
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
+    expect(await within(detail).findByLabelText("批量固定源变更前")).toHaveTextContent(diff.before);
     expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
     fireEvent.click(within(detail).getByRole("button", { name: "驳回全部 2 项" }));
     const dialog = screen.getByRole("dialog", { name: "驳回请求" });
@@ -355,12 +357,14 @@ describe("canonical batch reviewer", () => {
     expect(confirm).toBeDisabled();
     expect(repo.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
     fireEvent.change(within(dialog).getByLabelText("驳回原因"), { target: { value: "  补充校准依据  " } });
-    fireEvent.click(confirm);
-    await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
+    await act(async () => { fireEvent.click(confirm); });
+    expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
       "project-1", batch.id, { decision: "reject", note: "补充校准依据", batchProofDigest: proof,
         draftImpactDigest: "d".repeat(64) }, expect.any(Object)
-    ));
-    await waitFor(() => expect(detail).toHaveTextContent("已驳回"));
+    );
+    const rejectedDetail = screen.getByRole("article", { name: "批量源文件请求详情" });
+    expect(rejectedDetail).toBeInTheDocument();
+    expect(rejectedDetail).toHaveTextContent("已驳回");
     expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
   });
 
