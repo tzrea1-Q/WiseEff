@@ -92,6 +92,11 @@
   min-width: 100%;
 }
 
+.select-menu.select-menu--modal,
+.module-tree-menu--portal.select-menu--modal {
+  z-index: var(--z-modal-backdrop-nested);
+}
+
 .select-menu__item {
   position: relative;
   display: flex;
