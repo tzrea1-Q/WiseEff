@@ -67,13 +67,13 @@ function SelectContent({
   sideOffset = 4,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
-  const withinModal = React.useContext(ModalPopupContext)
+  const modalPopup = React.useContext(ModalPopupContext)
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         data-slot="select-content"
         data-align-trigger={position === "item-aligned"}
-        className={cn("select-menu select-menu--value", withinModal && "select-menu--modal", className)}
+        className={cn("select-menu select-menu--value", modalPopup && "select-menu--modal", className)}
         position={position}
         align={align}
         sideOffset={sideOffset}

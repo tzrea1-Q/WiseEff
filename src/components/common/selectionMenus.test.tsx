@@ -11,10 +11,10 @@ describe("selection menus inside a dialog", () => {
     it(`${kind} consumes Escape before the parent dialog and restores focus`, async () => {
       const onDismiss = vi.fn();
       const user = userEvent.setup();
-      render(<ModalDialog open title="编辑模块" onDismiss={onDismiss}>
-        {kind === "tree" ? <ModuleTreeSelect label="选择模块" mode="single" nodes={[{ id: "power", name: "电源", parentId: null, path: "power", depth: 0 }]} value="" onChange={vi.fn()} />
+      render(<ModalDialog open className="confirm-dialog" onDismiss={onDismiss}>
+        {({ titleId }) => <><h2 id={titleId}>编辑模块</h2>{kind === "tree" ? <ModuleTreeSelect label="选择模块" mode="single" nodes={[{ id: "power", name: "电源", parentId: null, path: "power", depth: 0 }]} value="" onChange={vi.fn()} />
           : kind === "multi" ? <MultiSelectDropdown label="选择模块" value={[]} options={[{ value: "power", label: "电源" }]} onChange={vi.fn()} />
-            : <ColumnFilter label="选择模块" groupLabel="模块" values={["电源"]} selectedValues={[]} onToggle={vi.fn()} onClear={vi.fn()} />}
+            : <ColumnFilter label="选择模块" groupLabel="模块" values={["电源"]} selectedValues={[]} onToggle={vi.fn()} onClear={vi.fn()} />}</>}
       </ModalDialog>);
       const trigger = screen.getByRole("button", { name: /选择模块/ });
       await user.click(trigger);

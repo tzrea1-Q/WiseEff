@@ -222,6 +222,17 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(trigger).toBeFocused();
         }
         if (routePath === "/debugging-admin/nodes") {
+          const longProjectLabel = "多项目联合验证与电池安全治理平台 ".repeat(8).trim();
+          testInfo.annotations.push({ type: "setup", description: "A read-only project-list response supplies one controlled long label for geometry; other API data stays real. This does not prove a persisted project rename." });
+          await context.route("**/api/v1/projects", async (intercepted) => {
+            if (intercepted.request().method() !== "GET") return intercepted.fallback();
+            const response = await intercepted.fetch();
+            expect(response.ok()).toBe(true);
+            const body = await response.json() as { items: Array<{ id: string; name: string }> };
+            expect(body.items.length).toBeGreaterThan(0);
+            body.items[0]!.name = longProjectLabel;
+            await intercepted.fulfill({ response, json: body });
+          });
           await page.getByRole("table", { name: "可调节点目录", exact: true }).getByRole("button", { name: "编辑", exact: true }).first().click();
           const editor = page.getByRole("dialog", { name: "编辑节点", exact: true });
           await expect(editor.getByLabel("HDC 节点路径", { exact: true })).toBeVisible();
@@ -240,6 +251,26 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(page.getByRole("listbox")).toBeHidden();
           await expect(editor).toBeVisible();
           await expect(access).toBeFocused();
+          const association = editor.locator("summary").filter({ hasText: "项目参数关联" });
+          await association.click();
+          const project = editor.getByRole("combobox", { name: "关联项目", exact: true });
+          await expect(project).toBeEnabled();
+          await project.click();
+          await page.getByRole("option", { name: longProjectLabel, exact: true }).click();
+          await expect(project).toBeFocused();
+          const longLabelGeometry = await project.evaluate((element) => {
+            const text = element.querySelector('[data-slot="select-value"]')!;
+            const chevron = element.querySelector(".select-control__chevron")!.getBoundingClientRect();
+            const label = text.getBoundingClientRect();
+            return { truncated: text.scrollWidth > text.clientWidth, gap: chevron.left - label.right,
+              centerDelta: Math.abs(label.top + label.height / 2 - chevron.top - chevron.height / 2) };
+          });
+          expect(longLabelGeometry.truncated, "long form labels must truncate within their field").toBe(true);
+          expect(longLabelGeometry.gap, "long labels must leave the dropdown arrow visible").toBeGreaterThanOrEqual(0);
+          expect(longLabelGeometry.centerDelta).toBeLessThanOrEqual(2);
+          await project.click();
+          await page.getByRole("option", { name: "不关联项目参数", exact: true }).click();
+          await association.click();
           await assertAccessibilitySemantics(page, testInfo, `unified-node-editor-${theme}`);
           await testInfo.attach(`unified-node-editor-${theme}`, {
             contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))

@@ -193,9 +193,11 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 ## 多层级模块树
 
-**共享弹层兼容试点（#1189）。** `ModalDialog`、`DialogContent` 和 `SheetContent` 自动提供弹层归属。其下的 `SelectControl` / 直接使用的 `SelectContent`、`RowActionMenu`，以及 portal 模式的 `ModuleTreeSelect` 自动使用已声明的模态层级，调用方无需传入 `withinModal`。树选择器需要避开祖先容器裁剪时保留 `portalMenu`。行内选择器按内容取宽；表单字段显式传入 `className="w-full"` 或使用已有字段宽度规则。标签、校验关联、空值和禁用语义保持不变。
+**共享弹层契约。** `ModalDialog`、`DialogContent` 和 `SheetContent` 自动提供弹层归属。其下的 `SelectControl` / 直接使用的 `SelectContent`、`RowActionMenu`，以及 portal 模式的 `ModuleTreeSelect` 自动使用已声明的模态层级，调用方无需配置弹层层级。树选择器需要避开祖先容器裁剪时保留 `portalMenu`。行内选择器按内容取宽；表单字段显式传入 `className="w-full"` 或使用已有字段宽度规则。标签、校验关联、空值和禁用语义保持不变。
 
-调试、日志、反馈、账户／权限和项目初始化调用方及其模块操作包装组件（#1190），以及参数治理／导入／拓扑／配置工作台调用方（#1191），现已继承弹层归属。`withinModal` 仅由共享控件临时兼容保留，待共享契约收尾时删除（#1192）。弹层关闭后焦点回到触发器；Escape 先关闭弹层，再关闭所属弹窗。焦点约束、背景 inert、滚动锁和 pending 操作的关闭行为仍由既有弹窗原语负责。
+两批调用方迁移现已完成（#1190／#1191），手动模态层级兼容接口已删除（#1192）。新增调用方直接使用共享弹窗与控件的祖先关系。弹层关闭后焦点回到触发器；Escape 先关闭弹层，再关闭所属弹窗。焦点约束、背景 inert、滚动锁和 pending 操作的关闭行为仍由既有弹窗原语负责。
+
+若选值后因加载关联数据暂时禁用 `SelectControl`，共享控件在重新启用时恢复尚未移向其他元素的焦点；用户已转向其他输入框或弹窗时保留其焦点。调用方继续使用自己的 pending／禁用规则，无需增加延迟聚焦回调。
 
 参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`（展开/折叠、搜索、路径标签、单选与多选）；共享树筛选由 `TreeFilterOptions` 和稳定 ID 选择工具提供，各业务域仍传入自己的注册表和范围。
 
