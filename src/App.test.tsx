@@ -1283,7 +1283,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       ]),
       createSession: vi.fn().mockResolvedValue({
         id: "api-node-session",
-        projectId: initialState.activeProjectId,
         deviceId: apiDebugDevice.id,
         targetId: "api-target",
         status: "active",
@@ -1853,7 +1852,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       type: "SET_DEBUG_ACTIVE_SESSION",
       session: {
         id: "session-1",
-        projectId: initialState.activeProjectId,
         deviceId: apiDebugDevice.id,
         targetId: "target-1",
         status: "active",
@@ -3804,7 +3802,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       })
     ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单" })).toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument();
     expect(document.querySelector(".project-admin-detail")).not.toBeInTheDocument();
@@ -3836,7 +3834,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     window.history.replaceState(null, "", "/parameter-admin/projects");
     renderApp({ initialAppState: adminState });
-    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
   });
 
@@ -3942,13 +3940,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const catalog = screen.getByRole("table", { name: "可调节点目录" });
     const chargerRow = within(catalog).getByRole("row", { name: /充电输入限流/ });
-    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑" }));
     const editedPath = "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited";
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: editedPath }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑" }));
 
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue(editedPath);
   });
@@ -3961,8 +3959,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: nextName } });
-    await userEvent.click(within(screen.getByRole("dialog", { name: "创建节点" })).getByRole("button", { name: "模块", exact: true }));
-    await userEvent.click(screen.getByRole("button", { name: "Charging Policy", exact: true }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "创建节点" })).getByRole("button", { name: "模块" }));
+    await userEvent.click(screen.getByRole("button", { name: "Charging Policy" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     const createdRow = screen.getByRole("row", { name: new RegExp(nextName) });

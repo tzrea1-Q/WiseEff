@@ -35,7 +35,7 @@ export function acceptanceUserIdForRole(roleId: AcceptanceRoleId) {
   return acceptanceUsersByRole[roleId].userId;
 }
 
-export function authHeadersForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId) {
+export function authHeadersForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId): Record<string, string> {
   const authorization = createBearerTokenForUser(userId, email, name, scopedOrganizationId);
   // Always include x-wiseeff-user so AUTH_MODE=development resolvers (which ignore Bearer)
   // still load the intended user from the database.
@@ -53,7 +53,7 @@ export function authHeadersForUser(userId: string, email: string, name: string, 
   };
 }
 
-export function authHeadersForRole(roleId: AcceptanceRoleId) {
+export function authHeadersForRole(roleId: AcceptanceRoleId): Record<string, string> {
   const user = acceptanceUsersByRole[roleId];
   const authorization = createBearerTokenForUser(user.userId, user.email, user.name);
   // Always include x-wiseeff-user so AUTH_MODE=development resolvers (which ignore Bearer)
