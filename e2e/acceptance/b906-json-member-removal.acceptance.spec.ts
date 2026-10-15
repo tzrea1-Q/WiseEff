@@ -351,7 +351,14 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
       await inspector.getByRole("combobox", { name: "待编入文件" }).focus();
       await page.keyboard.press("Tab");
       expect(await add.evaluate((node) => node === document.activeElement)).toBe(false);
+      const memberRole = inspector.getByRole("combobox", { name: "成员角色", exact: true });
+      await expect(memberRole).toBeFocused();
       await page.keyboard.press("Enter");
+      const roleOptions = page.getByRole("listbox");
+      await expect(roleOptions).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(roleOptions).toBeHidden();
+      await expect(memberRole).toBeFocused();
       if (format === "dts") {
         const removeReasonId = await memberRemove.getAttribute("aria-describedby");
         expect(removeReasonId).toBeTruthy();
