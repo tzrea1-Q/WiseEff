@@ -123,7 +123,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
       if (!entry.typecheck.project) throw new Error("No TypeScript project includes this changed file.");
     } catch (error) { result.problems.push(`${file}: ${error instanceof Error ? error.message : String(error)}`); }
   }
-  let previousProgram: ts.Program | undefined;
+  const previousPrograms = new Map<string, ts.Program>();
   if (execute) for (const [name, files] of groups) {
     const project = projects.get(name)!;
     for (const type of project.options.types ?? []) {
@@ -131,9 +131,10 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
         result.problems.push(`${name}: TypeScript cannot resolve configured type library: ${type}`);
       }
     }
-    // Native AST reuse within this invocation; each project's roots/options and diagnostics remain independent.
-    const program = ts.createProgram({ rootNames: [...files, ...project.fileNames.filter((file) => file.endsWith(".d.ts"))], options: { ...project.options, incremental: false, composite: false, noEmit: true }, oldProgram: previousProgram });
-    previousProgram = program;
+    // Keep browser/Node libraries reusable across interleaved projects; TypeScript owns compatibility and diagnostics.
+    const libraries = JSON.stringify(project.options.lib ?? []);
+    const program = ts.createProgram({ rootNames: [...files, ...project.fileNames.filter((file) => file.endsWith(".d.ts"))], options: { ...project.options, incremental: false, composite: false, noEmit: true }, oldProgram: previousPrograms.get(libraries) });
+    previousPrograms.set(libraries, program);
     const diagnostics = [...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics()];
     for (const file of files) {
       const source = program.getSourceFile(file);

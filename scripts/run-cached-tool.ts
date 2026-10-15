@@ -45,7 +45,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const { inspectStaticCoverage, readStaticChanges } = await import("./check-static-coverage");
     const changes = readStaticChanges(process.cwd(), base);
     if (changes.paths.length) {
-      const coverage = await inspectStaticCoverage(changes.paths, process.cwd(), { execute: true, deletedPaths: changes.deletedPaths, nativeLintPassed: extra.length === 0 && process.env.ESLINT_USE_FLAT_CONFIG !== "false" });
+      const coverage = await inspectStaticCoverage(changes.paths, process.cwd(), { execute: true, deletedPaths: changes.deletedPaths, nativeLintPassed: extra.every((arg) => arg === "--no-cache") && process.env.ESLINT_USE_FLAT_CONFIG !== "false" });
       console.log(JSON.stringify({ base: changes.base, staticCoverage: coverage }, null, 2));
       process.exit(coverage.status === "failed" ? 1 : 0);
     }
