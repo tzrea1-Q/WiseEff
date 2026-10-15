@@ -19,6 +19,9 @@ import "./project-review-roles.css";
 
 export type ProjectReviewRolesPanelProps = {
   projectId: string;
+  projectName?: string;
+  userId?: string;
+  backLabel?: string;
   onBack: () => void;
   state?: PrototypeState;
   userGovernanceClient?: ReturnType<typeof createUserGovernanceClient>;
@@ -34,7 +37,7 @@ const defaultUserGovernanceClient = createUserGovernanceClient();
 
 type RoleChange = { user: UserAccount; currentRoles: ProjectWorkflowRoleId[]; nextRoles: ProjectWorkflowRoleId[] };
 
-export function ProjectReviewRolesPanel({ projectId, onBack, userGovernanceClient = defaultUserGovernanceClient }: ProjectReviewRolesPanelProps) {
+export function ProjectReviewRolesPanel({ projectId, projectName = projectId, userId, backLabel = "返回项目列表", onBack, userGovernanceClient = defaultUserGovernanceClient }: ProjectReviewRolesPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bindingsDto, setBindingsDto] = useState<ProjectWorkflowRoleBindingsDto | null>(null);
@@ -74,7 +77,7 @@ export function ProjectReviewRolesPanel({ projectId, onBack, userGovernanceClien
   const changes: RoleChange[] = users.flatMap((user, index) => savedRoles[index].join() === roleDrafts[index].join() ? [] : [{
     user, currentRoles: currentRolesMap.get(user.id) ?? [], nextRoles: draftRoles[user.id] ?? []
   }]);
-  const filteredUsers = users.filter((user) => [user.name, user.username, user.email, user.title]
+  const filteredUsers = users.filter((user) => (!userId || user.id === userId) && [user.name, user.username, user.email, user.title]
     .some((value) => value?.toLowerCase().includes(searchQuery.trim().toLowerCase())));
   const activeBindings = bindingsDto?.bindings.filter((binding) => binding.isActive) ?? [];
   const pools = [
@@ -133,14 +136,14 @@ export function ProjectReviewRolesPanel({ projectId, onBack, userGovernanceClien
 
   return <div className="project-review-roles-panel">
     <div className="project-review-roles__header">
-      <Button type="button" variant="outline" onClick={onBack} disabled={busy}><ArrowLeft aria-hidden="true" />返回项目列表</Button>
+      <Button type="button" variant="outline" onClick={onBack} disabled={busy}><ArrowLeft aria-hidden="true" />{backLabel}</Button>
       <Button type="button" variant="outline" disabled={busy} onClick={async () => { if (await requestSettingsLeave()) void loadData(); }}><RefreshCw aria-hidden="true" />刷新</Button>
     </div>
     <SettingsFormPage label="项目审核角色设置" dirty={dirty} saving={busy} error={error ?? undefined}
       onSave={() => setConfirmDialog(changes)} onDiscard={() => {
         setDraftRoles(Object.fromEntries(currentRolesMap)); setError(null); setFailedUserId(null); setSaveSuccessMessage(null);
       }}>
-      <SettingsFormSection title={`${projectId} 项目审核角色配置`} help="配置参数检视流转所需的硬件 MDE、软件 MDE、软件开发职责；组织角色和其他项目绑定保持不变。">
+      <SettingsFormSection title={`${projectName} 项目审核角色配置`} help="配置参数检视流转所需的硬件 MDE、软件 MDE、软件开发职责；组织角色和其他项目绑定保持不变。">
         {missingRoles.length ? <div className="project-review-roles__warning" role="alert"><strong>审核职责未就绪</strong>
           <p>当前项目缺失以下审核角色：<strong>{missingRoles.map((role) => ROLE_LABELS[role]).join("、")}</strong>。在补齐全部三类角色前，普通参数变更提交将被门禁拦截。</p>
         </div> : <p className="project-review-roles__success" role="status">审核职责已就绪</p>}
@@ -151,7 +154,7 @@ export function ProjectReviewRolesPanel({ projectId, onBack, userGovernanceClien
         {saveSuccessMessage ? <p className="project-review-roles__success" role="status">{saveSuccessMessage}</p> : null}
       </SettingsFormSection>
       <SettingsFormSection title="组织成员职责授权" help="勾选成员的项目职责后统一保存；已停用成员只能移除现有角色。">
-        <Input type="search" aria-label="搜索成员" placeholder="搜索姓名、用户名、邮箱或职务" value={searchQuery} disabled={busy} onChange={(event) => setSearchQuery(event.target.value)} />
+        {!userId ? <Input type="search" aria-label="搜索成员" placeholder="搜索姓名、用户名、邮箱或职务" value={searchQuery} disabled={busy} onChange={(event) => setSearchQuery(event.target.value)} /> : null}
         <div className="project-review-roles__table-scroll">
           <table className="project-review-roles__table" aria-label="组织成员职责授权">
             <thead><tr><th scope="col">成员</th><th scope="col">职务</th><th scope="col">状态</th>{ALL_WORKFLOW_ROLES.map((role) => <th scope="col" key={role}>{ROLE_LABELS[role]}</th>)}</tr></thead>
@@ -176,7 +179,7 @@ export function ProjectReviewRolesPanel({ projectId, onBack, userGovernanceClien
     </SettingsFormPage>
     {confirmDialog ? <ConfirmDialog open title="确认更新项目审核角色" tone="primary" confirmLabel="确认保存" cancelLabel="取消"
       pending={busy} onCancel={() => setConfirmDialog(null)} onConfirm={() => void handleConfirmSave()}
-      description={<div><p>确认更新项目 <strong>{projectId}</strong> 的以下成员审核角色？</p>
+      description={<div><p>确认更新项目 <strong>{projectName}</strong> 的以下成员审核角色？</p>
         {confirmDialog.map((change) => <div key={change.user.id}><strong>{change.user.name}</strong>
           <p>变更前：{change.currentRoles.length ? change.currentRoles.map((role) => ROLE_LABELS[role]).join("、") : "（无）"}</p>
           <p>变更后：{change.nextRoles.length ? change.nextRoles.map((role) => ROLE_LABELS[role]).join("、") : "（清空所有项目角色）"}</p>

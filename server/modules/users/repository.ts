@@ -7,6 +7,7 @@ import type {
   ProjectWorkflowRoleBindingItem,
   ProjectWorkflowRoleId,
   RegistrationRoleRequestDto,
+  RegistrationRoleRequestListStatus,
   RegistrationRoleRequestStatus,
   UserGovernanceDto
 } from "./types";
@@ -27,6 +28,7 @@ type UserGovernanceRow = {
 type RegistrationRoleRequestRow = {
   id: string;
   organization_id: string;
+  organization_name: string;
   user_id: string;
   user_name: string;
   username: string | null;
@@ -68,6 +70,7 @@ function registrationRoleRequestToDto(row: RegistrationRoleRequestRow): Registra
   return {
     id: row.id,
     organizationId: row.organization_id,
+    organizationName: row.organization_name,
     userId: row.user_id,
     userName: row.user_name,
     username: row.username,
@@ -349,6 +352,7 @@ const registrationRoleRequestSelect = `
   select
     local_registration_role_requests.id,
     local_registration_role_requests.organization_id,
+    organizations.name as organization_name,
     local_registration_role_requests.user_id,
     users.name as user_name,
     user_password_credentials.username,
@@ -359,32 +363,24 @@ const registrationRoleRequestSelect = `
     local_registration_role_requests.decided_at::text as decided_at,
     local_registration_role_requests.decided_by_user_id
   from local_registration_role_requests
+  join organizations on organizations.id = local_registration_role_requests.organization_id
   join users on users.id = local_registration_role_requests.user_id
   left join user_password_credentials on user_password_credentials.user_id = users.id
 `;
 
-export async function listPendingRegistrationRoleRequests(db: Queryable, organizationId: string) {
+export async function listRegistrationRoleRequestsByScope(
+  db: Queryable,
+  input: { organizationId?: string; status: RegistrationRoleRequestListStatus }
+) {
   const result = await db.query<RegistrationRoleRequestRow>(
     `
     ${registrationRoleRequestSelect}
-    where local_registration_role_requests.organization_id = $1
-      and local_registration_role_requests.status = 'pending'
-    order by local_registration_role_requests.created_at asc
+    where local_registration_role_requests.status ${input.status === "decided" ? "in ('approved', 'rejected')" : "= 'pending'"}
+      ${input.organizationId === undefined ? "" : "and local_registration_role_requests.organization_id = $1"}
+    order by ${input.status === "decided" ? "local_registration_role_requests.decided_at desc," : ""}
+      local_registration_role_requests.created_at ${input.status === "decided" ? "desc" : "asc"}, local_registration_role_requests.id
     `,
-    [organizationId]
-  );
-
-  return result.rows.map(registrationRoleRequestToDto);
-}
-
-export async function listAllPendingRegistrationRoleRequests(db: Queryable) {
-  const result = await db.query<RegistrationRoleRequestRow>(
-    `
-    ${registrationRoleRequestSelect}
-    where local_registration_role_requests.status = 'pending'
-    order by local_registration_role_requests.created_at asc
-    `,
-    []
+    input.organizationId === undefined ? [] : [input.organizationId]
   );
 
   return result.rows.map(registrationRoleRequestToDto);
@@ -444,6 +440,7 @@ export async function decideRegistrationRoleRequest(
     returning
       id,
       organization_id,
+      (select name from organizations where organizations.id = local_registration_role_requests.organization_id) as organization_name,
       user_id,
       (select name from users where users.id = local_registration_role_requests.user_id) as user_name,
       (select username from user_password_credentials where user_password_credentials.user_id = local_registration_role_requests.user_id) as username,

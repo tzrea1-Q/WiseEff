@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createDatabase, type Database, type QueryResult, type Queryable } from "../../shared/database/client";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
+import { updateUserBodySchema } from "./schemas";
 import {
   listGovernedUsers,
   approveRegistrationRoleRequest,
@@ -717,6 +718,71 @@ describe.skipIf(!postgresAvailable)("user governance registration concurrency", 
     database = undefined;
   });
 
+  it("clears an optional profile title and persists the empty value", async () => {
+    database = await createEphemeralTestDatabase("usrtitle");
+    const client = new pg.Client({ connectionString: database.url });
+    await client.connect();
+    const db = createDatabase({ query: async (text, values = []) => {
+      const result = await client.query(text, values);
+      return { rows: result.rows, rowCount: result.rowCount };
+    } });
+    try {
+      await client.query("insert into organizations (id, name) values ('org-chargelab', 'ChargeLab') on conflict do nothing");
+      await client.query(`insert into users (id, organization_id, name, title, is_active)
+        values ('u-clear-title', 'org-chargelab', 'Clear Title', 'Engineer', true)`);
+      const auth: AuthContext = { ...adminAuth, user: { ...adminAuth.user, id: "u-clear-title" } };
+      const result = await updateUserProfile(db, auth, "u-clear-title", updateUserBodySchema.parse({ title: "" }));
+      expect(result.title).toBe("");
+      expect((await client.query("select title from users where id = 'u-clear-title'")).rows).toEqual([{ title: "" }]);
+    } finally {
+      await client.end();
+    }
+  });
+
+  it("keeps pending and decided registration lists tenant scoped and exposes organization names", async () => {
+    database = await createEphemeralTestDatabase("usrhistory");
+    const client = new pg.Client({ connectionString: database.url });
+    await client.connect();
+    const db = createDatabase({ query: async (text, values = []) => {
+      const result = await client.query(text, values);
+      return { rows: result.rows, rowCount: result.rowCount };
+    } });
+
+    try {
+      await client.query("insert into organizations (id, name) values ('org-history-a', 'History A'), ('org-history-b', 'History B')");
+      await client.query(`insert into users (id, organization_id, name, title, is_active)
+        values ('u-history-a', 'org-history-a', 'Candidate A', 'Engineer', false),
+               ('u-history-b', 'org-history-b', 'Candidate B', 'Engineer', false)`);
+      await client.query(`insert into local_registration_role_requests
+        (id, organization_id, user_id, current_role_id, requested_role_id, status, decided_at, decided_by_user_id)
+        values ('history-a-pending', 'org-history-a', 'u-history-a', 'hardware-user', 'hardware-committer', 'pending', null, null),
+               ('history-a-approved', 'org-history-a', 'u-history-a', 'hardware-user', 'hardware-committer', 'approved', '2026-10-14T10:00:00Z', 'u-history-a'),
+               ('history-a-rejected', 'org-history-a', 'u-history-a', 'hardware-user', 'hardware-committer', 'rejected', '2026-10-14T11:00:00Z', 'u-history-a'),
+               ('history-b-pending', 'org-history-b', 'u-history-b', 'hardware-user', 'hardware-committer', 'pending', null, null),
+               ('history-b-approved', 'org-history-b', 'u-history-b', 'hardware-user', 'hardware-committer', 'approved', '2026-10-14T12:00:00Z', 'u-history-b')`);
+      const orgAuth: AuthContext = {
+        ...adminAuth,
+        organization: { id: "org-history-a", name: "History A" },
+        user: { ...adminAuth.user, id: "u-history-a", organizationId: "org-history-a" }
+      };
+      const platformAuth: AuthContext = { ...orgAuth, roles: [{ projectId: null, roleId: "platform-admin" }] };
+
+      expect(await listRegistrationRoleRequests(db, orgAuth)).toEqual([
+        expect.objectContaining({ id: "history-a-pending", organizationName: "History A", status: "pending" })
+      ]);
+      const history = await listRegistrationRoleRequests(db, orgAuth, "decided");
+      expect(history.map((item) => item.id)).toEqual(["history-a-rejected", "history-a-approved"]);
+      expect(history.every((item) => item.organizationName === "History A" && item.decidedByUserId === "u-history-a")).toBe(true);
+      expect((await listRegistrationRoleRequests(db, platformAuth)).map((item) => item.organizationName).sort()).toEqual(["History A", "History B"]);
+      expect((await listRegistrationRoleRequests(db, platformAuth, "decided")).map((item) => item.id)).toEqual([
+        "history-b-approved", "history-a-rejected", "history-a-approved"
+      ]);
+      await expect(listRegistrationRoleRequests(db, nonAdminAuth, "decided")).rejects.toThrow("User management permission is required.");
+    } finally {
+      await client.end();
+    }
+  });
+
   it("locks the target user before registration approval changes roles or activation", async () => {
     database = await createEphemeralTestDatabase("usrlock");
     const organizationId = "org-registration-lock";
@@ -831,7 +897,7 @@ describe.skipIf(!postgresAvailable)("user governance registration concurrency", 
       );
       await roleClient.query("commit");
 
-      await expect(approval).resolves.toMatchObject({ status: "approved" });
+      await expect(approval).resolves.toMatchObject({ status: "approved", organizationName: "Registration Lock Org" });
       const final = await roleClient.query<{ is_active: boolean; role_id: string }>(
         `select users.is_active, user_role_bindings.role_id
            from users

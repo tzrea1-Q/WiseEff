@@ -1,0 +1,44 @@
+.user-permissions-page .admin-list-page .data-table-scroll > table {
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+.user-permissions-page .admin-list-page td,
+.user-permissions-page .admin-list-page th {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.user-permissions-page .admin-list-page th:last-child,
+.user-permissions-page .admin-list-page td[data-label="操作"] {
+  text-align: left;
+}
+
+.member-identity { display: grid; gap: var(--space-1); }
+.member-identity > span { color: var(--text-muted); font-size: var(--text-sm); }
+.member-identity strong { display: flex; align-items: center; gap: var(--space-2); }
+.member-status { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.member-status::before { content: ""; width: var(--space-2); height: var(--space-2); border-radius: var(--radius-full); background: var(--text-muted); }
+.member-status[data-active="true"]::before { background: var(--success); }
+.member-role-label { font-weight: 500; }
+.member-list-meta { color: var(--text-muted); font-size: var(--text-sm); white-space: nowrap; }
+.user-permissions-page .user-permissions-filters { align-items: center; }
+.user-permissions-page .user-permissions-filter-field--search { flex: 1 1 35%; max-width: 50%; }
+.member-details { display: grid; gap: var(--space-5); }
+.member-details-card > h2 { margin: 0; padding: var(--space-5); border-bottom: var(--stroke-hairline) solid var(--border); font-size: var(--text-lg); line-height: var(--leading-lg); font-weight: 600; }
+.member-details-card > .member-details { padding: var(--space-5); overflow-y: auto; min-height: 0; }
+.member-details-card { max-height: calc(100vh - var(--space-12)); grid-template-rows: auto minmax(0, 1fr) auto; }
+.member-details__section { display: grid; gap: var(--space-3); }
+.member-details__section + .member-details__section { border-top: var(--stroke-hairline) solid var(--border); padding-top: var(--space-5); }
+.member-details__section h3 { margin: 0; font-size: var(--text-lg); line-height: var(--leading-lg); }
+.member-details__hint { margin: 0; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading-sm); }
+.member-details__projects { display: grid; gap: var(--space-2); }
+.member-details__project { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
+.member-details__project > div { display: grid; gap: var(--space-1); }
+.member-details__actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); }
+.member-details .user-permissions-role-control { width: 100%; }
+.member-details .user-permissions-role-select { width: 100%; }
+.member-approval-toolbar { display: flex; align-items: center; gap: var(--space-3); justify-content: space-between; }
+.member-approval-item-meta { color: var(--text-muted); font-size: var(--text-sm); }
+.member-approval-help { color: var(--text-secondary); font-size: var(--text-sm); margin: 0; }
+.user-permissions-modal-card fieldset.user-permissions-modal-fields { border: 0; margin: 0; min-width: 0; }
