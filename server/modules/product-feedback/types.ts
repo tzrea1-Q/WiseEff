@@ -1,5 +1,6 @@
 export const feedbackTypes = ["experience", "data", "export_submit", "feature"] as const;
 export const feedbackStatuses = ["open", "in_progress", "resolved", "closed"] as const;
+export const feedbackPriorities = ["low", "normal", "high"] as const;
 export const feedbackResolutionCodes = [
   "completed",
   "duplicate",
@@ -18,6 +19,7 @@ export const progressEventKinds = [
 
 export type ProductFeedbackType = (typeof feedbackTypes)[number];
 export type ProductFeedbackStatus = (typeof feedbackStatuses)[number];
+export type ProductFeedbackPriority = (typeof feedbackPriorities)[number];
 export type ProductFeedbackResolutionCode = (typeof feedbackResolutionCodes)[number];
 export type ProductFeedbackProgressEventKind = (typeof progressEventKinds)[number];
 export type ProductFeedbackAttachmentContentType = "image/png" | "image/jpeg" | "image/webp";
@@ -49,6 +51,7 @@ export type ProductFeedbackProgressEventUserDto = {
   toStatus: ProductFeedbackStatus | null;
   resolutionCode: ProductFeedbackResolutionCode | null;
   publicMessage: string | null;
+  author?: "submitter" | "team";
   createdAt: string;
 };
 
@@ -86,6 +89,9 @@ export type ProductFeedbackAdminDto = {
   status: ProductFeedbackStatus;
   resolutionCode: ProductFeedbackResolutionCode | null;
   adminNote: string | null;
+  priority: ProductFeedbackPriority;
+  assigneeUserId: string | null;
+  assignee: SubmitterIdentityDto | null;
   submittedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -135,6 +141,8 @@ export type ListProductFeedbackResult = {
 };
 
 export type ListMyFeedbackQuery = {
+  q?: string;
+  status?: ProductFeedbackStatus | "draft";
   cursor?: {
     updatedAt: string;
     id: string;
@@ -150,6 +158,16 @@ export type ListMyFeedbackResult = {
 export type UpdateProductFeedbackPatch = {
   status?: ProductFeedbackStatus;
   adminNote?: string | null;
+  resolutionCode?: ProductFeedbackResolutionCode | null;
+  publicMessage?: string | null;
+  priority?: ProductFeedbackPriority;
+  assigneeUserId?: string | null;
+};
+
+export type ReplyToProductFeedbackInput = {
+  message: string;
+  attachments?: ProductFeedbackAttachmentInput[];
+  reopen?: boolean;
 };
 
 export type ProductFeedbackStatsDto = {

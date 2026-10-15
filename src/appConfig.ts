@@ -58,6 +58,7 @@ export type PageKey =
   | "knowledge-admin"
   | "user-permissions"
   | "feedback-admin"
+  | "feedback"
   | "audit"
   | "platform-console";
 
@@ -271,6 +272,13 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
+  if (path === "/feedback") {
+    return {
+      key: "feedback", path, label: "我的反馈", group: "平台总览", icon: MessageSquareText,
+      title: "我的反馈", subtitle: "查看处理进展、补充证据与继续编辑草稿"
+    };
+  }
+
   // Project-scoped views share the single sidebar entry; keep deep-link path for in-page area switching.
   if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
     const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
@@ -436,6 +444,8 @@ export function getXiaozeContextSummary(path: string): string {
       return "正在关注本组织档案与显示名称。";
     case "feedback-admin":
       return "正在关注内测产品反馈、待处理问题、截图证据和分诊闭环。";
+    case "feedback":
+      return "正在查看我的反馈与处理进展。";
     case "knowledge":
       return "正在关注工程知识条目、发布状态、标签与全文检索命中。";
     case "knowledge-admin":

@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, utilityItems } from "./appConfig";
 
 describe("WiseEff prototype configuration", () => {
+  it("keeps personal feedback deep links outside the sidebar navigation", () => {
+    expect(getPageByPath("/feedback")).toMatchObject({ key: "feedback", title: "我的反馈" });
+    expect([...navigationItems, ...utilityItems].map((item) => item.path)).not.toContain("/feedback");
+  });
   it("exposes a single parameter admin sidebar entry with in-page project routes", () => {
     expect(navigationItems.map((item) => item.path)).toEqual([
       "/",
@@ -152,7 +156,7 @@ describe("WiseEff prototype configuration", () => {
     expect(organizationAdmin?.path).toBe("/organization");
   });
 
-  it("places feedback admin directly after the sidebar feedback entry", () => {
+  it("keeps admin utilities discoverable", () => {
     expect(utilityItems.map((item) => item.label)).toEqual(["平台控制台", "反馈管理", "审计中心", "组织管理"]);
   });
 

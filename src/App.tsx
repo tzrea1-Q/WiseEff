@@ -1167,6 +1167,7 @@ function AppShell({
                 canPromoteDtsReloadDrafts={canPromoteDtsReloadDrafts}
                 runtimeMode={runtimeMode}
                 search={search}
+                onSearchChange={setSearch}
                 dashboardState={dashboardState}
                 dashboardRuntime={dashboardRuntime}
                 onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
@@ -1212,6 +1213,7 @@ function AppShell({
                   canPromoteDtsReloadDrafts={canPromoteDtsReloadDrafts}
                   runtimeMode={runtimeMode}
                   search={search}
+                  onSearchChange={setSearch}
                   dashboardState={dashboardState}
                   dashboardRuntime={dashboardRuntime}
                   onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}

@@ -5,6 +5,17 @@ import { describe, expect, it, vi } from "vitest";
 import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireNavigatorWorkbenchGeometry, requireAdminListGeometry, requireRowActionVisibility, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
 
 describe("admin list template contract", () => {
+  it("measures an outline header action without marking it as a filled primary action", () => {
+    const measured = collectMarkup(`<section class="admin-list-page">
+      <div class="admin-list-page__header" data-test-top="40"><div class="admin-list-page__header-actions">
+        <button data-slot="button" data-variant="outline">刷新</button>
+      </div></div><div class="admin-list-page__filters" data-test-top="80">搜索</div>
+      <table data-test-top="120"><tbody><tr><td data-label="操作"><button data-test-height="28">查看</button></td></tr></tbody></table>
+    </section>`);
+    expect(measured.adminLists[0].primaryAction).not.toBeNull();
+    expect(measured.primaryActions).toEqual([]);
+    expect(() => requireAdminListGeometry(measured.adminLists, "/feedback-admin", false)).not.toThrow();
+  });
   it("measures the shared external user-permissions header without borrowing unrelated headers", () => {
     const markup = `<div class="user-permissions-page">
       <div class="admin-list-page__header" data-test-top="40"><button class="button primary">添加用户</button></div>

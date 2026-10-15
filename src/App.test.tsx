@@ -3592,6 +3592,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const feedbackEntry = within(sidebar).getByRole("button", { name: "问题反馈" });
     expect(feedbackEntry).toBeInTheDocument();
     expect(feedbackEntry.closest(".feedback-entry")).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "我的反馈" })).not.toBeInTheDocument();
 
     fireEvent.click(feedbackEntry);
 
@@ -3603,7 +3604,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.change(within(dialog).getByLabelText("问题描述"), { target: { value: "导出按钮需要提示成功状态" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 
-    expect(await screen.findByText("反馈已记录，内测团队会结合页面路径和问题类型跟进。")).toBeInTheDocument();
+    expect(await screen.findByText("反馈已记录，可在我的反馈中查看处理进展。")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "查看我的反馈" }));
+    expect(within(dialog).getByRole("tab", { name: /我的反馈/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(await within(dialog).findByRole("button", { name: "查看反馈：导出按钮需要提示成功状态" }));
+    expect(await within(dialog).findByRole("heading", { name: "导出按钮需要提示成功状态" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/parameter-home");
   });
 
   it("toggles and remembers the app sidebar collapsed state", () => {
@@ -3690,7 +3696,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     ).toBe("var(--z-drawer-backdrop)");
   });
 
-  it("keeps the feedback dialog wide enough for form and screenshot capture columns", () => {
+  it("keeps the description primary and screenshot evidence optional", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
@@ -3700,8 +3706,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const dialog = screen.getByRole("dialog", { name: "问题反馈" });
     expect(dialog).toHaveClass("feedback-dialog");
-    expect(within(dialog).getByText("问题信息")).toBeInTheDocument();
-    expect(within(dialog).getByText("粘贴上传截图")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("问题描述")).toHaveAttribute("maxLength", "4000");
+    expect(within(dialog).getByRole("heading", { name: "粘贴上传截图 （可选）" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "选择图片" })).toBeInTheDocument();
   });
 
   it("includes responsive and reduced-motion styles for the log analysis workbench", () => {

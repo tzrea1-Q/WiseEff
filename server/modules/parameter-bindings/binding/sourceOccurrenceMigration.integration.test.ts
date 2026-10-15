@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdtemp, readdir, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalObjectStore } from "../../logs/objectStore";
@@ -22,12 +22,32 @@ import {
 import { createEvidenceIngest, fingerprintCanonical } from "../../parameter-governance/evidence";
 import { isTestDatabaseAvailable } from "../../../testing/testDatabase";
 import { readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../values";
+import { readCanonicalSchemaFingerprint, S2_SCH_LIVE_FINGERPRINT } from "../../../testing/parameterCatalog";
 import {
   migrationsDir,
   withTempDatabase as withSharedTempDatabase
 } from "../../../testing/tempDatabase";
 
 const databaseAvailable = await isTestDatabaseAvailable();
+
+async function applyFeedbackSuccessors(db: Database, connectionString: string) {
+  const historical = (await db.query<{ name: string; checksum: string }>(
+    "select name, checksum from schema_migrations order by name",
+  )).rows;
+  expect(historical.at(-1)?.name).toBe("0182_legacy_dismissed_identity_reader.sql");
+  expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+  const files = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
+  expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));
+  const current = (await db.query<{ name: string; checksum: string }>(
+    "select name, checksum from schema_migrations order by name",
+  )).rows;
+  expect(current.map(({ name }) => name)).toEqual(files);
+  expect(current.slice(0, historical.length)).toEqual(historical);
+  for (const { name, checksum } of current) {
+    expect(checksum).toBe(createHash("sha256").update(await readFile(join(migrationsDir, name), "utf8")).digest("hex"));
+  }
+  expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+}
 
 async function withTempDatabase(fn: (db: Database, connectionString: string) => Promise<void>) {
   await withSharedTempDatabase({ prefix: "src_occ_0151", migrate: false }, ({ db, connectionString }) =>
@@ -516,9 +536,12 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
           "0181_mod_d02_capture_revalidation.sql",
         ]);
         const through0181 = (await resumedDb.query("select * from schema_migrations order by name")).rows;
-        expect(await applyMigrations(resumedDb, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+        expect(await applyMigrations(resumedDb, migrationsDir, {
+          through: "0182_legacy_dismissed_identity_reader.sql",
+        })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
         expect((await resumedDb.query("select * from schema_migrations order by name")).rows.slice(0, -1))
           .toEqual(through0181);
+        await applyFeedbackSuccessors(resumedDb, connectionString);
         expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([]);
         const receipt = (await resumedDb.query("select * from schema_migrations order by name")).rows;
         const bindings = (await resumedDb.query("select * from parameter_catalog.project_parameter_bindings order by id")).rows;
@@ -622,9 +645,12 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         "0181_mod_d02_capture_revalidation.sql",
       ]);
       const through0181 = (await db.query("select * from schema_migrations order by name")).rows;
-      await expect(applyMigrations(db, migrationsDir)).resolves.toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+      await expect(applyMigrations(db, migrationsDir, {
+        through: "0182_legacy_dismissed_identity_reader.sql",
+      })).resolves.toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
       expect((await db.query("select * from schema_migrations order by name")).rows.slice(0, -1))
         .toEqual(through0181);
+      await applyFeedbackSuccessors(db, connectionString);
 
       const rows = await db.query<{
         observation_id: string;

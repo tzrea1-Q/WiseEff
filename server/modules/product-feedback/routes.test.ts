@@ -23,6 +23,8 @@ vi.mock("./service", () => ({
   getProductFeedbackAttachmentContent: vi.fn(),
   listMyProductFeedback: vi.fn(),
   listProductFeedback: vi.fn(),
+  listProductFeedbackAssignees: vi.fn(),
+  replyToProductFeedback: vi.fn(),
   saveProductFeedbackDraft: vi.fn(),
   submitProductFeedbackDraft: vi.fn(),
   updateProductFeedback: vi.fn()
@@ -205,13 +207,14 @@ describe("product feedback routes", () => {
     );
     vi.mocked(service.listProductFeedback).mockResolvedValue({ items: [item], nextCursor });
 
-    const response = await requestJson<{ items: typeof item[]; nextCursor: typeof nextCursor }>(
+    const response = await requestJson<{ items: typeof item[]; nextCursor: string }>(
       makeServer({ db, objectStore: makeObjectStore() }),
       `/api/v1/product-feedback?status=open&feedbackType=experience&q=buttons&pagePath=%2Fparameters&createdFrom=2026-07-01T00%3A00%3A00.000Z&createdTo=2026-07-08T00%3A00%3A00.000Z&cursor=${cursor}&limit=25`
     );
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ items: [item], nextCursor });
+    expect(response.body.items).toEqual([item]);
+    expect(JSON.parse(Buffer.from(response.body.nextCursor, "base64url").toString("utf8"))).toEqual(nextCursor);
     expect(service.listProductFeedback).toHaveBeenCalledWith(db, makeAuth(), {
       status: "open",
       feedbackType: "experience",
@@ -324,6 +327,51 @@ describe("product feedback routes", () => {
     expect(response.status).toBe(200);
     expect(response.body.items).toHaveLength(1);
     expect(service.listMyProductFeedback).toHaveBeenCalledWith(db, makeAuth(), { cursor: undefined, limit: undefined });
+  });
+
+  it("passes my-feedback filters and cursor to the service", async () => {
+    const db = makeDb();
+    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [], nextCursor: null });
+    const cursor = { updatedAt: "2026-10-15T00:00:00.123456Z", id: "feedback-1" };
+    const encoded = Buffer.from(JSON.stringify(cursor)).toString("base64url");
+    const response = await requestJson(makeServer({ db }), `/api/v1/product-feedback/mine?q=button&status=draft&limit=20&cursor=${encoded}`);
+    expect(response.status).toBe(200);
+    expect(service.listMyProductFeedback).toHaveBeenCalledWith(db, makeAuth(), { q: "button", status: "draft", limit: 20, cursor });
+  });
+
+  it("round-trips the next my-feedback page cursor without losing PostgreSQL timestamp precision", async () => {
+    const db = makeDb();
+    const nextCursor = { updatedAt: "2026-10-15T00:00:00.123456Z", id: "feedback-1" };
+    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [], nextCursor });
+    const first = await requestJson<{ nextCursor: string }>(makeServer({ db }), "/api/v1/product-feedback/mine");
+    expect(typeof first.body.nextCursor).toBe("string");
+    const second = await requestJson(makeServer({ db }), `/api/v1/product-feedback/mine?cursor=${encodeURIComponent(first.body.nextCursor)}`);
+    expect(second.status).toBe(200);
+    expect(service.listMyProductFeedback).toHaveBeenLastCalledWith(db, makeAuth(), { cursor: nextCursor });
+  });
+
+  it("returns assignee choices without treating assignees as a feedback ID", async () => {
+    const db = makeDb();
+    const items = [{ id: "admin-1", name: "Admin", username: null }];
+    vi.mocked(service.listProductFeedbackAssignees).mockResolvedValue({ items });
+    const response = await requestJson(makeServer({ db }), "/api/v1/product-feedback/assignees");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items });
+    expect(service.getProductFeedback).not.toHaveBeenCalled();
+  });
+
+  it("validates and delegates submitter replies with optional reopening and evidence", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    vi.mocked(service.replyToProductFeedback).mockResolvedValue(feedbackRecord() as any);
+    const body = { message: "Still happening", reopen: true, attachments: [{ fileName: "proof.png", contentType: "image/png", contentBase64: "AQ==" }] };
+    const response = await requestJson(makeServer({ db, objectStore }), "/api/v1/product-feedback/mine/feedback-1/replies", { method: "POST", body: JSON.stringify(body) });
+    expect(response.status).toBe(201);
+    expect(service.replyToProductFeedback).toHaveBeenCalledWith(db, objectStore, makeAuth(), "feedback-1", body, { requestId: expect.any(String) });
+    vi.mocked(service.replyToProductFeedback).mockClear();
+    const invalid = await requestJson(makeServer({ db, objectStore }), "/api/v1/product-feedback/mine/feedback-1/replies", { method: "POST", body: JSON.stringify({ message: " " }) });
+    expect(invalid.status).toBe(400);
+    expect(service.replyToProductFeedback).not.toHaveBeenCalled();
   });
 
   it("GET /api/v1/product-feedback/mine/:id returns single feedback detail or 404", async () => {

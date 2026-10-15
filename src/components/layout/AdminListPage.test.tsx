@@ -53,9 +53,10 @@ describe("AdminListPage", () => {
     const measurements = collectConsistencyMeasurements();
     expect(() => requireRowActionVisibility(measurements.rowActions, route)).not.toThrow();
     for (const row of measurements.rowActions) {
-      expect(row.actions).toHaveLength(2);
+      expect(row.actions).toHaveLength(route === "/feedback-admin" ? 1 : 2);
       expect(row.statuses.some((status) => status.dom.startsWith("span"))).toBe(true);
     }
+    if (route === "/feedback-admin") expect(screen.getByRole("button", { name: "查看", exact: true })).toBeVisible();
     for (const cell of container.querySelectorAll('td[data-label="操作"]')) cell.replaceChildren();
     expect(() => requireRowActionVisibility(collectConsistencyMeasurements().rowActions, route))
       .toThrow(/missing action or status measurements/);

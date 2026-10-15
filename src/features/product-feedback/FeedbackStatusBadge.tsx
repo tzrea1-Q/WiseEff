@@ -33,12 +33,13 @@ export function FeedbackStatusBadge({
 }) {
   const label = status === "draft" ? "草稿" : productFeedbackStatusLabels[status];
   const resolutionText =
-    (status === "resolved" || status === "closed") && resolutionCode
+    (status === "resolved" || status === "closed") && resolutionCode && resolutionCode !== "completed"
       ? ` · ${productFeedbackResolutionLabels[resolutionCode]}`
       : "";
 
   return (
     <span
+      data-row-status
       className={cn(
         "inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium tracking-tight",
         statusBadgeClasses[status],

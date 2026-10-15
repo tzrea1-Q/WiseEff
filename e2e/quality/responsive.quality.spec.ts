@@ -173,8 +173,13 @@ test.describe("M5.11 responsive quality gate", () => {
     const memberDialog = page.getByRole("dialog", { name: / · 成员资料$/ });
     const roleSelector = memberDialog.getByRole("combobox", { name: /调整 .+ 的角色/ });
     await expect(roleSelector).toBeVisible();
-    const roleBounds = await roleSelector.boundingBox();
-    const containerBounds = await memberDialog.getByRole("region", { name: "组织角色与权限" }).boundingBox();
+    const { roleBounds, containerBounds } = await roleSelector.evaluate((element) => {
+      const container = element.closest('section[aria-label="组织角色与权限"]');
+      return {
+        roleBounds: { width: element.getBoundingClientRect().width },
+        containerBounds: container ? { width: container.getBoundingClientRect().width } : null
+      };
+    });
     expect(roleBounds).not.toBeNull();
     expect(containerBounds).not.toBeNull();
     expect(Math.abs(roleBounds!.width - containerBounds!.width)).toBeLessThanOrEqual(1);

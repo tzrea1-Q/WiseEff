@@ -635,6 +635,27 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
     .digest("hex");
 }
 
+async function applyFeedbackSuccessors(db: Database, connectionString: string) {
+  const historical = (await db.query<{ name: string; checksum: string }>(
+    "select name, checksum from schema_migrations order by name",
+  )).rows;
+  expect(historical.at(-1)?.name).toBe("0182_legacy_dismissed_identity_reader.sql");
+  const beforeAcl = await aclFingerprint(db);
+  const files = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
+  expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));
+  const current = (await db.query<{ name: string; checksum: string }>(
+    "select name, checksum from schema_migrations order by name",
+  )).rows;
+  expect(current.map(({ name }) => name)).toEqual(files);
+  expect(current.slice(0, historical.length)).toEqual(historical);
+  for (const { name, checksum } of current) {
+    expect(checksum).toBe(createHash("sha256").update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
+  }
+  expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+  expect(await aclFingerprint(db)).toBe(beforeAcl);
+  expect(await applyMigrations(db, migrationsDir)).toEqual([]);
+}
+
 describe("canonical Catalog roles, grants, and guard reachability", () => {
   let database: EphemeralTestDatabase;
   let client: pg.Client;
@@ -1506,7 +1527,9 @@ describe("0138 Catalog role migration paths", () => {
         const through0181 = (await admin.query("select name, checksum from schema_migrations order by name")).rows;
         expect(through0181).toHaveLength(179);
         expect(through0181.slice(0, -1)).toEqual(through0180);
-        expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0182_legacy_dismissed_identity_reader.sql",
+        })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
         const expectedChecksums = {
           "0172_canonical_batch_draft_impact.sql": "6a40b58507c134884adff408c416bcae4249adcf008eb93bee8f901a7c649a53",
@@ -1525,7 +1548,7 @@ describe("0138 Catalog role migration paths", () => {
           "select name, checksum from schema_migrations order by name",
         );
         const files = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
-        expect(receipts.rows.map(({ name }) => name)).toEqual(files);
+        expect(receipts.rows.map(({ name }) => name)).toEqual(files.filter((name) => name <= "0182_legacy_dismissed_identity_reader.sql"));
         expect(receipts.rows.slice(0, -1)).toEqual(through0181);
         expect(receipts.rows.slice(0, 174)).toEqual(historicalReceipts.rows);
         const through0176 = files.filter((name) => name <= "0176_dts_observation_source_occurrence.sql");
@@ -1546,6 +1569,7 @@ describe("0138 Catalog role migration paths", () => {
         }
         expect(Object.fromEntries(receipts.rows.filter(({ name }) => name in expectedChecksums)
           .map(({ name, checksum }) => [name, checksum]))).toEqual(expectedChecksums);
+        await applyFeedbackSuccessors(db, connectionString);
 
         const guards = await admin.query<{
           proname: string; owner: string; security_definer: boolean; settings: string[];
@@ -1704,10 +1728,13 @@ describe("0138 Catalog role migration paths", () => {
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
       expect((await db.query("select name, checksum from schema_migrations order by name")).rows.slice(0, -2))
         .toEqual(upgradedReceipts);
-      expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+      expect(await applyMigrations(db, migrationsDir, {
+        through: "0182_legacy_dismissed_identity_reader.sql",
+      })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
       expect((await db.query("select name, checksum from schema_migrations order by name")).rows.slice(0, -3))
         .toEqual(upgradedReceipts);
+      await applyFeedbackSuccessors(db, connectionString);
       expect((await functionAcl()).rows).toEqual(aclBefore.rows);
       expect((await immutableTriggers()).rows).toEqual(guardsBefore.rows);
       expect((await db.query(`
@@ -1795,8 +1822,12 @@ describe("0138 Catalog role migration paths", () => {
             through: "0181_mod_d02_capture_revalidation.sql",
           })).toEqual(successorMigrations);
           expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
-          expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
-          expect(await applyMigrations(db, migrationsDir)).toEqual([]);
+          expect(await applyMigrations(db, migrationsDir, {
+            through: "0182_legacy_dismissed_identity_reader.sql",
+          })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+          expect(await applyMigrations(db, migrationsDir, {
+            through: "0182_legacy_dismissed_identity_reader.sql",
+          })).toEqual([]);
           const receipts = await admin.query<{ name: string; checksum: string }>(`
             select name, checksum from schema_migrations
             where name >= '0170_restore_subject_placement_definer.sql' order by name
@@ -1809,6 +1840,7 @@ describe("0138 Catalog role migration paths", () => {
             expect(checksum).toBe(createHash("sha256")
               .update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
           }
+          await applyFeedbackSuccessors(db, connectionString);
           const preserved = await admin.query<{ id: string }>(
             "select id from parameter_catalog.subject_placements where id = $1",
             [prior.placementId],
@@ -2109,8 +2141,11 @@ describe("0138 Catalog role migration paths", () => {
           through: "0181_mod_d02_capture_revalidation.sql",
         })).toEqual(["0181_mod_d02_capture_revalidation.sql"]);
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0181_FINGERPRINT);
-        expect(await applyMigrations(db, migrationsDir)).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
+        expect(await applyMigrations(db, migrationsDir, {
+          through: "0182_legacy_dismissed_identity_reader.sql",
+        })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
         expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+        await applyFeedbackSuccessors(db, connectionString);
         upgrade = await aclFingerprint(db);
       },
     );
