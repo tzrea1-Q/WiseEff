@@ -32,14 +32,12 @@ export type RowActionMenuProps = {
   label: string;
   triggerLabel?: string;
   triggerText?: string;
-  /** Compatibility for legacy surfaces; shared dialog descendants inherit this automatically. */
-  withinModal?: boolean;
   primaryAction?: RowAction & { destructive?: false };
   items: readonly (RowAction & { destructive?: false } | DestructiveRowAction | ConfirmedElsewhereRowAction)[];
 };
 
-export function RowActionMenu({ label, triggerLabel, triggerText = "更多", withinModal = false, primaryAction, items }: RowActionMenuProps) {
-  const modalPopup = useContext(ModalPopupContext) || withinModal;
+export function RowActionMenu({ label, triggerLabel, triggerText = "更多", primaryAction, items }: RowActionMenuProps) {
+  const modalPopup = useContext(ModalPopupContext);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [selected, setSelected] = useState<DestructiveRowAction | null>(null);
   const [pending, setPending] = useState(false);
