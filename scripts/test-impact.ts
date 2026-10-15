@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { preProcessFile } from "typescript";
 import { discoverBrowserInventory, type BrowserInventory } from "./browser-navigation";
 import { qualityRoutePaths, routeOwnership } from "../e2e/quality/route-ownership";
+import { readStaticChanges } from "./check-static-coverage";
+export { inspectStaticCoverage, type StaticCoverage } from "./check-static-coverage";
 
 const suiteConfigs = {
   frontend: "vite.config.ts",
@@ -218,12 +219,7 @@ async function cli() {
   }
   let paths = positionals;
   if (values.base !== undefined) {
-    const git = (args: string[]) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    const base = git(["rev-parse", "--verify", "--end-of-options", `${values.base}^{commit}`]).trim();
-    paths = [
-      ...git(["diff", "--name-only", "--no-renames", "-z", base, "--"]).split("\0"),
-      ...git(["ls-files", "--others", "--exclude-standard", "-z"]).split("\0"),
-    ].filter(Boolean);
+    paths = readStaticChanges(process.cwd(), values.base).paths;
   }
   const selection = await createVitestImpact(paths);
   if (!values.json) for (const command of selection.commands) console.error(command);

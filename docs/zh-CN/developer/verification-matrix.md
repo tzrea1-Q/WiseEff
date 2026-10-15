@@ -40,7 +40,17 @@ npx tsc -p tsconfig.node.json --noEmit
 git diff --check
 ```
 
-`src/` TypeScript 变更运行 app 类型检查；server/scripts/e2e/config TypeScript 变更运行 node 类型检查。related 仅覆盖当前 Vitest 配置：使用 `test:impact` 识别其他套件/门禁，并明确将未执行选择交给协调者。纯文档不需要 related、ESLint 或 TypeScript 检查；选中的 `npm run docs:check` 仍为必需，任务将文档门禁保留给协调者时由其执行。related 失败可修复后最多重跑两次。此预算下不执行完整套件、构建、全仓 lint、浏览器循环或并发测试/构建会话。协调者每个任务执行一次昂贵门禁；只是移交，不是取消。环境不可用或沙箱错误属于缺失证据，不是通过。
+生产 `src/` TypeScript 变更运行 app 类型检查；生产 server/scripts/config 变更运行 node 类型检查。这两个命令不能证明被排除的测试或 e2e 已获覆盖；下文的变更文件检查使用独立测试环境。related 仅覆盖当前 Vitest 配置：使用 `test:impact` 识别其他套件/门禁，并明确将未执行选择交给协调者。纯文档不需要 related、ESLint 或 TypeScript 检查；选中的 `npm run docs:check` 仍为必需，任务将文档门禁保留给协调者时由其执行。related 失败可修复后最多重跑两次。此预算下不执行完整套件、构建、全仓 lint、浏览器循环或并发测试/构建会话。协调者每个任务执行一次昂贵门禁；只是移交，不是取消。环境不可用或沙箱错误属于缺失证据，不是通过。
+
+### 变更文件静态覆盖
+
+`npm run lint` 保留原有源码/scripts 测试 ESLint 检查，再检查实际 Git 变更。已提交分支使用 `npm run lint -- --base origin/main`；默认基线是 `HEAD`，包含暂存、未暂存及未跟踪文件。CI 在现有 L1 lint 步骤提供 PR 基线或 push 前提交。范围无变更时，额外阶段明确显示不适用，不声称变更文件验收通过。原有 build、必需检查和 main/nightly 选择保持不变。
+
+摘要使用真实 ESLint 适用性及 TypeScript 解析后的输入。`configured` 表示已选择，`checked` 表示已执行；lint/类型诊断、代码被忽略、项目缺失、未知代码家族或配置错误会使整体结果失败。Git 确认的删除及非代码输入有明确排除理由；删除保留保守的受影响测试回退。JavaScript 执行 lint，并明确排除类型检查。套件名称仅为代码家族推导的候选，`testExecution: not-run`；实际测试发现使用 `test:impact`，再单独执行选中的检查。
+
+变更测试通过独立 Node 与浏览器测试项目进行语义检查，仅检查选中的根文件和项目环境声明；导入依赖参与类型解析，不代表未变更依赖完成全量语义检查。浏览器测试使用 Vite、DOM 及 Vitest matcher 类型；Node 测试避开前端文件系统环境声明。Node/e2e/ops 的 ESLint 使用适合环境的通用正确性规则，不施加前端 JSX/hooks 策略。现有 app/build 规则保持不变。不要将完整测试项目作为额外默认串行门禁。
+
+初始有界债务观察（2026-10-15）发现数据库测试已有七条诊断（TS2345、TS2344、TS2571、TS2554），质量辅助模块已有两条诊断（TS2532、TS2741）。这不是全库测试类型普查或豁免清单。没有旧文件或诊断获豁免：触及的根文件必须通过，不夹带无关遗留清理。新增 static/scripts 工作共享专项累计 10 秒净执行预算；本地计时属于观察证据，不是 CI 预算验收。
 
 ### 隔离浏览器泳道
 
