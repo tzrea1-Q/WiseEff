@@ -1,37 +1,36 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { matchesAuditAppGroup, getAuditAppGroup, type AuditAppGroupId } from "@/domain/audit/auditApps";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { matchesAuditAppGroup, getAuditAppGroup, getAuditAppLabel, type AuditAppGroupId } from "@/domain/audit/auditApps";
 import { mapApiAuditEventToView, mapMockAuditEventToView } from "@/domain/audit/mapAuditEventView";
-import type { AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
+import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLabels";
+import type { AuditEventView, AuditSeverity, ListAuditEventsParams } from "@/domain/audit/types";
 import { createAuditClient } from "@/infrastructure/http/auditClient";
-import type { AuditEvent, RiskLevel } from "@/domain/prototype/types";
-import { matchesProfile } from "@/lib/search";
-import { auditEventSearchProfile } from "@/lib/search/profiles";
+import { presentError } from "@/infrastructure/http/presentError";
+import type { AuditEvent } from "@/domain/prototype/types";
 
-const EXPORT_MAX_ROWS = 2000;
-
-export type AuditTimeWindow = "all" | "today" | "7d" | "30d";
-
+export const AUDIT_EXPORT_MAX_ROWS = 2000;
+export type AuditTimeWindow = "all" | "today" | "7d" | "30d" | "custom";
 export type AuditQueryState = {
   appGroup: AuditAppGroupId;
-  severity: RiskLevel | "all";
+  severity: AuditSeverity | "all" | AuditSeverity[];
   search: string;
   timeWindow: AuditTimeWindow;
   projectId?: string;
   traceId?: string;
+  eventId?: string;
+  kind?: string;
+  targetId?: string;
+  from?: string;
+  to?: string;
 };
 
-/** Start-of-window ISO timestamp for a time window, or undefined for "all". */
 export function auditTimeWindowFrom(window: AuditTimeWindow, now = new Date()): string | undefined {
   if (window === "today") {
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
     return start.toISOString();
   }
-  if (window === "7d") {
-    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  if (window === "30d") {
-    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  if (window === "7d" || window === "30d") {
+    return new Date(now.getTime() - (window === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000).toISOString();
   }
   return undefined;
 }
@@ -44,193 +43,162 @@ export type UseAuditEventsOptions = {
   enabled?: boolean;
 };
 
-function filterViews(events: AuditEventView[], query: AuditQueryState, mode: "api" | "mock") {
-  const normalizedSearch = query.search.trim().toLowerCase();
-  const fromIso = mode === "mock" ? auditTimeWindowFrom(query.timeWindow) : undefined;
-
-  return events.filter((event) => matchesAuditAppGroup(event.app, query.appGroup, mode)).filter((event) => {
-    if (query.severity !== "all" && event.severity !== query.severity) {
-      return false;
-    }
-    if (query.traceId && event.traceId !== query.traceId) {
-      return false;
-    }
-    if (fromIso && event.createdAt && event.createdAt < fromIso) {
-      return false;
-    }
-    // API mode: text search and the time window are pushed down to the server.
-    if (mode === "api" || !normalizedSearch) {
-      return true;
-    }
-    return matchesProfile(event, query.search, auditEventSearchProfile);
+function filterViews(events: AuditEventView[], query: AuditQueryState) {
+  const from = query.timeWindow === "custom" ? query.from : auditTimeWindowFrom(query.timeWindow);
+  const to = query.timeWindow === "custom" ? query.to : undefined;
+  const search = query.search.trim().toLocaleLowerCase();
+  return events.filter((event) => {
+    if (!matchesAuditAppGroup(event.app, query.appGroup, "mock")) return false;
+    if (Array.isArray(query.severity) ? !query.severity.includes(event.severity) : query.severity !== "all" && event.severity !== query.severity) return false;
+    if (query.projectId && event.projectId !== query.projectId) return false;
+    if (query.traceId && event.traceId !== query.traceId) return false;
+    if (query.kind && event.kind !== query.kind) return false;
+    if (query.targetId && event.targetId !== query.targetId) return false;
+    if (from && event.createdAt && event.createdAt < from) return false;
+    if (to && event.createdAt && event.createdAt > to) return false;
+    return !search || [event.action, event.kind, event.actor, event.targetId, event.targetName,
+      getAuditAppLabel(event.app), presentAuditAction(event.action).label, presentAuditKind(event.kind).label]
+      .some((value) => value?.toLocaleLowerCase().includes(search));
   });
 }
 
-function buildApiParams(query: AuditQueryState, limit: number, cursor?: string): ListAuditEventsParams {
+function buildApiParams(query: AuditQueryState, limit: number): ListAuditEventsParams {
   const group = getAuditAppGroup(query.appGroup);
-  const params: ListAuditEventsParams = { limit, cursor };
-  if (query.projectId) {
-    params.projectId = query.projectId;
-  }
-  if (query.traceId) {
-    params.traceId = query.traceId;
-  }
-  if (query.severity !== "all") {
-    params.severity = query.severity;
-  }
-  if (query.search.trim()) {
-    params.q = query.search.trim();
-  }
-  const from = auditTimeWindowFrom(query.timeWindow);
-  if (from) {
-    params.from = from;
-  }
-  if (group.apiApps.length === 1) {
-    params.app = group.apiApps[0];
-  } else if (group.apiApps.length > 1) {
-    params.apps = group.apiApps;
-  }
-  return params;
+  return {
+    limit,
+    projectId: query.projectId,
+    traceId: query.traceId,
+    kind: query.kind,
+    targetId: query.targetId,
+    severity: query.severity === "all" || Array.isArray(query.severity) ? undefined : query.severity,
+    severities: Array.isArray(query.severity) ? query.severity : undefined,
+    q: query.search.trim() || undefined,
+    from: query.timeWindow === "custom" ? query.from : auditTimeWindowFrom(query.timeWindow),
+    to: query.timeWindow === "custom" ? query.to : undefined,
+    ...(group.apiApps.length === 1 ? { app: group.apiApps[0] } : group.apiApps.length ? { apps: group.apiApps } : {})
+  };
 }
 
-export function useAuditEvents({ isApiMode, mockEvents, query, limit = 50, enabled = true }: UseAuditEventsOptions) {
+export function useAuditEvents({ isApiMode, mockEvents, query, limit = 20, enabled = true }: UseAuditEventsOptions) {
   const [apiEvents, setApiEvents] = useState<AuditEventView[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [updatedAt, setUpdatedAt] = useState<string>();
+  const generation = useRef(0);
+  const morePending = useRef(false);
+  const { appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId } = query;
+  const params = useMemo(() => buildApiParams(
+    { appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId }, limit
+  ), [appGroup, projectId, severity, timeWindow, traceId, search, from, to, kind, targetId, limit]);
+  const activeParams = useRef(params);
 
   const reload = useCallback(async () => {
-    if (!enabled || !isApiMode) {
-      return;
-    }
-
-    setLoading(true);
+    const requestGeneration = ++generation.current;
+    morePending.current = false;
+    setLoadingMore(false);
+    setLoading(false);
     setError("");
-
+    setApiEvents([]);
+    setNextCursor(null);
+    if (!enabled || !isApiMode) return;
+    setLoading(true);
+    // Refresh relative windows now; keep this same boundary for pagination/export.
+    const snapshot = { ...params, ...(timeWindow !== "custom" ? { from: auditTimeWindowFrom(timeWindow) } : {}) };
+    activeParams.current = snapshot;
     try {
-      const response = await createAuditClient().listAuditEvents(buildApiParams(query, limit));
+      const response = await createAuditClient().listAuditEvents(snapshot);
+      if (requestGeneration !== generation.current) return;
       setApiEvents(response.items.map(mapApiAuditEventToView));
       setNextCursor(response.nextCursor);
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : "加载审计记录失败");
-      setApiEvents([]);
-      setNextCursor(null);
+      setUpdatedAt(new Date().toISOString());
+    } catch (cause) {
+      if (requestGeneration === generation.current) setError(presentError(cause, "加载审计记录失败，请重试。"));
     } finally {
-      setLoading(false);
+      if (requestGeneration === generation.current) setLoading(false);
     }
-  }, [enabled, isApiMode, limit, query]);
+  }, [enabled, isApiMode, params, timeWindow]);
 
+  const invalidate = useCallback(() => { generation.current++; }, []);
   useEffect(() => {
-    if (!isApiMode) {
-      setApiEvents([]);
-      setNextCursor(null);
-      setError("");
-      return;
-    }
     void reload();
-  }, [isApiMode, reload]);
+    return invalidate;
+  }, [reload, invalidate]);
 
   const loadMore = useCallback(async () => {
-    if (!isApiMode || !nextCursor || loadingMore) {
-      return;
-    }
-
+    if (!enabled || !isApiMode || !nextCursor || loading || morePending.current) return;
+    const requestGeneration = generation.current;
+    morePending.current = true;
     setLoadingMore(true);
+    setError("");
     try {
-      const response = await createAuditClient().listAuditEvents(buildApiParams(query, limit, nextCursor));
-      setApiEvents((current) => [...current, ...response.items.map(mapApiAuditEventToView)]);
+      const response = await createAuditClient().listAuditEvents({ ...activeParams.current, cursor: nextCursor });
+      if (requestGeneration !== generation.current) return;
+      setApiEvents((current) => {
+        const ids = new Set(current.map((event) => event.id));
+        return [...current, ...response.items.map(mapApiAuditEventToView).filter((item) => !ids.has(item.id))];
+      });
       setNextCursor(response.nextCursor);
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : "加载更多审计记录失败");
+      setUpdatedAt(new Date().toISOString());
+    } catch (cause) {
+      if (requestGeneration === generation.current) setError(presentError(cause, "加载更多记录失败，请重试。"));
     } finally {
-      setLoadingMore(false);
-    }
-  }, [isApiMode, limit, loadingMore, nextCursor, query]);
-
-  const events = useMemo(() => {
-    if (isApiMode) {
-      return filterViews(apiEvents, query, "api");
-    }
-    return filterViews(mockEvents.map(mapMockAuditEventToView), query, "mock");
-  }, [apiEvents, isApiMode, mockEvents, query]);
-
-  /**
-   * Full result of the current filter for export: pages through the server in
-   * API mode (capped at EXPORT_MAX_ROWS), returns the filtered set in mock mode.
-   */
-  const fetchAllForExport = useCallback(async (): Promise<AuditEventView[]> => {
-    if (!isApiMode) {
-      return events;
-    }
-    const collected: AuditEventView[] = [];
-    let cursor: string | undefined;
-    while (collected.length < EXPORT_MAX_ROWS) {
-      const response = await createAuditClient().listAuditEvents(buildApiParams(query, 100, cursor));
-      collected.push(...response.items.map(mapApiAuditEventToView));
-      if (!response.nextCursor) {
-        break;
+      if (requestGeneration === generation.current) {
+        morePending.current = false;
+        setLoadingMore(false);
       }
+    }
+  }, [enabled, isApiMode, loading, nextCursor]);
+
+  const events = useMemo(() => enabled ? (isApiMode ? apiEvents : filterViews(mockEvents.map(mapMockAuditEventToView), query)) : [],
+    [apiEvents, enabled, isApiMode, mockEvents, query]);
+
+  const fetchAllForExport = useCallback(async () => {
+    if (!isApiMode) return { rows: events.slice(0, AUDIT_EXPORT_MAX_ROWS), truncated: events.length > AUDIT_EXPORT_MAX_ROWS };
+    const rows: AuditEventView[] = [];
+    const exportParams = activeParams.current;
+    let cursor: string | undefined;
+    while (rows.length < AUDIT_EXPORT_MAX_ROWS) {
+      const response = await createAuditClient().listAuditEvents({ ...exportParams, limit: 100, cursor });
+      rows.push(...response.items.map(mapApiAuditEventToView));
+      if (!response.nextCursor) return { rows, truncated: false };
+      if (response.nextCursor === cursor) throw new Error("导出分页未能继续，请刷新后重试。");
       cursor = response.nextCursor;
     }
-    return filterViews(collected.slice(0, EXPORT_MAX_ROWS), query, "api");
-  }, [events, isApiMode, query]);
+    return { rows: rows.slice(0, AUDIT_EXPORT_MAX_ROWS), truncated: true };
+  }, [events, isApiMode]);
 
-  return {
-    events,
-    loading,
-    loadingMore,
-    error,
-    hasMore: Boolean(nextCursor),
-    loadMore,
-    reload,
-    fetchAllForExport
-  };
+  return { events, loading, loadingMore, error, updatedAt, hasMore: Boolean(nextCursor), loadMore, reload, fetchAllForExport };
 }
 
 export function useAuditTraceEvents(traceId: string | undefined, isApiMode: boolean, mockEvents: AuditEvent[]) {
-  const [relatedEvents, setRelatedEvents] = useState<AuditEventView[]>([]);
+  const query = useMemo<AuditQueryState>(() => ({ appGroup: "all", severity: "all", search: "", timeWindow: "all", traceId }), [traceId]);
+  const result = useAuditEvents({ isApiMode, mockEvents, query, enabled: Boolean(traceId) });
+  return { ...result, relatedEvents: result.events };
+}
+
+export function useAuditEvent(eventId: string | null, cachedEvent: AuditEventView | undefined, isApiMode: boolean, mockEvents: AuditEvent[]) {
+  const [remoteEvent, setRemoteEvent] = useState<AuditEventView>();
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!traceId) {
-      setRelatedEvents([]);
-      return;
-    }
-
-    if (!isApiMode) {
-      setRelatedEvents(
-        mockEvents
-          .map(mapMockAuditEventToView)
-          .filter((event) => event.traceId === traceId)
-      );
-      return;
-    }
-
     let cancelled = false;
+    setError("");
+    setLoading(false);
+    if (!eventId || cachedEvent?.id === eventId || !isApiMode) return;
     setLoading(true);
-
-    createAuditClient()
-      .listAuditEvents({ traceId, limit: 20 })
-      .then((response) => {
-        if (cancelled) return;
-        setRelatedEvents(response.items.map(mapApiAuditEventToView));
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setRelatedEvents([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isApiMode, mockEvents, traceId]);
-
-  return { relatedEvents, loading };
+    createAuditClient().listAuditEvents({ eventId, limit: 1 }).then((response) => {
+      if (cancelled) return;
+      setRemoteEvent(response.items[0] ? mapApiAuditEventToView(response.items[0]) : undefined);
+      if (!response.items.length) setError("未找到该审计事件，可能已超出当前组织的可访问范围。");
+    }).catch((cause: unknown) => {
+      if (!cancelled) setError(presentError(cause, "加载事件详情失败，请重试。"));
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [eventId, cachedEvent, isApiMode, attempt]);
+  const mockEvent = !isApiMode ? mockEvents.find((event) => event.id === eventId) : undefined;
+  const event = cachedEvent?.id === eventId ? cachedEvent : remoteEvent?.id === eventId ? remoteEvent : mockEvent ? mapMockAuditEventToView(mockEvent) : undefined;
+  return { event, error, loading, retry: () => setAttempt((value) => value + 1) };
 }

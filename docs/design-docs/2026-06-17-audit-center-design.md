@@ -52,17 +52,13 @@ Phase M1 delivers an upgraded **L2 module audit** for parameter admin with API i
 | `/audit` | Admin | All apps in organization |
 | Module pages | Module admin | Scoped by app and project |
 
-Master-detail layout:
+The current `/audit` uses `AdminListPage` with a bounded, scrolling table and an event-detail dialog. Each row combines the business action and module/type, readable target and project, absolute/relative time, actor and severity. A single “load more” control appends batches of 20 without resetting the scroll position; counts explicitly say “loaded”, not “total”.
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ Audit · Parameter Management                    [Export M3] │
-├─────────────────────────────────────────────────────────────┤
-│ [Search] [Time▼] [Severity▼] [Kind▼] [Project▼] [Actor▼]    │
-├──────────────────────┬──────────────────────────────────────┤
-│ Virtual event list   │ Detail: diff, metadata, trace chain  │
-└──────────────────────┴──────────────────────────────────────┘
-```
+Search accepts displayed Chinese labels and internal identifiers. It is debounced, commits on Enter/blur, and ignores stale responses. The compact toolbar covers module, project and time window. Severity uses the shared table-header checkbox filter: select one or more of the four read severities with OR semantics, see the selected count, or clear the selection to show all. The header/menu stays available while rows reload. Additional filters provide exact kind, target ID, trace ID and a custom local date-time range. Loading, empty, failure/retry and manual refresh have distinct states.
+
+`/audit?eventId=...` restores a detail independently of the loaded list while retaining its filters. Closing removes only the event selection; previous/next moves through loaded records. Related events have their own cursor, loading and retry controls. “View full chain” clears conflicting filters before applying the trace. A known parameter target links to its existing project/binding workspace. Technical codes remain available in a collapsed section, with no arbitrary metadata dump.
+
+CSV export follows the current filter across server pages, up to 2,000 rows. The UI declares this limit, reports truncated or complete results explicitly, and shows failures for retry. Human labels and original kind/action codes occupy separate columns; spreadsheet formula prefixes are escaped.
 
 ## Event Model
 
@@ -108,7 +104,7 @@ Key fields: `id`, `app`, `kind`, `action`, `severity`, `actor`, `actorType`, `cr
 ### List (M1 extension)
 
 ```http
-GET /api/v1/audit-events?projectId=&app=&apps=&kind=&severity=&targetType=&targetId=&traceId=&from=&to=&cursor=&limit=
+GET /api/v1/audit-events?eventId=&projectId=&app=&apps=&kind=&severity=&severities=&targetType=&targetId=&traceId=&q=&from=&to=&cursor=&limit=
 ```
 
 Response:
@@ -116,11 +112,23 @@ Response:
 ```json
 {
   "items": [ { "...AuditEventDto", "actorName": "Wang Jie" } ],
-  "nextCursor": "2026-05-25T08:00:00.000Z"
+  "nextCursor": "<opaque cursor>"
 }
 ```
 
-Defaults: `limit=50`, max `100`, sort `created_at desc`, cursor = ISO timestamp of last row.
+Defaults: `limit=50`, max `100`, sort `created_at desc, id desc`. Pass the opaque `nextCursor` unchanged; it retains the full PostgreSQL timestamp precision and id so tied timestamps do not lose records. Legacy timestamp-only cursors remain accepted; invalid cursors return a validation error. The response reports loaded items, not a result total.
+
+`severities=High,Medium` selects any listed level (one to four validated values) and takes precedence over the legacy single `severity` parameter. The page URL retains `severity=High,Medium`; old single-value links still work. Pagination and export use the same server filter.
+
+`eventId` finds one event within the same admin-only organization scope. Read severity includes existing lowercase `info` rows; write severity remains `High | Medium | Low`. Search matches stored identifiers, shared Chinese module/kind/action labels, system/Agent names, and tenant-scoped current project/parameter names. `from`/`to` must be valid ISO date-times; malformed or reversed ranges return a validation error.
+
+Optional `projectName`, `projectCode`, and `targetName` provide readable lookup context. Current names are not historical snapshots. Optional `evidence` carries `previousValue`, `newValue`, and `sourceLabel` only when immutable Binding history explicitly references that audit event and its old/new values belong to the same organization/project Binding. Placeholder identity values are omitted. Multiple affected parameters use named value arrays; unavailable history remains absent rather than being replaced by current values. Left joins preserve events whose target no longer resolves. Stored audit rows are unchanged.
+
+For system-written `parameter-bindings / project-value-appended` events, a matching `project-value` target, `metadata.valueId`, and tenant/project-scoped `metadata.bindingId` can also supply the exact immutable new value when history is unavailable. This path does not infer a previous value.
+
+History evidence displays only changed JSON values or value states. Source-propagation histories with unchanged parameter values remain stored and are counted in `sourceLabel`, rather than repeated in the before/after payload. If every linked history preserves its value, evidence contains that explanation without a fabricated value change.
+
+Scalar evidence retains persisted `previousValueState`/`newValueState` (`present` or `deleted`); named multi-parameter values carry `valueState`. Deleted values retain their exact payload alongside the state, so deletion is never presented as an unchanged number or replaced by a synthetic null.
 
 ### Permissions (M1)
 

@@ -1,26 +1,35 @@
 import { ChevronDown, UserRound } from "lucide-react";
 import { useState } from "react";
 import { presentAuditEvent } from "@/domain/audit/presentAuditEvent";
-import type { AuditEventView } from "@/domain/audit/types";
-import type { RiskLevel } from "@/domain/prototype/types";
+import type { AuditEventView, AuditValueState } from "@/domain/audit/types";
+import { getAuditSeverityLabel, type AuditSeverity } from "@/domain/audit/types";
 import { cn } from "@/lib/utils";
+import "./audit-detail.css";
 
-const severityBadge: Record<RiskLevel, string> = {
+const severityBadge: Record<AuditSeverity, string> = {
   High: "audit-panel-severity-high",
   Medium: "audit-panel-severity-medium",
-  Low: "audit-panel-severity-low"
-};
-
-const severityLabel: Record<RiskLevel, string> = {
-  High: "高",
-  Medium: "中",
-  Low: "低"
+  Low: "audit-panel-severity-low",
+  info: "audit-panel-severity-info"
 };
 
 export type AuditEventDetailPanelProps = {
   event: AuditEventView;
   className?: string;
 };
+
+function EvidenceValue({ value, state, otherState }: { value: string; state?: AuditValueState; otherState?: AuditValueState }) {
+  const compact = value.replace(/\s+/g, " ");
+  const longValue = value.length > 120 || value.split("\n").length > 4;
+  return <>
+    {state === "deleted" || state === "present" && otherState === "deleted" ? <span className={cn("audit-value-state", state === "deleted" ? "audit-value-state-deleted" : "audit-value-state-present")}>{state === "deleted" ? "已删除" : "有效值"}</span> : null}
+    {state === "deleted" ? <span className="audit-retained-value-label">保留的历史内容</span> : null}
+    {longValue ? <div className="audit-evidence-value">
+    <code>{compact.length > 120 ? `${compact.slice(0, 120)}…` : compact}</code>
+    <details><summary>查看完整值</summary><pre><code>{value}</code></pre></details>
+    </div> : <code>{value}</code>}
+  </>;
+}
 
 export function AuditEventDetailPanel({ event, className }: AuditEventDetailPanelProps) {
   const [technicalOpen, setTechnicalOpen] = useState(false);
@@ -30,28 +39,27 @@ export function AuditEventDetailPanel({ event, className }: AuditEventDetailPane
     <section className={cn("audit-event-detail-panel", className)} aria-label="审计事件详情">
       <header className="audit-event-detail-panel-hero">
         <div className="audit-event-detail-panel-hero-top">
-          <span className={cn("audit-panel-severity", severityBadge[event.severity])}>
-            {severityLabel[event.severity]}
+          <span className={cn("audit-panel-severity", severityBadge[event.severity] ?? "audit-panel-severity-low")}>
+            {getAuditSeverityLabel(event.severity)}
           </span>
           <span className="audit-panel-kind">{presentation.kindLabel}</span>
           <span className="audit-panel-app">{presentation.appLabel}</span>
         </div>
         <h3 className="audit-event-detail-panel-title">{presentation.headline}</h3>
-        <p className="audit-event-detail-panel-summary">{presentation.summary}</p>
+        {!presentation.parameterChange && !presentation.statusChange && presentation.summary !== presentation.headline ? <p className="audit-event-detail-panel-summary">{presentation.summary}</p> : null}
       </header>
 
-      <div className="audit-event-detail-panel-grid">
-        <article className="audit-event-detail-panel-card">
-          <span className="audit-panel-card-label">操作人</span>
-          <strong>{presentation.actor.name}</strong>
-          <span className="audit-panel-card-meta">{presentation.actor.typeLabel}</span>
-        </article>
-        <article className="audit-event-detail-panel-card">
-          <span className="audit-panel-card-label">发生时间</span>
-          <strong>{presentation.timestamp.absolute}</strong>
-          <span className="audit-panel-card-meta">{presentation.timestamp.relative}</span>
-        </article>
-      </div>
+      <dl className="audit-event-context">
+        <div><dt>{event.targetName ? "当前对象名称" : "操作对象"}</dt><dd>{presentation.targetLabel}</dd></div>
+        <div><dt>{event.projectName || event.projectCode ? "当前所属项目" : "所属范围"}</dt><dd>{presentation.projectLabel}</dd></div>
+        <div><dt>操作人</dt><dd>{presentation.actor.name}{presentation.actor.name !== presentation.actor.typeLabel ? <span>{presentation.actor.typeLabel}</span> : null}</dd></div>
+        <div><dt>发生时间</dt><dd><time dateTime={event.createdAt}>{presentation.timestamp.absolute}</time><span>{presentation.timestamp.relative}</span></dd></div>
+      </dl>
+
+      {presentation.outcomes.length > 0 ? <section className="audit-event-detail-panel-section" aria-label="操作结果">
+        <h4>操作结果</h4>
+        <dl className="audit-event-context">{presentation.outcomes.map((outcome) => <div key={outcome.label}><dt>{outcome.label}</dt><dd>{outcome.value}</dd></div>)}</dl>
+      </section> : null}
 
       {presentation.statusChange ? (
         <section className="audit-event-detail-panel-section" aria-label="流程状态">
@@ -66,36 +74,36 @@ export function AuditEventDetailPanel({ event, className }: AuditEventDetailPane
 
       {presentation.parameterChange ? (
         <section className="audit-event-detail-panel-section" aria-label="参数变更">
-          <h4>参数变更</h4>
+          <h4>变更证据</h4>
+          <p className="audit-evidence-source">{presentation.evidenceSource ?? "事件发生时记录的变更内容"}</p>
           <div className="audit-parameter-change-card">
-            <div className="audit-parameter-change-head">
+            {presentation.parameterChange.module || presentation.parameterChange.risk || presentation.parameterChange.entries ? <div className="audit-parameter-change-head">
               <div>
-                <strong>{presentation.parameterChange.name}</strong>
+                <strong>{presentation.parameterChange.entries ? `${presentation.parameterChange.entries.length} 项参数变更` : presentation.parameterChange.name}</strong>
                 {presentation.parameterChange.module ? (
                   <span className="audit-parameter-change-module">{presentation.parameterChange.module}</span>
                 ) : null}
               </div>
               {presentation.parameterChange.risk ? (
-                <span className="audit-parameter-change-risk">{presentation.parameterChange.risk}</span>
+                  <span className="audit-parameter-change-risk">风险：{getAuditSeverityLabel(presentation.parameterChange.risk)}</span>
               ) : null}
-            </div>
-            <div className="audit-diff-card audit-parameter-diff">
-              <div>
-                <span className="audit-diff-label">变更前</span>
-                <code>{presentation.parameterChange.previousValue}</code>
-                {presentation.parameterChange.unit ? (
-                  <span className="audit-diff-unit">{presentation.parameterChange.unit}</span>
-                ) : null}
+            </div> : null}
+            {(presentation.parameterChange.entries ?? [presentation.parameterChange]).map((change) => <div className="audit-evidence-change" key={change.name}>
+              {presentation.parameterChange?.entries ? <h5>{change.name}</h5> : null}
+              <div className="audit-diff-card audit-parameter-diff">
+                <div>
+                  <span className="audit-diff-label">变更前</span>
+                  <EvidenceValue value={change.previousValue} state={change.previousValueState} otherState={change.newValueState} />
+                  {presentation.parameterChange?.unit ? <span className="audit-diff-unit">{presentation.parameterChange.unit}</span> : null}
+                </div>
+                <div className="audit-diff-arrow" aria-hidden="true">→</div>
+                <div>
+                  <span className="audit-diff-label">变更后</span>
+                  <EvidenceValue value={change.newValue} state={change.newValueState} otherState={change.previousValueState} />
+                  {presentation.parameterChange?.unit ? <span className="audit-diff-unit">{presentation.parameterChange.unit}</span> : null}
+                </div>
               </div>
-              <div className="audit-diff-arrow" aria-hidden="true">→</div>
-              <div>
-                <span className="audit-diff-label">变更后</span>
-                <code>{presentation.parameterChange.newValue}</code>
-                {presentation.parameterChange.unit ? (
-                  <span className="audit-diff-unit">{presentation.parameterChange.unit}</span>
-                ) : null}
-              </div>
-            </div>
+            </div>)}
             {presentation.parameterChange.reason ? (
               <p className="audit-parameter-change-reason">
                 <span>变更原因</span>
@@ -103,6 +111,13 @@ export function AuditEventDetailPanel({ event, className }: AuditEventDetailPane
               </p>
             ) : null}
           </div>
+        </section>
+      ) : null}
+
+      {!presentation.parameterChange && (presentation.evidenceSource || !presentation.statusChange) ? (
+        <section className="audit-evidence-empty" aria-label="变更证据">
+          <h4>变更证据</h4>
+          <p>{presentation.evidenceSource ?? "此事件未记录可展示的变更前后内容。操作记录已保留，可展开技术追踪信息核查。"}</p>
         </section>
       ) : null}
 

@@ -53,7 +53,7 @@ describe("AdminListPage", () => {
     const measurements = collectConsistencyMeasurements();
     expect(() => requireRowActionVisibility(measurements.rowActions, route)).not.toThrow();
     for (const row of measurements.rowActions) {
-      expect(row.actions).toHaveLength(2);
+      expect(row.actions).toHaveLength(route === "/audit" ? 1 : 2);
       expect(row.statuses.some((status) => status.dom.startsWith("span"))).toBe(true);
     }
     for (const cell of container.querySelectorAll('td[data-label="操作"]')) cell.replaceChildren();

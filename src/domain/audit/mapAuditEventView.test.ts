@@ -67,6 +67,18 @@ describe("mapAuditEventView", () => {
   it("recognizes parameter admin audit apps", () => {
     expect(isParameterAdminAuditApp("parameter-admin")).toBe(true);
     expect(isParameterAdminAuditApp("parameter-management")).toBe(true);
+    expect(isParameterAdminAuditApp("parameter-bindings")).toBe(true);
+    expect(isParameterAdminAuditApp("parameters")).toBe(true);
     expect(isParameterAdminAuditApp("log-analysis")).toBe(false);
+  });
+
+  it("preserves canonical evidence and current object context and localizes system actor", () => {
+    const view = mapApiAuditEventToView({
+      id: "canonical-event", organizationId: "org-1", projectId: "project-1", projectName: "演示项目", projectCode: "DEMO",
+      targetName: "充电电流", evidence: { previousValue: 0, newValue: false, sourceLabel: "事件快照" },
+      actorUserId: null, actorType: "system", actorName: "System", app: "parameters", kind: "project-value", action: "project-value-appended",
+      severity: "info", targetType: "project-value", targetId: "value-1", metadata: {}, traceId: "trace-1", createdAt: "2026-10-15T00:00:00Z"
+    });
+    expect(view).toMatchObject({ actor: "系统", severity: "info", projectId: "project-1", projectName: "演示项目", targetName: "充电电流", evidence: { previousValue: 0, newValue: false } });
   });
 });
