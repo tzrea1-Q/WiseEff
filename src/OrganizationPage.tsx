@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { OrganizationAdminArea } from "@/application/organization/organizationAdminPath";
 import { OrganizationAdminScopeNav } from "@/components/admin/OrganizationAdminScopeNav";
@@ -7,6 +7,7 @@ import { SettingsFormPage, SettingsFormSection, useDirtyState } from "@/componen
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError } from "@/infrastructure/http/presentError";
 import { UserPermissionsPage, type UserPermissionsPageProps } from "@/UserPermissionsPage";
+import "./organization-page.css";
 
 export type OrganizationRecord = {
   id: string;
@@ -38,6 +39,8 @@ export function OrganizationPage({
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [fieldError, setFieldError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const nameInput = useRef<HTMLInputElement>(null);
 
   const loadOrganization = useCallback(async () => {
     if (!organizationActions) {
@@ -65,21 +68,24 @@ export function OrganizationPage({
   }, [area, loadOrganization]);
 
   async function submitRename() {
-    if (!organizationActions || !organization) {
+    if (!organizationActions || !organization || saving) {
       return;
     }
     const name = displayName.trim();
     if (!name) {
       setFieldError("显示名称不能为空。");
-      setSaveError("显示名称不能为空。");
+      setSaveError("");
+      nameInput.current?.focus();
       return;
     }
     setSaving(true);
     setSaveError("");
+    setSaved(false);
     try {
       const next = await organizationActions.updateOrganization({ name });
       setOrganization(next);
       setDisplayName(next.name);
+      setSaved(true);
       try {
         await onOrganizationUpdated?.(next);
       } catch {
@@ -106,48 +112,55 @@ export function OrganizationPage({
           {status === "ready" && organizationActions && organization ? (
             <SettingsFormPage label="组织设置" dirty={dirty} saving={saving} error={saveError}
               onSave={() => void submitRename()} onDiscard={() => {
-                setDisplayName(organization.name); setSaveError(""); setFieldError("");
+                setDisplayName(organization.name); setSaveError(""); setFieldError(""); setSaved(false);
               }}>
-              <SettingsFormSection title="本组织" help="更新组织显示名称；组织编号和创建时间保持不变。">
-              <label className="organization-profile__field" htmlFor="organization-display-name">
-                <span className="organization-profile__label">显示名称</span>
-                <input
-                  id="organization-display-name"
-                  className="organization-profile__control"
-                  value={displayName}
-                  maxLength={80}
-                  disabled={saving}
-                  aria-invalid={fieldError ? true : undefined}
-                  aria-describedby={fieldError ? "organization-display-name-error" : undefined}
-                  onChange={(event) => {
-                    setDisplayName(event.target.value);
-                    setSaveError("");
-                    setFieldError("");
-                  }}
-                  required
-                />
-              </label>
-              <div className="organization-profile__meta">
-                <div>
-                  <span className="organization-profile__label">组织编号</span>
-                  <code className="organization-profile__id">{organization.id}</code>
+              <SettingsFormSection title="基本信息" help="组织名称用于工作台展示，便于成员识别所属组织。">
+                <div className="organization-profile__field">
+                  <label className="organization-profile__label" htmlFor="organization-display-name">显示名称</label>
+                  <input
+                    ref={nameInput}
+                    id="organization-display-name"
+                    className="organization-profile__control"
+                    value={displayName}
+                    maxLength={80}
+                    disabled={saving}
+                    aria-invalid={fieldError ? true : undefined}
+                    aria-describedby={fieldError ? "organization-display-name-error" : undefined}
+                    onChange={(event) => {
+                      setDisplayName(event.target.value);
+                      setSaveError("");
+                      setFieldError("");
+                      setSaved(false);
+                    }}
+                    required
+                  />
+                  {fieldError ? (
+                    <p id="organization-display-name-error" className="organization-profile__error" role="alert">
+                      {fieldError}
+                    </p>
+                  ) : null}
                 </div>
-                <div>
-                  <span className="organization-profile__label">创建时间</span>
-                  <time
-                    className="organization-profile__created-at"
-                    dateTime={organization.createdAt}
-                    title={formatAbsolute(organization.createdAt)}
-                  >
-                    {formatAbsolute(organization.createdAt)}
-                  </time>
-                </div>
-              </div>
-              {fieldError ? (
-                <p id="organization-display-name-error" className="organization-profile__error">
-                  {fieldError}
-                </p>
-              ) : null}
+                <dl className="organization-profile__meta">
+                  <div>
+                    <dt className="organization-profile__label">组织编号</dt>
+                    <dd><code className="organization-profile__id">{organization.id}</code></dd>
+                  </div>
+                  <div>
+                    <dt className="organization-profile__label">创建时间</dt>
+                    <dd>
+                      <time
+                        className="organization-profile__created-at"
+                        dateTime={organization.createdAt}
+                        title={formatAbsolute(organization.createdAt)}
+                      >
+                        {formatAbsolute(organization.createdAt)}
+                      </time>
+                    </dd>
+                  </div>
+                </dl>
+                {saved ? (
+                  <p className="organization-profile__success" role="status">组织名称已保存。</p>
+                ) : null}
               </SettingsFormSection>
             </SettingsFormPage>
           ) : null}

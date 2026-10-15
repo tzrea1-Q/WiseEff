@@ -8,6 +8,27 @@ function createFetchMock(response: unknown, status = 200) {
 }
 
 describe("createUserGovernanceClient", () => {
+  it("picks the highest organization role without promoting project bindings", async () => {
+    const fetchMock = createFetchMock({ items: [
+      { id: "admin", roles: [{ projectId: null, roleId: "admin" }, { projectId: null, roleId: "platform-admin" }] },
+      { id: "member", roles: [{ projectId: "aurora", roleId: "software-committer" }] }
+    ] });
+    const users = await createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock })).listUsers();
+    expect(users[0].roleId).toBe("platform-admin");
+    expect(users[0].roles).toHaveLength(2);
+    expect(users[1].roleId).toBe("guest");
+    expect(users[1].roles).toEqual([{ projectId: "aurora", roleId: "software-committer" }]);
+  });
+
+  it("requests decided registration history and updates member profile fields", async () => {
+    const fetchMock = createFetchMock({ items: [], item: { id: "member", roles: [] } });
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+    await client.listRegistrationRoleRequests("decided");
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/users/registration-role-requests?status=decided", expect.objectContaining({ method: "GET" }));
+    await client.updateUserProfile("member", { name: "成员", title: "" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/users/member", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "成员", title: "" }) }));
+  });
+
   it("lists backend governed users", async () => {
     const fetchMock = createFetchMock({
       items: [
@@ -325,7 +346,7 @@ describe("createUserGovernanceClient", () => {
             bindings: [
               {
                 userId: "u-hw",
-                name: "HW MDE",
+                userName: "HW MDE",
                 username: "hw.mde",
                 email: "hw@example.com",
                 title: "Engineer",
@@ -355,6 +376,7 @@ describe("createUserGovernanceClient", () => {
     const bindings = await client.getProjectWorkflowRoleBindings("aurora");
     expect(bindings.ready).toBe(true);
     expect(bindings.bindings[0].roles).toEqual(["hardware-committer"]);
+    expect(bindings.bindings[0].name).toBe("HW MDE");
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/projects/aurora/workflow-role-bindings", {
       headers: { Accept: "application/json" },
       method: "GET"
