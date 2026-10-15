@@ -5,10 +5,9 @@ import { expectUsablePage, prepareInteractionSurface, waitForFontsAndNextPaint }
 import { parseQualityLane, shouldRegisterConsistencyFixture } from "./quality-partition";
 
 const qualityLane = parseQualityLane(process.env.WISEEFF_QUALITY_LANE);
-let fixtureIndex = 0;
 
 function styleTest(title: string, body: (fixtures: { page: Page; baseURL: string | undefined }) => Promise<void>) {
-  if (shouldRegisterConsistencyFixture(qualityLane, fixtureIndex++)) test(title, body);
+  if (shouldRegisterConsistencyFixture(qualityLane, title)) test(title, body);
 }
 
 async function renderFixture(page: Page, baseURL: string | undefined, markup: string, sheets: string[] = []) {

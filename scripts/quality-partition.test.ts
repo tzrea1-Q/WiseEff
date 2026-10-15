@@ -1,11 +1,13 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { consistencyReadOnlyRoutes, consistencyRoutes, selectConsistencyRoutes } from "../e2e/quality/consistency-routes";
-import { parseQualityLane, qualityLanes, selectQualityProjects, shouldRegisterConsistencyFixture } from "../e2e/quality/quality-partition";
+import { consistencyReadOnlyRoutes } from "../e2e/quality/consistency-routes";
+import { consistencyFixturePlan, parseQualityLane, qualityLanes, selectQualityProjects, shouldRegisterConsistencyFixture } from "../e2e/quality/quality-partition";
 import { compactQualityRoutes } from "../e2e/quality/compact-routes";
 import { playwrightInventory, validateShardInventories, type ShardReceipt } from "./ci-shard-results";
 import type { Identity } from "./ci-required-results";
+import { balanceAcceptanceShards } from "./acceptance-shard-plan";
 
 type ListedSuite = {
   title: string;
@@ -47,17 +49,27 @@ function registrationKeys(output: string) {
 }
 
 describe("quality partitions", () => {
-  it("assigns stylesheet fixtures exactly once across balanced consistency lanes", () => {
-    const registrations = Array.from({ length: 31 }, (_, index) => index);
-    const first = registrations.filter((index) => shouldRegisterConsistencyFixture("consistency-1", index));
-    const second = registrations.filter((index) => shouldRegisterConsistencyFixture("consistency-2", index));
-    expect(first[0]).toBe(0);
-    expect(second[0]).toBe(1);
-    expect([...first, ...second].sort((left, right) => left - right)).toEqual(registrations);
-    expect(Math.abs(first.length - second.length)).toBeLessThanOrEqual(1);
-    expect(registrations.every((index) => shouldRegisterConsistencyFixture(undefined, index))).toBe(true);
+  it("loads the same duration plan under plain Node strip-types", () => {
+    const moduleUrl = new URL("../e2e/quality/quality-partition.ts", import.meta.url).href;
+    const result = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval",
+      `const { consistencyFixturePlan } = await import(${JSON.stringify(moduleUrl)}); console.log(JSON.stringify(consistencyFixturePlan));`
+    ], { encoding: "utf8", timeout: 30_000 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(consistencyFixturePlan);
+  });
+
+  it("assigns unknown stable fixture IDs exactly once with an order-independent fallback", () => {
+    const registrations = Array.from({ length: 31 }, (_, index) => `/new-route-${index}?state=open (dark)`);
+    const owners = (ids: string[]) => Object.fromEntries(ids.map((id) => {
+      const lanes = qualityLanes.filter((lane) => shouldRegisterConsistencyFixture(lane, id));
+      expect(lanes).toHaveLength(1);
+      return [id, lanes[0]];
+    }));
+    expect(owners([...registrations].reverse())).toEqual(owners(registrations));
+    expect(new Set(Object.values(owners(registrations))).size).toBe(2);
+    expect(registrations.every((id) => shouldRegisterConsistencyFixture(undefined, id))).toBe(true);
     for (const lane of ["visual", "accessibility"] as const) {
-      expect(registrations.some((index) => shouldRegisterConsistencyFixture(lane, index))).toBe(false);
+      expect(registrations.some((id) => shouldRegisterConsistencyFixture(lane, id))).toBe(false);
     }
   });
 
@@ -104,63 +116,20 @@ describe("quality partitions", () => {
     expect(selectQualityProjects(projects, "visual").some((project) => project.name === "compact")).toBe(compactPresent);
   });
 
-  it("auto-assigns 75 new route states deterministically with a balanced, disjoint complete union", () => {
-    const additional = Array.from({ length: 75 }, (_, index) => ({
-      ...consistencyReadOnlyRoutes[0],
-      path: `${index < 15 ? "/parameters" : `/new-route-${Math.floor((index - 15) / 6)}`}?tab=${index % 3}&source=${index}`
-    }));
-    const routes = [...consistencyReadOnlyRoutes, ...additional];
-    const partitions = (["consistency-1", "consistency-2"] as const).map((lane) => {
-      const selected = selectConsistencyRoutes(lane, routes);
-      expect(selected.map((route) => route.path).sort())
-        .toEqual(selectConsistencyRoutes(lane, [...routes].reverse()).map((route) => route.path).sort());
-      for (const route of selected) {
-        const group = (candidate: typeof route) => candidate.path.split("?")[0] === route.path.split("?")[0];
-        expect(selected.filter(group)).toEqual(routes.filter(group));
-      }
-      return selected;
-    });
-    const combined = partitions.flat().map((route) => route.path);
-    expect(new Set(combined).size).toBe(routes.length);
-    expect(combined.sort()).toEqual(routes.map((route) => route.path).sort());
-    const largestGroup = Math.max(...routes.map((route) => routes.filter((candidate) =>
-      candidate.path.split("?")[0] === route.path.split("?")[0]).length));
-    expect(Math.abs(partitions[0].length - partitions[1].length)).toBeLessThanOrEqual(largestGroup);
-  });
-
-  it("covers every existing route and project variant exactly once in balanced, disjoint partitions", () => {
-    const unfiltered = selectConsistencyRoutes(undefined);
-    expect(unfiltered.map((route) => route.path)).toEqual([
-      ...consistencyRoutes.map((route) => route.path),
-      ...["atlas", "aurora", "nebula"].map((project) => `/parameters?project=${project}`)
-    ]);
-    const first = selectConsistencyRoutes("consistency-1");
-    const second = selectConsistencyRoutes("consistency-2");
-    const paths = [...first, ...second].map((route) => route.path);
-    expect(new Set(paths).size).toBe(unfiltered.length);
-    expect(paths.sort()).toEqual(unfiltered.map((route) => route.path).sort());
-    expect(Math.abs(first.length - second.length)).toBeLessThanOrEqual(1);
-    for (const selected of [first, second]) {
-      for (const route of selected) {
-        expect(selected.filter((candidate) => candidate.path.split("?")[0] === route.path.split("?")[0]))
-          .toEqual(unfiltered.filter((candidate) => candidate.path.split("?")[0] === route.path.split("?")[0]));
-      }
+  it("balances measured fixture durations exactly once, independent of input order", () => {
+    const { fixtureDurationMs } = JSON.parse(readFileSync(
+      new URL("../e2e/quality/consistency-durations.json", import.meta.url), "utf8",
+    )) as { fixtureDurationMs: Record<string, number> };
+    const ids = Object.keys(fixtureDurationMs);
+    expect(consistencyFixturePlan.flatMap((shard) => shard.files).sort()).toEqual([...ids].sort());
+    expect(balanceAcceptanceShards([...ids].reverse(), 2, fixtureDurationMs, 0)).toEqual(consistencyFixturePlan);
+    expect(Math.abs(consistencyFixturePlan[0].durationMs - consistencyFixturePlan[1].durationMs))
+      .toBeLessThanOrEqual(Math.max(...Object.values(fixtureDurationMs)));
+    for (const [index, shard] of consistencyFixturePlan.entries()) {
+      const lane = index === 0 ? "consistency-1" : "consistency-2";
+      expect(ids.filter((id) => shouldRegisterConsistencyFixture(lane, id)).sort()).toEqual(shard.files);
+      expect(shard.durationMs).toBe(shard.files.reduce((total, id) => total + fixtureDurationMs[id], 0));
     }
-    expect(selectConsistencyRoutes("visual")).toEqual([]);
-    expect(selectConsistencyRoutes("accessibility")).toEqual([]);
-  });
-
-  it("assigns route groups independently of registration order without mutating inputs", () => {
-    const routes = [...consistencyReadOnlyRoutes].reverse();
-    const original = [...routes];
-    for (const lane of ["consistency-1", "consistency-2"] as const) {
-      expect(selectConsistencyRoutes(lane, routes).map((route) => route.path).sort())
-        .toEqual(selectConsistencyRoutes(lane).map((route) => route.path).sort());
-      expect(selectConsistencyRoutes(lane, [])).toEqual([]);
-    }
-    expect(routes).toEqual(original);
-    expect(selectConsistencyRoutes("consistency-1", routes.slice(0, 1))).toEqual(routes.slice(0, 1));
-    expect(selectConsistencyRoutes("consistency-2", routes.slice(0, 1))).toEqual([]);
   });
 
   it("makes the real four-lane registration union equal the full suite, repeating only warmup", () => {
@@ -189,7 +158,6 @@ describe("quality partitions", () => {
     };
     const inventory = playwrightInventory(JSON.parse(baseline.stdout), false);
     const receipts: ShardReceipt[] = [];
-    const consistencyCounts: number[] = [];
     const partitioned: string[] = [];
     for (const lane of qualityLanes) {
       const result = listRegistrations(lane);
@@ -199,9 +167,12 @@ describe("quality partitions", () => {
       const tests = keys.filter((key) => JSON.parse(key)[0] !== "runtime-warmup");
       expect(tests.length).toBeGreaterThan(0);
       expect(keys.filter((key) => JSON.parse(key)[0] === "compact")).toEqual(lane === "visual" ? compact : []);
-      expect(titles(keys).filter((title) => title.startsWith("Bridge readiness on /"))).toEqual(lane === "consistency-1" ? bridgeTitles : []);
-      expect(titles(keys).filter((title) => title.startsWith("asserts public home"))).toEqual(lane === "consistency-2" ? homeTitles : []);
-      if (lane.startsWith("consistency-")) consistencyCounts.push(tests.length);
+      const consistencyTitles = [...routeTitles, ...bridgeTitles, ...homeTitles];
+      expect(titles(keys.filter((key) => JSON.parse(key)[1] === "consistency.quality.spec.ts")).sort())
+        .toEqual(consistencyTitles.filter((id) => shouldRegisterConsistencyFixture(lane, id)).sort());
+      expect(keys.filter((key) => JSON.parse(key)[1] === "styles.consistency.collector.spec.ts"))
+        .toEqual(unfiltered.filter((key) => JSON.parse(key)[1] === "styles.consistency.collector.spec.ts"
+          && shouldRegisterConsistencyFixture(lane, JSON.parse(key).at(-1))));
       receipts.push({ version: 1, kind: "quality", lane, identity, inventory,
         executed: playwrightInventory(JSON.parse(result.stdout), false), receipt: null });
       partitioned.push(...tests);
@@ -211,7 +182,6 @@ describe("quality partitions", () => {
     expect(styleFixtures).toHaveLength(31);
     expect(partitioned.filter((key) => JSON.parse(key)[1] === "styles.consistency.collector.spec.ts").sort()).toEqual(styleFixtures.sort());
     expect(partitioned.sort()).toEqual(unfiltered.filter((key) => JSON.parse(key)[0] !== "runtime-warmup").sort());
-    expect(Math.abs(consistencyCounts[0] - consistencyCounts[1])).toBeLessThanOrEqual(2);
     expect(validateShardInventories(receipts, "quality", identity)).toEqual(inventory);
     const missing = structuredClone(receipts);
     const missingId = missing[1].executed.tests.find((id) => !inventory.warmup.includes(id));

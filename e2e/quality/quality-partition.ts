@@ -1,8 +1,24 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const { balanceAcceptanceShards }: typeof import("../../scripts/acceptance-shard-plan") = await import(new URL("../../scripts/acceptance-shard-plan.ts", import.meta.url).href);
+
 export const qualityLanes = ["visual", "consistency-1", "consistency-2", "accessibility"] as const;
 export type QualityLane = typeof qualityLanes[number];
 
-export function shouldRegisterConsistencyFixture(lane: QualityLane | undefined, index: number): boolean {
-  return lane === undefined || lane === (index % 2 === 0 ? "consistency-1" : "consistency-2");
+const measurements: { fixtureDurationMs: Record<string, number> } = JSON.parse(
+  readFileSync(fileURLToPath(new URL("./consistency-durations.json", import.meta.url)), "utf8"),
+);
+export const consistencyFixturePlan = balanceAcceptanceShards(
+  Object.keys(measurements.fixtureDurationMs), 2, measurements.fixtureDurationMs, 0,
+);
+const fixtureLanes = new Map(consistencyFixturePlan.flatMap((shard, index) =>
+  shard.files.map((id) => [id, index === 0 ? "consistency-1" : "consistency-2"] as const)));
+
+export function shouldRegisterConsistencyFixture(lane: QualityLane | undefined, fixtureId: string): boolean {
+  return lane === undefined || lane === (fixtureLanes.get(fixtureId)
+    ?? (createHash("sha256").update(fixtureId).digest()[0] % 2 === 0 ? "consistency-1" : "consistency-2"));
 }
 
 export function consistencyTestMatch(lane: QualityLane | undefined): RegExp[] {
