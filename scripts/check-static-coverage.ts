@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { isAbsolute, relative, resolve } from "node:path";
 import ts from "typescript";
-import { ESLint } from "eslint";
+import type { ESLint } from "eslint";
 import { z } from "zod";
 
 type Check = { status: "configured" | "checked" | "excluded" | "missing"; reason?: string; project?: string; config?: string; rules?: number };
@@ -31,7 +31,7 @@ export const staticCoverageSchema: z.ZodType<StaticCoverage> = z.object({
 });
 
 /** Actual tool applicability; execute checks selected roots, never claims a full project build. */
-export async function inspectStaticCoverage(paths: string[], root = process.cwd(), { execute = false, deletedPaths = [], nativeLintPassed = false, nativeTypecheckProjects = [] }: { execute?: boolean; deletedPaths?: string[]; nativeLintPassed?: boolean; nativeTypecheckProjects?: readonly string[] } = {}): Promise<StaticCoverage> {
+export async function inspectStaticCoverage(paths: string[], root = process.cwd(), { execute = false, deletedPaths = [], nativeLintPassed = false, nativeLint, nativeTypecheckProjects = [] }: { execute?: boolean; deletedPaths?: string[]; nativeLintPassed?: boolean; nativeLint?: ESLint; nativeTypecheckProjects?: readonly string[] } = {}): Promise<StaticCoverage> {
   const started = performance.now();
   root = realpathSync(root);
   if (!paths.length) throw new Error("Empty static coverage selection");
@@ -43,7 +43,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
     return file;
   }))].sort();
   const result: StaticCoverage = { status: "selected", testExecution: "not-run", files: [], problems: [], durationMs: 0 };
-  const eslint = new ESLint({ cwd: root });
+  let eslint = nativeLint;
   const projects = new Map<string, ts.ParsedCommandLine>();
   const groups = new Map<string, string[]>();
   const loadProject = (name: string) => {
@@ -87,6 +87,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
       : /^(?:scripts|ops)\//.test(file) ? "scripts" : file.startsWith("packages/") ? "bridge"
       : file.startsWith("e2e/quality/") ? "quality" : file.startsWith("e2e/") ? "acceptance" : null;
     try {
+      eslint ??= new (await import("eslint")).ESLint({ cwd: root });
       const configPath = await eslint.findConfigFile(absolute);
       const config = await eslint.calculateConfigForFile(absolute);
       const rules = Object.values(config?.rules ?? {}).filter((rule) => (Array.isArray(rule) ? rule[0] : rule) !== 0).length;
@@ -124,7 +125,8 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
     } catch (error) { result.problems.push(`${file}: ${error instanceof Error ? error.message : String(error)}`); }
   }
   const previousPrograms = new Map<string, ts.Program>();
-  const documents = ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames, root);
+  // Match TypeScript's native build mode: retain every type error without parsing documentation-only JSDoc.
+  const documents = ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames, root, ts.JSDocParsingMode.ParseForTypeErrors);
   const snapshots = new Map<string, ts.IScriptSnapshot | undefined>();
   for (const [name, files] of groups) {
     const project = projects.get(name)!;
@@ -149,6 +151,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
     const libraries = JSON.stringify(project.options.lib ?? []);
     const options = { ...project.options, incremental: false, composite: false, noEmit: true };
     const host = ts.createCompilerHost(options);
+    host.jsDocParsingMode = ts.JSDocParsingMode.ParseForTypeErrors;
     const getSourceFile = host.getSourceFile;
     host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
       if (shouldCreateNewSourceFile) return getSourceFile(fileName, languageVersion, onError, true);

@@ -59,7 +59,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const invocation = buildCachedToolInvocation(tool);
   const checkedSha = tool === "tsc" && extra.length === 0 && process.env.CI === "true"
     && process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_OUTPUT ? nativeCheckout(process.cwd()) : undefined;
-  const result = spawnSync(process.execPath, [invocation.bin, ...invocation.args, ...extra], { stdio: "inherit" });
+  let nativeLint: import("eslint").ESLint | undefined;
+  let result: { status: number | null; error?: Error };
+  if (tool === "eslint" && extra.every((arg) => arg === "--no-cache") && process.env.ESLINT_USE_FLAT_CONFIG !== "false") {
+    const { ESLint } = await import("eslint");
+    nativeLint = new ESLint({ cache: !extra.includes("--no-cache"), cacheLocation: invocation.args[4] });
+    const results = await nativeLint.lintFiles(invocation.args.slice(0, 2));
+    const output = await (await nativeLint.loadFormatter("stylish")).format(results);
+    if (output) console.log(output);
+    result = { status: results.some((item) => item.errorCount || item.fatalErrorCount) ? 1 : 0 };
+  } else {
+    result = spawnSync(process.execPath, [invocation.bin, ...invocation.args, ...extra], { stdio: "inherit" });
+  }
   if (result.error) throw result.error;
   if (result.status === 0 && checkedSha && nativeCheckout(process.cwd()) === checkedSha && process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, `native_typecheck_sha=${checkedSha}\n`);
@@ -70,6 +81,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (changes.paths.length) {
       const coverage = await inspectStaticCoverage(changes.paths, process.cwd(), { execute: true, deletedPaths: changes.deletedPaths,
         nativeLintPassed: extra.every((arg) => arg === "--no-cache") && process.env.ESLINT_USE_FLAT_CONFIG !== "false",
+        nativeLint,
         nativeTypecheckProjects: readNativeTypecheckProjects(process.cwd(), process.env) });
       console.log(JSON.stringify({ base: changes.base, staticCoverage: coverage }, null, 2));
       process.exit(coverage.status === "failed" ? 1 : 0);
