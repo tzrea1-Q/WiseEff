@@ -330,6 +330,12 @@ Xiaoze（小泽，唯一 Agent）：
 
 支持选 0 / 1 / 多个分类值的列表头筛选，必须使用共享的 `ColumnFilter`（安静的漏斗触发器 + 勾选菜单），不要用常驻 `<select>` 或用排序箭头冒充筛选。层级模块列使用 `ColumnFilter` 树模式，底层复用数据无关的 `src/domain/tree-filter/treeFilter.ts` 与 `src/components/common/TreeFilterOptions.tsx`；`ModuleTreeSelect` 也复用同一套树构造和选择语义。规格：[表格列多选筛选 UX](design-docs/ux-table-column-filter.md)。规范实现：`src/components/ColumnFilter.tsx`。参考接入：`ParametersTable`、工作台 `DtsParameterWorkbenchTable` 的「所属模块」、参数后台 `ParameterSpecLibrary` / `ProjectAdminTable`，以及 `/log-admin` 业务域列表的「状态」列。
 
+### 共享选择控件
+
+单选使用 `SelectControl`，列表头多值筛选使用 `ColumnFilter`，模块树选择使用 `ModuleTreeSelect`。`npm run ui:check` 会拒绝 `src/**/*.tsx` 中的原生 JSX `<select>`，给出 `native-select` 诊断、源码位置和共享控件指引。检查使用 TypeScript 语法树，能够区分真实元素与注释、字符串、JSX 属性及组件名；仍然允许原生按钮。
+
+零基线必须保持为零。必要的原生平台例外需要证明共享控件无法满足的约束，在检查器的 `nativeSelectExceptions` 中增加一个带审查理由的精确路径，并提供有针对性的回归验证；不支持目录、通配符或行内绕过。目前唯一例外是 `src/test/compactControls.test.tsx` 中验证旧原生控件兼容性的夹具，其他规则仍然适用。此规则复用已有静态任务与 scripts 测试；层级、焦点、鼠标交互和布局继续由现有浏览器检查负责。
+
 管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。列宽超出卡片时，内层 `.data-table-scroll` 保持 `overflow-x: auto`（指针拖动 + 触控板/触摸滑动）；表头 `ColumnFilter` 菜单是 `position: fixed`，不得再把滚动层改成 `overflow-visible`。其他会溢出的表滚动层复用同一套 `HorizontalDragScroll` / `useHorizontalDragScroll`（`ParametersTable`、审阅 `Table`、参数后台库表、调试表、初始化/导入预览、平台控制台候选体）；列表需要常显横向滚动条时，也由这个公共接缝按需提供。页面外壳仍不得造成整页横向滚动。已接入：`/organization/members` 成员表、`/log-admin` 业务域列表、`/log-admin` 分析质量、`/debugging-admin` 节点/参数库表、`/dts-reload` 候选网格，以及 `/parameter-admin/projects` 管理端项目清单。项目清单在 390px 使用卡片，在 768px 使用 1080px 宽表格加 16px 常显横向滚动条，在 1440px 完整显示且页面不横向溢出。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 在管理端列表边界闭环：规范项目配置工作台本身没有表格；日常工作的 `DtsParameterWorkbenchTable` 与仅 mock 使用的旧 `ParametersTable` 产品语义不同，不属于这条列表合同。
 
 管理列表迁移使用 `src/components/layout/` 中的 `AdminListPage`，提供页头操作、紧凑筛选、DataTable 与可选详情弹窗槽。项目试点将筛选、排序、分页保存在 URL，通过 RowActionMenu 提供配置、审核角色、编辑和确认删除。布局由模板令牌负责，页面删除局部表格 CSS。参见[管理列表模板契约](design-docs/ui-design-system.md#管理列表页面)。

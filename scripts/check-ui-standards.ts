@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import ts from "typescript";
 
 /*
  * UI standards ratchet gate (`npm run ui:check`).
@@ -31,7 +32,8 @@ export type UiRuleId =
   | "ease-keyword"
   | "window-confirm"
   | "hand-rolled-backdrop"
-  | "english-chrome";
+  | "english-chrome"
+  | "native-select";
 
 export const uiRuleIds: UiRuleId[] = [
   "raw-color",
@@ -43,7 +45,8 @@ export const uiRuleIds: UiRuleId[] = [
   "ease-keyword",
   "window-confirm",
   "hand-rolled-backdrop",
-  "english-chrome"
+  "english-chrome",
+  "native-select"
 ];
 
 export const ruleGuidance: Record<UiRuleId, string> = {
@@ -66,7 +69,9 @@ export const ruleGuidance: Record<UiRuleId, string> = {
   "hand-rolled-backdrop":
     "All dialogs go through ModalDialog/ConfirmDialog; never hand-roll a modal-backdrop div. See docs/design-docs/ui-design-system.md §Component Standards / Dialogs.",
   "english-chrome":
-    "UI copy is Chinese-first; table chrome and relative times go through shared formatters and product language. See docs/design-docs/ui-design-system.md §Content and Language."
+    "UI copy is Chinese-first; table chrome and relative times go through shared formatters and product language. See docs/design-docs/ui-design-system.md §Content and Language.",
+  "native-select":
+    "Use SelectControl for single selection, ColumnFilter for multi-value column filters, or ModuleTreeSelect for module trees (src/components/common and src/components/ColumnFilter.tsx). Native platform exceptions need an exact path and reviewed reason in nativeSelectExceptions; never increase the zero baseline. See docs/FRONTEND.md §Shared selection controls."
 };
 
 export interface UiViolation {
@@ -88,6 +93,11 @@ export interface UiStandardsBaseline {
 }
 
 const backdropExemptFiles = new Set(["src/components/common/ModalDialog.tsx"]);
+// Exact paths only. Product exceptions require a native-platform constraint
+// that the shared controls cannot satisfy; no directory/glob/inline bypasses.
+const nativeSelectExceptions: Readonly<Record<string, string>> = {
+  "src/test/compactControls.test.tsx": "Intentional native fixtures verify legacy compact-control compatibility."
+};
 
 /*
  * english-chrome is a fixed list of already-zeroed English residues (FA-18),
@@ -388,6 +398,25 @@ export function scanTsContent(filePath: string, content: string): UiViolation[] 
   const violations: UiViolation[] = [];
   const isTsx = filePath.endsWith(".tsx");
   const views = extractTsxLineViews(content);
+
+  if (isTsx && !nativeSelectExceptions[filePath] && content.includes("select")) {
+    const source = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const visit = (node: ts.Node): void => {
+      if (
+        (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+        ts.isIdentifier(node.tagName) && node.tagName.text === "select"
+      ) {
+        violations.push({
+          rule: "native-select",
+          file: filePath,
+          line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+          detail: "Native <select>"
+        });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
 
   for (let index = 0; index < views.length; index += 1) {
     const { code, codeWithoutStrings } = views[index];
