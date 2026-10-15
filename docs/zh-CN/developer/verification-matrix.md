@@ -101,13 +101,15 @@ D2 将 CI 的单次质量执行拆为四个矩阵泳道。原生 Playwright 从�
 | 质量泳道 | 已注册覆盖 | 质量工件 |
 | --- | --- | --- |
 | `visual` | `visual`，以及已注册时的 `compact` | `wiseeff-acceptance-quality` |
-| `consistency-1` | `consistency` 的第一个路由分区 | `wiseeff-acceptance-quality-consistency-1` |
-| `consistency-2` | `consistency` 的第二个、互不重叠的路由分区 | `wiseeff-acceptance-quality-consistency-2` |
+| `consistency-1` | `consistency` 的第一个按时长均衡的 fixture 分区 | `wiseeff-acceptance-quality-consistency-1` |
+| `consistency-2` | `consistency` 的第二个、互不重叠的按时长均衡的 fixture 分区 | `wiseeff-acceptance-quality-consistency-2` |
 | `accessibility` | `a11y` 与 `responsive` | `wiseeff-acceptance-quality-accessibility` |
 
-`runtime-warmup` 有意在每个泳道执行。其他每个已注册测试必须且只能归属一个泳道；两个 consistency 路由分区必须覆盖完整的已注册 consistency 清单，非路由的 collector/readiness 测试也只能分配一次。未注册 `compact` 时不能虚构其覆盖；新增已注册项目或测试没有归属时必须在收集阶段失败，不能静默遗漏。
+`runtime-warmup` 有意在每个泳道执行。其他每个已注册测试必须且只能归属一个泳道；两个 consistency fixture 分区必须覆盖完整的已注册 consistency 清单，非路由的 collector/readiness 测试也只能分配一次。未注册 `compact` 时不能虚构其覆盖；新增已注册项目或测试没有归属时必须在收集阶段失败，不能静默遗漏。
 
-新增 consistency 路由与查询状态按基础路径自动分组，优先将最大组分配给测试数较少的 consistency 泳道，同大小组按字典序处理。分配结果不受注册顺序影响，路由数量差不超过最大组的大小。已注册的 `compact` 测试自动归属 `visual`；允许 `compact` 项目尚未存在。回执动态收集已注册测试，不依赖固定的项目测试数量。
+Consistency fixture 以稳定的测试标题（路由/查询状态/readiness/主题，而非注册索引）为 ID。`e2e/quality/consistency-durations.json` 保存 CI run `38620513334` 的每测试参考时长；复用现有 acceptance 分片均衡器，按时长从大到小将已测量 fixture 分配给两个 consistency 泳道中累计时长较短的一个，同权重按字典序处理。未测量 fixture（含样式表 collector fixture）按其 ID 的 SHA-256 首字节模二确定归属；分配不受注册顺序影响，不遗漏也不重复任何 fixture。测试数无需相等；不改变任何断言、项目或回执覆盖要求。已注册的 `compact` 测试仍归属 `visual`；允许 `compact` 项目尚未存在。
+
+可从完整的 Playwright JSON 报告刷新，也可同时传入两个 consistency 泳道的报告（不要分两次分别刷新）：`node --experimental-strip-types scripts/refresh-consistency-durations.ts /path/consistency-1/results.json /path/consistency-2/results.json`。命令仅使用 `consistency` 项目的 `consistency.quality.spec.ts` 替换已提交的 fixture 权重，累加包括失败重试在内的各次执行时长，忽略跳过/未执行的 fixture，并在写入前拒绝重复 ID 或无效时长。按正常 PR 流程审阅并提交刷新后的 JSON；缺失权重仍使用确定性的兜底归属。预测不包含 collector、warmup、hooks、运行时及 job 准备开销；历史权重不能证明提速或当前验收通过。回执仍动态收集已注册测试，不依赖固定的项目测试数量。
 
 每个质量泳道拥有独立的 PostgreSQL 服务与运行时。迁移后必须依次运行 `npm run db:seed:all` 与 `npm run --if-present seed:quality:admin-lists`，命令成功后才为质量执行设置 `WISEEFF_QUALITY_SKIP_SEED=true`。main 上允许管理员列表 seed 尚未注册；一旦注册，该脚本必须成功，不能抑制失败。脚本缺失不代表管理员列表 fixture 已获覆盖。每个质量泳道保留原有 **35 分钟**作业超时。
 
