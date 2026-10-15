@@ -103,6 +103,20 @@ it("reuses native production project coverage while still checking excluded test
   expect(result.files.every((file) => file.typecheck.status === "checked")).toBe(true);
 });
 
+it.each([false, true])("rejects selected noCheck projects with native coverage=%s", async (nativeCoverage) => {
+  write("src/example.ts", 'export const value: number = "wrong";');
+  const config = JSON.parse(readFileSync(join(root, "tsconfig.app.json"), "utf8"));
+  config.compilerOptions.noCheck = true;
+  write("tsconfig.app.json", JSON.stringify(config));
+  const result = await inspectStaticCoverage(["src/example.ts"], root, {
+    execute: true, nativeTypecheckProjects: nativeCoverage ? ["tsconfig.app.json"] : []
+  });
+  expect(result.status).toBe("failed");
+  expect(result.problems.join("\n")).toContain("noCheck");
+  expect(result.files[0]?.typecheck.status).toBe("missing");
+  expect((await inspectStaticCoverage(["src/example.ts"], root)).status).toBe("failed");
+});
+
 it("rejects ignored, missing, unsupported and misconfigured changes instead of empty success", async () => {
   write("server/ignored.test.ts", "export const good = true;");
   write("eslint.config.js", 'export default [{ ignores: ["**/*"] }];');

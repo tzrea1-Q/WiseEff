@@ -126,8 +126,14 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
   const previousPrograms = new Map<string, ts.Program>();
   const documents = ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames, root);
   const snapshots = new Map<string, ts.IScriptSnapshot | undefined>();
-  if (execute) for (const [name, files] of groups) {
+  for (const [name, files] of groups) {
     const project = projects.get(name)!;
+    if (project.options.noCheck) {
+      result.problems.push(`${name}: TypeScript semantic checking is disabled by noCheck.`);
+      for (const entry of result.files.filter((file) => file.typecheck.project === name)) entry.typecheck.status = "missing";
+      continue;
+    }
+    if (!execute) continue;
     if (nativeTypecheckProjects.includes(name) && (name === "tsconfig.app.json" || name === "tsconfig.node.json")) {
       for (const entry of result.files.filter((file) => file.typecheck.project === name)) {
         entry.typecheck.reason = "Checked by the successful native TypeScript build for this unchanged CI checkout and project.";
