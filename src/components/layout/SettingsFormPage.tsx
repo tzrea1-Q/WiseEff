@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
@@ -26,7 +26,7 @@ export function SettingsFormPage({ label, dirty, saving = false, error, onSave, 
     leaveDecision.current = null;
     setLeaveOpen(false);
   };
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!dirty) return;
     const guardLeave = (event: Event) => {
       if (event.defaultPrevented) return;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsFormPage, SettingsFormSection, useDirtyState } from "./SettingsFormPage";
@@ -20,6 +20,25 @@ function SettingsExample() {
 }
 
 describe("SettingsFormPage", () => {
+  it("allows navigation and reload as soon as the saved form is committed", () => {
+    const onSavedCommit = vi.fn();
+    function Example({ saved }: { saved: boolean }) {
+      useLayoutEffect(() => {
+        if (!saved) return;
+        const unload = new Event("beforeunload", { cancelable: true });
+        window.dispatchEvent(unload);
+        onSavedCommit(requestLeave(), unload.defaultPrevented);
+      }, [saved]);
+      return <SettingsFormPage label="测试设置" dirty={!saved} saving={!saved}
+        onSave={vi.fn()} onDiscard={vi.fn()}>内容</SettingsFormPage>;
+    }
+    const view = render(<Example saved={false} />);
+    expect(requestLeave()).toBe(false);
+    view.rerender(<Example saved />);
+    expect(screen.getByRole("form", { name: "测试设置" })).toHaveAttribute("data-settings-dirty", "false");
+    expect(onSavedCommit).toHaveBeenCalledExactlyOnceWith(true, false);
+  });
+
   it("guards navigation with the shared dialog and reload only while dirty, and cleans up on unmount", async () => {
     const view = render(<SettingsExample />);
     expect(requestLeave()).toBe(true);
