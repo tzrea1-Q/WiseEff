@@ -38,6 +38,20 @@ describe("FeedbackAdminPage", () => {
     expect(screen.queryByRole("button", { name: /查看进展|更多/ })).not.toBeInTheDocument();
   });
 
+  it("sorts triage by priority rank in both directions", async () => {
+    await renderPage(createRepository([
+      feedback({ id: "normal", description: "普通问题", priority: "normal" }),
+      feedback({ id: "high", description: "紧急问题", priority: "high" }),
+      feedback({ id: "low", description: "低优先问题", priority: "low" })
+    ]));
+    const table = screen.getByRole("table", { name: "产品反馈记录" });
+    const priorities = () => within(table).getAllByRole("row").slice(1).map((row) => row.querySelector("[data-priority]")?.getAttribute("data-priority"));
+    fireEvent.click(within(table).getByRole("button", { name: "分诊", exact: true }));
+    expect(priorities()).toEqual(["low", "normal", "high"]);
+    fireEvent.click(within(table).getByRole("button", { name: "分诊", exact: true }));
+    expect(priorities()).toEqual(["high", "normal", "low"]);
+  });
+
   it.each([
     [{ submitterUserId: null }, "已注销用户"],
     [{}, "内测用户"],
