@@ -31,7 +31,7 @@ export const staticCoverageSchema: z.ZodType<StaticCoverage> = z.object({
 });
 
 /** Actual tool applicability; execute checks selected roots, never claims a full project build. */
-export async function inspectStaticCoverage(paths: string[], root = process.cwd(), { execute = false, deletedPaths = [], nativeLintPassed = false }: { execute?: boolean; deletedPaths?: string[]; nativeLintPassed?: boolean } = {}): Promise<StaticCoverage> {
+export async function inspectStaticCoverage(paths: string[], root = process.cwd(), { execute = false, deletedPaths = [], nativeLintPassed = false, nativeTypecheckProjects = [] }: { execute?: boolean; deletedPaths?: string[]; nativeLintPassed?: boolean; nativeTypecheckProjects?: readonly string[] } = {}): Promise<StaticCoverage> {
   const started = performance.now();
   root = realpathSync(root);
   if (!paths.length) throw new Error("Empty static coverage selection");
@@ -124,8 +124,22 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
     } catch (error) { result.problems.push(`${file}: ${error instanceof Error ? error.message : String(error)}`); }
   }
   const previousPrograms = new Map<string, ts.Program>();
-  if (execute) for (const [name, files] of groups) {
+  const documents = ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames, root);
+  const snapshots = new Map<string, ts.IScriptSnapshot | undefined>();
+  for (const [name, files] of groups) {
     const project = projects.get(name)!;
+    if (project.options.noCheck) {
+      result.problems.push(`${name}: TypeScript semantic checking is disabled by noCheck.`);
+      for (const entry of result.files.filter((file) => file.typecheck.project === name)) entry.typecheck.status = "missing";
+      continue;
+    }
+    if (!execute) continue;
+    if (nativeTypecheckProjects.includes(name) && (name === "tsconfig.app.json" || name === "tsconfig.node.json")) {
+      for (const entry of result.files.filter((file) => file.typecheck.project === name)) {
+        entry.typecheck.reason = "Checked by the successful native TypeScript build for this unchanged CI checkout and project.";
+      }
+      continue;
+    }
     for (const type of project.options.types ?? []) {
       if (!ts.resolveTypeReferenceDirective(type, resolve(root, name), project.options, ts.sys).resolvedTypeReferenceDirective) {
         result.problems.push(`${name}: TypeScript cannot resolve configured type library: ${type}`);
@@ -133,7 +147,22 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
     }
     // Keep browser/Node libraries reusable across interleaved projects; TypeScript owns compatibility and diagnostics.
     const libraries = JSON.stringify(project.options.lib ?? []);
-    const program = ts.createProgram({ rootNames: [...files, ...project.fileNames.filter((file) => file.endsWith(".d.ts"))], options: { ...project.options, incremental: false, composite: false, noEmit: true }, oldProgram: previousPrograms.get(libraries) });
+    const options = { ...project.options, incremental: false, composite: false, noEmit: true };
+    const host = ts.createCompilerHost(options);
+    const getSourceFile = host.getSourceFile;
+    host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
+      if (shouldCreateNewSourceFile) return getSourceFile(fileName, languageVersion, onError, true);
+      if (!snapshots.has(fileName)) {
+        let text: string | undefined;
+        try { text = host.readFile(fileName); }
+        catch (error) { onError?.(error instanceof Error ? error.message : String(error)); text = ""; }
+        snapshots.set(fileName, text === undefined ? undefined : ts.ScriptSnapshot.fromString(text));
+      }
+      const snapshot = snapshots.get(fileName);
+      // Invocation-local text; TypeScript keys AST reuse by compatible settings and implied module format.
+      return snapshot ? documents.acquireDocument(fileName, options, snapshot, "0", undefined, languageVersion) : undefined;
+    };
+    const program = ts.createProgram({ rootNames: [...files, ...project.fileNames.filter((file) => file.endsWith(".d.ts"))], options, host, oldProgram: previousPrograms.get(libraries) });
     previousPrograms.set(libraries, program);
     const diagnostics = [...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics()];
     for (const file of files) {

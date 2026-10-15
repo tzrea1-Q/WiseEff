@@ -249,6 +249,8 @@ jobs:
         id: lint
         env:
           WISEEFF_STATIC_BASE: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          WISEEFF_NATIVE_BUILD_OUTCOME: ${{ steps.build.outcome }}
+          WISEEFF_NATIVE_TYPECHECK_SHA: ${{ steps.build.outputs.native_typecheck_sha }}
         run: npm run lint
 
       - name: Verify parameter Catalog boundary baseline
