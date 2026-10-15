@@ -251,6 +251,13 @@ describe("scanTsContent", () => {
     expect(report.text).toContain("SelectControl");
     expect(report.text).toContain("ColumnFilter");
     expect(report.text).toContain("ModuleTreeSelect");
+    for (const tag of [
+      "< select />", "<\nselect />", "<select {...props} />",
+      "< /* separator */ select />", "< // separator\nselect />",
+      "<\\u0073elect />", "<se\\u006cect />",
+    ]) {
+      expect(scanTsContent("src/pages/Filters.tsx", `const Filters = () => ${tag};`).filter((violation) => violation.rule === "native-select"), tag).toHaveLength(1);
+    }
   });
 
   it("allows shared controls, native buttons and select examples in non-JSX syntax", () => {

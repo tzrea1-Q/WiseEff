@@ -44,6 +44,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
   }))].sort();
   const result: StaticCoverage = { status: "selected", testExecution: "not-run", files: [], problems: [], durationMs: 0 };
   let eslint = nativeLint;
+  const lintFiles: string[] = [];
   const projects = new Map<string, ts.ParsedCommandLine>();
   const groups = new Map<string, string[]>();
   const loadProject = (name: string) => {
@@ -96,11 +97,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
       entry.lint = { status: execute ? "checked" : "configured", config: relative(root, configPath), rules };
       const coveredByNativeLint = nativeLintPassed && (/^src\/.+\.tsx?$/.test(file) || /^scripts\/.+\.(?:test|spec)\.tsx?$/.test(file));
       if (execute && coveredByNativeLint) entry.lint.reason = "Checked by the successful original ESLint src/scripts-test pass in this invocation.";
-      if (execute && !coveredByNativeLint) for (const lint of await eslint.lintFiles([absolute])) {
-        for (const message of lint.messages.filter((item) => item.severity === 2 || item.fatal)) {
-          result.problems.push(`${file}:${message.line ?? 0} ESLint ${message.ruleId ?? "parse"}: ${message.message}`);
-        }
-      }
+      if (execute && !coveredByNativeLint) lintFiles.push(absolute);
     } catch (error) { result.problems.push(`${file}: ${error instanceof Error ? error.message : String(error)}`); }
     if (!/\.tsx?$/.test(file)) {
       entry.typecheck = { status: "excluded", reason: "JavaScript is linted; existing TypeScript projects do not enable checkJs." };
@@ -123,6 +120,19 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
       }
       if (!entry.typecheck.project) throw new Error("No TypeScript project includes this changed file.");
     } catch (error) { result.problems.push(`${file}: ${error instanceof Error ? error.message : String(error)}`); }
+  }
+  // ESLint reconciles its entire cache on each lintFiles call; batch the validated uncovered files once.
+  if (lintFiles.length) {
+    try {
+      for (const lint of await eslint!.lintFiles(lintFiles)) {
+        const file = relative(root, lint.filePath).replaceAll("\\", "/");
+        for (const message of lint.messages.filter((item) => item.severity === 2 || item.fatal)) {
+          result.problems.push(`${file}:${message.line ?? 0} ESLint ${message.ruleId ?? "parse"}: ${message.message}`);
+        }
+      }
+    } catch (error) {
+      for (const file of lintFiles) result.problems.push(`${relative(root, file).replaceAll("\\", "/")}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   const previousPrograms = new Map<string, ts.Program>();
   // Match TypeScript's native build mode: retain every type error without parsing documentation-only JSDoc.
