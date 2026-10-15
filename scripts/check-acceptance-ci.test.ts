@@ -306,7 +306,7 @@ describe("D2 backend shards and quality lanes", () => {
     const receipt = worker.steps.find((step: { with?: { path?: string } }) => step.with?.path === "${{ runner.temp }}/wiseeff-ci-shard/receipt.json");
     expect(receipt.with.name).toBe(`wiseeff-ci-${kind}-\${{ github.run_attempt }}-\${{ matrix.${axis} }}`);
     expect(aggregate.needs).toEqual(["detect", workerId]);
-    expect(aggregate.steps[2].with).toEqual({ pattern: `wiseeff-ci-${kind}-\${{ github.run_attempt }}-*`, path: "${{ runner.temp }}/wiseeff-ci-shards" });
+    expect(aggregate.steps[2].with).toEqual({ pattern: `wiseeff-ci-${kind}-*-*`, path: "${{ runner.temp }}/wiseeff-ci-shards" });
     expect(aggregate.steps[3]).toMatchObject({ id: "results", run: `node --experimental-strip-types scripts/ci-shard-results.ts aggregate ${kind}`, env: { EFF_NEEDS: "${{ toJSON(needs) }}" } });
     expect(aggregate.outputs).toEqual(kind === "server"
       ? { receipt: "${{ steps.results.outputs.receipt }}", shadow_server: "${{ steps.results.outputs.shadow }}" }
@@ -385,7 +385,7 @@ describe("D2 backend shards and quality lanes", () => {
     });
 
   const aggregateMutations = ["missing", "name", "condition", "needs", "extra-needs", "runner", "timeout", "suppressed", "strategy", "service", "env",
-    "missing-download", "download-version", "download-condition", "download-pattern", "unqualified-attempt", "wrong-attempt", "download-path", "merge", "download-suppressed", "download-command",
+    "missing-download", "download-version", "download-condition", "download-pattern", "unqualified-attempt", "current-attempt-only", "wrong-attempt", "download-run", "download-repository", "download-path", "merge", "download-suppressed", "download-command",
     "checkout", "node", "node-version", "cache", "install", "results-id", "results-command", "results-suppressed", "results-condition", "results-source", "results-extra-env", "missing-output", "extra-output", "output-source", "order"] as const;
   it.each(partitions.flatMap((partition) => aggregateMutations.map((mutation) => [...partition, mutation] as const)))
     ("rejects %s aggregate drift: %s %s %s %s %s", (kind, _workerId, aggregateId, _axis, _values, mutation) => {
@@ -409,7 +409,10 @@ describe("D2 backend shards and quality lanes", () => {
       if (mutation === "download-condition") download.if = "always()";
       if (mutation === "download-pattern") download.with.pattern = `wiseeff-ci-${kind === "server" ? "quality" : "server"}-\${{ github.run_attempt }}-*`;
       if (mutation === "unqualified-attempt") download.with.pattern = `wiseeff-ci-${kind}-*`;
+      if (mutation === "current-attempt-only") download.with.pattern = `wiseeff-ci-${kind}-\${{ github.run_attempt }}-*`;
       if (mutation === "wrong-attempt") download.with.pattern = `wiseeff-ci-${kind}-\${{ github.run_id }}-*`;
+      if (mutation === "download-run") download.with["run-id"] = "123";
+      if (mutation === "download-repository") download.with.repository = "other/WiseEff";
       if (mutation === "download-path") download.with.path = "${{ runner.temp }}/other";
       if (mutation === "merge") download.with["merge-multiple"] = true;
       if (mutation === "download-suppressed") download["continue-on-error"] = true;

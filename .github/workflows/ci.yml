@@ -482,7 +482,7 @@ jobs:
         id: docs
         run: npm run docs:check
 
-      - name: Backend tests
+      - name: Backend tests (duration-balanced inventory)
         id: server
         run: node --experimental-strip-types scripts/ci-required-results.ts test server
       - name: Record complete L1 invocation
@@ -524,7 +524,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: needs.detect.outputs.run_l1 == 'true'
         with:
-          pattern: wiseeff-ci-server-${{ github.run_attempt }}-*
+          pattern: wiseeff-ci-server-*-*
           path: ${{ runner.temp }}/wiseeff-ci-shards
       - id: results
         env:
@@ -728,7 +728,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: needs.detect.outputs.run_quality == 'true'
         with:
-          pattern: wiseeff-ci-quality-${{ github.run_attempt }}-*
+          pattern: wiseeff-ci-quality-*-*
           path: ${{ runner.temp }}/wiseeff-ci-shards
       - id: results
         env:

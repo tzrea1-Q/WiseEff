@@ -9,7 +9,7 @@ import { createNotApplicableShadow, createUnavailableShadow } from "./verificati
 const identity = {
   event: "pull_request", mode: "", fullAcceptance: false, ref: "refs/pull/828/merge",
   base: "1".repeat(40), head: "2".repeat(40), sha: "3".repeat(40), tree: "4".repeat(40),
-  runId: "100", attempt: "1",
+  repository: "tzrea1-Q/WiseEff", runId: "100", attempt: "1",
 };
 const docs = { selected: "true", docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" };
 const docNeeds = {
@@ -26,6 +26,21 @@ describe("strict CI required results", () => {
   });
   it("accepts docs-only with a successful stable Build and test", () => {
     expect(() => assertRequiredResults({ identity, needs: docNeeds })).not.toThrow();
+  });
+  it("accepts earlier-attempt aggregate outputs from the same run", () => {
+    expect(() => assertRequiredResults({ identity: { ...identity, attempt: "2" }, needs: docNeeds })).not.toThrow();
+  });
+  it.each([
+    { repository: "other/WiseEff" }, { repository: undefined }, { runId: "101" },
+    { sha: "5".repeat(40) }, { tree: "5".repeat(40) }, { head: "5".repeat(40) }, { base: "5".repeat(40) },
+    { event: "workflow_dispatch", mode: "local-non-hdc", base: "", head: "" }, { ref: "refs/pull/829/merge" },
+    { fullAcceptance: true }, { mode: "local-non-hdc" }, { attempt: "3" }, { attempt: "0" },
+    { attempt: "" }, { attempt: undefined }, { attempt: 1 }, { attempt: "01" },
+  ])("rejects foreign or invalid aggregate identity %j on a partial rerun", (changed) => {
+    for (const job of ["build-and-test", "acceptance-quality"]) {
+      const needs = { ...docNeeds, [job]: { result: "success", outputs: { identity: JSON.stringify({ ...identity, ...changed }) } } };
+      expect(() => assertRequiredResults({ identity: { ...identity, attempt: "2" }, needs })).toThrow();
+    }
   });
   it.each(["false", "unknown", ""])("rejects non-selected or invalid detect selection %s", (selected) => {
     expect(() => assertRequiredResults({ identity, needs: { ...docNeeds, detect: { result: "success", outputs: { ...docs, selected } } } })).toThrow();
@@ -112,15 +127,31 @@ describe("L1 invocation receipts", () => {
   const steps = (job: string) => Object.fromEntries(l1CommandIds[job].map((id) => [id, { outcome: "success", outputs: { report: JSON.stringify(report(id)) } }]));
   const receipts = () => Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity, job, steps: steps(job) })) } }]));
   const flags = { ...docs, docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "true" };
-  it("requires every fixed command and report from the same run, attempt, SHA and tree", () => {
+  it("requires every fixed command and report from the same run, SHA and tree", () => {
     const needs = { detect: { result: "success", outputs: flags }, ...receipts() };
     expect(() => assertL1Results({ identity, needs })).not.toThrow();
-    for (const key of ["sha", "tree", "runId", "attempt", "head", "base"]) {
+    for (const key of ["sha", "tree", "runId", "head", "base"]) {
       const altered = { ...identity, [key]: ["runId", "attempt"].includes(key) ? "2" : "6".repeat(40) };
       expect(() => assertL1Results({ identity: altered, needs })).toThrow();
     }
     for (const result of ["skipped", "cancelled", "missing", "failure"]) expect(() => assertL1Results({ identity, needs: { ...needs, "l1-server": { result } } })).toThrow();
   });
+  it("accepts older job receipts and native/shadow reports on a partial rerun", () => {
+    const needs = { detect: { result: "success", outputs: flags }, ...receipts() };
+    const current = { ...identity, attempt: "2" };
+    expect(() => assertL1Results({ identity: current, needs })).not.toThrow();
+    expect(() => assertShadowSummary(createUnavailableShadow({ identity, command: "frontend", native: report("frontend"), error: "SHADOW_PLAN_INVALID" }),
+      current, "frontend", report("frontend"))).not.toThrow();
+  });
+  it.each([{ runId: "101" }, { sha: "5".repeat(40) }, { repository: "other/WiseEff" }, { attempt: "3" }, { attempt: undefined }])
+    ("rejects invalid nested native report identity %j even with a current job receipt", (changed) => {
+      const needs = { detect: { result: "success", outputs: flags }, ...receipts() };
+      const receipt = JSON.parse(needs["l1-frontend"].outputs.receipt);
+      receipt.identity = { ...identity, attempt: "2" };
+      receipt.reports.frontend.identity = { ...identity, ...changed };
+      needs["l1-frontend"].outputs.receipt = JSON.stringify(receipt);
+      expect(() => assertL1Results({ identity: { ...identity, attempt: "2" }, needs })).toThrow();
+    });
   it("rejects a failed selected child even when its receipt is forged green", () => {
     const needs = { detect: { result: "success", outputs: flags }, ...receipts() };
     expect(() => assertL1Results({ identity, needs: { ...needs, "l1-server": { ...needs["l1-server"], result: "failure" } } })).toThrow();
@@ -274,7 +305,7 @@ describe("L1 invocation receipts", () => {
       ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: mainIdentity, job, steps: nativeSteps(job) })) } }])),
     };
     const env = { ...process.env, PATH: "/usr/bin:/bin", GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main", GITHUB_SHA: sha,
-      GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: "", EFF_HEAD_SHA: "", EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false",
+      GITHUB_REPOSITORY: identity.repository, GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: "", EFF_HEAD_SHA: "", EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false",
       EFF_NEEDS: JSON.stringify(nativeNeeds), GITHUB_OUTPUT: path.join(os.tmpdir(), "wiseeff-ci-shadow-aggregate-output") };
     const invoke = (extra: Record<string, string>) => spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "l1"], { cwd: process.cwd(), env: { ...env, ...extra }, encoding: "utf8" });
     const clean = invoke({});
@@ -360,7 +391,7 @@ describe("L1 invocation receipts", () => {
     mkdirSync(evidenceDirectory, { recursive: true, mode: 0o700 });
     const evidenceRoot = mkdtempSync(path.join(evidenceDirectory, "cli-"));
     const baseEnv = (event: "pull_request" | "push", needs: unknown) => ({ ...process.env, GITHUB_EVENT_NAME: event, GITHUB_REF: event === "push" ? "refs/heads/main" : "refs/pull/828/merge", GITHUB_SHA: sha,
-      GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: event === "push" ? "" : "1".repeat(40), EFF_HEAD_SHA: event === "push" ? "" : "2".repeat(40), EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false", EFF_NEEDS: JSON.stringify(needs) });
+      GITHUB_REPOSITORY: identity.repository, GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: event === "push" ? "" : "1".repeat(40), EFF_HEAD_SHA: event === "push" ? "" : "2".repeat(40), EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false", EFF_NEEDS: JSON.stringify(needs) });
     const invoke = (testCase: (typeof cases)[number], index: number) => {
       const output = path.join(evidenceRoot, `${String(index).padStart(2, "0")}-${testCase.name}.output`);
       const result = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "l1"], { cwd: process.cwd(), env: { ...baseEnv(testCase.event ?? "pull_request", testCase.needs ?? nativeNeeds), EFF_SHADOW: JSON.stringify(testCase.shadow), GITHUB_OUTPUT: output }, encoding: "utf8" });

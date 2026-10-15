@@ -111,9 +111,13 @@ D2 将 CI 的单次质量执行拆为四个矩阵泳道。原生 Playwright 从�
 
 每个质量泳道拥有独立的 PostgreSQL 服务与运行时。迁移后必须依次运行 `npm run db:seed:all` 与 `npm run --if-present seed:quality:admin-lists`，命令成功后才为质量执行设置 `WISEEFF_QUALITY_SKIP_SEED=true`。main 上允许管理员列表 seed 尚未注册；一旦注册，该脚本必须成功，不能抑制失败。脚本缺失不代表管理员列表 fixture 已获覆盖。每个质量泳道保留原有 **35 分钟**作业超时。
 
-L1 后端使用两个原生 Vitest 分片：`i=1,2` 分别执行 `npm run test:server -- --shard=i/2`，各自拥有 `pgvector/pgvector:pg16` 服务，保留原有 **20 分钟**作业超时。原生分片清单必须互不重叠，其并集必须等于未分片配置的完整后端清单；不能用手选文件子集替代原生分片。全部原有 L1 命令及文档/vector 检查继续保留。
+L1 后端使用两个按时长均衡的整文件分片，各自拥有 `pgvector/pgvector:pg16` 服务，保留原有 **20 分钟**作业超时。原生未分片 `vitest list --filesOnly` 文件发现沿用未变更的后端 include/exclude 规则，不导入测试或执行 global setup。`npm run test:server` 接收分片拥有的绝对文件列表，替代 `--shard`，保留正常数据库 setup 与测试语义。`scripts/ci-server-inventory-reporter.ts` 在同一次实际运行的收集阶段、测试体执行之前，记录已注册测试快照，不再额外执行导入/数据库收集。每份回执包含共同的完整文件清单与本分片的已收集测试 ID。文件发现/收集/实际执行清单精确匹配、`filesSha256` 与汇总回执继续要求每个配置文件和已注册测试恰好执行一次。全部原有 L1 命令及文档/vector 检查继续保留。
 
-汇总通过工件回执完成，不能使用矩阵输出的最后写入者覆盖语义。必须精确收齐四个质量泳道和两个后端分片，核验工件/回执唯一归属、收集与实际执行清单完全一致，以及 checkout SHA/tree、workflow/run/attempt 和命令/project/lane 或 shard 身份一致。工件/回执缺失、重复、陈旧、格式错误、身份不匹配、上传失败、必需 worker 失败或取消、必需测试为零或全部跳过，均按 fail-closed 拒绝通过。质量清单并集将 warmup 按每泳道一次计入，其他测试仅计入一次；后端清单保留精确分片归属。
+`scripts/server-shard-plan.ts` 复用验收时长均衡器：最长文件优先，分配给当前权重最小的分片，文件名/分片编号确定性破同分。`scripts/server-durations.json` 保存建议性 Vitest JSON 文件权重（`endTime - startTime`，含 hooks 与失败结果）；新文件或零时长文件使用最慢已记录文件的权重（没有测量数据时回退为 1 ms）。通过 `node --experimental-strip-types scripts/server-shard-plan.ts refresh <report.json> [<report-root>]` 刷新；报告 checkout 根目录与当前 checkout 不同时须传入该根目录。初始 653 个文件的快照来自协调者于 2026-10-14 提供的报告，其中包含失败与跳过；来源记录报告摘要和失败状态，不能视为验收。协调者须测量两个 Hosted 分片的实际作业墙钟时间后，才能声称达到 ≤11 分钟目标；调度权重不能作为墙钟证据。
+
+汇总通过工件回执完成，不能使用矩阵输出的最后写入者覆盖语义。必须精确收齐四个质量泳道和两个后端分片，核验工件/回执唯一归属、收集与实际执行清单完全一致，以及 checkout SHA/tree、repository/run 和命令/project/lane 或 shard 身份一致。工件/回执缺失、同一 attempt 重复、陈旧、格式错误、身份不匹配、上传失败、必需 worker 失败或取消、必需测试为零或全部跳过，均按 fail-closed 拒绝通过。质量清单并集将 warmup 按每泳道一次计入，其他测试仅计入一次；后端清单保留精确分片归属。
+
+GitHub Actions **Re-run failed jobs** 支持无需全量重跑的恢复（2026-10-14 决策）。成功作业输出及分片/泳道回执允许来自 `1 <= attempt <= current attempt` 的任意一次执行，但 repository、run ID、event、ref、checkout SHA/tree、PR head/base、mode/full-acceptance 选择和 job/lane 身份仍须一致。下载使用 `wiseeff-ci-server-*-*` 与 `wiseeff-ci-quality-*-*`，仅获取当前 run 的工件并保留各 attempt 独立目录；汇总按数值选择每个预期分片/泳道的最新回执，不依赖下载顺序。attempt 缺失或无效、其他 run/commit、未来 attempt、同一 attempt 重复及分片/泳道缺失均 fail-closed；最新回执无效时不得退回旧回执。必需 worker 结果与 Detect 门禁不变。这不构成新 commit 的验收，也不替代协调者必须执行的完整门禁。
 
 保留稳定汇总 job ID/名称 `acceptance-quality` / `Acceptance quality` 与 `l1-server` / `L1 backend`。`Build and test`、`Merge bar` 的 always-run 及 Detect 控制的跳过语义不变：必需矩阵必须全部成功且回执有效；仅成功检测判定不需要时才允许跳过。文档-only 仍要求稳定合入汇总门成功。保留 `Merge bar` 作为 `main` 的 required status check，不能换成各矩阵 worker。此契约不改变 L2 Gate0 预算或验收义务。
 
@@ -123,7 +127,7 @@ L1 后端使用两个原生 Vitest 分片：`i=1,2` 分别执行 `npm run test:s
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 永久注销用户必须执行 API 模式的 `PERM-USER-MGMT-001`，证明 PostgreSQL 外键策略（账号自有数据 `CASCADE`、历史保留数据可空 `SET NULL`）、无 PII 的注销审计，以及非 Admin 调用 `DELETE /api/v1/users/:userId` 返回 401/403。Mock 模式浏览器通过不能满足这一 API/数据库门禁。
-- M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 四个 D2 质量泳道经稳定 `Acceptance quality` 汇总（UI/产品路径）。L1 保留 `l1-static`、`l1-frontend`、`l1-scripts`、`l1-server` 汇总 ID 及全部原命令；脚本和两个原生后端分片各自使用 pgvector 服务与已验证 DTS 工具链，L1 `docs:check` 保留在 vector 设置之后、后端测试之前。原生分片清单共同覆盖配置中的完整文件集，并生成本次私有原生 JSON 报告；工件回执、报告、命令结果、实际执行 SHA/tree/run/attempt 必须一致。必需检查缺失、跳过、取消、零测试或全部必需测试跳过均失败。`Build and test` 与 `Merge bar` 始终运行，文档-only 也要求二者成功。L2 事件继续使用 `acceptance-quality` 作为这些泳道的兄弟汇总门；`acceptance-local-non-hdc` 通过权威 `acceptance:gate0` 让 visual 与 full browser 共用独占运行时，在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档证据。完整证据 finalizer 成功后只上传 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`，live runs root 绝不作为 upload 输入。以后若打开 branch protection，required check 只设 `Merge bar`。
+- M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 四个 D2 质量泳道经稳定 `Acceptance quality` 汇总（UI/产品路径）。L1 保留 `l1-static`、`l1-frontend`、`l1-scripts`、`l1-server` 汇总 ID 及全部原命令；脚本和两个按时长均衡的后端分片各自使用 pgvector 服务与已验证 DTS 工具链，L1 `docs:check` 保留在 vector 设置之后、后端测试之前。原生收集/实际执行清单共同覆盖配置中的完整文件集，并生成本次私有原生 JSON 报告；工件回执、报告、命令结果、实际执行 SHA/tree/run/attempt 必须一致。必需检查缺失、跳过、取消、零测试或全部必需测试跳过均失败。`Build and test` 与 `Merge bar` 始终运行，文档-only 也要求二者成功。L2 事件继续使用 `acceptance-quality` 作为这些泳道的兄弟汇总门；`acceptance-local-non-hdc` 通过权威 `acceptance:gate0` 让 visual 与 full browser 共用独占运行时，在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档证据。完整证据 finalizer 成功后只上传 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`，live runs root 绝不作为 upload 输入。以后若打开 branch protection，required check 只设 `Merge bar`。
 
 ## 有界浏览器夹具检查
 

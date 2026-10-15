@@ -5,7 +5,9 @@ import { chmodSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "
 import { pathToFileURL } from "node:url";
 import type { Identity, NativeSummary } from "./ci-required-results";
 
+const { sameIdentity }: typeof import("./ci-required-results") = await import(new URL("./ci-required-results.ts", import.meta.url).href);
 const { qualityLanes }: typeof import("../e2e/quality/quality-partition") = await import(new URL("../e2e/quality/quality-partition.ts", import.meta.url).href);
+const { balanceServerShards }: typeof import("./server-shard-plan") = await import(new URL("./server-shard-plan.ts", import.meta.url).href);
 export { qualityLanes };
 type Kind = "server" | "quality";
 type Inventory = { tests: string[]; warmup: string[]; files: string[] };
@@ -74,15 +76,46 @@ export function playwrightInventory(report: any, executed: boolean): Inventory {
   return inventory(tests, warmup, files);
 }
 
-export function validateShardInventories(receipts: ShardReceipt[], kind: Kind, identity: Identity): Inventory {
+export function selectShardReceipts(receipts: ShardReceipt[], kind: Kind, identity: Identity): ShardReceipt[] {
+  requireShard(kind === "server" || kind === "quality", "KIND");
   const lanes: readonly string[] = kind === "server" ? ["1", "2"] : qualityLanes;
-  requireShard(receipts.length === lanes.length && new Set(receipts.map((receipt) => receipt.lane)).size === lanes.length, "LANES");
+  const selected = new Map<string, ShardReceipt>();
+  const seen = new Set<string>();
+  for (const receipt of receipts) {
+    requireShard(receipt.version === 1 && receipt.kind === kind && lanes.includes(receipt.lane), "LANE");
+    sameIdentity(receipt.identity, identity);
+    const key = `${receipt.lane}:${receipt.identity.attempt}`;
+    requireShard(!seen.has(key), "LANES");
+    seen.add(key);
+    const previous = selected.get(receipt.lane);
+    if (!previous || BigInt(receipt.identity.attempt) > BigInt(previous.identity.attempt)) selected.set(receipt.lane, receipt);
+  }
+  requireShard(selected.size === lanes.length, "LANES");
+  return lanes.map((lane) => selected.get(lane)!);
+}
+
+export function readShardReceipts(directory: string, kind: Kind, identity: Identity): ShardReceipt[] {
+  const receipts = readdirSync(directory).map((name) => {
+    const folder = path.join(directory, name);
+    requireShard(equal(readdirSync(folder), ["receipt.json"]), "ARTIFACTS");
+    const text = readFileSync(path.join(folder, "receipt.json"), "utf8");
+    const size = Buffer.byteLength(text, "utf8");
+    requireShard(size > 0 && size <= 8 * 1024 * 1024, "SIZE");
+    const receipt: ShardReceipt = JSON.parse(text);
+    requireShard(name === `wiseeff-ci-${kind}-${receipt.identity.attempt}-${receipt.lane}`, "ARTIFACTS");
+    return receipt;
+  });
+  return selectShardReceipts(receipts, kind, identity);
+}
+
+export function validateShardInventories(receipts: ShardReceipt[], kind: Kind, identity: Identity): Inventory {
+  receipts = selectShardReceipts(receipts, kind, identity);
   const planned = receipts[0]?.inventory;
   requireShard(planned && Array.isArray(planned.tests) && planned.tests.length > 0, "EMPTY");
   for (const receipt of receipts) {
-    requireShard(receipt.version === 1 && receipt.kind === kind && lanes.includes(receipt.lane), "LANE");
-    requireShard(equal(receipt.identity, identity), "IDENTITY");
-    requireShard(equal(receipt.inventory, planned), "PLAN_MISMATCH");
+    requireShard(kind === "server" ? equal(receipt.inventory.files, planned.files) && equal(receipt.inventory.warmup, planned.warmup)
+      : equal(receipt.inventory, planned), "PLAN_MISMATCH");
+    if (kind === "server") requireShard(equal(receipt.inventory.tests, receipt.executed.tests), "COVERAGE");
     for (const entries of [receipt.inventory, receipt.executed]) {
       requireShard(Array.isArray(entries.tests) && entries.tests.length > 0 && entries.tests.every((id) => /^[a-f0-9]{64}$/.test(id)), "TESTS");
       requireShard(Array.isArray(entries.warmup) && new Set(entries.warmup).size === entries.warmup.length
@@ -93,12 +126,13 @@ export function validateShardInventories(receipts: ShardReceipt[], kind: Kind, i
     requireShard(equal(receipt.executed.warmup, planned.warmup), "WARMUP");
   }
   requireShard(kind === "quality" ? planned.warmup.length > 0 : planned.warmup.length === 0, "WARMUP");
+  const required = kind === "server" ? receipts.flatMap((receipt) => receipt.inventory.tests) : planned.tests;
   const executed = receipts.flatMap((receipt) => receipt.executed.tests.filter((id) => !planned.warmup.includes(id)));
-  requireShard(equal(sorted(executed), sorted(planned.tests.filter((id) => !planned.warmup.includes(id)))), "COVERAGE");
+  requireShard(equal(sorted(executed), sorted(required.filter((id) => !planned.warmup.includes(id)))), "COVERAGE");
   const files = receipts.flatMap((receipt) => receipt.executed.files);
   requireShard(equal(sorted([...new Set(files)]), planned.files), "FILES");
   if (kind === "server") requireShard(new Set(files).size === files.length, "FILE_OVERLAP");
-  return planned;
+  return kind === "server" ? { ...planned, tests: sorted(required) } : planned;
 }
 
 function receiptDirectory(): string {
@@ -117,25 +151,32 @@ function load(name: string): any {
 
 export function discoverServerInventory(identity: Identity): void {
   requireShard(/^[12]\/2$/.test(process.env.WISEEFF_CI_SERVER_SHARD ?? ""), "LANE");
-  const collect = (name: string, shard?: string) => {
-    const output = path.join(receiptDirectory(), name);
-    execFileSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.server.config.ts", "--includeTaskLocation", `--json=${output}`,
-      ...(shard ? [`--shard=${shard}`] : [])], { stdio: "inherit" });
-    return vitestInventory(JSON.parse(readFileSync(output, "utf8")), process.cwd());
-  };
-  save("discovery.json", { identity, inventory: collect("planned.json"), owned: collect("owned.json", process.env.WISEEFF_CI_SERVER_SHARD) });
+  const startedAt = Date.now();
+  const args = ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.server.config.ts"];
+  const listed = JSON.parse(execFileSync(process.execPath, [...args, "--filesOnly", "--json"], { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 }));
+  requireShard(Array.isArray(listed) && listed.length > 0, "DISCOVERY_EMPTY");
+  const files = listed.map((entry: { file: string }) => {
+    requireShard(entry !== null && typeof entry.file === "string", "DISCOVERY_FILE");
+    return relativeFile(entry.file, process.cwd());
+  }).sort();
+  const plan = balanceServerShards(files);
+  const selected = plan[Number(process.env.WISEEFF_CI_SERVER_SHARD!.split("/")[0]) - 1];
+  save("discovery.json", { identity, inventory: { tests: [], warmup: [], files }, owned: { files: selected.files } });
+  console.log(`CI backend discovery: ${Date.now() - startedAt} ms; shard ${process.env.WISEEFF_CI_SERVER_SHARD}: ${selected.files.length}/${files.length} files, scheduling weight ${selected.durationMs} ms (not wall time).`);
 }
 
 export function serverShardFiles(): string[] {
   return load("discovery.json").owned.files.map((file: string) => path.resolve(file));
 }
 
-export function recordServerExecution(report: unknown, files: string[], native: NativeSummary): void {
+export function recordServerExecution(report: unknown, files: string[], native: NativeSummary, collection: Parameters<typeof vitestInventory>[0]): void {
   const discovery = load("discovery.json");
   requireShard(equal(discovery.identity, native.identity), "IDENTITY");
+  const collected = vitestInventory(collection, process.cwd());
   const executed = vitestExecution(report, process.cwd());
-  requireShard(equal(discovery.owned, executed) && equal(sorted(files.map((file) => relativeFile(file, process.cwd()))), executed.files), "COVERAGE");
-  save("execution.json", { executed, native });
+  requireShard(equal(collected, executed) && equal(discovery.owned.files, collected.files)
+    && equal(sorted(files.map((file) => relativeFile(file, process.cwd()))), executed.files), "COVERAGE");
+  save("execution.json", { collected, executed, native });
 }
 
 export function finishServerReceipt(receipt: any, identity: Identity): void {
@@ -145,7 +186,7 @@ export function finishServerReceipt(receipt: any, identity: Identity): void {
   const execution = load("execution.json");
   requireShard(equal(discovery.identity, identity) && equal(execution.native, receipt.reports.server), "IDENTITY");
   save("receipt.json", { version: 1, kind: "server", lane: shard.split("/")[0],
-    identity, inventory: discovery.inventory, executed: execution.executed, receipt } satisfies ShardReceipt);
+    identity, inventory: { ...discovery.inventory, tests: execution.collected.tests }, executed: execution.executed, receipt } satisfies ShardReceipt);
 }
 
 async function runQuality() {
@@ -188,18 +229,7 @@ async function aggregate(kind: Kind) {
   requireShard(process.env.RUNNER_TEMP, "TEMP");
   const directory = path.join(process.env.RUNNER_TEMP, "wiseeff-ci-shards");
   const lanes: readonly string[] = kind === "server" ? ["1", "2"] : qualityLanes;
-  const names = lanes.map((lane) => `wiseeff-ci-${kind}-${identity.attempt}-${lane}`);
-  requireShard(equal(sorted(readdirSync(directory)), sorted(names)), "ARTIFACTS");
-  const receipts: ShardReceipt[] = names.map((name, index) => {
-    const folder = path.join(directory, name);
-    requireShard(equal(readdirSync(folder), ["receipt.json"]), "ARTIFACTS");
-    const text = readFileSync(path.join(folder, "receipt.json"), "utf8");
-    const size = Buffer.byteLength(text, "utf8");
-    requireShard(size > 0 && size <= 8 * 1024 * 1024, "SIZE");
-    const receipt = JSON.parse(text);
-    requireShard(receipt.lane === lanes[index], "LANE");
-    return receipt;
-  });
+  const receipts = readShardReceipts(directory, kind, identity);
   const planned = validateShardInventories(receipts, kind, identity);
   if (kind === "server") {
     for (const receipt of receipts) {
@@ -211,7 +241,7 @@ async function aggregate(kind: Kind) {
     const native: NativeSummary = { version: 1, command: "server", identity, passed: planned.tests.length, skipped: 0,
       files: planned.files.length, optionalSkips: {}, sha256: digest(receipts.map((receipt) => (receipt.receipt as any).reports.server.sha256)),
       filesSha256: digest(sorted(planned.files.map((file) => path.resolve(file)))) };
-    const receipt = { ...(receipts[0].receipt as any), reports: { server: native } };
+    const receipt = { ...(receipts[0].receipt as any), identity, reports: { server: native } };
     ci.writeOutput("receipt", receipt);
     ci.writeOutput("shadow", ci.runShadowAdapter(identity, "server", planned.files.map((file) => path.resolve(file)), native));
   }

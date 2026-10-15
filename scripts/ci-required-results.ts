@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 type RecordValue = Record<string, unknown>;
 export type Identity = {
   event: string; mode: string; fullAcceptance: boolean; ref: string;
-  base: string; head: string; sha: string; tree: string; runId: string; attempt: string;
+  repository: string; base: string; head: string; sha: string; tree: string; runId: string; attempt: string;
 };
 export type NativeSummary = {
   version: 1; command: string; identity: Identity; passed: number; skipped: number; files: number;
@@ -41,7 +41,8 @@ function exactKeys(value: RecordValue, keys: readonly string[]) {
 }
 export function readIdentity(value: unknown): Identity {
   const item = record(value);
-  exactKeys(item, ["event", "mode", "fullAcceptance", "ref", "base", "head", "sha", "tree", "runId", "attempt"]);
+  exactKeys(item, ["event", "mode", "fullAcceptance", "ref", "repository", "base", "head", "sha", "tree", "runId", "attempt"]);
+  requireCi(typeof item.repository === "string" && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(item.repository), "IDENTITY_REPOSITORY");
   for (const key of ["sha", "tree"]) requireCi(typeof item[key] === "string" && /^[a-f0-9]{40}$/.test(item[key] as string), "IDENTITY_SHA");
   for (const key of ["runId", "attempt"]) requireCi(typeof item[key] === "string" && /^[1-9][0-9]{0,19}$/.test(item[key] as string), "IDENTITY_RUN");
   requireCi(typeof item.fullAcceptance === "boolean" && typeof item.ref === "string", "IDENTITY_EVENT");
@@ -206,9 +207,11 @@ function parseJson(value: unknown): unknown {
   requireCi(typeof value === "string" && Buffer.byteLength(value) <= 64 * 1024, "JSON_SIZE");
   return JSON.parse(value);
 }
-function sameIdentity(value: unknown, expected: Identity) {
+export function sameIdentity(value: unknown, expected: Identity): void {
   const actual = readIdentity(value);
-  requireCi(Object.keys(expected).every((key) => actual[key as keyof Identity] === expected[key as keyof Identity]), "IDENTITY_MISMATCH");
+  readIdentity(expected);
+  requireCi(Object.keys(expected).every((key) => key === "attempt" || actual[key as keyof Identity] === expected[key as keyof Identity])
+    && BigInt(actual.attempt) <= BigInt(expected.attempt), "IDENTITY_MISMATCH");
 }
 export function assertTestSummary(value: unknown, command: string, identity: Identity): asserts value is NativeSummary {
   const summary = record(value);
@@ -446,7 +449,7 @@ export function currentIdentity(): Identity {
   requireCi(env.EFF_FULL_ACCEPTANCE === "true" || env.EFF_FULL_ACCEPTANCE === "false", "LABEL_FLAG");
   return readIdentity({ event: env.GITHUB_EVENT_NAME, mode: env.EFF_MODE ?? "", fullAcceptance: env.EFF_FULL_ACCEPTANCE === "true",
     ref: env.GITHUB_REF, base: env.EFF_BASE_SHA ?? "", head: env.EFF_HEAD_SHA ?? "", sha, tree: git("HEAD^{tree}"),
-    runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT });
+    repository: env.GITHUB_REPOSITORY, runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT });
 }
 export function writeOutput(key: string, value: unknown) {
   const json = JSON.stringify(value);
@@ -511,7 +514,9 @@ async function runTest(command: string, identity: Identity) {
   const directory = mkdtempSync(path.join(realpathSync(process.env.RUNNER_TEMP), "wiseeff-l1-"));
   chmodSync(directory, 0o700);
   const output = path.join(directory, "report.json");
-  const env = command === "frontend" ? { ...process.env, VITE_WISEEFF_RUNTIME_MODE: process.env.VITE_WISEEFF_RUNTIME_MODE?.trim() || "mock" } : process.env;
+  const collectionOutput = path.join(directory, "collection.json");
+  const env = command === "frontend" ? { ...process.env, VITE_WISEEFF_RUNTIME_MODE: process.env.VITE_WISEEFF_RUNTIME_MODE?.trim() || "mock" }
+    : command === "server" ? { ...process.env, WISEEFF_CI_SERVER_INVENTORY_FILE: collectionOutput } : process.env;
   let files: string[];
   if (command === "server") {
     const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
@@ -529,7 +534,7 @@ async function runTest(command: string, identity: Identity) {
     missingIsolatedDockerStores: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T34A_POSTGRES_URL,
     missingIsolatedTarget: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T33B_PUBLIC_URL };
   const result = spawnSync("npm", [...specification.args, "--", "--reporter=default", "--reporter=json", `--outputFile=${output}`,
-    ...(command === "server" ? [`--shard=${shard}`, "--includeTaskLocation"] : [])], { stdio: "inherit", env });
+    ...(command === "server" ? [...files, "--includeTaskLocation", "--reporter=./scripts/ci-server-inventory-reporter.ts"] : [])], { stdio: "inherit", env });
   options.finishedAt = Date.now();
   requireCi(result.status === 0 && !result.error, "TEST_COMMAND_FAILED");
   const bytes = readPrivateReport(output);
@@ -538,7 +543,7 @@ async function runTest(command: string, identity: Identity) {
   const native = { version: 1 as const, command, identity, ...summary, sha256: digest(bytes), filesSha256: digest(JSON.stringify(files.sort())) } as NativeSummary;
   if (command === "server") {
     const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
-    shards.recordServerExecution(JSON.parse(bytes.toString("utf8")), files, native);
+    shards.recordServerExecution(JSON.parse(bytes.toString("utf8")), files, native, JSON.parse(readPrivateReport(collectionOutput).toString("utf8")));
   }
   writeOutput("report", native);
   writeOutput("shadow", runShadowAdapter(identity, command, files, native));
