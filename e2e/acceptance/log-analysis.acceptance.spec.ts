@@ -1204,6 +1204,8 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       await page.goto("/log-admin?tab=domains");
       await prepareInteractionSurface(page);
       const governance = page.getByTestId("log-domain-governance");
+      await expect(governance).toBeVisible();
+      await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
       await governance
         .getByRole("table", { name: "业务域列表" })
         .getByRole("row")
@@ -1271,8 +1273,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
       await page.goto("/log-admin?tab=domains");
       await prepareInteractionSurface(page);
-      await page
-        .getByTestId("log-domain-governance")
+      await expect(governance).toBeVisible();
+      await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
+      await governance
         .getByRole("table", { name: "业务域列表" })
         .getByRole("row")
         .filter({ hasText: acceptanceWebhookDomainName })
