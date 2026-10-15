@@ -8,6 +8,7 @@ import { collectionPaths, consistencyReadOnlyRoutes } from "./consistency-routes
 import { compactQualityRoutes } from "./compact-routes";
 import { parseQualityLane, shouldRegisterConsistencyFixture } from "./quality-partition";
 import { installConsistencyReadGuard } from "./consistency";
+import { AUDIT_KIND_LABELS } from "../../src/domain/audit/auditSlugLabels";
 import {
   closeXiaozePopupIfOpen,
   expectBoundedMainScroll,
@@ -178,6 +179,26 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         if (routePath === "/audit") {
+          await test.step("audit kind filter inventory", async () => {
+            const originalUrl = page.url();
+            const more = page.getByRole("button", { name: /^更多筛选/ });
+            await more.click();
+            const kind = page.getByRole("combobox", { name: "事件类型筛选" });
+            await kind.click();
+            const menu = page.getByRole("listbox");
+            const expected = [{ value: "", label: "全部类型" },
+              ...Object.entries(AUDIT_KIND_LABELS).map(([value, label]) => ({ value, label }))];
+            await expect(menu.getByRole("option")).toHaveCount(expected.length);
+            expect(await menu.getByRole("option").evaluateAll((options) => options.map((option) => ({
+              value: option.getAttribute("data-value"), label: option.textContent?.trim()
+            })))).toEqual(expected);
+            await page.keyboard.press("Escape");
+            await expect(menu).toBeHidden();
+            await expect(kind).toBeFocused();
+            await more.click();
+            await expect(more).toHaveAttribute("aria-expanded", "false");
+            await expect(page).toHaveURL(originalUrl);
+          });
           await test.step("audit severity column filter", async () => {
             const trigger = page.getByRole("columnheader", { name: /严重度/ }).getByRole("button", { name: "筛选严重度", exact: true });
             await expect(trigger).toBeVisible();
