@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import fs, { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -41,6 +41,35 @@ it("semantically checks a changed server test that the ordinary build excludes",
   const bad = await inspectStaticCoverage(["server/example.test.ts"], root, { execute: true });
   expect(bad.status).toBe("failed");
   expect(bad.problems.join("\n")).toContain("TS2322");
+});
+
+it("persists one lint cache update while retaining each uncovered file's lint and type errors", async () => {
+  write("src/native.ts", "export const value = 1;");
+  write("server/first.test.ts", 'export const value: number = "wrong";\nexport function valueOf() { return 1; return 2; }');
+  write("ops/second.test.ts", 'export const value: number = "wrong";\nexport const valid = typeof value === "invalid";');
+  write("eslint.config.js", readFileSync(join(root, "eslint.config.js"), "utf8").replace(
+    'rules: { "no-unreachable": "error" } }]',
+    'rules: { "no-unreachable": "error" } }, { files: ["ops/**/*.ts"], rules: { "valid-typeof": "error" } }]'
+  ));
+  const { ESLint } = await import("eslint");
+  const cache = join(root, "cache/eslint");
+  const nativeLint = new ESLint({ cwd: realpathSync(root), cache: true, cacheLocation: cache });
+  await nativeLint.lintFiles(["src"]);
+  const writes = vi.spyOn(fs, "writeFileSync");
+  try {
+    const result = await inspectStaticCoverage(["server/first.test.ts", "ops/second.test.ts"], root, {
+      execute: true, nativeLintPassed: true, nativeLint,
+    });
+    expect(result.status).toBe("failed");
+    for (const file of ["server/first.test.ts", "ops/second.test.ts"]) {
+      expect(result.problems.some((problem) => problem.startsWith(`${file}:`) && problem.includes("TS2322"))).toBe(true);
+    }
+    expect(result.problems, result.problems.join("\n")).toEqual(expect.arrayContaining([
+      expect.stringContaining("server/first.test.ts:2 ESLint no-unreachable:"),
+      expect.stringContaining("ops/second.test.ts:2 ESLint valid-typeof:"),
+    ]));
+    expect(writes.mock.calls.filter(([file]) => file === cache)).toHaveLength(1);
+  } finally { writes.mockRestore(); }
 });
 
 it("reports real repository test projects without pretending selection executed them", async () => {

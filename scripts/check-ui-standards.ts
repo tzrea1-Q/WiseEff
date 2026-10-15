@@ -399,7 +399,8 @@ export function scanTsContent(filePath: string, content: string): UiViolation[] 
   const isTsx = filePath.endsWith(".tsx");
   const views = extractTsxLineViews(content);
 
-  if (isTsx && !nativeSelectExceptions[filePath] && content.includes("select")) {
+  // This only selects AST candidates; escapes and JSX tag-name comments always fall back to parsing.
+  if (isTsx && !nativeSelectExceptions[filePath] && /<\s*select\b|\\|<\s*\/[/*]/.test(content)) {
     const source = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const visit = (node: ts.Node): void => {
       if (
