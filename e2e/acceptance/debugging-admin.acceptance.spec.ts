@@ -290,7 +290,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     try {
       await page.goto("/debugging-admin/nodes");
       await responseFetched;
-      const main = page.getByRole("main");
+      const main = page.locator("#main-content");
       await expect(main).toHaveAttribute("data-runtime-state", "loading");
       await expect(page.getByRole("status").filter({ hasText: "正在连接雷泽服务" })).toBeVisible();
       // The table is rendered but inert, so target the actual geometry without an actionability wait.

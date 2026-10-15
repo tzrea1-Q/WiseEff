@@ -1689,39 +1689,51 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("shows a persistent no-data banner when API refresh fails and recovers via retry", async () => {
     window.history.replaceState(null, "", "/parameter-home");
+    let releaseDevices!: () => void;
+    const devices = new Promise<never[]>((resolve) => { releaseDevices = () => resolve([]); });
     const listProjects = vi.fn()
       .mockRejectedValueOnce(new Error("api down"))
+      .mockRejectedValueOnce(new Error("api still down"))
       .mockResolvedValue([apiProject]);
     const parameterRepository = createTestParameterRepository({ listProjects });
 
     render(
       <App
-        authClient={createTestAuthClient()}
+        authClient={createTestAuthClient("admin")}
         initialAppState={initialState}
         parameterRepository={parameterRepository}
         parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
         logAnalysisRepository={createTestLogAnalysisRepository([])}
-        debuggingGateway={createAppDebuggingGateway()}
+        debuggingGateway={createAppDebuggingGateway({ listDevices: vi.fn(() => devices) })}
         runtimeMode="api"
       />
     );
 
-    await waitFor(() => {
-      expect(document.querySelector(".api-runtime-error-banner")).toBeInTheDocument();
-    });
-    const banner = document.querySelector(".api-runtime-error-banner") as HTMLElement;
-    expect(banner).toHaveAttribute("role", "alert");
-    expect(banner).toHaveTextContent("无法连接雷泽参数 API，当前无数据");
-    expect(banner).toHaveTextContent("不展示演示数据");
-    expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "error");
+    try {
+      await waitFor(() => {
+        expect(document.querySelector(".api-runtime-error-banner")).toBeInTheDocument();
+      });
+      const banner = document.querySelector(".api-runtime-error-banner") as HTMLElement;
+      expect(banner).toHaveAttribute("role", "alert");
+      expect(banner).toHaveTextContent("无法连接雷泽参数 API，当前无数据");
+      expect(banner).toHaveTextContent("不展示演示数据");
+      expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "error");
 
-    fireEvent.click(within(banner).getByRole("button", { name: "重试" }));
+      fireEvent.click(within(banner).getByRole("button", { name: "重试" }));
 
-    await waitFor(() => {
-      expect(document.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
-    });
-    expect(listProjects.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "ready");
+      await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "error"));
+      const retry = within(document.querySelector(".api-runtime-error-banner") as HTMLElement).getByRole("button");
+      expect(retry).toBeEnabled();
+      fireEvent.click(retry);
+      await waitFor(() => {
+        expect(document.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
+      });
+      expect(listProjects).toHaveBeenCalledTimes(3);
+      expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "ready");
+    } finally {
+      await act(async () => { releaseDevices(); });
+    }
   });
 
   it("dismisses the newest notification and leaves the rest of the queue", () => {

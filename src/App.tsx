@@ -651,7 +651,6 @@ function AppShell({
   const [apiRuntimePending, setApiRuntimePending] = useState<ReadonlySet<ApiRuntimeDataDomain>>(
     () => new Set(runtimeMode === "api" ? ["parameters", "logs", "debugging"] : [])
   );
-  const [apiRuntimeRetrying, setApiRuntimeRetrying] = useState(false);
   const domainDataHydratedRef = useRef(false);
   const apiRuntimeGeneration = useRef(0);
 
@@ -699,14 +698,6 @@ function AppShell({
     [debuggingActions, logActions, parameterActions]
   );
 
-  const retryApiRuntimeData = useCallback(async () => {
-    setApiRuntimeRetrying(true);
-    try {
-      await refreshApiRuntimeData();
-    } finally {
-      setApiRuntimeRetrying(false);
-    }
-  }, [refreshApiRuntimeData]);
   const mockNotificationsClient = useMemo(
     () =>
       runtimeMode === "mock"
@@ -1109,10 +1100,9 @@ function AppShell({
         <button
           type="button"
           className="button"
-          disabled={apiRuntimeRetrying}
-          onClick={() => void retryApiRuntimeData()}
+          onClick={() => void refreshApiRuntimeData()}
         >
-          {apiRuntimeRetrying ? "重试中…" : "重试"}
+          重试
         </button>
       </div>
     ) : pageRuntimeState === "loading" ? (
