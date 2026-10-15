@@ -58,11 +58,11 @@ it("reports real repository test projects without pretending selection executed 
 
 it("uses browser globals only in the browser test environment", async () => {
   write("e2e/example.spec.ts", 'export const label = document.title;');
-  expect((await inspectStaticCoverage(["e2e/example.spec.ts"], root, { execute: true })).status).toBe("passed");
   write("server/example.test.ts", 'export const label = document.title;');
-  const node = await inspectStaticCoverage(["server/example.test.ts"], root, { execute: true });
+  const node = await inspectStaticCoverage(["e2e/example.spec.ts", "server/example.test.ts"], root, { execute: true });
   expect(node.status).toBe("failed");
   expect(node.problems.join("\n")).toContain("document");
+  expect(node.problems.every((problem) => problem.startsWith("server/example.test.ts:"))).toBe(true);
 });
 
 it("rejects ignored, missing, unsupported and misconfigured changes instead of empty success", async () => {

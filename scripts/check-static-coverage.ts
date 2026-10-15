@@ -1,8 +1,11 @@
 import { existsSync, realpathSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 import { isAbsolute, relative, resolve } from "node:path";
 import ts from "typescript";
 import { ESLint } from "eslint";
+import { z } from "zod";
 
 type Check = { status: "configured" | "checked" | "excluded" | "missing"; reason?: string; project?: string; config?: string; rules?: number };
 export type StaticCoverage = {
@@ -12,9 +15,23 @@ export type StaticCoverage = {
   problems: string[];
   durationMs: number;
 };
+const staticCheckSchema = z.object({ status: z.enum(["configured", "checked", "excluded", "missing"]), reason: z.string().optional(), project: z.string().optional(), config: z.string().optional(), rules: z.number().int().positive().optional() }).strict();
+export const staticCoverageSchema: z.ZodType<StaticCoverage> = z.object({
+  status: z.enum(["selected", "passed", "failed", "not-applicable"]), testExecution: z.literal("not-run"),
+  files: z.array(z.object({ path: z.string().min(1), lint: staticCheckSchema, typecheck: staticCheckSchema, testSuiteCandidate: z.string().nullable() }).strict()).nonempty(),
+  problems: z.array(z.string()), durationMs: z.number().nonnegative(),
+}).strict().superRefine((report, context) => {
+  const checks = report.files.flatMap((file) => [file.lint.status, file.typecheck.status]);
+  if ((report.status === "failed") !== (report.problems.length > 0)
+    || (report.status === "passed" && (!checks.includes("checked") || checks.some((status) => status !== "checked" && status !== "excluded")))
+    || (report.status === "selected" && (!checks.includes("configured") || checks.some((status) => status !== "configured" && status !== "excluded")))
+    || (report.status === "not-applicable" && checks.some((status) => status !== "excluded"))) {
+    context.addIssue({ code: "custom", message: "Static coverage status must match actual check states and diagnostics." });
+  }
+});
 
 /** Actual tool applicability; execute checks selected roots, never claims a full project build. */
-export async function inspectStaticCoverage(paths: string[], root = process.cwd(), { execute = false, deletedPaths = [] }: { execute?: boolean; deletedPaths?: string[] } = {}): Promise<StaticCoverage> {
+export async function inspectStaticCoverage(paths: string[], root = process.cwd(), { execute = false, deletedPaths = [], nativeLintPassed = false }: { execute?: boolean; deletedPaths?: string[]; nativeLintPassed?: boolean } = {}): Promise<StaticCoverage> {
   const started = performance.now();
   root = realpathSync(root);
   if (!paths.length) throw new Error("Empty static coverage selection");
@@ -45,6 +62,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
     const absolute = resolve(root, file);
     if (!existsSync(absolute)) {
       if (deletedPaths.includes(file)) entry.lint = entry.typecheck = { status: "excluded", reason: "Git-confirmed deletion; current-file checks cannot execute. Keep conservative affected-test fallback." };
+      else if (!/\.[cm]?[jt]sx?$/.test(file) && !/(?:^|\/)tsconfig[^/]*\.json$/.test(file)) entry.lint = entry.typecheck = { status: "excluded", reason: "Absent non-code input; existing affected gates own validation, no static code acceptance." };
       else result.problems.push(`Missing changed file: ${file}`);
       continue;
     }
@@ -75,7 +93,9 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
       if (!configPath || !config || !rules || await eslint.isPathIgnored(absolute)) throw new Error("No applicable ESLint rules (ignored or uncovered).");
       if (relative(root, configPath).startsWith("..")) throw new Error("ESLint configuration is outside the repository.");
       entry.lint = { status: execute ? "checked" : "configured", config: relative(root, configPath), rules };
-      if (execute) for (const lint of await eslint.lintFiles([absolute])) {
+      const coveredByNativeLint = nativeLintPassed && (/^src\/.+\.tsx?$/.test(file) || /^scripts\/.+\.(?:test|spec)\.tsx?$/.test(file));
+      if (execute && coveredByNativeLint) entry.lint.reason = "Checked by the successful original ESLint src/scripts-test pass in this invocation.";
+      if (execute && !coveredByNativeLint) for (const lint of await eslint.lintFiles([absolute])) {
         for (const message of lint.messages.filter((item) => item.severity === 2 || item.fatal)) {
           result.problems.push(`${file}:${message.line ?? 0} ESLint ${message.ruleId ?? "parse"}: ${message.message}`);
         }
@@ -103,6 +123,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
       if (!entry.typecheck.project) throw new Error("No TypeScript project includes this changed file.");
     } catch (error) { result.problems.push(`${file}: ${error instanceof Error ? error.message : String(error)}`); }
   }
+  let previousProgram: ts.Program | undefined;
   if (execute) for (const [name, files] of groups) {
     const project = projects.get(name)!;
     for (const type of project.options.types ?? []) {
@@ -110,7 +131,9 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
         result.problems.push(`${name}: TypeScript cannot resolve configured type library: ${type}`);
       }
     }
-    const program = ts.createProgram({ rootNames: [...files, ...project.fileNames.filter((file) => file.endsWith(".d.ts"))], options: { ...project.options, incremental: false, composite: false, noEmit: true } });
+    // Native AST reuse within this invocation; each project's roots/options and diagnostics remain independent.
+    const program = ts.createProgram({ rootNames: [...files, ...project.fileNames.filter((file) => file.endsWith(".d.ts"))], options: { ...project.options, incremental: false, composite: false, noEmit: true }, oldProgram: previousProgram });
+    previousProgram = program;
     const diagnostics = [...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics()];
     for (const file of files) {
       const source = program.getSourceFile(file);
@@ -135,4 +158,18 @@ export function readStaticChanges(root = process.cwd(), base = "HEAD") {
   ].filter(Boolean))].sort();
   const deletedPaths = git(["diff", "--name-only", "--no-renames", "--diff-filter=D", "-z", revision, "--"]).split("\0").filter(Boolean);
   return { base: revision, paths, deletedPaths };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const { values, positionals } = parseArgs({ options: { base: { type: "string" } }, allowPositionals: true });
+    if ((values.base !== undefined) === (positionals.length > 0)) throw new Error("Usage: npm run lint:changed -- <changed files...> OR --base <commit>");
+    const changes = values.base === undefined ? { paths: positionals, deletedPaths: [] } : readStaticChanges(process.cwd(), values.base);
+    const report = await inspectStaticCoverage(changes.paths, process.cwd(), { execute: true, deletedPaths: changes.deletedPaths });
+    console.log(JSON.stringify({ base: "base" in changes ? changes.base : null, staticCoverage: report, ciStatus: "not-run" }, null, 2));
+    process.exitCode = report.status === "failed" ? 1 : 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
