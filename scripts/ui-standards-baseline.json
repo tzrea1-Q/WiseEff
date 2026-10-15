@@ -65,6 +65,10 @@
     "english-chrome": {
       "count": 0,
       "note": "Hard-forbidden since 2026-08-13 (zeroed in P2); never ratchet up."
+    },
+    "native-select": {
+      "count": 0,
+      "note": "Native JSX select migration completed in #1186; exact reviewed exceptions live in the checker. Keep at zero."
     }
   }
 }
