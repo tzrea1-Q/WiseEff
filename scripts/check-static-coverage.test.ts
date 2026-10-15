@@ -1,10 +1,11 @@
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import ts from "typescript";
 import { inspectStaticCoverage, readStaticChanges } from "./check-static-coverage";
 
 let root: string;
@@ -65,6 +66,41 @@ it("uses browser globals only in the browser test environment", async () => {
   expect(node.status).toBe("failed");
   expect(node.problems.join("\n")).toContain("document");
   expect(node.problems.every((problem) => problem.startsWith("server/example.test.ts:"))).toBe(true);
+});
+
+it("reads shared inputs once per check while retaining each project's module rules", async () => {
+  write("src/shared.ts", "const collision = 1;");
+  write("server/example.test.ts", '/// <reference path="../src/shared.ts" />\nconst collision = "node";');
+  write("src/example.test.ts", '/// <reference path="./shared.ts" />\nconst collision = "browser";');
+  for (const [name, moduleDetection] of [["tests.node", "force"], ["tests.browser", "legacy"]]) {
+    const config = JSON.parse(readFileSync(join(root, `tsconfig.${name}.json`), "utf8"));
+    write(`tsconfig.${name}.json`, JSON.stringify({ ...config, compilerOptions: { ...config.compilerOptions, moduleDetection } }));
+  }
+  const read = vi.spyOn(ts.sys, "readFile");
+  try {
+    const result = await inspectStaticCoverage(["server/example.test.ts", "src/example.test.ts"], root, { execute: true });
+    expect(result.status).toBe("failed");
+    expect(result.problems.some((problem) => problem.startsWith("src/example.test.ts:") && problem.includes("TS2451"))).toBe(true);
+    expect(result.problems.some((problem) => problem.startsWith("server/example.test.ts:"))).toBe(false);
+    expect(read.mock.calls.filter(([file]) => file === realpathSync(join(root, "src/shared.ts")))).toHaveLength(1);
+  } finally {
+    read.mockRestore();
+  }
+});
+
+it("reuses native production project coverage while still checking excluded tests", async () => {
+  write("src/example.ts", "export const value: number = 1;");
+  write("server/example.ts", "export const value: number = 1;");
+  write("src/example.test.ts", 'export const value: number = "wrong";');
+  write("server/example.test.ts", 'export const value: number = "wrong";');
+  const result = await inspectStaticCoverage([
+    "src/example.ts", "server/example.ts", "src/example.test.ts", "server/example.test.ts"
+  ], root, { execute: true, nativeTypecheckProjects: ["tsconfig.app.json", "tsconfig.node.json", "tsconfig.tests.node.json"] });
+  expect(result.status).toBe("failed");
+  expect(result.problems.filter((problem) => problem.includes("TS2322"))).toHaveLength(2);
+  expect(result.files.filter((file) => file.typecheck.reason?.includes("successful native TypeScript build")).map((file) => file.path))
+    .toEqual(["server/example.ts", "src/example.ts"]);
+  expect(result.files.every((file) => file.typecheck.status === "checked")).toBe(true);
 });
 
 it("rejects ignored, missing, unsupported and misconfigured changes instead of empty success", async () => {
