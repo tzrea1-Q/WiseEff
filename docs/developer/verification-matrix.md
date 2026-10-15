@@ -83,14 +83,14 @@ For changes to these channels, run `npm run test:scripts -- scripts/acceptance-f
 
 ### Compact failure index navigation
 
-For a failed candidate, open the existing diagnostic-settlement job summary: the compact artifact is linked first, followed by the full safe archive when available. Set `run`, `attempt`, `shard`, `checkout` and `base` from that exact summary; `checkout` is the observed checkout SHA, which can differ from the PR head. `base` is the workflow's accepted-base SHA. Confirm the run still belongs to the current PR head before treating it as current evidence:
+For a failed candidate, open the existing diagnostic-settlement job summary: the compact artifact is linked first, followed by the full safe archive when available. Set `run`, `attempt`, `shard`, `checkout`, `base` and `tree` from that exact summary; `checkout` and `tree` are the observed checkout SHA/tree, which can differ from the PR head. `base` is the workflow's accepted-base SHA. Missing observed identity stays unavailable. Confirm the run still belongs to the current PR head before treating it as current evidence:
 
 ```sh
 gh run view "$run" --attempt "$attempt" --json headSha,status,conclusion
 gh pr view "$pr" --json headRefOid
 index_dir=$(mktemp -d)
 gh run download "$run" --name "wiseeff-failure-index-${run}-${attempt}-acceptance-local-non-hdc-shard-${shard}" --dir "$index_dir"
-python3 -I scripts/acceptance-failure-index.py --inspect "$index_dir/index.json" "$run" "$attempt" "$shard" "$checkout" "$base"
+python3 -I scripts/acceptance-failure-index.py --inspect "$index_dir/index.json" "$run" "$attempt" "$shard" "$checkout" "$base" "$tree"
 ```
 
 The inspector reads only that bounded file and prints controlled fields. Corrupt/missing/stale identities return unavailable; readable rejection/unavailable artifacts are not diagnoses or passes. Source locators appear only when local accepted/executed Git blobs can be verified equal; missing objects remain `unverified` without fetching or changing the checkout. A generated index reports categories and validated report-entry ordinals; root-cause classification remains unknown until investigated. If deeper evidence is needed, use the exact full-archive link in the same summary, match its ZIP SHA-256 to the inspected index, then open the corresponding report entry and its screenshot/trace references. A refused/missing safe archive has no raw-log fallback. Download only the exact compact artifact first and inspect its validated projection rather than displaying downloaded JSON verbatim.
