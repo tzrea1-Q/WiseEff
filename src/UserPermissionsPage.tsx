@@ -949,7 +949,6 @@ export function UserPermissionsPage({
                 <SelectControl
                   className="user-permissions-modal-control"
                   ariaLabel="初始角色"
-                  withinModal
                   value={initialRoleId}
                   onValueChange={setInitialRoleId}
                   options={visiblePlatformRoles(state).map((role) => ({ value: role.id, label: roleLabelOf(role.id) }))}

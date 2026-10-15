@@ -2,24 +2,26 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ModuleManagementRowActions } from "./ModuleManagementRowActions";
 import userEvent from "@testing-library/user-event";
+import { ModalDialog } from "@/components/common/ModalDialog";
 
 describe("ModuleManagementRowActions", () => {
   it("renders an accessible portal menu and confirms before deleting a module", async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn();
     render(
-      <ModuleManagementRowActions
+      <ModalDialog open className="confirm-dialog" onDismiss={vi.fn()}>
+        {({ titleId }) => <><h2 id={titleId}>模块管理</h2><ModuleManagementRowActions
         moduleName="Power IC"
         itemCount={0}
         viewItemsLabel="查看节点"
         canDelete
-        withinModal
         onEdit={vi.fn()}
         onViewItems={vi.fn()}
         onAddChild={vi.fn()}
         onMove={vi.fn()}
         onDelete={onDelete}
-      />
+      /></>}
+      </ModalDialog>
     );
 
     await user.click(screen.getByRole("button", { name: "Power IC 更多操作" }));

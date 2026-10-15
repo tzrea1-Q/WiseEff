@@ -107,7 +107,6 @@ export function ProjectAdminFormDialog({
                 value={status}
                 onValueChange={setStatus}
                 disabled={loading}
-                withinModal
                 options={EDITABLE_PROJECT_STATUSES.map((value) => ({ value, label: PROJECT_ADMIN_STATUS_LABELS[value] }))}
               />
             </label>
