@@ -150,11 +150,11 @@ export function ParameterAdminNextPage({
       const url = new URL(href, window.location.origin);
       if (parseParameterAdminSpecsSubView(pathname) === "identity-mapping") {
         url.pathname = buildParameterAdminSpecsPath("identity-mapping");
-        const current = new URLSearchParams(search);
-        for (const queryKey of ["project", "projectId", "review"]) {
-          const value = current.get(queryKey);
-          if (value !== null) url.searchParams.set(queryKey, value);
-        }
+      }
+      const current = new URLSearchParams(search);
+      for (const queryKey of ["project", "projectId", "review"]) {
+        const value = current.get(queryKey);
+        if (value !== null) url.searchParams.set(queryKey, value);
       }
       const destination = `${url.pathname}${url.search}`;
       if (mode === "replace") {
