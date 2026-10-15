@@ -1,10 +1,11 @@
 import { act, isInaccessible, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuditWorkspace } from "./AuditWorkspace";
 import { collectConsistencyMeasurements } from "../../../e2e/quality/consistency-collector";
 import { requireRowActionVisibility } from "../../../e2e/quality/consistency-assertions";
 import * as auditHttp from "@/infrastructure/http/auditClient";
+import * as auditLabels from "@/domain/audit/auditSlugLabels";
 import type { AuditEventDto, AuditEventListResponse } from "@/domain/audit/types";
 import { useState } from "react";
 import type { AuditQueryState } from "@/hooks/useAuditEvents";
@@ -20,6 +21,12 @@ afterEach(() => {
 });
 
 describe("advanced audit kind filter", () => {
+  beforeEach(() => {
+    // Exercise keyed-form behavior here; the /audit quality fixture verifies the full production inventory.
+    const labels = Object.fromEntries(Object.entries(auditLabels.AUDIT_KIND_LABELS)
+      .filter(([kind]) => ["parameter-update", "parameter-delete", "user-role-change"].includes(kind)));
+    vi.spyOn(auditLabels, "AUDIT_KIND_LABELS", "get").mockReturnValue(labels);
+  });
   const base: AuditQueryState = { appGroup: "all", severity: "all", search: "", timeWindow: "all" };
   const workspace = (query: AuditQueryState, onQueryChange: (patch: Partial<AuditQueryState>) => void) => <AuditWorkspace isApiMode={false} query={query} onQueryChange={onQueryChange}
     mockEvents={[
