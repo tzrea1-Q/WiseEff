@@ -315,7 +315,7 @@ export function DebugNodeEditorDialog({
                       <Input id={pathId} aria-label={`${label} 节点路径`} aria-invalid={showError} aria-describedby={showError ? `${pathId}-error` : undefined} value={binding.nodePath} disabled={fieldsDisabled || archived} placeholder="设备绝对路径，可留空" onBlur={() => setTouched((current) => ({ ...current, [protocol]: true }))} onChange={(event) => updateBinding(protocol, { nodePath: event.target.value })} />
                       {showError ? <span id={`${pathId}-error`} className="field-error" role="alert">{pathError}</span> : null}
                     </div>
-                    <DebugAdminSelectControl ariaLabel={`${label} 访问模式`} className="debug-node-editor-access" withinModal value={binding.accessMode} disabled={fieldsDisabled || archived} onValueChange={(value) => updateBinding(protocol, { accessMode: value })} options={[
+                    <DebugAdminSelectControl ariaLabel={`${label} 访问模式`} className="debug-node-editor-access" value={binding.accessMode} disabled={fieldsDisabled || archived} onValueChange={(value) => updateBinding(protocol, { accessMode: value })} options={[
                       { value: "RO", label: "RO · 只读" },
                       { value: "WO", label: "WO · 只写" },
                       { value: "RW", label: "RW · 读写" }
@@ -341,7 +341,7 @@ export function DebugNodeEditorDialog({
                 <div className="debug-node-editor-fields">
                 <div className="debug-admin-field">
                   <label htmlFor="debug-node-associated-project" className="debug-admin-field-label">关联项目</label>
-                  <DebugAdminSelectControl id="debug-node-associated-project" ariaLabel="关联项目" ariaDescribedBy="debug-node-association-help" withinModal value={projectId} disabled={fieldsDisabled || associationLoading} onValueChange={(nextProjectId) => {
+                  <DebugAdminSelectControl id="debug-node-associated-project" ariaLabel="关联项目" ariaDescribedBy="debug-node-association-help" value={projectId} disabled={fieldsDisabled || associationLoading} onValueChange={(nextProjectId) => {
                     setProjectId(nextProjectId);
                     setParameterSearch("");
                     setParameters([]);
@@ -356,7 +356,7 @@ export function DebugNodeEditorDialog({
                   <div className="debug-admin-field" data-editor-field="association">
                     <label htmlFor="debug-node-associated-parameter" className="debug-admin-field-label">关联参数</label>
                     <SearchField value={parameterSearch} onValueChange={setParameterSearch} ariaLabel="搜索关联参数" placeholder="搜索名称、模块或路径" disabled={fieldsDisabled || associationLoading} />
-                    <DebugAdminSelectControl id="debug-node-associated-parameter" ariaLabel="关联参数" ariaDescribedBy={submitted && associationValidationError ? "debug-node-association-error" : "debug-node-association-help"} ariaInvalid={Boolean(submitted && associationValidationError)} ariaRequired withinModal value={draft.canonicalBinding?.bindingId ?? ""} disabled={fieldsDisabled || associationLoading} onValueChange={(bindingId) => {
+                    <DebugAdminSelectControl id="debug-node-associated-parameter" ariaLabel="关联参数" ariaDescribedBy={submitted && associationValidationError ? "debug-node-association-error" : "debug-node-association-help"} ariaInvalid={Boolean(submitted && associationValidationError)} ariaRequired value={draft.canonicalBinding?.bindingId ?? ""} disabled={fieldsDisabled || associationLoading} onValueChange={(bindingId) => {
                       const selected = parameters.find((item) => item.id === bindingId);
                       setDraft((current) => ({ ...current, canonicalBinding: selected ? {
                         projectId: selected.projectId!,

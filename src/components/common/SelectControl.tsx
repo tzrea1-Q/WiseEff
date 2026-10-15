@@ -27,6 +27,7 @@ type SelectControlProps<Value extends string> = {
   size?: "default" | "sm" | "filter";
   compactControl?: "filter" | "sort" | "pagination";
   disabled?: boolean;
+  /** Compatibility for legacy surfaces; shared dialog descendants inherit this automatically. */
   withinModal?: boolean;
 };
 

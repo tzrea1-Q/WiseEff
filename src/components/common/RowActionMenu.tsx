@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ConfirmDialog, type ConfirmDialogProps } from "./ConfirmDialog";
+import { ModalPopupContext } from "./ModalPopupContext";
 import "./row-action-menu.css";
 
 type RowAction = {
@@ -31,13 +32,14 @@ export type RowActionMenuProps = {
   label: string;
   triggerLabel?: string;
   triggerText?: string;
-  /** Portaled menus opened inside a modal must share its overlay layer. */
+  /** Compatibility for legacy surfaces; shared dialog descendants inherit this automatically. */
   withinModal?: boolean;
   primaryAction?: RowAction & { destructive?: false };
   items: readonly (RowAction & { destructive?: false } | DestructiveRowAction | ConfirmedElsewhereRowAction)[];
 };
 
 export function RowActionMenu({ label, triggerLabel, triggerText = "更多", withinModal = false, primaryAction, items }: RowActionMenuProps) {
+  const modalPopup = useContext(ModalPopupContext) || withinModal;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [selected, setSelected] = useState<DestructiveRowAction | null>(null);
   const [pending, setPending] = useState(false);
@@ -67,7 +69,7 @@ export function RowActionMenu({ label, triggerLabel, triggerText = "更多", wit
           <Button ref={triggerRef} type="button" size="sm" variant="outline" aria-label={triggerLabel ?? `${label}：${triggerText}`}>{triggerText}<ChevronDown aria-hidden="true" className="size-3" /></Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
-          <DropdownMenu.Content className={`row-action-menu__content${withinModal ? " row-action-menu__content--modal" : ""}`} align="end" onClick={(event) => event.stopPropagation()}
+          <DropdownMenu.Content className={`row-action-menu__content${modalPopup ? " row-action-menu__content--modal" : ""}`} align="end" onClick={(event) => event.stopPropagation()}
             onCloseAutoFocus={(event) => { if (selected) event.preventDefault(); }}>
             {items.map((item) => <DropdownMenu.Item key={item.id} className="row-action-menu__item button-size-sm" title={item.title} aria-label={item.ariaLabel} aria-describedby={item.descriptionId} data-destructive={item.destructive || undefined} disabled={item.disabled} onSelect={() => {
               if ("onRequestConfirmation" in item) {

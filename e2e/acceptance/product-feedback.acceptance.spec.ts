@@ -217,6 +217,16 @@ test.describe("Product feedback browser acceptance", () => {
     await page.getByRole("complementary", { name: "主导航侧边栏" }).getByRole("button", { name: "问题反馈" }).click();
     const dialog = page.getByRole("dialog", { name: "问题反馈" });
     await expect(dialog).toBeVisible();
+    const feedbackType = dialog.getByRole("combobox", { name: "反馈类型", exact: true });
+    await feedbackType.click();
+    await page.getByRole("option", { name: "导出/提交异常", exact: true }).click();
+    await expect(feedbackType).toBeFocused();
+    await feedbackType.press("ArrowDown");
+    await expect(page.getByRole("listbox")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("listbox")).toBeHidden();
+    await expect(dialog).toBeVisible();
+    await expect(feedbackType).toBeFocused();
     await dialog.getByLabel("问题描述").fill(submitDescription);
     await pastePngIntoFeedbackDialog(page);
     await expect(dialog.getByAltText("问题反馈截图预览")).toBeVisible();
@@ -233,7 +243,7 @@ test.describe("Product feedback browser acceptance", () => {
     expect(submitted).toBeTruthy();
     expect(submitted).toMatchObject({
       pagePath: "/parameters",
-      feedbackType: "experience",
+      feedbackType: "export_submit",
       status: "open"
     });
     const detailResponse = await page.request.get(apiRoute(`/api/v1/product-feedback/${submitted!.id}`), {

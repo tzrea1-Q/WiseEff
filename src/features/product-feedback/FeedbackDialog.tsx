@@ -436,7 +436,6 @@ export function FeedbackDialog({
                 <Label htmlFor="feedback-type">反馈类型</Label>
                 <SelectControl
                   id="feedback-type"
-                  withinModal
                   ariaLabel="反馈类型"
                   value={feedbackType}
                   onValueChange={setFeedbackType}

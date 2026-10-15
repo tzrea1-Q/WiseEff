@@ -5,7 +5,6 @@ export type ModuleManagementRowActionsProps = {
   itemCount: number;
   viewItemsLabel: string;
   canEdit?: boolean;
-  withinModal?: boolean;
   canDelete: boolean;
   deleteDisabledReason?: string;
   onEdit: () => void;
@@ -16,14 +15,13 @@ export type ModuleManagementRowActionsProps = {
 };
 
 export function ModuleManagementRowActions({
-  moduleName, itemCount, viewItemsLabel, canEdit = true, withinModal = false,
+  moduleName, itemCount, viewItemsLabel, canEdit = true,
   canDelete, deleteDisabledReason, onEdit, onViewItems, onAddChild, onMove, onDelete
 }: ModuleManagementRowActionsProps) {
   return (
     <RowActionMenu
       label={`${moduleName} 操作`}
       triggerLabel={`${moduleName} 更多操作`}
-      withinModal={withinModal}
       primaryAction={{ id: "edit", label: "编辑", disabled: !canEdit, onSelect: onEdit }}
       items={[
         { id: "view", label: viewItemsLabel, disabled: itemCount === 0, onSelect: onViewItems },
