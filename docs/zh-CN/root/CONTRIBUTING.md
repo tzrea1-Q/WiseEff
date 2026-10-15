@@ -58,15 +58,20 @@ npm run --silent test:impact -- --base origin/main --json > /tmp/vitest-impact.j
 
 ### Codex 定向浏览器运行器（D3）
 
+同一变更范围的 `test:impact` 输出现在包含 `staticCoverage`、解析后的 `base` SHA（显式路径为 `null`）及 `ciStatus: not-run`。仅选测报告真实工具适用性（`configured`）及选测和配置检查的实际耗时，不执行 lint、语义检查或测试。只需要静态反馈时，执行输出中的 `npm run lint:changed -- <paths>` 或 `--base <commit>` 命令。未知/被忽略代码使选测非零退出，但 JSON 保留保守测试回退；应修复覆盖缺口，不得缩小回退。CSS 文件读取守卫继续选择前端与 scripts 套件；共享 DOM 夹具继续全量回退，跨页面验收继续按路由/导航证据选择。
+
 本地 Unix-domain IPC 仅允许使用当前用户规范化临时目录中的 `tsx-<effective UID>` 子目录。子进程的 `TMPDIR` 固定为该规范化临时目录，使 tsx socket 路径与沙箱规则一致；非回环 IP 网络继续被拒绝。
 
 `test:browser:codex` 是 #1179 的本地运行器，不替代 CI 或协调者验收。必须在独立 linked worktree 的根目录、`codex/<task>` 分支运行，并显式导出 `WISEEFF_RUNTIME_LANE` 与指向 localhost PostgreSQL 的 `DATABASE_URL`。lane ID 不得与其他工作树或浏览器会话重复。运行前通过既有浏览器环境准备流程创建派生的 `<database>_lane_<N>` 数据库；运行器不创建数据库。启动 quality 服务器前，它会执行 `seed:browser`（迁移 → 重置临时 quality 数据 → 全量播种 → 播种管理列表）；只有显式设置 `WISEEFF_QUALITY_SKIP_SEED=true` 才使用预先播种／只读环境。PostgreSQL URL 的查询参数覆盖和已属于其他 lane 的数据库会被拒绝。
 
 ```bash
+npm run test:impact -- --json src/UserPermissionsPage.tsx
 export WISEEFF_RUNTIME_LANE=7
-npm run test:browser:codex -- src/features/log-analysis/LogsPage.tsx
+npm run test:browser:codex -- src/UserPermissionsPage.tsx
 npm run test:browser:codex -- --check test-results/lanes/7/codex-browser-evidence.json
 ```
+
+浏览器运行器在启动环境前，对同一基线/删除清单执行一次选中的静态检查；不需要在此命令前再强制重复执行 `lint:changed`。实际静态结果与浏览器运行共同记录；静态失败生成阻塞回执，不启动环境。回执明确标为 `evidenceScope: local-browser`、`ciStatus: not-run`，本地通过或抽查不能证明当前候选 CI。`--check` 同时要求静态检查已执行、浏览器结果成功；缺少静态反馈的旧回执仍可读取，但显示 `not-recorded` 并非零退出。原有完整 CI、全量回退、lane 生命周期和 Linux 专属视觉边界保持有效。新增 static/scripts 工作共享专项累计 10 秒净预算，不新增任务或环境；原生编译器 AST 仅在一次执行内复用，原始默认 ESLint 已成功检查的精确源码/scripts 测试范围可直接采用，不重复运行。
 
 也可用 `--base <commit>` 替代变更路径；与 `test:impact` 一样包含已提交、暂存、未暂存和未跟踪变更。运行器复用该选择器的实现，记录实际浏览器选择与命令，只执行 quality grep 和精确 acceptance spec 路径，并保留既有 warmup 依赖。非 Linux 主机排除 `visual` quality 项目及包含截图/快照基线断言的 spec 文件，在 `skipped` 中逐项记录原因 `platform: Linux-only baselines`；Linux 选择不作此排除（CI 渲染仍为权威基准）。未知或共享变更保留选择器的完整浏览器回退；任务预算禁止这类运行时，应交给协调者，而不是手动缩小选择。quality 与 acceptance 在同一 lane 顺序运行，复用既有独立数据库、端口、对象存储和输出路径，并拒绝复用服务器。受控运行时描述符、外部传入的跳过运行时设置、quality 项目分区覆盖、替代 snapshot 根目录和工作树外对象存储均被拒绝。在启动任何运行时之前，所选 acceptance 测试必须具有非空白的 `AUTH_TOKEN_ISSUER` 与 `AUTH_TOKEN_HMAC_SECRET`。运行器加载工作树 `.env`，显式环境变量优先，随后验证并固定 lane 所有权。加载内容包括 smoke authorization/provider 设置，而非仅 issuer/secret，以匹配普通 Playwright 的认证 provider 选择。子进程的 dotenv 输入仍固定为 `/dev/null`；拒绝 `.env.local` 对数据库、绑定端口/主机、对象存储或 lane 端点的覆盖。缺少认证配置时非零退出，回执记录 `status: "blocked: missing <names>"`、仅含名称的 `missingConfig` 和空 `runs`；不会将秘密值复制到回执中。
 
