@@ -1,11 +1,16 @@
 import type { AuditEventView } from "@/domain/audit/types";
 import { cn } from "@/lib/utils";
-import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLabels";
+import { presentAuditEvent } from "@/domain/audit/presentAuditEvent";
 
 export type AuditRelatedTimelineProps = {
   events: AuditEventView[];
   activeEventId?: string | null;
   loading?: boolean;
+  loadingMore?: boolean;
+  error?: string | null;
+  hasMore?: boolean;
+  onRetry?: () => void;
+  onLoadMore?: () => void;
   onSelect?: (eventId: string) => void;
   className?: string;
 };
@@ -14,45 +19,44 @@ export function AuditRelatedTimeline({
   events,
   activeEventId,
   loading = false,
+  loadingMore = false,
+  error,
+  hasMore = false,
+  onRetry,
+  onLoadMore,
   onSelect,
   className
 }: AuditRelatedTimelineProps) {
-  if (loading) {
-    return <p className={cn("audit-related-empty", className)}>正在加载同一 trace 的关联事件…</p>;
-  }
-
-  if (events.length <= 1) {
-    return null;
-  }
-
+  const otherEvents = events.filter((event) => event.id !== activeEventId);
   return (
-    <section className={cn("audit-related-timeline", className)} aria-label="Trace 关联事件">
+    <section className={cn("audit-related-timeline", className)} aria-label="关联事件" aria-busy={loading || loadingMore}>
       <header>
-        <h4>同一 Trace 链路</h4>
-        <span>{events.length} 条</span>
+        <h4>关联事件</h4>
+        {otherEvents.length > 0 ? <span>{hasMore ? "已加载其他" : "其他"} {otherEvents.length} 条</span> : null}
       </header>
+      {loading && otherEvents.length === 0 ? <p className="audit-related-empty" role="status">正在加载同一操作链路的事件…</p> : null}
+      {!loading && !error && otherEvents.length === 0 && !hasMore ? <p className="audit-related-empty">此操作链路没有其他事件。</p> : null}
       <ul>
-        {events.map((event) => {
-          const action = presentAuditAction(event.action);
+        {otherEvents.map((event) => {
+          const presentation = presentAuditEvent(event);
           return (
             <li key={event.id}>
               <button
                 type="button"
-                className={cn("audit-related-item", activeEventId === event.id && "audit-related-item-active")}
+                className="audit-related-item"
                 onClick={() => onSelect?.(event.id)}
+                disabled={!onSelect}
               >
-                <span>{presentAuditKind(event.kind).label}</span>
-                <strong>{action.label}</strong>
+                <strong>{presentation.actionLabel}</strong>
                 <span>{event.timeLabel}</span>
-                <span className="col-span-3 text-xs text-muted-foreground">
-                  <code>{event.kind}</code>
-                  {action.isRaw || action.label !== event.action ? <><span className="mx-1">·</span><code>{event.action}</code></> : null}
-                </span>
+                <span className="audit-related-item-description">{presentation.targetLabel} · {presentation.actor.name}</span>
               </button>
             </li>
           );
         })}
       </ul>
+      {error ? <div className="audit-related-feedback"><p className="audit-related-empty" role="alert">{error}</p>{onRetry ? <button type="button" className="button subtle" onClick={onRetry} disabled={loading || loadingMore}>重试加载</button> : null}</div> : null}
+      {hasMore && onLoadMore ? <div className="audit-related-feedback"><button type="button" className="button subtle" onClick={onLoadMore} disabled={loading || loadingMore}>{loadingMore ? "正在加载…" : "加载更多关联事件"}</button></div> : null}
     </section>
   );
 }

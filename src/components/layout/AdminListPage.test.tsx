@@ -53,7 +53,7 @@ describe("AdminListPage", () => {
     const measurements = collectConsistencyMeasurements();
     expect(() => requireRowActionVisibility(measurements.rowActions, route)).not.toThrow();
     for (const row of measurements.rowActions) {
-      expect(row.actions).toHaveLength(route === "/feedback-admin" ? 1 : 2);
+      expect(row.actions).toHaveLength(["/audit", "/feedback-admin"].includes(route) ? 1 : 2);
       expect(row.statuses.some((status) => status.dom.startsWith("span"))).toBe(true);
     }
     if (route === "/feedback-admin") expect(screen.getByRole("button", { name: "查看", exact: true })).toBeVisible();

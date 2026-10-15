@@ -3,7 +3,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLabels";
 import type { AuditEventView } from "@/domain/audit/types";
-import type { RiskLevel } from "@/domain/prototype/types";
+import { getAuditSeverityLabel, type AuditSeverity } from "@/domain/audit/types";
 
 export type AuditTimelineProps = {
   events: AuditEventView[];
@@ -13,16 +13,11 @@ export type AuditTimelineProps = {
   className?: string;
 };
 
-const severityBadge: Record<RiskLevel, string> = {
+const severityBadge: Record<AuditSeverity, string> = {
   High: "bg-destructive/10 text-destructive",
   Medium: "bg-amber-100 text-amber-900",
-  Low: "bg-muted text-muted-foreground"
-};
-
-const severityLabel: Record<RiskLevel, string> = {
-  High: "高",
-  Medium: "中",
-  Low: "低"
+  Low: "bg-muted text-muted-foreground",
+  info: "bg-muted text-muted-foreground"
 };
 
 export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect, className }: AuditTimelineProps) {
@@ -63,10 +58,10 @@ export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect
                     <span
                       className={cn(
                         "audit-timeline-severity inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[10px] font-semibold uppercase",
-                        severityBadge[event.severity]
+                        severityBadge[event.severity] ?? severityBadge.info
                       )}
                     >
-                      {severityLabel[event.severity]}
+                      {getAuditSeverityLabel(event.severity)}
                     </span>
                     <div className="audit-timeline-content min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">
@@ -79,7 +74,7 @@ export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect
                         {action.isRaw || action.label !== event.action ? <><span className="mx-1">·</span><code>{event.action}</code></> : null}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        <span>{event.actor}</span>
+                        <span>{event.actorType === "system" ? "系统" : event.actor}</span>
                         <span className="mx-1">·</span>
                         <span>{event.timeLabel}</span>
                       </p>

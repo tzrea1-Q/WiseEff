@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AuditEventView } from "@/domain/audit/types";
 import { AuditTimeline } from "./AuditTimeline";
 import { AuditRelatedTimeline } from "./AuditRelatedTimeline";
+import { AuditEventDetailPanel } from "./AuditEventDetailPanel";
 
 const events: AuditEventView[] = [
   {
@@ -69,14 +70,33 @@ const events: AuditEventView[] = [
 ];
 
 describe("AuditTimeline", () => {
-  it("presents related trace events with Chinese labels and raw codes too", () => {
-    render(<AuditRelatedTimeline events={[
+  it("presents related events without code clutter and preserves diagnostic codes in detail", () => {
+    const { rerender } = render(<AuditRelatedTimeline events={[
       { ...events[0], kind: "validation.gate", action: "run" },
       { ...events[1], action: "future-action" }
     ]} />);
-    expect(screen.getByText("校验门禁检查")).toBeInTheDocument();
-    expect(screen.getByText("validation.gate", { selector: "code" })).toBeInTheDocument();
-    expect(screen.getAllByText("future-action")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "关联事件" })).toBeInTheDocument();
+    expect(screen.getByText("运行")).toBeInTheDocument();
+    expect(screen.getByText("未分类操作")).toBeInTheDocument();
+    expect(screen.queryByText("validation.gate")).not.toBeInTheDocument();
+    rerender(<AuditEventDetailPanel event={{ ...events[0], kind: "validation.gate", action: "future-action" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "技术追踪信息" }));
+    expect(screen.getByText("validation.gate")).toBeInTheDocument();
+    expect(screen.getByText("future-action")).toBeInTheDocument();
+  });
+  it("renders an informational severity badge", () => {
+    render(<AuditTimeline events={[{ ...events[0], severity: "info" }]} />);
+    expect(screen.getByText("信息")).toBeInTheDocument();
+  });
+
+  it("hides the active event and counts only other related records", () => {
+    const { rerender } = render(<AuditRelatedTimeline events={[events[0]]} activeEventId={events[0].id} />);
+    expect(screen.getByText("此操作链路没有其他事件。")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    rerender(<AuditRelatedTimeline events={events.slice(0, 2)} activeEventId={events[0].id} hasMore />);
+    expect(screen.getByText("已加载其他 1 条")).toBeInTheDocument();
+    expect(screen.queryByText(events[0].action)).not.toBeInTheDocument();
+    expect(screen.getByText(events[1].action)).toBeInTheDocument();
   });
   it("shows the Chinese event title with both diagnostic codes beneath it", () => {
     render(<AuditTimeline events={[{ ...events[0], kind: "validation.gate", action: "run" }]} />);

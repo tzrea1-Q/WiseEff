@@ -3,19 +3,22 @@ import { formatAuditRelativeTime } from "./formatAuditTime";
 import type { AuditActorType, AuditEventDto, AuditEventView } from "./types";
 
 function actorLabelFromDto(dto: AuditEventDto) {
+  if (dto.actorType === "system") {
+    return "系统";
+  }
   if (dto.actorName?.trim()) {
     return dto.actorName.trim();
   }
   if (dto.actorType === "agent") {
     return "小泽";
   }
-  if (dto.actorType === "system") {
-    return "System";
-  }
   return dto.actorUserId ?? "用户已注销或未记录";
 }
 
 function actorTypeFromMock(event: AuditEvent): AuditActorType {
+  if (event.actor === "System" || event.actor === "系统") {
+    return "system";
+  }
   if (event.viaAgent || event.actor === "小泽" || event.actor === "WiseAgent") {
     return "agent";
   }
@@ -44,6 +47,11 @@ export function mapApiAuditEventToView(dto: AuditEventDto): AuditEventView {
     traceId: dto.traceId,
     targetType: dto.targetType,
     targetId: dto.targetId,
+    projectId: dto.projectId,
+    projectName: dto.projectName,
+    projectCode: dto.projectCode,
+    targetName: dto.targetName,
+    evidence: dto.evidence,
     parameterId: typeof metadata?.parameterId === "string" ? metadata.parameterId : undefined,
     batchId: typeof metadata?.batchId === "string" ? metadata.batchId : dto.targetType === "parameter-import-batch" ? dto.targetId ?? undefined : undefined,
     userId: dto.targetType === "user" ? dto.targetId ?? undefined : undefined,
@@ -62,7 +70,7 @@ export function mapMockAuditEventToView(event: AuditEvent): AuditEventView {
     kind: event.kind ?? "unknown",
     action: event.action,
     severity: event.severity,
-    actor: event.actor,
+    actor: actorTypeFromMock(event) === "system" ? "系统" : event.actor,
     actorType: actorTypeFromMock(event),
     timeLabel: createdAt ? formatAuditRelativeTime(createdAt) : event.time,
     createdAt,
@@ -76,5 +84,5 @@ export function mapMockAuditEventToView(event: AuditEvent): AuditEventView {
 }
 
 export function isParameterAdminAuditApp(app: string) {
-  return app === "parameter-admin" || app === "parameter-management";
+  return ["parameter-admin", "parameter-management", "parameters", "parameter-bindings", "parameter-catalog", "parameter-catalog-migration"].includes(app);
 }
