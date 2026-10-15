@@ -76,7 +76,7 @@ export function CanonicalMemberRemovalSubmitDialog({ projectId, configSetId, con
         {entry.fileName} — {entry.fileId === member.fileId ? "拟移除" : "保留"}；角色 {entry.role}，顺序 {entry.sortOrder}，版本 <code>{entry.currentVersionId ?? "待服务端核对"}</code>
       </li>)}</ol>
       <label>修改原因<textarea value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} /></label>
-      <label>指定软件审核人<SelectControl value={reviewerId} disabled={busy || loading} ariaLabel="指定软件审核人" withinModal
+      <label>指定软件审核人<SelectControl value={reviewerId} disabled={busy || loading} ariaLabel="指定软件审核人"
         onValueChange={setReviewerId}
         options={reviewers.length ? reviewers.map((reviewer) => ({ value: reviewer.userId, label: `${reviewer.name}（${reviewer.userId}）` }))
           : [{ value: "", label: "没有可用的另一名软件审核人" }]} /></label>

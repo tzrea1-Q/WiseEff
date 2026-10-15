@@ -77,7 +77,7 @@ function ImportModuleSelect({
   return (
     <label className="import-review-module-select">
       <span>模块</span>
-      <SelectControl ariaLabel={ariaLabel} withinModal value={value} onValueChange={onChange} options={[
+      <SelectControl ariaLabel={ariaLabel} value={value} onValueChange={onChange} options={[
         { value: "", label: "请选择模块", disabled: true },
         ...options.map((moduleName) => ({ value: moduleName, label: moduleName }))
       ]} />
