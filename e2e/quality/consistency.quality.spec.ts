@@ -197,7 +197,7 @@ for (const route of consistencyReadOnlyRoutes) {
             await expect(page).toHaveURL((url) => !url.searchParams.has("severity"));
             await expect(menu.getByRole("checkbox", { name: "高", exact: true })).not.toBeChecked();
             await expect(menu.getByRole("checkbox", { name: "中", exact: true })).not.toBeChecked();
-            await trigger.press("Escape");
+            await menu.getByRole("checkbox", { name: "高", exact: true }).press("Escape");
             await expect(menu).toBeHidden();
             await expect(trigger).toBeFocused();
             await settleQualityRoute(page, routePath, { readOnly: true });
@@ -348,9 +348,18 @@ for (const route of consistencyReadOnlyRoutes) {
           }
           requirePrimaryActionColors(measurements, route.path);
           if (route.required.includes("adminLists")) {
-            const needsOverflow = !collectionPaths.includes(routePath)
-              || (routePath === "/knowledge-admin" && new URL(page.url()).searchParams.get("tab") !== "index");
+            const needsOverflow = routePath !== "/audit" && (!collectionPaths.includes(routePath)
+              || (routePath === "/knowledge-admin" && new URL(page.url()).searchParams.get("tab") !== "index"));
             requireAdminListGeometry(measurements.adminLists, route.path, needsOverflow);
+            if (routePath === "/audit") {
+              for (const list of measurements.adminLists) for (const row of list.rows) {
+                expect(row.actions).toHaveLength(1);
+                expect(row.actions[0].overflow).toBe(false);
+              }
+              for (const actionCell of await page.locator('td[data-label="操作"]').all()) {
+                await expect(actionCell.getByRole("button", { name: "查看", exact: true })).toHaveCount(1);
+              }
+            }
             if (collectionPaths.includes(routePath)) {
               expect(measurements.adminLists).toHaveLength(1);
               expect(measurements.visibleTableCount).toBe(1);
