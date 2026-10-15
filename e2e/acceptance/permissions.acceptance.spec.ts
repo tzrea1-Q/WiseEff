@@ -83,7 +83,7 @@ async function apiExposesPermissionAudit(page: Page, userName: string, roleId: s
   }
 
   const body = (await response.json()) as {
-    items: Array<{ kind: string; action: string; metadata?: Record<string, unknown> }>;
+    items: Array<{ kind: string; action: string; targetId: string | null; metadata?: Record<string, unknown> }>;
   };
 
   return body.items.some(
@@ -421,7 +421,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await page.getByRole("menuitem", { name: "注销 Chen Rui" }).click();
     const deleteDialog = page.getByRole("dialog", { name: "确认注销用户" });
     await expect(deleteDialog).toContainText("业务与审计历史记录会保留");
-    await expect(deleteDialog).toContainText("用户引用会自动变为 null");
+    await expect(deleteDialog).toContainText("历史记录中的用户关联会解除");
     await deleteDialog.getByRole("button", { name: "确认注销" }).click();
     const deleteResponse = await deleteResponsePromise;
     expect(deleteResponse.status()).toBe(204);
@@ -663,6 +663,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     });
 
     test.skip(!apiAuthorization, "A production bearer token is required to verify API-mode protected access.");
+    if (!apiAuthorization) throw new Error("A production bearer token is required after the skip guard.");
 
     const validResponse = await page.request.get(apiRoute("/api/v1/me"), {
       headers: { Authorization: apiAuthorization }
