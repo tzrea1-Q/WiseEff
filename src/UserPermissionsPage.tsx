@@ -776,7 +776,7 @@ export function UserPermissionsPage({
       {selectedMember ? <MemberDetailsDialog key={selectedMember.id} user={selectedMember} state={state} actions={userGovernanceActions}
         onUpdated={applyUpdatedUser} onClose={() => { setMemberId(null); setDirectoryReloadToken((value) => value + 1); }} roleLabel={roleLabelOf}
         roleEditor={<>
-          <SelectControl className="user-permissions-role-select" ariaLabel={`调整 ${selectedMember.name} 的角色`} withinModal
+          <SelectControl className="user-permissions-role-select" ariaLabel={`调整 ${selectedMember.name} 的角色`}
             value={organizationRoleOf(selectedMember)} disabled={selectedMember.id === state.currentUserId || isPlatformAdminLocked(state, selectedMember)}
             onValueChange={(value) => { if (value !== organizationRoleOf(selectedMember)) { setGovernanceError(null); setPendingGovernance({ kind: "role", user: selectedMember, nextRoleId: value as PlatformRoleId }); } }}
             options={assignableRolesForUser(state, organizationRoleOf(selectedMember)).map((role) => ({ value: role.id, label: roleLabelOf(role.id) }))} />
