@@ -49,6 +49,39 @@ function createRepository(fetchMock: typeof fetch) {
 }
 
 describe("createHttpProductFeedbackRepository", () => {
+  it("maps a public user response without admin identity or notes", async () => {
+    const { submitterUserId: _submitterUserId, adminNote: _adminNote, ...publicDto } = baseFeedbackDto;
+    const repository = createRepository(createFetchMock({ item: publicDto }));
+    const mine = await repository.getMine!(publicDto.id);
+    expect(mine).toMatchObject({ id: publicDto.id, adminNote: null });
+    expect(mine?.submitterUserId).toBeUndefined();
+  });
+
+  it("preserves triage fields and sends server-side personal filters", async () => {
+    const fetchMock = createFetchMock({ items: [{ ...baseFeedbackDto, priority: "high", assigneeUserId: "admin-1", assignee: { id: "admin-1", name: "管理员", username: "admin" } }], nextCursor: "next" });
+    const repo = createRepository(fetchMock);
+    const result = await repo.listMine!({ q: "截图", status: "draft", cursor: "page-2", limit: 10 });
+    expect(result).toMatchObject({ items: [{ priority: "high", assigneeUserId: "admin-1", assignee: { name: "管理员" } }], nextCursor: "next" });
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(Object.fromEntries(url.searchParams)).toEqual({ q: "截图", status: "draft", cursor: "page-2", limit: "10" });
+  });
+
+  it("submits a user supplement with evidence and an explicit reopen request", async () => {
+    const fetchMock = createFetchMock({ item: baseFeedbackDto });
+    const repo = createRepository(fetchMock);
+    const file = new File(["image"], "evidence.png", { type: "image/png" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new TextEncoder().encode("image").buffer });
+    await repo.replyToMine!("feedback-1", { message: "问题仍存在", files: [file], reopen: true });
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/product-feedback/mine/feedback-1/replies");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ message: "问题仍存在", reopen: true, attachments: [{ fileName: "evidence.png", contentType: "image/png", contentBase64: btoa("image") }] });
+  });
+
+  it("updates routing without discarding the selected owner or priority", async () => {
+    const fetchMock = createFetchMock({ item: baseFeedbackDto });
+    const repo = createRepository(fetchMock);
+    await repo.update("feedback-1", { priority: "high", assigneeUserId: null });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ priority: "high", assigneeUserId: null });
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });

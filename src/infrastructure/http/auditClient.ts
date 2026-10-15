@@ -8,11 +8,13 @@ export const createDefaultAuditApiClient = (options: DefaultApiClientOptions = {
 
 function buildQuery(params: ListAuditEventsParams = {}) {
   const search = new URLSearchParams();
+  if (params.eventId) search.set("eventId", params.eventId);
   if (params.projectId) search.set("projectId", params.projectId);
   if (params.app) search.set("app", params.app);
   if (params.apps?.length) search.set("apps", params.apps.join(","));
   if (params.kind) search.set("kind", params.kind);
   if (params.severity) search.set("severity", params.severity);
+  if (params.severities?.length) search.set("severities", params.severities.join(","));
   if (params.targetType) search.set("targetType", params.targetType);
   if (params.targetId) search.set("targetId", params.targetId);
   if (params.traceId) search.set("traceId", params.traceId);

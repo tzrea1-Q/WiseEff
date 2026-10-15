@@ -32,8 +32,9 @@ type ProductFeedbackApiItem = {
   pageTitle: string;
   feedbackType: "experience" | "data" | "export_submit" | "feature";
   description: string;
-  status: "open" | "in_progress" | "closed";
+  status: "open" | "in_progress" | "resolved" | "closed";
   adminNote: string | null;
+  progressEvents: Array<{ kind: string; internalMessage: string | null; publicMessage: string | null }>;
   attachments: Array<{ id: string; fileName: string; contentType: string; sizeBytes: number; sortOrder: number }>;
 };
 
@@ -101,7 +102,7 @@ async function cleanupProductFeedbackAcceptanceRows() {
 }
 
 async function pastePngIntoFeedbackDialog(page: Page) {
-  await page.locator(".feedback-capture-panel").evaluate(
+  await page.getByRole("region", { name: /粘贴上传截图/ }).evaluate(
     (target, base64) => {
       const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
       const file = new File([bytes], "acceptance-feedback.png", { type: "image/png" });
@@ -176,7 +177,7 @@ async function productFeedbackDbSummary(feedbackId: string) {
 }
 
 async function feedbackAuditSummaries(feedbackId: string) {
-  const response = await fetch(apiRoute("/api/v1/audit-events"), {
+  const response = await fetch(apiRoute(`/api/v1/audit-events?targetId=${encodeURIComponent(feedbackId)}`), {
     headers: { Accept: "application/json", ...authHeaders() }
   });
   expect(response.ok).toBe(true);
@@ -232,7 +233,7 @@ test.describe("Product feedback browser acceptance", () => {
     await expect(dialog.getByAltText("问题反馈截图预览")).toBeVisible();
 
     await dialog.getByRole("button", { name: "提交反馈" }).click();
-    await expect(dialog.getByText("反馈已记录，并附带 1 张粘贴截图。")).toBeVisible();
+    await expect(dialog.getByText("反馈已记录，并附带 1 张截图。")).toBeVisible();
 
     const listResponse = await page.request.get(apiRoute("/api/v1/product-feedback"), {
       headers: authHeaders()
@@ -294,29 +295,56 @@ test.describe("Product feedback browser acceptance", () => {
     // @acceptance PFB-ADMIN-001
     // @operation PFB-ADMIN-001
     const created = await createFeedbackViaApi(page, adminDescription);
+    // Put the target beyond the first server page so search exercises the actual cursor round trip.
+    for (let index = 0; index < 50; index += 1) {
+      await createFeedbackViaApi(page, `${descriptionPrefix} newer page ${index} ${Date.now()}`);
+    }
+    const firstPageResponse = await page.request.get(apiRoute("/api/v1/product-feedback?limit=50"), { headers: authHeaders() });
+    expect(firstPageResponse.ok()).toBe(true);
+    const firstPage = await firstPageResponse.json() as { items: ProductFeedbackApiItem[]; nextCursor: string | null };
+    expect(firstPage.items).toHaveLength(50);
+    expect(firstPage.items.some((item) => item.id === created.item.id)).toBe(false);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+    const secondPageResponse = await page.request.get(apiRoute(`/api/v1/product-feedback?limit=50&cursor=${encodeURIComponent(firstPage.nextCursor!)}`), { headers: authHeaders() });
+    expect(secondPageResponse.ok()).toBe(true);
+    const secondPage = await secondPageResponse.json() as { items: ProductFeedbackApiItem[] };
+    expect(secondPage.items.some((item) => item.id === created.item.id)).toBe(true);
 
     await page.goto("/feedback-admin");
     await expect(page.getByRole("table", { name: "产品反馈记录" })).toBeVisible();
     await page.getByLabel("搜索反馈").fill(adminDescription);
 
     const table = page.getByRole("table", { name: "产品反馈记录" });
-    const row = table.getByRole("row").filter({ hasText: "PFB acceptance product feedback admin tria" });
+    const row = table.getByRole("row").filter({ hasText: adminDescription });
     await expect(row).toBeVisible();
     await row.click();
 
-    await expect(page.getByRole("heading", { name: "参数工作台" })).toBeVisible();
-    await page.getByLabel("处理备注").fill(adminNote);
+    await expect(page.getByRole("heading", { name: adminDescription })).toBeVisible();
+    await expect(page.getByRole("table", { name: "产品反馈记录" })).toBeHidden();
+    await expect(page.getByRole("textbox")).toHaveCount(0);
+    await page.getByRole("button", { name: "写内部备注", exact: true }).click();
+    await page.getByLabel("内部备注", { exact: true }).fill(adminNote);
     await page.getByRole("button", { name: "开始处理" }).click();
+    await expect(page.getByRole("button", { name: "标记解决", exact: true })).toBeVisible();
+    await expect(page.getByLabel("内部备注", { exact: true })).toHaveValue(adminNote);
+    await page.getByRole("button", { name: "保存内部备注", exact: true }).click();
+    await expect(page.getByRole("button", { name: "写内部备注", exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "标记解决", exact: true }).click();
+    await page.getByRole("dialog", { name: "标记解决", exact: true }).getByLabel("处理说明", { exact: true }).fill("处理已完成，复核通过。");
+    await page.getByRole("button", { name: "确认解决", exact: true }).click();
     await expect(page.getByRole("button", { name: "关闭反馈", exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "关闭反馈", exact: true }).click();
-    // Closing feedback is irreversible and now requires an explicit confirmation (HCI trust repair wave 1).
-    const closeConfirmDialog = page.getByRole("dialog", { name: "确认关闭反馈" });
-    await expect(closeConfirmDialog).toBeVisible();
-    await closeConfirmDialog.getByRole("button", { name: "确认关闭" }).click();
-    // The dialog closes only after the server accepts the status change.
-    await expect(closeConfirmDialog).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.getByText("已关闭的反馈仅可查看。")).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("dialog", { name: "关闭反馈", exact: true }).getByLabel("处理说明", { exact: true }).fill("已确认处理结果，关闭反馈。");
+    await page.getByRole("button", { name: "确认关闭", exact: true }).click();
+    await expect(page.getByRole("button", { name: "重新打开", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("反馈已关闭。需要继续沟通时，可在右上角重新打开。")).toBeVisible();
+    await page.getByRole("button", { name: "返回反馈列表", exact: true }).click();
+    await expect(page.getByLabel("搜索反馈")).toHaveValue(adminDescription);
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page.getByRole("heading", { name: adminDescription })).toBeVisible();
 
     const detailResponse = await page.request.get(apiRoute(`/api/v1/product-feedback/${created.item.id}`), {
       headers: authHeaders()
@@ -324,14 +352,18 @@ test.describe("Product feedback browser acceptance", () => {
     expect(detailResponse.ok()).toBe(true);
     const detailBody = (await detailResponse.json()) as { item: ProductFeedbackApiItem };
     expect(detailBody.item.status).toBe("closed");
-    expect(detailBody.item.adminNote).toBe(adminNote);
+    expect(detailBody.item.progressEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ internalMessage: adminNote }),
+      expect.objectContaining({ publicMessage: "处理已完成，复核通过。" }),
+      expect.objectContaining({ publicMessage: "已确认处理结果，关闭反馈。" })
+    ]));
 
     await expect.poll(async () => (await productFeedbackDbSummary(created.item.id)).observed).toContain("status=closed");
     const audit = await feedbackAuditSummaries(created.item.id);
     expect(audit).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "product-feedback-create", action: "create" }),
-        expect.objectContaining({ kind: "product-feedback-update", action: "update" })
+        expect.objectContaining({ kind: "product-feedback-progress", action: "update" })
       ])
     );
 
@@ -344,6 +376,14 @@ test.describe("Product feedback browser acceptance", () => {
       page,
       testInfo,
       api: [
+        summarizeApiResponse(firstPageResponse, {
+          method: "GET", path: "/api/v1/product-feedback?limit=50",
+          responseSummary: "first page has 50 newer feedbacks and an opaque cursor"
+        }),
+        summarizeApiResponse(secondPageResponse, {
+          method: "GET", path: "/api/v1/product-feedback?limit=50&cursor=…",
+          responseSummary: "second page contains the feedback found through UI search"
+        }),
         summarizeApiResponse(created.response, {
           method: "POST",
           path: "/api/v1/product-feedback",
@@ -352,7 +392,7 @@ test.describe("Product feedback browser acceptance", () => {
         summarizeApiResponse(detailResponse, {
           method: "GET",
           path: `/api/v1/product-feedback/${created.item.id}`,
-          responseSummary: `status=${detailBody.item.status}; note=${detailBody.item.adminNote ? "set" : "missing"}`
+          responseSummary: `status=${detailBody.item.status}; note=${detailBody.item.progressEvents.some((event) => event.internalMessage === adminNote) ? "set" : "missing"}`
         })
       ],
       db: [await productFeedbackDbSummary(created.item.id)],

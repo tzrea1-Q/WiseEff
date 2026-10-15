@@ -18,18 +18,21 @@ const auditBodySchema = z.object({
 });
 
 const auditListQuerySchema = z.object({
+  eventId: z.string().min(1).max(200).optional(),
   projectId: z.string().optional(),
   app: z.string().optional(),
   apps: z.string().optional(),
   kind: z.string().optional(),
-  severity: z.enum(["High", "Medium", "Low"]).optional(),
+  severity: z.enum(["High", "Medium", "Low", "info"]).optional(),
+  severities: z.string().transform((value) => value.split(","))
+    .pipe(z.array(z.enum(["High", "Medium", "Low", "info"])).min(1).max(4)).optional(),
   actorUserId: z.string().optional(),
   targetType: z.string().optional(),
   targetId: z.string().optional(),
   traceId: z.string().optional(),
   q: z.string().max(200).optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional()
 });
@@ -38,7 +41,14 @@ function parseAuditListQuery(query: Record<string, string | string[]>) {
   const raw = Object.fromEntries(
     Object.entries(query).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value])
   );
-  const parsed = auditListQuerySchema.parse(raw);
+  const result = auditListQuerySchema.safeParse(raw);
+  if (!result.success) {
+    throw new ApiError("VALIDATION_FAILED", "Invalid audit query.");
+  }
+  const parsed = result.data;
+  if (parsed.from && parsed.to && Date.parse(parsed.from) > Date.parse(parsed.to)) {
+    throw new ApiError("VALIDATION_FAILED", "Audit start time must not be after end time.");
+  }
   const apps = parsed.apps
     ? parsed.apps
         .split(",")
@@ -47,11 +57,13 @@ function parseAuditListQuery(query: Record<string, string | string[]>) {
     : undefined;
 
   return {
+    eventId: parsed.eventId,
     projectId: parsed.projectId,
     app: parsed.app,
     apps: apps && apps.length > 0 ? apps : undefined,
     kind: parsed.kind,
     severity: parsed.severity,
+    severities: parsed.severities,
     actorUserId: parsed.actorUserId,
     targetType: parsed.targetType,
     targetId: parsed.targetId,
@@ -78,7 +90,11 @@ export function registerAuditRoutes(
       throw new ApiError("FORBIDDEN", "Admin access required.");
     }
 
-    const body = auditBodySchema.parse(request.body);
+    const parsedBody = auditBodySchema.safeParse(request.body);
+    if (!parsedBody.success) {
+      throw new ApiError("VALIDATION_FAILED", "Invalid audit event.");
+    }
+    const body = parsedBody.data;
     const id = randomUUID();
 
     // Stays on the direct path (ratchet allowlist): for this endpoint the audit

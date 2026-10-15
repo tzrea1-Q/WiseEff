@@ -20,7 +20,8 @@ describe("FeedbackStatusBadge", () => {
     expect(screen.getByText("处理中")).toBeInTheDocument();
 
     rerender(<FeedbackStatusBadge status="resolved" resolutionCode="completed" />);
-    expect(screen.getByText("已解决 · 已解决")).toBeInTheDocument();
+    expect(screen.getByText("已解决")).toBeInTheDocument();
+    expect(screen.queryByText("已解决 · 已解决")).not.toBeInTheDocument();
 
     rerender(<FeedbackStatusBadge status="closed" resolutionCode="duplicate" />);
     expect(screen.getByText("已关闭 · 重复反馈")).toBeInTheDocument();

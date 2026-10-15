@@ -3,18 +3,13 @@ import { getAuditAppLabel } from "@/domain/audit/auditApps";
 import { presentAuditAction, presentAuditKind, type AuditSlugPresentation } from "@/domain/audit/auditSlugLabels";
 import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
 import type { AuditEventView } from "@/domain/audit/types";
-import type { RiskLevel } from "@/domain/prototype/types";
+import { getAuditSeverityLabel, type AuditSeverity } from "@/domain/audit/types";
 
-const severityBadge: Record<RiskLevel, string> = {
+const severityBadge: Record<AuditSeverity, string> = {
   High: "bg-destructive/10 text-destructive",
   Medium: "bg-amber-100 text-amber-900",
-  Low: "bg-muted text-muted-foreground"
-};
-
-const severityLabel: Record<RiskLevel, string> = {
-  High: "高",
-  Medium: "中",
-  Low: "低"
+  Low: "bg-muted text-muted-foreground",
+  info: "bg-muted text-muted-foreground"
 };
 
 const actorTypeLabel = {
@@ -176,7 +171,7 @@ export function AuditEventDetail({ event, className }: AuditEventDetailProps) {
     <section className={cn("audit-event-detail", className)} aria-label="审计事件详情">
       <header className="audit-event-detail-head">
         <div className="audit-event-detail-badges">
-          <span className={cn("audit-severity-badge", severityBadge[event.severity])}>{severityLabel[event.severity]}</span>
+          <span className={cn("audit-severity-badge", severityBadge[event.severity] ?? severityBadge.info)}>{getAuditSeverityLabel(event.severity)}</span>
           <span className="audit-kind-badge">
             <SlugLabel presentation={presentAuditKind(event.kind)} />
           </span>
@@ -186,7 +181,7 @@ export function AuditEventDetail({ event, className }: AuditEventDetailProps) {
           <SlugLabel presentation={presentAuditAction(event.action)} />
         </h3>
         <p className="audit-event-detail-meta">
-          <span>{event.actor}</span>
+          <span>{event.actorType === "system" ? "系统" : event.actor}</span>
           <span>·</span>
           <span>{actorTypeLabel[event.actorType]}</span>
           <span>·</span>

@@ -177,6 +177,32 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+        if (routePath === "/audit") {
+          await test.step("audit severity column filter", async () => {
+            const trigger = page.getByRole("columnheader", { name: /严重度/ }).getByRole("button", { name: "筛选严重度", exact: true });
+            await expect(trigger).toBeVisible();
+            await expect(trigger).toHaveAttribute("data-compact-control", "filter");
+            await trigger.click();
+            const menu = page.getByRole("group", { name: "严重度筛选", exact: true });
+            await expect(menu.getByRole("checkbox")).toHaveCount(4);
+            for (const label of ["高", "中", "低", "信息"]) {
+              await expect(menu.getByRole("checkbox", { name: label, exact: true })).toBeVisible();
+            }
+            await menu.getByRole("checkbox", { name: "高", exact: true }).check();
+            await menu.getByRole("checkbox", { name: "中", exact: true }).check();
+            await expect(menu.getByRole("checkbox", { name: "高", exact: true })).toBeChecked();
+            await expect(menu.getByRole("checkbox", { name: "中", exact: true })).toBeChecked();
+            await expect(page).toHaveURL((url) => url.searchParams.get("severity") === "High,Medium");
+            await menu.getByRole("button", { name: "清除", exact: true }).click();
+            await expect(page).toHaveURL((url) => !url.searchParams.has("severity"));
+            await expect(menu.getByRole("checkbox", { name: "高", exact: true })).not.toBeChecked();
+            await expect(menu.getByRole("checkbox", { name: "中", exact: true })).not.toBeChecked();
+            await menu.getByRole("checkbox", { name: "高", exact: true }).press("Escape");
+            await expect(menu).toBeHidden();
+            await expect(trigger).toBeFocused();
+            await settleQualityRoute(page, routePath, { readOnly: true });
+          });
+        }
         for (const trigger of await page.locator('[data-slot="select-trigger"]').all()) {
           if (!await trigger.isVisible()) continue;
           const centers = await trigger.evaluate((element) => [...element.querySelectorAll('[data-slot="select-value"], .select-control__chevron')].map((child) => {
@@ -187,7 +213,7 @@ for (const route of consistencyReadOnlyRoutes) {
         }
         if (routePath === "/feedback-admin") {
           const tops = await page.locator('main [role="combobox"], main .feedback-admin-search').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
-          expect(tops).toHaveLength(3);
+          expect(tops).toHaveLength(4);
           expect(Math.max(...tops) - Math.min(...tops), "feedback filters must share one toolbar row on desktop").toBeLessThanOrEqual(2);
         }
         if (routePath === "/parameters") {
@@ -388,9 +414,24 @@ for (const route of consistencyReadOnlyRoutes) {
           }
           requirePrimaryActionColors(measurements, route.path);
           if (route.required.includes("adminLists")) {
-            const needsOverflow = !collectionPaths.includes(routePath)
-              || (routePath === "/knowledge-admin" && new URL(page.url()).searchParams.get("tab") !== "index");
+            const needsOverflow = !["/audit", "/feedback-admin"].includes(routePath) && (!collectionPaths.includes(routePath)
+              || (routePath === "/knowledge-admin" && new URL(page.url()).searchParams.get("tab") !== "index"));
             requireAdminListGeometry(measurements.adminLists, route.path, needsOverflow);
+            if (routePath === "/audit") {
+              for (const list of measurements.adminLists) for (const row of list.rows) {
+                expect(row.actions).toHaveLength(1);
+                expect(row.actions[0].overflow).toBe(false);
+              }
+              for (const actionCell of await page.locator('td[data-label="操作"]').all()) {
+                await expect(actionCell.getByRole("button", { name: "查看", exact: true })).toHaveCount(1);
+              }
+            }
+            if (routePath === "/feedback-admin") {
+              for (const list of measurements.adminLists) for (const row of list.rows) {
+                expect(row.actions).toEqual([expect.objectContaining({ overflow: false, destructive: false, height: 28 })]);
+              }
+              await expect(page.getByRole("button", { name: "刷新", exact: true })).toHaveAttribute("data-variant", "outline");
+            }
             if (collectionPaths.includes(routePath)) {
               expect(measurements.adminLists).toHaveLength(1);
               expect(measurements.visibleTableCount).toBe(1);

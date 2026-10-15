@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { requireViewSwitchStyles } from "../e2e/quality/view-switch";
 import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency-routes";
+import { requireCompactControlHeights } from "../e2e/quality/consistency-assertions";
 
 const signatures = [
   { variant: "section", role: "button", groupRole: "navigation", height: 40, radius: "999px 999px 999px 999px", fontSize: "14px", lineHeight: "22px", fontWeight: "600", background: "rgb(255, 255, 255)", selectedBackground: "rgb(0, 61, 155)" },
@@ -15,9 +16,9 @@ function measurement(style = signatures[0], selected = true) {
 }
 
 describe("view-switch consistency", () => {
-  it("enforces styles on all 32 audited routes, including the retired account redirect", () => {
+  it("enforces styles on all 31 switch routes, including the retired account redirect", () => {
     const auditPaths = [
-      "/audit", "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/knowledge-admin",
+      "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/knowledge-admin",
       "/log-admin", "/log-admin?tab=domains", "/log-admin?tab=quality", "/logs", "/node-debugging",
       "/organization", "/organization/members", "/parameter-admin", "/parameter-admin/identity-mapping",
       "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
@@ -65,7 +66,7 @@ describe("view-switch consistency", () => {
     }, path)).toThrow("matched 0");
   });
   it.each([
-    ...["/parameter-home", "/audit"].map((path) => [path, "toggle"]),
+    ...["/parameter-home"].map((path) => [path, "toggle"]),
     ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions"]
       .map((path) => [path, "tabs"]),
     ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
@@ -136,7 +137,7 @@ describe("view-switch consistency", () => {
     }, "/node-debugging")).toThrow("matched 0");
   });
 
-  it.each(["/parameter-home", "/audit", "/logs", "/parameters"])("requires migrated switch styles and measurements on %s", (path) => {
+  it.each(["/parameter-home", "/logs", "/parameters"])("requires migrated switch styles and measurements on %s", (path) => {
     expect(() => requireViewSwitchStyles({
       viewSwitches: [{ ...measurement(signatures[2]), height: 30 }], viewSwitchSignatures: signatures
     }, path)).toThrow("must match exactly one view-switch style");
@@ -145,12 +146,29 @@ describe("view-switch consistency", () => {
     expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
   });
 
-  it.each(["/organization", "/organization/members", "/parameter-home", "/audit", "/logs", "/parameters"])("accepts exactly one signature for selected and unselected controls on %s", (path) => {
+  it.each(["/organization", "/organization/members", "/parameter-home", "/logs", "/parameters"])("accepts exactly one signature for selected and unselected controls on %s", (path) => {
     expect(() => requireViewSwitchStyles({
       viewSwitches: signatures.filter((style) => viewSwitchStyleExpectations[path].some((variant) => variant === style.variant))
         .flatMap((style) => [measurement(style), measurement(style, false)]),
       viewSwitchSignatures: signatures
     }, path)).not.toThrow();
+  });
+
+  const auditFilter = (height: number) => ({ dom: "button.parameters-column-filter__trigger", role: "button", height, compactControl: "filter" });
+  it("keeps audit in the compact table-filter contract after removing the toggle strip", () => {
+    const required = consistencyRoutes.find((route) => route.path === "/audit")!.required;
+    expect(required).toEqual(expect.arrayContaining(["filterControls", "adminLists", "rowActions", "tableScrollports"]));
+    expect(required).not.toContain("viewSwitches");
+    expect(required).not.toContain("viewSwitchSignatures");
+    expect(viewSwitchStyleExpectations["/audit"]).toBeUndefined();
+    expect(() => requireCompactControlHeights({ filterControls: [auditFilter(32)] }, "/audit")).not.toThrow();
+  });
+  it("rejects missing audit filter measurements", () => {
+    expect(() => requireCompactControlHeights({ filterControls: [] }, "/audit"))
+      .toThrow("missing consistency measurements: filterControls");
+  });
+  it.each([NaN, 28, 43])("rejects incorrect audit filter height %s", (height) => {
+    expect(() => requireCompactControlHeights({ filterControls: [auditFilter(height)] }, "/audit")).toThrow();
   });
 
   it.each([

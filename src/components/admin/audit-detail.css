@@ -1,0 +1,186 @@
+.audit-event-detail-dialog .audit-event-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.audit-event-detail-dialog .audit-event-detail-panel-hero {
+  gap: var(--space-3);
+}
+
+.audit-event-detail-dialog .audit-event-detail-panel-title {
+  font-size: var(--text-xl);
+  overflow-wrap: anywhere;
+}
+
+.audit-event-context {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+}
+
+.audit-event-context dt {
+  margin-bottom: var(--space-1);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.audit-event-context dd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.audit-event-context dd > span {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.audit-event-detail-panel .audit-panel-severity-high {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.audit-event-detail-panel .audit-panel-severity-medium {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.audit-panel-severity-info {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.audit-evidence-source,
+.audit-evidence-empty p {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+
+.audit-evidence-empty {
+  padding: var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.audit-evidence-empty h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.audit-evidence-empty p {
+  margin-bottom: 0;
+}
+
+.audit-event-detail-panel .audit-parameter-diff {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.audit-event-detail-panel .audit-parameter-diff code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.audit-evidence-change h5 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.audit-evidence-value summary {
+  margin-top: var(--space-2);
+  color: var(--primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.audit-evidence-value pre {
+  max-height: 18rem;
+  overflow: auto;
+  margin: var(--space-2) 0 0;
+}
+
+.audit-value-state {
+  display: inline-flex;
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.audit-value-state-deleted {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.audit-value-state-present {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.audit-retained-value-label {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.audit-event-detail-dialog-actions {
+  flex-wrap: wrap;
+}
+
+.audit-event-detail-dialog-actions .audit-event-paging {
+  display: flex;
+  gap: var(--space-2);
+  margin-right: auto;
+}
+
+.audit-copy-status {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+.audit-related-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.audit-related-timeline .audit-related-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.audit-related-item-description {
+  grid-column: 1 / -1;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.audit-related-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.audit-event-detail-dialog .audit-detail-row dd {
+  overflow-wrap: anywhere;
+}

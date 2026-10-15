@@ -10,18 +10,21 @@ import {
 import { canonicalConflictDtoSchemaCatalog } from "./canonicalConflict";
 import { canonicalBatchRollbackDtoSchemaCatalog } from "./canonicalBatchRollback";
 import { canonicalManualSyncDtoSchemaCatalog } from "./canonicalManualSync";
+import { productFeedbackCoveredRouteIds, productFeedbackDtoSchemaCatalog } from "./productFeedback";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...coreDtoSchemaCatalog,
   ...parameterCatalogDtoSchemaCatalog,
   ...canonicalConflictDtoSchemaCatalog,
   ...canonicalBatchRollbackDtoSchemaCatalog,
-  ...canonicalManualSyncDtoSchemaCatalog
+  ...canonicalManualSyncDtoSchemaCatalog,
+  ...productFeedbackDtoSchemaCatalog
 };
 
 export const dtoSchemaCoveredRouteIds = [
   ...coreDtoSchemaCoveredRouteIds,
-  ...parameterCatalogCoveredRouteIds
+  ...parameterCatalogCoveredRouteIds,
+  ...productFeedbackCoveredRouteIds
 ] as const;
 
 export type DtoSchemaCoveredRouteId = (typeof dtoSchemaCoveredRouteIds)[number];
@@ -41,4 +44,5 @@ export * from "./parameterCatalog";
 export * from "./canonicalConflict";
 export * from "./canonicalBatchRollback";
 export * from "./canonicalManualSync";
+export * from "./productFeedback";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
