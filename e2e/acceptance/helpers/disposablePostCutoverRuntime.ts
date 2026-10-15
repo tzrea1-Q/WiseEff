@@ -1204,7 +1204,7 @@ export async function afterNestedProcessesStop<T>(
   return cleanupResources();
 }
 
-function nestedCleanupPending() {
+function nestedCleanupPending(): NestedRuntimeCleanup {
   return {
     apiProcess: { status: "not-started" as const },
     frontendProcess: { status: "not-started" as const },

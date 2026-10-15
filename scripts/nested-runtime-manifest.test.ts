@@ -380,6 +380,7 @@ describe("Gate0 nested disposable runtime contract", () => {
     const runtime = {
       databaseUrl: "postgres://child-runtime",
       databaseName: "wiseeff_acceptance_disposable_child",
+      objectStoreRoot: path.join(tmpdir(), "nested-runtime-env-fixture"),
       migrationRunId: "migration-child",
       markerPurpose: "parameter-topology",
       apiUrl: "http://127.0.0.1:19100",
@@ -387,6 +388,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       authIssuer: "child-issuer",
       authSecret: "child-secret",
       nestedRuntimeId: "wiseeff_acceptance_disposable_child",
+      restartApi: async () => { throw new Error("Unexpected API restart in environment fixture."); },
       dispose: async () => undefined,
     } satisfies DisposablePostCutoverRuntime;
 
