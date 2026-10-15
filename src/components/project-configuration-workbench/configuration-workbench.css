@@ -216,7 +216,7 @@
   white-space: nowrap;
 }
 
-.configuration-workbench__config-select select {
+.configuration-workbench__config-select [data-slot="select-trigger"] {
   min-width: 0;
   width: 100%;
   padding: 0 calc(var(--space-6) + var(--space-1)) 0 var(--space-2);
@@ -1042,7 +1042,7 @@
   min-width: 0;
 }
 
-.configuration-workbench__canonical-conflicts :is(textarea, select) {
+.configuration-workbench__canonical-conflicts :is(textarea, [data-slot="select-trigger"]) {
   width: 100%;
 }
 

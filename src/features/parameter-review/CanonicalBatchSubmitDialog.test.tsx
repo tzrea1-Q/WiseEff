@@ -39,8 +39,7 @@ describe("canonical DTS batch submit dialog", () => {
     const dialog = screen.getByRole("dialog", { name: "提交 DTS 批量来源审核" });
     fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }),
       { target: { value: "校准" } });
-    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" }))
-      .toHaveValue("reviewer-1"));
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" })).toHaveAttribute("data-value", "reviewer-1"));
     expect(within(dialog).getByRole("button", { name: /一次提交全部/ })).toBeDisabled();
     expect(submit).not.toHaveBeenCalled();
   });

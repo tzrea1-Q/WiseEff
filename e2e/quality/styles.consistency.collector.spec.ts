@@ -18,7 +18,7 @@ async function renderFixture(page: Page, baseURL: string | undefined, markup: st
     await page.route(url, (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: markup }));
     await page.goto(url);
     await page.unroute(url);
-    for (const sheet of ["src/styles.css", ...sheets]) {
+    for (const sheet of ["src/styles.css", "src/components/common/select-control.css", ...sheets]) {
       await page.addStyleTag({ url: new URL(`/${sheet}?direct`, baseURL).href });
     }
   });
@@ -184,7 +184,7 @@ styleTest("history diff uses the large dialog tier and readable title at desktop
 
 styleTest("module editing sections are separated and driver fields fill two columns then stack", async ({ page, baseURL }) => {
   await renderFixture(page, baseURL, `<section class="param-admin-module-edit-dialog"><div class="param-admin-module-edit-body">
-    <section class="module-edit-section"><div class="module-edit-placement-controls"><button class="module-tree-trigger">Category</button></div></section>
+    <section class="module-edit-section"><div class="module-edit-placement-controls"><button class="module-tree-trigger select-control">Category</button></div></section>
     <section class="module-edit-section"><div class="organization-driver-schema-dialog__field-grid">
     <label>First<select><option>Long property</option></select></label><label>Second<select><option>Another property</option></select></label>
     </div></section></div></section>`);

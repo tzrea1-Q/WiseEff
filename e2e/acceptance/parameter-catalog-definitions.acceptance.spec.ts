@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { expect } from "playwright/test";
 import { test } from "./helpers/catalogFixtureRuntime";
@@ -61,9 +62,9 @@ test.describe("restored definition workspace and governed authoring", () => {
     // Page size is a real 20/50/100 control, and the module subtree filter
     // narrows the complete result set rather than the loaded page.
     const pageSize = region.getByLabel("每页条数");
-    await expect(pageSize).toHaveValue("50");
-    await pageSize.selectOption("20");
-    await expect(pageSize).toHaveValue("20");
+    await expect(pageSize).toHaveAttribute("data-value", "50");
+    await selectControlOption(pageSize, "20");
+    await expect(pageSize).toHaveAttribute("data-value", "20");
     await expect(count).toContainText(/共 \d+ 项/);
 
     const navigator = region.getByRole("navigation", { name: "参数定义模块树" });

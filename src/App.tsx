@@ -92,7 +92,7 @@ import {
   type User
 } from "@/domain/prototype/types";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SelectControl } from "@/components/common/SelectControl";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -169,47 +169,6 @@ function writeSidebarCollapsedPreference(isCollapsed: boolean) {
   } catch {
     // Keep the toggle usable when storage is unavailable.
   }
-}
-
-type SelectOption<Value extends string = string> = {
-  value: Value;
-  label: ReactNode;
-  disabled?: boolean;
-};
-
-function SelectControl<Value extends string>({
-  value,
-  onValueChange,
-  options,
-  ariaLabel,
-  id,
-  className,
-  placeholder,
-  disabled
-}: {
-  value: Value;
-  onValueChange: (value: Value) => void;
-  options: SelectOption<Value>[];
-  ariaLabel?: string;
-  id?: string;
-  className?: string;
-  placeholder?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)} disabled={disabled}>
-      <SelectTrigger id={id} aria-label={ariaLabel} className={className} data-value={value}>
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
 }
 
 function userAccountIdentifier(user: User) {

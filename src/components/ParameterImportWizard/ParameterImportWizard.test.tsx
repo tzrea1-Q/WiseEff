@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { selectControlOption } from "@/test/selectControlOption";
+import userEvent from "@testing-library/user-event";
 import { ParameterImportWizard } from "./ParameterImportWizard";
 import { fillPasteImportContent } from "./testHelpers";
 import { initialState } from "@/mockData";
@@ -47,8 +49,8 @@ describe("ParameterImportWizard", () => {
     renderWizard();
 
     const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
-    const projectSelect = within(dialog).getByLabelText("目标项目") as HTMLSelectElement;
-    expect(projectSelect).toHaveValue(initialState.activeProjectId);
+    const projectSelect = within(dialog).getByLabelText("目标项目");
+    expect(projectSelect).toHaveAttribute("data-value", initialState.activeProjectId);
 
     expect(within(dialog).getByRole("button", { name: "+ 新建项目" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "下载导入模板" })).toBeInTheDocument();
@@ -521,8 +523,10 @@ describe("ParameterImportWizard", () => {
 
     fireEvent.click(within(canonicalRow).getByRole("button", { name: "编辑" }));
     const moduleSelect = within(canonicalRow).getByLabelText("编辑模块");
-    expect(within(moduleSelect).getByRole("option", { name: "Canonical Driver" })).toBeInTheDocument();
-    expect(within(moduleSelect).queryByRole("option", { name: "Legacy Shell Module" })).not.toBeInTheDocument();
+    await userEvent.click(moduleSelect);
+    expect(screen.getByRole("option", { name: "Canonical Driver" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Legacy Shell Module" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "Canonical Driver" }));
     fireEvent.change(within(canonicalRow).getByLabelText("编辑当前值"), { target: { value: "3200" } });
     fireEvent.click(within(canonicalRow).getByRole("button", { name: "保存" }));
     expect(within(canonicalRow).getByText("待核对")).toBeInTheDocument();
@@ -559,11 +563,11 @@ describe("ParameterImportWizard", () => {
     ]));
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
     await waitFor(() => expect(listBindings).toHaveBeenCalledWith("project-a", "canonical-revision"));
-    fireEvent.change(within(dialog).getByLabelText("目标项目"), { target: { value: "project-b" } });
+    await selectControlOption(within(dialog).getByLabelText("目标项目"), "project-b");
     await act(async () => { resolveProjectA([bindingA]); });
 
     expect(within(dialog).queryByRole("region", { name: "解析与校验" })).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText("目标项目")).toHaveValue("project-b");
+    expect(within(dialog).getByLabelText("目标项目")).toHaveAttribute("data-value", "project-b");
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
     const summary = await within(dialog).findByRole("region", { name: "解析与校验" });
     expect(within(summary).getByText("已有").nextElementSibling).toHaveTextContent("1");

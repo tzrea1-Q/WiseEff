@@ -415,13 +415,12 @@ Bridge management (rename/revoke, multi-bridge target picker) behavior is unchan
 
 Page shell lives in `src/DebuggingAdminPage.tsx`. The main surface is a full-width **node directory** table; create/edit/archive flows open modal dialogs.
 
-- `DebugNodeLibraryTable` — `admin/DataTable` shell (sort + `aria-sort`, pagination, keyboard rows); toolbar search, module tree filter (`ModuleTreeSelect`), protocol coverage filters, and row actions (edit node, edit bindings, archive). Import/export stay heading actions.
-- `DebugNodeEditorDialog` — logical node metadata (name, description, sort order, enabled, module tree assignment).
+- `DebugNodeLibraryTable` — `admin/DataTable` shell (sort + `aria-sort`, pagination, keyboard rows); toolbar search, shared column module filter, protocol filter, and one edit entry per node. Disable/delete remain confirmed overflow actions. Import/export stay heading actions.
+- `DebugNodeEditorDialog` — one draft for node metadata and both HDC/ADB paths, access modes, enabled states and notes. Basic information and protocols stay visible; detailed description, exact project Binding association and write-format hints have collapsible summaries. Closing a dirty draft requires confirmation; failed saves retain every field.
 - `DebugModuleManagementDialog` — nested debug node module CRUD (create-child, move, delete guards).
-- `DebugNodeBindingsDialog` — per-protocol binding editor (HDC / ADB node path, access mode, enabled, notes).
 - `ArchiveDebugNodeDialog` — confirm archive from a row action.
 
-Admin saves bindings through `PUT/PATCH /api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` and can disable one protocol without affecting the other.
+The editor submits one create/update request. Node updates include only changed `bindings` and explicit `archiveProtocols`; omitted protocols remain unchanged. Confirmed protocol archives are staged until Save, can be undone, and retain their original paths and notes. Metadata, binding changes, archives and audits commit in one transaction. An empty unconfigured protocol is omitted; clearing an existing path is invalid. The existing single-protocol administration endpoints remain compatible, and one protocol can be disabled without affecting the other.
 
 The **parameter debugging** route (`/debugging`) is retired from navigation and resolves to an unavailable page. Runtime catalog for `/node-debugging` comes from `GET /api/v1/debugging/nodes?protocol=...` (`listRuntimeNodes`); the API inner-joins enabled `debug_node_bindings` for the selected protocol (Option A filter). Writes use `nodeId`. Parameter reload endpoints return HTTP 410.
 

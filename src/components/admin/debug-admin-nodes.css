@@ -1,0 +1,51 @@
+.app-shell:has(.debug-admin-nodes) {
+  background: var(--bg);
+}
+
+.debug-admin-nodes .debug-node-overview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-height: var(--space-10);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--stroke-hairline) solid var(--border);
+}
+
+.debug-node-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.debug-node-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.debug-node-summary dt {
+  color: var(--text-muted);
+}
+
+.debug-node-summary dd {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-node-feedback {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--space-5);
+  text-align: right;
+  font-size: var(--text-sm);
+  color: var(--success);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

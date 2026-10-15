@@ -1,5 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useReducer } from "react";
+import { reducer } from "@/application/state/appState";
+import { selectControlOption } from "@/test/selectControlOption";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TopBarActionsContext } from "@/components/layout";
 import { DebuggingAdminPage } from "./DebuggingAdminPage";
@@ -142,13 +145,15 @@ describe("/debugging-admin API mode", () => {
     } else {
       fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑" }));
     }
+    fireEvent.click(screen.getByText("项目参数关联", { exact: true }));
     await waitFor(() => expect(screen.getByLabelText("关联项目")).toBeEnabled());
-    fireEvent.change(screen.getByLabelText("关联项目"), { target: { value: project.id } });
-    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-    await screen.findByRole("option", { name: "Input current limit · /limit" });
-    fireEvent.change(screen.getByLabelText("关联参数"), { target: { value: pin.id } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await selectControlOption(screen.getByLabelText("关联项目"), project.id);
     const writer = mode === "create" ? apiClient.post : apiClient.patch;
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(writer).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByLabelText("关联参数")).toBeEnabled());
+    await selectControlOption(screen.getByLabelText("关联参数"), pin.id);
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(writer).toHaveBeenCalledWith(
       mode === "create" ? "/api/v1/debugging/admin/nodes" : "/api/v1/debugging/admin/nodes/node-1",
       expect.objectContaining({ canonicalBinding: { projectId: project.id, bindingId: pin.id, expectedEffectiveRevisionId: "drev_acme_power_iin_max_1", expectedCurrentValueId: pin.currentValueId } })
@@ -182,7 +187,7 @@ describe("/debugging-admin API mode", () => {
     expect(onNavigate).toHaveBeenCalledWith("/debugging-admin/nodes");
   });
 
-  it("loads API node catalog, edits in node dialog, and saves through PATCH", async () => {
+  it("saves node metadata and both protocol paths in one PATCH", async () => {
     const apiClient = renderDebuggingAdminPage();
 
     expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
@@ -192,11 +197,22 @@ describe("/debugging-admin API mode", () => {
 
     fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑" }));
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Fast charge current edited" } });
+    fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/edited" } });
+    fireEvent.change(screen.getByLabelText("ADB 节点路径"), { target: { value: "/sys/adb/current" } });
+    fireEvent.click(screen.getByLabelText("启用 ADB 协议"));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(apiClient.patch).toHaveBeenCalled());
     expect(apiClient.patch.mock.calls[0][0]).toBe("/api/v1/debugging/admin/nodes/node-1");
-    expect(apiClient.patch.mock.calls[0][1]).toEqual(expect.objectContaining({ name: "Fast charge current edited" }));
+    expect(apiClient.patch).toHaveBeenCalledTimes(1);
+    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiClient.patch.mock.calls[0][1]).toEqual(expect.objectContaining({
+      name: "Fast charge current edited",
+      bindings: [
+        expect.objectContaining({ protocol: "hdc", nodePath: "/sys/hdc/edited", accessMode: "RW", enabled: true }),
+        expect.objectContaining({ protocol: "adb", nodePath: "/sys/adb/current", accessMode: "RO", enabled: true })
+      ]
+    }));
   });
 
   it("creates a new API catalog node via 新增节点 button", async () => {
@@ -239,7 +255,7 @@ describe("/debugging-admin API mode", () => {
     await screen.findByText("Fast charge current");
     fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
     const moduleDialog = screen.getByRole("dialog", { name: "模块管理" });
-    fireEvent.click(within(moduleDialog).getByRole("button", { name: "Battery Charging 更多操作" }));
+    await userEvent.click(within(moduleDialog).getByRole("button", { name: "Battery Charging 更多操作" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "移动" }));
 
     const moveDialog = screen.getByRole("dialog", { name: "移动「Battery Charging」" });
@@ -272,9 +288,9 @@ describe("/debugging-admin API mode", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
     const dialog = screen.getByRole("dialog", { name: "模块管理" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Battery Charging 更多操作" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Battery Charging 更多操作" }));
     const deleteModule = screen.getByRole("menuitem", { name: "删除" });
-    expect(deleteModule).toBeDisabled();
+    expect(deleteModule).toHaveAttribute("aria-disabled", "true");
     expect(deleteModule).toHaveAttribute("title", "仍有子模块或节点引用，无法删除");
     expect(apiClient.delete).not.toHaveBeenCalled();
   });
@@ -291,7 +307,8 @@ describe("/debugging-admin API mode", () => {
     if (!nodeEntry) {
       throw new Error("找不到模块详情中的节点条目");
     }
-    fireEvent.click(within(nodeEntry).getByRole("button", { name: "删除节点" }));
+    await userEvent.click(within(nodeEntry).getByRole("button", { name: /：更多$/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "删除节点" }));
 
     const confirmation = screen.getByRole("dialog", { name: "永久删除节点 Fast charge current" });
     expect(confirmation).toBeInTheDocument();
@@ -312,72 +329,69 @@ describe("/debugging-admin API mode", () => {
     if (!nodeEntry) {
       throw new Error("找不到模块详情中的节点条目");
     }
-    const deleteButton = within(nodeEntry).getByRole("button", { name: "删除节点" });
-    expect(deleteButton).toBeDisabled();
+    await userEvent.click(within(nodeEntry).getByRole("button", { name: /：更多$/ }));
+    const deleteButton = screen.getByRole("menuitem", { name: "删除节点" });
+    expect(deleteButton).toHaveAttribute("aria-disabled", "true");
     expect(deleteButton).toHaveAttribute("title", "缺少 debugging:admin 权限");
   });
 
-  it("upserts node bindings through the bindings dialog", async () => {
+  it("patches only the changed protocol through the unified editor", async () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑", exact: true }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current-edited" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
 
     await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1/bindings/hdc", {
-        nodePath: "/sys/hdc/current-edited",
-        accessMode: "RW",
-        enabled: true
-      })
+      expect(apiClient.patch).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1", expect.objectContaining({
+        bindings: [expect.objectContaining({ protocol: "hdc", nodePath: "/sys/hdc/current-edited", accessMode: "RW", enabled: true })]
+      }))
     );
+    expect(apiClient.put).not.toHaveBeenCalled();
   });
 
-  it("preserves an unsaved sibling protocol draft after saving one binding", async () => {
-    const apiClient = renderDebuggingAdminPage();
+  it("keeps every field and both protocol drafts after a failed unified save", async () => {
+    const apiClient = createDebuggingAdminApiMock();
+    apiClient.patch.mockRejectedValueOnce(new Error("offline"));
+    renderDebuggingAdminPage(apiClient);
 
     await screen.findByText("Fast charge current");
-    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑", exact: true }));
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Edited node" } });
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current-edited" } });
     fireEvent.change(screen.getByLabelText("ADB 节点路径"), { target: { value: "/sys/adb/current-edited" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
-
-    await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1/bindings/hdc", {
-        nodePath: "/sys/hdc/current-edited",
-        accessMode: "RW",
-        enabled: true
-      })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    await screen.findByText("保存节点配置失败，当前输入已保留。");
+    expect(screen.getByLabelText("名称")).toHaveValue("Edited node");
+    expect(screen.getByLabelText("HDC 节点路径")).toHaveValue("/sys/hdc/current-edited");
     expect(screen.getByLabelText("ADB 节点路径")).toHaveValue("/sys/adb/current-edited");
-
-    fireEvent.click(screen.getByRole("button", { name: "保存 ADB binding" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
     await waitFor(() =>
-      expect(apiClient.put).toHaveBeenNthCalledWith(2, "/api/v1/debugging/admin/nodes/node-1/bindings/adb", {
-        nodePath: "/sys/adb/current-edited",
-        accessMode: "RO",
-        enabled: false,
-        notes: ""
-      })
+      expect(apiClient.patch).toHaveBeenNthCalledWith(2, "/api/v1/debugging/admin/nodes/node-1", expect.objectContaining({
+        name: "Edited node",
+        bindings: [
+          expect.objectContaining({ protocol: "hdc", nodePath: "/sys/hdc/current-edited" }),
+          expect.objectContaining({ protocol: "adb", nodePath: "/sys/adb/current-edited", accessMode: "RO", enabled: false })
+        ]
+      }))
     );
+    expect(apiClient.put).not.toHaveBeenCalled();
   });
 
   it("blocks invalid node binding saves before calling the API", async () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑", exact: true }));
     const hdcPathInput = screen.getByLabelText("HDC 节点路径");
     fireEvent.change(hdcPathInput, { target: { value: "relative/path" } });
     fireEvent.blur(hdcPathInput);
-    fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
 
     expect(screen.getByText("节点路径必须以 / 开头。")).toBeInTheDocument();
     expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiClient.patch).not.toHaveBeenCalled();
   });
 
   it("exports the full node catalog from the library heading", async () => {
@@ -390,6 +404,8 @@ describe("/debugging-admin API mode", () => {
       expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/export?includeArchived=true")
     );
     expect(await screen.findByText(/已导出全部节点：节点 1，模块 1，绑定 1/)).toBeInTheDocument();
+    expect(screen.queryByText("最近保存")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("节点目录概览")).not.toHaveTextContent("已导出");
   });
 
   it("previews an imported file and only writes after explicit confirmation", async () => {
@@ -618,8 +634,8 @@ describe("/debugging-admin API mode", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
 
     // The UI must not claim success or rollback, and must ask the server for the truth.
-    await waitFor(() => expect(within(dialog).getByRole("status")).toHaveTextContent("提交结果未知"));
-    expect(within(dialog).getByRole("status")).toHaveTextContent("不要重复提交");
+    await waitFor(() => expect(within(dialog).getByRole("status", { name: "导入结果提示" })).toHaveTextContent("提交结果未知"));
+    expect(within(dialog).getByRole("status", { name: "导入结果提示" })).toHaveTextContent("不要重复提交");
     await waitFor(() => expect(previewCalls).toBeGreaterThanOrEqual(2));
     expect(await within(dialog).findByText(/不变 1/)).toBeInTheDocument();
   });
@@ -745,6 +761,35 @@ describe("/debugging-admin API mode", () => {
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveAccessibleName("永久删除节点 Fast charge current");
     expect(dialog).toHaveAccessibleDescription(/全部调试历史记录/);
+  });
+
+  it("round-trips the unified mock draft without losing the other protocol or its notes", async () => {
+    const seed = {
+      ...adminState.configDraft.debugParameters[0]!,
+      bindings: [
+        { protocol: "hdc" as const, nodePath: "/sys/hdc/original", accessMode: "RW" as const, enabled: true, notes: "primary" },
+        { protocol: "adb" as const, nodePath: "/sys/adb/original", accessMode: "RO" as const, enabled: true, notes: "fallback" }
+      ]
+    };
+    function MockPage() {
+      const [state, dispatch] = useReducer(reducer, { ...adminState, configDraft: { ...adminState.configDraft, debugParameters: [seed] } });
+      return <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
+        <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={vi.fn()} search="" area="nodes" runtimeMode="mock" />
+      </TopBarActionsContext.Provider>;
+    }
+    render(<MockPage />);
+    await userEvent.click(within(screen.getByRole("row", { name: new RegExp(seed.name) })).getByRole("button", { name: "编辑", exact: true }));
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Unified mock node" } });
+    fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/updated" } });
+    fireEvent.click(screen.getByLabelText("启用 ADB 协议"));
+    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    const row = await screen.findByRole("row", { name: /Unified mock node/ });
+    await userEvent.click(within(row).getByRole("button", { name: "编辑", exact: true }));
+    expect(screen.getByLabelText("HDC 节点路径")).toHaveValue("/sys/hdc/updated");
+    expect(screen.getByLabelText("ADB 节点路径")).toHaveValue("/sys/adb/original");
+    expect(screen.getByLabelText("启用 ADB 协议")).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "ADB 更多配置", exact: true }));
+    expect(screen.getByLabelText("ADB 备注")).toHaveValue("fallback");
   });
 
   it("converges mock deletion with the shared debug-parameter state", async () => {

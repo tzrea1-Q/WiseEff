@@ -1,3 +1,4 @@
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import pg from "pg";
 import { expect, test } from "playwright/test";
@@ -159,10 +160,11 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     await detail.getByRole("button", { name: "打开跨项目对比" }).click();
     const comparison = page.getByRole("dialog", { name: /跨项目对比/ });
     const selector = comparison.getByRole("combobox");
-    await expect(selector).toHaveValue("");
-    await expect(selector.locator('option:not([value=""])')).toHaveCount(3);
-    await expect(selector).toContainText("charger.dts!/charger1");
-    const options = await selector.locator('option:not([value=""])').evaluateAll(elements => elements.map(element => (element as HTMLOptionElement).value));
+    await expect(selector).toHaveAttribute("data-value", "");
+    await expect.poll(async () => (await readSelectControlOptions(selector)).filter((option) => option.value).length).toBe(3);
+    const optionEntries = await readSelectControlOptions(selector);
+    expect(optionEntries.map((option) => option.label).join("\n")).toContain("charger.dts!/charger1");
+    const options = optionEntries.map((option) => option.value).filter(Boolean);
     expect(new Set(options).size).toBe(3);
     const response = await request.get(apiRoute(`/api/v2/projects/${projectId}/bindings/${bindingId}/compare`), { headers: authHeadersForRole("software-user") });
     expect(response.status(), await response.text()).toBe(200);
@@ -173,7 +175,7 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     for (const value of options) {
       const peer = peers.find(item => item.bindingId === value);
       expect(peer, `Selection must preserve canonical Binding identity: ${value}`).toBeDefined();
-      await selector.selectOption(value);
+      await selectControlOption(selector, value);
       await expect(comparison.locator('[data-kind="add"] code')).toContainText(peer!.rawValue.match(/\d+/)![0]);
       await expect(comparison.locator('[data-kind="remove"] code')).toContainText("1000");
     }

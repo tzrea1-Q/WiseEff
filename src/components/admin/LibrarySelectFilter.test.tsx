@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { LibrarySelectFilter } from "./LibrarySelectFilter";
 
@@ -8,7 +9,8 @@ const options = [
 ] as const;
 
 describe("LibrarySelectFilter", () => {
-  it("renders options and reports selection changes", () => {
+  it("renders options and reports selection changes", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(
       <LibrarySelectFilter
@@ -19,7 +21,8 @@ describe("LibrarySelectFilter", () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText("风险等级"), { target: { value: "high" } });
+    await user.click(screen.getByRole("combobox", { name: "风险等级" }));
+    await user.click(screen.getByRole("option", { name: "高", exact: true }));
     expect(onChange).toHaveBeenCalledWith("high");
   });
 });

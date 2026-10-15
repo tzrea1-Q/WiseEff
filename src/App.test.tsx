@@ -306,27 +306,16 @@ function unauthenticatedProbeError(message: string) {
 }
 
 function expectSelectValue(trigger: HTMLElement, value: string) {
-  if (trigger instanceof HTMLSelectElement) {
-    expect(trigger).toHaveValue(value);
-    return;
-  }
-
   expect(trigger).toHaveAttribute("data-value", value);
 }
 
-function changeSelectValue(trigger: HTMLElement, optionName: string | RegExp) {
-  if (trigger instanceof HTMLSelectElement) {
-    const option = Array.from(trigger.options).find((item) =>
-      typeof optionName === "string" ? item.textContent === optionName || item.value === optionName : optionName.test(item.textContent ?? "")
-    );
-
-    expect(option).toBeDefined();
-    fireEvent.change(trigger, { target: { value: option?.value } });
-    return;
-  }
-
-  fireEvent.click(trigger);
-  fireEvent.click(screen.getByRole("option", { name: optionName }));
+async function changeSelectValue(trigger: HTMLElement, optionName: string | RegExp) {
+  await userEvent.click(trigger);
+  const option = screen.getAllByRole("option").find((item) => typeof optionName === "string"
+    ? item.textContent === optionName || item.getAttribute("data-value") === optionName
+    : optionName.test(item.textContent ?? ""));
+  expect(option).toBeDefined();
+  await userEvent.click(option!);
 }
 
 function findTableRowByText(text: string) {
@@ -696,7 +685,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
     expect(screen.queryByRole("combobox", { name: "组织" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "New Admin" } });
-    changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Software User");
+    await changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Software User");
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "new.admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
     fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "strong-password" } });
@@ -737,7 +726,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "New Committer" } });
-    changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Hardware Committer");
+    await changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Hardware Committer");
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "new.committer" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
     fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "strong-password" } });
@@ -781,13 +770,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
     const roleSelector = screen.getByRole("combobox", { name: "角色" });
-    if (!(roleSelector instanceof HTMLSelectElement)) {
-      fireEvent.click(roleSelector);
-    }
-    const roleLabels =
-      roleSelector instanceof HTMLSelectElement
-        ? Array.from(roleSelector.options).map((option) => option.textContent)
-        : screen.getAllByRole("option").map((option) => option.textContent);
+    await userEvent.click(roleSelector);
+    const roleLabels = screen.getAllByRole("option").map((option) => option.textContent);
 
     expect(roleLabels).toContain("Hardware Committer");
     expect(roleLabels).toContain("Software Committer");
@@ -988,7 +972,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(window.location.search).toBe("?foo=1");
 
     const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
-    changeSelectValue(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    await changeSelectValue(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
     const confirmDialog = await screen.findByRole("dialog", { name: "确认调整用户角色" });
     fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认调整" }));
     await waitFor(() => expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer"));
@@ -2172,7 +2156,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("region", { name: /热榜详情/ })).toBeInTheDocument();
   });
 
-  it("uses the TopBar project selector and operation-bar risk/module filters", () => {
+  it("uses the TopBar project selector and operation-bar risk/module filters", async () => {
     window.history.replaceState(null, "", "/parameters");
 
     renderAppForCurrentPath();
@@ -2194,7 +2178,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(screen.getByRole("table")).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(within(screen.getByRole("table")).queryByText("battery_health_guard_enable")).not.toBeInTheDocument();
 
-    changeSelectValue(projectSelect, /Nebula/);
+    await changeSelectValue(projectSelect, /Nebula/);
 
     expectSelectValue(projectSelect, "nebula");
     expect(screen.getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
@@ -2777,7 +2761,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
   });
 
-  it("shows an approved initialization project in the parameters project selector", () => {
+  it("shows an approved initialization project in the parameters project selector", async () => {
     const submittedState = appReducer({ ...initialState, activeRoleId: "admin" }, {
       type: "SUBMIT_PARAMETER_INITIALIZATION",
       draft: {
@@ -2803,7 +2787,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     render(<App initialAppState={{ ...approvedState, activeRoleId: "user" }} />);
 
     const projectSelect = screen.getByRole("combobox", { name: "项目" });
-    changeSelectValue(projectSelect, "Zephyr");
+    await changeSelectValue(projectSelect, "Zephyr");
 
     expectSelectValue(projectSelect, "zep");
     expect(window.location.search).toContain("project=zep");
@@ -3911,15 +3895,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const catalog = screen.getByRole("table", { name: "可调节点目录" });
     const chargerRow = within(catalog).getByRole("row", { name: /充电输入限流/ });
-    await userEvent.click(within(chargerRow).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑", exact: true }));
     const editedPath = "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited";
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: editedPath }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await userEvent.click(within(chargerRow).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑", exact: true }));
 
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue(editedPath);
   });
@@ -3932,7 +3914,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: nextName } });
-    fireEvent.change(screen.getByLabelText("模块"), { target: { value: "Charging Policy" } });
+    await userEvent.click(within(screen.getByRole("dialog", { name: "创建节点" })).getByRole("button", { name: "模块", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "Charging Policy", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     const createdRow = screen.getByRole("row", { name: new RegExp(nextName) });

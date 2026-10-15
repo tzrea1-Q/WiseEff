@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { FieldInfoTip } from "./FieldInfoTip";
+import { SelectControl } from "@/components/common/SelectControl";
 import {
   VALUE_SHAPE_OPTIONS,
   coerceValueShapeKind,
@@ -186,19 +187,15 @@ export function ValueShapeFields({
             label="值形状 valueShape"
             description={descriptions?.valueShape}
           />
-          <select
+          <SelectControl
             id={valueShapeId}
-            aria-label="值形状 valueShape"
+            ariaLabel="值形状 valueShape"
             value={kind}
             disabled={disabled}
-            onChange={(event) => setKind(coerceValueShapeKind(event.target.value))}
-          >
-            {VALUE_SHAPE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            withinModal
+            onValueChange={(value) => setKind(coerceValueShapeKind(value))}
+            options={VALUE_SHAPE_OPTIONS}
+          />
         </FieldShell>
 
         {showCellFields ? (

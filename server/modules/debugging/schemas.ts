@@ -153,11 +153,16 @@ const writeDebugNodeAdminBodyBaseSchema = z.object({
   normalizationMode: debugNormalizationModeSchema.default(DEBUG_NORMALIZATION_MODE_TRIM),
   maxValueBytes: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().default(true),
-  bindings: z.array(debugParameterNodeBindingSchema).optional(),
+  bindings: z.array(debugParameterNodeBindingSchema).refine(
+    (bindings) => new Set(bindings.map((binding) => binding.protocol)).size === bindings.length,
+    "Each binding protocol may be supplied only once."
+  ).optional(),
   canonicalBinding: canonicalBindingSchema.nullable().optional()
 });
 
-export const writeDebugNodeAdminBodySchema = writeDebugNodeAdminBodyBaseSchema.refine(
+export const writeDebugNodeAdminBodySchema = writeDebugNodeAdminBodyBaseSchema.extend({
+  archiveProtocols: z.never().optional()
+}).refine(
   (value) => Boolean(value.module ?? value.moduleId),
   {
     message: "Either module or moduleId is required.",
@@ -165,7 +170,15 @@ export const writeDebugNodeAdminBodySchema = writeDebugNodeAdminBodyBaseSchema.r
   }
 );
 
-export const patchDebugNodeAdminBodySchema = writeDebugNodeAdminBodyBaseSchema.partial();
+export const patchDebugNodeAdminBodySchema = writeDebugNodeAdminBodyBaseSchema.partial().extend({
+  archiveProtocols: z.array(z.enum(debugConnectionProtocols)).refine(
+    (protocols) => new Set(protocols).size === protocols.length,
+    "Each archive protocol may be supplied only once."
+  ).optional()
+}).refine(
+  (value) => !value.bindings?.some((binding) => value.archiveProtocols?.includes(binding.protocol)),
+  { message: "A binding protocol cannot be saved and archived together.", path: ["archiveProtocols"] }
+);
 
 export const debugAdminModuleParamsSchema = z.object({
   moduleId: nonEmptyString

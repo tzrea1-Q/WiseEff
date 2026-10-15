@@ -133,7 +133,7 @@ export function ProjectReviewRolesPanel({ projectId, onBack, userGovernanceClien
 
   return <div className="project-review-roles-panel">
     <div className="project-review-roles__header">
-      <Button type="button" variant="ghost" onClick={onBack} disabled={busy}><ArrowLeft aria-hidden="true" />返回项目列表</Button>
+      <Button type="button" variant="outline" onClick={onBack} disabled={busy}><ArrowLeft aria-hidden="true" />返回项目列表</Button>
       <Button type="button" variant="outline" disabled={busy} onClick={async () => { if (await requestSettingsLeave()) void loadData(); }}><RefreshCw aria-hidden="true" />刷新</Button>
     </div>
     <SettingsFormPage label="项目审核角色设置" dirty={dirty} saving={busy} error={error ?? undefined}

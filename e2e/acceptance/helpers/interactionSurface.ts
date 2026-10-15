@@ -47,6 +47,8 @@ export async function dismissXiaozeToggleHint(page: Page) {
 }
 
 export async function prepareInteractionSurface(page: Page) {
+  // Bootstrap completion moves controls; wait before a pointer gesture can span that layout change.
+  await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
   await dismissCopilotDevOverlays(page);
   await closeXiaozePopupIfOpen(page);
   await dismissCopilotDevOverlays(page);

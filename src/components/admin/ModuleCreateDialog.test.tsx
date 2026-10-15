@@ -4,6 +4,22 @@ import { ModuleCreateDialog } from "./ModuleCreateDialog";
 
 
 describe("ModuleCreateDialog", () => {
+  it("protects a new draft on Escape and locks dismissal while creating", () => {
+    const onCancel = vi.fn();
+    const props = { existingNames: [], onCreate: vi.fn(), onCancel };
+    const { rerender } = render(<ModuleCreateDialog {...props} />);
+    fireEvent.change(screen.getByLabelText("模块名称"), { target: { value: "Power" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "放弃新建模块？" })).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByLabelText("模块名称")).toHaveValue("Power");
+    rerender(<ModuleCreateDialog {...props} busy />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeDisabled();
+  });
   it("creates a root module from the dialog", () => {
     const onCreate = vi.fn();
     render(<ModuleCreateDialog existingNames={[]} onCreate={onCreate} onCancel={vi.fn()} />);

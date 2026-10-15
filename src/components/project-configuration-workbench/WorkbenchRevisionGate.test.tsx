@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { selectControlOption } from "@/test/selectControlOption";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ConfigRevisionGateSnapshot } from "@/application/project-configuration/configRevisionGateSession";
@@ -36,7 +37,7 @@ function snapshot(overrides: Partial<ConfigRevisionGateSnapshot> = {}): ConfigRe
 }
 
 describe("WorkbenchRevisionGate", () => {
-  it("lists product labels and validates the selected listed id", () => {
+  it("lists product labels and validates the selected listed id", async () => {
     const onSelect = vi.fn();
     const onValidate = vi.fn();
     render(
@@ -49,9 +50,11 @@ describe("WorkbenchRevisionGate", () => {
       />
     );
 
-    expect(screen.getByRole("combobox", { name: "配置修订" })).toHaveValue("rev-cs-2");
-    expect(screen.getByRole("option", { name: "修订 2 · 已解析" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "配置修订" })).toHaveAttribute("data-value", "rev-cs-2");
+    expect(screen.getByRole("combobox", { name: "配置修订" })).toHaveTextContent("修订 2 · 已解析");
     expect(screen.queryByText("revision-teaching-1")).not.toBeInTheDocument();
+    await selectControlOption(screen.getByRole("combobox", { name: "配置修订" }), "rev-cs-1");
+    expect(onSelect).toHaveBeenCalledWith("rev-cs-1");
     fireEvent.click(screen.getByRole("button", { name: "校验修订" }));
     expect(onValidate).toHaveBeenCalled();
   });

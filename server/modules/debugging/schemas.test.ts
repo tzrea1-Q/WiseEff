@@ -11,12 +11,38 @@ import {
   exportDebugCatalogQuerySchema,
   importDebugCatalogBodySchema,
   listDebuggingParametersQuerySchema,
+  patchDebugNodeAdminBodySchema,
   readNodeBodySchema,
   rollbackSnapshotBodySchema,
-  writeNodeBodySchema
+  writeNodeBodySchema,
+  writeDebugNodeAdminBodySchema
 } from "./schemas";
 
 describe("debugging schemas", () => {
+  describe("admin node save intents", () => {
+    const binding = { protocol: "hdc", nodePath: "/sys/node", accessMode: "RW", enabled: true };
+
+    it("accepts changed bindings and independent archive protocols only on patch", () => {
+      const patch = { bindings: [binding], archiveProtocols: ["adb"] };
+      expect(patchDebugNodeAdminBodySchema.parse(patch)).toEqual(patch);
+      expect(patchDebugNodeAdminBodySchema.parse({ name: "Metadata only" })).toEqual({ name: "Metadata only" });
+      expect(writeDebugNodeAdminBodySchema.safeParse({ name: "Node", module: "power", archiveProtocols: ["adb"] }).success).toBe(false);
+    });
+
+    it.each([
+      { bindings: [binding, binding] },
+      { archiveProtocols: ["hdc", "hdc"] },
+      { bindings: [binding], archiveProtocols: ["hdc"] },
+      { archiveProtocols: ["invalid"] }
+    ])("rejects ambiguous or invalid patch protocol intents: %j", (patch) => {
+      expect(patchDebugNodeAdminBodySchema.safeParse(patch).success).toBe(false);
+    });
+
+    it("rejects duplicate protocol bindings on create", () => {
+      expect(writeDebugNodeAdminBodySchema.safeParse({ name: "Node", module: "power", bindings: [binding, binding] }).success).toBe(false);
+    });
+  });
+
   it("accepts optional parameter query filters", () => {
     expect(
       listDebuggingParametersQuerySchema.parse({

@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { type ReactNode } from "react";
 import { Lock, TriangleAlert } from "lucide-react";
 
@@ -734,35 +735,21 @@ export function WorkbenchInspectorPanel({
                   <div className="configuration-workbench__member-form">
                     <label>
                       文件
-                      <select
-                        aria-label="待编入文件"
+                      <SelectControl
+                        ariaLabel="待编入文件"
                         value={memberFileId}
-                        onChange={(event) => onMemberFileIdChange(event.target.value)}
-                      >
-                        {ungroupedFiles.length === 0 ? (
-                          <option value="">无未编组文件</option>
-                        ) : (
-                          ungroupedFiles.map((file) => (
-                            <option key={file.id} value={file.id}>
-                              {file.fileName}
-                            </option>
-                          ))
-                        )}
-                      </select>
+                        onValueChange={(value) => onMemberFileIdChange(value)}
+                        options={ungroupedFiles.length === 0 ? [{ value: "", label: "无未编组文件" }] : ungroupedFiles.map((file) => ({ value: file.id, label: file.fileName }))}
+                      />
                     </label>
                     <label>
                       角色
-                      <select
-                        aria-label="成员角色"
+                      <SelectControl
+                        ariaLabel="成员角色"
                         value={memberRole}
-                        onChange={(event) => onMemberRoleChange(event.target.value as ConfigSetRole)}
-                      >
-                        {CONFIG_SET_ROLES.map((role) => (
-                          <option key={role} value={role}>
-                            {ROLE_LABELS[role]}
-                          </option>
-                        ))}
-                      </select>
+                        onValueChange={(value) => onMemberRoleChange(value as ConfigSetRole)}
+                        options={CONFIG_SET_ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
+                      />
                     </label>
                     <label>
                       顺序

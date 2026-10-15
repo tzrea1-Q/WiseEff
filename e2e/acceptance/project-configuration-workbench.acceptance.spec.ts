@@ -1,3 +1,4 @@
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "playwright/test";
@@ -493,10 +494,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${projectId}`));
     const submission = page.getByRole("region", { name: "参数修改提交" });
     for (const select of await submission.getByRole("combobox").all()) {
-      await select.locator('option[value]:not([value=""]):not([disabled])').first().waitFor({ state: "attached" });
-      const option = await select.locator("option").evaluateAll((options) =>
-        options.find((item) => (item as HTMLOptionElement).value && !(item as HTMLOptionElement).disabled)?.getAttribute("value"));
-      if (option) await select.selectOption(option);
+      await expect.poll(async () => (await readSelectControlOptions(select)).some((option) => option.value && !option.disabled)).toBe(true);
+      const option = (await readSelectControlOptions(select)).find((option) => option.value && !option.disabled)?.value;
+      if (option) await selectControlOption(select, option);
     }
     const submittedResponse = page.waitForResponse((response) => response.request().method() === "POST"
       && response.url().endsWith(`/parameter-value-drafts/${draft.draftId}/submit`));
@@ -1549,7 +1549,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await page.getByRole("menuitem", { name: "导出配置集" }).click();
       await expect(page.locator(".configuration-workbench__ops-banner").filter({ hasText: "已导出配置集" })).toBeVisible({ timeout: 15_000 });
 
-      await page.getByRole("combobox", { name: "配置集" }).selectOption("__create_config_set__");
+      await selectControlOption(page.getByRole("combobox", { name: "配置集" }), "__create_config_set__");
       await expect(page.getByRole("heading", { name: "新建配置集" })).toBeVisible();
       await page.getByLabel("配置集名称").fill(configSetName);
       await page.getByRole("button", { name: "创建配置集" }).click();
@@ -1987,7 +1987,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect(draft.status(), await draft.text()).toBe(201);
       draftId = (await draft.json()).item.draftId;
       const submission = page.getByRole("region", { name: "参数修改提交" });
-      await submission.getByLabel("软件 MDE", { exact: true }).selectOption(acceptanceCast.sunMei.userId);
+      await selectControlOption(submission.getByLabel("软件 MDE", { exact: true }), acceptanceCast.sunMei.userId);
       const submitted = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-drafts/${draftId}/submit`));
       await submission.getByRole("button", { name: /提交/ }).click();

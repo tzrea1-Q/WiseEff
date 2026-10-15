@@ -75,7 +75,7 @@ describe("historical multi-target rollback dialog", () => {
     const dialog = screen.getByRole("dialog", { name: "提交多目标历史回滚审核" });
     expect(await within(dialog).findByRole("list", { name: "历史回滚完整有序目标" })).toHaveTextContent("Binding");
     expect(within(dialog).getByText(digest)).toBeVisible();
-    expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" })).toHaveValue("reviewer");
+    expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" })).toHaveAttribute("data-value", "reviewer");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "来源回滚原因" }), {
       target: { value: "restore history" }
     });

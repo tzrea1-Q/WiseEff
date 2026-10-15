@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { RiskPicker } from "@/components/RiskPicker";
+import { SelectControl } from "@/components/common/SelectControl";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
 import type { Project } from "@/domain/prototype/types";
 import type { PowerManagementParameterTemplate } from "@/powerManagementConfig";
@@ -76,16 +77,10 @@ function ImportModuleSelect({
   return (
     <label className="import-review-module-select">
       <span>模块</span>
-      <select aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="" disabled>
-          请选择模块
-        </option>
-        {options.map((moduleName) => (
-          <option key={moduleName} value={moduleName}>
-            {moduleName}
-          </option>
-        ))}
-      </select>
+      <SelectControl ariaLabel={ariaLabel} withinModal value={value} onValueChange={onChange} options={[
+        { value: "", label: "请选择模块", disabled: true },
+        ...options.map((moduleName) => ({ value: moduleName, label: moduleName }))
+      ]} />
     </label>
   );
 }

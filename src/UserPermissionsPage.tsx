@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { TabPanel } from "@/components/ui/tab-panel";
 import { useEffect, useMemo, useState, type CSSProperties, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
@@ -578,9 +579,9 @@ export function UserPermissionsPage({
             onMouseEnter={(event) => showRoleHint(user.id, event.currentTarget)}
             onMouseLeave={() => hideRoleHint(user.id)}
           >
-            <select
+            <SelectControl
               className="user-permissions-role-select"
-              aria-label={`调整 ${user.name} 的角色`}
+              ariaLabel={`调整 ${user.name} 的角色`}
               value={normalizedRoleId}
               disabled={isCurrentUser || platformAdminLocked}
               title={
@@ -590,19 +591,14 @@ export function UserPermissionsPage({
               }
               onFocus={(event) => showRoleHint(user.id, event.currentTarget)}
               onBlur={() => hideRoleHint(user.id)}
-              onChange={(event) => {
-                const roleId = event.target.value as PlatformRoleId;
+              onValueChange={(value) => {
+                const roleId = value as PlatformRoleId;
                 if (roleId === normalizedRoleId) return;
                 setGovernanceError(null);
                 setPendingGovernance({ kind: "role", user, nextRoleId: roleId });
               }}
-            >
-              {assignableRolesForUser(state, normalizedRoleId).map((role) => (
-                <option key={role.id} value={role.id}>
-                  {roleLabelOf(role.id)}
-                </option>
-              ))}
-            </select>
+              options={assignableRolesForUser(state, normalizedRoleId).map((role) => ({ value: role.id, label: roleLabelOf(role.id) }))}
+            />
             {activeRoleHint?.userId === user.id ? (
               <RoleCapabilityTooltip roleId={normalizedRoleId} position={activeRoleHint} />
             ) : null}
@@ -704,24 +700,12 @@ export function UserPermissionsPage({
                   </label>
                   <label className="admin-list-page__filter-field user-permissions-filter-field">
                     <span className="user-permissions-filter-label">角色</span>
-                    <select className="compact-filter-control" data-compact-control="filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
-                      <option value="all">全部角色</option>
-                      {platformRoles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {roleLabelOf(role.id)}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectControl<PlatformRoleId | "all"> size="filter" ariaLabel="角色" value={roleFilter} onValueChange={setRoleFilter}
+                      options={[{ value: "all", label: "全部角色" }, ...platformRoles.map((role) => ({ value: role.id, label: roleLabelOf(role.id) }))]} />
                   </label>
                   <label className="admin-list-page__filter-field user-permissions-filter-field">
                     <span className="user-permissions-filter-label">状态</span>
-                    <select className="compact-filter-control" data-compact-control="filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-                      {statusOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectControl size="filter" ariaLabel="状态" value={statusFilter} onValueChange={setStatusFilter} options={statusOptions} />
                   </label>
                 </div>}
               tableState={userDirectoryStatus === "loading" ? <SectionSkeleton label="正在加载用户名录" />
@@ -962,17 +946,14 @@ export function UserPermissionsPage({
               </label>
               <label className="user-permissions-modal-field">
                 <span>初始角色</span>
-                <select
+                <SelectControl
                   className="user-permissions-modal-control"
+                  ariaLabel="初始角色"
+                  withinModal
                   value={initialRoleId}
-                  onChange={(event) => setInitialRoleId(event.target.value as PlatformRoleId)}
-                >
-                  {visiblePlatformRoles(state).map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {roleLabelOf(role.id)}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setInitialRoleId}
+                  options={visiblePlatformRoles(state).map((role) => ({ value: role.id, label: roleLabelOf(role.id) }))}
+                />
               </label>
               {addUserError ? <p role="alert" className="user-permissions-modal-error">{addUserError}</p> : null}
             </div>

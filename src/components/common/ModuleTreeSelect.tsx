@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import { TreeFilterOptions } from "./TreeFilterOptions";
+import { ChevronDown } from "lucide-react";
+import "./select-control.css";
 
 export type ModuleTreeSelectMode = "single" | "multi-filter";
 
@@ -131,14 +133,14 @@ export function ModuleTreeSelect({
       triggerRef.current?.focus();
     };
     window.addEventListener("mousedown", handleOutsideClick);
-    window.addEventListener("keydown", handleEscape);
+    window.addEventListener("keydown", handleEscape, true);
     if (portalMenu) {
       window.addEventListener("resize", handleReposition);
       window.addEventListener("scroll", handleScroll, true);
     }
     return () => {
       window.removeEventListener("mousedown", handleOutsideClick);
-      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("keydown", handleEscape, true);
       if (portalMenu) {
         window.removeEventListener("resize", handleReposition);
         window.removeEventListener("scroll", handleScroll, true);
@@ -222,7 +224,7 @@ export function ModuleTreeSelect({
         aria-expanded={open}
         aria-haspopup="tree"
         aria-labelledby={labelledBy}
-        className="dropdown-trigger module-tree-trigger"
+        className="dropdown-trigger module-tree-trigger select-control"
         disabled={disabled}
         title={disabled ? "暂无可用模块。" : undefined}
         type="button"
@@ -237,9 +239,7 @@ export function ModuleTreeSelect({
         <span className="module-tree-trigger-content">
           <span className="module-tree-trigger-label">{triggerLabel}</span>
         </span>
-        <span aria-hidden="true" className="module-tree-trigger-caret">
-          ▾
-        </span>
+        <ChevronDown aria-hidden="true" className="select-control__chevron" />
       </button>
       {portalMenu && menuPosition ? createPortal(menuContent, document.body) : menuContent}
     </div>

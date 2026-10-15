@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useMemo, useState } from "react";
 import type {
   ParameterFileCandidate,
@@ -135,10 +136,13 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
     {item && selected ? <p>选中证明 <code>{item.choices[selected.choice].decisionProofDigest}</code></p> : null}
     {conflicts?.items.length ? <>
       <label>决策理由<textarea value={reason} disabled={busy} onChange={(event) => setReason(event.target.value)} /></label>
-      <label>指定软件审核人<select value={reviewerId} disabled={busy || loading} onChange={(event) => setReviewerId(event.target.value)}>
-        {reviewers.length ? reviewers.map((reviewer) => <option key={reviewer.userId} value={reviewer.userId}>{reviewer.name}（{reviewer.userId}）</option>)
-          : <option value="">没有可用的另一名软件审核人</option>}
-      </select></label>
+      <label>指定软件审核人<SelectControl
+        value={reviewerId}
+        disabled={busy || loading}
+        onValueChange={(value) => setReviewerId(value)}
+        ariaLabel="指定软件审核人"
+        options={reviewers.length ? reviewers.map((reviewer) => ({ value: reviewer.userId, label: `${reviewer.name}（${reviewer.userId}）` })) : [{ value: "", label: "没有可用的另一名软件审核人" }]}
+      /></label>
       <button type="button" className="button primary" disabled={!ready} onClick={() => void submit()}>{busy ? "提交中…" : "提交所选一项人工审核"}</button>
     </> : null}
   </section>;

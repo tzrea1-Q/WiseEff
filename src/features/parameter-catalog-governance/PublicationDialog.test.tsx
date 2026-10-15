@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -67,7 +68,7 @@ function renderDialog(
 }
 
 async function fillSupportedDefinition(user: ReturnType<typeof userEvent.setup>) {
-  await user.selectOptions(await screen.findByLabelText("已发布主体"), CATALOG_SUBJECT_ID);
+  await selectControlOption(await screen.findByLabelText("已发布主体"), CATALOG_SUBJECT_ID);
   const propertyKey = screen.getByLabelText("属性键");
   const displayName = screen.getByLabelText("显示名称");
   const documentation = screen.getByLabelText("说明");
@@ -235,7 +236,7 @@ describe("PublicationDialog", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByLabelText("新增主体"));
     expect(await screen.findByRole("dialog", { name: "新增主体及首批定义" })).toBeVisible();
-    await user.selectOptions(screen.getByLabelText("主体类型"), "driver");
+    await selectControlOption(screen.getByLabelText("主体类型"), "driver");
     await user.type(screen.getByLabelText("选择器"), "acme,aux");
     await user.clear(screen.getByLabelText("属性键"));
     await user.type(screen.getByLabelText("属性键"), "vbat");
@@ -288,7 +289,7 @@ describe("PublicationDialog", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByLabelText("修订定义"));
     expect(await screen.findByRole("dialog", { name: "修订已有定义" })).toBeVisible();
-    await user.selectOptions(screen.getByLabelText("修订类别"), "semantic");
+    await selectControlOption(screen.getByLabelText("修订类别"), "semantic");
     expect(screen.getByText(/目录有新版本并不等于项目已采用/)).toBeVisible();
   });
 

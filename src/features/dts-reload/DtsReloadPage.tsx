@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { ViewSwitch } from "@/components/ui/view-switch";
@@ -716,19 +717,13 @@ export function DtsReloadPage({
         <NavigatorWorkbench pageKey="dts-reload"
           toolbar={<label className="dts-reload-project-select">
             <span>项目</span>
-            <select
-              className="compact-filter-control"
-              data-compact-control="filter"
-              aria-label="选择项目"
+            <SelectControl
+              size="filter"
+              ariaLabel="选择项目"
               value={projectId}
-              onChange={(event) => session.selectProject(event.target.value)}
-            >
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => session.selectProject(value)}
+              options={projects.map((project) => ({ value: project.id, label: project.name }))}
+            />
           </label>}
           primaryAction={<Button
                   data-primary-action="true"

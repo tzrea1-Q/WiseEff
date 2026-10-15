@@ -1,3 +1,4 @@
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type Page } from "playwright/test";
 
@@ -311,8 +312,8 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page.locator(`[id="${panelId}"]`)).toHaveAttribute("role", "tabpanel");
     await expect(page.locator(`[id="${panelId}"]`)).toBeVisible();
     const changeType = page.getByRole("combobox", { name: "变更类型", exact: true });
-    await expect(changeType.locator("option")).toHaveText(["全部类型", "软件配置", "JSON 成员删除", "旧版请求"]);
-    await changeType.selectOption("value");
+    expect((await readSelectControlOptions(changeType)).map((option) => option.label)).toEqual(["全部类型", "软件配置", "JSON 成员删除", "旧版请求"]);
+    await selectControlOption(changeType, "value");
     const queue = page.getByRole("table", { name: "审阅队列", exact: true });
     await expect(queue).toHaveCount(1);
     await expect(queue).toHaveAttribute("id", "review-queue-table");
@@ -332,7 +333,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
 
     await page.reload();
     await expect(processedTab).toHaveAttribute("aria-selected", "true");
-    await expect(changeType).toHaveValue("value");
+    await expect(changeType).toHaveAttribute("data-value", "value");
     const reloadedRow = queue.locator(`[data-review-row-id="${requestId}"]`);
     await expect(reloadedRow).toBeVisible();
     await expect(reloadedRow.locator("td").last()).toContainText(/./);

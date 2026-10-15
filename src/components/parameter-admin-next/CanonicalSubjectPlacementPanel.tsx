@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 
@@ -470,21 +471,17 @@ export function CanonicalSubjectPlacementPanel({
               </label>
               <label>
                 主体身份
-                <select
+                <SelectControl
                   className="compact-filter-control"
-                  data-compact-control="filter"
-                  aria-label="筛选主体身份"
+                  ariaLabel="筛选主体身份"
                   value={typeFilter}
-                  onChange={(event) => {
-                    setTypeFilter(event.target.value as "all" | SubjectRow["type"]);
+                  onValueChange={(value) => {
+                    setTypeFilter(value as "all" | SubjectRow["type"]);
                     setSubjectPage(0);
                   }}
-                >
-                  <option value="all">全部</option>
-                  <option value="driver">Driver</option>
-                  <option value="node-type">NodeType</option>
-                  <option value="configuration-schema">ConfigurationSchema</option>
-                </select>
+                  size="filter"
+                  options={[{ value: "all", label: "全部" }, { value: "driver", label: "Driver" }, { value: "node-type", label: "NodeType" }, { value: "configuration-schema", label: "ConfigurationSchema" }]}
+                />
               </label>
             </div>
             {moduleSummary.size > 0 ? (

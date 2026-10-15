@@ -74,6 +74,9 @@ describe("DebugNodeCatalogImportDialog", () => {
     expect(counts.querySelector('[data-classification="created"]')?.textContent?.replace(/\s+/g, " ").trim()).toBe("新增 2");
     expect(counts.querySelector('[data-classification="updated"]')?.textContent?.replace(/\s+/g, " ").trim()).toBe("更新 2");
     expect(counts.querySelector('[data-classification="conflict"]')?.textContent?.replace(/\s+/g, " ").trim()).toBe("冲突 0");
+    expect(counts.querySelector('[data-classification="conflict"]')).toHaveAttribute("data-has-conflicts", "false");
+    expect(within(dialog).getByText("当前组织")).toBeInTheDocument();
+    expect(within(dialog).getByText("节点目录 · v2")).toBeInTheDocument();
 
     // Binding changes must name the path, access mode and enabled state that will change.
     expect(within(dialog).getByText(/协议路径: \/sys\/hdc\/old → \/sys\/hdc\/new/)).toBeInTheDocument();
@@ -100,10 +103,11 @@ describe("DebugNodeCatalogImportDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "导入预览" });
     expect(within(dialog).getByRole("button", { name: "确认导入" })).toBeDisabled();
     expect(within(dialog).getByText(/nodes\[1\]/)).toBeInTheDocument();
+    expect(dialog.querySelector('[data-classification="conflict"]')).toHaveAttribute("data-has-conflicts", "true");
   });
 
   it("reports 'no update needed' for an unchanged file and disables confirmation during submit", () => {
-    renderDialog({
+    const props = renderDialog({
       preview: buildPreview({
         modules: { created: 0, updated: 0, unchanged: 1 },
         nodes: { created: 0, updated: 0, unchanged: 1 },
@@ -113,10 +117,14 @@ describe("DebugNodeCatalogImportDialog", () => {
     });
 
     const dialog = screen.getByRole("dialog", { name: "导入预览" });
-    expect(within(dialog).getByText("无需更新：文件内容与当前节点库一致。")).toBeInTheDocument();
+    expect(within(dialog).getByRole("status")).toHaveTextContent("无需更新：文件内容与当前节点库一致。");
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
-    expect(true).toBe(true);
+    const confirm = within(dialog).getByRole("button", { name: "无需导入" });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(props.onConfirm).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "完成" }));
+    expect(props.onCancel).toHaveBeenCalledOnce();
   });
 
   it("surfaces a structured error with a re-preview action", () => {

@@ -32,7 +32,7 @@ const parameters: DebugParameterSeed[] = [
     id: "dbg-fast-charge-current",
     name: "Fast charge current",
     key: "fast_charge_current",
-    description: "Fast-charge constant current node for simulator write/readback validation.",
+    description: "快充恒流配置，支持写入与回读校验。",
     module: "Battery Charging",
     nodePath: "/sys/class/power_supply/battery/constant_charge_current",
     accessMode: "RW",
@@ -49,7 +49,7 @@ const parameters: DebugParameterSeed[] = [
     id: "dbg-input-current-limit",
     name: "Input current limit",
     key: "input_current_limit",
-    description: "Adapter input current limit used by the simulator target.",
+    description: "适配器输入电流上限，用于调整充电输入功率。",
     module: "Battery Charging",
     nodePath: "/sys/class/power_supply/battery/input_current_limit",
     accessMode: "RW",
@@ -66,7 +66,7 @@ const parameters: DebugParameterSeed[] = [
     id: "dbg-temp-limit",
     name: "Temperature limit",
     key: "temp_limit",
-    description: "Battery temperature limit used to validate high-risk writes.",
+    description: "电池温度保护阈值，修改前请核对安全范围。",
     module: "Battery Safety",
     nodePath: "/sys/class/power_supply/battery/temp_limit",
     accessMode: "RW",
@@ -83,7 +83,7 @@ const parameters: DebugParameterSeed[] = [
     id: "dbg-cycle-count",
     name: "Cycle count",
     key: "cycle_count",
-    description: "Read-only battery cycle count exposed by the simulator.",
+    description: "电池累计充放电循环次数，仅供读取。",
     module: "Battery Health",
     nodePath: "/sys/class/power_supply/battery/cycle_count",
     accessMode: "RO",
@@ -100,7 +100,7 @@ const parameters: DebugParameterSeed[] = [
     id: "dbg-readback-mismatch",
     name: "Readback mismatch probe",
     key: "readback_mismatch",
-    description: "Simulator node configured to report a readback mismatch after writes.",
+    description: "回读不一致诊断节点，用于验证异常提示与恢复流程。",
     module: "Diagnostics",
     nodePath: "/sys/class/power_supply/battery/readback_mismatch",
     accessMode: "RW",
@@ -300,7 +300,7 @@ export async function seedM3Debugging(db: Database): Promise<void> {
           parameter.id,
           parameter.nodePath,
           parameter.accessMode,
-          "Seeded HDC node binding."
+          "开发演示环境的 HDC 路径绑定。"
         ]
       );
 
@@ -317,7 +317,7 @@ export async function seedM3Debugging(db: Database): Promise<void> {
           notes = excluded.notes,
           updated_at = now()
         `,
-        [`${parameter.id}:hdc`, organizationId, parameter.id, parameter.nodePath, parameter.accessMode, "Seeded HDC node binding."]
+        [`${parameter.id}:hdc`, organizationId, parameter.id, parameter.nodePath, parameter.accessMode, "开发演示环境的 HDC 路径绑定。"]
       );
     }
 

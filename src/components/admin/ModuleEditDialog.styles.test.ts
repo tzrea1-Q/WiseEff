@@ -9,11 +9,13 @@ describe("ModuleEditDialog driver-group layout", () => {
       ".param-admin-module-edit-dialog .module-edit-section"
     );
     const picker = declarationsFor(
-      styles,
-      ".module-edit-placement-controls .module-tree-trigger"
+      readStylesheet("src/components/common/select-control.css"),
+      ".select-control"
     );
     expect(section["border-radius"]).toBe("var(--radius-md)");
     expect(picker.background).toBe("var(--surface)");
-    expect(picker["border-radius"]).toBe("var(--radius-md)");
+    expect(picker["border-radius"]).toBe("var(--radius-sm)");
+    expect(picker.border).toBe("var(--stroke-hairline) solid var(--border)");
+    expect(picker.font).toBe("400 var(--text-sm) / var(--leading-sm) var(--font-sans)");
   });
 });

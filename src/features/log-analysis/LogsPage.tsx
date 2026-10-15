@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -750,37 +751,29 @@ function UploadLogDialog({
         </label>
         <label className="upload-question-field" htmlFor="upload-log-domain">
           <span>业务域（可选）</span>
-          <select
+          <SelectControl
             id="upload-log-domain"
+            ariaLabel="业务域（可选）"
+            withinModal
             value={selectedDomainId}
-            onChange={(event) => setSelectedDomainId(event.target.value)}
-          >
-            <option value={UNCATEGORIZED_LOG_DOMAIN_VALUE}>未分类（通用分析）</option>
-            {domains.map((domain) => (
-              <option key={domain.id} value={domain.id}>
-                {domain.name}
-              </option>
-            ))}
-          </select>
+            onValueChange={setSelectedDomainId}
+            options={[{ value: UNCATEGORIZED_LOG_DOMAIN_VALUE, label: "未分类（通用分析）" }, ...domains.map((domain) => ({ value: domain.id, label: domain.name }))]}
+          />
         </label>
         {parameterRepository ? (
           <>
             <label className="upload-question-field" htmlFor="upload-parameter-project">
               <span>关联参数的项目（可选）</span>
-              <select id="upload-parameter-project" value={projectId} disabled={uploading}
-                onChange={(event) => setProjectId(event.target.value)}>
-                <option value="">不关联参数</option>
-                {projects.map((project) => <option key={project.id} value={project.id}>{project.code} · {project.name}</option>)}
-              </select>
+              <SelectControl id="upload-parameter-project" ariaLabel="关联参数的项目（可选）" value={projectId} disabled={uploading} withinModal
+                onValueChange={setProjectId}
+                options={[{ value: "", label: "不关联参数" }, ...projects.map((project) => ({ value: project.id, label: `${project.code} · ${project.name}` }))]} />
             </label>
             {projectId ? (
               <label className="upload-question-field" htmlFor="upload-parameter-binding">
                 <span>项目参数</span>
-                <select id="upload-parameter-binding" value={bindingId} disabled={uploading || bindingLoading}
-                  onChange={(event) => setBindingId(event.target.value)}>
-                  <option value="">{bindingLoading ? "正在加载参数…" : "请选择项目参数"}</option>
-                  {bindings.map((item) => <option key={item.id} value={item.id}>{item.displayName ?? item.propertyKey} · {item.locator || item.driverModule} · {item.id}</option>)}
-                </select>
+                <SelectControl id="upload-parameter-binding" ariaLabel="项目参数" value={bindingId} disabled={uploading || bindingLoading} withinModal
+                  onValueChange={setBindingId}
+                  options={[{ value: "", label: bindingLoading ? "正在加载参数…" : "请选择项目参数" }, ...bindings.map((item) => ({ value: item.id, label: `${item.displayName ?? item.propertyKey} · ${item.locator || item.driverModule} · ${item.id}` }))]} />
                 {!bindingLoading && !bindingError && !bindings.length ? <span>该项目暂无可关联的当前参数。</span> : null}
               </label>
             ) : null}
@@ -1049,11 +1042,8 @@ function LogAnalysisFeedbackDialog({
         </div>
         <label className="upload-question-field" htmlFor="log-feedback-confidence">
           <span>置信度反馈</span>
-          <select id="log-feedback-confidence" value={confidence} disabled={pending} onChange={(event) => setConfidence(event.target.value)}>
-            <option value="high">高：判断可信</option>
-            <option value="medium">中：需要复核</option>
-            <option value="low">低：可能误判</option>
-          </select>
+          <SelectControl id="log-feedback-confidence" ariaLabel="置信度反馈" value={confidence} disabled={pending} onValueChange={setConfidence} withinModal
+            options={[{ value: "high", label: "高：判断可信" }, { value: "medium", label: "中：需要复核" }, { value: "low", label: "低：可能误判" }]} />
         </label>
         <label className="upload-question-field" htmlFor="log-feedback-issue">
           <span>可能存在的问题</span>

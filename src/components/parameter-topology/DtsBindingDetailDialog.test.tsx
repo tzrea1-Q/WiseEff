@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { selectControlOption } from "@/test/selectControlOption";
 import { describe, expect, it, vi } from "vitest";
 
 import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
@@ -291,7 +292,7 @@ describe("DtsBindingDetailDialog", () => {
     expect(within(dialog).queryByRole("button", { name: "加入草稿" })).not.toBeInTheDocument();
   });
 
-  it("opens mature cross-project compare in a secondary dialog with binding instances and draft-from-target", () => {
+  it("opens mature cross-project compare in a secondary dialog with binding instances and draft-from-target", async () => {
     const onUseCompareAsDraft = vi.fn();
     renderDialog({
       row: gpioRow({ rawValue: "<3590>" }),
@@ -339,7 +340,7 @@ describe("DtsBindingDetailDialog", () => {
     expect(within(compare).queryByText("重点差异")).not.toBeInTheDocument();
     expect(within(compare).queryByText("差异视图")).not.toBeInTheDocument();
     expect(within(compare).queryByText("当前值对比")).not.toBeInTheDocument();
-    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveValue("");
+    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveAttribute("data-value", "");
     expect(within(compare).getByRole("status")).toHaveTextContent("请选择要比较的配置实例");
 
     const overview = within(compare).getByRole("list", { name: "跨项目对比" });
@@ -354,11 +355,9 @@ describe("DtsBindingDetailDialog", () => {
     expect(within(overview).queryByText(/<3590>/)).not.toBeInTheDocument();
 
     fireEvent.click(within(entries[1]!).getByRole("button", { name: /Nebula 高频调试项目/ }));
-    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveValue("binding-nebula-1");
+    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveAttribute("data-value", "binding-nebula-1");
 
-    fireEvent.change(within(compare).getByLabelText("对比目标配置实例"), {
-      target: { value: "binding-nebula-1" }
-    });
+    await selectControlOption(within(compare).getByLabelText("对比目标配置实例"), "binding-nebula-1");
     expect(within(compare).getByLabelText("基准与目标项目")).toBeInTheDocument();
 
     fireEvent.click(within(compare).getByRole("button", { name: "使用该项目配置加入草稿" }));

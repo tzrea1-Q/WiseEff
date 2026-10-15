@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { ModuleImportance, ModuleKind } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { shouldShowFieldError } from "@/components/common/fieldValidation";
+import { SelectControl } from "@/components/common/SelectControl";
 
 const IMPORTANCE_OPTIONS: Array<{ value: ModuleImportance; label: string }> = [
   { value: "high", label: "高" },
@@ -71,37 +72,27 @@ export function ModuleDefinitionForm({
       {showKind ? (
         <label>
           模块类型
-          <select
-            aria-label="模块类型"
+          <SelectControl
+            ariaLabel="模块类型"
             value={kind === "driver-group" || kind === "unclassified" ? "business" : kind}
             disabled={readOnly}
-            onChange={(event) =>
-              onKindChange?.(event.target.value as "business" | "node-type")
-            }
-          >
-            {RECLASSIFY_KIND_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            withinModal
+            onValueChange={(value) => onKindChange?.(value)}
+            options={RECLASSIFY_KIND_OPTIONS}
+          />
         </label>
       ) : null}
       {importanceVisible ? (
         <label>
           重要性
-          <select
-            aria-label="模块重要性"
+          <SelectControl
+            ariaLabel="模块重要性"
             value={importance}
             disabled={readOnly}
-            onChange={(event) => onImportanceChange?.(event.target.value as ModuleImportance)}
-          >
-            {IMPORTANCE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            withinModal
+            onValueChange={(value) => onImportanceChange?.(value)}
+            options={IMPORTANCE_OPTIONS}
+          />
         </label>
       ) : null}
       <label>

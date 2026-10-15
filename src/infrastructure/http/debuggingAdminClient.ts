@@ -14,6 +14,7 @@ import {
   type DebugAdminBindingWriteDto,
   type DebugAdminNodeDto,
   type DebugAdminNodeWriteDto,
+  type DebugAdminNodePatchDto,
   type DebugAdminModuleDto
 } from "./debuggingAdminDtos";
 import { createDefaultApiClient } from "./defaultApiClient";
@@ -256,7 +257,7 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
       const response = await apiClient.post<ItemEnvelope<DebugAdminNodeDto>>("/api/v1/debugging/admin/nodes", draft);
       return debugAdminNodeFromDto(response.item);
     },
-    async updateNode(nodeId: string, patch: Partial<DebugAdminNodeWriteDto>): Promise<DebugNodeRegistryEntry> {
+    async updateNode(nodeId: string, patch: DebugAdminNodePatchDto): Promise<DebugNodeRegistryEntry> {
       const response = await apiClient.patch<ItemEnvelope<DebugAdminNodeDto>>(adminNodePath(nodeId), patch);
       return debugAdminNodeFromDto(response.item);
     },

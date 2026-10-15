@@ -1,4 +1,5 @@
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { CircleX } from "lucide-react";
 import type {
   CatalogImportClassification,
   CatalogImportConflict,
@@ -11,6 +12,7 @@ import "./debug-catalog-import-dialog.css";
 export type DebugNodeCatalogImportDialogProps = {
   open: boolean;
   fileName: string;
+  targetOrganizationName?: string;
   preview: CatalogImportPreview | null;
   loading: boolean;
   submitting: boolean;
@@ -124,6 +126,7 @@ function objectLabel(object: CatalogImportDifferenceDetail["object"]) {
 export function DebugNodeCatalogImportDialog({
   open,
   fileName,
+  targetOrganizationName = "当前组织",
   preview,
   loading,
   submitting,
@@ -133,26 +136,36 @@ export function DebugNodeCatalogImportDialog({
   onConfirm,
   onReloadPreview
 }: DebugNodeCatalogImportDialogProps) {
-  const canSubmit = Boolean(preview?.canSubmit && preview.previewDigest);
   const conflictCount = preview?.conflicts.length ?? 0;
   const countConflictCount = preview?.countConflicts.length ?? 0;
+  const changeCount = preview
+    ? preview.nodes.created + preview.nodes.updated + preview.modules.created + preview.modules.updated + preview.bindings.created + preview.bindings.updated
+    : 0;
+  const noChanges = Boolean(preview && changeCount === 0 && conflictCount + countConflictCount === 0);
+  const canSubmit = Boolean(preview?.canSubmit && preview.previewDigest && changeCount > 0 && !error);
 
   return (
     <ModalDialog
       open={open}
       onDismiss={loading || submitting ? undefined : onCancel}
-      className="confirm-dialog debug-catalog-import-dialog modal-card--lg"
+      className="submission-dialog debug-catalog-import-dialog modal-card--lg"
       describedBy
     >
       {({ titleId, descriptionId }) => (
         <>
-          <h2 id={titleId}>导入预览</h2>
-          <p id={descriptionId}>
-            文件 <code>{fileName || "未选择文件"}</code> 的合并预览。确认前不会写入节点库。
-          </p>
+          <div className="submission-dialog-head param-admin-editor-dialog-head">
+            <div className="param-admin-editor-dialog-head-text">
+              <span className="eyebrow">节点目录</span>
+              <h2 id={titleId}>导入预览</h2>
+              <p id={descriptionId}>核对文件与当前节点库的差异，再确认合并。确认前不会写入节点库。</p>
+            </div>
+            <button type="button" className="audit-dialog-close-icon" aria-label="关闭" disabled={loading || submitting} onClick={onCancel}>
+              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </div>
 
           {notice ? (
-            <p role="status" className="debug-catalog-import-dialog__notice">
+            <p role="status" aria-label="导入结果提示" className="debug-catalog-import-dialog__notice">
               {notice}
             </p>
           ) : null}
@@ -162,22 +175,23 @@ export function DebugNodeCatalogImportDialog({
 
             {!loading && preview ? (
               <>
+                <p className="debug-catalog-import-dialog__file"><span>导入文件</span><strong>{fileName || "未选择文件"}</strong></p>
                 <dl className="debug-catalog-import-dialog__scope">
                   <div>
                     <dt>来源组织</dt>
                     <dd>
                       {preview.sourceOrganization?.organizationName ??
-                        preview.sourceOrganization?.organizationId ??
+                        (preview.sourceOrganization?.organizationId ? "文件来源组织" : null) ??
                         "文件中未提供"}
                     </dd>
                   </div>
                   <div>
                     <dt>目标组织</dt>
-                    <dd>{preview.targetOrganizationId}</dd>
+                    <dd>{targetOrganizationName}</dd>
                   </div>
                   <div>
                     <dt>格式版本</dt>
-                    <dd>{preview.format}</dd>
+                    <dd>{preview.format === "wiseeff.debug-node-catalog.v2" ? "节点目录 · v2" : "节点目录文件"}</dd>
                   </div>
                   <div>
                     <dt>文件内容</dt>
@@ -198,7 +212,7 @@ export function DebugNodeCatalogImportDialog({
                   <li data-classification="unchanged">
                     <span>不变</span> {preview.nodes.unchanged + preview.modules.unchanged + preview.bindings.unchanged}
                   </li>
-                  <li data-classification="conflict">
+                  <li data-classification="conflict" data-has-conflicts={conflictCount + countConflictCount > 0}>
                     <span>{conflictLabel}</span> {conflictCount + countConflictCount}
                   </li>
                 </ul>
@@ -235,8 +249,10 @@ export function DebugNodeCatalogImportDialog({
 
                 <section aria-label="差异明细">
                   <h3>差异明细</h3>
-                  {preview.details.length === 0 ? (
-                    <p>无需更新：文件内容与当前节点库一致。</p>
+                  {noChanges ? (
+                    <p className="debug-catalog-import-dialog__unchanged" role="status">无需更新：文件内容与当前节点库一致。关闭预览即可继续管理节点。</p>
+                  ) : preview.details.length === 0 ? (
+                    <p>暂无可显示的差异明细，请先处理上述冲突。</p>
                   ) : (
                     <table>
                       <caption>逐对象差异</caption>
@@ -264,6 +280,14 @@ export function DebugNodeCatalogImportDialog({
                   )}
                   {preview.detailsTruncated ? <p>差异明细已截断，仅显示前若干条。</p> : null}
                 </section>
+                <details className="debug-catalog-import-dialog__technical">
+                  <summary>文件与组织标识</summary>
+                  <dl>
+                    <div><dt>来源组织 ID</dt><dd>{preview.sourceOrganization?.organizationId ?? "文件中未提供"}</dd></div>
+                    <div><dt>目标组织 ID</dt><dd>{preview.targetOrganizationId}</dd></div>
+                    <div><dt>完整格式标识</dt><dd>{preview.format}</dd></div>
+                  </dl>
+                </details>
               </>
             ) : null}
 
@@ -276,7 +300,7 @@ export function DebugNodeCatalogImportDialog({
 
           <div className="dialog-actions">
             <button type="button" className="button subtle" onClick={onCancel} disabled={loading || submitting}>
-              取消
+              {noChanges ? "完成" : "取消"}
             </button>
             {error ? (
               <button type="button" className="button subtle" onClick={onReloadPreview} disabled={loading || submitting}>
@@ -286,10 +310,10 @@ export function DebugNodeCatalogImportDialog({
             <button
               type="button"
               className="button primary"
-              onClick={onConfirm}
+              onClick={() => { if (canSubmit && !loading && !submitting) onConfirm(); }}
               disabled={!canSubmit || loading || submitting}
             >
-              {submitting ? "正在导入…" : "确认导入"}
+              {submitting ? "正在导入…" : noChanges ? "无需导入" : "确认导入"}
             </button>
           </div>
         </>

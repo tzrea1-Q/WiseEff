@@ -15,6 +15,19 @@ afterEach(() => {
 });
 
 describe("DebugModuleMoveDialog", () => {
+  it("retains the chosen destination when cancelling a discard confirmation", () => {
+    const onCancel = vi.fn();
+    render(<DebugModuleMoveDialog module={moduleNodes[1]!} modules={moduleNodes} onConfirm={vi.fn()} onCancel={onCancel} />);
+    fireEvent.click(screen.getByRole("button", { name: "目标父模块" }));
+    fireEvent.click(within(screen.getByRole("tree")).getByRole("button", { name: "充电" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "放弃移动模块？" })).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByRole("button", { name: "目标父模块" })).toHaveTextContent("充电");
+    expect(screen.getByRole("button", { name: "确认移动" })).toBeEnabled();
+  });
   it("shows the current path, excludes the module subtree, and supports moving to root", async () => {
     const onConfirm = vi.fn().mockResolvedValue(undefined);
     const onCancel = vi.fn();

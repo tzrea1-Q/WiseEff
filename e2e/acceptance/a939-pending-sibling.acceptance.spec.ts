@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -121,7 +122,7 @@ test("#939 blocks a pending sibling JSON request, then allows refreshed batch su
       await inspector.getByRole("button", { name: "提交 JSON 批量审核" }).click();
       const dialog = page.getByRole("dialog", { name: "提交 JSON 批量来源审核" });
       await dialog.getByRole("textbox", { name: "修改原因" }).fill("Pending sibling browser proof");
-      await dialog.getByRole("combobox", { name: "指定软件审核人" }).selectOption(acceptanceCast.sunMei.userId);
+      await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
       return dialog;
     };
     let dialog = await openDialog();

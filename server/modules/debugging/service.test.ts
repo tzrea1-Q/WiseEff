@@ -19,6 +19,7 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
 import type { CreateAuditEventInput } from "../audit/types";
+import { listAuditEvents } from "../audit/repository";
 import { createAgentApproval, createAgentSession } from "../agent/repository";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
@@ -373,6 +374,195 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     );
     return result.rows;
   }
+
+  describe("atomic admin node edits", () => {
+    it("creates both protocol bindings with sanitized upsert audits and one shared trace", async () => {
+      const service = createDebuggingService({ db, gateway: makeGateway() });
+      const node = await service.createAdminDebugNode(adminAuth, {
+        name: "Created together", module: "power", bindings: [
+          { protocol: "hdc", nodePath: "/create/private/hdc", accessMode: "RW", enabled: true, notes: "Private HDC note" },
+          { protocol: "adb", nodePath: "/create/private/adb", accessMode: "RO", enabled: false, notes: "Private ADB note" }
+        ]
+      }, { requestId: "atomic-node-create" });
+      const { items: audits } = await listAuditEvents(db, { organizationId: "org-1", traceId: "atomic-node-create" });
+      expect(audits.map((event) => event.kind).sort()).toEqual([
+        "debug-node-admin-create", "debug-node-binding-admin-upsert", "debug-node-binding-admin-upsert"
+      ]);
+      for (const [protocol, accessMode, enabled] of [["hdc", "RW", true], ["adb", "RO", false]] as const) {
+        expect(audits.find((event) => event.targetId === `${node.id}:${protocol}`)).toMatchObject({
+          kind: "debug-node-binding-admin-upsert", action: "update", targetType: "debug-node-binding",
+          metadata: { nodeId: node.id, protocol, accessMode, enabled, hasNotes: true }
+        });
+      }
+      expect(JSON.stringify(audits)).not.toMatch(/\/create\/private|Private HDC note|Private ADB note/);
+      expect((await service.listAdminDebugNodes(adminAuth)).find((item) => item.id === node.id)).toMatchObject({
+        name: "Created together", bindings: node.bindings
+      });
+    });
+
+    it("rolls back a new node, both bindings and protocol audits when PostgreSQL rejects its create audit", async () => {
+      const service = createDebuggingService({ db, gateway: makeGateway() });
+      await db.query(`create function reject_atomic_node_create_audit() returns trigger language plpgsql as $$
+        begin
+          if new.kind = 'debug-node-admin-create' then raise exception 'Atomic create audit failure'; end if;
+          return new;
+        end $$`);
+      await db.query(`create trigger reject_atomic_node_create_audit before insert on audit_events
+        for each row execute function reject_atomic_node_create_audit()`);
+      await expect(service.createAdminDebugNode(adminAuth, {
+        name: "Must not exist", module: "power", bindings: [
+          { protocol: "hdc", nodePath: "/create/rollback/hdc", accessMode: "RW", enabled: true },
+          { protocol: "adb", nodePath: "/create/rollback/adb", accessMode: "RO", enabled: true }
+        ]
+      }, { requestId: "pg-create-audit-failure" })).rejects.toMatchObject({ code: "P0001", message: "Atomic create audit failure" });
+      expect(await service.listAdminDebugNodes(adminAuth)).toEqual([]);
+      expect((await listAuditEvents(db, { organizationId: "org-1", traceId: "pg-create-audit-failure" })).items).toEqual([]);
+    });
+
+    it("saves node metadata and supplied bindings while preserving omitted protocols", async () => {
+      const service = createDebuggingService({ db, gateway: makeGateway() });
+      const node = await service.createAdminDebugNode(adminAuth, {
+        name: "Original node", module: "power", bindings: [
+          { protocol: "hdc", nodePath: "/original/hdc", accessMode: "RW", enabled: true, notes: "Old HDC note" },
+          { protocol: "adb", nodePath: "/original/adb", accessMode: "RO", enabled: true, notes: "Keep ADB note" }
+        ]
+      });
+      const originalAdb = node.bindings.find((binding) => binding.protocol === "adb");
+
+      const updated = await service.updateAdminDebugNode(adminAuth, {
+        nodeId: node.id, name: "Updated node",
+        bindings: [{ protocol: "hdc", nodePath: "/updated/hdc", accessMode: "RO", enabled: false, notes: "New HDC note" }]
+      }, { requestId: "atomic-node-update" });
+
+      expect(updated.name).toBe("Updated node");
+      expect(updated.bindings.find((binding) => binding.protocol === "hdc")).toMatchObject({
+        nodePath: "/updated/hdc", accessMode: "RO", enabled: false, notes: "New HDC note"
+      });
+      expect(updated.bindings.find((binding) => binding.protocol === "adb")).toEqual(originalAdb);
+      const persisted = (await service.listAdminDebugNodes(adminAuth)).find((item) => item.id === node.id);
+      expect(persisted).toMatchObject({ name: updated.name, bindings: updated.bindings });
+      const { items: audits } = await listAuditEvents(db, { organizationId: "org-1", traceId: "atomic-node-update" });
+      expect(audits.map((event) => event.kind).sort()).toEqual(["debug-node-admin-update", "debug-node-binding-admin-upsert"]);
+      expect(audits.find((event) => event.kind === "debug-node-binding-admin-upsert")).toMatchObject({
+        action: "update", targetId: `${node.id}:hdc`,
+        metadata: { nodeId: node.id, protocol: "hdc", enabled: false, accessMode: "RO", hasNotes: true }
+      });
+      expect(JSON.stringify(audits)).not.toMatch(/\/updated\/hdc|New HDC note|Old HDC note|Keep ADB note/);
+    });
+
+    it("archives a binding without losing its path or notes and records the protocol archive audit", async () => {
+      const service = createDebuggingService({ db, gateway: makeGateway() });
+      const node = await service.createAdminDebugNode(adminAuth, {
+        name: "Original node", module: "power", bindings: [
+          { protocol: "hdc", nodePath: "/original/hdc", accessMode: "RW", enabled: true },
+          { protocol: "adb", nodePath: "/original/adb", accessMode: "RO", enabled: true, notes: "Retain this note" }
+        ]
+      });
+      const updated = await service.updateAdminDebugNode(adminAuth, {
+        nodeId: node.id, name: "Updated node", archiveProtocols: ["adb"],
+        bindings: [{ protocol: "hdc", nodePath: "/updated/hdc", accessMode: "RW", enabled: true }]
+      }, { requestId: "atomic-node-archive" });
+      expect(updated.bindings.find((binding) => binding.protocol === "adb")).toMatchObject({
+        nodePath: "/original/adb", accessMode: "RO", notes: "Retain this note", enabled: false
+      });
+      const { items: audits } = await listAuditEvents(db, { organizationId: "org-1", traceId: "atomic-node-archive" });
+      expect(audits.map((event) => event.kind).sort()).toEqual([
+        "debug-node-admin-update", "debug-node-binding-admin-archive", "debug-node-binding-admin-upsert"
+      ]);
+      expect(audits.find((event) => event.kind === "debug-node-binding-admin-archive")).toMatchObject({
+        action: "archive", targetId: `${node.id}:adb`,
+        metadata: { nodeId: node.id, protocol: "adb", enabled: false, accessMode: "RO", hasNotes: true }
+      });
+      expect(JSON.stringify(audits)).not.toMatch(/\/original\/adb|Retain this note/);
+    });
+
+    it("rolls back metadata, earlier protocol writes and their audits when an archive does not exist", async () => {
+      const service = createDebuggingService({ db, gateway: makeGateway() });
+      const node = await service.createAdminDebugNode(adminAuth, {
+        name: "Original node", module: "power",
+        bindings: [{ protocol: "hdc", nodePath: "/original/hdc", accessMode: "RW", enabled: true }]
+      });
+      await expect(service.updateAdminDebugNode(adminAuth, {
+        nodeId: node.id, name: "Must roll back", archiveProtocols: ["adb"],
+        bindings: [{ protocol: "hdc", nodePath: "/must/roll/back", accessMode: "RW", enabled: true }]
+      }, { requestId: "missing-archive" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+      expect((await service.listAdminDebugNodes(adminAuth)).find((item) => item.id === node.id)).toMatchObject({
+        name: node.name, bindings: node.bindings
+      });
+      expect((await listAuditEvents(db, { organizationId: "org-1", traceId: "missing-archive" })).items).toEqual([]);
+    });
+
+    it("rolls back the complete save when PostgreSQL rejects the final node audit", async () => {
+      const service = createDebuggingService({ db, gateway: makeGateway() });
+      const node = await service.createAdminDebugNode(adminAuth, {
+        name: "Original node", module: "power", bindings: [
+          { protocol: "hdc", nodePath: "/original/hdc", accessMode: "RW", enabled: true },
+          { protocol: "adb", nodePath: "/original/adb", accessMode: "RO", enabled: true, notes: "Keep" }
+        ]
+      });
+      // This trigger exists only in the transactional test fixture, and fails after binding audits were written.
+      await db.query(`create function reject_atomic_node_audit() returns trigger language plpgsql as $$
+        begin
+          if new.kind = 'debug-node-admin-update' then raise exception 'Atomic audit failure'; end if;
+          return new;
+        end $$`);
+      await db.query(`create trigger reject_atomic_node_audit before insert on audit_events
+        for each row execute function reject_atomic_node_audit()`);
+      await expect(service.updateAdminDebugNode(adminAuth, {
+        nodeId: node.id, name: "Must roll back", archiveProtocols: ["adb"],
+        bindings: [{ protocol: "hdc", nodePath: "/must/roll/back", accessMode: "RW", enabled: true }]
+      }, { requestId: "pg-audit-failure" })).rejects.toMatchObject({ code: "P0001", message: "Atomic audit failure" });
+      expect((await service.listAdminDebugNodes(adminAuth)).find((item) => item.id === node.id)).toMatchObject({
+        name: node.name, bindings: node.bindings
+      });
+      expect((await listAuditEvents(db, { organizationId: "org-1", traceId: "pg-audit-failure" })).items).toEqual([]);
+    });
+
+    it("rejects duplicate or contradictory protocol intents before any writes", async () => {
+      const service = createDebuggingService({ db, gateway: makeGateway() });
+      const binding = { protocol: "hdc" as const, nodePath: "/original/hdc", accessMode: "RW" as const, enabled: true };
+      await expect(service.createAdminDebugNode(adminAuth, {
+        name: "Duplicate node", module: "power", bindings: [binding, binding]
+      })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+      const node = await service.createAdminDebugNode(adminAuth, { name: "Original node", module: "power", bindings: [binding] });
+      for (const intents of [
+        { bindings: [binding, binding] },
+        { archiveProtocols: ["hdc", "hdc"] as const },
+        { bindings: [binding], archiveProtocols: ["hdc"] as const }
+      ]) {
+        await expect(service.updateAdminDebugNode(adminAuth, {
+          ...intents, archiveProtocols: "archiveProtocols" in intents ? [...intents.archiveProtocols] : undefined,
+          nodeId: node.id, name: "Must not change"
+        }, { requestId: "invalid-intents" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+      }
+      expect((await service.listAdminDebugNodes(adminAuth)).map((item) => item.name)).toEqual(["Original node"]);
+      expect((await listAuditEvents(db, { organizationId: "org-1", traceId: "invalid-intents" })).items).toEqual([]);
+    });
+
+    it("preserves admin authorization and tenant isolation for the complete save", async () => {
+      const service = createDebuggingService({ db, gateway: makeGateway() });
+      const foreignAuth: AuthContext = {
+        ...adminAuth, user: { ...adminAuth.user, id: "user-foreign", organizationId: "org-2" },
+        organization: { id: "org-2", name: "Foreign Org" }
+      };
+      const node = await service.createAdminDebugNode(foreignAuth, {
+        name: "Foreign node", module: "power",
+        bindings: [{ protocol: "hdc", nodePath: "/foreign/hdc", accessMode: "RW", enabled: true }]
+      });
+      for (const [auth, code] of [[readAuth, "FORBIDDEN"], [adminAuth, "NOT_FOUND"]] as const) {
+        await expect(service.updateAdminDebugNode(auth, {
+          nodeId: node.id, name: "Forbidden change", archiveProtocols: ["hdc"],
+          bindings: [{ protocol: "adb", nodePath: "/foreign/adb", accessMode: "RW", enabled: true }]
+        }, { requestId: "forbidden-node-update" })).rejects.toMatchObject({ code });
+      }
+      expect((await service.listAdminDebugNodes(foreignAuth)).find((item) => item.id === node.id)).toMatchObject({
+        name: node.name, bindings: node.bindings
+      });
+      for (const organizationId of ["org-1", "org-2"]) {
+        expect((await listAuditEvents(db, { organizationId, traceId: "forbidden-node-update" })).items).toEqual([]);
+      }
+    });
+  });
 
   describe("admin parameter catalog", () => {
     it("deletes an unused node, cascades bindings, and records a summary audit", async () => {

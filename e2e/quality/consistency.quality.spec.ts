@@ -177,6 +177,64 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+        for (const trigger of await page.locator('[data-slot="select-trigger"]').all()) {
+          if (!await trigger.isVisible()) continue;
+          const centers = await trigger.evaluate((element) => [...element.querySelectorAll('[data-slot="select-value"], .select-control__chevron')].map((child) => {
+            const rect = child.getBoundingClientRect();
+            return rect.top + rect.height / 2;
+          }));
+          if (centers.length === 2) expect(Math.abs(centers[0]! - centers[1]!), "select text and chevron must stay on one line").toBeLessThanOrEqual(2);
+        }
+        if (routePath === "/feedback-admin") {
+          const tops = await page.locator('main [role="combobox"], main .feedback-admin-search').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
+          expect(tops).toHaveLength(3);
+          expect(Math.max(...tops) - Math.min(...tops), "feedback filters must share one toolbar row on desktop").toBeLessThanOrEqual(2);
+        }
+        if (routePath === "/parameters") {
+          const centers = await page.locator('.topbar-project-select, .topbar-user-trigger').evaluateAll((elements) => elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.top + rect.height / 2;
+          }));
+          expect(centers).toHaveLength(2);
+          expect(Math.abs(centers[0]! - centers[1]!), "project selector must not wrap the desktop header").toBeLessThanOrEqual(2);
+        }
+        if (routePath === "/debugging-admin/nodes" || routePath === "/node-debugging") {
+          const trigger = page.getByRole("button", { name: "筛选模块", exact: true });
+          await trigger.click();
+          const menu = page.getByRole("group", { name: "所属模块筛选", exact: true });
+          const search = menu.getByRole("searchbox", { name: "搜索模块", exact: true });
+          await expect(search).toBeVisible();
+          const geometry = await search.evaluate((input) => {
+            const icon = input.parentElement!.querySelector("svg")!.getBoundingClientRect();
+            const field = input.getBoundingClientRect();
+            return {
+              centerDelta: Math.abs(icon.y + icon.height / 2 - field.y - field.height / 2),
+              horizontalGap: field.left - icon.right
+            };
+          });
+          expect(geometry.centerDelta, "filter search icon and text must share one line").toBeLessThanOrEqual(1);
+          expect(geometry.horizontalGap, "filter search text must follow its icon").toBeGreaterThanOrEqual(0);
+          await testInfo.attach(`module-column-filter-${theme}`, {
+            contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
+          });
+          await search.press("Escape");
+          await expect(menu).toBeHidden();
+          await expect(trigger).toBeFocused();
+        }
+        if (routePath === "/debugging-admin/nodes") {
+          await page.getByRole("table", { name: "可调节点目录", exact: true }).getByRole("button", { name: "编辑", exact: true }).first().click();
+          const editor = page.getByRole("dialog", { name: "编辑节点", exact: true });
+          await expect(editor.getByLabel("HDC 节点路径", { exact: true })).toBeVisible();
+          await expect(editor.getByLabel("ADB 节点路径", { exact: true })).toBeVisible();
+          await expect(editor.getByRole("button", { name: "保存", exact: true })).toHaveCount(1);
+          expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+          await assertAccessibilitySemantics(page, testInfo, `unified-node-editor-${theme}`);
+          await testInfo.attach(`unified-node-editor-${theme}`, {
+            contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
+          });
+          await editor.getByRole("button", { name: "取消", exact: true }).click();
+          await expect(editor).toBeHidden();
+        }
         if (route.required.includes("settingsForms")) {
           const form = page.locator(".settings-form-page");
           await expect(form).toHaveAttribute("data-settings-dirty", "false");

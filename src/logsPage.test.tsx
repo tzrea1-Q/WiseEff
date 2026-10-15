@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import userEvent from "@testing-library/user-event";
@@ -241,7 +242,7 @@ describe("LogsPage · Header", () => {
     expect(conclusionCard).not.toHaveTextContent("ChargeLab_X01");
   });
 
-  it("每份日志可通过弹窗反馈置信度和可能问题", () => {
+  it("每份日志可通过弹窗反馈置信度和可能问题", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
@@ -250,7 +251,7 @@ describe("LogsPage · Header", () => {
 
     const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
     expect(within(dialog).getByText(/charging_thermal_trace/)).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText("置信度反馈"), { target: { value: "low" } });
+    await selectControlOption(within(dialog).getByLabelText("置信度反馈"), "low");
     fireEvent.change(within(dialog).getByLabelText("可能存在的问题"), { target: { value: "证据链缺少温控阈值来源" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 

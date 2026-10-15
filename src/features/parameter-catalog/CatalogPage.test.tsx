@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useCallback, useState, type ComponentProps } from "react";
@@ -537,7 +538,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
   it("exposes only role-authorized ready actions and keeps the release visible", async () => {
     const { unmount } = renderCatalog({ actor: "user" });
     const page = await screen.findByRole("region", { name: "参数定义目录" });
-    expect(page).toHaveAttribute("data-writes-enabled", "true");
+    await waitFor(() => expect(page).toHaveAttribute("data-writes-enabled", "true"));
     expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "登记主体" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "接受修订" })).not.toBeInTheDocument();
@@ -545,7 +546,8 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     unmount();
 
     const orgAdmin = renderCatalog({ actor: "org-admin" });
-    await screen.findByRole("region", { name: "参数定义目录" });
+    const orgPage = await screen.findByRole("region", { name: "参数定义目录" });
+    await waitFor(() => expect(orgPage).toHaveAttribute("data-writes-enabled", "true"));
     // Definition proposals have no surface on this page, so the toolbar offers
     // no proposal action; the remaining write entry points stay reachable.
     expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
@@ -559,7 +561,8 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     orgAdmin.unmount();
 
     const platformAdmin = renderCatalog({ actor: "platform-admin" });
-    await screen.findByRole("region", { name: "参数定义目录" });
+    const platformPage = await screen.findByRole("region", { name: "参数定义目录" });
+    await waitFor(() => expect(platformPage).toHaveAttribute("data-writes-enabled", "true"));
     expect(screen.getByRole("button", { name: "接受修订" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "驳回修订" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "登记主体" })).not.toBeInTheDocument();
@@ -585,7 +588,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       sessionPermissions: ["catalog:author"]
     });
     await screen.findByRole("region", { name: "参数定义目录" });
-    expect(screen.getByRole("button", { name: "新增定义" })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "新增定义" })).toBeEnabled());
     expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "复核高风险发布" })).not.toBeInTheDocument();
     authorized.unmount();
@@ -722,7 +725,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     await screen.findByRole("button", { name: /southchip,sc8562/ });
     blocked = true;
     // A scope change reloads the collection; there is no refresh button.
-    await user.selectOptions(screen.getByLabelText("每页条数"), "20");
+    await selectControlOption(screen.getByLabelText("每页条数"), "20");
     const page = screen.getByRole("region", { name: "参数定义目录" });
     await waitFor(() => expect(page).toHaveAttribute("data-catalog-state", "loading"));
     expect(page).toHaveAttribute("data-writes-enabled", "false");

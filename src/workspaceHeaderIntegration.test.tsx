@@ -40,16 +40,17 @@ describe("normalized workspace headers", () => {
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 
-  it("exposes compact status controls on debugging admin node catalog", () => {
+  it("keeps the node summary in the directory without duplicating topbar metrics", () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const debuggingTopbar = document.querySelector(".topbar") as HTMLElement;
-    const compactMetrics = debuggingTopbar.querySelector(".debug-admin-strip--topbar");
-
-    expect(compactMetrics).toBeInTheDocument();
-    expect(compactMetrics?.querySelectorAll(".debug-admin-stat")).toHaveLength(0);
+    expect(debuggingTopbar.querySelector(".debug-admin-strip--topbar")).not.toBeInTheDocument();
+    const summary = screen.getByLabelText("节点目录概览");
+    expect(summary).toHaveTextContent("节点总数");
+    expect(summary).toHaveTextContent("已启用");
+    expect(summary).not.toHaveTextContent("最近保存");
   });
 
   it("keeps parameter-debug admin scope without node-catalog topbar strip", () => {

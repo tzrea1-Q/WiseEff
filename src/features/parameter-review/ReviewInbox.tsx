@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PageProps } from "@/app/routes";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -207,9 +208,8 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
           { value: "pending", label: <>待处理<span aria-hidden="true">{allRows.filter((row) => row.view === "pending").length}</span></>, id: `${tabsId}-pending-tab`, panelId: `${tabsId}-pending-panel` },
           { value: "history", label: <>已处理<span aria-hidden="true">{allRows.filter((row) => row.view === "history").length}</span></>, id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel` }
         ]} />
-        <label>变更类型<select className="compact-filter-control" aria-label="变更类型" value={type} onChange={(event) => changeContext("type", event.target.value)}>
-          {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select></label>
+        <label>变更类型<SelectControl size="filter" ariaLabel="变更类型" value={type} onValueChange={(value) => changeContext("type", value)}
+          options={Object.entries(typeLabels).map(([value, label]) => ({ value, label }))} /></label>
       </div>
       <TabPanel id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`}>
         {error || legacyError ? <SectionError message={error ?? legacyError ?? ""} onRetry={changed} /> : null}

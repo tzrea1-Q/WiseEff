@@ -1,3 +1,4 @@
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { createHash } from "node:crypto";
 import pg from "pg";
@@ -243,7 +244,7 @@ test.describe("canonical value workflow on real sources", () => {
       const panel = page.getByRole("region", { name: "参数修改提交" });
       await expect(panel.getByLabel("硬件 MDE", { exact: true })).toHaveCount(0);
       await expect(panel.getByLabel("软件开发", { exact: true })).toHaveCount(0);
-      await panel.getByLabel("软件 MDE", { exact: true }).selectOption(acceptanceCast.sunMei.userId);
+      await selectControlOption(panel.getByLabel("软件 MDE", { exact: true }), acceptanceCast.sunMei.userId);
       const submitted = page.waitForResponse(r => r.request().method() === "POST" && /parameter-value-drafts\/[^/]+\/submit$/.test(r.url()));
       await panel.getByRole("button", { name: /提交/ }).click();
       const response = await submitted;
@@ -563,7 +564,7 @@ test.describe("canonical JSON deletion on a real source", () => {
     await page.reload();
     const submission = page.getByRole("region", { name: "参数修改提交" });
     await expect(submission).toContainText("删除属性");
-    await submission.getByLabel("软件 MDE", { exact: true }).selectOption(acceptanceCast.sunMei.userId);
+    await selectControlOption(submission.getByLabel("软件 MDE", { exact: true }), acceptanceCast.sunMei.userId);
     const submitted = page.waitForResponse(r => r.request().method() === "POST" && /parameter-value-drafts\/[^/]+\/submit$/.test(r.url()));
     await submission.getByRole("button", { name: /提交/ }).click();
     const submissionResponse = await submitted;

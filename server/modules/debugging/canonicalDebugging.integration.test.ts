@@ -108,6 +108,17 @@ describe("canonical-only node debugging HTTP acceptance (#898)", () => {
     const node = listed.body.items.find((item: { id: string }) => item.id === linkedNodeId);
     expect(node).toMatchObject({ bindingId: fixture.bindingId, currentValueId: fixture.currentValueId,
       effectiveRevisionId: fixture.definitionRevisionId, protectedReferenceKind: "canonical-pin" });
+    const edited = await json("PATCH", `/api/v1/debugging/admin/nodes/${linkedNodeId}`, {
+      name: "Canonical node edited with path",
+      bindings: [{ protocol: "hdc", nodePath, accessMode: "RW", enabled: true, notes: "Saved together" }]
+    }, adminToken);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    expect(edited.body.item).toMatchObject({
+      name: "Canonical node edited with path", bindingId: fixture.bindingId,
+      currentValueId: fixture.currentValueId, effectiveRevisionId: fixture.definitionRevisionId,
+      protectedReferenceKind: "canonical-pin",
+      bindings: [expect.objectContaining({ protocol: "hdc", nodePath, notes: "Saved together" })]
+    });
     const legacy = (await db.query<{ count: string }>("select count(*)::text as count from public.project_parameter_bindings where organization_id=$1", [fixture.organizationId])).rows[0];
     expect(legacy!.count).toBe("0");
     const detected = await json("POST", "/api/v1/debugging/targets/detect", {

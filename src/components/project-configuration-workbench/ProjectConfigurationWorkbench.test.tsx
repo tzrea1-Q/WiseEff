@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import userEvent from "@testing-library/user-event";
@@ -254,9 +255,7 @@ async function openWorkbenchVersionDetails() {
 }
 
 async function openCreateConfigSetDialog() {
-  fireEvent.change(screen.getByRole("combobox", { name: "配置集" }), {
-    target: { value: "__create_config_set__" }
-  });
+  await selectControlOption(screen.getByRole("combobox", { name: "配置集" }), "__create_config_set__");
   return screen.findByRole("heading", { name: "新建配置集" });
 }
 
@@ -456,7 +455,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await user.keyboard("{ArrowLeft}");
     expect(within(navigator).getByRole("button", { name: "alpha" })).toHaveFocus();
     await user.keyboard("{Enter}");
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "配置集" })).toHaveValue("cs-alpha"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-alpha"));
   });
 
   it("switches structure and conflicts as URL-backed content tabs without losing source focus", async () => {
@@ -593,7 +592,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const { onNavigate } = renderWorkbench();
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveValue("cs-default");
+    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-default");
     expect(screen.getByText("工作配置")).toBeInTheDocument();
     await openWorkbenchVersionDetails();
     expect(screen.getByText(/发布基线：seed-v1/)).toBeInTheDocument();
@@ -625,12 +624,10 @@ describe("ProjectConfigurationWorkbench", () => {
     const { onNavigate } = renderWorkbench({ search: "?configSet=cs-alpha" });
 
     expect(await screen.findByRole("heading", { name: "alpha.dts" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveValue("cs-alpha");
+    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-alpha");
     expect(await screen.findByText(/model = "Alpha"/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "配置集" }), {
-      target: { value: "cs-default" }
-    });
+    await selectControlOption(screen.getByRole("combobox", { name: "配置集" }), "cs-default");
     expect(onNavigate).toHaveBeenCalledWith(
       "/parameter-admin/projects/project-1/configuration?configSet=cs-default"
     );
@@ -690,7 +687,7 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveValue("cs-first");
+    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-first");
     await waitFor(() =>
       expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-12")
     );
@@ -2202,8 +2199,8 @@ describe("ProjectConfigurationWorkbench", () => {
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     const gate = await within(inspector).findByRole("region", { name: "配置修订门禁" });
     const revisionSelect = await within(gate).findByRole("combobox", { name: "配置修订" });
-    await waitFor(() => expect(revisionSelect).toHaveValue("rev-cs-listed"));
-    expect(within(gate).getByRole("option", { name: "修订 2 · 已解析" })).toBeInTheDocument();
+    await waitFor(() => expect(revisionSelect).toHaveAttribute("data-value", "rev-cs-listed"));
+    expect(within(gate).getByRole("combobox", { name: "配置修订" })).toHaveTextContent("修订 2 · 已解析");
     expect(within(gate).queryByText("revision-teaching-1")).not.toBeInTheDocument();
 
     fireEvent.click(within(gate).getByRole("button", { name: "校验修订" }));
@@ -2253,7 +2250,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     const gate = await within(inspector).findByRole("region", { name: "配置修订门禁" });
     await waitFor(() =>
-      expect(within(gate).getByRole("combobox", { name: "配置修订" })).toHaveValue("rev-cs-listed")
+      expect(within(gate).getByRole("combobox", { name: "配置修订" })).toHaveAttribute("data-value", "rev-cs-listed")
     );
     fireEvent.click(within(gate).getByRole("button", { name: "校验修订" }));
     await waitFor(() =>

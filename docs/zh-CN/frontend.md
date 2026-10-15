@@ -271,11 +271,12 @@ Phase B（Step ③ 工具）：health 含 `tools.adb` / `tools.hdc`；所选协�
 
 ### 调试管理后台 UI
 
-页面壳在 `src/DebuggingAdminPage.tsx`；主区域为全宽**节点目录**表，模块树由 `DebugModuleManagementDialog` 管理，节点/参数库筛选使用 `ModuleTreeSelect`。
+页面壳在 `src/DebuggingAdminPage.tsx`；主区域为全宽**节点目录**表，模块树由 `DebugModuleManagementDialog` 管理，表头模块筛选使用共享 `ColumnFilter`。
 
-- `DebugNodeLibraryTable` — `admin/DataTable` 外壳（排序 + `aria-sort`、分页、键盘行）；工具栏搜索、模块树筛选、协议覆盖与行操作。导入/导出仍在标题区。
-- `DebugNodeEditorDialog` — 逻辑节点元数据与模块归属。
-- `DebugNodeBindingsDialog` — 每协议 HDC/ADB 路径 binding 编辑。
+- `DebugNodeLibraryTable` — `admin/DataTable` 外壳（排序 + `aria-sort`、分页、键盘行）；工具栏搜索、共享列模块筛选、协议筛选与每节点唯一编辑入口。禁用/删除保留在更多菜单并确认。导入/导出仍在标题区。
+- `DebugNodeEditorDialog` — 一份草稿维护节点元数据、HDC/ADB 路径、访问模式、启用状态和备注。基本信息与协议保持可见；详细描述、精确项目 Binding 关联及写入提示折叠并展示摘要。关闭未保存内容需要确认，保存失败保留全部字段。
+
+编辑器通过一次创建/更新请求提交。节点更新只发送变化的 `bindings` 与明确的 `archiveProtocols`，未提供的协议保持原值。协议归档确认后暂存至保存，可撤销，并保留原路径和备注。元数据、绑定修改、归档和审计在同一事务提交。未配置的空协议不提交；已有路径不可清空。既有单协议管理接口保持兼容，停用一个协议不影响另一个协议。
 
 （API mode 的管理面只暴露逻辑节点目录；遗留参数 Admin HTTP/client 接口已退役，历史表与证据仍在服务端保留。Mock mode 继续从本地参数 fixture 派生精简节点目录用于 demo/组件测试。）
 

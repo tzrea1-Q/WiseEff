@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import type { ConfigRevisionStatus } from "@/domain/parameter-topology/types";
 import {
   presentRevisionValidation,
@@ -69,21 +70,18 @@ export function WorkbenchRevisionGate({
       ) : (
         <label>
           <span>配置修订</span>
-          <select
-            aria-label="配置修订"
+          <SelectControl
+            ariaLabel="配置修订"
             value={snapshot.selectedRevisionId ?? ""}
             disabled={snapshot.loading || snapshot.revisions.length === 0}
-            onChange={(event) => {
-              if (event.target.value) onSelect(event.target.value);
+            onValueChange={(value) => {
+              if (value) onSelect(value);
             }}
-          >
-            {snapshot.revisions.length === 0 ? <option value="">暂无配置修订</option> : null}
-            {snapshot.revisions.map((revision) => (
-              <option key={revision.id} value={revision.id}>
-                {configRevisionOptionLabel(revision.revisionNumber, revision.status)}
-              </option>
-            ))}
-          </select>
+            options={snapshot.revisions.length === 0 ? [{ value: "", label: "暂无配置修订" }] : snapshot.revisions.map((revision) => ({
+              value: revision.id,
+              label: configRevisionOptionLabel(revision.revisionNumber, revision.status)
+            }))}
+          />
         </label>
       )}
 

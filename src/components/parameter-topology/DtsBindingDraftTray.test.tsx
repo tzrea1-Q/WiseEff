@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { selectControlOption } from "@/test/selectControlOption";
 
 import type { WorkflowAssigneeCandidates } from "@/application/ports/ParameterRepository";
 
@@ -73,7 +74,7 @@ describe("DtsBindingDraftTray", () => {
 
     const tray = screen.getByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByLabelText("软件 MDE")).toBeInTheDocument();
-    fireEvent.change(within(tray).getByLabelText("软件 MDE"), { target: { value: "u-sw" } });
+    await selectControlOption(within(tray).getByLabelText("软件 MDE"), "u-sw");
     const submit = within(tray).getByRole("button", { name: /^提交审核/ });
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
@@ -582,9 +583,9 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    expect(screen.getByLabelText("硬件 MDE")).toHaveValue("u-hw");
-    expect(screen.getByLabelText("软件 MDE")).toHaveValue("u-sw");
-    expect(screen.getByLabelText("软件开发")).toHaveValue("u-user");
+    expect(screen.getByLabelText("硬件 MDE")).toHaveAttribute("data-value", "u-hw");
+    expect(screen.getByLabelText("软件 MDE")).toHaveAttribute("data-value", "u-sw");
+    expect(screen.getByLabelText("软件开发")).toHaveAttribute("data-value", "u-user");
     expect(screen.getByLabelText("硬件 MDE")).toBeDisabled();
 
     await act(async () => {
@@ -592,9 +593,9 @@ describe("DtsBindingDraftTray", () => {
       await pendingSubmit;
     });
     expect(await screen.findByText(/已提交正式审核/)).toBeVisible();
-    expect(screen.getByLabelText("硬件 MDE")).toHaveValue("u-hw");
-    expect(screen.getByLabelText("软件 MDE")).toHaveValue("u-sw");
-    expect(screen.getByLabelText("软件开发")).toHaveValue("u-user");
+    expect(screen.getByLabelText("硬件 MDE")).toHaveAttribute("data-value", "u-hw");
+    expect(screen.getByLabelText("软件 MDE")).toHaveAttribute("data-value", "u-sw");
+    expect(screen.getByLabelText("软件开发")).toHaveAttribute("data-value", "u-user");
   });
 
   it("fails closed when an external project mutation blocks formal submission", () => {

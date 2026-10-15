@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { DropdownMenu } from "radix-ui";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ConfirmDialog, type ConfirmDialogProps } from "./ConfirmDialog";
@@ -30,11 +31,13 @@ export type RowActionMenuProps = {
   label: string;
   triggerLabel?: string;
   triggerText?: string;
+  /** Portaled menus opened inside a modal must share its overlay layer. */
+  withinModal?: boolean;
   primaryAction?: RowAction & { destructive?: false };
   items: readonly (RowAction & { destructive?: false } | DestructiveRowAction | ConfirmedElsewhereRowAction)[];
 };
 
-export function RowActionMenu({ label, triggerLabel, triggerText = "更多", primaryAction, items }: RowActionMenuProps) {
+export function RowActionMenu({ label, triggerLabel, triggerText = "更多", withinModal = false, primaryAction, items }: RowActionMenuProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [selected, setSelected] = useState<DestructiveRowAction | null>(null);
   const [pending, setPending] = useState(false);
@@ -56,15 +59,15 @@ export function RowActionMenu({ label, triggerLabel, triggerText = "更多", pri
 
   return (
     <div className="row-action-menu" role="group" aria-label={label}>
-      {primaryAction && <Button type="button" size="sm" variant="ghost" title={primaryAction.title} aria-label={primaryAction.ariaLabel} disabled={primaryAction.disabled} onClick={primaryAction.onSelect}>
+      {primaryAction && <Button type="button" size="sm" variant="outline" title={primaryAction.title} aria-label={primaryAction.ariaLabel} disabled={primaryAction.disabled} onClick={primaryAction.onSelect}>
         {primaryAction.label}
       </Button>}
       {items.length > 0 && <DropdownMenu.Root modal={false}>
         <DropdownMenu.Trigger asChild>
-          <Button ref={triggerRef} type="button" size="sm" variant="ghost" aria-label={triggerLabel ?? `${label}：${triggerText}`}>{triggerText}</Button>
+          <Button ref={triggerRef} type="button" size="sm" variant="outline" aria-label={triggerLabel ?? `${label}：${triggerText}`}>{triggerText}<ChevronDown aria-hidden="true" className="size-3" /></Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
-          <DropdownMenu.Content className="row-action-menu__content" align="end" onClick={(event) => event.stopPropagation()}
+          <DropdownMenu.Content className={`row-action-menu__content${withinModal ? " row-action-menu__content--modal" : ""}`} align="end" onClick={(event) => event.stopPropagation()}
             onCloseAutoFocus={(event) => { if (selected) event.preventDefault(); }}>
             {items.map((item) => <DropdownMenu.Item key={item.id} className="row-action-menu__item button-size-sm" title={item.title} aria-label={item.ariaLabel} aria-describedby={item.descriptionId} data-destructive={item.destructive || undefined} disabled={item.disabled} onSelect={() => {
               if ("onRequestConfirmation" in item) {

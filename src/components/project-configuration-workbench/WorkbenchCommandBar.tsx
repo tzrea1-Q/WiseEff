@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Activity, ChevronLeft, PanelRight } from "lucide-react";
 
@@ -151,35 +152,24 @@ export function WorkbenchCommandBar({
         </div>
         <label className="configuration-workbench__config-select">
           <span>配置集</span>
-          <select
-            aria-label="配置集"
+          <SelectControl
+            ariaLabel="配置集"
             value={selectedConfigSet?.id ?? ""}
             disabled={configSetsLoading || Boolean(configSetsError)}
-            onChange={(event) => {
-              const next = event.target.value;
+            onValueChange={(next) => {
               if (next === "__create_config_set__") {
-                event.target.value = selectedConfigSet?.id ?? "";
                 setConfigSetNameError("");
                 setCreateConfigSetOpen(true);
                 return;
               }
               onSelectConfigSet(next);
             }}
-          >
-            {configSets.length === 0 ? (
-              <option value="" disabled>
-                {canAdmin ? "选择或新建配置集" : "暂无配置集"}
-              </option>
-            ) : null}
-            {configSets.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-            {canAdmin ? (
-              <option value="__create_config_set__">+ 新建配置集…</option>
-            ) : null}
-          </select>
+            options={[
+              ...(configSets.length === 0 ? [{ value: "", label: canAdmin ? "选择或新建配置集" : "暂无配置集", disabled: true }] : []),
+              ...configSets.map((item) => ({ value: item.id, label: item.name })),
+              ...(canAdmin ? [{ value: "__create_config_set__", label: "+ 新建配置集…" }] : [])
+            ]}
+          />
         </label>
         <div className="configuration-workbench__identities" aria-label="配置身份">
           <span className="configuration-workbench__working">工作配置</span>

@@ -1,3 +1,4 @@
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { expect } from "playwright/test";
 import { test } from "./helpers/catalogFixtureRuntime";
@@ -66,10 +67,10 @@ test.describe("catalog M1 publication operator loop", () => {
     }
     const subjects = dialog.getByLabel("已发布主体");
     await expect(subjects).toBeVisible();
-    const options = await subjects.locator("option").allTextContents();
-    const published = options.find((label) => label.trim() && label !== "选择主体");
+    const options = await readSelectControlOptions(subjects);
+    const published = options.find((option) => option.value && !option.disabled);
     expect(published).toBeTruthy();
-    await subjects.selectOption({ label: published!.trim() });
+    await selectControlOption(subjects, { label: published!.label });
     const propertyKey = `cp08_iin_${Date.now().toString(36).slice(-6)}`;
     await dialog.getByLabel("属性键").fill(propertyKey);
     await dialog.getByLabel("显示名称").fill("CP08 保持电流");

@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useMemo, useState } from "react";
 import type { DtsConfigSetMemberFile } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -75,11 +76,10 @@ export function CanonicalMemberRemovalSubmitDialog({ projectId, configSetId, con
         {entry.fileName} — {entry.fileId === member.fileId ? "拟移除" : "保留"}；角色 {entry.role}，顺序 {entry.sortOrder}，版本 <code>{entry.currentVersionId ?? "待服务端核对"}</code>
       </li>)}</ol>
       <label>修改原因<textarea value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} /></label>
-      <label>指定软件审核人<select value={reviewerId} disabled={busy || loading}
-        onChange={(event) => setReviewerId(event.target.value)}>
-        {reviewers.length ? reviewers.map((reviewer) => <option key={reviewer.userId} value={reviewer.userId}>{reviewer.name}（{reviewer.userId}）</option>)
-          : <option value="">没有可用的另一名软件审核人</option>}
-      </select></label>
+      <label>指定软件审核人<SelectControl value={reviewerId} disabled={busy || loading} ariaLabel="指定软件审核人" withinModal
+        onValueChange={setReviewerId}
+        options={reviewers.length ? reviewers.map((reviewer) => ({ value: reviewer.userId, label: `${reviewer.name}（${reviewer.userId}）` }))
+          : [{ value: "", label: "没有可用的另一名软件审核人" }]} /></label>
       {loading ? <p role="status">正在加载可指派审核人…</p> : null}
       {!repository?.submitMemberRemovalRequest ? <p role="alert">成员删除审核接口不可用，已阻止直接移除。</p> : null}
       {error ? <p role="alert">{error}</p> : null}

@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -232,17 +233,12 @@ export function ProposalPanel({
         <div className="governance-confirm-dialog__body">
           <label>
             {governanceCopy.changeKind}
-            <select
-              aria-label={governanceCopy.changeKind}
+            <SelectControl
+              ariaLabel={governanceCopy.changeKind}
               value={changeKind}
-              onChange={(event) => setChangeKind(event.target.value as (typeof CHANGE_KINDS)[number])}
-            >
-              {CHANGE_KINDS.map((kind) => (
-                <option key={kind} value={kind}>
-                  {proposalChangeKindLabels[kind]}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => setChangeKind(value as (typeof CHANGE_KINDS)[number])}
+              options={CHANGE_KINDS.map((kind) => ({ value: kind, label: proposalChangeKindLabels[kind] }))}
+            />
           </label>
           <label>
             {governanceCopy.reason}

@@ -112,13 +112,13 @@ describe("DtsBindingCompareDialog", () => {
     const { onUseCompareAsDraft } = renderCompare();
 
     const compare = screen.getByRole("dialog", { name: "gpio_int 跨项目对比" });
-    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveValue("");
+    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveAttribute("data-value", "");
     expect(within(compare).getAllByText("请选择要比较的配置实例")).toHaveLength(2);
 
     const overview = within(compare).getByRole("list", { name: "跨项目对比" });
     const entries = within(overview).getAllByRole("listitem").filter((item) => item.hasAttribute("data-kind"));
     fireEvent.click(within(entries[1]!).getByRole("button", { name: /Nebula 高频调试项目/ }));
-    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveValue("proj-nebula");
+    expect(within(compare).getByLabelText("对比目标配置实例")).toHaveAttribute("data-value", "proj-nebula");
 
     fireEvent.click(within(compare).getByRole("button", { name: "使用该项目配置加入草稿" }));
     expect(onUseCompareAsDraft).toHaveBeenCalledWith({

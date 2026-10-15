@@ -483,27 +483,67 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
 
 describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () => {
   it("releases the clone lock before a role callback so a second ready clone can complete", async () => {
+    const applicationName = `clone_callback_${process.pid}`;
+    const thirdApplicationName = `${applicationName}_third`;
+    vi.stubEnv("PGAPPNAME", applicationName);
     let releaseFirst!: () => void;
     let firstEntered!: () => void;
+    let releaseThird!: () => void;
+    let thirdCopied!: () => void;
     const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
     const firstReady = new Promise<void>((resolve) => { firstEntered = resolve; });
+    const thirdGate = new Promise<void>((resolve) => { releaseThird = resolve; });
+    const thirdReady = new Promise<void>((resolve) => { thirdCopied = resolve; });
+    let third: ReturnType<typeof createEphemeralTestDatabase> | undefined;
+    let restoreQuery: (() => void) | undefined;
     const first = withTestClusterRoleCatalogLock(() => withTempDatabase({ prefix: "parallelfirst" }, async () => {
       firstEntered();
       await firstGate;
     }));
     try {
-      await firstReady;
+      await Promise.race([firstReady, first]);
       await withTempDatabase({ prefix: "parallelsecond" }, async ({ db }) => {
         expect((await db.query("select count(*)::int as n from schema_migrations")).rows[0].n).toBeGreaterThan(0);
+        const original = pg.Client.prototype.query;
+        const spy = vi.spyOn(pg.Client.prototype, "query").mockImplementation(function (this: pg.Client, sql: unknown, values?: unknown) {
+          const result = Reflect.apply(original, this, [sql, values]);
+          if (typeof sql === "string" && sql.startsWith("create database ")) {
+            // Keep a third real clone's copy lock held while observing the completed callbacks.
+            return result.then(async (value: unknown) => { thirdCopied(); await thirdGate; return value; });
+          }
+          return result;
+        } as typeof original);
+        restoreQuery = () => spy.mockRestore();
+        vi.stubEnv("PGAPPNAME", thirdApplicationName);
+        third = createEphemeralTestDatabase("third");
+        await Promise.race([thirdReady, third]);
+        vi.stubEnv("PGAPPNAME", applicationName);
         await withAdminClient(async (observer) => {
-          expect((await observer.query("select pg_try_advisory_lock($1) as acquired", [4_201_659])).rows).toEqual([{ acquired: false }]);
-          expect((await observer.query("select pg_try_advisory_lock($1) as acquired", [4_201_660])).rows).toEqual([{ acquired: true }]);
-          await observer.query("select pg_advisory_unlock($1)", [4_201_660]);
+          expect((await observer.query(`
+            select application_name as owner, objid::int as lock from pg_locks locks
+              join pg_stat_activity activity on activity.pid = locks.pid
+             where locktype = 'advisory' and database = (select oid from pg_database where datname = 'postgres')
+               and classid = 0 and objid = any($1::oid[]) and objsubid = 1 and granted
+               and application_name = any($2::text[])
+             order by application_name, objid
+          `, [[4_201_659, 4_201_660], [applicationName, thirdApplicationName]])).rows).toEqual([
+            { owner: applicationName, lock: 4_201_659 },
+            { owner: thirdApplicationName, lock: 4_201_660 }
+          ]);
         });
       });
     } finally {
+      releaseThird();
       releaseFirst();
-      await first;
+      try {
+        const outcomes = await Promise.allSettled([first, third?.then((database) => database.drop())]);
+        for (const outcome of outcomes) {
+          if (outcome.status === "rejected") throw outcome.reason;
+        }
+      } finally {
+        restoreQuery?.();
+        vi.unstubAllEnvs();
+      }
     }
   });
   it("defaults to a complete clone and releases the template lock before the callback", async () => {

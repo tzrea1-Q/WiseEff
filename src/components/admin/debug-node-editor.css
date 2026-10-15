@@ -1,0 +1,240 @@
+.debug-node-editor .param-admin-editor-dialog-body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.debug-node-editor-section {
+  min-width: 0;
+}
+
+.debug-node-editor-section + .debug-node-editor-section {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.debug-node-editor-section header {
+  margin-bottom: var(--space-2);
+}
+
+.debug-node-editor-section h3,
+.debug-node-editor-fold summary {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--leading-md);
+}
+
+.debug-node-editor-section header p,
+.debug-node-editor-help,
+.debug-node-editor-section small,
+.debug-node-editor-save-help {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: var(--leading-sm);
+}
+
+.debug-node-editor-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+}
+
+.debug-node-editor-basics {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.debug-node-editor .debug-admin-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.debug-node-editor .debug-admin-field-label {
+  color: var(--text-secondary);
+  white-space: normal;
+}
+
+.debug-node-editor .debug-admin-field-label small {
+  margin-left: var(--space-1);
+}
+
+.debug-node-editor-full {
+  grid-column: 1 / -1;
+}
+
+.debug-node-editor-toggle {
+  display: flex;
+  align-items: start;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.debug-node-editor-toggle input {
+  margin-top: var(--space-1);
+  accent-color: var(--accent);
+}
+
+.debug-node-editor-toggle small {
+  display: block;
+}
+
+.debug-node-editor .debug-admin-field textarea {
+  min-height: var(--space-16);
+  resize: vertical;
+}
+
+.debug-node-editor-fold summary {
+  cursor: pointer;
+}
+
+.debug-node-editor-fold summary:hover {
+  color: var(--accent);
+}
+
+.debug-node-editor-fold summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: var(--space-1);
+}
+
+.debug-node-editor-fold > :not(summary) {
+  margin-top: var(--space-3);
+}
+
+.debug-node-editor-fold summary small {
+  display: inline-block;
+  margin: 0 0 0 var(--space-3);
+  max-width: 75%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.debug-node-editor .debug-node-editor-node-toggle {
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.debug-node-editor-node-toggle > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--space-8);
+}
+
+.debug-node-editor .debug-node-editor-node-toggle input,
+.debug-node-editor-protocol .debug-node-editor-toggle input {
+  margin: 0;
+}
+
+.debug-node-editor-protocol-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.debug-node-editor-protocols {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.debug-node-editor-protocol {
+  min-width: 0;
+}
+
+.debug-node-editor-protocol-row {
+  display: grid;
+  grid-template-columns: var(--space-12) minmax(0, 1fr) auto auto auto;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.debug-node-editor-protocol-name h4 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: var(--leading-base);
+}
+
+.debug-node-editor-protocol-name small {
+  display: block;
+  margin: 0;
+}
+
+.debug-node-editor .debug-node-editor-access {
+  width: calc(var(--space-16) + var(--space-12));
+}
+
+.debug-node-editor-protocol-row > .debug-node-editor-toggle,
+.debug-node-editor-protocol-row > button {
+  align-self: start;
+  margin-top: var(--space-1);
+}
+
+.debug-node-editor-protocol-row > .debug-node-editor-toggle {
+  align-items: center;
+  gap: var(--space-1);
+  min-height: calc(var(--space-6) + var(--space-1));
+  white-space: nowrap;
+}
+
+.debug-node-editor-protocol-more {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: end;
+  margin: var(--space-2) 0 0 var(--space-12);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.debug-node-editor-protocol-more[hidden] {
+  display: none;
+}
+
+.debug-node-editor-archive-action {
+  display: flex;
+  align-items: end;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.debug-node-editor .dialog-actions {
+  align-items: center;
+}
+
+.debug-node-editor-save-help {
+  flex: 1;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .debug-node-editor-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .debug-node-editor-protocol-row {
+    grid-template-columns: var(--space-12) minmax(0, 1fr) auto;
+  }
+
+  .debug-node-editor-protocol-row > [role="combobox"] {
+    grid-column: 2;
+  }
+
+  .debug-node-editor-protocol-more {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

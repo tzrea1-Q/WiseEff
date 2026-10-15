@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -386,11 +387,14 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
         {unprovenConflicts.length ? <p role="alert">目标中有竞争草稿未取得可验证的选择证明；请刷新来源并重新预览，当前不能提交审核。</p> : null}
         <label>修改原因<textarea value={reason} disabled={busy || submitAttempted}
           onChange={(event) => { resetSubmit(); setReason(event.target.value); }} /></label>
-        <label>指定软件审核人<select value={reviewerId} disabled={busy || loadingReviewers || submitAttempted}
-          onChange={(event) => { resetSubmit(); setReviewerId(event.target.value); }}>
-          {reviewers.length ? reviewers.map((reviewer) => <option key={reviewer.userId} value={reviewer.userId}>{reviewer.name}（{reviewer.userId}）</option>)
-            : <option value="">没有可用的另一名软件审核人</option>}
-        </select></label>
+        <label>指定软件审核人<SelectControl
+          value={reviewerId}
+          disabled={busy || loadingReviewers || submitAttempted}
+          onValueChange={(value) => { resetSubmit(); setReviewerId(value); }}
+          ariaLabel="指定软件审核人"
+          withinModal
+          options={reviewers.length ? reviewers.map((reviewer) => ({ value: reviewer.userId, label: `${reviewer.name}（${reviewer.userId}）` })) : [{ value: "", label: "没有可用的另一名软件审核人" }]}
+        /></label>
       </> : null}
       {loadingReviewers ? <p role="status">正在加载可指派审核人…</p> : null}
       {error ? <p role="alert">{error}</p> : null}

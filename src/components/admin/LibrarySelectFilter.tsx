@@ -1,3 +1,5 @@
+import { SelectControl } from "@/components/common/SelectControl";
+
 export type LibrarySelectOption<T extends string = string> = {
   value: T;
   label: string;
@@ -19,19 +21,13 @@ export function LibrarySelectFilter<T extends string = string>({
   disabled = false
 }: LibrarySelectFilterProps<T>) {
   return (
-    <select
-      aria-label={ariaLabel}
-      className="compact-filter-control"
-      data-compact-control="filter"
+    <SelectControl
+      ariaLabel={ariaLabel}
+      size="filter"
       disabled={disabled}
       value={value}
-      onChange={(event) => onChange(event.target.value as T)}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      onValueChange={onChange}
+      options={options}
+    />
   );
 }

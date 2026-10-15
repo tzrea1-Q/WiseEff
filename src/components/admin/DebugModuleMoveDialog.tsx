@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 
@@ -24,6 +25,7 @@ export function DebugModuleMoveDialog({
   const [parentId, setParentId] = useState(module.parentId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const currentPath = useMemo(() => modulePathSegments(module, modules).join(" / "), [module, modules]);
   const blockedModuleIds = useMemo(() => {
@@ -51,6 +53,11 @@ export function DebugModuleMoveDialog({
     );
   }, [blockedModuleIds, module.path, modules]);
   const unchanged = (module.parentId ?? "") === parentId;
+  const requestClose = () => {
+    if (busy) return;
+    if (!unchanged) setConfirmDiscard(true);
+    else onCancel();
+  };
 
   useEffect(() => {
     setParentId(module.parentId ?? "");
@@ -75,11 +82,12 @@ export function DebugModuleMoveDialog({
   };
 
   return (
+    <>
     <ModalDialog
-      open
-      onDismiss={busy ? undefined : onCancel}
+      open={!confirmDiscard}
+      onDismiss={busy ? undefined : requestClose}
       className="submission-dialog param-admin-module-edit-dialog module-move-dialog debug-module-move-dialog"
-      backdropClassName="param-admin-modal-backdrop param-admin-modal-backdrop--nested"
+      backdropClassName="param-admin-modal-backdrop"
       describedBy
     >
       {({ titleId, descriptionId }) => (
@@ -97,7 +105,7 @@ export function DebugModuleMoveDialog({
               className="audit-dialog-close-icon"
               aria-label="关闭"
               disabled={busy}
-              onClick={onCancel}
+              onClick={requestClose}
             >
               <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
             </button>
@@ -145,7 +153,7 @@ export function DebugModuleMoveDialog({
           ) : null}
 
           <div className="dialog-actions">
-            <button className="button subtle" type="button" disabled={busy} onClick={onCancel}>
+            <button className="button subtle" type="button" disabled={busy} onClick={requestClose}>
               取消
             </button>
             <button
@@ -162,5 +170,10 @@ export function DebugModuleMoveDialog({
         </>
       )}
     </ModalDialog>
+    <ConfirmDialog open={confirmDiscard} title="放弃移动模块？"
+      description="所选目标尚未保存。可以继续选择，或放弃移动并返回。"
+      confirmLabel="放弃修改" cancelLabel="继续编辑"
+      onCancel={() => setConfirmDiscard(false)} onConfirm={onCancel} />
+    </>
   );
 }

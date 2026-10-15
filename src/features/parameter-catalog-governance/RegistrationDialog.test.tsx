@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -136,7 +137,7 @@ describe("RegistrationDialog", () => {
     expect(screen.queryByText("放置方式")).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "使用默认根放置" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
-    await user.selectOptions(screen.getByLabelText("目标模块"), "issue897-driver-a");
+    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-driver-a");
     await user.click(screen.getByRole("button", { name: "继续确认" }));
     const confirm = await screen.findByRole("dialog", { name: "确认登记主体" });
     expect(confirm).toHaveTextContent("目标模块：Driver A");
@@ -155,7 +156,7 @@ describe("RegistrationDialog", () => {
     const { createRegistration } = renderDialog();
     const user = userEvent.setup();
     await user.click(screen.getByRole("radio", { name: "选择父放置" }));
-    await user.selectOptions(screen.getByLabelText("父放置"), CATALOG_PLACEMENT_ID);
+    await selectControlOption(screen.getByLabelText("父放置"), CATALOG_PLACEMENT_ID);
     await user.clear(screen.getByLabelText("放置显示名"));
     await user.type(screen.getByLabelText("放置显示名"), "充电芯片");
     await user.type(screen.getByLabelText("原因"), "挂到根下");
@@ -202,7 +203,7 @@ describe("RegistrationDialog", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("radio", { name: "选择父放置" }));
-    await user.selectOptions(screen.getByLabelText("父放置"), CATALOG_PLACEMENT_ID);
+    await selectControlOption(screen.getByLabelText("父放置"), CATALOG_PLACEMENT_ID);
     await user.clear(screen.getByLabelText("放置显示名"));
     await user.type(screen.getByLabelText("放置显示名"), "充电芯片");
     await user.type(screen.getByLabelText("原因"), "保留这份输入");

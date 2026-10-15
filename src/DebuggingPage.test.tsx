@@ -512,18 +512,16 @@ describe("OperationHistoryPanel 集成", () => {
 });
 
 describe("/debugging-admin 节点元数据", () => {
-  it("在调试管理页通过路径绑定弹窗保存节点路径与访问模式字段", async () => {
+  it("在调试管理页通过统一编辑弹窗保存节点路径与访问模式字段", async () => {
     renderApp({ path: "/debugging-admin/nodes", initialAppState: adminState, runtimeMode: "mock" });
 
     const firstRow = screen.getByRole("row", { name: /充电输入限流/ });
-    await userEvent.click(within(firstRow).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
+    await userEvent.click(within(firstRow).getByRole("button", { name: "编辑", exact: true }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: "/sys/class/power_supply/battery/test_node" }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await userEvent.click(within(firstRow).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "路径绑定" }));
+    await userEvent.click(within(firstRow).getByRole("button", { name: "编辑", exact: true }));
 
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue("/sys/class/power_supply/battery/test_node");
   });

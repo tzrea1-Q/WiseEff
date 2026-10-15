@@ -1,3 +1,4 @@
+import { selectControlOption } from "@/test/selectControlOption";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getRequiredRoleForPage } from "@/app/permissions";
@@ -135,7 +136,7 @@ describe("FeedbackAdminPage", () => {
       ])
     );
 
-    fireEvent.change(screen.getByLabelText("状态筛选"), { target: { value: "in_progress" } });
+    await selectControlOption(screen.getByLabelText("状态筛选"), "in_progress");
 
     expect(screen.queryByText("开放反馈")).not.toBeInTheDocument();
     expect(screen.getByText("处理中反馈")).toBeInTheDocument();

@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/common/SelectControl";
 import { useEffect, useRef, useState } from "react";
 
 import type { ProjectParameterFileVersion } from "@/application/ports/ParameterFileRepository";
@@ -271,11 +272,14 @@ export function WorkbenchSourceRollbackDialog({
           />
         </label>
         {batch ? <label className="configuration-workbench__source-review-reason">指定软件审核人
-          <select value={reviewerId} disabled={loading || submitting || submittedOnce}
-            onChange={(event) => { resetSubmit(); setReviewerId(event.target.value); }}>
-            {reviewers.length ? reviewers.map((reviewer) => <option key={reviewer.userId} value={reviewer.userId}>{reviewer.name}（{reviewer.userId}）</option>)
-              : <option value="">没有可用的另一名软件审核人</option>}
-          </select>
+          <SelectControl
+            value={reviewerId}
+            disabled={loading || submitting || submittedOnce}
+            onValueChange={(value) => { resetSubmit(); setReviewerId(value); }}
+            ariaLabel="指定软件审核人"
+            withinModal
+            options={reviewers.length ? reviewers.map((reviewer) => ({ value: reviewer.userId, label: `${reviewer.name}（${reviewer.userId}）` })) : [{ value: "", label: "没有可用的另一名软件审核人" }]}
+          />
         </label> : null}</>
       }
       onCancel={onCancel}

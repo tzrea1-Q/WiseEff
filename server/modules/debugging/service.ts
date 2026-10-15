@@ -247,6 +247,7 @@ type AdminNodeWriteInput = {
 type AdminNodePatchInput = Partial<Omit<AdminNodeWriteInput, "name">> & {
   nodeId: string;
   name?: string;
+  archiveProtocols?: DebugConnectionProtocol[];
 };
 
 type AdminNodeBindingWriteInput = AdminNodeBindingInput & {
@@ -257,6 +258,17 @@ type AdminNodeBindingArchiveInput = {
   nodeId: string;
   protocol: DebugConnectionProtocol;
 };
+
+function assertNodeBindingIntents(input: Pick<AdminNodePatchInput, "bindings" | "archiveProtocols">) {
+  const protocols = (input.bindings ?? []).map((binding) => binding.protocol);
+  const archiveProtocols = input.archiveProtocols ?? [];
+  if (new Set(protocols).size !== protocols.length || new Set(archiveProtocols).size !== archiveProtocols.length) {
+    throw new ApiError("VALIDATION_FAILED", "Each binding protocol may be supplied only once.");
+  }
+  if (protocols.some((protocol) => archiveProtocols.includes(protocol))) {
+    throw new ApiError("VALIDATION_FAILED", "A binding protocol cannot be saved and archived together.");
+  }
+}
 
 type AdminDebugModuleWriteInput = {
   name: string;
@@ -915,6 +927,40 @@ export function createDebuggingService(options: ServiceOptions) {
   const gatewayMode = options.gatewayMode ?? "unknown";
   const tracing = options.tracing;
 
+  async function upsertAdminNodeBinding(tx: Queryable, auth: AuthContext, input: AdminNodeBindingWriteInput, context: ServiceContext) {
+    const binding = await upsertDebugNodeBinding(tx, { ...input, organizationId: organizationIdFor(auth) });
+    if (!binding) {
+      throw notFound("Debug node was not found.");
+    }
+    await writeAudit(tx, auditInput(auth, {
+      projectId: null,
+      kind: "debug-node-binding-admin-upsert",
+      action: "update",
+      severity: "Medium",
+      targetType: "debug-node-binding",
+      targetId: `${binding.nodeId}:${binding.protocol}`,
+      metadata: nodeBindingAuditMetadata(binding)
+    }, context));
+    return binding;
+  }
+
+  async function archiveAdminNodeBinding(tx: Queryable, auth: AuthContext, input: AdminNodeBindingArchiveInput, context: ServiceContext) {
+    const binding = await archiveDebugNodeBinding(tx, { ...input, organizationId: organizationIdFor(auth) });
+    if (!binding) {
+      throw notFound("Debug node binding was not found.");
+    }
+    await writeAudit(tx, auditInput(auth, {
+      projectId: null,
+      kind: "debug-node-binding-admin-archive",
+      action: "archive",
+      severity: "Medium",
+      targetType: "debug-node-binding",
+      targetId: `${binding.nodeId}:${binding.protocol}`,
+      metadata: nodeBindingAuditMetadata(binding)
+    }, context));
+    return binding;
+  }
+
   function recordGatewayOperation(action: "detect" | "read" | "write" | "rollback", status: string) {
     options.metrics?.recordDeviceGatewayOperation({
       mode: gatewayMode,
@@ -1463,6 +1509,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
     async createAdminDebugNode(auth: AuthContext, input: AdminNodeWriteInput, context: ServiceContext = {}): Promise<DebugNodeWithBindingsRecord> {
       requireDebugAdmin(auth);
+      assertNodeBindingIntents(input);
       const organizationId = organizationIdFor(auth);
       const moduleAssignment = await resolveDebugNodeModuleAssignment(db, organizationId, input);
       const canonicalReference = input.canonicalBinding
@@ -1491,18 +1538,7 @@ export function createDebuggingService(options: ServiceOptions) {
           canonicalProjectId: canonicalReference?.projectId ?? null
         });
         for (const bindingInput of input.bindings ?? []) {
-          const binding = await upsertDebugNodeBinding(tx, {
-            organizationId,
-            nodeId: node.id,
-            protocol: bindingInput.protocol,
-            nodePath: bindingInput.nodePath,
-            accessMode: bindingInput.accessMode,
-            enabled: bindingInput.enabled,
-            notes: bindingInput.notes
-          });
-          if (!binding) {
-            throw notFound("Debug node was not found.");
-          }
+          await upsertAdminNodeBinding(tx, auth, { ...bindingInput, nodeId: node.id }, context);
         }
         const bindings = await listDebugNodeBindings(tx, { organizationId, nodeId: node.id });
 
@@ -1533,6 +1569,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
     async updateAdminDebugNode(auth: AuthContext, input: AdminNodePatchInput, context: ServiceContext = {}): Promise<DebugNodeWithBindingsRecord> {
       requireDebugAdmin(auth);
+      assertNodeBindingIntents(input);
       const organizationId = organizationIdFor(auth);
       const moduleAssignment =
         input.module !== undefined || input.moduleId !== undefined
@@ -1583,6 +1620,12 @@ export function createDebuggingService(options: ServiceOptions) {
         });
         if (!node) {
           throw notFound("Debug node was not found.");
+        }
+        for (const binding of input.bindings ?? []) {
+          await upsertAdminNodeBinding(tx, auth, { ...binding, nodeId: node.id }, context);
+        }
+        for (const protocol of input.archiveProtocols ?? []) {
+          await archiveAdminNodeBinding(tx, auth, { nodeId: node.id, protocol }, context);
         }
         const bindings = await listDebugNodeBindings(tx, { organizationId, nodeId: node.id });
 
@@ -1904,37 +1947,7 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!node) {
           throw notFound("Debug node was not found.");
         }
-        const binding = await upsertDebugNodeBinding(tx, {
-          organizationId,
-          nodeId: input.nodeId,
-          protocol: input.protocol,
-          nodePath: input.nodePath,
-          accessMode: input.accessMode,
-          enabled: input.enabled,
-          notes: input.notes
-        });
-        if (!binding) {
-          throw notFound("Debug node was not found.");
-        }
-
-        await writeAudit(
-          tx,
-          auditInput(
-            auth,
-            {
-              projectId: null,
-              kind: "debug-node-binding-admin-upsert",
-              action: "update",
-              severity: "Medium",
-              targetType: "debug-node-binding",
-              targetId: `${binding.nodeId}:${binding.protocol}`,
-              metadata: nodeBindingAuditMetadata(binding)
-            },
-            context
-          )
-        );
-
-        return binding;
+        return upsertAdminNodeBinding(tx, auth, input, context);
       });
     },
 
@@ -1947,33 +1960,7 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!node) {
           throw notFound("Debug node was not found.");
         }
-        const binding = await archiveDebugNodeBinding(tx, {
-          organizationId,
-          nodeId: input.nodeId,
-          protocol: input.protocol
-        });
-        if (!binding) {
-          throw notFound("Debug node binding was not found.");
-        }
-
-        await writeAudit(
-          tx,
-          auditInput(
-            auth,
-            {
-              projectId: null,
-              kind: "debug-node-binding-admin-archive",
-              action: "archive",
-              severity: "Medium",
-              targetType: "debug-node-binding",
-              targetId: `${binding.nodeId}:${binding.protocol}`,
-              metadata: nodeBindingAuditMetadata(binding)
-            },
-            context
-          )
-        );
-
-        return binding;
+        return archiveAdminNodeBinding(tx, auth, input, context);
       });
     },
 
