@@ -74,11 +74,11 @@ function project(value: Awaited<ReturnType<typeof fixture>>) {
   return { record: JSON.parse(text), text, exitCode, stderr };
 }
 
-function inspect(value: Awaited<ReturnType<typeof fixture>>, checkout = sha, attempt = "1", base = policy.acceptedBase) {
+function inspect(value: Awaited<ReturnType<typeof fixture>>, checkout = sha, attempt = "1", base = policy.acceptedBase, tree = policy.identity.tree) {
   let exitCode = 0;
   let text = "";
   try {
-    text = execFileSync("/usr/bin/python3", ["-I", publisherPath, "--inspect", value.output, "123", attempt, "2", checkout, base],
+    text = execFileSync("/usr/bin/python3", ["-I", publisherPath, "--inspect", value.output, "123", attempt, "2", checkout, base, tree],
       { cwd: value.root, env: { PATH: process.env.PATH }, timeout: 5_000, encoding: "utf8", stdio: "pipe" });
   } catch (error) {
     const failure = error as { status: number; stdout: Buffer };
@@ -102,7 +102,7 @@ describe("accepted-base compact acceptance failure index", () => {
     expect(inspected?.failures[0].source).toBe("unverified");
     expect(output).not.toContain("SYNTHETIC_SECRET");
   });
-  it.each(["corrupt", "oversize", "wrong-head", "wrong-attempt", "wrong-base", "bad-tree", "hostile-path", "unknown-category", "missing"])("keeps %s navigation unavailable without displaying downloaded strings", async (mutation) => {
+  it.each(["corrupt", "oversize", "wrong-head", "wrong-attempt", "wrong-base", "bad-tree", "wrong-tree", "hostile-path", "unknown-category", "missing"])("keeps %s navigation unavailable without displaying downloaded strings", async (mutation) => {
     const value = await fixture();
     const projected = project(value).record;
     if (mutation === "corrupt") writeFileSync(value.output, "{SYNTHETIC_SECRET");
@@ -121,6 +121,10 @@ describe("accepted-base compact acceptance failure index", () => {
     }
     if (mutation === "bad-tree") {
       projected.identity.tree = "SYNTHETIC_SECRET";
+      writeFileSync(value.output, JSON.stringify(projected));
+    }
+    if (mutation === "wrong-tree") {
+      projected.identity.tree = "9".repeat(40);
       writeFileSync(value.output, JSON.stringify(projected));
     }
     if (mutation === "missing") rmSync(value.output);
@@ -226,7 +230,7 @@ describe("accepted-base compact acceptance failure index", () => {
     expect(published.exitCode).toBe(0);
     expect(published.record.status).toBe("generated");
     expect(published.record.failures[0].source).toEqual({ file: source, line: 1, column: 1 });
-    expect(inspect({ ...value, output: published.outputs.path }, base, "1", base).record.failures[0].source)
+    expect(inspect({ ...value, output: published.outputs.path }, base, "1", base, env.EFF_TREE).record.failures[0].source)
       .toEqual({ file: source, line: 1, column: 1 });
     const unsafeArchive = workflowStep("acceptance_index", value.root, { ...publishEnv, EFF_ARCHIVE: "failure" });
     expect(unsafeArchive.record.code).toBe("SAFE_ARCHIVE_UNAVAILABLE");
