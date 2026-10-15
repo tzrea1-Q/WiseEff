@@ -83,7 +83,7 @@ async function apiExposesPermissionAudit(page: Page, userName: string, roleId: s
   }
 
   const body = (await response.json()) as {
-    items: Array<{ kind: string; action: string; metadata?: Record<string, unknown> }>;
+    items: Array<{ kind: string; action: string; targetId: string | null; metadata?: Record<string, unknown> }>;
   };
 
   return body.items.some(
@@ -663,6 +663,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     });
 
     test.skip(!apiAuthorization, "A production bearer token is required to verify API-mode protected access.");
+    if (!apiAuthorization) throw new Error("A production bearer token is required after the skip guard.");
 
     const validResponse = await page.request.get(apiRoute("/api/v1/me"), {
       headers: { Authorization: apiAuthorization }
