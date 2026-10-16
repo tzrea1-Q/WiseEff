@@ -37,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   expect(unexpectedNetwork).toEqual([]);
 });
 
@@ -137,6 +138,7 @@ it("keeps first-time workbench setup in the install dialog, not the context bar"
 });
 
 it("keeps returning users on a compact readiness bar using any unrevoked server record", async () => {
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X)");
   vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
   const records = deferred<Awaited<ReturnType<typeof import("../infrastructure/http/deviceBridgeClient").listMyBridges>>>();
   render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}

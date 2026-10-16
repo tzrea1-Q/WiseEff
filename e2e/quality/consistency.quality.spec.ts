@@ -9,6 +9,7 @@ import { compactQualityRoutes } from "./compact-routes";
 import { parseQualityLane, shouldRegisterConsistencyFixture } from "./quality-partition";
 import { installConsistencyReadGuard } from "./consistency";
 import { AUDIT_KIND_LABELS } from "../../src/domain/audit/auditSlugLabels";
+import { detectBrowserBridgeTarget } from "../../src/infrastructure/http/bridgeReleaseSelection";
 import {
   closeXiaozePopupIfOpen,
   expectBoundedMainScroll,
@@ -63,9 +64,10 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
     test(fixtureId, async ({ context, page }, testInfo) => {
       testInfo.annotations.push({ type: "setup", description: "Read-only UI fixtures replace Bridge listing, local health and target detection; the workbench and identity use the real API. This does not prove hardware pairing or device writes." });
       const blockedRequests = await installConsistencyReadGuard(context);
+      const hostTarget = detectBrowserBridgeTarget(await page.evaluate(() => navigator.userAgent));
       await context.route("**/api/v1/device-bridges/mine", async (request) => request.fulfill({ json: {
         items: readiness === "first-time" ? [] : [{
-          id: "quality-readiness-bridge", machineLabel: "质量检查工作站", platform: "linux", arch: "amd64",
+          id: "quality-readiness-bridge", machineLabel: "质量检查工作站", platform: hostTarget.platform, arch: hostTarget.arch,
           clientVersion: "999.0.0", capabilities: {}, createdAt: "2026-10-11T00:00:00Z", lastSeenAt: null, revokedAt: null
         }]
       } }));
@@ -95,7 +97,7 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
         await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(0);
         await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
       } else {
-        await expect(panel.getByText("本地 Bridge 未运行", { exact: true })).toBeVisible();
+        await expect(panel.getByText(readiness === "returning" ? "本地 Bridge 未运行" : "未检测到本地 Bridge", { exact: true })).toBeVisible();
         await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(1);
         if (readiness === "returning") {
           await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
@@ -130,15 +132,24 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
       await testInfo.attach(`bridge-${readiness}-${theme}${path.replaceAll("/", "-")}`, {
         contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
       });
-      if (readiness !== "connected") {
+      {
         const trigger = panel.getByRole("button", { name: "安装指南", exact: true });
         await trigger.click();
         const drawer = page.getByRole("dialog", { name: "安装与连接本地 Bridge" });
         await expect(drawer).toBeVisible();
         await expect(drawer.getByRole("list", { name: "Bridge 连接步骤" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(1);
+        await expect(page.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(readiness === "connected" ? 0 : 1);
+        if (readiness !== "connected") {
+          await drawer.getByRole("button", { name: "查看插入 USB 设备步骤", exact: true }).click();
+          await expect(drawer.getByRole("region", { name: "USB 设备连接指引", exact: true })).toBeVisible();
+          await expect(drawer.getByText("请先完成「连接本机」，再检测 USB 设备。", { exact: true })).toBeVisible();
+        }
+        await drawer.getByRole("button", { name: "查看连接本机步骤", exact: true }).click();
+        await expect(drawer.getByRole("region", { name: "本机连接指引", exact: true })).toBeVisible();
+        if (readiness !== "connected") await expect(drawer.getByText("使用终端手动连接", { exact: true })).toBeVisible();
+        await drawer.focus();
         await page.keyboard.press("Shift+Tab");
-        await expect(drawer.getByRole("button", { name: "连接本机", exact: true })).toBeFocused();
+        await expect(drawer.getByRole("button", { name: readiness === "connected" ? "继续连接 USB 设备" : "连接本机", exact: true })).toBeFocused();
         await page.keyboard.press("Tab");
         await expect(drawer.getByRole("button", { name: "关闭安装指南" })).toBeFocused();
         await page.keyboard.press("Escape");

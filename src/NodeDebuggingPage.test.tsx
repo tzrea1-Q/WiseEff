@@ -1213,6 +1213,7 @@ describe("/node-debugging", () => {
   });
 
   it("shows a Windows install CTA when the local bridge is missing", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });

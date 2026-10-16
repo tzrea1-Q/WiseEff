@@ -1,12 +1,6 @@
-.dts-reload-page .navigator-workbench {
-  --navigator-workbench-navigator-width: 220px;
-  --navigator-workbench-navigator-cap: 22vw;
-}
-
 .dts-reload-page .navigator-workbench__toolbar {
   background: transparent;
-  border: 0;
-  padding: var(--space-2) 0;
+  border-color: transparent;
 }
 
 .dts-reload-page .navigator-workbench__task > .dts-reload-candidates {
