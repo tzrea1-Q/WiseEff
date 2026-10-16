@@ -160,7 +160,7 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
     // Keep browser/Node libraries reusable across interleaved projects; TypeScript owns compatibility and diagnostics.
     const libraries = JSON.stringify(project.options.lib ?? []);
     const options = { ...project.options, incremental: false, composite: false, noEmit: true };
-    const host = ts.createCompilerHost(options);
+    const host = ts.createIncrementalCompilerHost(options);
     host.jsDocParsingMode = ts.JSDocParsingMode.ParseForTypeErrors;
     const getSourceFile = host.getSourceFile;
     host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {

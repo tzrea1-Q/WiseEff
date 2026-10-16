@@ -19,7 +19,7 @@ beforeEach(() => {
   write("package.json", '{"type":"module"}');
   write("eslint.config.js", `import parser from ${JSON.stringify(createRequire(import.meta.url).resolve("@typescript-eslint/parser"))};
 export default [{ files: ["{src,server,scripts,ops,e2e,packages}/**/*.{ts,tsx}"], languageOptions: { parser }, rules: { "no-unreachable": "error" } }];`);
-  const options = { strict: true, noEmit: true, skipLibCheck: true, types: [], lib: ["ES2023"], target: "ES2023", module: "ESNext", moduleResolution: "Bundler" };
+  const options = { strict: true, noEmit: true, skipLibCheck: true, types: [], lib: ["ES5"], target: "ES2023", module: "ESNext", moduleResolution: "Bundler" };
   for (const [name, include, exclude] of [
     ["app", ["src/**/*.ts"], ["**/*.test.ts"]],
     ["node", ["server/**/*.ts", "scripts/**/*.ts"], ["**/*.test.ts"]],
@@ -160,7 +160,7 @@ it("rejects ignored, missing, unsupported and misconfigured changes instead of e
   const invalid = await inspectStaticCoverage(["server/ignored.test.ts"], root);
   expect(invalid.problems.join("\n")).toContain("target");
   expect((await inspectStaticCoverage(["tsconfig.tests.node.json"], root)).status).toBe("failed");
-  write("tsconfig.tests.node.json", '{"compilerOptions":{"types":["wiseeff-missing-types"]},"include":["server/**/*.ts"]}');
+  write("tsconfig.tests.node.json", '{"compilerOptions":{"types":["wiseeff-missing-types"],"lib":["ES5"]},"include":["server/**/*.ts"]}');
   const missingTypes = await inspectStaticCoverage(["tsconfig.tests.node.json"], root, { execute: true });
   expect(missingTypes.status).toBe("failed");
   expect(missingTypes.problems.join("\n")).toContain("wiseeff-missing-types");
