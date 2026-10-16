@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./NodeOperationHistoryPanel";
 
 describe("NodeOperationHistoryPanel", () => {
-  it("shows node operation evidence without node paths", () => {
+  it("expands full operation evidence while keeping long output and paths out of the collapsed summary", () => {
+    const stdout = "3600\n".repeat(100);
     const events: NodeOperationEvent[] = [
       {
         id: "evt-1",
@@ -14,8 +15,8 @@ describe("NodeOperationHistoryPanel", () => {
         action: "write-readback",
         status: "回读一致",
         returncode: 0,
-        stdout: "3600\n",
-        stderr: "",
+        stdout,
+        stderr: "device warning",
         nodePath: "/sys/secret/path"
       }
     ];
@@ -26,6 +27,15 @@ describe("NodeOperationHistoryPanel", () => {
     const list = screen.getByRole("list", { name: "节点操作事件列表" });
     expect(within(list).getByText(/充电输入限流/)).toBeInTheDocument();
     expect(within(list).getByText(/回读一致/)).toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("/sys/secret/path");
+    const path = within(list).getByText("/sys/secret/path");
+    expect(path).not.toBeVisible();
+    const details = path.closest("details") as HTMLDetailsElement;
+    fireEvent.click(within(list).getByText("查看完整结果"));
+    expect(details.open).toBe(true);
+    expect(path).toBeVisible();
+    expect(within(details).getByLabelText("标准输出").textContent).toBe(stdout);
+    expect(within(details).getByLabelText("错误输出")).toHaveTextContent("device warning");
+    expect(within(details).getByText("操作时间")).toBeInTheDocument();
+    expect(within(details).getByText("0")).toBeInTheDocument();
   });
 });

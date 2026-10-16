@@ -1,6 +1,6 @@
-import { Eye, Pencil, RotateCcw, RotateCw, Send } from "lucide-react";
+import { Copy, Eye, Pencil, RotateCcw, RotateCw, Send } from "lucide-react";
 import { ViewSwitch } from "@/components/ui/view-switch";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { canPerform } from "@/app/permissions";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { presentError } from "@/infrastructure/http/presentError";
@@ -57,6 +57,7 @@ import {
   modulePathLabelForDebugNode
 } from "@/debugAdminModules";
 import type { PrototypeState } from "@/domain/prototype/types";
+import "./node-debugging-refinement.css";
 
 export { readInitialNodeDebuggingProtocol };
 
@@ -184,7 +185,7 @@ function DebugTableValueText({ value }: { value: string }) {
   );
 }
 
-function DebugCurrentValueCell({ row }: { row: RuntimeRow }) {
+function DebugCurrentValueCell({ row, connected }: { row: RuntimeRow; connected: boolean }) {
   const text = displayCurrentValue(row, "table");
   const hasComplexPayload =
     isComplexDebugParameter(row) &&
@@ -203,7 +204,7 @@ function DebugCurrentValueCell({ row }: { row: RuntimeRow }) {
 
   return (
     <>
-      <DebugTableValueText value={text} />
+      <DebugTableValueText value={!connected && text === "等待读取" ? "设备未连接 · 等待读取" : text} />
       {row.currentValueStale ? <small className="node-row-warning">写后状态待重新回读</small> : null}
     </>
   );
@@ -241,7 +242,6 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
     <section className="node-write-format-panel" aria-labelledby={titleId}>
       <div className="node-write-format-head">
         <h3 id={titleId}>{isComplex ? "复杂值写入格式" : "写入格式"}</h3>
-        <span>{row.accessMode}</span>
       </div>
       <p>
         {isComplex
@@ -379,6 +379,9 @@ export function NodeDebuggingPage({
   });
 
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const [pathCopyResult, setPathCopyResult] = useState<{ path: string; message: string } | null>(null);
+  const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [moduleFilters, setModuleFilters] = useState<string[]>([]);
@@ -459,6 +462,25 @@ export function NodeDebuggingPage({
   const toggleArrayFilter = (currentValues: string[], value: string) =>
     currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value];
   const editingRow = editingRowId ? rows.find((row) => row.id === editingRowId) ?? null : null;
+  const editingDirty = Boolean(editingRow && editingValue !== editingRow.draftValue);
+  const closeEditor = () => setEditingRowId(null);
+  const guardEditorChange = (action: () => void) => {
+    if (editingDirty) setDiscardAction(() => action);
+    else action();
+  };
+  const openEditor = (row: RuntimeRow) => guardEditorChange(() => {
+    setEditingValue(row.draftValue);
+    setPathCopyResult(null);
+    setEditingRowId(row.id);
+  });
+  const copyNodePath = async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(path);
+      setPathCopyResult({ path, message: "已复制节点路径" });
+    } catch {
+      setPathCopyResult({ path, message: "复制失败，请选中路径手动复制。" });
+    }
+  };
   const selectableVisibleIds = useMemo(
     () => visibleRows.filter((row) => canWrite(row)).map((row) => row.id),
     [visibleRows]
@@ -503,7 +525,10 @@ export function NodeDebuggingPage({
       <div className="debugging-workbench-content">
         <div className="node-debugging-controls">
           <ViewSwitch variant="tabs" ariaLabel="连接协议" value={protocol}
-            onValueChange={(value) => session.setProtocol(value as DebugConnectionProtocol, debuggingActions)}
+            onValueChange={(value) => guardEditorChange(() => {
+              closeEditor();
+              session.setProtocol(value as DebugConnectionProtocol, debuggingActions);
+            })}
             items={(["hdc", "adb"] as const).map((value) => ({ value, label: protocolLabel(value),
               id: `node-debugging-${value}-tab`, panelId: `node-debugging-${value}-panel` }))} />
         </div>
@@ -514,7 +539,7 @@ export function NodeDebuggingPage({
           toolbar={<>
             <span className="parameters-table-count">
               <strong>{selectedIds.length > 0 ? `已选 ${selectedIds.length} 项` : `${pendingRows.length} 项节点等待写入`}</strong>
-              {selectedIds.length > 0 ? ` · 其中 ${pendingSelectedRows.length} 项为待写入状态` : " · 可先在节点详情中暂存目标值"}
+              {selectedIds.length > 0 ? ` · 其中 ${pendingSelectedRows.length} 项为待写入状态` : " · 编辑后暂存，再统一下发"}
             </span>
             <Button variant="outline" disabled={!runtimeReady || !connected || !state.lastDebugSnapshot}
               title={state.lastDebugSnapshot ? "回滚到上次写前快照" : "尚无快照，写入成功后自动生成"}
@@ -678,13 +703,14 @@ export function NodeDebuggingPage({
                       </td>
                       <td data-label="参数名称">
                         <strong>{row.name}</strong>
-                        <small
+                        {row.protectedReferenceKind === "canonical-pin"
+                          || (row.protectedReferenceReason && row.protectedReferenceReason !== "missing-binding") ? <small
                           className="node-canonical-reference"
                           data-testid={`node-canonical-reference-${row.id}`}
                           aria-label={canonicalAssociationLabel(row)}
                         >
                           {canonicalAssociationLabel(row)}
-                        </small>
+                        </small> : null}
                         {subtitle ? <small>{subtitle}</small> : null}
                       </td>
                       <td data-label="模块">
@@ -696,13 +722,13 @@ export function NodeDebuggingPage({
                         </span>
                       </td>
                       <td className="mono" data-label="当前值">
-                        <DebugCurrentValueCell row={row} />
+                        <DebugCurrentValueCell row={row} connected={connected} />
                         {bindingUnavailableReason(row) ? <small className="node-row-error">{bindingUnavailableReason(row)}</small> : null}
                         {row.error && row.runtimeStatus !== "失败" && row.runtimeStatus !== "写入失败" ? <small className="node-row-error">{row.error}</small> : null}
                       </td>
                       <td data-label="目标写入值">
                         {canWrite(row) ? (
-                          isComplexDebugParameter(row) ? (
+                          !row.draftValue ? <span className="node-value-placeholder">未设置</span> : isComplexDebugParameter(row) ? (
                             <DebugTableValuePreview value={row.draftValue} row={row} />
                           ) : (
                             row.draftValue
@@ -718,7 +744,10 @@ export function NodeDebuggingPage({
                           type="button"
                           aria-label={`${canWrite(row) ? "查看/修改" : "查看详情"} ${row.name}`}
                           title={canWrite(row) ? "查看/修改" : "查看详情"}
-                          onClick={() => setEditingRowId(row.id)}
+                          onClick={(event) => {
+                            event.currentTarget.focus();
+                            openEditor(row);
+                          }}
                         >
                           {canWrite(row) ? <Pencil size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
                         </button>
@@ -761,26 +790,30 @@ export function NodeDebuggingPage({
       </div>
 
       {editingRow ? (
-        <div className={isComplexDebugParameter(editingRow) ? "node-complex-editor" : undefined}>
+        <div className={`node-detail-editor${isComplexDebugParameter(editingRow) ? " node-complex-editor" : ""}`}>
         <WorkbenchSheet
+          key={editingRow.id}
           open
-          onClose={() => setEditingRowId(null)}
+          onClose={() => guardEditorChange(closeEditor)}
+          closeLabel="关闭节点详情"
           title={editingRow.name}
           description={editingRow.description.trim() || undefined}
           footer={
             canWrite(editingRow) ? (
               <div className="draft-sheet-footer">
                 <span>
-                  {editingRow.accessMode === "RW"
-                    ? "写命令执行后会自动回读并展示设备返回值，不做相等性判定。"
-                    : "该节点无法取得写前快照，因此不提供安全写入。"}
+                  {editingDirty ? "有未暂存的修改" : editingRow.runtimeStatus === "待写入" ? "已加入待写入队列" : "暂存后加入队列；写入立即执行"}
                 </span>
                 <div className="draft-sheet-footer-actions">
+                  <button className="button subtle" type="button" onClick={() => guardEditorChange(closeEditor)}>
+                    取消
+                  </button>
                   <button
                     className="button subtle"
                     type="button"
                     disabled={editingRow.runtimeStatus === "执行中"}
                     onClick={() => {
+                      session.setDraftValue(editingRow.id, editingValue);
                       session.stashRow(editingRow.id);
                       setEditingRowId(null);
                     }}
@@ -791,11 +824,14 @@ export function NodeDebuggingPage({
                     className="submit-round-button debugging-deploy-button"
                     data-primary-action="true"
                     type="button"
-                    disabled={!connected || editingRow.runtimeStatus === "执行中"}
-                    onClick={() => void session.requestWrite(editingRow.id, debuggingActions)}
+                    disabled={!connected || editingRow.activeOperation === "write"}
+                    onClick={() => {
+                      session.setDraftValue(editingRow.id, editingValue);
+                      void session.requestWrite(editingRow.id, debuggingActions);
+                    }}
                   >
                     {editingRow.accessMode === "RW" ? <RotateCw size={14} aria-hidden="true" /> : <Send size={14} aria-hidden="true" />}
-                    {editingRow.accessMode === "RW" ? "写入并回读（仅展示）" : "写入"}
+                    {editingRow.accessMode === "RW" ? "写入并回读" : "写入"}
                   </button>
                 </div>
               </div>
@@ -806,18 +842,32 @@ export function NodeDebuggingPage({
             <div className="debug-detail-card node-detail-card">
               <div className="debug-detail-head">
                 <span className={statusClass(editingRow.runtimeStatus)}>{editingRow.runtimeStatus}</span>
+                <span className={editingRow.risk === "High" ? "node-detail-risk node-detail-risk--high" : "node-detail-risk"}>
+                  {editingRow.risk === "High" ? "高风险 · 写入前需确认" : editingRow.risk === "Medium" ? "中风险" : "低风险"}
+                </span>
               </div>
-              {editingRow.detailedDescription?.trim() ? (
-                <section className="debug-detail-description-panel" aria-label="详细描述">
-                  <h3>详细描述</h3>
-                  <p className="node-debug-detail-description">{editingRow.detailedDescription}</p>
-                </section>
-              ) : null}
-              <div className="debug-detail-fields">
-                <div className="debug-detail-row">
-                  <span>访问模式</span>
-                  <strong>{editingRow.accessMode}</strong>
+              <div className="node-detail-device">
+                <span className="node-detail-meta-label">目标设备</span>
+                <strong>{connected ? target : "设备未连接"}</strong>
+                <span className="node-detail-protocol">{protocolLabel(protocol)}</span>
+              </div>
+              <section className="node-detail-path" aria-labelledby={`node-detail-path-${editingRow.id}`}>
+                <div className="node-detail-path__head">
+                  <span id={`node-detail-path-${editingRow.id}`} className="node-detail-meta-label">节点路径</span>
+                  {editingRow.nodePath ? <button className="icon-button" type="button" aria-label="复制节点路径"
+                    title="复制节点路径" onClick={() => void copyNodePath(editingRow.nodePath)}>
+                    <Copy size={14} aria-hidden="true" />
+                  </button> : null}
                 </div>
+                {editingRow.nodePath ? <code className="node-detail-path__value" title={editingRow.nodePath}>
+                  {editingRow.nodePath.split("/").map((segment, index) => <Fragment key={index}>
+                    {index > 0 ? <wbr /> : null}
+                    <span className="node-detail-path__segment">{index > 0 ? "/" : ""}{segment}</span>
+                  </Fragment>)}
+                </code> : <p className="node-detail-path__unavailable">{bindingUnavailableReason(editingRow) || "未配置节点路径"}</p>}
+                {pathCopyResult?.path === editingRow.nodePath ? <small role="status" className="node-detail-path__feedback">{pathCopyResult.message}</small> : null}
+              </section>
+              <div className="debug-detail-fields">
                 {isComplexDebugParameter(editingRow) && editingRow.lastReadValue !== undefined ? (
                   <DebugValueCodeBlock label="当前值" row={editingRow} value={editingRow.runtimeCurrentValue} />
                 ) : (
@@ -826,9 +876,24 @@ export function NodeDebuggingPage({
                     <strong className="mono">{displayCurrentValue(editingRow)} {editingRow.lastReadValue !== undefined ? editingRow.unit : ""}</strong>
                   </div>
                 )}
+                {canWrite(editingRow) ? (
+                  <div className="node-detail-target">
+                    <label className="field-label" htmlFor={`node-target-${editingRow.id}`}>目标写入值</label>
+                    <textarea
+                      id={`node-target-${editingRow.id}`}
+                      aria-label="目标写入值"
+                      className={`node-target-editor${isComplexDebugParameter(editingRow) ? " node-complex-target-editor" : ""}`}
+                      rows={debugValueEditorRows(editingValue, isComplexDebugParameter(editingRow) ? 6 : 3)}
+                      wrap={isComplexDebugParameter(editingRow) ? "off" : "soft"}
+                      value={editingValue}
+                      onChange={(event) => setEditingValue(event.target.value)}
+                    />
+                    <small className="node-detail-target-hint">{editingRow.unit ? `单位：${editingRow.unit} · ` : ""}写入后自动回读，返回值仅供核对。</small>
+                  </div>
+                ) : null}
                 <div className="debug-detail-row">
-                  <span>目标写入值</span>
-                  <strong className="mono">{canWrite(editingRow) ? editingRow.draftValue : editingRow.accessMode === "WO" ? "安全写入不可用" : "只读"}</strong>
+                  <span>访问模式</span>
+                  <strong>{editingRow.accessMode} · {editingRow.accessMode === "RW" ? "可读写" : editingRow.accessMode === "RO" ? "只读" : "只写（安全写入不可用）"}</strong>
                 </div>
                 {editingRow.writeOutcome ? (
                   <div className="debug-detail-row">
@@ -846,18 +911,7 @@ export function NodeDebuggingPage({
                   <span>模块</span>
                   <strong>{editingRow.module}</strong>
                 </div>
-                {isComplexDebugParameter(editingRow) ? (
-                  <>
-                    <div className="debug-detail-row">
-                      <span>格式</span>
-                      <strong>{getDebugValueFormatLabel(editingRow)}</strong>
-                    </div>
-                    <div className="debug-detail-row">
-                      <span>规范化</span>
-                      <strong>{getDebugNormalizationModeLabel(editingRow.normalizationMode)}</strong>
-                    </div>
-                  </>
-                ) : null}
+                {editingRow.range ? <div className="debug-detail-row"><span>参考范围</span><strong>{editingRow.range}</strong></div> : null}
               </div>
               {editingRow.error ? <p className="node-row-error">{editingRow.error}</p> : null}
               {editingRow.currentValueStale && editingRow.lastWriteOperationId ? (
@@ -871,21 +925,16 @@ export function NodeDebuggingPage({
                   重新回读（不会再次写入）
                 </button>
               ) : null}
-              {canWrite(editingRow) ? (
-                <>
-                  <NodeWriteFormatPanel row={editingRow} protocol={protocol} />
-                  <label className="field-label" htmlFor={`node-target-${editingRow.id}`}>目标写入值</label>
-                  <textarea
-                    id={`node-target-${editingRow.id}`}
-                    aria-label="目标写入值"
-                    className={isComplexDebugParameter(editingRow) ? "node-target-editor node-complex-target-editor" : "node-target-editor"}
-                    rows={isComplexDebugParameter(editingRow) ? debugValueEditorRows(editingRow.draftValue) : 8}
-                    wrap={isComplexDebugParameter(editingRow) ? "off" : undefined}
-                    value={editingRow.draftValue}
-                    onChange={(event) => session.setDraftValue(editingRow.id, event.target.value)}
-                  />
-                </>
+              {editingRow.detailedDescription?.trim() && editingRow.detailedDescription.trim() !== editingRow.description.trim() ? (
+                <details className="node-detail-disclosure">
+                  <summary>使用说明</summary>
+                  <p className="node-debug-detail-description">{editingRow.detailedDescription}</p>
+                </details>
               ) : null}
+              {canWrite(editingRow) ? <details className="node-detail-disclosure">
+                <summary>写入格式与示例</summary>
+                <NodeWriteFormatPanel row={editingRow} protocol={protocol} />
+              </details> : null}
             </div>
           </div>
         </WorkbenchSheet>
@@ -893,11 +942,24 @@ export function NodeDebuggingPage({
       ) : null}
 
       <ConfirmDialog
+        open={discardAction !== null}
+        title="放弃未保存的修改？"
+        description="目标值尚未加入待写入队列。放弃后将恢复上次暂存的内容。"
+        confirmLabel="放弃修改"
+        cancelLabel="继续编辑"
+        onCancel={() => setDiscardAction(null)}
+        onConfirm={() => {
+          discardAction?.();
+          setDiscardAction(null);
+        }}
+      />
+
+      <ConfirmDialog
         open={pendingHighRiskWrite !== null}
         title="确认高风险节点写入"
         description={
           pendingHighRiskWrite
-            ? `节点「${pendingHighRiskWrite.name}」风险为高。确认后才会带 confirmation token 写入设备。`
+            ? `将向设备「${target ?? "未连接"}」的高风险节点「${pendingHighRiskWrite.name}」写入「${pendingHighRiskWrite.draftValue}」。请核对设备与目标值，确认后立即执行。`
             : null
         }
         confirmLabel="确认写入"
@@ -916,7 +978,7 @@ export function NodeDebuggingPage({
             <div>
               <p>
                 本次批量共 {pendingBulkWrite.rows.length} 个节点，其中高风险 {pendingBulkWrite.highRiskRows.length} 个。
-                确认后高风险节点将统一携带 confirmation token 下发；取消则不写入任何节点。
+                将写入设备「{target}」。请核对以下节点与目标值；确认后开始执行，取消则不写入任何节点。
               </p>
               <ul className="node-bulk-high-risk-list" aria-label="高风险节点清单">
                 {pendingBulkWrite.highRiskRows.map((row) => (

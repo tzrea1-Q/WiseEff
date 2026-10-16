@@ -404,7 +404,6 @@ function eventFromOperation(
   const row = findOperationParameter(operation, currentRows);
   const stdout = operation.readbackValue ?? operation.readValue ?? operation.previousValue ?? operation.requestedValue;
   const complexMetadata = complexOperationMetadata(row, operation, stdout);
-  const isComplex = row ? isComplexDebugParameter(row) : operation.valueKind === "complex";
 
   return {
     parameterName:
@@ -415,7 +414,7 @@ function eventFromOperation(
     action: eventActionFromOperation(operation),
     status: eventStatusFromOperation(operation),
     returncode: returncodeFromOperation(operation),
-    stdout: isComplex ? undefined : stdout,
+    stdout,
     stderr: operationFailureMessage(operation.failureReason, operation),
     nodePath: operation.nodePath,
     durationMs: operation.durationMs,
@@ -637,7 +636,8 @@ export function createNodeDebuggingSession(
         }
       }
       if (result.operation) {
-        appendEvent(eventFromOperation(result.operation, rows));
+        const event = eventFromOperation(result.operation, rows);
+        appendEvent({ ...event, stdout: result.stdout ?? event.stdout, stderr: result.stderr || event.stderr });
       } else {
         appendEvent({
           parameterName: row.name,
@@ -646,7 +646,7 @@ export function createNodeDebuggingSession(
           action: "read",
           status: outcome.ok ? "读取成功" : "读取失败",
           returncode: result.returncode,
-          stdout: isComplexDebugParameter(row) ? undefined : result.stdout,
+          stdout: result.stdout,
           stderr: result.stderr || outcome.error,
           nodePath: row.nodePath,
           ...complexOperationMetadata(
@@ -816,8 +816,18 @@ export function createNodeDebuggingSession(
         });
       }
 
+      const stdout = [
+        result.writeResult?.stdout ? `写入：\n${result.writeResult.stdout}` : "",
+        result.readResult?.stdout ? `回读：\n${result.readResult.stdout}` : ""
+      ].filter(Boolean).join("\n");
+      const stderr = [result.writeResult?.stderr, result.readResult?.stderr].filter(Boolean).join("\n");
       if (result.operation) {
-        appendEvent(eventFromOperation(result.operation, rows));
+        const event = eventFromOperation(result.operation, rows);
+        appendEvent({
+          ...event,
+          stdout: stdout || event.stdout,
+          stderr: stderr || event.stderr
+        });
       } else {
         appendEvent({
           parameterName: row.name,
@@ -835,8 +845,8 @@ export function createNodeDebuggingSession(
                     ? "不支持回读"
                     : "写入已执行",
           returncode: (result.writeResult as CommandResultMeta | undefined)?.returncode,
-          stdout: isComplexDebugParameter(row) ? undefined : result.readResult?.stdout || result.writeResult?.stdout,
-          stderr: result.readResult?.stderr || result.writeResult?.stderr || result.error,
+          stdout,
+          stderr: stderr || result.error,
           nodePath: row.nodePath,
           ...complexOperationMetadata(
             row,

@@ -534,7 +534,7 @@ export function createDtsReloadRunSession(
         }
         emit();
       } catch (error) {
-        errorMessage = error instanceof Error ? error.message : "下发参数失败。";
+        errorMessage = error instanceof Error ? error.message : "启动预检失败。";
         emit();
       } finally {
         starting = false;

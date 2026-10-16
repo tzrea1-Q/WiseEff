@@ -20,6 +20,36 @@ function createApi(fetchImpl: typeof fetch) {
 }
 
 describe("deviceBridgeClient", () => {
+  it.each([
+    { request: createPairingCode, response: { code: "123456", expiresAt: "2099-01-01T00:00:00Z" }, endpoint: "pairing-codes" },
+    { request: listMyBridges, response: { items: [] }, endpoint: "mine" },
+    { request: listReleases, response: { items: [] }, endpoint: "releases" }
+  ])("cancels a hung $endpoint request after its timeout and allows a fresh retry", async ({ request, response, endpoint }) => {
+    const controller = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(controller.signal)
+      .mockReturnValueOnce(new AbortController().signal);
+    try {
+      const fetchMock = vi.fn<typeof fetch>()
+        .mockImplementationOnce(async (_url, options) => new Promise<Response>((_resolve, reject) => {
+          options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+        }))
+        .mockResolvedValueOnce(jsonResponse(response));
+      const apiClient = createApi(fetchMock);
+      const pending = request(apiClient);
+      const rejected = expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      controller.abort(new DOMException("Bridge request timed out", "TimeoutError"));
+      await rejected;
+      await expect(request(apiClient)).resolves.toBeDefined();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0][0]).toContain(endpoint);
+      expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal);
+      expect(timeout.mock.calls).toEqual([[5000], [5000]]);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
   it("creates a pairing code from the API endpoint", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ code: "123456", expiresAt: "2026-06-23T00:05:00.000Z" }));
     const apiClient = createApi(fetchMock);

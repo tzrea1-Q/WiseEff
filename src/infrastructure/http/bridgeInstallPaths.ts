@@ -17,9 +17,10 @@ export function formatBridgeConnectFallbackCommand(input: {
   webOrigin: string;
   code?: string;
   cliPath?: string;
+  portable?: boolean;
 }): string {
-  const launcher = input.cliPath?.trim() || defaultBridgeCliPath(input.platform);
-  const base = `"${launcher}" connect --server ${input.serverUrl} --webOrigin ${input.webOrigin}`;
+  const launcher = input.portable ? "node ./cli.js" : `"${input.cliPath?.trim() || defaultBridgeCliPath(input.platform)}"`;
+  const base = `${launcher} connect --server ${input.serverUrl} --webOrigin ${input.webOrigin}`;
   return input.code ? `${base} --code ${input.code}` : base;
 }
 

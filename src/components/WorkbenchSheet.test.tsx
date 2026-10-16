@@ -1,8 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import { StrictMode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterDraftDialog } from "./ParameterDraftDialog";
 import { WorkbenchSheet } from "./WorkbenchSheet";
+import { ConfirmDialog } from "./common/ConfirmDialog";
 
 afterEach(() => {
   cleanup();
@@ -10,6 +12,76 @@ afterEach(() => {
 });
 
 describe("WorkbenchSheet", () => {
+  it("preserves the trigger through StrictMode effect replay and repeated click opens", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return <>
+        <button type="button" onClick={(event) => {
+          event.currentTarget.focus();
+          setOpen(true);
+        }}>编辑节点</button>
+        {open ? <WorkbenchSheet open onClose={() => setOpen(false)} title="节点详情">内容</WorkbenchSheet> : null}
+      </>;
+    }
+    render(<StrictMode><Harness /></StrictMode>);
+    const trigger = screen.getByRole("button", { name: "编辑节点" });
+    for (let index = 0; index < 2; index += 1) {
+      fireEvent.click(trigger);
+      const close = screen.getByRole("button", { name: "关闭草稿" });
+      await waitFor(() => expect(close).toHaveFocus());
+      fireEvent.click(close);
+      await waitFor(() => expect(trigger).toHaveFocus());
+    }
+  });
+
+  it("returns focus to its trigger after closing", async () => {
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    trigger.focus();
+    const { rerender } = render(<WorkbenchSheet open onClose={() => {}} title="节点详情">内容</WorkbenchSheet>);
+    expect(screen.getByRole("button", { name: "关闭草稿" })).toHaveFocus();
+    rerender(<WorkbenchSheet open={false} onClose={() => {}} title="节点详情">内容</WorkbenchSheet>);
+    await waitFor(() => expect(trigger).toHaveFocus());
+    trigger.remove();
+  });
+
+  it("keeps focus in a replacement editor and returns to its own trigger", async () => {
+    const first = document.createElement("button");
+    const second = document.createElement("button");
+    document.body.append(first, second);
+    first.focus();
+    const { rerender } = render(<StrictMode><WorkbenchSheet key="first" open onClose={() => {}} title="第一个节点">内容</WorkbenchSheet></StrictMode>);
+    second.focus();
+    rerender(<StrictMode><WorkbenchSheet key="second" open onClose={() => {}} title="第二个节点">内容</WorkbenchSheet></StrictMode>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "关闭草稿" })).toHaveFocus());
+    rerender(<StrictMode><WorkbenchSheet key="second" open={false} onClose={() => {}} title="第二个节点">内容</WorkbenchSheet></StrictMode>);
+    await waitFor(() => expect(second).toHaveFocus());
+    first.remove();
+    second.remove();
+  });
+
+  it("lets the confirmation above it handle Escape without closing the sheet", () => {
+    const close = vi.fn();
+    const cancel = vi.fn();
+    render(<>
+      <WorkbenchSheet open onClose={close} title="节点详情">内容</WorkbenchSheet>
+      <ConfirmDialog open title="放弃修改？" description="修改尚未保存" confirmLabel="放弃" onConfirm={() => {}} onCancel={cancel} />
+    </>);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("does not consume Escape from a different non-modal dialog", () => {
+    const close = vi.fn();
+    render(<>
+      <WorkbenchSheet open onClose={close} title="节点详情">内容</WorkbenchSheet>
+      <div role="dialog" aria-label="助手"><input aria-label="助手输入" /></div>
+    </>);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "助手输入" }), { key: "Escape" });
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it("renders no content when closed", () => {
     render(
       <WorkbenchSheet open={false} onClose={() => {}} title="参数草稿">
