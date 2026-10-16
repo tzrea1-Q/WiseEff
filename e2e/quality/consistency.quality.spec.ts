@@ -8,6 +8,7 @@ import { collectionPaths, consistencyReadOnlyRoutes } from "./consistency-routes
 import { compactQualityRoutes } from "./compact-routes";
 import { parseQualityLane, shouldRegisterConsistencyFixture } from "./quality-partition";
 import { installConsistencyReadGuard } from "./consistency";
+import { AUDIT_KIND_LABELS } from "../../src/domain/audit/auditSlugLabels";
 import {
   closeXiaozePopupIfOpen,
   expectBoundedMainScroll,
@@ -178,6 +179,26 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         if (routePath === "/audit") {
+          await test.step("audit kind filter inventory", async () => {
+            const originalUrl = page.url();
+            const more = page.getByRole("button", { name: /^更多筛选/ });
+            await more.click();
+            const kind = page.getByRole("combobox", { name: "事件类型筛选" });
+            await kind.click();
+            const menu = page.getByRole("listbox");
+            const expected = [{ value: "", label: "全部类型" },
+              ...Object.entries(AUDIT_KIND_LABELS).map(([value, label]) => ({ value, label }))];
+            await expect(menu.getByRole("option")).toHaveCount(expected.length);
+            expect(await menu.getByRole("option").evaluateAll((options) => options.map((option) => ({
+              value: option.getAttribute("data-value"), label: option.textContent?.trim()
+            })))).toEqual(expected);
+            await page.keyboard.press("Escape");
+            await expect(menu).toBeHidden();
+            await expect(kind).toBeFocused();
+            await more.click();
+            await expect(more).toHaveAttribute("aria-expanded", "false");
+            await expect(page).toHaveURL(originalUrl);
+          });
           await test.step("audit severity column filter", async () => {
             const trigger = page.getByRole("columnheader", { name: /严重度/ }).getByRole("button", { name: "筛选严重度", exact: true });
             await expect(trigger).toBeVisible();
@@ -248,18 +269,84 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(trigger).toBeFocused();
         }
         if (routePath === "/debugging-admin/nodes") {
+          const longProjectLabel = "多项目联合验证与电池安全治理平台 ".repeat(8).trim();
+          testInfo.annotations.push({ type: "setup", description: "A read-only project-list response supplies one controlled long label for geometry; other API data stays real. This does not prove a persisted project rename." });
+          await context.route("**/api/v1/projects", async (intercepted) => {
+            if (intercepted.request().method() !== "GET") return intercepted.fallback();
+            const response = await intercepted.fetch();
+            expect(response.ok()).toBe(true);
+            const body = await response.json() as { items: Array<{ id: string; name: string }> };
+            expect(body.items.length).toBeGreaterThan(0);
+            body.items[0]!.name = longProjectLabel;
+            await intercepted.fulfill({ response, json: body });
+          });
           await page.getByRole("table", { name: "可调节点目录", exact: true }).getByRole("button", { name: "编辑", exact: true }).first().click();
           const editor = page.getByRole("dialog", { name: "编辑节点", exact: true });
           await expect(editor.getByLabel("HDC 节点路径", { exact: true })).toBeVisible();
           await expect(editor.getByLabel("ADB 节点路径", { exact: true })).toBeVisible();
           await expect(editor.getByRole("button", { name: "保存", exact: true })).toHaveCount(1);
           expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+          const access = editor.getByRole("combobox", { name: "HDC 访问模式", exact: true });
+          const initialAccess = await access.getAttribute("data-value");
+          await access.click();
+          await page.getByRole("option", { name: new RegExp(`^${initialAccess} ·`) }).click();
+          await expect(access).toHaveAttribute("data-value", initialAccess!);
+          await expect(access).toBeFocused();
+          await access.press("ArrowDown");
+          await expect(page.getByRole("listbox")).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(page.getByRole("listbox")).toBeHidden();
+          await expect(editor).toBeVisible();
+          await expect(access).toBeFocused();
+          const association = editor.locator("summary").filter({ hasText: "项目参数关联" });
+          await association.click();
+          const project = editor.getByRole("combobox", { name: "关联项目", exact: true });
+          await expect(project).toBeEnabled();
+          await project.click();
+          await page.getByRole("option", { name: longProjectLabel, exact: true }).click();
+          await expect(project).toBeFocused();
+          const longLabelGeometry = await project.evaluate((element) => {
+            const text = element.querySelector('[data-slot="select-value"]')!;
+            const chevron = element.querySelector(".select-control__chevron")!.getBoundingClientRect();
+            const label = text.getBoundingClientRect();
+            return { truncated: text.scrollWidth > text.clientWidth, gap: chevron.left - label.right,
+              centerDelta: Math.abs(label.top + label.height / 2 - chevron.top - chevron.height / 2) };
+          });
+          expect(longLabelGeometry.truncated, "long form labels must truncate within their field").toBe(true);
+          expect(longLabelGeometry.gap, "long labels must leave the dropdown arrow visible").toBeGreaterThanOrEqual(0);
+          expect(longLabelGeometry.centerDelta).toBeLessThanOrEqual(2);
+          await project.click();
+          await page.getByRole("option", { name: "不关联项目参数", exact: true }).click();
+          await association.click();
           await assertAccessibilitySemantics(page, testInfo, `unified-node-editor-${theme}`);
           await testInfo.attach(`unified-node-editor-${theme}`, {
             contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
+          const name = editor.getByRole("textbox", { name: "名称", exact: true });
+          await name.fill(`${await name.inputValue()}未保存`);
           await editor.getByRole("button", { name: "取消", exact: true }).click();
+          const discard = page.getByRole("dialog", { name: "放弃未保存的更改？", exact: true });
+          await expect(discard).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(discard).toBeHidden();
+          await expect(editor).toBeVisible();
+          await expect(editor.getByRole("button", { name: "取消", exact: true })).toBeFocused();
+          await editor.getByRole("button", { name: "取消", exact: true }).click();
+          await discard.getByRole("button", { name: "放弃并关闭", exact: true }).click();
           await expect(editor).toBeHidden();
+          await page.getByRole("button", { name: "模块管理", exact: true }).click();
+          const modules = page.getByRole("dialog", { name: "模块管理", exact: true });
+          const more = modules.getByRole("button", { name: "Battery Charging 更多操作", exact: true });
+          await more.click();
+          await page.getByRole("menuitem", { name: "查看节点", exact: true }).click();
+          await expect(modules.getByLabel("Battery Charging 节点列表")).toBeVisible();
+          await more.press("ArrowDown");
+          await expect(page.getByRole("menu")).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(page.getByRole("menu")).toBeHidden();
+          await expect(modules).toBeVisible();
+          await expect(more).toBeFocused();
+          await modules.getByRole("button", { name: "完成", exact: true }).click();
         }
         if (route.required.includes("settingsForms")) {
           const form = page.locator(".settings-form-page");

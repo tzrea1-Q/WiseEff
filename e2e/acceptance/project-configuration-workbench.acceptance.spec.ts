@@ -1,7 +1,8 @@
 import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
-import { expect, test, type Page } from "playwright/test";
+import { expect, test, type APIResponse, type Page } from "playwright/test";
+import type { DtsReleaseReadiness } from "../../src/application/ports/DtsStructuredRepository";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
@@ -220,20 +221,80 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await auroraRow.getByRole("button", { name: /配置工作台/ }).click();
       await expect(page).toHaveURL(new RegExp(`/parameter-admin/projects/${projectId}/configuration(?:\\?|$)`));
 
-      await page.goto(`/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}`);
-      await dismissXiaozeHint(page);
-      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("treeitem", { name: new RegExp(primaryFileName) })).toBeVisible();
-      await expect(page.getByRole("group", { name: "未编组项目文件" })).toContainText(looseFileName);
-      await expect(page.getByText("工作配置", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: /版本/ }).click();
-      await expect(page.getByText("发布基线：尚未发布")).toBeVisible();
-      await page.getByRole("button", { name: /版本/ }).click();
-      await expect(page.getByRole("region", { name: "版本详情" })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "上传候选" })).toBeEnabled();
-      await page.getByRole("button", { name: "更多" }).click();
-      await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
+      const readinessPath = `/api/v1/projects/${projectId}/config-sets/${configSetId}/release-readiness`;
+      const targetReadiness = (url: URL) => url.pathname === readinessPath;
+      // Hold this Config set's real response so loading and settled policy cannot race the assertions.
+      let releaseReadiness!: () => void;
+      let readinessFetched!: (response: APIResponse) => void;
+      let readinessFailed!: (reason: unknown) => void;
+      const readinessGate = new Promise<void>((resolve) => { releaseReadiness = resolve; });
+      const readinessResponse = new Promise<APIResponse>((resolve, reject) => {
+        readinessFetched = resolve;
+        readinessFailed = reject;
+      });
+      const routeTaskSettlements: Promise<PromiseSettledResult<void>[]>[] = [];
+      let failure: PromiseRejectedResult | undefined;
+      await page.route(targetReadiness, (route) => {
+        const task = (async () => {
+          const response = await route.fetch();
+          readinessFetched(response);
+          await readinessGate;
+          await route.fulfill({ response });
+        })();
+        void task.catch((reason) => {
+          failure ??= { status: "rejected", reason };
+          readinessFailed(reason);
+        });
+        const settlement = Promise.allSettled([task]);
+        routeTaskSettlements.push(settlement);
+        return settlement;
+      });
+      const navigation = page.goto(`/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}`);
+      try {
+        await Promise.race([readinessResponse, navigation.then(() => readinessResponse)]);
+        await navigation;
+        await dismissXiaozeHint(page);
+        await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByRole("treeitem", { name: new RegExp(primaryFileName) })).toBeVisible();
+        await expect(page.getByRole("group", { name: "未编组项目文件" })).toContainText(looseFileName);
+        await expect(page.getByText("工作配置", { exact: true })).toBeVisible();
+        await page.getByRole("button", { name: /版本/ }).click();
+        await expect(page.getByText("发布基线：尚未发布")).toBeVisible();
+        await page.getByRole("button", { name: /版本/ }).click();
+        await expect(page.getByRole("region", { name: "版本详情" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "上传候选" })).toBeEnabled();
+        await expect(page.getByRole("status", { name: "发布就绪" })).toContainText("加载中");
+        await page.getByRole("button", { name: "更多" }).click();
+        await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
+      } catch (reason) {
+        failure ??= { status: "rejected", reason };
+      } finally {
+        releaseReadiness();
+        await Promise.all(routeTaskSettlements);
+        const settled = await Promise.allSettled([navigation, page.unroute(targetReadiness)]);
+        const settledRoutes = (await Promise.all(routeTaskSettlements)).flat();
+        failure ??= [...settled, ...settledRoutes].find((result) => result.status === "rejected");
+      }
+      if (failure) throw failure.reason;
+      const evaluated = await readinessResponse;
+      expect(evaluated.status(), await evaluated.text()).toBe(200);
+      const { item: readiness } = await evaluated.json() as { item: DtsReleaseReadiness };
+      expect(readiness).toMatchObject({ configSetId, projectId,
+        available: expect.any(Boolean), canCreateBaseline: expect.any(Boolean) });
+      const readinessSummary = page.getByRole("status", { name: "发布就绪" });
+      if (readiness.available) {
+        await expect(readinessSummary).toHaveAttribute("data-can-create", String(readiness.canCreateBaseline));
+        await expect(readinessSummary).toHaveAttribute("data-level", readiness.level);
+      } else {
+        expect(readiness.canCreateBaseline).toBe(false);
+        await expect(readinessSummary).toContainText("不可用");
+      }
+      if (readiness.available && readiness.canCreateBaseline) {
+        await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeEnabled();
+      } else {
+        await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
+      }
       await page.keyboard.press("Escape");
       await expect(page.getByRole("main", { name: "只读 DTS 源码" })).toContainText("Configuration tracer");
       expect(memberRequests.some((url) => url.includes(`/config-sets/${configSetId}/files`))).toBe(true);
@@ -415,6 +476,10 @@ test.describe("project configuration workbench read-only browser acceptance", ()
             method: "GET",
             path: `/api/v1/projects/${projectId}/config-sets/${configSetId}/files`,
             responseSummary: `members=${membersBody.items.length}; activeVersion=${primaryBody.version.id}`
+          }),
+          summarizeApiResponse(evaluated, {
+            method: "GET", path: readinessPath,
+            responseSummary: `Exact Config set readiness: available=${readiness.available}; level=${readiness.level}; canCreateBaseline=${readiness.canCreateBaseline}; loading fail-closed`
           })
         ],
         notes: "Project-list entry opened the canonical route; API member identity and active source remained read-only while tree, inspector, and task sheet interactions were exercised at PC 1440x900."
@@ -1539,10 +1604,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await page.getByRole("treeitem", { name: new RegExp(primaryFileName) }).click();
       const syncButton = inspector.getByRole("button", { name: "手动同步" });
       await expect(syncButton).toBeVisible();
-      await syncButton.evaluate((el) => {
-        el.scrollIntoView({ block: "nearest", inline: "nearest" });
-        (el as HTMLButtonElement).click();
-      });
+      await expect(syncButton).toBeEnabled();
+      const manualSyncResponsePromise = page.waitForResponse((response) => response.request().method() === "POST"
+        && new URL(response.url()).pathname === `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/sync`);
+      await syncButton.click();
+      expect((await manualSyncResponsePromise).ok()).toBe(true);
       await expect(page.getByRole("region", { name: "配置任务" })).toContainText(primaryFileName);
 
       await page.getByRole("button", { name: "更多" }).click();
@@ -2049,7 +2115,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         canRelease: cleared.canRelease, canCreateBaseline: cleared.canCreateBaseline,
         blockerCodes: cleared.blockers.map((blocker: { code: string }) => blocker.code) });
       await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "true");
-      expect(cleared.blockers.map((blocker) => blocker.code)).not.toContain("pending-change");
+      expect(cleared.blockers.map((blocker: { code: string }) => blocker.code)).not.toContain("pending-change");
       await expect(page.getByRole("region", { name: "发布就绪问题" }).locator('[data-code="pending-change"]')).toHaveCount(0);
       expect(cleared.canCreateBaseline).toBe(true);
       expect(cleared.canRelease).toBe(true);

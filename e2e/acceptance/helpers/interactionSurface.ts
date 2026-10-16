@@ -46,9 +46,15 @@ export async function dismissXiaozeToggleHint(page: Page) {
   }
 }
 
+export async function waitForInteractionSurfaceReady(page: Page) {
+  // The owning domain settles independently of optional/background requests.
+  // Loading/error transition tests intentionally exercise the surface without this helper.
+  await expect(page.locator("[data-runtime-state]").first()).toBeAttached();
+  await expect(page.locator('[data-runtime-state]:not([data-runtime-state="ready"])')).toHaveCount(0);
+}
+
 export async function prepareInteractionSurface(page: Page) {
-  // Bootstrap completion moves controls; wait before a pointer gesture can span that layout change.
-  await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0);
+  await waitForInteractionSurfaceReady(page);
   await dismissCopilotDevOverlays(page);
   await closeXiaozePopupIfOpen(page);
   await dismissCopilotDevOverlays(page);

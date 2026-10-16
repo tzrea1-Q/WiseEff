@@ -1,6 +1,5 @@
-import type { FocusEventHandler, ReactNode, Ref } from "react";
+import { useEffect, useImperativeHandle, useRef, type FocusEventHandler, type ReactNode, type Ref } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 
 export type SelectOption<Value extends string = string> = {
   value: Value;
@@ -27,7 +26,6 @@ type SelectControlProps<Value extends string> = {
   size?: "default" | "sm" | "filter";
   compactControl?: "filter" | "sort" | "pagination";
   disabled?: boolean;
-  withinModal?: boolean;
 };
 
 // Encode every value so an empty option is valid without reserving any business value.
@@ -51,19 +49,29 @@ export function SelectControl<Value extends string>({
   placeholder,
   size,
   compactControl,
-  disabled = false,
-  withinModal = false
+  disabled = false
 }: SelectControlProps<Value>) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const restoreAfterLoading = useRef(false);
+  useImperativeHandle(ref, () => triggerRef.current!, []);
+  useEffect(() => {
+    if (disabled || !restoreAfterLoading.current) return;
+    restoreAfterLoading.current = false;
+    // Radix cannot focus a trigger disabled by the selection's async work.
+    // Restore only when focus is still unclaimed; another input/dialog owns it otherwise.
+    if (document.activeElement === document.body) triggerRef.current?.focus({ preventScroll: true });
+  }, [disabled]);
   const selectValue = value === "" && !options.some((option) => option.value === "") ? "" : VALUE_PREFIX + value;
   return (
     <Select value={selectValue} onValueChange={(nextValue) => onValueChange(nextValue.slice(VALUE_PREFIX.length) as Value)} disabled={disabled}>
-      <SelectTrigger ref={ref} id={id} data-value={value} data-compact-control={compactControl ?? (size === "filter" ? "filter" : undefined)} size={size} title={title} onFocus={onFocus} onBlur={onBlur} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-invalid={ariaInvalid} aria-describedby={ariaDescribedBy} aria-required={ariaRequired} className={className}>
+      <SelectTrigger ref={triggerRef} id={id} data-value={value} data-compact-control={compactControl ?? (size === "filter" ? "filter" : undefined)} size={size} title={title} onFocus={onFocus} onBlur={onBlur} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-invalid={ariaInvalid} aria-describedby={ariaDescribedBy} aria-required={ariaRequired} className={className}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent
-        className={cn("max-h-64 [&_[data-radix-select-viewport]]:max-h-64", withinModal && "debug-admin-select-content--modal")}
+        className="max-h-64 [&_[data-radix-select-viewport]]:max-h-64"
         position="popper"
         sideOffset={4}
+        onCloseAutoFocus={() => { restoreAfterLoading.current = triggerRef.current?.disabled ?? false; }}
       >
         {options.map((option) => (
           <SelectItem key={option.value} data-value={option.value} value={VALUE_PREFIX + option.value} disabled={option.disabled}>

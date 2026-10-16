@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { preProcessFile } from "typescript";
 import { discoverBrowserInventory, type BrowserInventory } from "./browser-navigation";
 import { qualityRoutePaths, routeOwnership } from "../e2e/quality/route-ownership";
+import { inspectStaticCoverage, readStaticChanges } from "./check-static-coverage";
+export { inspectStaticCoverage, type StaticCoverage } from "./check-static-coverage";
 
 const suiteConfigs = {
   frontend: "vite.config.ts",
@@ -101,7 +102,11 @@ function quote(value: string): string {
 
 export type { BrowserInventory } from "./browser-navigation";
 
-export function selectBrowserImpact(paths: string[], inventory?: BrowserInventory, discoveryReasons: string[] = []) {
+export type BrowserImpact = {
+  fullFallback: boolean; reasons: string[]; qualityRoutes: string[]; qualityGrep: string | null; acceptanceSpecs: string[]; commands: string[];
+};
+
+export function selectBrowserImpact(paths: string[], inventory?: BrowserInventory, discoveryReasons: string[] = []): BrowserImpact {
   if (!paths.length) throw new Error("Empty changed-file selection");
   const changedPaths = [...new Set(paths.map(normalizePath))].filter((file) => !gateOnlyPath(file));
   if (!changedPaths.length) return { fullFallback: false, reasons: [], qualityRoutes: [], qualityGrep: null, acceptanceSpecs: [], commands: [] };
@@ -168,18 +173,23 @@ export function selectVitestImpact(paths: string[], inventory: TestInventory, di
   };
 }
 
-export async function createVitestImpact(paths: string[], root = process.cwd()) {
+export async function createVitestImpact(paths: string[], root = process.cwd(), options: { executeStatic?: boolean; deletedPaths?: string[]; base?: string | null } = {}) {
   root = realpathSync(root);
   if (!paths.length) throw new Error("Empty changed-file selection");
   const changedPaths = [...new Set(paths.map(normalizePath))].sort();
   const testPaths = changedPaths.filter((file) => !gateOnlyPath(file));
+  const staticCoverage = await inspectStaticCoverage(changedPaths, root, { execute: options.executeStatic, deletedPaths: options.deletedPaths });
+  const feedback = { staticCoverage, base: options.base ?? null, ciStatus: "not-run" as const };
+  const staticCommands = staticCoverage.status === "not-applicable" ? [] : [
+    `npm run lint:changed -- ${options.base ? `--base ${quote(options.base)}` : changedPaths.map(quote).join(" ")}`,
+  ];
   const inventory: TestInventory = {
     frontend: { files: [], related: {} },
     server: { files: [], related: {} },
     scripts: { files: [], related: {} },
     bridge: { files: [], related: {} },
   };
-  if (!testPaths.length) return { ...selectVitestImpact(changedPaths, inventory), browser: selectBrowserImpact(changedPaths) };
+  if (!testPaths.length) return { ...selectVitestImpact(changedPaths, inventory), browser: selectBrowserImpact(changedPaths), ...feedback };
   const reasons = testPaths.filter((file) => !existsSync(resolve(root, file))).map((file) => `Missing or deleted change: ${file}`);
   const skipRelated = reasons.length > 0 || changedPaths.some(sharedPath);
   const { createVitest } = await import("vitest/node");
@@ -206,7 +216,7 @@ export async function createVitestImpact(paths: string[], root = process.cwd()) 
   }
   const selection = selectVitestImpact(changedPaths, inventory, reasons);
   const browser = selectBrowserImpact(changedPaths, discoverBrowserInventory(root), reasons);
-  return { ...selection, browser, commands: [...selection.commands, ...browser.commands] };
+  return { ...selection, browser, ...feedback, commands: [...staticCommands, ...selection.commands, ...browser.commands] };
 }
 
 async function cli() {
@@ -217,17 +227,15 @@ async function cli() {
     throw new Error("Usage: npm run test:impact -- [--json] <changed files...> OR --base <commit>");
   }
   let paths = positionals;
+  let changes: ReturnType<typeof readStaticChanges> | undefined;
   if (values.base !== undefined) {
-    const git = (args: string[]) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    const base = git(["rev-parse", "--verify", "--end-of-options", `${values.base}^{commit}`]).trim();
-    paths = [
-      ...git(["diff", "--name-only", "--no-renames", "-z", base, "--"]).split("\0"),
-      ...git(["ls-files", "--others", "--exclude-standard", "-z"]).split("\0"),
-    ].filter(Boolean);
+    changes = readStaticChanges(process.cwd(), values.base);
+    paths = changes.paths;
   }
-  const selection = await createVitestImpact(paths);
+  const selection = await createVitestImpact(paths, process.cwd(), { base: changes?.base, deletedPaths: changes?.deletedPaths });
   if (!values.json) for (const command of selection.commands) console.error(command);
   console.log(JSON.stringify(selection, null, 2));
+  if (selection.staticCoverage.status === "failed") process.exitCode = 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

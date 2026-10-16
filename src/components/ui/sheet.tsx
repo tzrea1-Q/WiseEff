@@ -6,6 +6,7 @@ import { Dialog as SheetPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { ModalPopupContext } from "@/components/common/ModalPopupContext"
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
@@ -67,7 +68,7 @@ function SheetContent({
         )}
         {...props}
       >
-        {children}
+        <ModalPopupContext.Provider value={true}>{children}</ModalPopupContext.Provider>
         {showCloseButton && (
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
             <Button

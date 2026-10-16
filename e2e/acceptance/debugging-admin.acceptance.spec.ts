@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page, type Request } from "playwright/test";
 import type { Client } from "pg";
-import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { authHeadersForUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
@@ -12,7 +12,9 @@ import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operati
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
 
-useBrowserDiagnostics(test);
+const expectedApiFailures: ExpectedApiFailure[] = [];
+useBrowserDiagnostics(test, { expectedApiFailures });
+test.beforeEach(() => { expectedApiFailures.length = 0; });
 
 const acceptanceNodeNamePrefix = "Acceptance debug node";
 
@@ -87,8 +89,9 @@ function runSeedScript(script: string) {
   if (result.status !== 0) {
     const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
     const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const errorCode = result.error && "code" in result.error && typeof result.error.code === "string" ? result.error.code : "unknown";
     const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
+      ? `child_process error: ${errorCode} ${result.error.message ?? ""}`.trimEnd()
       : "";
 
     throw new Error(
@@ -264,6 +267,102 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     });
   });
 
+  test("keeps bootstrap pointer gestures unavailable and recovers after API retry", async ({ page }) => {
+    // Fault injection holds an actual API response; this case deliberately bypasses the ready helper.
+    let release!: () => void;
+    let fetched!: () => void;
+    const releaseResponse = new Promise<void>((resolve) => { release = resolve; });
+    const responseFetched = new Promise<void>((resolve) => { fetched = resolve; });
+    let failCatalog = false;
+    let releaseDevices!: () => void;
+    let deviceFetched!: () => void;
+    const deviceGate = new Promise<void>((resolve) => { releaseDevices = resolve; });
+    const deviceResponseFetched = new Promise<void>((resolve) => { deviceFetched = resolve; });
+    const routeTasks: Promise<void>[] = [];
+    let settledRoutes: PromiseSettledResult<void>[] = [];
+    const optionalDevices = (url: URL) => url.pathname === "/api/v1/debugging/devices";
+    await page.route(optionalDevices, (route) => {
+      const task = (async () => {
+        const response = await route.fetch();
+        deviceFetched();
+        await deviceGate;
+        if (!route.request().failure()) await route.fulfill({ response });
+      })();
+      routeTasks.push(task);
+      return task;
+    });
+    const bootstrapNodes = (url: URL) => url.pathname === "/api/v1/debugging/admin/modules";
+    await page.route(bootstrapNodes, (route) => {
+      const task = (async () => {
+        if (failCatalog) {
+          await route.fulfill({ status: 503, json: { error: { code: "INTERNAL_ERROR", message: "Controlled bootstrap failure" } } });
+          return;
+        }
+        const response = await route.fetch();
+        fetched();
+        await releaseResponse;
+        if (!route.request().failure()) await route.fulfill({ response });
+      })();
+      routeTasks.push(task);
+      return task;
+    });
+    try {
+      await page.goto("/debugging-admin/nodes");
+      await Promise.all([responseFetched, deviceResponseFetched]);
+      const main = page.locator('main[aria-label="节点调试"]');
+      await expect(page.locator("#main-content")).toHaveAttribute("data-runtime-state", "ready");
+      await expect(main).toHaveAttribute("data-runtime-state", "loading");
+      await expect(page.getByRole("status").filter({ hasText: "正在加载可调节点目录" })).toBeVisible();
+      // Required catalog data is held; the actual action is rendered but unavailable.
+      const create = main.locator('[role="group"][aria-label="可调节点目录操作"] button').filter({ hasText: /^新增节点$/ });
+      await expect(create).toBeVisible();
+      const target = await create.boundingBox();
+      expect(target).not.toBeNull();
+      await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2);
+      await page.mouse.down();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      release();
+      await expect(main).toHaveAttribute("data-runtime-state", "ready");
+      await page.mouse.up();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await create.click();
+      const editor = page.getByRole("dialog", { name: "创建节点", exact: true });
+      await expect(editor).toBeVisible();
+      await editor.getByRole("button", { name: "取消", exact: true }).click();
+      const more = page.locator('table[aria-label="可调节点目录"] button[aria-haspopup="menu"]').first();
+      await more.click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(more).toBeFocused();
+
+      expectedApiFailures.push({ method: "GET", path: "/api/v1/debugging/admin/modules", status: 503 });
+      failCatalog = true;
+      await page.reload();
+      await expect(main).toHaveAttribute("data-runtime-state", "error");
+      const failure = page.getByRole("alert").filter({ hasText: "无法加载可调节点目录" });
+      await expect(failure).toBeVisible();
+      await create.click();
+      await expect(editor).toBeVisible();
+      await editor.getByRole("button", { name: "取消", exact: true }).click();
+      await expect(failure).toBeVisible();
+      failCatalog = false;
+      await failure.getByRole("button", { name: "重试", exact: true }).click();
+      await expect(main).toHaveAttribute("data-runtime-state", "ready");
+      await expect(failure).toHaveCount(0);
+      await expect(create).toBeEnabled();
+    } finally {
+      release();
+      releaseDevices();
+      await page.unroute(bootstrapNodes);
+      await page.unroute(optionalDevices);
+      settledRoutes = await Promise.allSettled(routeTasks);
+      await page.mouse.up();
+      expectedApiFailures.length = 0;
+    }
+    expect(settledRoutes.filter((result) => result.status === "rejected")).toEqual([]);
+  });
+
   test("debugging admin manages an API-backed HDC/ADB catalog node", async ({ page }, testInfo) => {
     // @acceptance DEBUG-ADMIN-001
     // @operation DEBUG-ADMIN-001
@@ -301,11 +400,16 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await createDialog.getByLabel("ADB 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/adb`);
     await createDialog.getByRole("checkbox", { name: "启用 HDC 协议" }).check();
     await createDialog.getByRole("checkbox", { name: "启用 ADB 协议" }).check();
+    const access = createDialog.getByRole("combobox", { name: "HDC 访问模式", exact: true });
+    await access.click();
+    await page.getByRole("option", { name: "RW · 读写", exact: true }).click();
+    await expect(access).toBeFocused();
     const createResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/debugging/admin/nodes");
     await createDialog.getByRole("button", { name: "保存" }).click();
     const createResponse = await createResponsePromise;
     expect(createResponse.status()).toBe(201);
     expect(createResponse.request().postDataJSON().bindings).toHaveLength(2);
+    expect(createResponse.request().postDataJSON().bindings).toContainEqual(expect.objectContaining({ protocol: "hdc", accessMode: "RW" }));
     await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
     await expect(nodeRow(page, nodeName)).toBeVisible();
 

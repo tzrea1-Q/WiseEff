@@ -1,6 +1,8 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { PropsWithChildren } from "react";
+import { ModalDialog } from "@/components/common/ModalDialog";
 
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import {
@@ -15,6 +17,12 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { DefinitionEditorBody } from "./DefinitionEditorBody";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
+
+function EditorDialog({ children }: PropsWithChildren) {
+  return <ModalDialog open className="confirm-dialog" onDismiss={() => undefined}>
+    {({ titleId }) => <><h2 id={titleId}>编辑定义</h2>{children}</>}
+  </ModalDialog>;
+}
 
 /**
  * Issue #847 decisions 12-17: identity correction publishes a replacement
@@ -197,7 +205,8 @@ describe("DefinitionEditorBody", () => {
         relatedKnowledge={relatedKnowledge}
         subjects={[registeredSubject]}
         createIdempotencyKey={() => "idem-847-correction"}
-      />
+      />,
+      { wrapper: EditorDialog }
     );
     return { ...view, catalog: ports.catalog, preview, execute, continueReplacement };
   }
@@ -469,7 +478,8 @@ describe("DefinitionEditorBody", () => {
         definition={activeDefinition}
         subjects={[registeredSubject]}
         createIdempotencyKey={() => "idem-847-activation"}
-      />
+      />,
+      { wrapper: EditorDialog }
     );
 
     await user.type(screen.getByLabelText("属性键"), "gpio-int-v3");
@@ -521,7 +531,8 @@ describe("DefinitionEditorBody", () => {
         catalogReleaseId={CATALOG_RELEASE_ID}
         definition={{ ...activeDefinition, usageSummary: { ...activeDefinition.usageSummary, policyCount } }}
         subjects={[registeredSubject]}
-      />
+      />,
+      { wrapper: EditorDialog }
     );
 
     const detail = screen.getByRole("region", { name: "定义详情" });

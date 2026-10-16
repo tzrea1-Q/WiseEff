@@ -40,7 +40,19 @@ npx tsc -p tsconfig.node.json --noEmit
 git diff --check
 ```
 
-`src/` TypeScript 变更运行 app 类型检查；server/scripts/e2e/config TypeScript 变更运行 node 类型检查。related 仅覆盖当前 Vitest 配置：使用 `test:impact` 识别其他套件/门禁，并明确将未执行选择交给协调者。纯文档不需要 related、ESLint 或 TypeScript 检查；选中的 `npm run docs:check` 仍为必需，任务将文档门禁保留给协调者时由其执行。related 失败可修复后最多重跑两次。此预算下不执行完整套件、构建、全仓 lint、浏览器循环或并发测试/构建会话。协调者每个任务执行一次昂贵门禁；只是移交，不是取消。环境不可用或沙箱错误属于缺失证据，不是通过。
+生产 `src/` TypeScript 变更运行 app 类型检查；生产 server/scripts/config 变更运行 node 类型检查。这两个命令不能证明被排除的测试或 e2e 已获覆盖；下文的变更文件检查使用独立测试环境。related 仅覆盖当前 Vitest 配置：使用 `test:impact` 识别其他套件/门禁，并明确将未执行选择交给协调者。纯文档不需要 related、ESLint 或 TypeScript 检查；选中的 `npm run docs:check` 仍为必需，任务将文档门禁保留给协调者时由其执行。related 失败可修复后最多重跑两次。此预算下不执行完整套件、构建、全仓 lint、浏览器循环或并发测试/构建会话。协调者每个任务执行一次昂贵门禁；只是移交，不是取消。环境不可用或沙箱错误属于缺失证据，不是通过。
+
+### 变更文件静态覆盖
+
+`npm run lint` 保留原有源码/scripts 测试 ESLint 检查，再检查实际 Git 变更。已提交分支使用 `npm run lint -- --base origin/main`；默认基线是 `HEAD`，包含暂存、未暂存及未跟踪文件。CI 在现有 L1 lint 步骤提供 PR 基线或 push 前提交。范围无变更时，额外阶段明确显示不适用，不声称变更文件验收通过。原有 build、必需检查和 main/nightly 选择保持不变。
+
+摘要使用真实 ESLint 适用性及 TypeScript 解析后的输入。`configured` 表示已选择，`checked` 表示已执行；lint/类型诊断、代码被忽略、项目缺失、未知代码家族或配置错误会使整体结果失败。Git 确认的删除及非代码输入有明确排除理由；删除保留保守的受影响测试回退。JavaScript 执行 lint，并明确排除类型检查。套件名称仅为代码家族推导的候选，`testExecution: not-run`；实际测试发现使用 `test:impact`，再单独执行选中的检查。
+
+变更测试通过独立 Node 与浏览器测试项目进行语义检查，仅检查选中的根文件和项目环境声明；导入依赖参与类型解析，不代表未变更依赖完成全量语义检查。浏览器测试使用 Vite、DOM 及 Vitest matcher 类型；Node 测试避开前端文件系统环境声明。Node/e2e/ops 的 ESLint 使用适合环境的通用正确性规则，不施加前端 JSX/hooks 策略。现有 app/build 规则保持不变。不要将完整测试项目作为额外默认串行门禁。
+
+单次检查通过 TypeScript 原生文档注册表复用兼容的已解析输入，各项目诊断仍独立执行。CI 的原生 TypeScript 包装器仅在未修改调用范围的构建成功后，输出干净检出目录的 SHA。Lint 仅在既有 Build 步骤成功、该 SHA 仍匹配干净工作树且原生项目根配置一致时，复用 app/node 覆盖。事实缺失、失败、文件变动或本地环境均执行正常变更文件检查；原生构建排除的测试项目始终执行。选中项目启用 `noCheck` 时覆盖检查失败，已有原生构建覆盖也不会将其判为通过。
+
+初始有界债务观察（2026-10-15）发现数据库测试已有七条诊断（TS2345、TS2344、TS2571、TS2554），质量辅助模块已有两条诊断（TS2532、TS2741）。这不是全库测试类型普查或豁免清单。没有旧文件或诊断获豁免：触及的根文件必须通过，不夹带无关遗留清理。新增 static/scripts 工作共享专项累计 10 秒净执行预算；本地计时属于观察证据，不是 CI 预算验收。
 
 ### 隔离浏览器泳道
 
@@ -67,7 +79,29 @@ WISEEFF_RUNTIME_LANE=1 WISEEFF_QUALITY_LANE=consistency-1 npx playwright test --
 
 L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` 产物是有界的工作流状态快照，与经过安全门禁的各分片完整 ZIP 分开。它记录候选初始化前实测的 checkout SHA/tree、workflow SHA、PR head/base（非 PR 事件使用 push 前驱或定时运行的 head），以及执行、归档、完整上传的结果。首版内部阶段、清理和测试数量仍是 unknown，不读取候选报告或原始日志。发布器失败时只生成 `DIAGNOSTIC_REJECTED`；后备诊断或上传成功不能覆盖先前失败。诊断自身上传在快照中为 pending，最终状态见 Actions 和作业摘要；runner 丢失时可能 incomplete。完整产物的大小、所有权及安全要求保持不变。
 
-修改此通道时运行 `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` 和 `npm run acceptance:ci`。测试提取并执行实际工作流内的隔离发布器，合成失败只证明诊断行为，不是完整验收通过。新增有界步骤均计入 L2 平台预算（下界 151 分钟、作业上限 155 分钟），Gate0 owner 及原安全扫描/上传预算不变。
+独立的 `wiseeff-failure-index-<run>-<attempt>-acceptance-local-non-hdc-shard-<i>` 产物只用于诊断，不是验收回执。候选初始化前，隔离工作流从 PR 接受基线、push 前驱或定时运行的 head 暂存仅使用标准库的发布器，将发布器和源码清单摘要分别绑定到工作流输出。只有接受基线与实际 checkout 的 Git blob 一致的源码声明才能映射；新增或改变的文件明确保持 unmapped。动态用例标题按可信声明 ID 聚合，不复制标题。完整 immutable ZIP 安全步骤成功后，经摘要校验的发布器从只读 ZIP 读取有界既有报告，输出受控状态类别、经校验的源码位置，以及绑定归档 SHA-256 的 ZIP 报告条目序号。标题、断言文本、任意路径及日志保持抑制；上述 bootstrap 通道仍仅接受工作流状态。
+
+每个分片的紧凑索引上限为 256 KiB。暂存和投影共用 4.5 秒处理额度，暂存实测耗时绑定到工作流输出，隔离调用只获得剩余额度，为五秒本地处理预算预留调用开销。接受基线没有发布器时输出 `BASE_PUBLISHER_UNAVAILABLE`；归档安全拒绝时输出 `SAFE_ARCHIVE_UNAVAILABLE`；损坏、超限、被替换或不安全输入输出固定 `INDEX_REJECTED`。既有执行、安全和上传失败仍然失败。首次引入发布器的 PR 不能宣称发布器已存在于接受基线：接受前的真实候选 CI 只验证 unavailable/拒绝路径；实际受信发布、产物导航耗时及可比 CI 成本分布仍待证据。优先读取 Actions 中的紧凑产物，确需报告、截图或 trace 时再下载完整安全归档。报告条目序号对应原 ZIP 中央目录顺序。
+
+修改这些通道时运行 `npm run test:scripts -- scripts/acceptance-failure-index.test.ts scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` 和 `npm run acceptance:ci`。测试提取并执行实际工作流内的隔离发布器，合成失败只证明诊断行为，不是完整验收通过。新增有界步骤均计入 L2 平台预算（下界 154 分钟、作业上限仍为 155 分钟），Gate0 owner 及原安全扫描/上传预算不变。此调度包络不是实测耗时：专项累计中位数/P95 和 runner 时间预算应沿正常可比运行测量，不能凭单次夹具宣称达标，也不能缩减覆盖以满足预算。
+
+### 紧凑失败索引导航
+
+候选失败时打开现有诊断上传终态的作业摘要：紧凑产物链接在前，完整安全归档可用时链接在后。从该次摘要填写 `run`、`attempt`、`shard`、`checkout`、`base` 和 `tree`；`checkout`、`tree` 是实际观测的 checkout SHA/tree，可能与 PR head 不同；`base` 是工作流接受基线的 SHA。缺失观测身份时保持不可用。作为当前证据前，确认运行仍属于当前 PR head：
+
+```sh
+gh run view "$run" --attempt "$attempt" --json headSha,status,conclusion
+gh pr view "$pr" --json headRefOid
+index_dir=$(mktemp -d)
+gh run download "$run" --name "wiseeff-failure-index-${run}-${attempt}-acceptance-local-non-hdc-shard-${shard}" --dir "$index_dir"
+python3 -I scripts/acceptance-failure-index.py --inspect "$index_dir/index.json" "$run" "$attempt" "$shard" "$checkout" "$base" "$tree"
+```
+
+检查器仅读取该有界文件并显示受控字段。损坏、缺失或旧身份保持 unavailable；能够读取拒绝/不可用产物不代表已诊断或已通过。只有本地可验证接受基线与实际 checkout 的 Git blob 相等时才显示源码定位；缺少对象保持 `unverified`，不会 fetch 或改变 checkout。已生成索引提供类别和经校验的报告条目序号，调查前根因分类仍是未知。需要深入证据时，使用同一摘要中的精确完整归档链接，核对 ZIP SHA-256 与检查结果一致，再打开相应报告条目及截图/trace 引用。安全归档拒绝或缺失时不回退原始日志。首先只下载精确的紧凑产物，读取校验后的投影，不原样展示下载的 JSON。
+
+演示两分钟目标时，记录产物发布时间、成功导航时间及 run/attempt/shard。首次基线没有接受发布器时只能证明 unavailable 导航；实际受信索引的正向耗时和累计 CI 预算仍待正常运行证据。此路径不增加 CI 步骤、依赖安装或浏览器运行。
+
+### L2 浏览器分片
 
 L2 浏览器验收使用 `--shard=i/4` 分为四个独立 Gate0 作业，各自拥有 PostgreSQL 服务及运行时。视觉验收仅在分片 1 执行，浏览器预热依赖在每个分片执行。执行前由原生 Playwright 收集确定非空测试清单及按文件划分的工作流/操作证据义务，结果清单必须一致；整套静态覆盖检查及所有运行时归属证据检查继续保留。每个必须自动验收的操作只能有一个浏览器 spec 所有者。分片不发布最新完整证据指针。稳定的 `Acceptance local non-HDC` 汇总门要求矩阵全部成功，或由成功的 detect 有意跳过矩阵，之后 `Merge bar` 才能通过。不带参数的 `npm run acceptance:gate0` 仍在本地执行两个完整阶段。
 
@@ -132,6 +166,8 @@ GitHub Actions **Re-run failed jobs** 支持无需全量重跑的恢复（2026-1
 - M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 四个 D2 质量泳道经稳定 `Acceptance quality` 汇总（UI/产品路径）。L1 保留 `l1-static`、`l1-frontend`、`l1-scripts`、`l1-server` 汇总 ID 及全部原命令；脚本和两个按时长均衡的后端分片各自使用 pgvector 服务与已验证 DTS 工具链，L1 `docs:check` 保留在 vector 设置之后、后端测试之前。原生收集/实际执行清单共同覆盖配置中的完整文件集，并生成本次私有原生 JSON 报告；工件回执、报告、命令结果、实际执行 SHA/tree/run/attempt 必须一致。必需检查缺失、跳过、取消、零测试或全部必需测试跳过均失败。`Build and test` 与 `Merge bar` 始终运行，文档-only 也要求二者成功。L2 事件继续使用 `acceptance-quality` 作为这些泳道的兄弟汇总门；`acceptance-local-non-hdc` 通过权威 `acceptance:gate0` 让 visual 与 full browser 共用独占运行时，在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档证据。完整证据 finalizer 成功后只上传 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`，live runs root 绝不作为 upload 输入。以后若打开 branch protection，required check 只设 `Merge bar`。
 
 ## 有界浏览器夹具检查
+
+L2 平台包络保持作业上限 155 分钟，必须严格大于 5 分钟平台开销、73 分钟有界 pre-Gate0、60 分钟 owner 及 16 分钟有界 post-Gate0 安全/上传/诊断步骤之和（下界 154 分钟）。这是现有检查器/工作流的预算，不是实测耗时，也未改变 owner、安全封装或上传义务。
 
 EFF 夹具工作复用原有自有 Gate0 runtime 与原生验收配置，保持一个 worker、仅模拟器调试及原 warmup 依赖。有界回归集包括 `product-feedback.acceptance.spec.ts` 原三项、`parameter-files.acceptance.spec.ts` 的上传/列表/同步项，以及 `debugging-simulator.acceptance.spec.ts` 的读/写/替代回读/回滚/审计项：五个场景加 warmup，必须取得六项实际原生结果，且无跳过或 flaky。保留嵌套临时语义 runtime 的清理 manifest 和产物 finalizer。旧 SHA 结果、无 descriptor 运行及模拟器回滚不能当作当前 main 全量或目标/设备验收。本次夹具修复不引入分片、重试、golden 更新或覆盖裁剪。
 

@@ -79,6 +79,7 @@
     "docs:screenshots": "tsx scripts/run-user-guide-screenshots.ts",
     "ui:check": "tsx scripts/check-ui-standards.ts",
     "lint": "tsx scripts/run-cached-tool.ts eslint",
+    "lint:changed": "tsx scripts/check-static-coverage.ts",
     "db:schema-doc": "tsx scripts/generate-db-schema-doc.ts",
     "db:schema-doc:check": "tsx scripts/check-db-schema-doc.ts",
     "seed:reconcile": "tsx scripts/seed-reconciliation-manifest.ts",

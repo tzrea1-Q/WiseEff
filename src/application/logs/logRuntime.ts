@@ -224,15 +224,19 @@ export function createLogRuntimeActions({
     generation: generations.begin(logId)
   });
 
+  let refreshGeneration = 0;
   const refresh = async (query?: LogListQuery, options?: { notifyOnFailure?: boolean }) => {
     if (mode !== "api") {
       return;
     }
+    const generation = ++refreshGeneration;
 
     try {
       const logs = await requireRepository(repository).listLogs(query);
+      if (generation !== refreshGeneration) return;
       dispatch({ type: "HYDRATE_LOG_RUNTIME", logs });
     } catch (error) {
+      if (generation !== refreshGeneration) return;
       // Callers such as the page-level API banner own the failure projection.
       if (options?.notifyOnFailure === false) {
         throw error instanceof Error ? error : new Error(logRuntimeFailureNotification);

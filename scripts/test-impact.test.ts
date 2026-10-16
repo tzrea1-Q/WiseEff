@@ -196,6 +196,14 @@ describe("native Vitest discovery", () => {
       ["vite.config.ts", "src/**/*.test.ts"], ["vitest.server.config.ts", "server/**/*.test.ts"],
       ["vitest.scripts.config.ts", "scripts/**/*.test.ts"], ["vitest.bridge.config.ts", "packages/**/*.test.ts"],
     ]) write(config, `export default { test: { include: [${JSON.stringify(include)}], globalSetup: ['./never-run.ts'] } };`);
+    write("package.json", '{"type":"module"}');
+    write("eslint.config.js", `import parser from ${JSON.stringify(createRequire(import.meta.url).resolve("@typescript-eslint/parser"))};
+export default [{ files: ["**/*.{ts,tsx}"], languageOptions: { parser }, rules: { "no-unreachable": "error" } }];`);
+    for (const [name, include] of [
+      ["app", ["src/**/*.ts"]], ["node", ["server/**/*.ts", "scripts/**/*.ts", "*.ts"]],
+      ["tests.node", ["server/**/*.ts", "scripts/**/*.ts", "packages/**/*.ts"]],
+      ["tests.browser", ["src/**/*.ts", "e2e/**/*.ts"]],
+    ]) write(`tsconfig.${name}.json`, JSON.stringify({ compilerOptions: { target: "ES2023", lib: ["ES2023"], types: [], skipLibCheck: true, noEmit: true }, include }));
     write("never-run.ts", "throw new Error('Global setup must not run');");
     write("e2e/acceptance/example.spec.ts", "page.goto('/organization');");
     write("src/shared/value.ts", "export const value = 42;");
@@ -218,6 +226,24 @@ describe("native Vitest discovery", () => {
       ["frontend", ["src/features/example/page.test.ts"]], ["server", ["server/value.test.ts"]],
       ["scripts", ["scripts/value.test.ts"]], ["bridge", ["packages/example/value.test.ts"]],
     ]);
+    expect(selection.staticCoverage).toMatchObject({ status: "selected", testExecution: "not-run", files: [
+      { path: "src/shared/value.ts", lint: { status: "configured" }, typecheck: { status: "configured", project: "tsconfig.app.json" } },
+    ] });
+    expect(selection.commands[0]).toBe("npm run lint:changed -- src/shared/value.ts");
+  });
+
+  it("keeps conservative discovery when coverage fails and executes the emitted static entry point", () => {
+    mkdirSync(join(root, "tools"));
+    writeFileSync(join(root, "tools/unknown.ts"), "export const value = 1;");
+    const unknown = invoke("--json", "src/shared/value.ts", "tools/unknown.ts");
+    expect(unknown.status).toBe(1);
+    expect(JSON.parse(unknown.stdout)).toMatchObject({ fullFallback: true, browser: { fullFallback: true }, staticCoverage: { status: "failed" }, ciStatus: "not-run" });
+    writeFileSync(join(root, "src/shared/value.ts"), 'export const value: number = "wrong";');
+    const checked = spawnSync(process.execPath, ["--import", createRequire(import.meta.url).resolve("tsx"), fileURLToPath(new URL("./check-static-coverage.ts", import.meta.url)), "src/shared/value.ts"], {
+      cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "" },
+    });
+    expect(checked.status).toBe(1);
+    expect(JSON.parse(checked.stdout).staticCoverage.problems.join("\n")).toContain("TS2322");
   });
 
   it("selects documentation gates without loading test configurations, including deleted documents", async () => {
@@ -265,7 +291,7 @@ describe("native Vitest discovery", () => {
     for (const command of selection.commands) expect(normal.stderr).toContain(command);
     const jsonOnly = invoke("--json", "src/shared/value.ts");
     expect(jsonOnly.status, jsonOnly.stderr).toBe(0);
-    expect(JSON.parse(jsonOnly.stdout)).toEqual(selection);
+    expect(JSON.parse(jsonOnly.stdout)).toEqual({ ...selection, staticCoverage: { ...selection.staticCoverage, durationMs: expect.any(Number) } });
     expect(jsonOnly.stderr).toBe("");
     for (const args of [[], ["--base", "HEAD", "src/shared/value.ts"], ["--unknown"], ["../outside.ts"], ["--base", "not-a-commit"]]) {
       const result = invoke(...args);
@@ -307,6 +333,9 @@ describe("native Vitest discovery", () => {
     ]);
     expect(selection.fullFallback).toBe(true);
     expect(selection.reasons).toContain("Missing or deleted change: packages/example/value.test.ts");
+    expect(selection.base).toBe(base);
+    expect(selection.staticCoverage.status).toBe("selected");
+    expect(selection.staticCoverage.files.find((file: { path: string }) => file.path === "packages/example/value.test.ts")?.typecheck.status).toBe("excluded");
   });
 
   it("falls back when dependency discovery cannot transform a source file", async () => {
@@ -315,7 +344,7 @@ describe("native Vitest discovery", () => {
     expect(selection.fullFallback).toBe(true);
     expect(selection.reasons.join("\n")).toContain("Related discovery failed for frontend");
     expect(selection.suites.find((suite) => suite.name === "frontend")?.files).toContain("src/unrelated.test.ts");
-    expect(selection.commands).toHaveLength(6);
+    expect(selection.commands).toHaveLength(7);
   });
 
   it("discovers visited routes in a differently named spec and its called helpers", async () => {

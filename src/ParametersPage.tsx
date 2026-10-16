@@ -1169,17 +1169,17 @@ function ParameterSubmissionDialog({
         <div className="submission-assignee-grid" aria-label="后续流程处理人">
           <label>
             <span>硬件 MDE</span>
-            <SelectControl value={hardwareCommitterId} onValueChange={setHardwareCommitterId} ariaLabel="硬件 MDE" withinModal
+            <SelectControl value={hardwareCommitterId} onValueChange={setHardwareCommitterId} ariaLabel="硬件 MDE"
               options={candidates.hardwareCommitters.map((user) => ({ value: user.id, label: user.name }))} />
           </label>
           <label>
             <span>软件 MDE</span>
-            <SelectControl value={softwareCommitterId} onValueChange={setSoftwareCommitterId} ariaLabel="软件 MDE" withinModal
+            <SelectControl value={softwareCommitterId} onValueChange={setSoftwareCommitterId} ariaLabel="软件 MDE"
               options={candidates.softwareCommitters.map((user) => ({ value: user.id, label: user.name }))} />
           </label>
           <label>
             <span>软件开发</span>
-            <SelectControl value={softwareUserId} onValueChange={setSoftwareUserId} ariaLabel="软件开发" withinModal
+            <SelectControl value={softwareUserId} onValueChange={setSoftwareUserId} ariaLabel="软件开发"
               options={candidates.softwareUsers.map((user) => ({ value: user.id, label: user.name }))} />
           </label>
         </div>

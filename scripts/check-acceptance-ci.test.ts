@@ -180,7 +180,7 @@ describe("equivalent fixed L1 scheduling", () => {
       const outputs = workflow.jobs[jobId].outputs;
       if (mutation === "missing") delete outputs[output];
       if (mutation === "wrong") {
-        const wrongStep = stepId === "bridge" ? "scripts" : stepId === "server" ? "frontend" : "server";
+        const wrongStep = stepId === "bridge" ? "scripts" : "server";
         outputs[output] = "${{ steps." + wrongStep + ".outputs.shadow }}";
       }
       if (mutation === "hardcoded") outputs[output] = "shadow";
@@ -556,11 +556,11 @@ describe("M5.12 acceptance CI configuration", () => {
       status: "passed",
       jobTimeoutMinutes: 155,
       platformOverheadMinutes: 5,
-      preGate0BudgetMinutes: 72,
+      preGate0BudgetMinutes: 73,
       gate0OwnerMinutes: 60,
       artifactSafetyMinutes: 5,
       artifactUploadMinutes: 5,
-      requiredExclusiveFloorMinutes: 151,
+      requiredExclusiveFloorMinutes: 154,
       missingStepTimeouts: [],
     });
     expect(budget.jobTimeoutMinutes).toBeGreaterThan(budget.requiredExclusiveFloorMinutes);
@@ -587,7 +587,7 @@ describe("M5.12 acceptance CI configuration", () => {
       ),
     )).toMatchObject({
       status: "failed",
-      requiredExclusiveFloorMinutes: 155,
+      requiredExclusiveFloorMinutes: 158,
       missingStepTimeouts: [],
     });
     expect(evaluateAcceptanceLocalNonHdcBudget(
@@ -606,7 +606,7 @@ describe("M5.12 acceptance CI configuration", () => {
       ),
     )).toMatchObject({
       status: "failed",
-      requiredExclusiveFloorMinutes: 155,
+      requiredExclusiveFloorMinutes: 158,
       missingStepTimeouts: [],
     });
   });
@@ -834,6 +834,11 @@ jobs:
       (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_diagnostic").shell = "python3 {0}"; },
       (w: any) => { const steps = w.jobs["acceptance-local-non-hdc-shards"].steps; steps.push(...steps.splice(1, 1)); },
       (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps = w.jobs["acceptance-local-non-hdc-shards"].steps.filter((s: any) => s.id !== "acceptance_diagnostic_fallback"); },
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_index_upload").with.path = "test-results/**"; },
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_index").env.EFF_INDEX_POLICY_DIGEST = "candidate-controlled"; },
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_index").env.EFF_ARCHIVE = "success"; },
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_index_stage").env.EFF_BASE_SHA = "${{ github.event.pull_request.base.sha }}"; },
+      (w: any) => { w.jobs["acceptance-local-non-hdc-shards"].steps.find((s: any) => s.id === "acceptance_index_stage").shell = "python3 {0}"; },
     ]) {
       const workflow = YAML.parse(compliantWorkflow);
       mutate(workflow);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { ModalPopupContext } from "./ModalPopupContext";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -254,7 +255,9 @@ export function ModalDialog({
         tabIndex={-1}
         onKeyDown={trapTab}
       >
-        {typeof children === "function" ? children({ titleId, descriptionId }) : children}
+        <ModalPopupContext.Provider value={true}>
+          {typeof children === "function" ? children({ titleId, descriptionId }) : children}
+        </ModalPopupContext.Provider>
       </div>
     </div>
   );

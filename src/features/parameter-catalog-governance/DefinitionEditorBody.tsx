@@ -488,7 +488,6 @@ export function DefinitionEditorBody({
                     value={subjectId}
                     ariaLabel="主体"
                     onValueChange={(value) => setSubjectId(value)}
-                    withinModal
                     options={selectableSubjects.map((subject) => ({ value: subject.id, label: subject.canonicalName }))}
                   />
                 </label>
@@ -528,7 +527,6 @@ export function DefinitionEditorBody({
                     onValueChange={(value) =>
                       setContent({ ...content, valueType: value as PublicationValueType })
                     }
-                    withinModal
                     options={schemaValueTypes.map((type) => ({ value: type, label: schemaValueTypeLabels[type] }))}
                   />
                 </label>

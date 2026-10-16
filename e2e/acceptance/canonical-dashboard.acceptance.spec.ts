@@ -218,7 +218,9 @@ test.describe("canonical dashboard lifecycle on a real API", () => {
     const chosenProject = projectChoice.getByRole("button", { name: "Canonical dashboard local", exact: true });
     await chosenProject.focus();
     await chosenProject.press("Enter");
-    await expect(page).toHaveURL(new RegExp(`/parameter-review\\?project=${projectId}$`));
+    await expect(page).toHaveURL((url) => url.pathname === "/parameter-review"
+      && url.searchParams.get("project") === projectId && url.searchParams.get("request") === firstRequest
+      && url.searchParams.get("view") === "pending" && url.searchParams.get("type") === "all");
     await expect(page.getByRole("region", { name: "软件配置审核", exact: true })).toBeVisible();
     await review(request, firstRequest, "reject");
     await assertCounts(request, 1, 1, 0, 0, 1);

@@ -238,7 +238,8 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
     if (safety["continue-on-error"] === true) errors.push("Acceptance artifact safety cannot continue on error.");
   }
   const diagnostic = uploads.find((step) => step.id === "acceptance_diagnostic_upload");
-  if (uploads.length !== 2 || !diagnostic) errors.push("Acceptance must contain only the immutable ZIP and minimal diagnostic uploads.");
+  const indexUpload = uploads.find((step) => step.id === "acceptance_index_upload");
+  if (uploads.length !== 3 || !diagnostic || !indexUpload) errors.push("Acceptance must contain only the immutable ZIP, minimal diagnostic and accepted-base index uploads.");
   if (!upload) errors.push("Acceptance evidence upload step is missing.");
   else {
     if (upload.uses !== "actions/upload-artifact@v4") errors.push("Acceptance evidence upload must retain actions/upload-artifact@v4.");
@@ -265,6 +266,31 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
   }
   if (fallback?.if !== "always() && steps.acceptance_diagnostic.outcome != 'success'"
     || fallback.shell !== "/usr/bin/python3 -I {0}") errors.push("Diagnostic fallback must preserve generator failure.");
+  const index = steps.find((step) => step.id === "acceptance_index");
+  const stage = steps.find((step) => step.id === "acceptance_index_stage");
+  for (const step of [stage, index, indexUpload]) {
+    if (!step || step["timeout-minutes"] !== 1 || step["continue-on-error"] !== undefined) {
+      errors.push("Accepted-base failure index steps must be bounded and preserve failure.");
+    }
+  }
+  if (stage?.shell !== "/usr/bin/python3 -I {0}" || index?.shell !== "/usr/bin/python3 -I {0}"
+    || index?.if !== "always()" || indexUpload?.if !== "always()") errors.push("Failure index must use isolated, always-settled publication.");
+  if ((stage?.env as Record<string, unknown>)?.EFF_BASE_SHA !== "${{ github.event.pull_request.base.sha || github.event.before || github.sha }}"
+    || steps.findIndex((step) => step.id === "acceptance_index_stage") !== 2) errors.push("Stage accepted-base authority before candidate setup for every event.");
+  const indexEnv = index?.env as Record<string, unknown> | undefined;
+  for (const [key, value] of Object.entries({
+    EFF_INDEX_DIRECTORY: "${{ steps.acceptance_index_stage.outputs.directory }}",
+    EFF_INDEX_STAGE: "${{ steps.acceptance_index_stage.outcome }}",
+    EFF_INDEX_STAGE_MS: "${{ steps.acceptance_index_stage.outputs.processing_ms }}",
+    EFF_INDEX_PUBLISHER_DIGEST: "${{ steps.acceptance_index_stage.outputs.publisher_digest }}",
+    EFF_INDEX_POLICY_DIGEST: "${{ steps.acceptance_index_stage.outputs.policy_digest }}",
+    EFF_ARCHIVE: "${{ steps.acceptance_artifact_safety.outcome }}",
+  })) if (indexEnv?.[key] !== value) errors.push(`Failure index authority is not bound to workflow output: ${key}.`);
+  const indexWith = indexUpload?.with as Record<string, unknown> | undefined;
+  if (indexUpload?.uses !== "actions/upload-artifact@v4"
+    || indexWith?.name !== "wiseeff-failure-index-${{ github.run_id }}-${{ github.run_attempt }}-acceptance-local-non-hdc-shard-${{ matrix.shard }}"
+    || indexWith?.path !== "${{ steps.acceptance_index.outputs.path }}"
+    || indexWith?.["if-no-files-found"] !== "error") errors.push("Failure index must upload only its fresh bounded sidecar.");
   const observed = steps.findIndex((step) => step.id === "acceptance_execution_identity");
   if (observed !== 1 || steps[0].uses !== "actions/checkout@v4"
     || steps[observed]?.shell !== "/usr/bin/python3 -I {0}") errors.push("Observe execution identity immediately after checkout.");

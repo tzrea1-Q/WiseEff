@@ -754,7 +754,6 @@ function UploadLogDialog({
           <SelectControl
             id="upload-log-domain"
             ariaLabel="业务域（可选）"
-            withinModal
             value={selectedDomainId}
             onValueChange={setSelectedDomainId}
             options={[{ value: UNCATEGORIZED_LOG_DOMAIN_VALUE, label: "未分类（通用分析）" }, ...domains.map((domain) => ({ value: domain.id, label: domain.name }))]}
@@ -764,14 +763,14 @@ function UploadLogDialog({
           <>
             <label className="upload-question-field" htmlFor="upload-parameter-project">
               <span>关联参数的项目（可选）</span>
-              <SelectControl id="upload-parameter-project" ariaLabel="关联参数的项目（可选）" value={projectId} disabled={uploading} withinModal
+              <SelectControl id="upload-parameter-project" ariaLabel="关联参数的项目（可选）" value={projectId} disabled={uploading}
                 onValueChange={setProjectId}
                 options={[{ value: "", label: "不关联参数" }, ...projects.map((project) => ({ value: project.id, label: `${project.code} · ${project.name}` }))]} />
             </label>
             {projectId ? (
               <label className="upload-question-field" htmlFor="upload-parameter-binding">
                 <span>项目参数</span>
-                <SelectControl id="upload-parameter-binding" ariaLabel="项目参数" value={bindingId} disabled={uploading || bindingLoading} withinModal
+                <SelectControl id="upload-parameter-binding" ariaLabel="项目参数" value={bindingId} disabled={uploading || bindingLoading}
                   onValueChange={setBindingId}
                   options={[{ value: "", label: bindingLoading ? "正在加载参数…" : "请选择项目参数" }, ...bindings.map((item) => ({ value: item.id, label: `${item.displayName ?? item.propertyKey} · ${item.locator || item.driverModule} · ${item.id}` }))]} />
                 {!bindingLoading && !bindingError && !bindings.length ? <span>该项目暂无可关联的当前参数。</span> : null}
@@ -1042,7 +1041,7 @@ function LogAnalysisFeedbackDialog({
         </div>
         <label className="upload-question-field" htmlFor="log-feedback-confidence">
           <span>置信度反馈</span>
-          <SelectControl id="log-feedback-confidence" ariaLabel="置信度反馈" value={confidence} disabled={pending} onValueChange={setConfidence} withinModal
+          <SelectControl id="log-feedback-confidence" ariaLabel="置信度反馈" value={confidence} disabled={pending} onValueChange={setConfidence}
             options={[{ value: "high", label: "高：判断可信" }, { value: "medium", label: "中：需要复核" }, { value: "low", label: "低：可能误判" }]} />
         </label>
         <label className="upload-question-field" htmlFor="log-feedback-issue">

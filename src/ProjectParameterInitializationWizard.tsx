@@ -466,7 +466,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
           </label>
           <label>
             <span>负责人</span>
-            <SelectControl value={ownerUserId} onValueChange={setOwnerUserId} ariaLabel="负责人" withinModal
+            <SelectControl value={ownerUserId} onValueChange={setOwnerUserId} ariaLabel="负责人"
               options={state.users.filter((user) => user.isActive).map((user) => ({ value: user.id, label: user.name }))} />
           </label>
         </div>
