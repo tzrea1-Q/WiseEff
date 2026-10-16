@@ -220,12 +220,14 @@ styleTest("the portaled module menu stays on top and its items do not wrap", asy
 
 styleTest("reload candidate operation track stays compact and centers its action", async ({ page, baseURL }) => {
   await renderFixture(page, baseURL, `<table class="dts-reload-candidate-table__grid" style="width: 900px"><thead><tr><th>Candidate</th><th>Action</th></tr></thead>
-    <tbody><tr><td>Candidate</td><td><button class="button">Apply</button></td></tr></tbody></table>`, ["src/features/dts-reload/dts-reload-candidate-table.css"]);
+    <tbody><tr><td>Candidate</td><td><button class="button dts-parameter-workbench-table__icon-action" aria-label="Edit candidate"><span aria-hidden="true">✎</span></button></td></tr></tbody></table>`, ["src/features/dts-reload/dts-reload-candidate-table.css"]);
   const header = await bounds(page.locator("th:last-child"));
   const cell = await bounds(page.locator("td:last-child"));
   const action = await bounds(page.getByRole("button"));
-  expect(header.width).toBe(96);
-  expect(cell.width).toBe(96);
+  expect(header.width).toBe(64);
+  expect(cell.width).toBe(64);
+  expect(action.width).toBe(32);
+  expect(action.height).toBeGreaterThanOrEqual(32);
   expect(Math.abs(action.x + action.width / 2 - cell.x - cell.width / 2)).toBeLessThan(1);
 });
 
