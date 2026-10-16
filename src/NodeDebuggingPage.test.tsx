@@ -7,11 +7,11 @@ import { appReducer } from "@/application/state/appState";
 import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { ToastProvider } from "./components/common/toast/ToastProvider";
-import type { DebuggingGateway } from "./application/ports/DebuggingGateway";
+import type { DebuggingGateway, NodeOperationSnapshot, NodeReadResult } from "./application/ports/DebuggingGateway";
 import { TopBarActionsContext } from "./components/layout";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
-import type { PrototypeState } from "./mockData";
+import type { PrototypeState } from "./domain/prototype/types";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
 import * as bridgeLauncher from "./infrastructure/http/bridgeConnectLauncher";
@@ -157,11 +157,12 @@ type NodeDebuggingPageProps = ComponentProps<typeof NodeDebuggingPage>;
 
 function NodeDebuggingPageHarness({ pageProps }: { pageProps: NodeDebuggingPageProps }) {
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
-  const context = useMemo(() => ({ setActions: setTopBarActions }), []);
+  const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
+  const context = useMemo(() => ({ setActions: setTopBarActions, setLeadingActions: setTopBarLeadingActions }), []);
   return (
     <ToastProvider>
       <TopBarActionsContext.Provider value={context}>
-        <div className="topbar-page-actions">{topBarActions}</div>
+        <div className="topbar-page-actions">{topBarLeadingActions}{topBarActions}</div>
         <NodeDebuggingPage {...pageProps} />
       </TopBarActionsContext.Provider>
     </ToastProvider>
@@ -273,7 +274,7 @@ describe("/node-debugging", () => {
     });
     renderNodeDebuggingPage({ state: userState, debuggingActions: createDebuggingActions() });
 
-    const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
+    const connect = await screen.findByRole("button", { name: "连接本机" });
     await waitFor(() => expect(connect).toBeEnabled());
     fireEvent.click(connect);
 
@@ -396,7 +397,7 @@ describe("/node-debugging", () => {
 
   it("ignores stale auto-read results that resolve after switching protocols", async () => {
     let detectCallCount = 0;
-    const pendingReads: Array<{ resolve: (value: unknown) => void }> = [];
+    const pendingReads: Array<{ resolve: () => void }> = [];
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn(() => {
         detectCallCount += 1;
@@ -405,7 +406,7 @@ describe("/node-debugging", () => {
         }
         return new Promise<never>(() => undefined);
       }),
-      readNode: vi.fn((input) => new Promise((resolve) => {
+      readNode: vi.fn<DebuggingRuntimeActions["readNode"]>((input) => new Promise<NodeReadResult & { operation: NodeOperationSnapshot }>((resolve) => {
         pendingReads.push({
           resolve: () => {
             const nodeId = input.nodeId ?? input.parameterId;
@@ -419,7 +420,7 @@ describe("/node-debugging", () => {
                 id: `op-read-stale-${nodeId}`,
                 sessionId: apiSession.id,
                 parameterId: nodeId,
-                nodePath: input.nodePath,
+                nodePath: input.nodePath ?? "",
                 operationType: "read",
                 status: "succeeded",
                 readValue: value,
@@ -443,7 +444,7 @@ describe("/node-debugging", () => {
 
     await act(async () => {
       for (const pending of [...pendingReads]) {
-        pending.resolve(undefined);
+        pending.resolve();
       }
     });
 
@@ -1100,7 +1101,7 @@ describe("/node-debugging", () => {
 
   it("sends only pending writable rows during API bulk write", async () => {
     const debuggingActions = createDebuggingActions({
-      writeNode: vi.fn(async (input) => ({
+      writeNode: vi.fn<DebuggingRuntimeActions["writeNode"]>(async (input) => ({
         ok: true,
         value: input.value,
         verified: null,
@@ -2040,7 +2041,7 @@ describe("/node-debugging", () => {
     await user.paste(value);
     expect(editor).toHaveValue(value);
     expect(editor).toHaveAttribute("rows", "16");
-    await user.click(within(getNodeDetailDialog()).getByRole("button", { name: "暂存", exact: true }));
+    await user.click(within(getNodeDetailDialog()).getByRole("button", { name: "暂存" }));
     await user.click(open());
     expect(within(getNodeDetailDialog()).getByLabelText("目标写入值")).toHaveValue(value);
   });
@@ -2143,7 +2144,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     const preview = await within(currentValueCell(row)).findByText((_, element) =>
-      element?.classList.contains("debug-value-preview")
+      element?.classList.contains("debug-value-preview") ?? false
     );
     expect(preview.textContent).toBe(multilineValue);
   });
@@ -2228,7 +2229,10 @@ describe("/node-debugging", () => {
 
   it("shows a dedicated empty state when no debug nodes are configured", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
-    renderNodeDebuggingPage({ state: { ...userState, debugParameters: [] } });
+    renderNodeDebuggingPage({
+      state: { ...userState, debugParameters: [] },
+      debuggingActions: createDebuggingActions({ detectAndStartSession: vi.fn().mockResolvedValue({ candidates: [] }) })
+    });
 
     expect(await screen.findByText("暂无调试节点")).toBeInTheDocument();
     expect(screen.getByText("调试节点由管理员在调试管理后台维护，配置后即可在此读写设备节点。")).toBeInTheDocument();
@@ -2237,7 +2241,10 @@ describe("/node-debugging", () => {
 
   it("shows a filter empty state with a clear-filters action when a search matches nothing", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
-    renderNodeDebuggingPage({ state: userState });
+    renderNodeDebuggingPage({
+      state: userState,
+      debuggingActions: createDebuggingActions({ detectAndStartSession: vi.fn().mockResolvedValue({ candidates: [] }) })
+    });
     await screen.findByText("未连接 HDC 设备");
 
     fireEvent.change(screen.getByLabelText("搜索名称、Key、描述、模块或路径"), { target: { value: "不存在的节点xyz" } });

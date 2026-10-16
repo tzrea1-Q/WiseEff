@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocalDeviceBridgePanel } from "./LocalDeviceBridgePanel";
-import { listReleases } from "../infrastructure/http/deviceBridgeClient";
+import { listReleases, type DeviceBridgeRecord } from "../infrastructure/http/deviceBridgeClient";
 import * as bridgeLauncher from "../infrastructure/http/bridgeConnectLauncher";
 import { resolveWiseEffApiBaseUrl } from "../infrastructure/http/runtimeMode";
 import { FOREIGN_ACCOUNT_REBIND_HINT } from "./bridgePanelStatus";
@@ -77,13 +77,51 @@ function renderPanel(compact = false) {
   );
 }
 
+it("releases the shared refresh lock after an aborted server list request and recovers on retry", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const controllers: AbortController[] = [];
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+    const controller = new AbortController();
+    controllers.push(controller);
+    return controller.signal;
+  });
+  const fetchMock = vi.fn<typeof fetch>(async (input, options) => {
+    if (!String(input).endsWith("/api/v1/device-bridges/mine")) {
+      unexpectedNetwork.push(String(input));
+      throw new Error("Unexpected request");
+    }
+    if (fetchMock.mock.calls.length === 1) return new Promise<Response>((_resolve, reject) => {
+      options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+    });
+    return new Response(JSON.stringify({ items: [] }), { status: 200 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  try {
+    render(<LocalDeviceBridgePanel compact detecting={false} protocol="hdc" onDetect={vi.fn()}
+      probeHealth={async () => ({ health: null, reachability: "offline" })}
+      createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("正在检查 Bridge…")).toBeInTheDocument();
+    await act(async () => controllers[0]!.abort(new DOMException("Request timed out", "TimeoutError")));
+    const retry = await screen.findByRole("button", { name: "刷新代理状态" });
+    await waitFor(() => expect(retry).toBeEnabled());
+    fireEvent.click(retry);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "连接本机" })).toBeEnabled();
+    expect(timeout.mock.calls).toEqual([[5000], [5000]]);
+  } finally {
+    timeout.mockRestore();
+  }
+});
+
 it("keeps first-time workbench setup in the install dialog, not the context bar", async () => {
   vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
   renderPanel(true);
   expect(await screen.findByText("未检测到本地 Bridge")).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
   expect(screen.queryByText("123456", { selector: "code" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "连接本机", exact: true })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "连接本机" })).toBeEnabled();
   const trigger = screen.getByRole("button", { name: "安装指南" });
   trigger.focus();
   fireEvent.click(trigger);
@@ -106,7 +144,7 @@ it("keeps returning users on a compact readiness bar using any unrevoked server 
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
   await act(async () => records.resolve([{ id: "br-returning", machineLabel: "工程机", platform: "linux", arch: "amd64", revokedAt: null }] as never));
   expect(await screen.findByText("未检测到本地 Bridge")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "连接本机", exact: true })).toHaveLength(1);
+  expect(screen.getAllByRole("button", { name: "连接本机" })).toHaveLength(1);
   expect(screen.getByRole("button", { name: "安装指南" })).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
   expect(screen.queryByText("暂时无法加载安装包列表，请稍后重试。")).not.toBeInTheDocument();
@@ -118,7 +156,7 @@ it("shows first-time setup once and opens the same guide in a keyboard-accessibl
   renderPanel();
   expect(await screen.findByRole("list", { name: "Bridge 连接步骤" })).toBeInTheDocument();
   expect(screen.queryByRole("tablist", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "连接本机", exact: true })).toHaveLength(1);
+  expect(screen.getAllByRole("button", { name: "连接本机" })).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "查看连接本机步骤" }));
   expect(await screen.findByText("123456", { selector: "code" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "收起安装指南" }));
@@ -134,7 +172,7 @@ it("shows first-time setup once and opens the same guide in a keyboard-accessibl
   vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: clipboard } });
   fireEvent.click(copy);
   await waitFor(() => expect(clipboard).toHaveBeenCalledWith("123456"));
-  const lastAction = within(drawer).getByRole("button", { name: "连接本机", exact: true });
+  const lastAction = within(drawer).getByRole("button", { name: "连接本机" });
   lastAction.focus();
   fireEvent.keyDown(lastAction, { key: "Tab" });
   expect(within(drawer).getByRole("button", { name: "关闭安装指南" })).toHaveFocus();
@@ -149,7 +187,7 @@ it("announces a busy readiness bar throughout the existing launch-and-pair flow"
   const connection = deferred<Awaited<ReturnType<typeof bridgeLauncher.connectLocalBridge>>>();
   vi.mocked(bridgeLauncher.connectLocalBridge).mockImplementationOnce(() => connection.promise);
   renderPanel();
-  const connect = screen.getByRole("button", { name: "连接本机", exact: true });
+  const connect = screen.getByRole("button", { name: "连接本机" });
   await waitFor(() => expect(connect).toBeEnabled());
   fireEvent.click(connect);
   expect(screen.getByText("正在连接…")).toBeInTheDocument();
@@ -249,7 +287,7 @@ it("shows local Bridge advice with technical details after a failed connection a
     listBridges={async () => []}
     probeHealth={async () => ({ health: null, reachability: "offline", error: new TypeError("Failed to fetch") })}
     createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
-  const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
+  const connect = await screen.findByRole("button", { name: "连接本机" });
   await waitFor(() => expect(connect).toBeEnabled());
   fireEvent.click(connect);
   const alert = await screen.findByRole("alert");
@@ -269,10 +307,10 @@ it.each(["silent", "manual"] as const)("clears a recovered local error on a %s h
   render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}
     listBridges={async () => []}
     probeHealth={async () => recovered
-      ? { health: { ok: true, paired: false, connected: false }, reachability: "ok" }
+      ? { health: { ok: true, paired: false, connected: false, updatedAt: "2026-10-15T00:00:00Z" }, reachability: "ok" }
       : { health: null, reachability: "offline", error: new TypeError("Failed to fetch") }}
     createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
-  const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
+  const connect = await screen.findByRole("button", { name: "连接本机" });
   await waitFor(() => expect(connect).toBeEnabled());
   fireEvent.click(connect);
   await screen.findByRole("alert");
@@ -307,7 +345,8 @@ it("does not erase a server error when only the local health probe recovers sile
 
 it("retains confirmed pairing when listing fails and allows retry", async () => {
   vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
-  const bridge = { id: "br-local", machineLabel: "本机", platform: "windows", arch: "amd64", revokedAt: null };
+  const bridge: DeviceBridgeRecord = { id: "br-local", machineLabel: "本机", platform: "windows", arch: "amd64", revokedAt: null,
+    clientVersion: "0.1.1", capabilities: {}, createdAt: "2026-09-15T00:00:00Z", lastSeenAt: null };
   const probeHealth = async () => ({
     health: { ok: true as const, connected: true, paired: true, bridgeId: bridge.id, updatedAt: "2026-09-15T00:00:00Z" },
     reachability: "ok" as const
@@ -325,7 +364,7 @@ it("retains confirmed pairing when listing fails and allows retry", async () => 
 
   expect(await screen.findByText(/代理列表暂时不可用/)).toBeInTheDocument();
   expect(screen.getByDisplayValue("本机")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "连接本机", exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "连接本机" })).not.toBeInTheDocument();
   expect(createCode).not.toHaveBeenCalled();
   expect(onState.mock.lastCall?.[0].bridges).toEqual([bridge]);
 
@@ -337,13 +376,7 @@ it("retains confirmed pairing when listing fails and allows retry", async () => 
 it("asks the current user to rebind a live local bridge owned by another account", async () => {
   vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
   const onDetect = vi.fn();
-  let bridges: Array<{
-    id: string;
-    machineLabel: string;
-    platform: "darwin";
-    arch: "arm64";
-    revokedAt: string | null;
-  }> = [];
+  let bridges: DeviceBridgeRecord[] = [];
   let health = {
     ok: true as const,
     paired: true,
@@ -352,7 +385,8 @@ it("asks the current user to rebind a live local bridge owned by another account
     updatedAt: "2026-09-16T00:00:00.000Z"
   };
   vi.mocked(bridgeLauncher.connectLocalBridge).mockImplementation(async () => {
-    bridges = [{ id: "br-B", machineLabel: "本机", platform: "darwin", arch: "arm64", revokedAt: null }];
+    bridges = [{ id: "br-B", machineLabel: "本机", platform: "darwin", arch: "arm64", revokedAt: null,
+      clientVersion: "0.1.1", capabilities: {}, createdAt: "2026-09-16T00:01:00Z", lastSeenAt: null }];
     health = { ...health, bridgeId: "br-B", updatedAt: "2026-09-16T00:01:00.000Z" };
     return { reachable: true, ok: true, accepted: true };
   });

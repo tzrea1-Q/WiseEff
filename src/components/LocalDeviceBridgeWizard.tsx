@@ -28,6 +28,7 @@ import { BRIDGE_UPGRADE_NOTICE_TITLE, bridgePanelStatusHint, bridgePanelStatusLa
 import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
 import { LocalDeviceBridgeToolsPanel } from "./LocalDeviceBridgeToolsPanel";
 import { ModalDialog } from "./common/ModalDialog";
+import { SelectControl } from "./common/SelectControl";
 import { presentLocalBridgeError } from "../infrastructure/http/presentError";
 import { formatAbsolute } from "../domain/format/formatDateTime";
 
@@ -461,17 +462,17 @@ export function LocalDeviceBridgeWizard({
               <>
                 <div className="local-device-bridge-panel__host-banner">
                   <label htmlFor="bridge-install-target">安装环境</label>
-                  <select id="bridge-install-target" value={`${hostTarget.platform}/${hostTarget.arch}`}
-                    onChange={(event) => {
-                      const [platform, arch] = event.target.value.split("/");
+                  <SelectControl id="bridge-install-target" value={`${hostTarget.platform}/${hostTarget.arch}`}
+                    onValueChange={(value) => {
+                      const [platform, arch] = value.split("/");
                       setHostTarget({ platform: platform as BrowserBridgeTarget["platform"], arch: arch! });
-                    }}>
-                    {!installTargets.some((item) => isBridgeReleaseForHost(item, hostTarget)) ?
-                      <option value={`${hostTarget.platform}/${hostTarget.arch}`}>{hostTargetLabel}{hostTarget.arch === "unknown" ? "" : "（暂无安装包）"}</option> : null}
-                    {installTargets.map((item) => (
-                        <option key={`${item.platform}/${item.arch}`} value={`${item.platform}/${item.arch}`}>{bridgeHostTargetLabel(item)}</option>
-                      ))}
-                  </select>
+                    }} options={[
+                      ...(!installTargets.some((item) => isBridgeReleaseForHost(item, hostTarget)) ? [{
+                        value: `${hostTarget.platform}/${hostTarget.arch}`,
+                        label: `${hostTargetLabel}${hostTarget.arch === "unknown" ? "" : "（暂无安装包）"}`
+                      }] : []),
+                      ...installTargets.map((item) => ({ value: `${item.platform}/${item.arch}`, label: bridgeHostTargetLabel(item) }))
+                    ]} />
                   <small>{hostTarget.platform === "darwin" ? "浏览器无法可靠识别 Mac 芯片，请在「关于本机」核对 Apple Silicon 或 Intel。" : "请核对安装目标的操作系统与芯片架构。"}</small>
                 </div>
 
@@ -537,10 +538,11 @@ export function LocalDeviceBridgeWizard({
                       <summary>便携压缩包（zip / tar.gz）</summary>
                       <div className="local-device-bridge-panel__install-portable-body">
                         <p className="local-device-bridge-panel__install-desc">
-                          下载后需自行解压并手动启动 Bridge，适合内网分发或无法运行安装程序的环境。完成后同样在本页点击「连接本机」。
+                          下载后解压，确认已安装 Node.js，在包含 cli.js 的解压目录打开终端（Windows 可使用 PowerShell 或命令提示符），执行下方命令启动并连接便携版。
                         </p>
 
                         {hostPortable ? (
+                          <>
                           <div className="local-device-bridge-panel__host-pick local-device-bridge-panel__host-pick--portable">
                             <span className="local-device-bridge-panel__host-badge">{installerBehind ? "推荐便携包" : "本机便携包"} · v{hostPortable.version}</span>
                             <a
@@ -551,6 +553,15 @@ export function LocalDeviceBridgeWizard({
                               {bridgeReleaseDownloadLabel(hostPortable)}
                             </a>
                           </div>
+                          <CopyableCommand label="便携版连接命令" command={formatBridgeConnectFallbackCommand({
+                            platform: hostPortable.platform,
+                            serverUrl: resolveBridgeServerUrl(),
+                            webOrigin: resolveBridgeWebOrigin(),
+                            code: isBridgePairingCodeExpired(pairingCode) ? undefined : pairingCode?.code,
+                            portable: true
+                          })} />
+                          <p className="local-device-bridge-panel__install-desc">请保持解压目录位置不变。命令执行完成后，返回本页刷新状态；不要使用旧安装版路径启动便携版。</p>
+                          </>
                         ) : null}
 
                         {otherPortables.length > 0 ? (

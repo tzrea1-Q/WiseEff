@@ -347,7 +347,7 @@ describe("DtsReloadPage", () => {
       .mockResolvedValue({ health: null, reachability: "ok" });
     renderPage(createRepository(), { bridges: undefined, probeBridgeHealth: undefined });
 
-    const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
+    const connect = await screen.findByRole("button", { name: "连接本机" });
     await waitFor(() => expect(connect).toBeEnabled());
     await user.click(connect);
 
@@ -433,7 +433,7 @@ describe("DtsReloadPage", () => {
     await screen.findByText(revokeFails ? "撤销失败" : "已撤销");
     if (revokeOther || revokeFails) {
       expect(screen.queryByRole("button", { name: "连接本机" })).not.toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "重新检测", exact: true }));
+      await user.click(screen.getByRole("button", { name: "重新检测" }));
       expect(detectTargets).toHaveBeenLastCalledWith("hdc", "bridge-old");
       expect(connect).not.toHaveBeenCalled();
       return;

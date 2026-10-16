@@ -48,6 +48,13 @@ describe("bridgeInstallPaths", () => {
     expect(bridgeCliDiscoveryHint("windows")).toContain("开始菜单");
   });
 
+  it.each(["windows", "darwin"] as const)("starts the extracted portable CLI on %s instead of the installed launcher", (platform) => {
+    expect(formatBridgeConnectFallbackCommand({
+      platform, serverUrl: "https://wiseeff.example", webOrigin: "https://wiseeff.example",
+      code: "123456", cliPath: "old-install/wiseeff-bridge", portable: true
+    })).toBe("node ./cli.js connect --server https://wiseeff.example --webOrigin https://wiseeff.example --code 123456");
+  });
+
   it("builds handle-url fallback commands for Windows", () => {
     expect(
       formatBridgeHandleUrlFallbackCommand({
