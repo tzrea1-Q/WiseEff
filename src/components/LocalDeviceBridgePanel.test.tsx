@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { selectControlOption } from "../test/selectControlOption";
+
 import { LocalDeviceBridgePanel } from "./LocalDeviceBridgePanel";
 import { listReleases, type DeviceBridgeRecord } from "../infrastructure/http/deviceBridgeClient";
 import * as bridgeLauncher from "../infrastructure/http/bridgeConnectLauncher";
@@ -242,7 +244,7 @@ describe("LocalDeviceBridgePanel install manifest loading", () => {
     renderPanel();
 
     await screen.findByLabelText("安装环境");
-    fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
+    await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "darwin/arm64");
     expect(screen.getByRole("link", { name: /安装 Bridge/ })).toBeInTheDocument();
   });
 });
@@ -501,7 +503,7 @@ it("prompts to install the latest Bridge when local health is an older client", 
   expect(screen.getByText("已连接 · 本机")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
   expect(await screen.findByText("图形安装包（推荐）")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
+  await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "darwin/arm64");
   expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
   expect(pairingFetch).toHaveBeenCalledTimes(1);
   expect(pairingFetch).toHaveBeenCalledWith(expect.stringMatching(/\/api\/v1\/device-bridges\/pairing-codes$/),
@@ -529,7 +531,7 @@ it.each(["success", "failure"] as const)(
     expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
-    fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
+    await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "darwin/arm64");
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     await act(async () => {
       if (outcome === "success") pairing.resolve(undefined);
@@ -558,7 +560,7 @@ it("keeps the install step when an old-client health refresh completes after the
   view.rerender(<LocalDeviceBridgePanel {...olderBridgeProps} probeHealth={secondProbe} />);
   await waitFor(() => expect(secondProbe).toHaveBeenCalledTimes(1));
   fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
-  fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
+  await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "darwin/arm64");
   expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
 
   await act(async () => lateHealth.resolve({

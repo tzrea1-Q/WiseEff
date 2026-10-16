@@ -1265,7 +1265,7 @@ describe("/node-debugging", () => {
       `${expectedBridgeDownloadBase}/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe`
     );
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
-    expect(within(guide).getByRole("combobox", { name: "安装环境" })).toHaveValue("windows/amd64");
+    expect(within(guide).getByRole("combobox", { name: "安装环境" })).toHaveAttribute("data-value", "windows/amd64");
 
     fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
     expect(screen.getByRole("link", { name: "下载 Windows Bridge（x64）" })).toHaveAttribute(

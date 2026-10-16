@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { selectControlOption } from "../test/selectControlOption";
 import type { connectLocalBridge as ConnectLocalBridge, pollLocalBridgeHealth as PollLocalBridgeHealth } from "../infrastructure/http/bridgeConnectLauncher";
 import { cloneElement } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -132,8 +132,7 @@ describe("LocalDeviceBridgeWizard", () => {
       pairingCode={{ code: "123456", expiresAt: "2099-01-01T00:00:00Z" }}
       hostRelease={{ platform: "windows", arch: "amd64", version: "0.1.0", artifactKind: "installer", downloadUrl: "/old.exe" }}
       portableReleases={[{ platform: "windows", arch: "amd64", version: "0.1.1", artifactKind: "portable", downloadUrl: "/current.zip" }]} />);
-    await userEvent.click(screen.getByRole("combobox", { name: "安装环境" }));
-    await userEvent.click(screen.getByRole("option", { name: "Windows（x64）" }));
+    await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "windows/amd64");
     expect(screen.getByText("较早版本 · v0.1.0")).toBeInTheDocument();
     expect(screen.queryByText("本机推荐 · v0.1.0")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "下载 Windows Bridge（x64）" })).toHaveAttribute("href", expect.stringContaining("/current.zip"));
@@ -223,8 +222,7 @@ describe("LocalDeviceBridgeWizard", () => {
     );
 
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("combobox", { name: "安装环境" }));
-    await userEvent.click(screen.getByRole("option", { name: "macOS（Apple Silicon）" }));
+    await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "darwin/arm64");
     expect(screen.getByText("本机推荐 · v0.1.0")).toBeInTheDocument();
     expect(screen.queryByText("高级 · 命令行方式")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
@@ -422,8 +420,7 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(screen.getByText(/当前本机版本 0\.1\.0/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
     rerender(cloneElement(wizard, { panelStatus: "online_no_device" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "安装环境" }));
-    await userEvent.click(screen.getByRole("option", { name: "macOS（Apple Silicon）" }));
+    await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "darwin/arm64");
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
       "href",
@@ -493,8 +490,7 @@ describe("LocalDeviceBridgeWizard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看安装 Bridge步骤" }));
 
-    await userEvent.click(screen.getByRole("combobox", { name: "安装环境" }));
-    await userEvent.click(screen.getByRole("option", { name: "macOS（Apple Silicon）" }));
+    await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "darwin/arm64");
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
   });
