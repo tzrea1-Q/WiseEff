@@ -396,6 +396,9 @@ jobs:
           '
       - name: Script tests
         id: scripts
+        env:
+          # Compile cache only; this scripts step does not collect V8 coverage.
+          NODE_COMPILE_CACHE: ${{ runner.temp }}/wiseeff-scripts-node-cache
         run: node --experimental-strip-types scripts/ci-required-results.ts test scripts
       - name: Device bridge tests
         id: bridge
