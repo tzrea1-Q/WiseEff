@@ -281,7 +281,7 @@ describe("bridge pairing code policy", () => {
     expect(
       resolvePairingCodeForBridgeConnect({
         panelStatus: "not_running",
-        pairingCode: { code: "123456", expiresAt: "2026-07-03T00:05:00.000Z" },
+        pairingCode: { code: "123456", expiresAt: "2099-07-03T00:05:00.000Z" },
         health: null,
         targetServerUrl: "http://127.0.0.1:8787"
       })
@@ -292,7 +292,7 @@ describe("bridge pairing code policy", () => {
     expect(
       resolvePairingCodeForBridgeConnect({
         panelStatus: "not_connected",
-        pairingCode: { code: "654321", expiresAt: "2026-07-03T00:05:00.000Z" },
+        pairingCode: { code: "654321", expiresAt: "2099-07-03T00:05:00.000Z" },
         health: {
           ok: true,
           paired: true,
@@ -309,7 +309,7 @@ describe("bridge pairing code policy", () => {
     expect(
       resolvePairingCodeForBridgeConnect({
         panelStatus: "not_connected",
-        pairingCode: { code: "654321", expiresAt: "2026-07-03T00:05:00.000Z" },
+        pairingCode: { code: "654321", expiresAt: "2099-07-03T00:05:00.000Z" },
         health: {
           ok: true,
           paired: true,
@@ -325,6 +325,13 @@ describe("bridge pairing code policy", () => {
   it("detects server mismatch across trailing slash differences", () => {
     expect(bridgeServerUrlMismatch("http://127.0.0.1:8787/", "http://127.0.0.1:8787")).toBe(false);
     expect(bridgeServerUrlMismatch("http://101.43.45.27", "http://127.0.0.1:8787")).toBe(true);
+  });
+
+  it.each(["2000-01-01T00:00:00Z", "invalid"])("never sends a stale or invalid pairing code (%s)", (expiresAt) => {
+    expect(resolvePairingCodeForBridgeConnect({
+      panelStatus: "not_paired", pairingCode: { code: "expired", expiresAt },
+      targetServerUrl: "http://127.0.0.1:8787"
+    })).toBeUndefined();
   });
 });
 

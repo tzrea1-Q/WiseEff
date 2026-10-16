@@ -600,7 +600,8 @@ export function RunHistorySection({
   activeRunId,
   onFilterDeviceChange,
   onOpenRun,
-  onLoadMore
+  onLoadMore,
+  onRetry
 }: {
   historyItems: DtsReloadRunListItem[];
   historyLoading: boolean;
@@ -613,6 +614,7 @@ export function RunHistorySection({
   onFilterDeviceChange: (value: boolean) => void;
   onOpenRun: (runId: string) => void;
   onLoadMore: () => void;
+  onRetry: () => void;
 }) {
   return (
     <details className="operation-history-panel dts-reload-history" aria-label="运行历史">
@@ -639,11 +641,12 @@ export function RunHistorySection({
             aria-label="仅显示当前设备的运行"
           />
           仅当前设备
-          {deviceId.trim() ? `（${deviceId.trim()}）` : "（先填写设备 ID）"}
+          {deviceId.trim() ? `（${deviceId.trim()}）` : "（先连接并选择设备）"}
         </label>
         {historyError ? (
           <p role="alert" className="dts-reload-history__error">
             {historyError}
+            <button type="button" className="button subtle" disabled={historyLoading} onClick={onRetry}>重新加载历史</button>
           </p>
         ) : null}
         {historyLoading ? (

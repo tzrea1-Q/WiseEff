@@ -7,11 +7,11 @@ import { appReducer } from "@/application/state/appState";
 import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { ToastProvider } from "./components/common/toast/ToastProvider";
-import type { DebuggingGateway } from "./application/ports/DebuggingGateway";
+import type { DebuggingGateway, NodeOperationSnapshot, NodeReadResult } from "./application/ports/DebuggingGateway";
 import { TopBarActionsContext } from "./components/layout";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
-import type { PrototypeState } from "./mockData";
+import type { PrototypeState } from "./domain/prototype/types";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
 import * as bridgeLauncher from "./infrastructure/http/bridgeConnectLauncher";
@@ -157,11 +157,12 @@ type NodeDebuggingPageProps = ComponentProps<typeof NodeDebuggingPage>;
 
 function NodeDebuggingPageHarness({ pageProps }: { pageProps: NodeDebuggingPageProps }) {
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
-  const context = useMemo(() => ({ setActions: setTopBarActions }), []);
+  const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
+  const context = useMemo(() => ({ setActions: setTopBarActions, setLeadingActions: setTopBarLeadingActions }), []);
   return (
     <ToastProvider>
       <TopBarActionsContext.Provider value={context}>
-        <div className="topbar-page-actions">{topBarActions}</div>
+        <div className="topbar-page-actions">{topBarLeadingActions}{topBarActions}</div>
         <NodeDebuggingPage {...pageProps} />
       </TopBarActionsContext.Provider>
     </ToastProvider>
@@ -273,7 +274,7 @@ describe("/node-debugging", () => {
     });
     renderNodeDebuggingPage({ state: userState, debuggingActions: createDebuggingActions() });
 
-    const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
+    const connect = await screen.findByRole("button", { name: "连接本机" });
     await waitFor(() => expect(connect).toBeEnabled());
     fireEvent.click(connect);
 
@@ -390,13 +391,13 @@ describe("/node-debugging", () => {
       expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("3651")).not.toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
+      expect(within(findRowByText("charger.input_current_limit_ma")).getByText(/等待读取/)).toBeInTheDocument();
     });
   });
 
   it("ignores stale auto-read results that resolve after switching protocols", async () => {
     let detectCallCount = 0;
-    const pendingReads: Array<{ resolve: (value: unknown) => void }> = [];
+    const pendingReads: Array<{ resolve: () => void }> = [];
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn(() => {
         detectCallCount += 1;
@@ -405,7 +406,7 @@ describe("/node-debugging", () => {
         }
         return new Promise<never>(() => undefined);
       }),
-      readNode: vi.fn((input) => new Promise((resolve) => {
+      readNode: vi.fn<DebuggingRuntimeActions["readNode"]>((input) => new Promise<NodeReadResult & { operation: NodeOperationSnapshot }>((resolve) => {
         pendingReads.push({
           resolve: () => {
             const nodeId = input.nodeId ?? input.parameterId;
@@ -419,7 +420,7 @@ describe("/node-debugging", () => {
                 id: `op-read-stale-${nodeId}`,
                 sessionId: apiSession.id,
                 parameterId: nodeId,
-                nodePath: input.nodePath,
+                nodePath: input.nodePath ?? "",
                 operationType: "read",
                 status: "succeeded",
                 readValue: value,
@@ -438,17 +439,17 @@ describe("/node-debugging", () => {
     await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
     await waitFor(() => {
-      expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
+      expect(within(findRowByText("charger.input_current_limit_ma")).getByText(/等待读取/)).toBeInTheDocument();
     });
 
     await act(async () => {
       for (const pending of [...pendingReads]) {
-        pending.resolve(undefined);
+        pending.resolve();
       }
     });
 
     await waitFor(() => {
-      expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
+      expect(within(findRowByText("charger.input_current_limit_ma")).getByText(/等待读取/)).toBeInTheDocument();
     });
     expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("3651")).not.toBeInTheDocument();
     expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("成功")).not.toBeInTheDocument();
@@ -1100,7 +1101,7 @@ describe("/node-debugging", () => {
 
   it("sends only pending writable rows during API bulk write", async () => {
     const debuggingActions = createDebuggingActions({
-      writeNode: vi.fn(async (input) => ({
+      writeNode: vi.fn<DebuggingRuntimeActions["writeNode"]>(async (input) => ({
         ok: true,
         value: input.value,
         verified: null,
@@ -1212,6 +1213,7 @@ describe("/node-debugging", () => {
   });
 
   it("shows a Windows install CTA when the local bridge is missing", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });
@@ -1264,8 +1266,7 @@ describe("/node-debugging", () => {
       `${expectedBridgeDownloadBase}/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe`
     );
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
-    expect(screen.getByText("本机推荐")).toBeInTheDocument();
-    expect(screen.getByText(/已识别当前环境/)).toBeInTheDocument();
+    expect(within(guide).getByRole("combobox", { name: "安装环境" })).toHaveAttribute("data-value", "windows/amd64");
 
     fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
     expect(screen.getByRole("link", { name: "下载 Windows Bridge（x64）" })).toHaveAttribute(
@@ -1302,7 +1303,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
-    expect(await screen.findByText(/缺少 ADB 调试工具/)).toBeInTheDocument();
+    expect(await screen.findByText("调试工具待安装")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /安装调试工具/i })).toBeInTheDocument();
     expect(screen.queryByText(/未检测到本地 Bridge/)).not.toBeInTheDocument();
   });
@@ -1862,7 +1863,54 @@ describe("/node-debugging", () => {
     }));
   });
 
-  it("shows write format as an independent detail section", async () => {
+  it("keeps unsubmitted edits out of the queue and confirms before discarding them", async () => {
+    const debuggingActions = createDebuggingActions();
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
+    const row = findRowByText("charger.input_current_limit_ma");
+    const open = () => fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    open();
+    const editor = within(getNodeDetailDialog()).getByRole("textbox", { name: "目标写入值" });
+    const original = (editor as HTMLInputElement).value;
+    fireEvent.change(editor, { target: { value: "3100" } });
+    expect(row).not.toHaveTextContent("待写入");
+    expect(screen.getByText("0 项节点等待写入")).toBeInTheDocument();
+    expect(debuggingActions.writeNode).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭节点详情" }));
+    let confirmation = screen.getByRole("dialog", { name: "放弃未保存的修改？" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
+    expect(editor).toHaveValue("3100");
+    fireEvent.click(within(getNodeDetailDialog()).getByRole("button", { name: "取消" }));
+    confirmation = screen.getByRole("dialog", { name: "放弃未保存的修改？" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "放弃修改" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(row).not.toHaveTextContent("待写入");
+    open();
+    expect(within(getNodeDetailDialog()).getByLabelText("目标写入值")).toHaveValue(original);
+  });
+
+  it("protects unsaved edits before switching protocol and keeps stashed values when a later edit is discarded", async () => {
+    renderNodeDebuggingPage({ state: userState, debuggingActions: createDebuggingActions() });
+    await screen.findByText(/已连接：API Gateway Target/);
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    fireEvent.change(within(getNodeDetailDialog()).getByLabelText("目标写入值"), { target: { value: "3100" } });
+    await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
+    const confirmation = screen.getByRole("dialog", { name: "放弃未保存的修改？" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByRole("tab", { name: "HDC" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(within(getNodeDetailDialog()).getByRole("button", { name: "暂存" }));
+    expect(row).toHaveTextContent("待写入");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    fireEvent.change(within(getNodeDetailDialog()).getByLabelText("目标写入值"), { target: { value: "3200" } });
+    fireEvent.click(screen.getByRole("button", { name: "关闭节点详情" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "放弃未保存的修改？" })).getByRole("button", { name: "放弃修改" }));
+    expect(row.querySelector('[data-label="目标写入值"]')).toHaveTextContent("3100");
+    expect(row).toHaveTextContent("待写入");
+  });
+
+  it("keeps write format examples in an expandable detail section", async () => {
     renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
@@ -1870,13 +1918,42 @@ describe("/node-debugging", () => {
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
     const dialog = getNodeDetailDialog();
+    fireEvent.click(within(dialog).getByText("写入格式与示例"));
     const formatSection = within(dialog).getByRole("region", { name: "写入格式" });
 
     expect(formatSection).toHaveTextContent("写入格式");
     expect(formatSection).toHaveTextContent("示例");
     expect(formatSection).toHaveTextContent("3600");
-    expect(formatSection).toHaveTextContent("RW");
+    expect(dialog).toHaveTextContent("RW · 可读写");
+    expect(dialog).toHaveTextContent("高风险 · 写入前需确认");
+    expect(dialog).toHaveTextContent("/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma");
     expect(formatSection).not.toHaveTextContent("/data/local/tmp/wiseeff_nodes");
+  });
+
+  it("keeps path segments intact and copies the original path with explicit success and failure feedback", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    const nodePath = "/sys/class/power_supply/battery/constant_charge_current";
+    const parameter = { ...userState.debugParameters[0], nodePath, bindings: undefined };
+    renderNodeDebuggingPage({
+      state: { ...userState, debugParameters: [parameter] },
+      debuggingActions: createDebuggingActions()
+    });
+    await screen.findByText(/已连接：API Gateway Target/);
+    await user.click(within(findRowByText("charger.input_current_limit_ma")).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = getNodeDetailDialog();
+    const path = within(dialog).getByRole("region", { name: "节点路径" });
+    expect(path.querySelector(".node-detail-path__value")?.textContent).toBe(nodePath);
+    expect(within(path).getByText("/constant_charge_current")).toHaveClass("node-detail-path__segment");
+    expect(path.querySelector("wbr")).not.toBeNull();
+    expect(within(dialog).getByText("目标设备")).toBeInTheDocument();
+    expect(within(dialog).getByText("API Gateway Target")).toBeInTheDocument();
+    await user.click(within(path).getByRole("button", { name: "复制节点路径" }));
+    expect(writeText).toHaveBeenCalledWith(nodePath);
+    expect(await within(path).findByRole("status")).toHaveTextContent("已复制节点路径");
+    writeText.mockRejectedValueOnce(new Error("clipboard unavailable"));
+    await user.click(within(path).getByRole("button", { name: "复制节点路径" }));
+    await waitFor(() => expect(within(path).getByRole("status")).toHaveTextContent("复制失败，请选中路径手动复制。"));
   });
 
   it("uses node metadata for the sidebar identity and hides internal ids from the body", async () => {
@@ -1914,7 +1991,7 @@ describe("/node-debugging", () => {
     expect(screen.queryByRole("dialog", { name: /节点详情/ })).not.toBeInTheDocument();
   });
 
-  it("places the target value input after the write format section", async () => {
+  it("places the multiline target value editor before the write format section", async () => {
     renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
@@ -1922,10 +1999,13 @@ describe("/node-debugging", () => {
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
     const dialog = getNodeDetailDialog();
+    fireEvent.click(within(dialog).getByText("写入格式与示例"));
     const formatSection = within(dialog).getByRole("region", { name: "写入格式" });
     const targetInput = within(dialog).getByLabelText("目标写入值");
 
-    expect(formatSection.compareDocumentPosition(targetInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(targetInput.tagName).toBe("TEXTAREA");
+    expect(targetInput).toHaveAttribute("rows", "3");
+    expect(targetInput.compareDocumentPosition(formatSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("keeps write format examples stable while editing the target value", async () => {
@@ -1936,6 +2016,7 @@ describe("/node-debugging", () => {
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
     const dialog = getNodeDetailDialog();
+    fireEvent.click(within(dialog).getByText("写入格式与示例"));
     const formatSection = within(dialog).getByRole("region", { name: "写入格式" });
 
     expect(formatSection).toHaveTextContent("例如输入 3600");
@@ -1943,6 +2024,27 @@ describe("/node-debugging", () => {
 
     expect(formatSection).toHaveTextContent("例如输入 3600");
     expect(formatSection).not.toHaveTextContent("3700");
+  });
+
+  it("preserves long multiline pasted drafts for ordinary nodes after staging and reopening", async () => {
+    const user = userEvent.setup();
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
+    await screen.findByText(mockStoryConnectedLabel);
+    const open = () => within(findRowByText("charger.input_current_limit_ma")).getByRole("button", { name: /查看\/修改/ });
+    await user.click(open());
+    const editor = within(getNodeDetailDialog()).getByLabelText("目标写入值");
+    expect(editor.tagName).toBe("TEXTAREA");
+    expect(editor).toHaveAttribute("rows", "3");
+    expect(editor).toHaveAttribute("wrap", "soft");
+    expect(editor).not.toHaveAttribute("maxlength");
+    const value = Array.from({ length: 40 }, (_, index) => `  第 ${index + 1} 行：${"长文本 ".repeat(20)}'quoted'  `).join("\n");
+    await user.clear(editor);
+    await user.paste(value);
+    expect(editor).toHaveValue(value);
+    expect(editor).toHaveAttribute("rows", "16");
+    await user.click(within(getNodeDetailDialog()).getByRole("button", { name: "暂存" }));
+    await user.click(open());
+    expect(within(getNodeDetailDialog()).getByLabelText("目标写入值")).toHaveValue(value);
   });
 
   it("uses a multiline target value editor for complex writes", async () => {
@@ -1958,6 +2060,7 @@ describe("/node-debugging", () => {
     const multilineValue = "{\n  \"inputLimitMa\": 3700\n}";
 
     expect(targetEditor.tagName).toBe("TEXTAREA");
+    expect(Number(targetEditor.getAttribute("rows"))).toBeGreaterThanOrEqual(6);
     expect(targetEditor).toHaveAttribute("wrap", "off");
     fireEvent.change(targetEditor, { target: { value: multilineValue } });
     expect(targetEditor).toHaveValue(multilineValue);
@@ -2042,7 +2145,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     const preview = await within(currentValueCell(row)).findByText((_, element) =>
-      element?.classList.contains("debug-value-preview")
+      element?.classList.contains("debug-value-preview") ?? false
     );
     expect(preview.textContent).toBe(multilineValue);
   });
@@ -2127,7 +2230,10 @@ describe("/node-debugging", () => {
 
   it("shows a dedicated empty state when no debug nodes are configured", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
-    renderNodeDebuggingPage({ state: { ...userState, debugParameters: [] } });
+    renderNodeDebuggingPage({
+      state: { ...userState, debugParameters: [] },
+      debuggingActions: createDebuggingActions({ detectAndStartSession: vi.fn().mockResolvedValue({ candidates: [] }) })
+    });
 
     expect(await screen.findByText("暂无调试节点")).toBeInTheDocument();
     expect(screen.getByText("调试节点由管理员在调试管理后台维护，配置后即可在此读写设备节点。")).toBeInTheDocument();
@@ -2136,7 +2242,10 @@ describe("/node-debugging", () => {
 
   it("shows a filter empty state with a clear-filters action when a search matches nothing", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
-    renderNodeDebuggingPage({ state: userState });
+    renderNodeDebuggingPage({
+      state: userState,
+      debuggingActions: createDebuggingActions({ detectAndStartSession: vi.fn().mockResolvedValue({ candidates: [] }) })
+    });
     await screen.findByText("未连接 HDC 设备");
 
     fireEvent.change(screen.getByLabelText("搜索名称、Key、描述、模块或路径"), { target: { value: "不存在的节点xyz" } });

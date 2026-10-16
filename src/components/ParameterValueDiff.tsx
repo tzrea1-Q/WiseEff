@@ -9,15 +9,23 @@ function displayValue(value: string) {
 }
 
 export function ParameterValueDiff({ baseValue, targetValue }: { baseValue: string; targetValue: string }) {
-  // Scalar / single-line DTS values: keep classic +/- chrome but drop dual line
-  // numbers — those read as mysterious `1 1 "value"` chips when unchanged.
-  // Always render both sides so baseline and debug stay visible even when equal.
+  if (baseValue === targetValue) {
+    return (
+      <div className="submission-preview-diff submission-preview-diff--scalar" data-kind="equal" role="list" aria-label="值未改变">
+        <div className="submission-preview-diff-row" data-kind="context" role="listitem">
+          <span className="submission-preview-diff-row__marker" aria-hidden="true" />
+          <code>{displayValue(baseValue)}</code>
+        </div>
+      </div>
+    );
+  }
+
+  // Single-line changes need no line-number columns.
   if (isSingleLineValue(baseValue) && isSingleLineValue(targetValue)) {
-    const same = baseValue === targetValue;
     return (
       <div
         className="submission-preview-diff submission-preview-diff--scalar"
-        data-kind={same ? "equal" : "changed"}
+        data-kind="changed"
         role="list"
       >
         <div className="submission-preview-diff-row" data-kind="remove" role="listitem">

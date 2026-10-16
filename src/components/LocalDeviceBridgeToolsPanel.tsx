@@ -46,6 +46,8 @@ export function LocalDeviceBridgeToolsPanel({
 }: LocalDeviceBridgeToolsPanelProps) {
   const [localInstalling, setLocalInstalling] = useState(false);
   const [installConfirmOpen, setInstallConfirmOpen] = useState(false);
+  const [installProgress, setInstallProgress] = useState("");
+  const [installError, setInstallError] = useState("");
   const tools = health?.tools;
   if (!tools) {
     return null;
@@ -62,16 +64,24 @@ export function LocalDeviceBridgeToolsPanel({
   const runInstall = async () => {
     rememberBridgeToolInstallConfirm();
     setLocalInstalling(true);
+    setInstallError("");
+    setInstallProgress("正在打开 Bridge，等待安装任务响应…");
     onInstallError("");
     try {
       launchBridgeToolInstall(buildBridgeToolInstallUrl(resolveBridgeServerUrl(), installProtocol));
-      const result = await pollBridgeToolInstall({ protocol: installProtocol });
+      const result = await pollBridgeToolInstall({ protocol: installProtocol,
+        previousInstallUpdatedAt: health?.toolsInstall?.updatedAt, onProgress: (snapshot) => {
+        setInstallProgress(snapshot.toolsInstall?.status === "running"
+          ? "Bridge 正在安装并校验调试工具，请保持程序运行。"
+          : snapshot.tools?.[protocol].available ? "调试工具已就绪。" : "等待 Bridge 开始安装；如未响应，请确认已允许浏览器打开 Bridge。");
+      } });
       await onInstallComplete();
       if (!result) {
-        onInstallError("120 秒内未完成工具安装。请重试或查看 Bridge 日志。");
+        setInstallError("120 秒内未完成工具安装。请重试或查看 Bridge 日志。");
       }
     } catch (error) {
-      onInstallError(error instanceof Error ? error.message : "工具安装失败。");
+      setInstallError(error instanceof Error ? error.message : "工具安装失败。");
+      await onInstallComplete();
     } finally {
       setLocalInstalling(false);
     }
@@ -109,12 +119,13 @@ export function LocalDeviceBridgeToolsPanel({
             onClick={() => void handleInstall()}
           >
             <Download size={14} aria-hidden="true" />
-            {installRunning ? "正在下载..." : "安装调试工具"}
+            {installRunning ? "安装进行中…" : "安装调试工具"}
           </button>
         ) : null}
       </div>
-      {health?.toolsInstall?.status === "failed" && health.toolsInstall.error ? (
-        <p className="local-device-bridge-panel__error">{health.toolsInstall.error}</p>
+      {installRunning ? <p role="status">{installProgress || "Bridge 正在安装调试工具，请保持程序运行。"}</p> : null}
+      {installError || (!installRunning && health?.toolsInstall?.status === "failed" && health.toolsInstall.error) ? (
+        <p className="local-device-bridge-panel__error" role="alert">{installError || health?.toolsInstall?.error}</p>
       ) : null}
       <details className="local-device-bridge-tools-panel__details">
         <summary>其他工具</summary>

@@ -41,7 +41,7 @@ describe("bridgeReleaseSelection", () => {
   it("detects macOS from user agent", () => {
     expect(detectBrowserBridgeTarget("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")).toEqual({
       platform: "darwin",
-      arch: "arm64"
+      arch: "unknown"
     });
   });
 
@@ -87,6 +87,7 @@ describe("bridgeReleaseSelection", () => {
   });
 
   it("labels the detected host environment", () => {
+    expect(bridgeHostTargetLabel({ platform: "darwin", arch: "unknown" })).toBe("macOS（请选择芯片架构）");
     expect(bridgeHostTargetLabel({ platform: "darwin", arch: "arm64" })).toBe("macOS（Apple Silicon）");
     expect(bridgeHostTargetLabel({ platform: "windows", arch: "amd64" })).toBe("Windows（x64）");
   });

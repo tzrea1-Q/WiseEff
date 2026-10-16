@@ -174,7 +174,8 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       }, reviewerToken);
       await page.goto(`${frontendUrl}/node-debugging`);
       await expect(page.getByTestId(`node-canonical-reference-${linked.item.id}`)).toHaveText("参数关联：已关联");
-      await expect(page.getByTestId(`node-canonical-reference-${standalone.item.id}`)).toHaveText("参数关联：未关联");
+      await expect(page.getByRole("row").filter({ has: page.getByText("Standalone device node", { exact: true }) })).toBeVisible();
+      await expect(page.getByTestId(`node-canonical-reference-${standalone.item.id}`)).toHaveCount(0);
       await page.reload();
       await expect(page.getByTestId(`node-canonical-reference-${linked.item.id}`)).toHaveText("参数关联：已关联");
       await page.screenshot({ path: testInfo.outputPath("canonical-node-associations-1440x900.png") });

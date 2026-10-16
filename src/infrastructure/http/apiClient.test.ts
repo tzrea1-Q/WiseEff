@@ -6,6 +6,16 @@ function createFetchMock(response: Response) {
 }
 
 describe("createApiClient", () => {
+  it("forwards a caller's GET abort signal without changing authentication", async () => {
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const client = createApiClient({ baseUrl: "", authorization: "Bearer test-token", fetchImpl: fetchMock });
+    const controller = new AbortController();
+    await expect(client.get("/api/v1/health", { signal: controller.signal })).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/health", {
+      method: "GET", headers: { Accept: "application/json", Authorization: "Bearer test-token" }, signal: controller.signal
+    });
+  });
+
   it("requests JSON from the configured base URL", async () => {
     const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });

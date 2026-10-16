@@ -128,7 +128,7 @@ export function describeLocalBridgeUpgradeMessage(input: {
   const current = input.installedVersion
     ? `当前本机版本 ${input.installedVersion}`
     : "当前本机 Bridge 未报告版本，按旧安装包处理";
-  return `${current}，推荐版本 ${input.recommendedVersion}。请先下载并安装最新安装包，否则切换账号重新配对可能无法完成。`;
+  return `${current}，推荐版本 ${input.recommendedVersion}。请打开安装指南，选择对应平台的可用版本后更新。`;
 }
 
 export function deriveLocalBridgeBindingState(input: {
@@ -279,7 +279,7 @@ export function resolvePairingCodeForBridgeConnect(input: {
   targetServerUrl: string;
 }): string | undefined {
   const code = input.pairingCode?.code;
-  if (!code) {
+  if (!code || isBridgePairingCodeExpired(input.pairingCode)) {
     return undefined;
   }
 
@@ -297,6 +297,23 @@ export function resolvePairingCodeForBridgeConnect(input: {
   }
 
   return undefined;
+}
+
+export function isBridgePairingCodeExpired(code: DeviceBridgePairingCode | null | undefined, now = Date.now()) {
+  return !code || !Number.isFinite(Date.parse(code.expiresAt)) || Date.parse(code.expiresAt) <= now;
+}
+
+export function bridgePanelStatusLabel(status: BridgePanelStatus) {
+  switch (status) {
+    case "missing_bridge": return "未检测到本地 Bridge";
+    case "bridge_blocked": return "本机访问受阻";
+    case "not_running": return "本地 Bridge 未运行";
+    case "not_paired": return "Bridge 等待配对";
+    case "not_connected": return "Bridge 尚未连接服务器";
+    case "tools_missing": return "调试工具待安装";
+    case "online_no_device": return "Bridge 在线 · 等待设备";
+    case "bridges_with_targets": return "Bridge 与设备已就绪";
+  }
 }
 
 export function shouldClearStaleBridgeConnectError(input: {

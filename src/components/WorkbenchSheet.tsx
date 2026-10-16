@@ -23,6 +23,8 @@ export function WorkbenchSheet({
   closeLabel = "关闭草稿"
 }: WorkbenchSheetProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -30,7 +32,10 @@ export function WorkbenchSheet({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      const owner = event.target instanceof Element ? event.target.closest('[role="dialog"], [role="alertdialog"]') : null;
+      if (owner && owner !== sheetRef.current) return;
+      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')) {
+        event.preventDefault();
         onClose();
       }
     };
@@ -46,7 +51,18 @@ export function WorkbenchSheet({
 
   useEffect(() => {
     if (open) {
+      const activeElement = document.activeElement;
+      // StrictMode replays this effect after focus has already entered the sheet.
+      if (activeElement instanceof HTMLElement && !sheetRef.current?.contains(activeElement)) {
+        returnFocusRef.current = activeElement;
+      }
+      const trigger = returnFocusRef.current;
       closeButtonRef.current?.focus();
+      return () => {
+        queueMicrotask(() => {
+          if (!document.querySelector(".workbench-sheet") && trigger?.isConnected) trigger.focus();
+        });
+      };
     }
   }, [open]);
 
@@ -55,7 +71,7 @@ export function WorkbenchSheet({
   }
 
   return (
-    <aside className="workbench-sheet" role="dialog" aria-modal="false" aria-label={title}>
+    <aside ref={sheetRef} className="workbench-sheet" role="dialog" aria-modal="false" aria-label={title}>
       <header className="workbench-sheet-head">
         <div>
           <h2>{title}</h2>

@@ -153,11 +153,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function createPairingCode(apiClient: ApiClient = createDefaultApiClient()) {
-  return apiClient.post<DeviceBridgePairingCode>("/api/v1/device-bridges/pairing-codes", {});
+  return apiClient.post<DeviceBridgePairingCode>("/api/v1/device-bridges/pairing-codes", {}, { signal: AbortSignal.timeout(5000) });
 }
 
 export async function listMyBridges(apiClient: ApiClient = createDefaultApiClient()) {
-  const response = await apiClient.get<ItemsEnvelope<DeviceBridgeRecord>>("/api/v1/device-bridges/mine");
+  const response = await apiClient.get<ItemsEnvelope<DeviceBridgeRecord>>("/api/v1/device-bridges/mine", { signal: AbortSignal.timeout(5000) });
   return response.items;
 }
 
@@ -185,7 +185,7 @@ export async function revokeBridge(
 }
 
 export async function listReleases(apiClient: ApiClient = createDefaultApiClient()) {
-  return apiClient.get<DeviceBridgeReleaseManifest>(DEVICE_BRIDGE_RELEASES_PATH);
+  return apiClient.get<DeviceBridgeReleaseManifest>(DEVICE_BRIDGE_RELEASES_PATH, { signal: AbortSignal.timeout(5000) });
 }
 
 export async function probeLocalBridgeHealth(fetchImpl: typeof fetch = fetch): Promise<LocalBridgeHealthState | null> {

@@ -22,11 +22,8 @@ export type NodeOperationEvent = {
 };
 
 function formatTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return iso;
-  }
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function eventIcon(action: NodeOperationEvent["action"]) {
@@ -76,11 +73,24 @@ export function NodeOperationHistoryPanel({ events }: { events: NodeOperationEve
             {ordered.map((event) => (
               <li key={event.id}>
                 <span className="operation-history-icon">{eventIcon(event.action)}</span>
-                <span className="operation-history-text">
+                <div className="operation-history-text">
                   {event.parameterName} · {event.accessMode} · {event.status}
                   <small>{event.parameterKey} · 返回码 {event.returncode ?? "—"} · {summarizeOutput(event)}</small>
-                </span>
-                <small className="operation-history-time">{formatTime(event.at)}</small>
+                  <details className="node-operation-detail">
+                    <summary>查看完整结果</summary>
+                    <dl>
+                      <div><dt>操作时间</dt><dd><time dateTime={event.at}>{formatTime(event.at)}</time></dd></div>
+                      <div><dt>返回码</dt><dd>{event.returncode ?? "未返回"}</dd></div>
+                      {event.nodePath ? <div><dt>节点路径</dt><dd><code>{event.nodePath}</code></dd></div> : null}
+                      {event.valueDigest ? <div><dt>值摘要</dt><dd><code>{event.valueDigest}</code></dd></div> : null}
+                    </dl>
+                    <strong>标准输出</strong>
+                    <pre aria-label="标准输出">{event.stdout || "无输出"}</pre>
+                    <strong>错误输出</strong>
+                    <pre aria-label="错误输出">{event.stderr || "无输出"}</pre>
+                  </details>
+                </div>
+                <time className="operation-history-time" dateTime={event.at}>{formatTime(event.at)}</time>
               </li>
             ))}
           </ul>

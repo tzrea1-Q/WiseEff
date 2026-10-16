@@ -11,12 +11,11 @@ export function detectBrowserBridgeTarget(userAgent = typeof navigator === "unde
   }
 
   if (/Mac/i.test(userAgent)) {
-    // Safari and Chromium on Apple Silicon still report "Intel Mac OS X" in UA.
-    // Prefer arm64 first; pickBridgeReleaseForHost falls back to amd64 when needed.
-    return { platform: "darwin", arch: "arm64" };
+    // Both Intel and Apple Silicon browsers report Intel in the user agent.
+    return { platform: "darwin", arch: "unknown" };
   }
 
-  return { platform: "linux", arch: "amd64" };
+  return { platform: "linux", arch: /aarch64|arm64/i.test(userAgent) ? "arm64" : "amd64" };
 }
 
 function pickPreferredRelease(items: DeviceBridgeReleaseItem[]) {
@@ -68,11 +67,12 @@ export function bridgeReleaseDownloadLabel(item: DeviceBridgeReleaseItem) {
     return `安装 Bridge（${bridgePlatformLabel(item.platform)}）`;
   }
 
-  const archLabel = item.arch === "arm64" ? "Apple Silicon" : item.arch === "amd64" ? "x64" : item.arch;
+  const archLabel = item.arch === "arm64" ? (item.platform === "darwin" ? "Apple Silicon" : "ARM64") : item.arch === "amd64" ? "x64" : item.arch;
   return `下载 ${bridgePlatformLabel(item.platform)} Bridge（${archLabel}）`;
 }
 
 export function bridgeHostTargetLabel(target: BrowserBridgeTarget) {
+  if (target.arch === "unknown") return `${bridgePlatformLabel(target.platform)}（请选择芯片架构）`;
   if (target.platform === "darwin") {
     if (target.arch === "arm64") {
       return "macOS（Apple Silicon）";
