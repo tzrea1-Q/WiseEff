@@ -12,7 +12,7 @@ import {
   createDisposableParameterCatalogDatabase,
   type ParameterCatalogDatabase
 } from "../../../testing/parameterCatalog";
-import { createLocalAuthService } from "../../auth/localAuth";
+import { createLocalAuthService, type LocalAuthSessionResult } from "../../auth/localAuth";
 import { hashLocalAccountPassword } from "../../auth/localAccountCredentials";
 import { createLocalObjectStore } from "../../logs/objectStore";
 import { createCatalogKernel } from "../../catalog-kernel/interface";
@@ -35,6 +35,7 @@ const SOFTWARE_COMMITTER = "user-r2-818-software-committer";
 const PROJECT_B = "project-r2-818-b";
 const ORG_B = "org-r2-818-b";
 const ADMIN_B = "user-r2-818-admin-b";
+type LoginResponse = { auth: LocalAuthSessionResult["auth"]; token: string };
 
 beforeEach(() => setParameterIdentityMode("semantic"));
 afterEach(() => setParameterIdentityMode(null));
@@ -142,7 +143,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     return state.rows[0];
   };
 
-  const json = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
+  const json = async <T = unknown>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
     const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: {
@@ -152,7 +153,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, body: await response.json() as T };
   };
 
   beforeAll(async () => {
@@ -305,18 +306,18 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       }
     });
     baseUrl = await listen(server);
-    const login = await json("POST", "/api/v1/auth/login", { username: "r2-818-admin", password });
+    const login = await json<LoginResponse>("POST", "/api/v1/auth/login", { username: "r2-818-admin", password });
     expect(login.status).toBe(200);
     token = login.body.token;
     expect(login.body.auth.user.id).toBe(ADMIN);
     expect(login.body.auth.roles).toContainEqual({ projectId: null, roleId: "admin" });
-    const restrictedLogin = await json("POST", "/api/v1/auth/login", { username: "r2-818-restricted", password });
+    const restrictedLogin = await json<LoginResponse>("POST", "/api/v1/auth/login", { username: "r2-818-restricted", password });
     expect(restrictedLogin.status).toBe(200);
     restrictedToken = restrictedLogin.body.token;
-    const otherLogin = await json("POST", "/api/v1/auth/login", { username: "r2-818-admin-b", password });
+    const otherLogin = await json<LoginResponse>("POST", "/api/v1/auth/login", { username: "r2-818-admin-b", password });
     expect(otherLogin.status).toBe(200);
     otherOrganizationToken = otherLogin.body.token;
-    const registration = await json(
+    const registration = await json<{ item: { id: string } }>(
       "POST",
       `/api/v2/organizations/${ORG}/subject-registrations`,
       { subjectId: SUBJECT_ID, placement: { mode: "use-default" }, reason: "R2 exact pin fixture" },
@@ -477,7 +478,23 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     const actual = await runAgent({ token: otherOrganizationToken, projectId: PROJECT });
     expect(actual.events).toContain("Project was not found");
     expect(actual.events).not.toContain(bindingId);
-    expect(actual.events).not.toContain("1842");
+    const payloads: unknown[] = actual.events.split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => JSON.parse(line.slice(5).trim()));
+    expect(payloads.length).toBeGreaterThan(0);
+    // A numeric timestamp may contain these digits without exposing the configured value.
+    const expectNoConfiguredPin = (value: unknown): void => {
+      if (typeof value === "number") expect(value).not.toBe(1842);
+      else if (typeof value === "string") expect(value).not.toContain("1842");
+      else if (Array.isArray(value)) value.forEach(expectNoConfiguredPin);
+      else if (value && typeof value === "object") {
+        Object.entries(value).forEach(([key, nested]) => {
+          expectNoConfiguredPin(key);
+          expectNoConfiguredPin(nested);
+        });
+      }
+    };
+    payloads.forEach(expectNoConfiguredPin);
     expect(actual.calls.map((call) => call.status)).toEqual(["failed"]);
     expect(actual.audit).toEqual([{ actor_type: "agent", actor_user_id: ADMIN_B, action: "failed" }]);
     expect(await businessState()).toEqual(before);
@@ -652,7 +669,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
         body: JSON.stringify({ username: "r2-818-admin", password: localPassword })
       });
       expect(loginResponse.status).toBe(200);
-      const login = await loginResponse.json();
+      const login = await loginResponse.json() as LoginResponse;
       expect(login.auth.user.id).toBe(ADMIN);
       const assertPositive = async () => {
         const result = await runAgent({ runtimeUrl, token: login.token, projectId: PROJECT });
