@@ -29,16 +29,23 @@
   overflow: auto;
 }
 
-.dts-reload-candidate-table__grid {
+.dts-reload-candidate-table .dts-reload-candidate-table__grid {
   table-layout: fixed;
-  min-width: calc(10 * var(--space-16));
+  min-width: 0;
+  width: 100%;
+}
+
+.dts-reload-candidate-table__grid th,
+.dts-reload-candidate-table__grid td {
+  padding-inline: var(--space-2);
+  overflow-wrap: anywhere;
 }
 
 .dts-reload-candidate-table__grid th:last-child,
 .dts-reload-candidate-table__grid td:last-child {
-  width: calc(3 * var(--space-8));
-  min-width: calc(3 * var(--space-8));
-  max-width: calc(3 * var(--space-8));
+  width: var(--space-16);
+  min-width: var(--space-16);
+  max-width: var(--space-16);
   text-align: center;
 }
 
@@ -52,7 +59,6 @@
 }
 
 .dts-reload-candidate-table__param {
-  min-width: calc(2 * var(--space-16));
   vertical-align: top;
 }
 
@@ -87,15 +93,35 @@
 }
 
 .dts-reload-candidate-table__module {
-  width: calc(var(--space-16) + var(--space-10) + var(--space-1));
-  min-width: calc(var(--space-16) + var(--space-8) + var(--space-1));
+  width: 20%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .dts-reload-candidate-table__baseline {
-  min-width: calc(var(--space-16) + var(--space-12));
+  width: 28%;
+  vertical-align: top;
+}
+
+.dts-reload-candidate-table__values {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.dts-reload-candidate-table__values small {
+  color: var(--muted-foreground);
+}
+
+.dts-reload-candidate-table__values code.is-changed {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dts-reload-candidate-table__empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
 }
 
 .dts-reload-candidate-table__baseline code {
@@ -138,4 +164,20 @@
   overflow-wrap: anywhere;
   white-space: normal;
   text-align: center;
+}
+
+.dts-reload-active-filters {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.dts-reload-active-filters > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

@@ -74,6 +74,15 @@ describe("DTS reload routes trusted provenance", () => {
     vi.clearAllMocks();
   });
 
+  it("rejects a legacy configuration write without its read timestamp before invoking the service", async () => {
+    const response = await requestJson(makeServer(makeDb(), makeObjectStore(), makeAuth()), "/api/v1/dts-reload/configuration", {
+      method: "PUT",
+      body: JSON.stringify({ destinationDirectory: "/vendor/firmware/", destinationFilename: "power.dtbo", triggerNodePath: "/sys/reload", triggerPayload: "1", kernelLogCommand: "dmesg" })
+    });
+    expect(response.status).toBe(400);
+    expect(configurationService.updateOrganisationReloadConfiguration).not.toHaveBeenCalled();
+  });
+
   it("constructs a server-owned user invocation and ignores client actorType spoofing", async () => {
     const db = makeDb();
     const objectStore = makeObjectStore();
@@ -90,6 +99,7 @@ describe("DTS reload routes trusted provenance", () => {
           triggerNodePath: "/sys/kernel/debug/power/trigger",
           triggerPayload: "1",
           kernelLogCommand: "dmesg",
+          expectedUpdatedAt: null,
           actorType: "agent"
         }),
         headers: { actorType: "system" }
@@ -105,7 +115,8 @@ describe("DTS reload routes trusted provenance", () => {
         destinationFilename: "power.dtbo",
         triggerNodePath: "/sys/kernel/debug/power/trigger",
         triggerPayload: "1",
-        kernelLogCommand: "dmesg"
+        kernelLogCommand: "dmesg",
+        expectedUpdatedAt: null
       },
       expect.objectContaining({
         requestId: "test-request",

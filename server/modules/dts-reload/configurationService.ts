@@ -9,6 +9,8 @@ import {
   type ReloadConfigurationContract
 } from "./configurationTypes";
 import { parseReloadConfigurationContract } from "./configurationValidation";
+import { reloadConfigurationContractBodySchema } from "./configurationSchemas";
+import { ApiError } from "../../shared/http/errors";
 import {
   getOrganisationDefaultRow,
   rowToContract,
@@ -110,6 +112,9 @@ export async function updateOrganisationReloadConfiguration(
   requireDebugAdmin(auth);
   await assertConfigurationHumanActor(auth, trustedContext);
   const contract = parseReloadConfigurationContract(body);
+  const parsed = reloadConfigurationContractBodySchema.safeParse(body);
+  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "请重新加载重载配置后保存，必须提供当前配置版本。", { issues: parsed.error.issues });
+  const { expectedUpdatedAt } = parsed.data;
 
   return db.transaction(async (tx) => {
     const previousRow = await getOrganisationDefaultRow(tx, auth.organization.id);
@@ -117,7 +122,8 @@ export async function updateOrganisationReloadConfiguration(
     const saved = await upsertOrganisationDefault(tx, {
       organizationId: auth.organization.id,
       contract,
-      updatedByUserId: auth.user.id
+      updatedByUserId: auth.user.id,
+      expectedUpdatedAt
     });
     await writeConfigurationAudit(
       asAuditTx(tx),

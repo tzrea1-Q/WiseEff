@@ -64,17 +64,35 @@ function renderTable(
 }
 
 describe("DtsReloadCandidateTable", () => {
-  it("exposes candidate status and keeps blocked edit actions disabled", async () => {
+  it("keeps blocked candidates inspectable without enabling batch selection", async () => {
     const onEdit = vi.fn();
     renderTable({ rows: [candidate(), candidate({ bindingId: "blocked", displayName: "Blocked", debuggable: false, blockReason: "unsupported-value-shape" })], onEdit });
     const editable = screen.getByRole("button", { name: "编辑 Watchdog" });
-    const blocked = screen.getByRole("button", { name: "编辑 Blocked" });
+    const blocked = screen.getByRole("button", { name: "查看 Blocked" });
     expect(editable.closest("tr")?.querySelector("[data-row-status]")).toBeNull();
     expect(blocked.closest("tr")?.querySelector("[data-row-status]"))
-      .toHaveTextContent(dtsReloadBlockReasonLabels["unsupported-value-shape"]);
-    expect(blocked).toBeDisabled();
+      .toHaveAttribute("title", dtsReloadBlockReasonLabels["unsupported-value-shape"]);
+    expect(blocked).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "选择 Blocked" })).toBeDisabled();
     await userEvent.setup().click(blocked);
-    expect(onEdit).not.toHaveBeenCalled();
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ bindingId: "blocked" }));
+  });
+
+  it("shows baseline and changed debug values in the selected row", () => {
+    renderTable({ rows: [candidate()], selectedBindingIds: ["binding-1"], debugValues: { "binding-1": "<7000>" } });
+    expect(screen.getByText("<6000>")).toBeInTheDocument();
+    expect(screen.getByText("→ <7000>")).toBeInTheDocument();
+    expect(screen.getByText("本轮已修改")).toBeInTheDocument();
+  });
+
+  it("distinguishes an empty project from no filter matches and clears all filters", async () => {
+    const onClearFilters = vi.fn();
+    const { rerender } = renderTable({ rows: [], hasActiveFilters: true, onClearFilters });
+    expect(screen.getByText("没有符合当前筛选条件的参数。")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "清除全部筛选" }));
+    expect(onClearFilters).toHaveBeenCalledOnce();
+    rerender(<DtsReloadCandidateTable rows={[]} selectedBindingIds={[]} nameQuery="" onNameQueryChange={vi.fn()} listedCount={0} totalCount={0} onClearModuleFilter={vi.fn()} onToggle={vi.fn()} onEdit={vi.fn()} />);
+    expect(screen.getByText("当前项目暂无可列出的参数。")).toBeInTheDocument();
   });
 
   it("renders the DataTable shell with sort, filter, and actions", () => {

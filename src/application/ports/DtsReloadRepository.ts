@@ -112,6 +112,7 @@ export interface DtsReloadRepository {
   promoteToDrafts(input: PromoteDtsReloadRunToDraftsInput): Promise<PromoteDtsReloadRunToDraftsResult>;
   getReloadConfiguration(): Promise<ReloadConfigurationAdminView>;
   updateOrganisationReloadConfiguration(
-    contract: ReloadConfigurationContract
+    contract: ReloadConfigurationContract,
+    expectedUpdatedAt: string | null
   ): Promise<ReloadConfigurationAdminView["organisation"]>;
 }

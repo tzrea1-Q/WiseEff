@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { DtsReloadCandidate, DtsReloadResidue, DtsReloadRun } from "@/domain/dtsReload/types";
+import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import {
   createDtsReloadRunSession,
@@ -118,7 +119,171 @@ async function createReadySession(
   return session;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("dtsReloadRunSession", () => {
+  describe("context isolation and completed-run refresh", () => {
+    it("clears the previous project immediately even when the next candidate load fails", async () => {
+      const session = await createReadySession();
+      session.setDebugValue("binding-1", "<7000>");
+      await session.start({ startRun: async () => run() });
+      session.selectProject("project-2");
+      expect(session.getSnapshot()).toMatchObject({
+        projectId: "project-2", candidates: [], selectedBindingIds: [], debugValues: {},
+        run: null, deployConfirmOpen: false, hasUnsavedBatch: false
+      });
+      await session.loadCandidates({
+        listCandidates: async () => { throw new Error("offline"); },
+        getRun: async () => run()
+      });
+      expect(session.getSnapshot().candidates).toEqual([]);
+      expect(session.getSnapshot().errorMessage).toBe("offline");
+    });
+
+    it.each(["start", "deploy", "restore"] as const)("ignores a %s response after switching projects", async (operation) => {
+      const writeRunId = vi.fn();
+      const session = await createReadySession([candidate()], { writeRunId });
+      session.setDebugValue("binding-1", "<7000>");
+      await session.loadResidue({ getResidue: async () => residueFixture() });
+      const response = deferred<DtsReloadRun>();
+      const request = operation === "start"
+        ? session.start({ startRun: () => response.promise })
+        : operation === "deploy"
+          ? (session.openDeployConfirm(run()), session.confirmDeploy({ deployRun: () => response.promise, getResidue: async () => null }))
+          : (session.openRestoreConfirm(), session.confirmRestore({ restoreBaseline: () => response.promise }));
+      session.selectProject("project-2");
+      writeRunId.mockClear();
+      response.resolve(run());
+      await request;
+      expect(session.getSnapshot()).toMatchObject({
+        projectId: "project-2", run: null, starting: false, deploying: false, restoring: false,
+        deployConfirmOpen: false, statusMessage: "", errorMessage: ""
+      });
+      expect(writeRunId).not.toHaveBeenCalled();
+    });
+
+    it("does not open a stale preflight confirmation for a newly selected device target", async () => {
+      const session = await createReadySession();
+      session.setDebugValue("binding-1", "<7000>");
+      const response = deferred<DtsReloadRun>();
+      const request = session.start({ startRun: () => response.promise });
+      session.setTargetRef("different-target");
+      response.resolve(run());
+      await request;
+      expect(session.getSnapshot().run).toBeNull();
+      expect(session.getSnapshot().deployConfirmOpen).toBe(false);
+      expect(session.getSnapshot().targetRef).toBe("different-target");
+    });
+
+    it.each(["start", "deploy", "restore"] as const)("refreshes history and lastReload after %s without erasing staged values", async (operation) => {
+      const session = await createReadySession();
+      session.setDebugValue("binding-1", "<7500>");
+      await session.loadResidue({ getResidue: async () => residueFixture() });
+      const lastReload = { runId: "run-new", debugValue: "<7000>", outcome: "verified" as const, purpose: "ordinary" as const, attemptedAt: "2026-10-15T00:00:00.000Z" };
+      const listCandidates = vi.fn(async () => ({ items: [candidate({ lastReload })] }));
+      const listRuns = vi.fn(async () => ({ items: [], nextCursor: null }));
+      const refresh = { listCandidates, listRuns };
+      if (operation === "start") await session.start({ ...refresh, startRun: async () => run() });
+      else if (operation === "deploy") {
+        session.openDeployConfirm(run());
+        await session.confirmDeploy({ ...refresh, deployRun: async () => run({ status: "verified" }), getResidue: async () => residueFixture() });
+      } else {
+        session.openRestoreConfirm();
+        await session.confirmRestore({ ...refresh, restoreBaseline: async () => run({ purpose: "restore-baseline" }) });
+      }
+      expect(listCandidates).toHaveBeenCalledWith("project-1");
+      expect(listRuns).toHaveBeenCalledWith({ projectId: "project-1", limit: 10 });
+      expect(session.getSnapshot().candidates[0]?.lastReload).toEqual(lastReload);
+      expect(session.getSnapshot().selectedBindingIds).toEqual(["binding-1"]);
+      expect(session.getSnapshot().debugValues["binding-1"]).toBe("<7500>");
+      expect(session.getSnapshot().hasUnsavedBatch).toBe(true);
+    });
+
+    it("keeps the latest selected history run when older details return later", async () => {
+      const session = await createReadySession();
+      const first = deferred<DtsReloadRun>();
+      const firstRequest = session.openHistoryRun({ getRun: () => first.promise }, "run-old");
+      expect(session.getSnapshot().historyRunLoading).toBe(true);
+      await session.openHistoryRun({ getRun: async () => run({ id: "run-new" }) }, "run-new");
+      first.resolve(run({ id: "run-old", targetRef: "old-target" }));
+      await firstRequest;
+      expect(session.getSnapshot().run?.id).toBe("run-new");
+      expect(session.getSnapshot().historyRunLoading).toBe(false);
+      expect(session.getSnapshot().targetRef).not.toBe("old-target");
+    });
+
+    it("keeps a run deep link authoritative during the initial bridge discovery", async () => {
+      const session = createSession();
+      const response = deferred<DtsReloadRun>();
+      const request = session.openHistoryRun({ getRun: () => response.promise }, "deep-linked-run");
+      session.syncBridges([{ id: "bridge-1", machineLabel: "Lab Mac" }], { connected: true, bridgeId: "bridge-1" });
+      response.resolve(run({ id: "deep-linked-run" }));
+      await request;
+      expect(session.getSnapshot().run?.id).toBe("deep-linked-run");
+      expect(session.getSnapshot().historyRunLoading).toBe(false);
+    });
+
+    it("allows explicit deployment after preflight while its metadata refresh is still pending", async () => {
+      const session = await createReadySession();
+      session.setDebugValue("binding-1", "<7000>");
+      const metadata = deferred<{ items: DtsReloadCandidate[] }>();
+      const preflight = session.start({ startRun: async () => run(), listCandidates: () => metadata.promise });
+      await vi.waitFor(() => expect(session.getSnapshot().deployConfirmOpen).toBe(true));
+      const deployRun = vi.fn(async () => run({ status: "verified" }));
+      await session.confirmDeploy({ deployRun, getResidue: async () => null });
+      expect(deployRun).toHaveBeenCalledTimes(1);
+      metadata.resolve({ items: [candidate()] });
+      await preflight;
+      expect(session.getSnapshot().run?.status).toBe("verified");
+    });
+
+    it("ignores residue and history failures from the previous device and supports residue retry", async () => {
+      const session = await createReadySession();
+      await session.loadResidue({ getResidue: async () => residueFixture() });
+      const response = deferred<DtsReloadResidue | null>();
+      const request = session.loadResidue({ getResidue: () => response.promise });
+      const history = deferred<{ items: []; nextCursor: null }>();
+      const historyRequest = session.refreshHistory({ listRuns: () => history.promise });
+      session.setDeviceId("device-2");
+      expect(session.getSnapshot().residue).toBeNull();
+      response.reject(new Error("old device offline"));
+      history.reject(new Error("old device history offline"));
+      await Promise.all([request, historyRequest]);
+      expect(session.getSnapshot().residueError).toBe("");
+      expect(session.getSnapshot().historyError).toBe("");
+      await session.loadResidue({ getResidue: async () => { throw new Error("device-2 offline"); } });
+      expect(session.getSnapshot().residueError).toBe("device-2 offline");
+      await session.loadResidue({ getResidue: async () => null });
+      expect(session.getSnapshot().residueError).toBe("");
+      expect(session.getSnapshot().residueLoading).toBe(false);
+    });
+
+    it.each(["?run=run-old", "?runId=run-old&run=ignored"])("canonicalizes the legacy or current run URL %s", async (query) => {
+      const previousUrl = window.location.href;
+      try {
+        window.history.replaceState({}, "", `/dts-reload${query}`);
+        const session = createDtsReloadRunSession({ initialProjectId: "project-1" });
+        const getRun = vi.fn(async () => run({ id: "run-old" }));
+        await session.loadCandidates({ listCandidates: async () => ({ items: [candidate()] }), getRun });
+        expect(getRun).toHaveBeenCalledWith("run-old");
+        await session.openHistoryRun({ getRun: async () => run({ id: "run-new" }) }, "run-new");
+        const queryParams = new URLSearchParams(window.location.search);
+        expect(queryParams.get("runId")).toBe("run-new");
+        expect(queryParams.has("run")).toBe(false);
+      } finally {
+        window.history.replaceState({}, "", previousUrl);
+      }
+    });
+  });
+
   describe("candidate loading and URL rehydration", () => {
     it("loads candidates without adding the first debuggable candidate to the reload batch", async () => {
       const session = createSession();
@@ -324,7 +489,7 @@ describe("dtsReloadRunSession", () => {
     it("omits the confirmationToken key entirely for non-sensitive batches", async () => {
       const session = await createReadySession();
       session.setDebugValue("binding-1", "<7000>");
-      const startRun = vi.fn(async () => run());
+      const startRun = vi.fn<DtsReloadRepository["startRun"]>(async () => run());
       await session.start({ startRun });
       expect(startRun).toHaveBeenCalledWith({
         projectId: "project-1",
@@ -353,7 +518,8 @@ describe("dtsReloadRunSession", () => {
       notReady.setDebugValue("binding-1", "<7000>");
       await notReady.start({ startRun: async () => run() });
       expect(notReady.getSnapshot().deployConfirmOpen).toBe(false);
-      expect(notReady.getSnapshot().errorMessage).toBe(
+      expect(notReady.getSnapshot().errorMessage).toBe("");
+      expect(notReady.getSnapshot().statusMessage).toBe(
         "预检已通过。请先连接 Bridge 并检测设备目标后再确认部署。"
       );
 
@@ -371,7 +537,7 @@ describe("dtsReloadRunSession", () => {
     it("attaches confirm-dts-reload only through the explicit confirmDeploy command", async () => {
       const session = await createReadySession();
       session.setDebugValue("binding-1", "<7000>");
-      const startRun = vi.fn(async () => run());
+      const startRun = vi.fn<DtsReloadRepository["startRun"]>(async () => run());
       const deployRun = vi.fn(async () => run({ status: "unverifiable", deviceId: "bridge:bridge-1" }));
       const getResidue = vi.fn(async () => null);
 
@@ -444,7 +610,7 @@ describe("dtsReloadRunSession", () => {
       expect(session.getSnapshot().run?.status).toBe("verified");
     });
 
-    it("keeps prior residue when an ordinary deploy's residue refresh fails", async () => {
+    it("marks ordinary deploy residue as unknown when its refresh fails", async () => {
       const session = await createReadySession();
       await session.loadResidue({ getResidue: async () => residueFixture() });
       session.openDeployConfirm(run());
@@ -454,7 +620,8 @@ describe("dtsReloadRunSession", () => {
           throw new Error("refresh failed");
         }
       });
-      expect(session.getSnapshot().residue).not.toBeNull();
+      expect(session.getSnapshot().residue).toBeNull();
+      expect(session.getSnapshot().residueError).toBe("refresh failed");
     });
 
     it("surfaces bridge-upgrade-required deploy failures with the releases path", async () => {
@@ -507,7 +674,7 @@ describe("dtsReloadRunSession", () => {
       const session = await createReadySession();
       await session.loadResidue({ getResidue: async () => residueFixture() });
       session.openRestoreConfirm();
-      const restoreBaseline = vi.fn(async () =>
+      const restoreBaseline = vi.fn<DtsReloadRepository["restoreBaseline"]>(async () =>
         run({ id: "run-restore", purpose: "restore-baseline" })
       );
       await session.confirmRestore({ restoreBaseline });
@@ -541,7 +708,7 @@ describe("dtsReloadRunSession", () => {
       expect(session.getSnapshot().residue).toBeNull();
     });
 
-    it("keeps previously shown residue when a refresh fails transiently", async () => {
+    it("marks residue unknown when a refresh fails transiently", async () => {
       const session = await createReadySession();
       await session.loadResidue({ getResidue: async () => residueFixture() });
       await session.loadResidue({
@@ -549,7 +716,8 @@ describe("dtsReloadRunSession", () => {
           throw new Error("transient");
         }
       });
-      expect(session.getSnapshot().residue).not.toBeNull();
+      expect(session.getSnapshot().residue).toBeNull();
+      expect(session.getSnapshot().residueError).toBe("transient");
       expect(session.getSnapshot().residueLoading).toBe(false);
     });
   });

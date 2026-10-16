@@ -8,7 +8,7 @@ function response(body: unknown, status = 200) {
 }
 
 function fetchQueue(...bodies: unknown[]) {
-  return vi.fn(async () => response(bodies.shift()));
+  return vi.fn<typeof fetch>(async () => response(bodies.shift()));
 }
 
 const pinnedCandidate = {
@@ -45,6 +45,15 @@ const pinnedCandidate = {
 };
 
 describe("createHttpDtsReloadRepository", () => {
+  it("sends the exact read configuration timestamp as the save precondition", async () => {
+    const contract = { destinationDirectory: "/vendor/firmware", destinationFilename: "power.dtbo", triggerNodePath: "/sys/reload", triggerPayload: "1", kernelLogCommand: "dmesg" };
+    const fetchMock = fetchQueue({ item: { ...contract, updatedAt: "2026-08-10T04:00:00.123457Z" } });
+    const repository = createHttpDtsReloadRepository({ apiClient: createApiClient({ baseUrl: "", fetchImpl: fetchMock }), baseUrl: "" });
+    await repository.updateOrganisationReloadConfiguration(contract, "2026-08-10T04:00:00.123456Z");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/dts-reload/configuration");
+    expect(JSON.parse(String(init.body))).toEqual({ ...contract, expectedUpdatedAt: "2026-08-10T04:00:00.123456Z" });
+  });
   it("preserves exact Binding, revision, value, and Catalog Release pins on candidates", async () => {
     const fetchMock = fetchQueue({ items: [pinnedCandidate] });
     const repository = createHttpDtsReloadRepository({

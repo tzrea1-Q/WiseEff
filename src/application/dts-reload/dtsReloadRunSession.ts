@@ -48,6 +48,8 @@ export type DtsReloadRunSessionSnapshot = {
   candidates: DtsReloadCandidate[];
   loading: boolean;
   errorMessage: string;
+  statusMessage: string;
+  hasUnsavedBatch: boolean;
   selectedBindingIds: string[];
   debugValues: Record<string, string>;
   criticalConfirmed: boolean;
@@ -66,6 +68,7 @@ export type DtsReloadRunSessionSnapshot = {
   deployUpgradeReleasesPath: string | null;
   residue: DtsReloadResidue | null;
   residueLoading: boolean;
+  residueError: string;
   restoreConfirmOpen: boolean;
   restoring: boolean;
   restoreError: string;
@@ -75,6 +78,7 @@ export type DtsReloadRunSessionSnapshot = {
   historyLoading: boolean;
   historyLoadingMore: boolean;
   historyError: string;
+  historyRunLoading: boolean;
   historyFilterDevice: boolean;
   /** Selected candidates in reload-batch insertion order. */
   selectedCandidates: DtsReloadCandidate[];
@@ -123,14 +127,14 @@ export type DtsReloadRunSession = {
   /** Validate and persist a debug value from the edit sheet; returns an error to keep it open. */
   confirmCandidateDebugValue(bindingId: string, debugValue: string): string | null;
   setCriticalConfirmed(value: boolean): void;
-  start(repository: Pick<DtsReloadRepository, "startRun">): Promise<void>;
+  start(repository: Pick<DtsReloadRepository, "startRun"> & RunRefreshRepository): Promise<void>;
   openDeployConfirm(run: DtsReloadRun): void;
   closeDeployConfirm(): void;
-  confirmDeploy(repository: Pick<DtsReloadRepository, "deployRun" | "getResidue">): Promise<void>;
+  confirmDeploy(repository: Pick<DtsReloadRepository, "deployRun" | "getResidue"> & RunRefreshRepository): Promise<void>;
   openRestoreConfirm(): void;
   closeRestoreConfirm(): void;
   setRestoreCriticalConfirmed(value: boolean): void;
-  confirmRestore(repository: Pick<DtsReloadRepository, "restoreBaseline">): Promise<void>;
+  confirmRestore(repository: Pick<DtsReloadRepository, "restoreBaseline"> & RunRefreshRepository): Promise<void>;
   loadResidue(repository: Pick<DtsReloadRepository, "getResidue">): Promise<void>;
   refreshHistory(repository: Pick<DtsReloadRepository, "listRuns">): Promise<void>;
   loadMoreHistory(repository: Pick<DtsReloadRepository, "listRuns">): Promise<void>;
@@ -146,19 +150,23 @@ export type DtsReloadRunSession = {
   clearHandoff(): void;
 };
 
+type RunRefreshRepository = Partial<Pick<DtsReloadRepository, "listRuns" | "listCandidates">>;
+
 function defaultReadRunId(): string | null {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get("run") || null;
+  const query = new URLSearchParams(window.location.search);
+  return query.get("runId") || query.get("run") || null;
 }
 
 function defaultWriteRunId(runId: string | null): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   if (runId) {
-    url.searchParams.set("run", runId);
+    url.searchParams.set("runId", runId);
   } else {
-    url.searchParams.delete("run");
+    url.searchParams.delete("runId");
   }
+  url.searchParams.delete("run");
   window.history.replaceState({}, "", `${url.pathname}${url.search}`);
 }
 
@@ -180,6 +188,7 @@ export function createDtsReloadRunSession(
   let candidates: DtsReloadCandidate[] = [];
   let loading = false;
   let errorMessage = "";
+  let statusMessage = "";
   let selectedBindingIds: string[] = [];
   let debugValues: Record<string, string> = {};
   let criticalConfirmed = false;
@@ -199,6 +208,7 @@ export function createDtsReloadRunSession(
   let deployUpgradeReleasesPath: string | null = null;
   let residue: DtsReloadResidue | null = null;
   let residueLoading = false;
+  let residueError = "";
   let restoreConfirmOpen = false;
   let restoring = false;
   let restoreError = "";
@@ -208,6 +218,7 @@ export function createDtsReloadRunSession(
   let historyLoading = false;
   let historyLoadingMore = false;
   let historyError = "";
+  let historyRunLoading = false;
   let historyFilterDevice = false;
   let handoffBindingIds: string[] | null =
     options.initialBindingIds && options.initialBindingIds.length > 0
@@ -217,6 +228,64 @@ export function createDtsReloadRunSession(
   let candidatesGeneration = 0;
   let residueGeneration = 0;
   let historyGeneration = 0;
+  let historyRunGeneration = 0;
+  let contextGeneration = 0;
+  let runRefreshGeneration = 0;
+
+  function invalidateContext() {
+    contextGeneration += 1;
+    historyRunGeneration += 1;
+    historyRunLoading = false;
+    residueGeneration += 1;
+    residue = null;
+    residueLoading = false;
+    residueError = "";
+    historyGeneration += 1;
+    historyLoading = false;
+    historyLoadingMore = false;
+    if (historyFilterDevice) {
+      historyItems = [];
+      historyNextCursor = null;
+    }
+    starting = false;
+    deploying = false;
+    restoring = false;
+    deployConfirmOpen = false;
+    pendingDeployRun = null;
+    restoreConfirmOpen = false;
+    restoreCriticalConfirmed = false;
+    deployError = "";
+    restoreError = "";
+    statusMessage = "";
+  }
+
+  async function refreshAfterRun(repository: RunRefreshRepository, generation: number) {
+    const requestedProjectId = projectId;
+    const refreshGeneration = ++runRefreshGeneration;
+    const candidateGeneration = candidatesGeneration;
+    await Promise.all([
+      repository.listRuns
+        ? session.refreshHistory({ listRuns: repository.listRuns.bind(repository) })
+        : undefined,
+      repository.listCandidates
+        ? repository.listCandidates(requestedProjectId).then((result) => {
+            if (generation !== contextGeneration || requestedProjectId !== projectId || refreshGeneration !== runRefreshGeneration || candidateGeneration !== candidatesGeneration) return;
+            const latest = new Map(result.items.map((candidate) => [candidate.bindingId, candidate]));
+            candidates = candidates.map((candidate) => ({
+              ...candidate,
+              lastReload: latest.has(candidate.bindingId)
+                ? latest.get(candidate.bindingId)!.lastReload
+                : candidate.lastReload
+            }));
+            emit();
+          }).catch(() => {
+            if (generation !== contextGeneration || refreshGeneration !== runRefreshGeneration) return;
+            statusMessage = "操作已完成，参数上次重载信息刷新失败，请重新加载参数。";
+            emit();
+          })
+        : undefined
+    ]);
+  }
 
   function selectedCandidatesNow(): DtsReloadCandidate[] {
     return selectedBindingIds
@@ -260,6 +329,8 @@ export function createDtsReloadRunSession(
       candidates,
       loading,
       errorMessage,
+      statusMessage,
+      hasUnsavedBatch: selectedHasMeaningfulDebugChange,
       selectedBindingIds,
       debugValues,
       criticalConfirmed,
@@ -278,6 +349,7 @@ export function createDtsReloadRunSession(
       deployUpgradeReleasesPath,
       residue,
       residueLoading,
+      residueError,
       restoreConfirmOpen,
       restoring,
       restoreError,
@@ -287,6 +359,7 @@ export function createDtsReloadRunSession(
       historyLoading,
       historyLoadingMore,
       historyError,
+      historyRunLoading,
       historyFilterDevice,
       handoffBindingIds,
       selectedCandidates,
@@ -331,7 +404,7 @@ export function createDtsReloadRunSession(
     deployConfirmOpen = true;
   }
 
-  return {
+  const session: DtsReloadRunSession = {
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -345,8 +418,20 @@ export function createDtsReloadRunSession(
 
     selectProject(nextProjectId) {
       if (projectId === nextProjectId) return;
+      invalidateContext();
       projectId = nextProjectId;
       handoffBindingIds = null;
+      candidates = [];
+      selectedBindingIds = [];
+      debugValues = {};
+      criticalConfirmed = false;
+      run = null;
+      loading = false;
+      errorMessage = "";
+      historyItems = [];
+      historyNextCursor = null;
+      historyError = "";
+      writeRunId(null);
       // Invalidate any in-flight candidate load for the previous project immediately.
       candidatesGeneration += 1;
       emit();
@@ -354,6 +439,8 @@ export function createDtsReloadRunSession(
 
     async loadCandidates(repository) {
       const generation = ++candidatesGeneration;
+      const requestContext = contextGeneration;
+      const requestHistory = historyRunGeneration;
       const requestedProjectId = projectId;
       if (!requestedProjectId) {
         candidates = [];
@@ -367,13 +454,13 @@ export function createDtsReloadRunSession(
         const result = await repository.listCandidates(requestedProjectId);
         if (generation !== candidatesGeneration) return;
         candidates = result.items;
-        selectedBindingIds = [];
-        debugValues = {};
+        const candidateIds = new Set(candidates.map((candidate) => candidate.bindingId));
+        selectedBindingIds = selectedBindingIds.filter((id) => candidateIds.has(id));
         const existingRunId = readRunId();
-        if (existingRunId) {
+        if (existingRunId && !run && !historyRunLoading) {
           try {
             const existing = await repository.getRun(existingRunId);
-            if (generation !== candidatesGeneration) return;
+            if (generation !== candidatesGeneration || requestContext !== contextGeneration || requestHistory !== historyRunGeneration) return;
             if (existing.projectId === requestedProjectId) {
               run = existing;
               adoptRunTarget(existing);
@@ -381,11 +468,11 @@ export function createDtsReloadRunSession(
               return;
             }
           } catch {
+            if (generation !== candidatesGeneration || requestContext !== contextGeneration || requestHistory !== historyRunGeneration) return;
             writeRunId(null);
           }
           if (generation !== candidatesGeneration) return;
         }
-        run = null;
         emit();
       } catch (error: unknown) {
         if (generation !== candidatesGeneration) return;
@@ -445,7 +532,7 @@ export function createDtsReloadRunSession(
 
     confirmCandidateDebugValue(bindingId, debugValue) {
       const candidate = candidates.find((item) => item.bindingId === bindingId);
-      if (!candidate) return "参数不存在或不可调试。";
+      if (!candidate?.debuggable) return "参数不存在或不可调试。";
       if (!hasMeaningfulDebugChange(debugValue, candidate.baselineValue, candidate.resolvedValueShape)) {
         return debugValue.trim()
           ? "调试值与库基线相同，无需加入本轮。"
@@ -469,7 +556,10 @@ export function createDtsReloadRunSession(
 
     async start(repository) {
       const selected = cachedSnapshot.selectedCandidates;
-      if (starting || selected.length === 0) return;
+      if (starting || deploying || restoring || loading || !projectId || selected.length === 0) return;
+      const generation = contextGeneration;
+      const requestedHistory = historyRunGeneration;
+      const requestedProjectId = projectId;
 
       if (!cachedSnapshot.selectedHasMeaningfulDebugChange) {
         errorMessage = "本轮调试值均与库基线相同或为空，请先修改后再下发。";
@@ -498,10 +588,11 @@ export function createDtsReloadRunSession(
 
       starting = true;
       errorMessage = "";
+      statusMessage = "";
       emit();
       try {
         const started = await repository.startRun({
-          projectId,
+          projectId: requestedProjectId,
           targets: selected.map((candidate) => {
             const pin = candidate.protectedReferencePin;
             return {
@@ -525,20 +616,26 @@ export function createDtsReloadRunSession(
             ? { confirmationToken: SENSITIVE_RELOAD_CONFIRMATION_TOKEN }
             : {})
         });
+        if (generation !== contextGeneration || requestedHistory !== historyRunGeneration) return;
         run = started;
         writeRunId(started.id);
+        statusMessage = "预检流程已结束，请核对运行结果。";
         if (started.status === "validated" && cachedSnapshot.deployReady) {
           openDeployConfirmInternal(started);
         } else if (started.status === "validated" && !cachedSnapshot.deployReady) {
-          errorMessage = "预检已通过。请先连接 Bridge 并检测设备目标后再确认部署。";
+          statusMessage = "预检已通过。请先连接 Bridge 并检测设备目标后再确认部署。";
         }
         emit();
+        await refreshAfterRun(repository, generation);
       } catch (error) {
+        if (generation !== contextGeneration || requestedHistory !== historyRunGeneration) return;
         errorMessage = error instanceof Error ? error.message : "启动预检失败。";
         emit();
       } finally {
-        starting = false;
-        emit();
+        if (generation === contextGeneration) {
+          starting = false;
+          emit();
+        }
       }
     },
 
@@ -559,7 +656,10 @@ export function createDtsReloadRunSession(
     async confirmDeploy(repository) {
       const deployRun =
         pendingDeployRun ?? (run?.status === "validated" || run?.status === "failed" ? run : null);
-      if (!deployRun || !cachedSnapshot.deployReady) return;
+      if (deploying || !deployRun || !cachedSnapshot.deployReady) return;
+      const generation = contextGeneration;
+      const requestedHistory = historyRunGeneration;
+      const requestedDeviceId = cachedSnapshot.deployDeviceId;
 
       deploying = true;
       deployError = "";
@@ -568,17 +668,19 @@ export function createDtsReloadRunSession(
       try {
         const deployed = await repository.deployRun({
           runId: deployRun.id,
-          deviceId: cachedSnapshot.deployDeviceId,
+          deviceId: requestedDeviceId,
           bridgeId: bridgeId.trim(),
           targetRef: targetRef.trim(),
           protocol,
           // The one and only place this token may be attached (explicit confirm command).
           confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
         });
+        if (generation !== contextGeneration || requestedHistory !== historyRunGeneration) return;
         run = deployed;
         writeRunId(deployed.id);
         deployConfirmOpen = false;
         pendingDeployRun = null;
+        statusMessage = "设备部署流程已结束，请核对运行结果与重载证据。";
         const postWrite =
           deployed.status === "unverifiable" ||
           deployed.status === "verified" ||
@@ -588,20 +690,20 @@ export function createDtsReloadRunSession(
           residue = null;
         }
         emit();
-        try {
-          const nextResidue = await repository.getResidue(deviceId.trim());
-          residue = nextResidue;
-          emit();
-        } catch {
-          // Restore already cleared optimistically. Ordinary deploys keep prior residue on refresh failure.
-        }
+        await Promise.all([
+          session.loadResidue(repository),
+          refreshAfterRun(repository, generation)
+        ]);
       } catch (error) {
+        if (generation !== contextGeneration || requestedHistory !== historyRunGeneration) return;
         deployError = error instanceof Error ? error.message : "部署到设备失败。";
         deployUpgradeReleasesPath = readBridgeUpgradeReleasesPath(error);
         emit();
       } finally {
-        deploying = false;
-        emit();
+        if (generation === contextGeneration) {
+          deploying = false;
+          emit();
+        }
       }
     },
 
@@ -626,7 +728,9 @@ export function createDtsReloadRunSession(
     },
 
     async confirmRestore(repository) {
-      if (!projectId || !deviceId.trim()) return;
+      if (starting || deploying || restoring || !projectId || !deviceId.trim() || residueLoading || residueError) return;
+      const generation = contextGeneration;
+      const requestedHistory = historyRunGeneration;
       const restoreCritical = cachedSnapshot.restoreHasCriticalSensitive;
       if (restoreCritical && !restoreCriticalConfirmed) {
         restoreError = "critical 敏感参数恢复基线前须明确确认。";
@@ -644,26 +748,38 @@ export function createDtsReloadRunSession(
             ? { confirmationToken: SENSITIVE_RELOAD_CONFIRMATION_TOKEN }
             : {})
         });
+        if (generation !== contextGeneration || requestedHistory !== historyRunGeneration) return;
         run = restoreRun;
         writeRunId(restoreRun.id);
         restoreConfirmOpen = false;
         restoreCriticalConfirmed = false;
+        statusMessage = restoreRun.status === "validated"
+          ? "补偿性恢复预检已通过，请核对并确认部署。"
+          : "补偿性恢复预检已结束，请核对运行结果。";
         if (restoreRun.status === "validated") {
           openDeployConfirmInternal(restoreRun);
         }
         emit();
+        await refreshAfterRun(repository, generation);
       } catch (error) {
+        if (generation !== contextGeneration || requestedHistory !== historyRunGeneration) return;
         restoreError = error instanceof Error ? error.message : "启动基线恢复运行失败。";
         emit();
       } finally {
-        restoring = false;
-        emit();
+        if (generation === contextGeneration) {
+          restoring = false;
+          emit();
+        }
       }
     },
 
     async loadResidue(repository) {
       const generation = ++residueGeneration;
+      const requestContext = contextGeneration;
       const requestedDeviceId = deviceId.trim();
+      residue = null;
+      residueError = "";
+      residueLoading = false;
       if (!requestedDeviceId) {
         residue = null;
         emit();
@@ -673,11 +789,13 @@ export function createDtsReloadRunSession(
       emit();
       try {
         const item = await repository.getResidue(requestedDeviceId);
-        if (generation !== residueGeneration || requestedDeviceId !== deviceId.trim()) return;
+        if (generation !== residueGeneration || requestContext !== contextGeneration || requestedDeviceId !== deviceId.trim()) return;
         residue = item;
         emit();
-      } catch {
-        // Keep any previously shown bookkeeping if the lookup fails transiently.
+      } catch (error) {
+        if (generation !== residueGeneration || requestContext !== contextGeneration) return;
+        residueError = error instanceof Error ? error.message : "无法确认当前设备的调试残留，请重试。";
+        emit();
       } finally {
         if (generation === residueGeneration) {
           residueLoading = false;
@@ -687,6 +805,7 @@ export function createDtsReloadRunSession(
     },
 
     async refreshHistory(repository) {
+      const queryKey = ++historyGeneration;
       if (!projectId) {
         historyItems = [];
         historyNextCursor = null;
@@ -699,10 +818,10 @@ export function createDtsReloadRunSession(
         emit();
         return;
       }
-      const queryKey = ++historyGeneration;
       const requestedProjectId = projectId;
       const requestedDeviceId = deviceId.trim();
       historyLoading = true;
+      historyLoadingMore = false;
       historyNextCursor = null;
       historyItems = [];
       historyError = "";
@@ -764,15 +883,34 @@ export function createDtsReloadRunSession(
 
     setHistoryFilterDevice(value) {
       if (!deviceId.trim()) return;
+      if (historyFilterDevice === value) return;
+      historyGeneration += 1;
+      historyLoading = false;
+      historyLoadingMore = false;
       historyFilterDevice = value;
       emit();
     },
 
     async openHistoryRun(repository, runId) {
+      const generation = ++historyRunGeneration;
+      const requestContext = contextGeneration;
+      historyRunLoading = true;
       errorMessage = "";
       emit();
       try {
         const existing = await repository.getRun(runId);
+        if (generation !== historyRunGeneration || requestContext !== contextGeneration) return;
+        const previousProjectId = projectId;
+        const selection = bridgeTargetSelectionFrom(existing, protocol);
+        if (
+          (existing.projectId && existing.projectId !== projectId) ||
+          (existing.bridgeId && selection.bridgeId !== bridgeId) ||
+          (existing.targetRef && selection.targetRef !== targetRef) ||
+          (existing.deviceId && existing.deviceId !== deviceId) ||
+          selection.protocol !== protocol
+        ) invalidateContext();
+        historyRunLoading = false;
+        statusMessage = "";
         run = existing;
         writeRunId(existing.id);
         adoptRunTarget(existing);
@@ -781,12 +919,23 @@ export function createDtsReloadRunSession(
         // project. This also invalidates any in-flight candidate load for the
         // old project, which would otherwise clear the freshly opened run when
         // its project check ran against the stale project id.
-        if (existing.projectId && existing.projectId !== projectId) {
+        if (existing.projectId && existing.projectId !== previousProjectId) {
           projectId = existing.projectId;
           candidatesGeneration += 1;
+          candidates = [];
+          selectedBindingIds = [];
+          debugValues = {};
+          criticalConfirmed = false;
+          handoffBindingIds = null;
+          historyItems = [];
+          historyNextCursor = null;
+          historyError = "";
+          loading = false;
         }
         emit();
       } catch (error) {
+        if (generation !== historyRunGeneration || requestContext !== contextGeneration) return;
+        historyRunLoading = false;
         errorMessage = error instanceof Error ? error.message : "加载运行详情失败。";
         emit();
       }
@@ -794,15 +943,19 @@ export function createDtsReloadRunSession(
 
     async downloadArtifact(repository) {
       if (!run?.artifact) return null;
+      const requestedRun = run;
+      const generation = contextGeneration;
       if (run.artifactRetentionExpired) {
         errorMessage = "该运行的编译产物已超过保留期，无法下载（元数据与摘要仍可查看）。";
         emit();
         return null;
       }
       try {
-        const blob = await repository.downloadArtifact(run.id);
-        return { blob, fileName: run.artifact.fileName };
+        const blob = await repository.downloadArtifact(requestedRun.id);
+        if (generation !== contextGeneration || requestedRun.id !== run?.id) return null;
+        return { blob, fileName: requestedRun.artifact!.fileName };
       } catch (error) {
+        if (generation !== contextGeneration || requestedRun.id !== run?.id) return null;
         errorMessage = error instanceof Error ? error.message : "下载产物失败。";
         emit();
         return null;
@@ -826,21 +979,34 @@ export function createDtsReloadRunSession(
       if (sameBridges && sameHealth && nextBridgeId === bridgeId) return;
       if (!sameBridges) bridges = nextBridges;
       if (!sameHealth) bridgeHealth = health;
+      if (nextBridgeId !== bridgeId) {
+        const previousBridgeId = bridgeId;
+        // Initial bridge discovery must not cancel an authoritative run deep link.
+        if (previousBridgeId || !historyRunLoading) invalidateContext();
+        if (!deviceIdTouched) deviceId = nextBridgeId ? defaultDeviceId(nextBridgeId) : "";
+        if (previousBridgeId) targetRef = "";
+      }
       bridgeId = nextBridgeId;
       emit();
     },
 
     setProtocol(nextProtocol) {
+      if (protocol === nextProtocol) return;
+      invalidateContext();
       protocol = nextProtocol;
       emit();
     },
 
     setTargetRef(nextTargetRef) {
+      if (targetRef === nextTargetRef) return;
+      invalidateContext();
       targetRef = nextTargetRef;
       emit();
     },
 
     setDeviceId(nextDeviceId) {
+      if (deviceId === nextDeviceId) return;
+      invalidateContext();
       deviceId = nextDeviceId;
       deviceIdTouched = true;
       emit();
@@ -852,4 +1018,5 @@ export function createDtsReloadRunSession(
       emit();
     }
   };
+  return session;
 }

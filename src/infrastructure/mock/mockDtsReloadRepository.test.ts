@@ -273,11 +273,13 @@ describe("createMockDtsReloadRepository (DtsReloadRepository contract)", () => {
       triggerNodePath: "/sys/kernel/custom/reload",
       triggerPayload: "1",
       kernelLogCommand: "dmesg"
-    });
+    }, view.organisation.updatedAt);
     expect(updated.source).toBe("organisation");
     expect(updated.destinationFilename).toBe("custom.dtbo");
     const reread = await repo.getReloadConfiguration();
     expect(reread.organisation.destinationFilename).toBe("custom.dtbo");
+    await expect(repo.updateOrganisationReloadConfiguration({ ...updated, destinationFilename: "stale.dtbo" }, view.organisation.updatedAt)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await repo.getReloadConfiguration()).organisation.destinationFilename).toBe("custom.dtbo");
   });
 
   it("preserves mock rejection copy and details for every seeded eligibility rejection", async () => {
