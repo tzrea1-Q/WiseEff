@@ -169,6 +169,7 @@
   --z-sidebar: 40;
   --z-dropdown: 60;
   --z-xiaoze-fab: 1100;
+  --z-workbench-sheet: 1120;
   --z-xiaoze-popup: 1140;
   --z-modal-backdrop: 1150;
   --z-modal-backdrop-nested: 1160;
@@ -3307,7 +3308,7 @@ body {
   top: calc(var(--topbar-height) + 16px);
   right: 20px;
   bottom: 20px;
-  z-index: var(--z-drawer-backdrop);
+  z-index: var(--z-workbench-sheet);
   display: flex;
   flex-direction: column;
   width: min(440px, calc(100vw - var(--sidebar-width) - 40px));

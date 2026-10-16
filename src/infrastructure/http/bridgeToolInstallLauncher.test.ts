@@ -64,4 +64,24 @@ describe("bridgeToolInstallLauncher", () => {
     rememberBridgeToolInstallConfirm(shim);
     expect(shouldConfirmBridgeToolInstall(shim)).toBe(false);
   });
+
+  it("reports localized installation failures immediately instead of retrying them as network failures", async () => {
+    const failed = { ok: true, toolsInstall: { status: "failed", error: "下载校验失败" } };
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => failed });
+    const onProgress = vi.fn();
+    await expect(pollBridgeToolInstall({ fetchImpl, protocol: "adb", onProgress })).rejects.toThrow("下载校验失败");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(onProgress).toHaveBeenCalledWith(failed);
+  });
+
+  it("waits for a new attempt instead of treating the previous failure as the retry result", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true,
+        toolsInstall: { status: "failed", updatedAt: "old", error: "上次安装失败" } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true,
+        toolsInstall: { status: "succeeded", updatedAt: "new" }, tools: { adb: { available: true } } }) });
+    await expect(pollBridgeToolInstall({ fetchImpl, protocol: "adb", previousInstallUpdatedAt: "old", intervalMs: 0 }))
+      .resolves.toMatchObject({ tools: { adb: { available: true } } });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
 });

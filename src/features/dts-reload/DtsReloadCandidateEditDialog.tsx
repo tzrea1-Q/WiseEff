@@ -8,6 +8,7 @@ import {
   dtsReloadStatusLabels,
   type DtsReloadCandidate
 } from "@/domain/dtsReload/types";
+import { describeReloadValueShapeAuthoring } from "@/domain/dtsReload/valueShape";
 import { DtsReloadCandidateMeaning } from "@/features/dts-reload/DtsReloadCandidateMeaning";
 
 export type DtsReloadCandidateEditDialogProps = {
@@ -16,6 +17,7 @@ export type DtsReloadCandidateEditDialogProps = {
   initialDebugValue: string;
   alreadyInBatch: boolean;
   onClose: () => void;
+  onDirtyChange: (dirty: boolean) => void;
   /** Persist debug value into the reload batch; return an error message to keep the sheet open. */
   onConfirm: (debugValue: string) => string | null;
   /** Open a past reload run from the candidate's last-reload projection. */
@@ -48,6 +50,7 @@ export function DtsReloadCandidateEditDialog({
   initialDebugValue,
   alreadyInBatch,
   onClose,
+  onDirtyChange,
   onConfirm,
   onOpenHistoryRun
 }: DtsReloadCandidateEditDialogProps) {
@@ -58,7 +61,8 @@ export function DtsReloadCandidateEditDialog({
   useEffect(() => {
     setDebugValue(initialDebugValue);
     setErrorMessage("");
-  }, [candidate.bindingId, initialDebugValue]);
+    onDirtyChange(false);
+  }, [candidate.bindingId, initialDebugValue, onDirtyChange]);
 
   const title = candidate.displayName || candidate.propertyKey;
   const description = [candidate.module.trim() || "未分类", candidate.nodePath ?? "无路径"]
@@ -72,6 +76,7 @@ export function DtsReloadCandidateEditDialog({
         : null;
   const canSubmit = hasMeaningfulDebugChange(debugValue, candidate.baselineValue, candidate.resolvedValueShape);
   const submitLabel = alreadyInBatch ? "更新本轮" : "加入本轮重载";
+  const example = describeReloadValueShapeAuthoring(candidate.resolvedValueShape).placeholder;
 
   const submit = () => {
     if (!canSubmit) return;
@@ -87,11 +92,12 @@ export function DtsReloadCandidateEditDialog({
     <WorkbenchSheet
       open
       onClose={onClose}
+      closeLabel="关闭参数编辑"
       title={title}
       description={description}
       footer={
         <div className="draft-sheet-footer">
-          <span>确认后写入「本轮重载」托盘，可继续批量下发。</span>
+          <span>加入本轮后保留修改；启动预检后，还需确认部署到设备。</span>
           <div className="draft-sheet-footer-actions">
             <button type="button" className="button subtle" onClick={onClose}>
               取消
@@ -117,15 +123,38 @@ export function DtsReloadCandidateEditDialog({
       }
     >
       <div className="draft-sheet-stack dts-reload-candidate-edit">
+        <div className="dts-reload-candidate-edit__value">
+          {sensitive ? <p className="dts-reload-sensitive-badge">{sensitive} · 部署前请核对设备与节点</p> : null}
+          <span className="field-label">库基线 → 调试值</span>
+          <ParameterValueDiff baseValue={candidate.baselineValue ?? ""} targetValue={debugValue} />
+          <label className="field-label" htmlFor={fieldId}>
+            调试值{candidate.unit ? `（${candidate.unit}）` : ""}
+            {debugValue !== initialDebugValue ? <small role="status"> · 尚未加入本轮</small> : null}
+          </label>
+          <textarea
+            id={fieldId}
+            aria-label={`${title} 调试值`}
+            aria-describedby={`${fieldId}-format`}
+            rows={2}
+            value={debugValue}
+            placeholder={example}
+            onChange={(event) => {
+              setDebugValue(event.target.value);
+              setErrorMessage("");
+              onDirtyChange(event.target.value !== initialDebugValue);
+            }}
+          />
+          <p id={`${fieldId}-format`} className="dts-reload-run-tray__meta">
+            {candidate.valueShapeKind ?? "DTS 值"} · {constraintSummary(candidate.constraints)}
+            {example ? <> · 示例 <code>{example}</code></> : " · 空属性不需要赋值"}
+          </p>
+          {errorMessage ? <p role="alert" className="node-row-error">{errorMessage}</p> : null}
+        </div>
+        <details className="dts-reload-candidate-edit__details">
+        <summary>参数说明与约束</summary>
         <div className="debug-detail-card">
-          <div className="debug-detail-head">
-            <div>
-              <strong>{title}</strong>
-              <code>{candidate.propertyKey}</code>
-            </div>
-            {sensitive ? <span className="dts-reload-sensitive-badge">{sensitive}</span> : null}
-          </div>
           <div className="debug-detail-fields">
+            <div className="debug-detail-row"><span>属性</span><code>{candidate.propertyKey}</code></div>
             <div className="debug-detail-row">
               <span>模块</span>
               <strong>{candidate.module.trim() || "未分类"}</strong>
@@ -153,11 +182,12 @@ export function DtsReloadCandidateEditDialog({
           meaning={candidate.description}
           headingId={`${fieldId}-meaning`}
         />
+        </details>
 
+        {candidate.lastReload ? <details className="dts-reload-candidate-edit__details">
+        <summary>上次重载 · {dtsReloadStatusLabels[candidate.lastReload.outcome]}</summary>
         <section className="dts-reload-candidate-edit__history" aria-labelledby={`${fieldId}-history`}>
           <h3 id={`${fieldId}-history`}>上次重载</h3>
-          {candidate.lastReload ? (
-            <>
               <div className="debug-detail-fields">
                 <div className="debug-detail-row">
                   <span>调试值</span>
@@ -183,42 +213,13 @@ export function DtsReloadCandidateEditDialog({
                   className="button subtle dts-reload-candidate-edit__history-open"
                   onClick={() => {
                     onOpenHistoryRun(candidate.lastReload!.runId);
-                    onClose();
                   }}
                 >
                   查看该次运行详情
                 </button>
               ) : null}
-            </>
-          ) : (
-            <p className="dts-reload-candidate-edit__history-empty">暂无上次重载记录。</p>
-          )}
         </section>
-
-        <div className="dts-reload-candidate-edit__value">
-          <ParameterValueDiff
-            baseValue={candidate.baselineValue ?? ""}
-            targetValue={debugValue}
-          />
-          <label className="field-label" htmlFor={fieldId}>
-            调试值
-          </label>
-          <textarea
-            id={fieldId}
-            aria-label={`${title} 调试值`}
-            rows={3}
-            value={debugValue}
-            onChange={(event) => {
-              setDebugValue(event.target.value);
-              setErrorMessage("");
-            }}
-          />
-          {errorMessage ? (
-            <p role="alert" className="node-row-error">
-              {errorMessage}
-            </p>
-          ) : null}
-        </div>
+        </details> : null}
       </div>
     </WorkbenchSheet>
   );

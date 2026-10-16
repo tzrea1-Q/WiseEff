@@ -215,6 +215,42 @@ describe("nodeDebuggingSession", () => {
     expect(session.getSnapshot().events.at(-1)?.status).toBe("已回读");
   });
 
+  it("retains complete complex output and command diagnostics for expandable history", async () => {
+    const fullValue = JSON.stringify({ values: Array.from({ length: 80 }, (_, index) => index) });
+    const actions = createActions({
+      readNode: vi.fn().mockResolvedValue({
+        ok: true,
+        value: fullValue,
+        stdout: `${fullValue}\n`,
+        stderr: "read warning",
+        operation: operation({ operationType: "read", readValue: fullValue, valueKind: "complex", valueFormat: "json" })
+      }),
+      writeNode: vi.fn().mockResolvedValue({
+        ok: true,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
+        value: fullValue,
+        writeResult: { ok: true, stdout: "write complete\n", stderr: "write warning" },
+        readResult: { ok: true, stdout: `${fullValue}\n`, stderr: "readback warning" },
+        operation: operation({ requestedValue: fullValue, readbackValue: fullValue, valueKind: "complex", valueFormat: "json" })
+      })
+    });
+    const session = createNodeDebuggingSession({
+      initialParameters: [parameter({ valueKind: "complex", valueFormat: "json", targetValue: fullValue })],
+      readProtocol: () => "hdc",
+      writeProtocol: () => undefined
+    });
+    await session.detect(actions, offlineProbe);
+    await vi.waitFor(() => expect(session.getSnapshot().events.some((event) => event.stdout === `${fullValue}\n`)).toBe(true));
+    expect(session.getSnapshot().events.find((event) => event.action === "read")?.stderr).toBe("read warning");
+    await session.requestWrite("dbg-charge-input-current", actions);
+    const event = session.getSnapshot().events.at(-1);
+    expect(event?.stdout).toContain("write complete\n");
+    expect(event?.stdout).toContain(`${fullValue}\n`);
+    expect(event?.stderr).toBe("write warning\nreadback warning");
+    expect(event?.valuePreview).toBeDefined();
+  });
+
   it("preserves the previous current value after readback failure and retries with a linked read only", async () => {
     const readNode = vi.fn()
       .mockResolvedValueOnce({ ok: true, value: "3600" })

@@ -1,0 +1,314 @@
+.node-debugging-page {
+  --navigator-workbench-navigator-width: calc(3 * var(--space-16) + var(--space-8));
+}
+
+.node-debugging-page .navigator-workbench__toolbar {
+  padding-inline: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.node-debugging-page .navigator-workbench__controls {
+  align-items: center;
+}
+
+.node-debugging-page .navigator-workbench__task > .parameters-table {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.node-debugging-page .parameters-table-grid.node-debugging-grid {
+  table-layout: fixed;
+  min-width: calc(10 * var(--space-16) + var(--space-12));
+}
+
+.node-debugging-page .parameters-table-grid.node-debugging-grid th,
+.node-debugging-page .parameters-table-grid.node-debugging-grid td {
+  padding: var(--space-3);
+}
+
+.node-debugging-page .parameters-table-grid.node-debugging-grid :is(th, td):first-child {
+  width: var(--space-10);
+  min-width: var(--space-10);
+}
+
+.node-debugging-page .parameters-table-grid.node-debugging-grid :is(th, td):nth-child(2) {
+  left: var(--space-10);
+  width: 26%;
+}
+
+.node-debugging-page .parameters-table-grid.node-debugging-grid :is(th, td):nth-child(3) {
+  width: 17%;
+}
+
+.node-debugging-page .parameters-table-grid.node-debugging-grid :is(th, td):nth-child(6) {
+  width: calc(var(--space-16) + var(--space-8));
+  min-width: calc(var(--space-16) + var(--space-8));
+}
+
+.node-debugging-page .parameters-table-grid.node-debugging-grid :is(th, td):last-child {
+  width: var(--space-16);
+  min-width: var(--space-16);
+}
+
+.node-debugging-page .node-value-placeholder,
+.node-detail-editor .node-detail-target-hint {
+  color: var(--text-muted);
+}
+
+.node-debugging-page .node-status-untested {
+  border-color: transparent;
+  background: transparent;
+  font-weight: 400;
+}
+
+.node-detail-editor .workbench-sheet-head,
+.node-detail-editor .workbench-sheet-body {
+  padding: var(--space-4);
+}
+
+.node-detail-editor .workbench-sheet-head h2 {
+  line-height: var(--leading-lg);
+}
+
+.node-detail-editor .debug-detail-head {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.node-detail-editor .node-detail-device {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+}
+
+.node-detail-editor .node-detail-device strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.node-detail-editor .node-detail-protocol {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  padding: var(--space-1) var(--space-2);
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-code);
+}
+
+.node-detail-editor .node-detail-meta-label,
+.node-detail-editor .node-detail-path__feedback {
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+}
+
+.node-detail-editor .node-detail-path {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.node-detail-editor .node-detail-path__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.node-detail-editor .node-detail-path__value {
+  display: block;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-family: var(--font-code);
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.node-detail-editor .node-detail-path__segment {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.node-detail-editor .node-detail-path__unavailable {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.node-debugging-page .node-operation-detail code {
+  overflow-wrap: anywhere;
+  font-family: var(--font-code);
+}
+
+.node-detail-editor .debug-detail-fields {
+  padding: 0;
+  background: transparent;
+}
+
+.node-detail-editor .debug-detail-card,
+.node-detail-editor .workbench-sheet-head p,
+.node-detail-editor .debug-detail-row > span,
+.node-detail-editor .debug-detail-row > strong,
+.node-detail-editor .field-label,
+.node-detail-editor .node-target-editor,
+.node-detail-editor .node-detail-disclosure > summary,
+.node-detail-editor .node-detail-target-hint,
+.node-detail-editor .node-detail-risk,
+.node-detail-editor .node-status-badge,
+.node-detail-editor .draft-sheet-footer > span {
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+}
+
+.node-detail-editor .debug-detail-row {
+  align-items: baseline;
+}
+
+.node-detail-editor .debug-detail-row > span {
+  flex-shrink: 0;
+  font-weight: 400;
+}
+
+.node-detail-editor .debug-detail-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+  font-weight: 500;
+}
+
+.node-detail-editor .node-detail-target {
+  display: grid;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+  border-block: var(--stroke-hairline) solid var(--border);
+}
+
+.node-detail-editor textarea.node-target-editor {
+  min-height: calc(3 * var(--leading-base) + 2 * var(--space-2));
+  max-height: min(40vh, calc(16 * var(--leading-base) + 2 * var(--space-2)));
+  resize: vertical;
+  overflow: auto;
+  font-family: var(--font-code);
+}
+
+.node-detail-editor .node-detail-risk {
+  color: var(--text-muted);
+}
+
+.node-detail-editor .node-detail-risk--high {
+  color: var(--danger);
+}
+
+.node-detail-editor .node-detail-disclosure {
+  padding-top: var(--space-3);
+  border-top: var(--stroke-hairline) solid var(--border);
+}
+
+.node-detail-editor .node-detail-disclosure > summary,
+.node-debugging-page .node-operation-detail > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.node-debugging-page .node-operation-detail > summary {
+  font-size: var(--text-sm);
+}
+
+.node-detail-editor .node-detail-disclosure[open] > summary {
+  margin-bottom: var(--space-3);
+}
+
+.node-detail-editor .node-write-format-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.node-detail-editor .node-write-format-example {
+  border: 0;
+  background: var(--surface-sunken);
+}
+
+.node-detail-editor .draft-sheet-footer {
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.node-detail-editor .draft-sheet-footer > span {
+  font-weight: 400;
+}
+
+.node-detail-editor .workbench-sheet-foot {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+}
+
+.node-detail-editor .draft-sheet-footer-actions {
+  justify-content: flex-end;
+}
+
+.node-debugging-page .node-operation-detail {
+  margin-top: var(--space-2);
+}
+
+.node-debugging-page .node-operation-detail dl {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+
+.node-debugging-page .node-operation-detail dl > div {
+  display: grid;
+  grid-template-columns: var(--space-16) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.node-debugging-page .node-operation-detail dt {
+  color: var(--text-muted);
+}
+
+.node-debugging-page .node-operation-detail dd {
+  margin: 0;
+}
+
+.node-debugging-page .node-operation-detail pre {
+  max-height: calc(3 * var(--space-16));
+  padding: var(--space-3);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-code);
+  font-size: var(--text-sm);
+}
+
+.node-debugging-page .operation-history-text {
+  min-width: 0;
+}
+
+.node-debugging-page .operation-history-time {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}

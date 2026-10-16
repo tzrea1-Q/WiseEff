@@ -69,7 +69,7 @@ describe("DtsReloadCandidateTable", () => {
     renderTable({ rows: [candidate(), candidate({ bindingId: "blocked", displayName: "Blocked", debuggable: false, blockReason: "unsupported-value-shape" })], onEdit });
     const editable = screen.getByRole("button", { name: "编辑 Watchdog" });
     const blocked = screen.getByRole("button", { name: "编辑 Blocked" });
-    expect(editable.closest("tr")?.querySelector("[data-row-status]")).toHaveTextContent("可调试");
+    expect(editable.closest("tr")?.querySelector("[data-row-status]")).toBeNull();
     expect(blocked.closest("tr")?.querySelector("[data-row-status]"))
       .toHaveTextContent(dtsReloadBlockReasonLabels["unsupported-value-shape"]);
     expect(blocked).toBeDisabled();

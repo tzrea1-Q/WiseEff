@@ -160,6 +160,7 @@ export async function requestLocalBridgeConnect(
   const webOrigin = input.webOrigin ?? resolveBridgeWebOrigin();
   try {
     const response = await fetchImpl(resolveLocalBridgeConnectUrl(), {
+      signal: AbortSignal.timeout(5000),
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -237,7 +238,7 @@ export async function probeLocalBridgeHealthDetailed(
   pageOrigin: string = typeof window === "undefined" ? "" : window.location.origin
 ): Promise<LocalBridgeProbeResult> {
   try {
-    const response = await fetchImpl(resolveLocalBridgeHealthUrl());
+    const response = await fetchImpl(resolveLocalBridgeHealthUrl(), { signal: AbortSignal.timeout(3000) });
     if (!response.ok) {
       return { health: null, reachability: "offline" };
     }

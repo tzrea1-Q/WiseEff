@@ -37,6 +37,15 @@ import {
   pickBridgeReleaseForHost
 } from "../infrastructure/http/bridgeReleaseSelection";
 import { presentError, presentLocalBridgeError } from "../infrastructure/http/presentError";
+import "./local-device-bridge.css";
+
+type BridgeRefreshResult = {
+  connected: boolean;
+  health?: LocalBridgeHealthState | null;
+  registeredBridgeIds?: string[];
+  listingFailed?: boolean;
+  listingError?: string;
+};
 
 export type LocalDeviceBridgePanelState = {
   bridges: DeviceBridgeRecord[];
@@ -81,6 +90,7 @@ export function LocalDeviceBridgePanel({
   const [portableReleases, setPortableReleases] = useState<DeviceBridgeReleaseItem[]>([]);
   const [pairingCode, setPairingCode] = useState<DeviceBridgePairingCode | null>(null);
   const [pairingCodeLoading, setPairingCodeLoading] = useState(false);
+  const [pairingError, setPairingError] = useState<{ message: string; detail: string } | null>(null);
   const [panelError, setPanelError] = useState<{ source: "local" | "server"; error: unknown } | null>(null);
   const [connectError, setConnectError] = useState("");
   const [renameDraftById, setRenameDraftById] = useState<Record<string, string>>({});
@@ -93,157 +103,173 @@ export function LocalDeviceBridgePanel({
   const lastEmittedBridgeStateRef = useRef<LocalDeviceBridgePanelState | null>(null);
   const bridgesRef = useRef<DeviceBridgeRecord[]>(bridgesOverride ?? []);
   const localProbeFailedRef = useRef(false);
+  const refreshInFlightRef = useRef<Promise<BridgeRefreshResult> | null>(null);
+  const pairingRequestRef = useRef<Promise<void> | null>(null);
+  const installRequestRef = useRef<Promise<void> | null>(null);
 
   const loadInstallReleases = useCallback(async () => {
-    setReleasesLoading(true);
-    try {
-      const manifest = await listReleases().catch(() => null);
-      // `.catch` only covers rejections; a resolving client can still hand back a
-      // body without `items` (misrouted proxy/error JSON). Treat that as "no manifest"
-      // instead of letting `pickBridgeReleaseForHost` explode on `undefined.filter`.
-      const items = Array.isArray(manifest?.items) ? manifest.items : null;
-      const hostTarget = detectBrowserBridgeTarget();
-      const primary = items ? pickBridgeReleaseForHost(items, hostTarget) : null;
-      const nextAlternates = items ? listInstallerBridgeReleases(items, primary) : [];
-      const nextPortables = items ? listPortableBridgeReleases(items, null) : [];
-      const nextRecommended =
-        typeof manifest?.recommendedVersion === "string" && manifest.recommendedVersion.trim()
-          ? manifest.recommendedVersion
-          : null;
-      setRecommendedVersion((current) => (current === nextRecommended ? current : nextRecommended));
-      setHostRelease((current) =>
-        current?.downloadUrl === primary?.downloadUrl && current?.version === primary?.version ? current : primary
-      );
-      setInstallerAlternates((current) =>
-        current.length === nextAlternates.length &&
-        current.every((item, index) => item.downloadUrl === nextAlternates[index]?.downloadUrl)
-          ? current
-          : nextAlternates
-      );
-      setPortableReleases((current) =>
-        current.length === nextPortables.length &&
-        current.every((item, index) => item.downloadUrl === nextPortables[index]?.downloadUrl)
-          ? current
-          : nextPortables
-      );
-      installReleasesLoadedRef.current = true;
-    } finally {
-      setReleasesLoading(false);
-    }
+    if (installRequestRef.current) return installRequestRef.current;
+    const request = (async () => {
+      setReleasesLoading(true);
+      try {
+        const manifest = await listReleases().catch(() => null);
+        // `.catch` only covers rejections; a resolving client can still hand back a
+        // body without `items` (misrouted proxy/error JSON). Treat that as "no manifest"
+        // instead of letting `pickBridgeReleaseForHost` explode on `undefined.filter`.
+        const items = Array.isArray(manifest?.items) ? manifest.items : null;
+        const hostTarget = detectBrowserBridgeTarget();
+        const primary = items ? pickBridgeReleaseForHost(items, hostTarget) : null;
+        const nextAlternates = items ? listInstallerBridgeReleases(items, primary) : [];
+        const nextPortables = items ? listPortableBridgeReleases(items, null) : [];
+        const nextRecommended =
+          typeof manifest?.recommendedVersion === "string" && manifest.recommendedVersion.trim()
+            ? manifest.recommendedVersion
+            : null;
+        setRecommendedVersion((current) => (current === nextRecommended ? current : nextRecommended));
+        setHostRelease((current) =>
+          current?.downloadUrl === primary?.downloadUrl && current?.version === primary?.version ? current : primary
+        );
+        setInstallerAlternates((current) =>
+          current.length === nextAlternates.length &&
+          current.every((item, index) => item.downloadUrl === nextAlternates[index]?.downloadUrl)
+            ? current
+            : nextAlternates
+        );
+        setPortableReleases((current) =>
+          current.length === nextPortables.length &&
+          current.every((item, index) => item.downloadUrl === nextPortables[index]?.downloadUrl)
+            ? current
+            : nextPortables
+        );
+        installReleasesLoadedRef.current = true;
+      } finally {
+        setReleasesLoading(false);
+      }
+    })();
+    installRequestRef.current = request;
+    try { await request; } finally { installRequestRef.current = null; }
   }, []);
 
   const refreshBridgeState = useCallback(
     async (options?: { silent?: boolean; connectionAttempt?: boolean }) => {
-      if (!options?.silent) {
-        setChecking(true);
-        setPanelError((current) => current?.source === "local" ? current : null);
+      if (refreshInFlightRef.current) {
+        const snapshot = await refreshInFlightRef.current;
+        if (!options?.connectionAttempt) return snapshot;
       }
-      try {
-        const probe = probeHealth ?? (() => probeLocalBridgeHealthDetailed());
-        let healthProbe: LocalBridgeProbeResult;
-        try {
-          healthProbe = await probe();
-        } catch (error) {
-          healthProbe = { health: null, reachability: "offline", error };
-        }
-        if (healthProbe.error != null) {
-          if (options?.connectionAttempt) localProbeFailedRef.current = true;
-          setPanelError((current) => options?.connectionAttempt || current?.source === "local"
-            ? { source: "local", error: healthProbe.error }
-            : current);
-        } else if (healthProbe.reachability === "ok" && healthProbe.error == null) {
-          if (localProbeFailedRef.current) {
-            localProbeFailedRef.current = false;
-            setConnectError("");
-          }
-          setPanelError((current) => current?.source === "local" ? null : current);
-        }
-        const nextHealth = healthProbe.health;
-        setHealthReachability((current) =>
-          current === healthProbe.reachability ? current : healthProbe.reachability
-        );
-        setHealth((current) =>
-          current?.updatedAt === nextHealth?.updatedAt &&
-          current?.connected === nextHealth?.connected &&
-          current?.paired === nextHealth?.paired &&
-          current?.bridgeId === nextHealth?.bridgeId &&
-          current?.lastError === nextHealth?.lastError
-            ? current
-            : nextHealth
-        );
-
-        let nextBridges: DeviceBridgeRecord[];
-        let listingFailed = false;
-        let listingError: string | undefined;
-        try {
-          nextBridges =
-            bridgesOverride !== undefined && bridgesOverride !== null
-              ? bridgesOverride
-              : await (listBridges ?? (() => listMyBridges()))();
-        } catch (error) {
-          listingFailed = true;
-          listingError = presentError(error, "设备代理列表加载失败，请刷新代理状态后重试。");
-          nextBridges = bridgesRef.current;
-          setPanelError({ source: "server", error });
-        }
-
-        if (!listingFailed) {
-          setBridgeListLoaded(true);
-          setBridges((current) =>
-            current.length === nextBridges.length &&
-            current.every((bridge, index) => {
-              const next = nextBridges[index];
-              return (
-                next &&
-                bridge.id === next.id &&
-                bridge.machineLabel === next.machineLabel &&
-                bridge.lastSeenAt === next.lastSeenAt &&
-                bridge.revokedAt === next.revokedAt
-              );
-            })
-              ? current
-              : nextBridges
-          );
-          setRenameDraftById((current) => {
-            const nextDraft = Object.fromEntries(nextBridges.map((bridge) => [bridge.id, bridge.machineLabel]));
-            const currentKeys = Object.keys(current);
-            const nextKeys = Object.keys(nextDraft);
-            if (
-              currentKeys.length === nextKeys.length &&
-              nextKeys.every((key) => current[key] === nextDraft[key])
-            ) {
-              return current;
-            }
-            return nextDraft;
-          });
-        }
-
-        // Fetch the install catalog once so an already-running old Bridge can be
-        // compared with recommendedVersion. Silent polls must not re-hit /releases.
-        if (!installReleasesLoadedRef.current && !options?.silent) {
-          await loadInstallReleases();
-        }
-        const registeredBridgeIds = nextBridges.filter((bridge) => !bridge.revokedAt).map((bridge) => bridge.id);
-        return {
-          nextHealth,
-          nextBridges,
-          health: nextHealth,
-          registeredBridgeIds,
-          listingFailed,
-          listingError,
-          connected: Boolean(
-            !listingFailed &&
-              nextHealth?.connected &&
-              nextBridges.some((bridge) => !bridge.revokedAt && bridge.id === nextHealth.bridgeId)
-          )
-        };
-      } catch (error) {
-        setPanelError({ source: "server", error });
-        return { connected: false, listingFailed: true, listingError: presentError(error, "设备代理状态加载失败，请刷新代理状态后重试。") };
-      } finally {
+      const request = (async (): Promise<BridgeRefreshResult> => {
         if (!options?.silent) {
-          setChecking(false);
+          setChecking(true);
+          setPanelError((current) => current?.source === "local" ? current : null);
         }
+        try {
+          const probe = probeHealth ?? (() => probeLocalBridgeHealthDetailed());
+          let healthProbe: LocalBridgeProbeResult;
+          try {
+            healthProbe = await probe();
+          } catch (error) {
+            healthProbe = { health: null, reachability: "offline", error };
+          }
+          if (healthProbe.error != null) {
+            if (options?.connectionAttempt) localProbeFailedRef.current = true;
+            setPanelError((current) => options?.connectionAttempt || current?.source === "local"
+              ? { source: "local", error: healthProbe.error }
+              : current);
+          } else if (healthProbe.reachability === "ok" && healthProbe.error == null) {
+            if (localProbeFailedRef.current) {
+              localProbeFailedRef.current = false;
+              setConnectError("");
+            }
+            setPanelError((current) => current?.source === "local" ? null : current);
+          }
+          const nextHealth = healthProbe.health;
+          setHealthReachability((current) =>
+            current === healthProbe.reachability ? current : healthProbe.reachability
+          );
+          setHealth((current) =>
+            JSON.stringify(current) === JSON.stringify(nextHealth)
+              ? current
+              : nextHealth
+          );
+
+          let nextBridges: DeviceBridgeRecord[];
+          let listingFailed = false;
+          let listingError: string | undefined;
+          try {
+            nextBridges =
+              bridgesOverride !== undefined && bridgesOverride !== null
+                ? bridgesOverride
+                : await (listBridges ?? (() => listMyBridges()))();
+          } catch (error) {
+            listingFailed = true;
+            listingError = presentError(error, "设备代理列表加载失败，请刷新代理状态后重试。");
+            nextBridges = bridgesRef.current;
+            setPanelError({ source: "server", error });
+          }
+
+          if (!listingFailed) {
+            setBridgeListLoaded(true);
+            setBridges((current) =>
+              current.length === nextBridges.length &&
+              current.every((bridge, index) => {
+                const next = nextBridges[index];
+                return (
+                  next &&
+                  bridge.id === next.id &&
+                  bridge.machineLabel === next.machineLabel &&
+                  bridge.lastSeenAt === next.lastSeenAt &&
+                  bridge.revokedAt === next.revokedAt
+                );
+              })
+                ? current
+                : nextBridges
+            );
+            setRenameDraftById((current) => {
+              const nextDraft = Object.fromEntries(nextBridges.map((bridge) => {
+                const previous = bridgesRef.current.find((item) => item.id === bridge.id);
+                const draft = current[bridge.id];
+                return [bridge.id, draft !== undefined && draft !== previous?.machineLabel ? draft : bridge.machineLabel];
+              }));
+              const currentKeys = Object.keys(current);
+              const nextKeys = Object.keys(nextDraft);
+              if (
+                currentKeys.length === nextKeys.length &&
+                nextKeys.every((key) => current[key] === nextDraft[key])
+              ) {
+                return current;
+              }
+              return nextDraft;
+            });
+          }
+
+          // Fetch the install catalog once so an already-running old Bridge can be
+          // compared with recommendedVersion. Silent polls must not re-hit /releases.
+          if (!installReleasesLoadedRef.current && !options?.silent) {
+            await loadInstallReleases();
+          }
+          const registeredBridgeIds = nextBridges.filter((bridge) => !bridge.revokedAt).map((bridge) => bridge.id);
+          return {
+            health: nextHealth,
+            registeredBridgeIds,
+            listingFailed,
+            listingError,
+            connected: Boolean(
+              !listingFailed &&
+                nextHealth?.connected &&
+                nextBridges.some((bridge) => !bridge.revokedAt && bridge.id === nextHealth.bridgeId)
+            )
+          };
+        } catch (error) {
+          setPanelError({ source: "server", error });
+          return { connected: false, listingFailed: true, listingError: presentError(error, "设备代理状态加载失败，请刷新代理状态后重试。") };
+        } finally {
+          if (!options?.silent) {
+            setChecking(false);
+          }
+        }
+      })();
+      refreshInFlightRef.current = request;
+      try { return await request; } finally {
+        if (refreshInFlightRef.current === request) refreshInFlightRef.current = null;
       }
     },
     [bridgesOverride, listBridges, loadInstallReleases, probeHealth]
@@ -257,7 +283,11 @@ export function LocalDeviceBridgePanel({
     if (bridgesOverride !== undefined && bridgesOverride !== null) {
       setBridges(bridgesOverride);
       setBridgeListLoaded(true);
-      setRenameDraftById(Object.fromEntries(bridgesOverride.map((bridge) => [bridge.id, bridge.machineLabel])));
+      setRenameDraftById((current) => Object.fromEntries(bridgesOverride.map((bridge) => {
+        const previous = bridgesRef.current.find((item) => item.id === bridge.id);
+        return [bridge.id, current[bridge.id] !== undefined && current[bridge.id] !== previous?.machineLabel
+          ? current[bridge.id] : bridge.machineLabel];
+      })));
     }
   }, [bridgesOverride]);
 
@@ -300,59 +330,70 @@ export function LocalDeviceBridgePanel({
   }, [bridges, health, panelStatus, onBridgeStateChange]);
 
   useEffect(() => {
-    if (
-      panelStatus !== "missing_bridge" &&
-      panelStatus !== "bridge_blocked" &&
-      panelStatus !== "not_running" &&
-      panelStatus !== "not_connected"
-    ) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      void refreshBridgeState({ silent: true });
-    }, 3000);
-
-    return () => window.clearInterval(timer);
+    const refreshVisible = () => {
+      if (document.visibilityState !== "hidden") void refreshBridgeState({ silent: true });
+    };
+    const timer = window.setInterval(refreshVisible, 3000);
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
   }, [panelStatus, refreshBridgeState]);
 
-  useEffect(() => {
-    if (
-      !shouldFetchBridgePairingCode({
-        panelStatus,
-        pairingStale,
-        pairingAuthFailure: pairingAuthFailure,
-        health,
-        targetServerUrl: resolveBridgeServerUrl()
-      })
-    ) {
-      setPairingCodeLoading(false);
-      return;
-    }
-
-    let cancelled = false;
+  const pairingCodeNeeded = shouldFetchBridgePairingCode({
+    panelStatus,
+    pairingStale,
+    pairingAuthFailure,
+    health,
+    targetServerUrl: resolveBridgeServerUrl()
+  });
+  const refreshPairingCode = useCallback(async () => {
+    if (pairingRequestRef.current) return pairingRequestRef.current;
     setPairingCodeLoading(true);
-    void (createPairingCodeProp ?? createPairingCode)()
+    setPairingError(null);
+    const request = (createPairingCodeProp ?? createPairingCode)()
       .then((code) => {
-        if (!cancelled) {
-          setPairingCode(code);
-        }
+        setPairingCode(code);
       })
       .catch((error) => {
-        if (!cancelled) {
-          setPanelError({ source: "server", error });
-        }
+        setPairingCode(null);
+        setPairingError({ message: presentError(error, "无法生成配对码，请重试。"),
+          detail: error instanceof Error ? error.message : "" });
       })
       .finally(() => {
-        if (!cancelled) {
-          setPairingCodeLoading(false);
-        }
+        pairingRequestRef.current = null;
+        setPairingCodeLoading(false);
       });
+    pairingRequestRef.current = request;
+    return request;
+  }, [createPairingCodeProp]);
 
-    return () => {
-      cancelled = true;
+  useEffect(() => {
+    if (pairingCodeNeeded) void refreshPairingCode();
+  }, [pairingCodeNeeded, refreshPairingCode]);
+
+  useEffect(() => {
+    if (!pairingCodeNeeded || !pairingCode) return;
+    const expiresIn = Date.parse(pairingCode.expiresAt) - Date.now();
+    // Invalid responses are left for an explicit retry instead of an unbounded request loop.
+    if (!Number.isFinite(expiresIn) || expiresIn <= 0) return;
+    const timer = window.setTimeout(() => {
+      if (document.visibilityState !== "hidden") void refreshPairingCode();
+    }, Math.min(expiresIn, 2_147_483_647));
+    const refreshExpiredCode = () => {
+      if (document.visibilityState !== "hidden" && Date.parse(pairingCode.expiresAt) <= Date.now()) void refreshPairingCode();
     };
-  }, [panelStatus, pairingStale, pairingAuthFailure, health, createPairingCodeProp]);
+    window.addEventListener("focus", refreshExpiredCode);
+    document.addEventListener("visibilitychange", refreshExpiredCode);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", refreshExpiredCode);
+      document.removeEventListener("visibilitychange", refreshExpiredCode);
+    };
+  }, [pairingCode, pairingCodeNeeded, refreshPairingCode]);
 
   const handleRenameBridge = async (bridge: DeviceBridgeRecord) => {
     const draft = (renameDraftById[bridge.id] ?? bridge.machineLabel).trim();
@@ -417,6 +458,8 @@ export function LocalDeviceBridgePanel({
         portableReleases={portableReleases}
         pairingCode={pairingCode}
         pairingCodeLoading={pairingCodeLoading}
+        pairingError={pairingError}
+        onRefreshPairingCode={refreshPairingCode}
         checking={checking}
         detecting={detecting}
         connectError={connectError}

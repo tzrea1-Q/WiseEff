@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { cloneElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -46,6 +46,94 @@ describe("deriveWizardStep", () => {
 });
 
 describe("LocalDeviceBridgeWizard", () => {
+  const baseProps = {
+    protocol: "hdc" as const, health: null, hostRelease: null,
+    installerAlternates: [], portableReleases: [], pairingCode: null,
+    pairingCodeLoading: false, checking: false, detecting: false, connectError: "",
+    onConnectError: vi.fn(), onRefresh: async () => ({ connected: false }), onDetect: vi.fn()
+  };
+
+  it("keeps connection instructions primary and manual pairing collapsed", () => {
+    render(<LocalDeviceBridgeWizard {...baseProps} compact panelStatus="missing_bridge"
+      pairingCode={{ code: "123456", expiresAt: "2099-01-01T00:00:00Z" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "安装指南", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "查看连接本机步骤" }));
+    const dialog = screen.getByRole("dialog", { name: "安装与连接本地 Bridge" });
+    expect(within(dialog).getByRole("heading", { name: "连接这台电脑" })).toBeInTheDocument();
+    expect(within(within(dialog).getByRole("list", { name: "本机连接操作" })).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(dialog).getByText("手动配对码").closest("details")).not.toHaveAttribute("open");
+    expect(within(dialog).getAllByRole("button", { name: "连接本机", exact: true })).toHaveLength(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "查看插入 USB 设备步骤" }));
+    expect(within(within(dialog).getByRole("list", { name: "USB 设备连接操作" })).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(dialog).getByText("请先完成「连接本机」，再检测 USB 设备。")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "检测 USB 设备" })).not.toBeInTheDocument();
+  });
+
+  it("continues from connected-computer guidance to USB detection without reconnecting", () => {
+    const onDetect = vi.fn();
+    render(<LocalDeviceBridgeWizard {...baseProps} compact panelStatus="online_no_device" onDetect={onDetect} />);
+    fireEvent.click(screen.getByRole("button", { name: "安装指南", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "查看连接本机步骤" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续连接 USB 设备" }));
+    fireEvent.click(screen.getByRole("button", { name: "检测 USB 设备" }));
+    expect(onDetect).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["not_paired", "Bridge 等待配对"],
+    ["not_connected", "Bridge 尚未连接服务器"],
+    ["bridge_blocked", "本机访问受阻"]
+  ] as const)("describes %s accurately", (panelStatus, label) => {
+    render(<LocalDeviceBridgeWizard {...baseProps} panelStatus={panelStatus} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.queryByText("本地 Bridge 未运行")).not.toBeInTheDocument();
+  });
+
+  it("keeps a failed connection dialog open on the terminal recovery step", async () => {
+    connectLocalBridge.mockResolvedValueOnce({ reachable: false, ok: false });
+    pollLocalBridgeHealth.mockResolvedValueOnce(null);
+    render(<LocalDeviceBridgeWizard {...baseProps} compact panelStatus="missing_bridge"
+      pairingCode={{ code: "123456", expiresAt: "2099-01-01T00:00:00Z" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "安装指南" }));
+    fireEvent.click(screen.getByRole("button", { name: "连接本机", exact: true }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "连接本机", exact: true })).toBeEnabled());
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/若网页未能自动打开 Bridge/)).toBeInTheDocument();
+  });
+
+  it("refreshes an expired pairing code without launching a stale custom protocol URL", async () => {
+    launchBridgeSchemeForConnect.mockClear();
+    const onRefreshPairingCode = vi.fn(async () => undefined);
+    render(<LocalDeviceBridgeWizard {...baseProps} panelStatus="missing_bridge"
+      pairingCode={{ code: "expired", expiresAt: "2000-01-01T00:00:00Z" }} onRefreshPairingCode={onRefreshPairingCode} />);
+    fireEvent.click(screen.getByRole("button", { name: "连接本机", exact: true }));
+    await waitFor(() => expect(onRefreshPairingCode).toHaveBeenCalledTimes(1));
+    expect(launchBridgeSchemeForConnect).not.toHaveBeenCalled();
+    expect(screen.queryByText("expired", { selector: "code" })).not.toBeInTheDocument();
+  });
+
+  it("keeps device authorization, protocol, tool and retry guidance reachable while online", () => {
+    const onDetect = vi.fn();
+    render(<LocalDeviceBridgeWizard {...baseProps} panelStatus="online_no_device" onDetect={onDetect}
+      health={{ ok: true, paired: true, connected: true, updatedAt: "2026-10-15T00:00:00Z",
+        tools: { adb: { available: true }, hdc: { available: true } } }} />);
+    fireEvent.click(screen.getByRole("button", { name: "设备连接与排查" }));
+    expect(screen.getByText(/在设备开启开发者模式/)).toBeInTheDocument();
+    expect(screen.getByText("HDC 工具")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "检测 USB 设备" }));
+    expect(onDetect).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels an older Windows installer and exposes the current portable release", () => {
+    render(<LocalDeviceBridgeWizard {...baseProps} panelStatus="missing_bridge" recommendedVersion="0.1.1"
+      hostRelease={{ platform: "windows", arch: "amd64", version: "0.1.0", artifactKind: "installer", downloadUrl: "/old.exe" }}
+      portableReleases={[{ platform: "windows", arch: "amd64", version: "0.1.1", artifactKind: "portable", downloadUrl: "/current.zip" }]} />);
+    fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "windows/amd64" } });
+    expect(screen.getByText("较早版本 · v0.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("本机推荐 · v0.1.0")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "下载 Windows Bridge（x64）" })).toHaveAttribute("href", expect.stringContaining("/current.zip"));
+  });
+
   it("shows Windows admin install hint on step 1 for Windows hosts", () => {
     vi.stubGlobal("navigator", {
       ...navigator,
@@ -126,8 +214,8 @@ describe("LocalDeviceBridgeWizard", () => {
     );
 
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
-    expect(screen.getByText("本机推荐")).toBeInTheDocument();
-    expect(screen.getByText(/已识别当前环境/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
+    expect(screen.getByText("本机推荐 · v0.1.0")).toBeInTheDocument();
     expect(screen.queryByText("高级 · 命令行方式")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
       "href",
@@ -225,7 +313,7 @@ describe("LocalDeviceBridgeWizard", () => {
         hostRelease={null}
         installerAlternates={[]}
         portableReleases={[]}
-        pairingCode={{ code: "123456", expiresAt: "2026-06-27T00:00:00.000Z" }}
+        pairingCode={{ code: "123456", expiresAt: "2099-06-27T00:00:00.000Z" }}
         pairingCodeLoading={false}
         checking={false}
         detecting={false}
@@ -240,7 +328,8 @@ describe("LocalDeviceBridgeWizard", () => {
     fireEvent.click(entry);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "连接本机", exact: true })).toBeEnabled());
-    expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Bridge 连接步骤" })).toBeInTheDocument();
+    expect(screen.getByText(/若网页未能自动打开 Bridge/)).toBeInTheDocument();
   });
 
   it("renders a compact ready view when bridge targets are connected", () => {
@@ -323,6 +412,7 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(screen.getByText(/当前本机版本 0\.1\.0/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
     rerender(cloneElement(wizard, { panelStatus: "online_no_device" }));
+    fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
       "href",
@@ -392,6 +482,7 @@ describe("LocalDeviceBridgeWizard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看安装 Bridge步骤" }));
 
+    fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
   });
@@ -418,7 +509,7 @@ describe("LocalDeviceBridgeWizard", () => {
         hostRelease={null}
         installerAlternates={[]}
         portableReleases={[]}
-        pairingCode={{ code: "123456", expiresAt: "2026-06-27T00:00:00.000Z" }}
+        pairingCode={{ code: "123456", expiresAt: "2099-06-27T00:00:00.000Z" }}
         pairingCodeLoading={false}
         checking={false}
         detecting={false}
@@ -476,7 +567,7 @@ describe("LocalDeviceBridgeWizard", () => {
         hostRelease={null}
         installerAlternates={[]}
         portableReleases={[]}
-        pairingCode={{ code: "654321", expiresAt: "2026-09-16T00:30:00.000Z" }}
+        pairingCode={{ code: "654321", expiresAt: "2099-09-16T00:30:00.000Z" }}
         pairingCodeLoading={false}
         checking={false}
         detecting={false}
@@ -533,7 +624,7 @@ describe("LocalDeviceBridgeWizard", () => {
         hostRelease={null}
         installerAlternates={[]}
         portableReleases={[]}
-        pairingCode={{ code: "654321", expiresAt: "2026-09-16T00:30:00.000Z" }}
+        pairingCode={{ code: "654321", expiresAt: "2099-09-16T00:30:00.000Z" }}
         pairingCodeLoading={false}
         checking={false}
         detecting={false}
@@ -589,7 +680,7 @@ describe("LocalDeviceBridgeWizard", () => {
         hostRelease={null}
         installerAlternates={[]}
         portableReleases={[]}
-        pairingCode={{ code: "654321", expiresAt: "2026-09-16T00:30:00.000Z" }}
+        pairingCode={{ code: "654321", expiresAt: "2099-09-16T00:30:00.000Z" }}
         pairingCodeLoading={false}
         checking={false}
         detecting={false}

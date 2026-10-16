@@ -13,13 +13,13 @@ describe("ParameterValueDiff", () => {
     expect(container.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"2"');
   });
 
-  it("keeps both baseline and debug visible for equal single-line values", () => {
+  it("shows equal values once without implying an addition or removal", () => {
     const { container } = render(<ParameterValueDiff baseValue="<6000>" targetValue="<6000>" />);
     const list = screen.getByRole("list");
     expect(list).toHaveAttribute("data-kind", "equal");
     expect(container.querySelectorAll(".submission-preview-diff-row__line-number")).toHaveLength(0);
-    expect(container.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("<6000>");
-    expect(container.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("<6000>");
+    expect(screen.getAllByText("<6000>")).toHaveLength(1);
+    expect(container.querySelector("[data-kind='remove'], [data-kind='add']")).toBeNull();
   });
 
   it("keeps unified line chrome for multiline values", () => {

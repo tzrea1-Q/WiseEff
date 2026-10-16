@@ -3,6 +3,22 @@ import { describe, expect, it, vi } from "vitest";
 import { buildBridgeConnectUrl, connectLocalBridge, launchBridgeConnect, launchBridgeSchemeForConnect, pollLocalBridgeHealth, probeLocalBridgeHealth, requestLocalBridgeConnect } from "./bridgeConnectLauncher";
 
 describe("bridgeConnectLauncher", () => {
+  it("bounds a stalled local connect request with an abort signal", async () => {
+    const controller = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    try {
+      const fetchImpl = vi.fn((_url, options) => new Promise<Response>((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(new DOMException("Timeout", "TimeoutError")));
+      })) as typeof fetch;
+      const request = requestLocalBridgeConnect({}, fetchImpl);
+      controller.abort();
+      await expect(request).resolves.toEqual({ reachable: false, ok: false });
+      expect(timeout).toHaveBeenCalledWith(5000);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
   it("waits for the replacement bridge instead of accepting the revoked bridge's old online health", async () => {
     const health = { ok: true, paired: true, connected: true, updatedAt: "2026-09-15T00:00:00Z" };
     const fetchImpl = vi.fn()
@@ -59,6 +75,7 @@ describe("bridgeConnectLauncher", () => {
         hdc: { available: true, version: "hdc version 2.0.0", source: "system" }
       }
     });
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/health"), { signal: expect.any(AbortSignal) });
   });
 
   it("posts connect requests to the local bridge HTTP API", async () => {
@@ -82,6 +99,7 @@ describe("bridgeConnectLauncher", () => {
     expect(fetchImpl).toHaveBeenCalledWith(
       expect.stringContaining("/connect"),
       expect.objectContaining({
+        signal: expect.any(AbortSignal),
         method: "POST",
         body: JSON.stringify({
           server: "http://101.43.45.27",

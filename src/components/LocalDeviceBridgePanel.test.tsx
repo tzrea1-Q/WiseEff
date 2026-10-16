@@ -80,7 +80,7 @@ function renderPanel(compact = false) {
 it("keeps first-time workbench setup in the install dialog, not the context bar", async () => {
   vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
   renderPanel(true);
-  expect(await screen.findByText("本地 Bridge 未运行")).toBeInTheDocument();
+  expect(await screen.findByText("未检测到本地 Bridge")).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
   expect(screen.queryByText("123456", { selector: "code" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "连接本机", exact: true })).toBeEnabled();
@@ -89,6 +89,7 @@ it("keeps first-time workbench setup in the install dialog, not the context bar"
   fireEvent.click(trigger);
   const dialog = screen.getByRole("dialog", { name: "安装与连接本地 Bridge" });
   expect(within(dialog).getByRole("list", { name: "Bridge 连接步骤" })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "查看连接本机步骤" }));
   expect(await within(dialog).findByText("123456", { selector: "code" })).toBeInTheDocument();
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -104,7 +105,7 @@ it("keeps returning users on a compact readiness bar using any unrevoked server 
     createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
   await act(async () => records.resolve([{ id: "br-returning", machineLabel: "工程机", platform: "linux", arch: "amd64", revokedAt: null }] as never));
-  expect(await screen.findByText("本地 Bridge 未运行")).toBeInTheDocument();
+  expect(await screen.findByText("未检测到本地 Bridge")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: "连接本机", exact: true })).toHaveLength(1);
   expect(screen.getByRole("button", { name: "安装指南" })).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
@@ -118,6 +119,7 @@ it("shows first-time setup once and opens the same guide in a keyboard-accessibl
   expect(await screen.findByRole("list", { name: "Bridge 连接步骤" })).toBeInTheDocument();
   expect(screen.queryByRole("tablist", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: "连接本机", exact: true })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "查看连接本机步骤" }));
   expect(await screen.findByText("123456", { selector: "code" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "收起安装指南" }));
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
@@ -168,7 +170,7 @@ it.each([undefined, "device-1"])("shows a quiet connected chip with target %s", 
     } })} />);
   expect(await screen.findByText("已连接 · 工程机")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "连接本机" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "重新检测设备" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "设备连接与排查" })).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
 });
 
@@ -201,7 +203,9 @@ describe("LocalDeviceBridgePanel install manifest loading", () => {
 
     renderPanel();
 
-    expect(await screen.findByRole("link", { name: /安装 Bridge/ })).toBeInTheDocument();
+    await screen.findByLabelText("安装环境");
+    fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
+    expect(screen.getByRole("link", { name: /安装 Bridge/ })).toBeInTheDocument();
   });
 });
 
@@ -380,6 +384,49 @@ it("asks the current user to rebind a live local bridge owned by another account
   expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
 });
 
+it("refreshes online tool changes without overlapping probes or replacing a rename draft", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const bridge = { id: "br-local", machineLabel: "工程机", platform: "linux", arch: "amd64", revokedAt: null };
+  const health = { ok: true as const, paired: true, connected: true, bridgeId: bridge.id,
+    updatedAt: "2026-10-15T00:00:00Z", tools: { adb: { available: true }, hdc: { available: true } } };
+  const pending = deferred<{ health: typeof health; reachability: "ok" }>();
+  const probeHealth = vi.fn().mockResolvedValueOnce({ health, reachability: "ok" }).mockReturnValue(pending.promise);
+  const createCode = vi.fn(async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" }));
+  render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}
+    listBridges={async () => [bridge] as never} probeHealth={probeHealth} createPairingCode={createCode} />);
+  const input = await screen.findByDisplayValue("工程机");
+  await waitFor(() => expect(screen.queryByText("正在检查 Bridge…")).not.toBeInTheDocument());
+  fireEvent.change(input, { target: { value: "正在编辑的名称" } });
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(probeHealth).toHaveBeenCalledTimes(2);
+  await act(async () => pending.resolve({ health: { ...health, tools: { ...health.tools, hdc: { available: false } } }, reachability: "ok" }));
+  expect(screen.getByDisplayValue("正在编辑的名称")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "安装调试工具" })).toBeInTheDocument();
+  expect(createCode).toHaveBeenCalledTimes(1);
+});
+
+it("shows pairing failure in the open guide and clears only that error after a successful retry", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const createCode = vi.fn().mockRejectedValueOnce(new Error("配对码服务暂不可用"))
+    .mockResolvedValue({ code: "654321", expiresAt: "2099-01-01T00:00:00Z" });
+  render(<LocalDeviceBridgePanel compact detecting={false} protocol="hdc" onDetect={vi.fn()}
+    listBridges={async () => { throw new Error("代理列表暂不可用"); }}
+    probeHealth={async () => ({ health: null, reachability: "offline" })} createPairingCode={createCode} />);
+  await screen.findByText("代理列表暂不可用");
+  fireEvent.click(screen.getByRole("button", { name: "安装指南" }));
+  const dialog = screen.getByRole("dialog");
+  expect(await within(dialog).findByText("配对码服务暂不可用")).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "重试生成配对码" }));
+  await waitFor(() => expect(within(dialog).queryByText("配对码服务暂不可用")).not.toBeInTheDocument());
+  fireEvent.click(within(dialog).getByRole("button", { name: "查看连接本机步骤" }));
+  expect(await within(dialog).findByText("654321", { selector: "code" })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "关闭安装指南" }));
+  expect(screen.getByText("代理列表暂不可用")).toBeInTheDocument();
+});
+
 const olderBridge = {
   id: "br-A", machineLabel: "本机", platform: "darwin" as const, arch: "arm64" as const,
   clientVersion: "0.1.0", capabilities: {}, createdAt: "2026-09-16T00:00:00.000Z",
@@ -420,6 +467,7 @@ it("prompts to install the latest Bridge when local health is an older client", 
   expect(screen.getByText("已连接 · 本机")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
   expect(await screen.findByText("图形安装包（推荐）")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
   expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
   expect(pairingFetch).toHaveBeenCalledTimes(1);
   expect(pairingFetch).toHaveBeenCalledWith(expect.stringMatching(/\/api\/v1\/device-bridges\/pairing-codes$/),
@@ -440,13 +488,14 @@ it.each(["success", "failure"] as const)(
     await waitFor(() => expect(pairingFetch).toHaveBeenCalledTimes(1));
     expect(listReleases).not.toHaveBeenCalled();
     await act(async () => health.resolve({ health: reconnectingOldHealth, reachability: "ok" }));
-    await waitFor(() => expect(pairingFetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(pairingFetch).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(listReleases).toHaveBeenCalledTimes(1));
     await act(async () => manifest.resolve(olderManifest));
     expect(await screen.findByText("请升级本机 Bridge")).toBeInTheDocument();
     expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
+    fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     await act(async () => {
       if (outcome === "success") pairing.resolve(undefined);
@@ -458,7 +507,7 @@ it.each(["success", "failure"] as const)(
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
-    expect(pairingFetch).toHaveBeenCalledTimes(2);
+    expect(pairingFetch).toHaveBeenCalledTimes(1);
   }
 );
 
@@ -475,6 +524,7 @@ it("keeps the install step when an old-client health refresh completes after the
   view.rerender(<LocalDeviceBridgePanel {...olderBridgeProps} probeHealth={secondProbe} />);
   await waitFor(() => expect(secondProbe).toHaveBeenCalledTimes(1));
   fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
+  fireEvent.change(screen.getByLabelText("安装环境"), { target: { value: "darwin/arm64" } });
   expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
 
   await act(async () => lateHealth.resolve({
