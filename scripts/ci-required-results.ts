@@ -534,6 +534,7 @@ async function runTest(command: string, identity: Identity) {
     missingIsolatedDockerStores: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T34A_POSTGRES_URL,
     missingIsolatedTarget: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T33B_PUBLIC_URL };
   const result = spawnSync("npm", [...specification.args, "--", "--reporter=default", "--reporter=json", `--outputFile=${output}`,
+    ...(command === "scripts" ? ["--reporter=verbose"] : []),
     ...(command === "server" ? [...files, "--includeTaskLocation", "--reporter=./scripts/ci-server-inventory-reporter.ts"] : [])], { stdio: "inherit", env });
   options.finishedAt = Date.now();
   requireCi(result.status === 0 && !result.error, "TEST_COMMAND_FAILED");
