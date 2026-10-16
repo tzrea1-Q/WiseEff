@@ -20,6 +20,16 @@ function SettingsExample() {
 }
 
 describe("SettingsFormPage", () => {
+  it("keeps stale drafts discardable but blocks both button and Enter saves", () => {
+    const onSave = vi.fn();
+    const onDiscard = vi.fn();
+    render(<SettingsFormPage label="已过期设置" dirty saveDisabled onSave={onSave} onDiscard={onDiscard}>内容</SettingsFormPage>);
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    fireEvent.submit(screen.getByRole("form", { name: "已过期设置" }));
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "放弃" }));
+    expect(onDiscard).toHaveBeenCalledOnce();
+  });
   it("allows navigation and reload as soon as the saved form is committed", () => {
     const onSavedCommit = vi.fn();
     function Example({ saved }: { saved: boolean }) {

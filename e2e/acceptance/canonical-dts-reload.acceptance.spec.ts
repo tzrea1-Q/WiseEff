@@ -113,7 +113,8 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       const editor = page.getByRole("dialog");
       await editor.getByRole("textbox", { name: `${targetName} 调试值`, exact: true }).fill("<6>");
       await editor.getByRole("button", { name: "加入本轮重载" }).click();
-      await expect(page.getByRole("textbox", { name: `${targetName} 调试值` })).toBeVisible();
+      await expect(page.getByRole("button", { name: `编辑本轮 ${targetName}`, exact: true })).toBeVisible();
+      await expect(page.getByLabel("本轮重载", { exact: true }).getByText("<6>", { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("canonical-handoff-1440x900.png") });
       const started = page.waitForResponse((response) => response.request().method() === "POST" &&
         new URL(response.url()).pathname === `/api/v1/dts-reload/projects/${fixture.projectId}/runs`);
@@ -130,6 +131,8 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
         protocol: "hdc", confirmationTokens: ["confirm-dts-reload"]
       }, token);
       expect(deployed.item.status).toBe("unverifiable");
+      await page.getByRole("button", { name: "清空本轮", exact: true }).click();
+      await page.getByRole("dialog", { name: "放弃未保存的修改？" }).getByRole("button", { name: "放弃修改", exact: true }).click();
       await page.goto(`${frontendUrl}/dts-reload?runId=${run.id}`);
       await page.reload();
       await page.getByRole("button", { name: "晋升为草稿", exact: true }).click();

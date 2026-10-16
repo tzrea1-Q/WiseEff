@@ -5,5 +5,6 @@ export const reloadConfigurationContractBodySchema = z.object({
   destinationFilename: z.string().min(1),
   triggerNodePath: z.string().min(1),
   triggerPayload: z.string().min(1),
-  kernelLogCommand: z.string().min(1)
+  kernelLogCommand: z.string().min(1),
+  expectedUpdatedAt: z.string().datetime({ offset: true }).nullable()
 });

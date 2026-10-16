@@ -934,7 +934,10 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
       return { organisation: { ...organisationConfiguration } };
     },
 
-    async updateOrganisationReloadConfiguration(contract: ReloadConfigurationContract) {
+    async updateOrganisationReloadConfiguration(contract: ReloadConfigurationContract, expectedUpdatedAt: string | null) {
+      if (expectedUpdatedAt !== organisationConfiguration.updatedAt) {
+        throw mockApiError("CONFLICT", "重载配置已被其他管理员更新，请重新加载并核对后保存。", { reason: "stale-configuration" });
+      }
       organisationConfiguration = {
         ...organisationConfiguration,
         ...contract,

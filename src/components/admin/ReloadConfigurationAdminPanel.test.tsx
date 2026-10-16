@@ -61,6 +61,51 @@ describe("ReloadConfigurationAdminPanel", () => {
     render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
     expect(await screen.findByRole("alert")).toHaveTextContent("无法读取配置");
     expect(screen.queryByText("保存失败")).not.toBeInTheDocument();
+    expect(screen.queryByText("系统默认")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "组织 Overlay 目标目录" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    vi.mocked(repository.getReloadConfiguration).mockResolvedValueOnce(seededView());
+    fireEvent.click(screen.getByRole("button", { name: "重新加载配置" }));
+    expect(await screen.findByDisplayValue("/vendor/firmware/")).toBeEnabled();
+    expect(repository.updateOrganisationReloadConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("shows grouped configuration, execution preview and modification evidence with accessible hints", async () => {
+    const view = seededView();
+    view.organisation = { ...view.organisation, source: "organisation", updatedAt: "2026-08-10T04:00:00.123456Z", updatedByUserId: "user-1" };
+    const onNavigate = vi.fn();
+    const repository = createRepository({ getReloadConfiguration: vi.fn(async () => view) });
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit canViewAudit onNavigate={onNavigate} users={[{ id: "user-1", name: "Riley Chen" }]} />);
+    const directory = await screen.findByDisplayValue("/vendor/firmware/");
+    expect(directory).toHaveAccessibleDescription(expect.stringContaining("末尾 / 可省略"));
+    for (const name of ["产物位置", "触发重载", "日志采集"]) expect(screen.getByRole("group", { name })).toBeInTheDocument();
+    expect(screen.getByLabelText("内核日志命令")).toBe(screen.getByLabelText("组织内核日志命令"));
+    expect(screen.getByText(/修改人：Riley Chen/)).toHaveTextContent("账户 user-1");
+    fireEvent.change(directory, { target: { value: "/oem/firmware" } });
+    expect(within(screen.getByRole("region", { name: "最终配置摘要" })).getByText("/oem/firmware/power_dts_overlay.dtbo")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(repository.updateOrganisationReloadConfiguration).toHaveBeenCalledWith(expect.objectContaining({ destinationDirectory: "/oem/firmware" }), "2026-08-10T04:00:00.123456Z"));
+    fireEvent.click(screen.getByRole("button", { name: "查看配置变更记录" }));
+    expect(onNavigate).toHaveBeenCalledWith("/audit?app=debugging&kind=dts-reload-configuration-update");
+  });
+
+  it("preserves stale drafts, blocks another save, and explicitly confirms replacing them with the latest configuration", async () => {
+    const error = Object.assign(new Error("配置已被更新"), { code: "CONFLICT" });
+    const repository = createRepository({ updateOrganisationReloadConfiguration: vi.fn().mockRejectedValue(error) });
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
+    const directory = await screen.findByDisplayValue("/vendor/firmware/");
+    fireEvent.change(directory, { target: { value: "/my-draft/" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeDisabled());
+    expect(directory).toHaveValue("/my-draft/");
+    fireEvent.click(screen.getByRole("button", { name: "重新加载配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保留当前修改" }));
+    expect(directory).toHaveValue("/my-draft/");
+    fireEvent.click(screen.getByRole("button", { name: "重新加载配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "放弃并重新加载" }));
+    expect(await screen.findByDisplayValue("/vendor/firmware/")).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(repository.updateOrganisationReloadConfiguration).toHaveBeenCalledTimes(1);
   });
 
   it("discards edits without writes and validates inline before saving", async () => {
@@ -123,7 +168,7 @@ describe("ReloadConfigurationAdminPanel", () => {
 
     expect(await screen.findByDisplayValue("/vendor/firmware/")).toBeInTheDocument();
     expect(repository.getReloadConfiguration).toHaveBeenCalled();
-    expect(screen.getByText("种子默认")).toBeInTheDocument();
+    expect(screen.getByText("系统默认")).toBeInTheDocument();
 
     expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
 
@@ -136,7 +181,7 @@ describe("ReloadConfigurationAdminPanel", () => {
 
     await waitFor(() =>
       expect(repository.updateOrganisationReloadConfiguration).toHaveBeenCalledWith(
-        expect.objectContaining({ kernelLogCommand: "hilog" })
+        expect.objectContaining({ kernelLogCommand: "hilog" }), null
       )
     );
     expect(await screen.findByText("组织默认重载配置已保存")).toBeInTheDocument();

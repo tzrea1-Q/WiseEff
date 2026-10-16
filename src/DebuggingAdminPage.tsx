@@ -860,6 +860,9 @@ export function DebuggingAdminPage({
           <ReloadConfigurationAdminPanel
             repository={isApiMode ? dtsReloadRepository ?? null : null}
             canEdit={canEditAdminCatalog}
+            onNavigate={onNavigate}
+            canViewAudit={!isApiMode || apiAuthPermissions.includes("admin:access")}
+            users={state.users}
             unavailableReason={isApiMode ? undefined : "重载配置仅在 API 模式下可用。"}
           />
         </main>

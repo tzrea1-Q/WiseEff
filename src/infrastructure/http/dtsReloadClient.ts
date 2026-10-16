@@ -151,8 +151,8 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
       return response.item;
     },
 
-    async updateOrganisationReloadConfiguration(contract: ReloadConfigurationContract) {
-      const response = await apiClient.put<ItemEnvelope<OrganisationReloadConfiguration>>(configurationPath(), contract);
+    async updateOrganisationReloadConfiguration(contract: ReloadConfigurationContract, expectedUpdatedAt: string | null) {
+      const response = await apiClient.put<ItemEnvelope<OrganisationReloadConfiguration>>(configurationPath(), { ...contract, expectedUpdatedAt });
       return response.item;
     }
   };

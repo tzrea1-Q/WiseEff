@@ -18,7 +18,7 @@ import { requestJson } from "../../test/testClient";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import { insertReloadRun, insertReloadRunTarget } from "./repository";
-import { updateOrganisationReloadConfiguration } from "./configurationService";
+import { getReloadConfigurationAdminView, updateOrganisationReloadConfiguration } from "./configurationService";
 import { SEEDED_RELOAD_CONFIGURATION } from "./configurationTypes";
 import { registerDtsReloadRoutes } from "./routes";
 import {
@@ -678,12 +678,12 @@ describe.skipIf(!databaseAvailable)("DTS reload trusted provenance PostgreSQL ma
 
           const plain = await requestJson<HttpBody>(server, operation.plainPath, {
             method: operation.name === "configuration-update" ? "PUT" : "POST",
-            body: JSON.stringify(operation.plainBody),
+            body: JSON.stringify(operation.name === "configuration-update" ? { ...operation.plainBody, expectedUpdatedAt: (await getReloadConfigurationAdminView(db, auth())).organisation.updatedAt } : operation.plainBody),
             headers: { "X-Request-Id": plainRequestId }
           });
           const spoof = await requestJson<HttpBody>(server, operation.spoofPath, {
             method: operation.name === "configuration-update" ? "PUT" : "POST",
-            body: JSON.stringify(operation.spoofBody),
+            body: JSON.stringify(operation.name === "configuration-update" ? { ...operation.spoofBody, expectedUpdatedAt: (await getReloadConfigurationAdminView(db, auth())).organisation.updatedAt } : operation.spoofBody),
             headers: { "X-Request-Id": spoofRequestId, actorType: "agent" }
           });
 

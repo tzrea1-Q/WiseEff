@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { Eye, Pencil } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
 
 import { DataTable, type Column } from "@/components/admin/DataTable";
@@ -8,6 +8,7 @@ import type { DtsReloadCandidate } from "@/domain/dtsReload/types";
 import type { TreeFilterNode } from "@/domain/tree-filter/treeFilter";
 import { candidateModuleLabel } from "@/features/dts-reload/dtsReloadPresentation";
 import { cn } from "@/lib/utils";
+import { hasMeaningfulDebugChange } from "@/domain/dtsReload/debugValue";
 
 import "./dts-reload-candidate-table.css";
 
@@ -17,6 +18,11 @@ export type DtsReloadCandidateTableProps = {
   rows: DtsReloadCandidate[];
   selectedBindingIds: readonly string[];
   loading?: boolean;
+  canSelect?: boolean;
+  debugValues?: Readonly<Record<string, string>>;
+  hasActiveFilters?: boolean;
+  filterSummary?: string;
+  onClearFilters?: () => void;
   nameQuery: string;
   onNameQueryChange: (value: string) => void;
   listedCount: number;
@@ -41,6 +47,11 @@ export function DtsReloadCandidateTable({
   rows,
   selectedBindingIds,
   loading = false,
+  canSelect = true,
+  debugValues = {},
+  hasActiveFilters = false,
+  filterSummary,
+  onClearFilters,
   nameQuery,
   onNameQueryChange,
   listedCount,
@@ -68,7 +79,7 @@ export function DtsReloadCandidateTable({
           data-binding-id={candidate.bindingId}
           aria-label={`选择 ${candidateName(candidate)}`}
           checked={selectedBindingIds.includes(candidate.bindingId)}
-          disabled={!candidate.debuggable}
+          disabled={!candidate.debuggable || !canSelect}
           onChange={() => onToggle(candidate.bindingId)}
           onClick={(event) => event.stopPropagation()}
         />
@@ -119,10 +130,21 @@ export function DtsReloadCandidateTable({
     },
     {
       key: "baseline",
-      header: "库基线",
+      header: "库基线 / 本轮调试",
       sortAccessor: (candidate) => candidate.baselineValue ?? "",
       className: "dts-reload-candidate-table__baseline",
-      render: (candidate) => <code title={candidate.baselineValue ?? undefined}>{candidate.baselineValue ?? "—"}</code>
+      render: (candidate) => {
+        const selected = selectedBindingIds.includes(candidate.bindingId);
+        const debugValue = debugValues[candidate.bindingId] ?? candidate.baselineValue ?? "";
+        const changed = selected && hasMeaningfulDebugChange(debugValue, candidate.baselineValue, candidate.resolvedValueShape);
+        return <div className="dts-reload-candidate-table__values">
+          <code title={candidate.baselineValue ?? undefined}>{candidate.baselineValue ?? "—"}</code>
+          {selected ? <>
+            <code title={debugValue} className={changed ? "is-changed" : undefined}>→ {debugValue || "（空属性）"}</code>
+            <small>{changed ? "本轮已修改" : "本轮未修改"}</small>
+          </> : null}
+        </div>;
+      }
     }
   ];
 
@@ -137,8 +159,8 @@ export function DtsReloadCandidateTable({
         columns={columns}
         pageSize={pageSize}
         selectedRowKeys={selectedBindingIds}
-        emptyMessage="当前筛选条件下没有可列出的参数。"
-        emptyState={loading ? <p className="text-sm text-muted-foreground">加载中…</p> : undefined}
+        emptyMessage={hasActiveFilters || nameQuery.trim() ? "没有符合当前筛选条件的参数。" : "当前项目暂无可列出的参数。"}
+        emptyState={loading ? <p role="status" className="text-sm text-muted-foreground">正在加载项目参数…</p> : undefined}
         toolbar={
           <div className="parameters-table-toolbar dts-reload-candidates-toolbar">
             <SearchField
@@ -150,25 +172,28 @@ export function DtsReloadCandidateTable({
             <span className="parameters-table-count">
               显示 {listedCount} / {totalCount} 项
             </span>
+            {hasActiveFilters || nameQuery.trim() ? <div className="dts-reload-active-filters" role="status">
+              <span>{filterSummary || "已应用筛选"}</span>
+              {onClearFilters ? <button type="button" className="button subtle" onClick={onClearFilters}>清除全部筛选</button> : null}
+            </div> : null}
           </div>
         }
         renderRowActions={(candidate) => <>
             <button
               type="button"
               className="button subtle dts-parameter-workbench-table__icon-action dts-reload-candidate-table__edit"
-              aria-label={`编辑 ${candidateName(candidate)}`}
-              disabled={!candidate.debuggable}
-              title={candidate.debuggable ? "编辑" : dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
+              aria-label={`${candidate.debuggable ? "编辑" : "查看"} ${candidateName(candidate)}`}
+              title={candidate.debuggable ? "编辑参数" : "查看参数详情与不可调试原因"}
               onClick={(event) => {
                 event.currentTarget.focus();
                 onEdit(candidate);
               }}
             >
-              <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
+              {candidate.debuggable ? <Pencil size={16} strokeWidth={1.9} aria-hidden="true" /> : <Eye size={16} strokeWidth={1.9} aria-hidden="true" />}
             </button>
             {!candidate.debuggable ? <span data-row-status className="dts-reload-status-text"
               title={dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}>
-              {dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
+              仅查看
             </span> : null}
           </>
         }
