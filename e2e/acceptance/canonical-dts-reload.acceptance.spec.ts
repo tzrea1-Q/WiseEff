@@ -117,7 +117,7 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       await page.screenshot({ path: testInfo.outputPath("canonical-handoff-1440x900.png") });
       const started = page.waitForResponse((response) => response.request().method() === "POST" &&
         new URL(response.url()).pathname === `/api/v1/dts-reload/projects/${fixture.projectId}/runs`);
-      await page.getByRole("button", { name: "下发参数（1）", exact: true }).click();
+      await page.getByRole("button", { name: "启动预检（1）", exact: true }).click();
       const startResponse = await started;
       expect(startResponse.status()).toBe(201);
       const { item: run } = await startResponse.json();
