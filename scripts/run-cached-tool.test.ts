@@ -19,7 +19,7 @@ describe("writable tool caches", () => {
       writeFileSync(path.join(root, "tsconfig.json"), JSON.stringify({ files: [], references: [{ path: "./tsconfig.app.json" }, { path: "./tsconfig.node.json" }] }));
       for (const name of ["app", "node"]) {
         writeFileSync(path.join(root, `${name}.ts`), "export const value: number = 1;");
-        writeFileSync(path.join(root, `tsconfig.${name}.json`), JSON.stringify({ compilerOptions: { composite: true, noEmit: true, types: [], lib: ["ES2023"], target: "ES2023", skipLibCheck: true }, files: [`${name}.ts`] }));
+        writeFileSync(path.join(root, `tsconfig.${name}.json`), JSON.stringify({ compilerOptions: { composite: true, noEmit: true, types: [], lib: ["ES5"], target: "ES2023", skipLibCheck: true }, files: [`${name}.ts`] }));
       }
       symlinkSync(path.resolve("node_modules"), path.join(root, "node_modules"));
       git("init", "--initial-branch=main"); git("add", ".");
