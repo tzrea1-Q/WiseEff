@@ -76,7 +76,6 @@ export function ModuleDefinitionForm({
             ariaLabel="模块类型"
             value={kind === "driver-group" || kind === "unclassified" ? "business" : kind}
             disabled={readOnly}
-            withinModal
             onValueChange={(value) => onKindChange?.(value)}
             options={RECLASSIFY_KIND_OPTIONS}
           />
@@ -89,7 +88,6 @@ export function ModuleDefinitionForm({
             ariaLabel="模块重要性"
             value={importance}
             disabled={readOnly}
-            withinModal
             onValueChange={(value) => onImportanceChange?.(value)}
             options={IMPORTANCE_OPTIONS}
           />

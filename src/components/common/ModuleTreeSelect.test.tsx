@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ModuleTreeSelect } from "./ModuleTreeSelect";
+import { ModalDialog } from "./ModalDialog";
 
 const nodes = [
   { id: "pm-a", name: "电源", parentId: null, path: "pm-a", depth: 1 },
@@ -9,6 +11,25 @@ const nodes = [
 ] as const;
 
 describe("ModuleTreeSelect", () => {
+  it("keeps a portaled modal selection usable and returns focus without dismissing its owner", async () => {
+    const user = userEvent.setup();
+    const onDismiss = vi.fn();
+    const onChange = vi.fn();
+    render(<ModalDialog open className="confirm-dialog" onDismiss={onDismiss}>
+      {({ titleId }) => <><h2 id={titleId}>模块编辑</h2><ModuleTreeSelect mode="single" label="模块" nodes={nodes} value="" onChange={onChange} portalMenu /></>}
+    </ModalDialog>);
+    const trigger = screen.getByRole("button", { name: "模块" });
+    await user.click(trigger);
+    await user.click(within(screen.getByRole("tree")).getByRole("button", { name: "充电" }));
+    expect(onChange).toHaveBeenCalledWith("pm-c");
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    await user.keyboard("{ArrowDown}{Escape}");
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it("expands and collapses tree nodes", () => {
     render(<ModuleTreeSelect mode="multi-filter" label="模块" nodes={[...nodes]} value={[]} onChange={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: /模块/ }));

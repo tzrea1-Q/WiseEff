@@ -173,10 +173,12 @@ export function createParameterRuntimeActions({
   canonicalRepository,
   getParameterProjectId
 }: ParameterRuntimeOptions): ParameterRuntimeActions {
+  let refreshGeneration = 0;
   const refresh = async (options: ParameterRuntimeRefreshOptions = {}): Promise<ParameterRuntimeRefreshResult> => {
     if (runtimeMode !== "api") {
       return undefined;
     }
+    const generation = ++refreshGeneration;
 
     try {
       const api = requireRepository(repository);
@@ -194,9 +196,11 @@ export function createParameterRuntimeActions({
       const parameters = parameterGroups.flat();
       const snapshot = { projects, parameters, changeRequests: [], parameterSubmissionRounds: [], parameterDrafts };
 
+      if (generation !== refreshGeneration) return undefined;
       dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", ...snapshot });
       return snapshot;
     } catch (error) {
+      if (generation !== refreshGeneration) return undefined;
       return notifyFailure(dispatch, options, formatParameterRuntimeError(error));
     }
   };

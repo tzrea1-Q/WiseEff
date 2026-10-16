@@ -314,7 +314,7 @@ export function MyFeedbackView({ productFeedbackRepository, onEditDraft, onFeedb
         </>}
       </> : <>
         <div className="feedback-mine-toolbar"><SearchField className="feedback-mine-search" ariaLabel="搜索我的反馈" placeholder="搜索问题描述或来源页面" value={query} onValueChange={setQuery} />
-          <div className="feedback-mine-filter"><SelectControl ariaLabel="筛选反馈状态" value={status} onValueChange={(value) => setStatus(value as typeof status)} options={statusOptions} withinModal /></div>
+          <div className="feedback-mine-filter"><SelectControl ariaLabel="筛选反馈状态" value={status} onValueChange={(value) => setStatus(value as typeof status)} options={statusOptions} /></div>
           <Button type="button" variant="outline" size="sm" onClick={() => void loadMyFeedback()} disabled={loading || loadingMore}><RefreshCw size={14} />刷新</Button></div>
         {errorMessage && <div><p className="feedback-mine-error" role="alert">{errorMessage}</p><Button type="button" variant="ghost" onClick={() => void loadMyFeedback()}>重试加载</Button></div>}
         {loading ? <p className="feedback-mine-empty" role="status">正在加载反馈记录…</p> : items.length === 0 ? <div className="feedback-mine-empty">{query || status !== "all" ? "没有符合条件的反馈，试试调整搜索或状态。" : "暂无提交记录或草稿"}</div> : <>

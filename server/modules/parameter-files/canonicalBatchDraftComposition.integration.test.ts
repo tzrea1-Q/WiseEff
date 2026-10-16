@@ -168,12 +168,14 @@ async function fixture(format: "json" | "dts") {
     fileId: uploaded.file.id };
 }
 
-function route(f: Pick<Fixture, "db" | "storage">, auth = admin) {
+function route(f: { db: Database; storage: ReturnType<typeof createLocalObjectStore> }, auth = admin, responseDate?: string) {
   const router = createRouter();
   const options = { db: f.db, objectStore: f.storage, getCurrentAuthContext: () => auth };
   registerParameterFileRoutes(router, options);
   registerCatalogProjectValueConsumerRoutes(router, options);
-  return createHttpServer(router);
+  const server = createHttpServer(router);
+  if (responseDate) server.prependListener("request", (_request, response) => response.setHeader("Date", responseDate));
+  return server;
 }
 
 describe("#906 pending mixed request protects both source candidates over HTTP", () => {
@@ -212,9 +214,11 @@ describe("#906 pending mixed request protects both source candidates over HTTP",
           `/api/v1/projects/${PROJECT}/parameter-file-candidates/${request.candidateId}/${action}`, { method: "POST" });
         expect(composed).toMatchObject({ status: 409, body: { error: {
           details: { reason: "canonical-source-review-pending" } } } });
-        const mutation = await requestJson(route(f),
+        const mutationDate = "Wed, 21 Oct 2015 07:28:00 GMT";
+        const retryDate = "Wed, 21 Oct 2015 07:28:01 GMT";
+        const mutation = await requestJson(route(f, admin, mutationDate),
           `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/${action}`, { method: "POST" });
-        const retry = await requestJson(route(f),
+        const retry = await requestJson(route(f, admin, retryDate),
           `/api/v1/projects/${PROJECT}/parameter-file-candidates/${f.upload.id}/${action}`, { method: "POST" });
         const candidateAfter = (await f.db.query<{ upload: unknown; composed: unknown }>(
           `select (select to_jsonb(candidate) from project_parameter_file_candidates candidate where id=$1) as upload,
@@ -235,7 +239,10 @@ describe("#906 pending mixed request protects both source candidates over HTTP",
         });
         expect(mutation).toMatchObject({ status: 409, body: { error: {
           details: { reason: "canonical-source-review-pending" } } } });
-        expect(retry).toEqual(mutation);
+        expect(mutation.headers.get("date")).toBe(mutationDate);
+        expect(retry.headers.get("date")).toBe(retryDate);
+        expect({ ...retry, headers: [...retry.headers].filter(([name]) => name !== "date") })
+          .toEqual({ ...mutation, headers: [...mutation.headers].filter(([name]) => name !== "date") });
         expect(diff.status).toBe(200);
         expect(review).toMatchObject({ status: 200, body: { item: { status: "approved" } } });
         const sourceAfter = await captureConfigurationSourceState(f.db, { organizationId: ORG, projectId: PROJECT });

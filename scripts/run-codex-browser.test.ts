@@ -1,10 +1,10 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
-import { EventEmitter } from "node:events";
+import { ChildProcess } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { browserPlatformSkips, buildCodexBrowserEvidence, checkCodexLanePorts, codexBrowserEvidenceSchema, launchCodexBrowserSuite, planCodexBrowserRun, runCodexBrowserCli, runCodexBrowserPlan, summarizeBrowserReport } from "./run-codex-browser";
-import { selectBrowserImpact } from "./test-impact";
+import { selectBrowserImpact, type StaticCoverage } from "./test-impact";
 import { buildPlaywrightWebServers } from "../playwright.shared";
 import { createBearerTokenForUser } from "../e2e/acceptance/helpers/runtime";
 import { castByRole } from "../e2e/acceptance/helpers/cast";
@@ -24,8 +24,31 @@ const selection = selectBrowserImpact(["src/features/log-analysis/LogsPage.tsx"]
   "e2e/acceptance/logs.spec.ts": ["/logs"],
   "e2e/acceptance/organization.spec.ts": ["/organization"],
 });
+const staticCoverage: StaticCoverage = {
+  status: "passed", testExecution: "not-run", durationMs: 1, problems: [], files: [{
+    path: "src/features/log-analysis/LogsPage.tsx", lint: { status: "checked", config: "eslint.config.js", rules: 6 },
+    typecheck: { status: "checked", project: "tsconfig.app.json" }, testSuiteCandidate: "frontend",
+  }],
+};
 
 describe("Codex browser runner", () => {
+  it("records failed static coverage without launching a runtime or claiming CI evidence", async () => {
+    const root = realpathSync(mkdtempSync(resolve(tmpdir(), "codex-browser-static-")));
+    try {
+      const failed = { ...staticCoverage, status: "failed" as const, problems: ["TS2322 in changed source"] };
+      const plan = planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin", { staticCoverage: failed, base: "a".repeat(40) });
+      let launches = 0;
+      const evidence = await runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], () => { launches++; return { status: 0, signal: null }; }, async () => null);
+      expect(launches).toBe(0);
+      expect(evidence).toMatchObject({ status: "blocked: static checks failed", ciStatus: "not-run", evidenceScope: "local-browser", runs: [],
+        selection: { base: "a".repeat(40), staticCoverage: failed },
+      });
+      expect(codexBrowserEvidenceSchema.safeParse({ ...evidence, ciStatus: "passed" }).success).toBe(false);
+      const configured = { ...staticCoverage, files: staticCoverage.files.map((file) => ({ ...file, typecheck: { ...file.typecheck, status: "configured" as const } })) };
+      expect(() => planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin", { staticCoverage: configured })).toThrow(/Static coverage status/);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("awaits exact process-group teardown and free-port checks before launching the next suite", async () => {
     const root = realpathSync(mkdtempSync(resolve(tmpdir(), "codex-browser-")));
     const events: string[] = [];
@@ -43,7 +66,7 @@ describe("Codex browser runner", () => {
           expect(childOptions.env).toMatchObject({ DATABASE_URL: plan.env.DATABASE_URL, WISEEFF_RUNTIME_LANE: "7", AUTH_TOKEN_HMAC_SECRET: "test-hmac-secret" });
           if (name === "api") expect(childOptions.env.AUTH_MODE).toBe(options.suite === "quality" ? "development" : "production");
           if (name === "frontend") expect(childOptions.env.WISEEFF_LOCAL_BRIDGE_PROXY_URL).toBe("http://127.0.0.1:40014");
-          const child = Object.assign(new EventEmitter(), { pid: ++sequence, exitCode: null, signalCode: null, label: `${options.suite}:${name}` });
+          const child = Object.assign(new ChildProcess(), { pid: ++sequence, exitCode: null, signalCode: null, label: `${options.suite}:${name}` });
           if (name === "tests") {
             expect(childOptions.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME).toBe("true");
             if (options.suite === "quality") expect(childOptions.env.WISEEFF_QUALITY_SKIP_SEED).toBe("true");
@@ -64,7 +87,10 @@ describe("Codex browser runner", () => {
           }
           return 200;
         },
-        stop: async (child) => { await Promise.resolve(); events.push(`stop:${child.label}`); },
+        stop: async (child) => {
+          if (!("label" in child) || typeof child.label !== "string") throw new Error("Fixture child must have a label");
+          await Promise.resolve(); events.push(`stop:${child.label}`);
+        },
       }), async () => { events.push("ports"); return null; });
       expect(result.status).toBe("failed");
       expect(result.authProbes).toEqual([
@@ -90,7 +116,7 @@ describe("Codex browser runner", () => {
       cwd: worktree.root, env: plan.env, stdio: "inherit", shell: false, suite: "quality",
     }, {
       spawn: () => {
-        const child = Object.assign(new EventEmitter(), { pid: ++launches, exitCode: null, signalCode: null });
+        const child = Object.assign(new ChildProcess(), { pid: ++launches, exitCode: null, signalCode: null });
         if (launches === 3) queueMicrotask(() => child.emit("close", 0, null));
         return child;
       },
@@ -122,9 +148,12 @@ describe("Codex browser runner", () => {
       const stopped: number[] = [];
       let launches = 0;
       const evidence = await runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], (command, args, options) => launchCodexBrowserSuite(command, args, options, {
-        spawn: () => Object.assign(new EventEmitter(), { pid: ++launches, exitCode: null, signalCode: null }),
+        spawn: () => Object.assign(new ChildProcess(), { pid: ++launches, exitCode: null, signalCode: null }),
         request: async (url) => url.endsWith("/api/v1/me") ? 401 : 200,
-        stop: async (child) => { stopped.push(child.pid); },
+        stop: async (child) => {
+          if (child.pid === undefined) throw new Error("Fixture child must have a PID");
+          stopped.push(child.pid);
+        },
       }), async () => null);
       expect(evidence).toMatchObject({ status: "blocked: authentication probe failed", block: { suite: "quality", httpStatus: 401 } });
       expect(evidence.authProbes).toEqual([{ suite: "quality", mode: "production", mechanism: "bearer", httpStatus: 401 }]);
@@ -145,7 +174,7 @@ describe("Codex browser runner", () => {
       spawn: (_command, args) => {
         const name = args.includes("scripts/browser-seed-contract.ts") ? "seed" : args.includes("server/index.ts") ? "api" : args.includes("--strictPort") ? "frontend" : "tests";
         started.push(name);
-        const child = Object.assign(new EventEmitter(), { pid: started.length, label: name, exitCode: null, signalCode: null });
+        const child = Object.assign(new ChildProcess(), { pid: started.length, label: name, exitCode: null, signalCode: null });
         if (name === "seed") queueMicrotask(() => child.emit("close", failure === "seed" ? 1 : 0, null));
         if (name === "tests") queueMicrotask(() => child.emit("close", 0, null));
         return child;
@@ -154,7 +183,10 @@ describe("Codex browser runner", () => {
         expect(url).not.toContain("/api/v1/me");
         return url.endsWith("/src/main.tsx") ? 500 : 200;
       },
-      stop: async (child) => { stopped.push(child.label); },
+      stop: async (child) => {
+        if (!("label" in child) || typeof child.label !== "string") throw new Error("Fixture child must have a label");
+        stopped.push(child.label);
+      },
     });
     expect(result.block).toEqual({ suite: "quality", reason: "runtime startup failed" });
     expect(started).toEqual(failure === "seed" ? ["seed"] : ["seed", "api", "frontend"]);
@@ -169,9 +201,12 @@ describe("Codex browser runner", () => {
       let launches = 0;
       const stopped: number[] = [];
       const evidence = await runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], (command, args, options) => launchCodexBrowserSuite(command, args, options, {
-        spawn: () => Object.assign(new EventEmitter(), { pid: ++launches, exitCode: null, signalCode: null }),
+        spawn: () => Object.assign(new ChildProcess(), { pid: ++launches, exitCode: null, signalCode: null }),
         request: async (url) => url.endsWith("/api/v1/me") ? 401 : 200,
-        stop: async (child) => { stopped.push(child.pid); if (child.pid === 2) throw new Error("secret-cleanup-detail"); },
+        stop: async (child) => {
+          if (child.pid === undefined) throw new Error("Fixture child must have a PID");
+          stopped.push(child.pid); if (child.pid === 2) throw new Error("secret-cleanup-detail");
+        },
       }), async () => null);
       expect(evidence.status).toBe("blocked: runtime teardown failed");
       expect(stopped).toEqual([2, 1]);
@@ -391,7 +426,7 @@ describe("Codex browser runner", () => {
   it("persists a schema-valid successful receipt without fabricating a coordinator spot-check", async () => {
     const root = realpathSync(mkdtempSync(resolve(tmpdir(), "codex-browser-")));
     try {
-      const plan = planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin");
+      const plan = planCodexBrowserRun({ ...worktree, root }, selection, environment, "darwin", { staticCoverage, base: "a".repeat(40) });
       const evidence = await runCodexBrowserPlan(plan, ["src/features/log-analysis/LogsPage.tsx"], (_command, args) => {
         const suite = args[6] === "playwright.quality.config.ts" ? "quality" : "acceptance";
         const output = resolve(root, plan.lane.outputDir, suite);
@@ -404,14 +439,14 @@ describe("Codex browser runner", () => {
         }));
         return { status: 0, signal: null };
       }, async () => null);
-      expect(codexBrowserEvidenceSchema.parse(evidence)).toMatchObject({ status: "passed", themes: ["light"], spotCheck: null });
+      expect(codexBrowserEvidenceSchema.parse(evidence)).toMatchObject({ status: "passed", themes: ["light"], spotCheck: null, evidenceScope: "local-browser", ciStatus: "not-run", selection: { staticCoverage, base: "a".repeat(40) } });
       expect(evidence.runs.map((run) => run.tests[0].durationMs)).toEqual([12, 12]);
       const receipt = resolve(root, plan.lane.outputDir, "codex-browser-evidence.json");
       const output = vi.spyOn(console, "log").mockImplementation(() => undefined);
       const previousExitCode = process.exitCode;
       try {
         await runCodexBrowserCli(["--check", receipt]);
-        expect(output).toHaveBeenLastCalledWith("Valid browser evidence: passed; spot-check: pending");
+        expect(output).toHaveBeenLastCalledWith("Local browser evidence: passed; static: passed; CI: not-run; spot-check: pending");
         for (const outcome of ["passed", "failed"]) {
           await runCodexBrowserCli(["--spot-check", receipt, "--reviewer", "Coordinator", "--outcome", outcome, "--notes", "Checked /logs in light theme and screenshot artifacts"]);
           const recorded = codexBrowserEvidenceSchema.parse(JSON.parse(readFileSync(receipt, "utf8")));
@@ -420,7 +455,7 @@ describe("Codex browser runner", () => {
           } });
           expect(Number.isNaN(Date.parse(recorded.spotCheck!.checkedAt))).toBe(false);
           await runCodexBrowserCli(["--check", receipt]);
-          expect(output).toHaveBeenLastCalledWith(`Valid browser evidence: passed; spot-check: ${outcome}`);
+          expect(output).toHaveBeenLastCalledWith(`Local browser evidence: passed; static: passed; CI: not-run; spot-check: ${outcome}`);
           expect(process.exitCode).toBe(outcome === "passed" ? 0 : 1);
         }
         const saved = readFileSync(receipt, "utf8");
@@ -445,7 +480,7 @@ describe("Codex browser runner", () => {
         writeFileSync(receipt, JSON.stringify(failed));
         await runCodexBrowserCli(["--spot-check", receipt, "--reviewer", "Coordinator", "--outcome", "passed", "--notes", "Reviewed failure"]);
         await runCodexBrowserCli(["--check", receipt]);
-        expect(output).toHaveBeenLastCalledWith("Valid browser evidence: failed; spot-check: passed");
+        expect(output).toHaveBeenLastCalledWith("Local browser evidence: failed; static: passed; CI: not-run; spot-check: passed");
         expect(process.exitCode).toBe(1);
       } finally {
         output.mockRestore();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PageProps } from "@/app/routes";
 import { readDebugNodeCatalogSearch, writeDebugNodeCatalogSearch } from "@/application/debugging/debugNodeCatalogSearch";
 import { ArchiveDebugNodeDialog } from "@/components/admin/ArchiveDebugNodeDialog";
@@ -243,6 +243,10 @@ export function DebuggingAdminPage({
 }) {
   const [adminNodes, setAdminNodes] = useState<DebugNodeRegistryEntry[]>([]);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [catalogRuntimeState, setCatalogRuntimeState] = useState<"loading" | "ready" | "error">(
+    () => area === "nodes" && runtimeMode === "api" ? "loading" : "ready"
+  );
+  const [catalogLoadAttempt, setCatalogLoadAttempt] = useState(0);
   const [adminError, setAdminError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
@@ -309,13 +313,19 @@ export function DebuggingAdminPage({
     [moduleNodes]
   );
 
-  useEffect(() => {
-    if (area !== "nodes" || !isApiMode || !debuggingAdminClient) {
+  useLayoutEffect(() => {
+    if (area !== "nodes" || !isApiMode) {
+      setCatalogRuntimeState("ready");
+      return;
+    }
+    if (!debuggingAdminClient) {
+      setCatalogRuntimeState("error");
       return;
     }
 
     let cancelled = false;
     setAdminLoading(true);
+    setCatalogRuntimeState("loading");
     setAdminError("");
     Promise.all([
       debuggingAdminClient.listNodes({ includeArchived: true }),
@@ -325,10 +335,11 @@ export function DebuggingAdminPage({
         if (cancelled) return;
         setAdminNodes(nodes);
         setAdminModuleNodes(loadedModules);
+        setCatalogRuntimeState("ready");
       })
       .catch(() => {
         if (!cancelled) {
-          setAdminError("无法加载可调节点目录。");
+          setCatalogRuntimeState("error");
         }
       })
       .finally(() => {
@@ -340,7 +351,7 @@ export function DebuggingAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [area, debuggingAdminClient, isApiMode]);
+  }, [area, catalogLoadAttempt, debuggingAdminClient, isApiMode]);
 
   const saveFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -863,7 +874,12 @@ export function DebuggingAdminPage({
             </dl>
             <span className="debug-node-feedback" role="status" title={saveFlash ? saveStatus : undefined}>{saveFlash ? saveStatus : ""}</span>
           </div>
-          <main className="param-admin-main" aria-label="节点调试">
+          {catalogRuntimeState === "loading" ? <div className="api-runtime-sync-banner" role="status">正在加载可调节点目录…</div> : null}
+          <main className="param-admin-main" aria-label="节点调试" data-runtime-state={catalogRuntimeState}
+            aria-busy={catalogRuntimeState === "loading"} inert={catalogRuntimeState === "loading"}>
+            {catalogRuntimeState === "error" ? <p className="debug-admin-error" role="alert">无法加载可调节点目录。
+              <button type="button" className="button" onClick={() => setCatalogLoadAttempt((attempt) => attempt + 1)}>重试</button>
+            </p> : null}
             {adminError && !editorMode && !moduleDialogOpen ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
             {isApiMode && !canEditAdminCatalog ? (
               <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p>

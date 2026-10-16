@@ -11,6 +11,7 @@ import { request } from "node:http";
 import { setTimeout as wait } from "node:timers/promises";
 import { applyPlaywrightRuntimeLane } from "./playwright-runtime-lane";
 import { createVitestImpact, type selectBrowserImpact } from "./test-impact";
+import { readStaticChanges, staticCoverageSchema, type StaticCoverage } from "./check-static-coverage";
 import { buildPlaywrightWebServers, resolveApiAuthorization } from "../playwright.shared";
 import { stopOwnedProcessGroup, waitForOwnedProcessGroupExit } from "./owned-process-group";
 import { createBearerTokenForUser } from "../e2e/acceptance/helpers/runtime";
@@ -29,7 +30,7 @@ const browserSelectionSchema = z.object({ fullFallback: z.boolean(), reasons: z.
 const authNames = ["AUTH_TOKEN_ISSUER", "AUTH_TOKEN_HMAC_SECRET"] as const;
 const platformReason = "platform: Linux-only baselines";
 const skipSchema = z.object({ suite: z.enum(["quality", "acceptance"]), project: z.string().nullable(), file: z.string().nullable(), status: z.literal("skipped"), reason: z.literal(platformReason) });
-const blockSchema = z.object({ reason: z.enum(["lane ports in use", "lane port check failed", "authentication probe failed", "runtime startup failed", "runtime teardown failed", "runtime interrupted"]), suite: z.enum(["quality", "acceptance"]).nullable(), ports: z.array(z.number().int().positive()).optional(), httpStatus: z.number().int().nullable().optional() });
+const blockSchema = z.object({ reason: z.enum(["static checks failed", "lane ports in use", "lane port check failed", "authentication probe failed", "runtime startup failed", "runtime teardown failed", "runtime interrupted"]), suite: z.enum(["quality", "acceptance"]).nullable(), ports: z.array(z.number().int().positive()).optional(), httpStatus: z.number().int().nullable().optional() });
 type BrowserBlock = z.infer<typeof blockSchema>;
 const authProbeSchema = z.object({ suite: z.enum(["quality", "acceptance"]), mode: z.enum(["development", "production"]), mechanism: z.enum(["development-header", "bearer"]), httpStatus: z.number().int().nullable() }).strict();
 const spotCheckSchema = z.object({ reviewer: z.string().trim().min(1), checkedAt: z.string().datetime(), outcome: z.enum(["passed", "failed"]), notes: z.string().trim().min(1) }).strict();
@@ -41,18 +42,27 @@ const passedRun = (run: z.infer<typeof runSchema>, acceptanceSpecs: readonly str
   && run.tests.some((test) => test.project !== "runtime-warmup" && test.attempts.some((attempt) => !["skipped", "not-run"].includes(attempt.status)))
   && run.tests.every((test) => test.outcome === "skipped" || (test.outcome === "expected" && test.attempts.length > 0
     && test.attempts.at(-1)!.status === test.expectedStatus));
+const feedbackSchema = z.object({ base: z.string().regex(/^[a-f0-9]{40}$/).nullable().default(null), staticCoverage: staticCoverageSchema.nullable().default(null) }).strict();
+const completedStatic = (coverage: StaticCoverage | null) => coverage?.status === "passed" || coverage?.status === "not-applicable";
 
 export const codexBrowserEvidenceSchema = z.object({
-  version: z.literal(1), startedAt: z.string().datetime(), finishedAt: z.string().datetime(), status: z.union([z.enum(["passed", "failed"]), z.string().regex(/^blocked: (?:missing AUTH_TOKEN_(?:ISSUER|HMAC_SECRET)(?:, AUTH_TOKEN_HMAC_SECRET)?|lane ports in use|lane port check failed|authentication probe failed|runtime startup failed|runtime teardown failed|runtime interrupted)$/)]),
+  version: z.literal(1), startedAt: z.string().datetime(), finishedAt: z.string().datetime(), status: z.union([z.enum(["passed", "failed"]), z.string().regex(/^blocked: (?:missing AUTH_TOKEN_(?:ISSUER|HMAC_SECRET)(?:, AUTH_TOKEN_HMAC_SECRET)?|static checks failed|lane ports in use|lane port check failed|authentication probe failed|runtime startup failed|runtime teardown failed|runtime interrupted)$/)]),
   worktree: z.object({ root: z.string(), branch: z.string(), head: z.string().regex(/^[a-f0-9]{40}$/), dirty: z.boolean() }),
   lane: z.object({ id: z.string(), baseURL: z.string().url(), apiURL: z.string().url(), databaseName: z.string(), objectStoreRoot: z.string(), outputDir: z.string(), reportDir: z.string() }),
-  network: z.literal("macos-localhost-only"), selection: z.object({ changedPaths: z.array(z.string()).nonempty(), browser: browserSelectionSchema }),
+  evidenceScope: z.literal("local-browser").default("local-browser"), ciStatus: z.literal("not-run").default("not-run"),
+  network: z.literal("macos-localhost-only"), selection: feedbackSchema.extend({ changedPaths: z.array(z.string()).nonempty(), browser: browserSelectionSchema }),
   themes: z.array(z.enum(["light", "dark"])), runs: z.array(runSchema),
   missingConfig: z.array(z.enum(authNames)).default([]), skipped: z.array(skipSchema).default([]),
   block: blockSchema.nullable().default(null),
   authProbes: z.array(authProbeSchema).max(2).default([]),
   spotCheck: spotCheckSchema.nullable(),
 }).strict().superRefine((evidence, context) => {
+  const coverage = evidence.selection.staticCoverage;
+  if (coverage && (coverage.files.map((file) => file.path).sort().join("\0") !== [...evidence.selection.changedPaths].sort().join("\0")
+    || (coverage.status === "failed" && (evidence.runs.length > 0 || (!evidence.missingConfig.length && evidence.block?.reason !== "static checks failed"))))
+    || (evidence.block?.reason === "static checks failed" && coverage?.status !== "failed")) {
+    context.addIssue({ code: "custom", message: "Static feedback must describe the same changes and block runtime launch on failure." });
+  }
   if (evidence.missingConfig.length) {
     if (evidence.status !== `blocked: missing ${evidence.missingConfig.join(", ")}` || evidence.runs.length || evidence.themes.length || evidence.block) {
       context.addIssue({ code: "custom", message: "Missing configuration must block before browser runs." });
@@ -125,8 +135,9 @@ export function buildCodexBrowserEvidence(plan: ReturnType<typeof planCodexBrows
   const missingConfig = missingAuth(plan.env, plan.selection);
   return codexBrowserEvidenceSchema.parse({
     version: 1, startedAt, finishedAt: new Date().toISOString(), status: missingConfig.length ? `blocked: missing ${missingConfig.join(", ")}` : block ? `blocked: ${block.reason}` : successfulRuns(runs) ? "passed" : "failed",
+    evidenceScope: "local-browser", ciStatus: "not-run",
     worktree: { root, branch, head, dirty }, lane: plan.lane, network: "macos-localhost-only",
-    selection: { changedPaths, browser: plan.selection }, missingConfig, skipped: plan.skipped, block, authProbes,
+    selection: { changedPaths, browser: plan.selection, ...plan.feedback }, missingConfig, skipped: plan.skipped, block, authProbes,
     themes: [...new Set(runs.flatMap((run) => run.tests.filter((test) => test.outcome !== "skipped" && test.attempts.length)
       .flatMap((test) => test.theme ? [test.theme] : [])))].sort(), runs, spotCheck: null,
   });
@@ -159,7 +170,8 @@ export function browserPlatformSkips(root: string, platform = process.platform):
   return skipped;
 }
 
-export function planCodexBrowserRun(worktree: BrowserWorktree, selection: BrowserSelection, environment: NodeJS.ProcessEnv, platform = process.platform) {
+export function planCodexBrowserRun(worktree: BrowserWorktree, selection: BrowserSelection, environment: NodeJS.ProcessEnv, platform = process.platform, feedback: z.input<typeof feedbackSchema> = {}) {
+  const staticFeedback = feedbackSchema.parse(feedback);
   if (platform !== "darwin") throw new Error("Localhost-only browser execution currently requires macOS sandbox-exec; no unrestricted fallback.");
   if (!environment.WISEEFF_RUNTIME_LANE) throw new Error("An explicit WISEEFF_RUNTIME_LANE is required.");
   const envFile = resolve(worktree.root, ".env");
@@ -214,7 +226,7 @@ export function planCodexBrowserRun(worktree: BrowserWorktree, selection: Browse
   const commands = [command("quality", qualityFilters), command("acceptance", selection.acceptanceSpecs.map((spec) => `${spec.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`))];
   selection = { ...selection, commands: commands.map((entry) => ["playwright", ...entry.args.slice(4)].join(" ")) };
   return {
-    worktree, selection, env, platform, skipped,
+    worktree, selection, env, platform, skipped, feedback: staticFeedback,
     lane: { id: lane.id, baseURL: lane.baseURL, apiURL: lane.apiURL, databaseName: decodeURIComponent(new URL(lane.databaseUrl).pathname.slice(1)), objectStoreRoot: lane.objectStoreRoot, outputDir: lane.outputDir, reportDir: lane.reportDir },
     commands,
   };
@@ -361,8 +373,8 @@ export async function runCodexBrowserPlan(plan: ReturnType<typeof planCodexBrows
     rmSync(evidencePath, { force: true });
     const runs: z.infer<typeof runSchema>[] = [];
     const authProbes: AuthProbe[] = [];
-    let block: BrowserBlock | null = null;
-    for (const command of missingAuth(plan.env, plan.selection).length ? [] : plan.commands) {
+    let block: BrowserBlock | null = !missingAuth(plan.env, plan.selection).length && plan.feedback.staticCoverage?.status === "failed" ? { reason: "static checks failed", suite: null } : null;
+    for (const command of block || missingAuth(plan.env, plan.selection).length ? [] : plan.commands) {
       if (command.suite === "acceptance" && !plan.selection.acceptanceSpecs.length) {
         runs.push({ suite: command.suite, status: "skipped", exitCode: null, durationMs: 0, report: command.report, error: platformReason, reportErrors: 0, tests: [] });
         continue;
@@ -423,7 +435,7 @@ export async function runCodexBrowserCli(args: string[] = process.argv.slice(2))
       writeFileSync(temporary, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
       renameSync(temporary, evidencePath);
       console.log(`Recorded browser spot-check: ${spotCheck.outcome}; reviewer: ${spotCheck.reviewer}`);
-      process.exitCode = evidence.status === "passed" && spotCheck.outcome === "passed" ? 0 : 1;
+      process.exitCode = evidence.status === "passed" && completedStatic(evidence.selection.staticCoverage) && spotCheck.outcome === "passed" ? 0 : 1;
     } finally {
       rmdirSync(lock);
     }
@@ -433,8 +445,8 @@ export async function runCodexBrowserCli(args: string[] = process.argv.slice(2))
   if (values.check) {
     if (values.base || positionals.length) throw new Error("--check cannot be combined with a browser run.");
     const evidence = codexBrowserEvidenceSchema.parse(JSON.parse(readFileSync(values.check, "utf8")));
-    console.log(`Valid browser evidence: ${evidence.status}; spot-check: ${evidence.spotCheck?.outcome ?? "pending"}`);
-    process.exitCode = evidence.status === "passed" && evidence.spotCheck?.outcome !== "failed" ? 0 : 1;
+    console.log(`Local browser evidence: ${evidence.status}; static: ${evidence.selection.staticCoverage?.status ?? "not-recorded"}; CI: not-run; spot-check: ${evidence.spotCheck?.outcome ?? "pending"}`);
+    process.exitCode = evidence.status === "passed" && completedStatic(evidence.selection.staticCoverage) && evidence.spotCheck?.outcome !== "failed" ? 0 : 1;
     return;
   }
   if ((values.base !== undefined) === (positionals.length > 0)) throw new Error("Usage: npm run test:browser:codex -- <changed files...> OR --base <commit> OR --check <evidence.json>");
@@ -448,17 +460,17 @@ export async function runCodexBrowserCli(args: string[] = process.argv.slice(2))
     dirty: Boolean(git(["status", "--porcelain"]).trim()),
   };
   let paths = positionals;
+  let changes: ReturnType<typeof readStaticChanges> | undefined;
   if (values.base !== undefined) {
-    const base = git(["rev-parse", "--verify", "--end-of-options", `${values.base}^{commit}`]).trim();
-    paths = [...git(["diff", "--name-only", "--no-renames", "-z", base, "--"]).split("\0"),
-      ...git(["ls-files", "--others", "--exclude-standard", "-z"]).split("\0")].filter(Boolean);
+    changes = readStaticChanges(root, values.base);
+    paths = changes.paths;
   }
-  const selection = await createVitestImpact(paths, root);
-  const plan = planCodexBrowserRun(worktree, selection.browser, process.env);
+  const selection = await createVitestImpact(paths, root, { executeStatic: true, base: changes?.base, deletedPaths: changes?.deletedPaths });
+  const plan = planCodexBrowserRun(worktree, selection.browser, process.env, process.platform, { base: selection.base, staticCoverage: selection.staticCoverage });
   if (!existsSync("/usr/bin/sandbox-exec")) throw new Error("sandbox-exec is unavailable; refusing unrestricted execution.");
   const evidence = await runCodexBrowserPlan(plan, selection.changedPaths);
   console.log(`${evidence.status}: ${plan.lane.outputDir}/codex-browser-evidence.json (coordinator spot-check pending)`);
-  process.exitCode = evidence.status === "passed" ? 0 : 1;
+  process.exitCode = evidence.status === "passed" && completedStatic(evidence.selection.staticCoverage) ? 0 : 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

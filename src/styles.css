@@ -6071,11 +6071,6 @@ td small {
   width: 100%;
 }
 
-/* SelectContent is portaled to body; modal forms need to clear the modal backdrop layer. */
-.debug-admin-select-content--modal[data-slot="select-content"] {
-  z-index: var(--z-modal-backdrop-nested);
-}
-
 .debug-admin-field select {
   min-height: 36px;
   padding: var(--space-2) 10px;

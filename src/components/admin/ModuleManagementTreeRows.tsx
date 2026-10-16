@@ -8,7 +8,6 @@ export type ModuleManagementTreeRowsProps<TItem> = {
   node: ModuleTreeNode;
   depth: number;
   canEdit?: boolean;
-  withinModal?: boolean;
   moduleNodes: readonly FlatModuleNode[];
   expandedTreeIds: ReadonlySet<string>;
   expandedDetailId: string | null;
@@ -37,7 +36,6 @@ export function ModuleManagementTreeRows<TItem>({
   node,
   depth,
   canEdit = true,
-  withinModal = false,
   moduleNodes,
   expandedTreeIds,
   expandedDetailId,
@@ -109,7 +107,6 @@ export function ModuleManagementTreeRows<TItem>({
         <td>
           <ModuleManagementRowActions
             canEdit={canEdit}
-            withinModal={withinModal}
             canDelete={itemCount === 0 && node.children.length === 0}
             deleteDisabledReason={deleteDisabledReason}
             itemCount={itemCount}
@@ -138,7 +135,6 @@ export function ModuleManagementTreeRows<TItem>({
                     <div className="param-admin-module-item-actions">
                       <RowActionMenu
                         label={`${node.name} 条目操作`}
-                        withinModal={withinModal}
                         primaryAction={{ id: "edit", label: editItemLabel, disabled: !canEdit, onSelect: () => onEditItem(getItemId(item)) }}
                         items={onDeleteItem && deleteItemLabel ? [{
                           id: "delete", label: deleteItemLabel, destructive: true,
@@ -160,7 +156,6 @@ export function ModuleManagementTreeRows<TItem>({
               key={child.id}
               depth={depth + 1}
               canEdit={canEdit}
-              withinModal={withinModal}
               deleteDisabledReason={deleteDisabledReason}
               detailCountLabel={detailCountLabel}
               detailListLabel={detailListLabel}

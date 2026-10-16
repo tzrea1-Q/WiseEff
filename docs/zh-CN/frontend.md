@@ -193,6 +193,12 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 ## 多层级模块树
 
+**共享弹层契约。** `ModalDialog`、`DialogContent` 和 `SheetContent` 自动提供弹层归属。其下的 `SelectControl` / 直接使用的 `SelectContent`、`RowActionMenu`，以及 portal 模式的 `ModuleTreeSelect` 自动使用已声明的模态层级，调用方无需配置弹层层级。树选择器需要避开祖先容器裁剪时保留 `portalMenu`。行内选择器按内容取宽；表单字段显式传入 `className="w-full"` 或使用已有字段宽度规则。标签、校验关联、空值和禁用语义保持不变。
+
+两批调用方迁移现已完成（#1190／#1191），手动模态层级兼容接口已删除（#1192）。新增调用方直接使用共享弹窗与控件的祖先关系。弹层关闭后焦点回到触发器；Escape 先关闭弹层，再关闭所属弹窗。焦点约束、背景 inert、滚动锁和 pending 操作的关闭行为仍由既有弹窗原语负责。
+
+若选值后因加载关联数据暂时禁用 `SelectControl`，共享控件在重新启用时恢复尚未移向其他元素的焦点；用户已转向其他输入框或弹窗时保留其焦点。调用方继续使用自己的 pending／禁用规则，无需增加延迟聚焦回调。
+
 参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`（展开/折叠、搜索、路径标签、单选与多选）；共享树筛选由 `TreeFilterOptions` 和稳定 ID 选择工具提供，各业务域仍传入自己的注册表和范围。
 
 - `/parameters`：模块筛选与分组使用 `moduleId` 子树包含；深链 `?module=<moduleId>`。
@@ -337,6 +343,12 @@ Xiaoze（小泽，唯一 Agent）：
 ## 表格列多选筛选 UX
 
 支持选 0 / 1 / 多个分类值的列表头筛选，必须使用共享的 `ColumnFilter`（安静的漏斗触发器 + 勾选菜单），不要用常驻 `<select>` 或用排序箭头冒充筛选。层级模块列使用 `ColumnFilter` 树模式，底层复用数据无关的 `src/domain/tree-filter/treeFilter.ts` 与 `src/components/common/TreeFilterOptions.tsx`；`ModuleTreeSelect` 也复用同一套树构造和选择语义。规格：[表格列多选筛选 UX](design-docs/ux-table-column-filter.md)。规范实现：`src/components/ColumnFilter.tsx`。参考接入：`ParametersTable`、工作台 `DtsParameterWorkbenchTable` 的「所属模块」、参数后台 `ParameterSpecLibrary` / `ProjectAdminTable`，以及 `/log-admin` 业务域列表的「状态」列。
+
+### 共享选择控件
+
+单选使用 `SelectControl`，列表头多值筛选使用 `ColumnFilter`，模块树选择使用 `ModuleTreeSelect`。`npm run ui:check` 会拒绝 `src/**/*.tsx` 中的原生 JSX `<select>`，给出 `native-select` 诊断、源码位置和共享控件指引。检查使用 TypeScript 语法树，能够区分真实元素与注释、字符串、JSX 属性及组件名；仍然允许原生按钮。
+
+零基线必须保持为零。必要的原生平台例外需要证明共享控件无法满足的约束，在检查器的 `nativeSelectExceptions` 中增加一个带审查理由的精确路径，并提供有针对性的回归验证；不支持目录、通配符或行内绕过。目前唯一例外是 `src/test/compactControls.test.tsx` 中验证旧原生控件兼容性的夹具，其他规则仍然适用。此规则复用已有静态任务与 scripts 测试；层级、焦点、鼠标交互和布局继续由现有浏览器检查负责。
 
 管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。列宽超出卡片时，内层 `.data-table-scroll` 保持 `overflow-x: auto`（指针拖动 + 触控板/触摸滑动）；表头 `ColumnFilter` 菜单是 `position: fixed`，不得再把滚动层改成 `overflow-visible`。其他会溢出的表滚动层复用同一套 `HorizontalDragScroll` / `useHorizontalDragScroll`（`ParametersTable`、审阅 `Table`、参数后台库表、调试表、初始化/导入预览、平台控制台候选体）；列表需要常显横向滚动条时，也由这个公共接缝按需提供。页面外壳仍不得造成整页横向滚动。已接入：`/organization/members` 成员表、`/log-admin` 业务域列表、`/log-admin` 分析质量、`/debugging-admin` 节点/参数库表、`/dts-reload` 候选网格，以及 `/parameter-admin/projects` 管理端项目清单。项目清单在 390px 使用卡片，在 768px 使用 1080px 宽表格加 16px 常显横向滚动条，在 1440px 完整显示且页面不横向溢出。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 在管理端列表边界闭环：规范项目配置工作台本身没有表格；日常工作的 `DtsParameterWorkbenchTable` 与仅 mock 使用的旧 `ParametersTable` 产品语义不同，不属于这条列表合同。
 

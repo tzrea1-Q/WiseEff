@@ -52,6 +52,48 @@ function runStep(id: string, overrides: Record<string, string> = {}) {
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
 
 describe("workflow-owned minimal acceptance diagnostics (EFF-T01–09)", () => {
+  it("links the exact run's compact index before the full safe archive without reading either artifact", () => {
+    const result = runStep("acceptance_diagnostic_settle", {
+      EFF_UPLOAD: "success", EFF_INDEX_UPLOAD: "success", EFF_ARCHIVE_UPLOAD: "success",
+      EFF_INDEX_CODE: "INDEX_GENERATED", EFF_SERVER: "https://github.com", EFF_REPOSITORY: "fixture/repo",
+      EFF_INDEX_URL: "https://github.com/fixture/repo/actions/runs/1234/artifacts/456",
+      EFF_ARCHIVE_URL: "https://github.com/fixture/repo/actions/runs/1234/artifacts/789",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.summary).toContain("[Compact failure index (INDEX_GENERATED)](https://github.com/fixture/repo/actions/runs/1234/artifacts/456)");
+    expect(result.summary).toContain("[Full sanitized archive](https://github.com/fixture/repo/actions/runs/1234/artifacts/789)");
+    expect(result.summary.indexOf("Compact failure index")).toBeLessThan(result.summary.indexOf("Full sanitized archive"));
+    expect(result.summary).toContain("attempt 2 / shard 2");
+  });
+  it.each(["missing", "cancelled", "wrong-run", "hostile"])("keeps %s compact navigation unavailable without a raw fallback", (failure) => {
+    const result = runStep("acceptance_diagnostic_settle", {
+      EFF_UPLOAD: "success", EFF_SERVER: "https://github.com", EFF_REPOSITORY: "fixture/repo",
+      EFF_INDEX_UPLOAD: failure === "cancelled" ? "cancelled" : "success",
+      EFF_INDEX_CODE: "SYNTHETIC_SECRET",
+      EFF_INDEX_URL: failure === "missing" ? "" : failure === "wrong-run"
+        ? "https://github.com/fixture/repo/actions/runs/999/artifacts/456"
+        : "https://github.com/fixture/repo/actions/runs/1234/artifacts/456?SYNTHETIC_SECRET",
+      EFF_ARCHIVE_UPLOAD: "failure", EFF_ARCHIVE_URL: "https://example.invalid/SYNTHETIC_SECRET",
+    });
+    expect(result.summary).toContain("Compact failure index (INDEX_UNAVAILABLE): unavailable");
+    expect(result.summary).toContain("Full sanitized archive: unavailable");
+    expect(result.summary).not.toContain("SYNTHETIC_SECRET");
+    expect(result.summary).not.toContain("](");
+  });
+  it("keeps a missing accepted-base failure-index publisher unavailable without reading candidate reports", () => {
+    const result = runStep("acceptance_index_stage", { EFF_BASE_SHA: "2".repeat(40) });
+    expect(result.record.status).toBe("unavailable");
+    expect(result.record.code).toBe("BASE_PUBLISHER_UNAVAILABLE");
+    expect(result.record.failures).toEqual([]);
+    expect(result.text).not.toContain("SYNTHETIC_SECRET");
+  });
+  it("rejects missing or replaced staged authority without reflecting candidate content", () => {
+    const result = runStep("acceptance_index", { EFF_INDEX_DIRECTORY: "/SYNTHETIC_SECRET" });
+    expect(result.record.status).toBe("rejected");
+    expect(result.record.code).toBe("INDEX_REJECTED");
+    expect(result.exitCode).toBe(1);
+    expect(result.text + result.stderr).not.toContain("SYNTHETIC_SECRET");
+  });
   it.each(["1", "2", "3", "4"])("identifies shard %s in both private diagnostic paths", (shard) => {
     expect(runStep("acceptance_diagnostic", { EFF_SHARD: shard }).record.identity.job).toBe(`acceptance-local-non-hdc-shard-${shard}`);
     expect(runStep("acceptance_diagnostic_fallback", { EFF_SHARD: shard }).record.identity.job).toBe(`acceptance-local-non-hdc-shard-${shard}`);
