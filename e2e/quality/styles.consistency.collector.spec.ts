@@ -456,7 +456,23 @@ styleTest("catalog selection does not shift labels and compact tables keep statu
   expect(await bounds(selection)).toEqual(before);
   const task = page.locator(".navigator-workbench__task");
   await expectFits(task);
-  await expect(page.locator("td:first-child")).toHaveCSS("text-overflow", "ellipsis");
+  const definition = page.locator("td:first-child");
+  await expect(definition).toHaveCSS("white-space", "normal");
+  await expect(definition).toHaveCSS("overflow-wrap", "anywhere");
+  await expectFits(definition);
+  const textFits = await definition.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const cell = element.getBoundingClientRect();
+    const lines = Array.from(range.getClientRects());
+    return {
+      wrapped: lines.length > 1,
+      unclipped: lines.every((line) => line.left >= cell.left - 1 && line.right <= cell.right + 1
+        && line.top >= cell.top - 1 && line.bottom <= cell.bottom + 1)
+        && element.scrollHeight <= element.clientHeight + 1
+    };
+  });
+  expect(textFits).toEqual({ wrapped: true, unclipped: true });
   expect((await bounds(page.getByRole("button", { name: "Details" }))).right).toBeLessThan((await bounds(task)).right);
   await page.locator("main").evaluate((element) => { element.style.width = "100%"; });
   await page.setViewportSize({ width: 820, height: 900 });
