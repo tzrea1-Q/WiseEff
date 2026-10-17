@@ -1819,6 +1819,25 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
+  it("allows comparing the same snapshot again after an unchanged result", async () => {
+    const compareBaseline = vi.fn(async () => ({ baselineId: "baseline-seed-v1", against: "working" as const,
+      members: [{ fileId: "file-board", status: "unchanged" as const,
+        baselineVersionId: "version-board-12", currentVersionId: "version-board-12" }] }));
+    renderWorkbench({ search: "?configSet=cs-default&file=file-board&baseline=baseline-seed-v1",
+      syncSearch: true, dtsRepository: createDtsRepository({ compareBaseline }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    await openWorkbenchReleaseDetails();
+    const compare = screen.getByRole("button", { name: "对比当前配置" });
+    await waitFor(() => expect(compare).toBeEnabled());
+    fireEvent.click(compare);
+    await screen.findByText("文件版本一致，无需查看差异。");
+    await waitFor(() => expect(compare).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "关闭配置版本" }));
+    await openWorkbenchReleaseDetails();
+    fireEvent.click(screen.getByRole("button", { name: "对比当前配置" }));
+    await waitFor(() => expect(compareBaseline).toHaveBeenCalledTimes(2));
+  });
+
   it("keeps baseline results in release details and clears the comparison from its single source exit before comparing again", async () => {
     const compareBaseline = vi.fn(async () => ({ baselineId: "baseline-seed-v1", against: "working" as const,
       members: [{ fileId: "file-board", status: "version_changed" as const,

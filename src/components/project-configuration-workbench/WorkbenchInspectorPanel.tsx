@@ -243,7 +243,7 @@ export function WorkbenchInspectorPanel({
             canRelease={pendingAction === null && !readinessLoading && workbenchReadinessAllowsRelease(releaseReadiness, sessionDraftsDirty)}
             canPreviewRestore={canAdmin && pendingAction === null && Boolean(selectedBaselineId) && sourceWorkflowSetReady}
             releaseBlockedReason={sessionDraftsDirty ? "请先保存或撤销本地变更" : !releaseReadiness?.canRelease ? "请先处理定版检查问题" : undefined}
-            comparing={pendingAction === "compare-baseline" || Boolean(baselineCompare) || canvasMode === "unified-diff"}
+            comparing={pendingAction === "compare-baseline"}
             onSelectBaseline={onSelectBaseline} onRetry={onBaselinesRetry} onCompare={onCompareBaseline}
             onOpenRelease={onOpenRelease} onOpenRestore={onOpenRestoreBaseline} onSelectCompareMember={onSelectBaselineCompareMember} />
           {canAdmin ? <details className="configuration-versions-dialog__checks" open={!readinessLoading && (!releaseReadiness?.available || issues.length > 0)}>
