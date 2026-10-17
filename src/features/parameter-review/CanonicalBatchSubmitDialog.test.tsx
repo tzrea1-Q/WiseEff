@@ -19,6 +19,36 @@ const preview: ParameterFileSourcePreview = { kind: "canonical", canSubmit: true
   candidateId: candidate.id, format: "dts", proofToken: "proof-1", bindings };
 
 describe("canonical DTS batch submit dialog", () => {
+  it("keeps a preflight failure editable and never reports normal loading as a broken proof", async () => {
+    const catalog = vi.fn().mockRejectedValueOnce(new Error("catalog offline"))
+      .mockResolvedValue({ item: { catalogReleaseId: "release" } });
+    const submit = vi.fn().mockResolvedValue({ item: { id: "submitted", status: "pending", candidateId: candidate.id,
+      assignedToUserId: "reviewer-1", submitterUserId: "author-1", batchProofDigest: "a".repeat(64), cohortCount: 2,
+      targets: bindings.map((binding, ordinal) => ({ ...binding, ordinal, targetText: binding.afterText })) } });
+    const governanceClient = { getProjectWorkflowRoleBindings: vi.fn().mockResolvedValue({ bindings: [
+      { userId: "reviewer-1", name: "周工", isActive: true, roles: ["software-committer"] }
+    ] }) } as never;
+    render(<CanonicalBatchSubmitDialog projectId="project-1" currentUserId="author-1" candidate={candidate}
+      preview={preview} repository={{ getCatalog: catalog, submitProjectValueBatchChangeRequest: submit } as never}
+      fileRepository={{ getCandidateSourcePreview: vi.fn().mockResolvedValue(preview) }}
+      conflictClient={{ listCandidateSourceConflicts: vi.fn().mockResolvedValue({ items: [], ineligible: [] }) } as never}
+      governanceClient={governanceClient} onDismiss={vi.fn()} onSubmitted={vi.fn()} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const reason = screen.getByRole("textbox", { name: "修改原因" });
+    fireEvent.change(reason, { target: { value: "原始原因" } });
+    const button = await screen.findByRole("button", { name: "提交 2 项审核" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent("提交前核对失败");
+    expect(reason).toBeEnabled();
+    expect(reason).toHaveValue("原始原因");
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.change(reason, { target: { value: "补充后的原因" } });
+    fireEvent.click(button);
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0][1].reason).toBe("补充后的原因");
+  });
+
   it.each([
     ["missing proof", { ...preview, proofToken: undefined }],
     ["missing target", { ...preview, bindings: bindings.slice(0, 1) }],
@@ -40,7 +70,7 @@ describe("canonical DTS batch submit dialog", () => {
     fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }),
       { target: { value: "校准" } });
     await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" })).toHaveAttribute("data-value", "reviewer-1"));
-    expect(within(dialog).getByRole("button", { name: /一次提交全部/ })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: /提交 \d+ 项审核|重试同一提交/ })).toBeDisabled();
     expect(submit).not.toHaveBeenCalled();
   });
 
@@ -60,7 +90,7 @@ describe("canonical DTS batch submit dialog", () => {
       const dialog = screen.getByRole("dialog");
       expect(await within(dialog).findByText(/单目标审核请求|单目标请求/)).toBeVisible();
       fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "reason" } });
-      expect(within(dialog).getByRole("button", { name: /一次提交全部/ })).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: /提交 \d+ 项审核|重试同一提交/ })).toBeDisabled();
       expect(submit).not.toHaveBeenCalled();
     }
   );
@@ -88,10 +118,10 @@ describe("canonical DTS batch submit dialog", () => {
       const dialog = screen.getByRole("dialog");
       await within(dialog).findByText(/须重新获取来源和冲突证明/);
       fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "reason" } });
-      const button = within(dialog).getByRole("button", { name: /一次提交全部/ });
+      const button = await within(dialog).findByRole("button", { name: /提交 \d+ 项审核|重试同一提交/ });
       await waitFor(() => expect(button).toBeEnabled());
       fireEvent.click(button);
-      await within(dialog).findByText(/同一请求重试/);
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent("同一请求重试");
       fireEvent.click(button);
       await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith("new-batch"));
       expect(submit).toHaveBeenCalledTimes(2);
@@ -126,9 +156,12 @@ describe("canonical DTS batch submit dialog", () => {
         { userId: "reviewer-1", name: "Reviewer", roles: ["software-committer"], isActive: true }
       ] }) } as never} onDismiss={vi.fn()} onSubmitted={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
-    expect(await within(dialog).findByText("other-author")).toBeVisible();
+    expect(await within(dialog).findByText("另一位项目成员")).toBeVisible();
+    fireEvent.click(within(dialog).getByText("溯源信息", { exact: true }));
+    fireEvent.click(await within(dialog).findByText("完整技术数据", { exact: true }));
+    expect(within(dialog).getByLabelText("完整溯源数据")).toHaveTextContent("other-author");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "retry" } });
-    const button = within(dialog).getByRole("button", { name: /一次提交全部/ });
+    const button = await within(dialog).findByRole("button", { name: /提交 \d+ 项审核|重试同一提交/ });
     expect(button).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /确认此目标采用文件值/ }));
     expect(button).toBeEnabled();
@@ -159,12 +192,12 @@ describe("canonical DTS batch submit dialog", () => {
       ] }) } as never} onDismiss={vi.fn()} onSubmitted={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "retry" } });
-    const button = within(dialog).getByRole("button", { name: /一次提交全部/ });
+    const button = await within(dialog).findByRole("button", { name: /提交 \d+ 项审核|重试同一提交/ });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
     await within(dialog).findByText(/来源过期或请求冲突（409）/);
     expect(button).toBeDisabled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "刷新来源与冲突证明" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新核对提交内容" }));
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(2));

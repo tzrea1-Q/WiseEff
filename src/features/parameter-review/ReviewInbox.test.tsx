@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialState } from "@/mockData";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { ReviewInbox, type ReviewInboxRow } from "./ReviewInbox";
+import { getContextQuery } from "@/workbenchUi";
 
 vi.mock("./CanonicalProjectValueReviewPanel", () => ({
   CanonicalProjectValueReviewPanel: ({ initialRequestId }: { initialRequestId: string }) => <h3>软件详情 {initialRequestId}</h3>
@@ -29,6 +30,10 @@ function inbox(rows: ReviewInboxRow[] = [], search = "") {
 }
 
 describe("unified review inbox", () => {
+  it("keeps older project bookmarks compatible while preferring the canonical query", () => {
+    expect(getContextQuery("?projectId=nebula").projectId).toBe("nebula");
+    expect(getContextQuery("?project=aurora&projectId=nebula").projectId).toBe("aurora");
+  });
   it("keeps one selectable summary row with the full title available when truncated", () => {
     const title = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";
     inbox([{ ...older, title }]);
@@ -37,51 +42,95 @@ describe("unified review inbox", () => {
     expect(rows).toHaveLength(1);
     const summary = within(rows[0]).getByRole("button", { name: `查看 ${title} 提交详情` });
     expect(summary).toHaveAttribute("title", title);
-    expect(within(summary).getByText(title)).toHaveClass("review-inbox__summary");
+    expect(summary).toHaveAttribute("data-size", "sm");
+    expect(summary).toHaveAttribute("data-variant", "outline");
+    expect(within(summary).getByText(title).closest(".review-inbox__summary")).not.toBeNull();
     fireEvent.click(summary);
     const inspector = screen.getByRole("complementary", { name: "审阅详情" });
     expect(within(inspector).getByRole("heading", { name: `${title}详情` })).toBeInTheDocument();
     expect(rows[0]).toHaveAttribute("aria-selected", "true");
   });
 
+  it("keeps a multiline legacy preview outside the fixed-size detail button", () => {
+    render(<ReviewInbox projectId="aurora" state={initialState} search="" legacyRows={[older]}
+      renderRowTitle={() => <span>复杂配置<br />24 行 · 当前与目标不同</span>}
+      renderLegacyDetail={(row) => <h3>{row.title}详情</h3>} />);
+    const button = screen.getByRole("button", { name: `查看 ${older.title} 提交详情` });
+    expect(button).toHaveTextContent(older.title);
+    expect(within(button).queryByText("复杂配置")).not.toBeInTheDocument();
+    expect(screen.getByText(/24 行/).closest(".review-inbox__summary")).toContainElement(button);
+  });
+
+  it("includes the visible object label in the detail button's accessible name", () => {
+    inbox([{ ...older, objectLabel: "cccv_0" }]);
+    const button = screen.getByRole("button", { name: "cccv_0，查看 调整电压 提交详情" });
+    expect(button).toHaveTextContent("cccv_0");
+    expect(button).not.toHaveTextContent("调整电压");
+    expect(screen.getByText("调整电压")).toBeInTheDocument();
+  });
+
   it("shows one pending empty state with a history action", () => {
-    inbox();
+    inbox([history]);
     expect(screen.getAllByText("暂无待审核请求")).toHaveLength(1);
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
-    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveAttribute("data-value", "all");
+    expect(screen.queryByRole("combobox", { name: "变更类型" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "查看已处理记录" }));
     expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
     expect(window.location.search).toContain("view=history");
   });
 
-  it("exposes full metadata in titles when single-line cells truncate", () => {
+  it("keeps an entirely empty queue free of filters and a link to empty history", () => {
+    inbox();
+    expect(screen.getByText("暂无待审核请求")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看已处理记录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选" })).not.toBeInTheDocument();
+  });
+
+  it("keeps project context, people, module and full time readable in the compact queue", () => {
     const row = { ...older, project: "Aurora 量产平台", module: "软件配置", submitter: "u-zhao-heng" };
     inbox([row]);
     const cells = within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("cell");
-    expect(cells[0]).toHaveAttribute("title", "旧版");
-    expect(cells[1]).toHaveAttribute("title", row.project);
-    expect(cells[2]).toHaveAttribute("title", row.module);
-    expect(cells[3]).toHaveAttribute("title", row.submitter);
-    expect(cells[5]).toHaveAttribute("title");
-    expect(within(cells[5]).getByText(/./)).toHaveAttribute("title");
-    expect(cells[6]).toHaveAttribute("title", row.status);
+    expect(cells).toHaveLength(3);
+    expect(within(cells[0]).getByText("参数变更")).toBeInTheDocument();
+    expect(within(cells[0]).getByText(row.module)).toHaveAttribute("title", row.module);
+    expect(within(cells[0]).getByText(row.submitter)).toHaveAttribute("title", `提交人：${row.submitter}`);
+    expect(within(screen.getByRole("complementary", { name: "审阅详情" })).getByText(`${row.project} · 参数与节点`)).toBeInTheDocument();
+    expect(within(cells[1]).getByText(/./)).toHaveAttribute("title");
+    expect(cells[2]).toHaveTextContent(row.status);
   });
 
   it("orders pending oldest first and selects a legacy request in the shared detail", () => {
     inbox([newer, older, history]);
     const rows = within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("调整电压");
-    expect(rows[0]).toHaveTextContent("旧版");
+    expect(rows[0]).toHaveTextContent("参数变更");
     expect(screen.getByRole("heading", { name: "调整电压详情" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "查看 调整电流 提交详情" }));
     expect(screen.getByRole("heading", { name: "调整电流详情" })).toBeInTheDocument();
     expect(window.location.search).toContain("legacyRequest=newer");
   });
 
+  it.each(["参数初始化", "节点状态", "历史参数"])("uses %s consistently without changing the legacy query key", (typeLabel) => {
+    inbox([{ ...older, typeLabel }], "?type=legacy");
+    const queue = screen.getByRole("table", { name: "审阅队列" });
+    expect(within(queue).getByText(typeLabel)).toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "审阅详情" })).getByText(`${older.project} · ${typeLabel}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+    const typeFilter = screen.getByRole("combobox", { name: "变更类型" });
+    expect(typeFilter).toHaveAttribute("data-value", "legacy");
+    expect(typeFilter).toHaveTextContent("参数与节点");
+    expect(window.location.search).toContain("type=legacy");
+  });
+
   it("names an empty type filter and clears it without another empty panel", async () => {
     inbox([older]);
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     await selectControlOption(screen.getByRole("combobox", { name: "变更类型" }), "value");
-    expect(screen.getByText("软件配置筛选下暂无请求")).toBeInTheDocument();
+    expect(screen.getByText("没有符合当前筛选条件的请求")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "移除软件配置筛选" })).toBeInTheDocument();
+    expect(screen.queryByText("当前项目暂无待审变更。")).not.toBeInTheDocument();
+    expect(screen.getByText("调整或清除筛选条件可查看其他请求。")).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "审阅详情" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByRole("heading", { name: "调整电压详情" })).toBeInTheDocument();
@@ -89,12 +138,15 @@ describe("unified review inbox", () => {
 
   it("names applied column filters when they exclude every request", () => {
     inbox([older, { ...newer, submitter: "王杰", status: "待批准" }]);
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选提交人" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "刘敏" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选提交人" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "待批准" }));
-    expect(screen.getByText("提交人：刘敏 · 状态：待批准筛选下暂无请求")).toBeInTheDocument();
+    expect(screen.getByText("没有符合当前筛选条件的请求")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "移除刘敏筛选" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "移除待批准筛选" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row")).toHaveLength(3);
   });
@@ -105,6 +157,7 @@ describe("unified review inbox", () => {
     window.history.pushState(null, "", "/parameter-review?legacyRequest=older&view=pending&type=all");
     fireEvent.popState(window);
     expect(screen.getByRole("heading", { name: "调整电压详情" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveAttribute("data-value", "all");
   });
 
@@ -124,6 +177,7 @@ describe("unified review inbox", () => {
     const rows = within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row").slice(1);
     expect(rows.map((row) => row.getAttribute("data-review-row-id"))).toEqual(["member-old", "older", "value-new"]);
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     await selectControlOption(screen.getByRole("combobox", { name: "变更类型" }), "value");
     expect(await screen.findByRole("heading", { name: "软件详情 value-new" })).toBeInTheDocument();
     expect(window.location.search).toContain("type=value");
@@ -134,15 +188,74 @@ describe("unified review inbox", () => {
 
   it("never substitutes another request for an unavailable deep link", () => {
     inbox([older], "?request=missing");
-    expect(screen.getByRole("alert")).toHaveTextContent("请求不存在或不在当前队列中");
+    expect(screen.getByRole("alert")).toHaveTextContent("无法打开该请求");
     expect(screen.queryByRole("complementary", { name: "审阅详情" })).not.toBeInTheDocument();
     expect(window.location.search).toBe("?request=missing");
+    fireEvent.click(screen.getByRole("button", { name: "返回当前项目队列" }));
+    expect(screen.getByRole("heading", { name: "调整电压详情" })).toBeInTheDocument();
+  });
+
+  it("distinguishes a selected request hidden by a filter from an unavailable request", async () => {
+    inbox([older, { ...newer, submitter: "王杰" }], "?legacyRequest=newer");
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+    fireEvent.click(screen.getByRole("button", { name: "筛选提交人" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "刘敏" }));
+    expect(screen.getByText("当前请求被筛选条件隐藏，清除筛选后可继续查看。")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(window.location.search).toContain("legacyRequest=newer");
+    fireEvent.click(screen.getByRole("button", { name: "显示当前请求" }));
+    expect(await screen.findByRole("heading", { name: "调整电流详情" })).toBeInTheDocument();
+  });
+
+  it("searches request content and assigned work without clearing the deep link", () => {
+    inbox([{ ...older, assignedToId: "another" }, { ...newer, assignedToId: initialState.currentUserId }]);
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索审阅请求" }), { target: { value: "调整电流" } });
+    expect(screen.queryByRole("button", { name: "查看 调整电压 提交详情" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 调整电流 提交详情" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "待我处理" }));
+    expect(screen.getByRole("table", { name: "审阅队列" })).toHaveTextContent("调整电流");
+    fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
+    expect(within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row")).toHaveLength(3);
+  });
+
+  it("sorts history by handling time and labels missing handling time honestly", () => {
+    inbox([{ ...history, id: "old-created", createdAt: "2026-01-01T00:00:00Z", handledAt: "2026-10-12T00:00:00Z" },
+      { ...history, id: "new-created", createdAt: "2026-10-10T00:00:00Z", handledAt: "2026-10-11T00:00:00Z" },
+      { ...history, id: "unrecorded", createdAt: "2026-01-01T00:00:00Z" }], "?view=history");
+    const rows = within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row").slice(1);
+    expect(rows.map((row) => row.getAttribute("data-review-row-id"))).toEqual(["old-created", "new-created", "unrecorded"]);
+    expect(screen.getByRole("columnheader", { name: "处理时间" })).toBeInTheDocument();
+    expect(rows[2]).toHaveTextContent("未记录");
   });
 
   it("treats an unknown type URL as all types", () => {
     inbox([], "?type=constructor");
-    expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveAttribute("data-value", "all");
+    expect(screen.queryByLabelText("已应用筛选")).not.toBeInTheDocument();
     expect(screen.getByText("暂无待审核请求")).toBeInTheDocument();
+  });
+
+  it("drops pending assignment filtering when switching to history", () => {
+    inbox([{ ...older, assignedToId: initialState.currentUserId }, { ...history, assignedToId: "another" }]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "待我处理" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "已处理" }), { button: 0, ctrlKey: false });
+    expect(screen.getByRole("heading", { name: "历史电压详情" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "待我处理" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/待我处理筛选/)).not.toBeInTheDocument();
+  });
+
+  it("does not confuse the assigned reviewer with the actor in history", () => {
+    inbox([{ ...history, assignedTo: "指定审核人", handledBy: "实际审核人" }], "?view=history");
+    const queue = screen.getByRole("table", { name: "审阅队列" });
+    expect(queue).toHaveTextContent("实际审核人 处理");
+    expect(queue).not.toHaveTextContent("指定审核人");
+  });
+
+  it("does not offer an inaccessible review page to a personal hardware user", () => {
+    render(<ReviewInbox projectId="aurora" state={{ ...initialState, activeRoleId: "hardware-user" }} search="" mineOnly
+      legacyRows={[]} renderLegacyDetail={() => null} onNavigate={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "前往变更审阅" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "前往参数修改" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "进行中" })).toBeInTheDocument();
   });
 
   it("shows a load failure rather than a false empty queue and can retry", async () => {
@@ -155,6 +268,28 @@ describe("unified review inbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await screen.findByText("暂无待审核请求");
     expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses authorized actor names and never presents the live value as a frozen before value", async () => {
+    const request = { id: "named-request", bindingId: "binding", reason: "提高电压", action: "set", targetValue: "4600",
+      submitterUserId: "author", submitterName: "张明", assignedToUserId: "reviewer", assignedToName: "李敏",
+      createdAt: "2026-10-10T02:00:00Z", status: "pending" };
+    const repository = { listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }) } as unknown as ParameterCatalogRepository;
+    render(<ReviewInbox projectId="aurora" state={{ ...initialState, parameters: [{ ...initialState.parameters[0], id: "binding", currentValue: "9999" }] }}
+      search="" repository={repository} legacyRows={[]} renderLegacyDetail={() => null} />);
+    const queue = await screen.findByRole("table", { name: "审阅队列" });
+    expect(queue).toHaveTextContent("张明");
+    expect(queue).toHaveTextContent("李敏");
+    expect(queue).toHaveTextContent("目标值 4600");
+    expect(queue).not.toHaveTextContent("9999");
+  });
+
+  it("locks navigation and refresh while a request is being applied", () => {
+    render(<ReviewInbox projectId="aurora" state={initialState} search="" legacyRows={[older]} busy renderLegacyDetail={() => null} />);
+    expect(screen.getByRole("button", { name: "刷新队列" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "已处理" })).toBeDisabled();
+    expect(screen.getByRole("searchbox", { name: "搜索审阅请求" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "查看 调整电压 提交详情" })).toBeDisabled();
   });
 
   it("hides the previous canonical queue while a replacement repository is loading", async () => {
@@ -175,5 +310,27 @@ describe("unified review inbox", () => {
     await act(async () => { finish({ items: [{ ...request, reason: "更新电压" }] }); });
     expect(screen.getByRole("heading", { name: "软件详情 value-1" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "审阅队列" })).toHaveTextContent("更新电压");
+  });
+
+  it.each(["account", "role", "permission"] as const)("clears private filters and old details when the %s changes", async (change) => {
+    const request = { id: "same-id", bindingId: "binding", reason: "提高电压", targetValue: "4600", status: "pending" };
+    let finish!: (value: { items: typeof request[] }) => void;
+    const list = vi.fn().mockResolvedValueOnce({ items: [request] })
+      .mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const repository = { listProjectValueChangeRequests: list } as unknown as ParameterCatalogRepository;
+    const element = (changed = false) => <ReviewInbox projectId="aurora" state={{ ...initialState,
+      currentUserId: changed && change === "account" ? "other-user" : initialState.currentUserId,
+      activeRoleId: changed && change === "role" ? "software-user" : initialState.activeRoleId }}
+      canReview={!(changed && change === "permission")} search="" repository={repository} legacyRows={[]}
+      renderLegacyDetail={() => null} />;
+    const mounted = render(element());
+    await screen.findByRole("heading", { name: "软件详情 same-id" });
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "私人输入" } });
+    mounted.rerender(element(true));
+    expect(screen.queryByRole("heading", { name: "软件详情 same-id" })).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("私人输入")).not.toBeInTheDocument();
+    await act(async () => { finish({ items: [request] }); });
+    expect(screen.getByRole("heading", { name: "软件详情 same-id" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 });

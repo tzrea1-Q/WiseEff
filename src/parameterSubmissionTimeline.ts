@@ -24,6 +24,7 @@ const reviewStageStatuses = new Set<ParameterSubmissionRound["status"] | "草稿
   "已撤回"
 ]);
 
+// Server workflow projections also use these stage coordinates; terminal UI state is resolved by callers.
 export function deriveSubmissionTimeline(round: ParameterSubmissionRound | DraftSubmissionRound | null): SubmissionTimelineView {
   if (!round) {
     return {

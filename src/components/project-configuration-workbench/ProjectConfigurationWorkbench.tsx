@@ -980,7 +980,7 @@ export function ProjectConfigurationWorkbench({
         );
         setSourceWorkflowReloadToken((value) => value + 1);
         setVersionsReloadToken((value) => value + 1);
-        onNavigate(`/parameter-review?projectId=${encodeURIComponent(project.id)}`);
+        onNavigate(`/parameter-review?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(result.requestId)}`);
       } catch (error: unknown) {
         setRollbackReviewError(presentError(error, "提交来源回滚审核失败。"));
       } finally {
@@ -1749,7 +1749,7 @@ export function ProjectConfigurationWorkbench({
                 const requestId = sourcePreview?.request?.id ?? sourceReviewResult?.requestId;
                 onNavigate(requestId
                   ? `/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`
-                  : `/parameter-review?projectId=${encodeURIComponent(project.id)}`);
+                  : `/parameter-review?project=${encodeURIComponent(project.id)}`);
               }}
               canRecompute={canRecompute}
               canActivate={canActivate && legacySourceWorkflowConfirmed}
@@ -2011,6 +2011,7 @@ export function ProjectConfigurationWorkbench({
         configSetName={selectedConfigSet.name}
         member={memberRemovalTarget}
         members={selectedMembers}
+        onReloadMembers={() => dtsRepository.listConfigSetFiles(project.id, selectedConfigSet.id)}
         currentUserId={currentUserId}
         repository={memberRemovalRepository}
         onDismiss={() => setMemberRemovalTarget(null)}

@@ -6,6 +6,7 @@ import { createPostgresDatabase } from "../../server/shared/database/client";
 import { makeTestAuthContext } from "../../server/testing/authContext";
 import { installConfigurationSourceFixture } from "../../server/testing/parameterCatalog/configurationSource";
 import { insertFileVersion } from "../../server/modules/parameter-files/repository";
+import type { ParsedIndex } from "../../server/modules/parameter-files/types";
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { dismissXiaozeHint } from "./helpers/catalogBrowser";
@@ -100,6 +101,8 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
         }
         await expect(dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem")).toHaveCount(2);
         await dialog.getByRole("textbox", { name: "修改原因" }).fill(reason);
+        await expect(dialog.getByRole("combobox", { name: "指定软件审核人" })).toContainText("选择软件审核人");
+        await expect(dialog.getByRole("combobox", { name: "指定软件审核人" })).toHaveAttribute("data-value", "");
         await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
         if (reason === "浏览器批量批准") {
           await expect.poll(() => dialog.evaluate((node) => node.getAnimations().every((animation) => animation.playState === "finished"))).toBe(true);
@@ -107,7 +110,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
         }
         const submitted = page.waitForResponse((response) => response.request().method() === "POST"
           && response.url().endsWith("/api/v2/projects/aurora/parameter-value-change-requests/batches"));
-        await dialog.getByRole("button", { name: "一次提交全部 2 项" }).click();
+        await dialog.getByRole("button", { name: "提交 2 项审核" }).click();
         const response = await submitted;
         expect(response.status(), await response.text()).toBe(201);
         const item = (await response.json()).item as { id: string; status: string; batchProofDigest: string;
@@ -154,7 +157,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora`);
       const queue = page.getByRole("table", { name: "审阅队列", exact: true });
       await expect(queue.getByRole("row").filter({ hasText: "浏览器批量批准" })).toBeVisible();
-      await queue.locator(`[data-review-row-id="${approved.id}"]`).getByRole("button", { name: "查看 浏览器批量批准 提交详情", exact: true }).click();
+      await queue.locator(`[data-review-row-id="${approved.id}"]`).getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
       const detail = page.getByRole("article", { name: "批量源文件请求详情" });
       await detail.getByText("溯源信息", { exact: true }).click();
       await expect(detail.locator("details").getByText(approved.batchProofDigest, { exact: true }).first()).toBeVisible();
@@ -163,6 +166,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       const approvalResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${approved.id}/review`));
       await detail.getByRole("button", { name: "批准全部 2 项" }).click();
+      await page.getByRole("dialog", { name: "确认批准整批变更", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       expect((await approvalResponse).status()).toBe(200);
       await expect(detail).toContainText("已批准");
       await page.reload();
@@ -177,11 +181,11 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       const rejectedFixture = await setup("rejected");
       const rejected = await submitFromPage(rejectedFixture, "浏览器批量驳回");
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora`);
-      await queue.locator(`[data-review-row-id="${rejected.id}"]`).getByRole("button", { name: "查看 浏览器批量驳回 提交详情", exact: true }).click();
+      await queue.locator(`[data-review-row-id="${rejected.id}"]`).getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
       const rejectResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${rejected.id}/review`));
       await detail.getByRole("button", { name: "驳回全部 2 项" }).click();
-      const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+      const rejectDialog = page.getByRole("dialog", { name: /^驳回「/ });
       await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
       await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("JSON 批量变更需要补充依据");
       await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
@@ -200,6 +204,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       const withdrawResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${withdrawn.id}/withdraw`));
       await detail.getByRole("button", { name: "撤回我的批量提交" }).click();
+      await page.getByRole("dialog", { name: "确认撤回提交", exact: true }).getByRole("button", { name: "撤回提交", exact: true }).click();
       expect((await withdrawResponse).status()).toBe(200);
       await expect(detail).toContainText("已撤回");
       await page.reload();
@@ -207,19 +212,20 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
 
       const staleFixture = await setup("stale");
       const stale = await submitFromPage(staleFixture, "浏览器批量来源漂移");
-      const oldVersion = (await db.query<{ storage_key: string; checksum: string; size_bytes: number; parsed_index: unknown }>(
-        "select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
+      const oldVersion = (await db.query<{ version_number: number; storage_key: string; checksum: string; size_bytes: number; parsed_index: ParsedIndex }>(
+        "select version_number,storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
         [staleFixture.versionId])).rows[0]!;
       const driftVersionId = randomUUID();
-      await insertFileVersion(db, { id: driftVersionId, fileId: staleFixture.fileId,
+      await insertFileVersion(db, { id: driftVersionId, fileId: staleFixture.fileId, versionNumber: oldVersion.version_number + 1,
         storageKey: oldVersion.storage_key, checksum: oldVersion.checksum, sizeBytes: oldVersion.size_bytes,
-        parsedIndex: oldVersion.parsed_index as Record<string, unknown>, origin: "upload",
+        parsedIndex: oldVersion.parsed_index, origin: "upload",
         createdByUserId: acceptanceCast.xuYun.userId });
       await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [staleFixture.fileId, driftVersionId]);
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora&request=${stale.id}`);
       const conflictResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${stale.id}/review`));
       await detail.getByRole("button", { name: "批准全部 2 项" }).click();
+      await page.getByRole("dialog", { name: "确认批准整批变更", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       expect((await conflictResponse).status()).toBe(409);
       await expect(detail.getByText(/来源或审核证明已变化/)).toBeVisible();
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toBeDisabled();

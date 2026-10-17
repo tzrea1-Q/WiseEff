@@ -15,7 +15,7 @@ describe("app shell skip-link and landmarks", () => {
 
     const skip = screen.getByRole("link", { name: "跳到主内容" });
     expect(skip).toHaveAttribute("href", "#main-content");
-    const main = screen.getByRole("main", { name: "参数管理员工作台" });
+    const main = screen.getByRole("main", { name: "变更审阅" });
     expect(main).toHaveAttribute("id", "main-content");
     expect(screen.getByRole("banner", { name: "页面栏" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();

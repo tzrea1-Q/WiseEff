@@ -29,7 +29,7 @@ type QualityRoute = {
 
 const routes: QualityRoute[] = [
   { path: "/parameters", heading: "项目参数用户工作台" },
-  { path: "/parameter-review", heading: "参数管理员工作台" },
+  { path: "/parameter-review", heading: "变更审阅", headingScope: ".topbar-title" },
   { path: "/parameter-admin", heading: "参数管理后台" },
   { path: "/logs", heading: "日志智能分析" },
   { path: "/debugging", heading: "页面暂时不可用" },

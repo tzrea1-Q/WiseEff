@@ -13,6 +13,25 @@ afterEach(() => {
 });
 
 describe("ParameterSubmissionsPage unified inbox", () => {
+  it("requires an explicit recovery from an invalid project without querying another project's submissions", async () => {
+    const onNavigate = vi.fn();
+    const listSubmissionRounds = vi.fn();
+    const listProjectValueChangeRequests = vi.fn();
+    const runtime = { parameterRepository: { listSubmissionRounds }, parameterCatalogRepository: {
+      listProjectValueChangeRequests, listMemberRemovalRequests: vi.fn()
+    } } as unknown as AppRuntime;
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
+      <ParameterSubmissionsPage state={initialState} dispatch={vi.fn()} onNavigate={onNavigate}
+        search="?project=missing-project" runtime={runtime} runtimeMode="api" />
+    </TopBarActionsContext.Provider>);
+    expect(screen.getByRole("alert")).toHaveTextContent("项目链接无效");
+    expect(listSubmissionRounds).not.toHaveBeenCalled();
+    expect(listProjectValueChangeRequests).not.toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "返回我的提交" }));
+    expect(onNavigate).toHaveBeenCalledExactlyOnceWith("/parameter-submissions");
+  });
+
   it("hides the previous owner's cached rounds immediately and ignores their late response after an identity change", async () => {
     const previousRound = { ...initialState.parameterSubmissionRounds[0], id: "previous-owner-round",
       status: "硬件Committer检视" as const, summary: "上一用户的节点提交",
@@ -40,7 +59,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
       }, [userId]);
       return null;
     }
-    const page = (userId: string, pageRuntime: AppRuntime) => <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    const page = (userId: string, pageRuntime: AppRuntime) => <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterSubmissionsPage state={{ ...initialState, currentUserId: userId }} dispatch={vi.fn()}
         onNavigate={() => {}} search="?project=aurora" runtime={pageRuntime} runtimeMode="api" />
       <IdentityVisibilityProbe userId={userId} />
@@ -83,12 +102,12 @@ describe("ParameterSubmissionsPage unified inbox", () => {
       getMemberRemovalRequest: vi.fn()
     } } as unknown as AppRuntime;
 
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterSubmissionsPage state={initialState} dispatch={vi.fn()} onNavigate={() => {}}
         search="?project=aurora" runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
 
-    const pending = await screen.findByRole("tab", { name: "待处理" });
+    const pending = await screen.findByRole("tab", { name: "进行中" });
     const history = screen.getByRole("tab", { name: "已处理" });
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
     expect(await screen.findByRole("button", { name: /停用充电节点/ })).toBeInTheDocument();
@@ -98,7 +117,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
     expect(listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora", mine: true });
     expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", { mine: true });
     expect(listMemberRemovalRequests).toHaveBeenCalledWith("aurora", { mine: true });
-    expect(screen.getByRole("button", { name: "查看 本人软件配置 提交详情" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "参数变更，查看 本人软件配置 提交详情" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看 本人删除成员 提交详情" })).toBeInTheDocument();
     expect(within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row")).toHaveLength(4);
 
@@ -120,7 +139,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
       items: [{ ...initialState.parameterSubmissionRounds[0].items[0], requestId: "frozen-request", name: "冻结参数",
         projectParameterBindingId: "frozen-binding", parameterSpecId: "frozen-spec",
         currentValue: "unchanged start\nold frozen line\nunchanged end", targetValue: "unchanged start\nnew frozen line\nunchanged end" }] };
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterSubmissionsPage state={{ ...initialState, currentUserId: "u-xu-yun", parameterSubmissionRounds: [round,
         { ...round, id: "second-round", summary: "另一轮冻结配置", createdAt: "2026-10-10T01:00:00Z",
           items: [{ ...round.items[0], requestId: "second-frozen-request" }] }] }}
@@ -129,18 +148,27 @@ describe("ParameterSubmissionsPage unified inbox", () => {
 
     const detail = screen.getByRole("region", { name: "提交轮次详情" });
     const comparison = within(detail).getByRole("region", { name: "前后对比" });
+    expect(comparison).toHaveTextContent("冻结参数");
     expect(comparison).toHaveTextContent("old frozen line");
     expect(comparison).toHaveTextContent("new frozen line");
+    expect(comparison).toHaveTextContent("unchanged start");
     expect(comparison).toHaveTextContent("unchanged end");
-    expect(within(detail).getByRole("region", { name: "影响范围" })).toHaveTextContent("冻结参数");
+    expect(within(comparison).getByText("old frozen line").closest("[data-kind]")).toHaveAttribute("data-kind", "remove");
+    expect(within(comparison).getByText("new frozen line").closest("[data-kind]")).toHaveAttribute("data-kind", "add");
+    expect(within(detail).queryByRole("region", { name: "影响范围" })).not.toBeInTheDocument();
     const provenance = within(detail).getByText("溯源信息").closest("details")!;
     expect(provenance).not.toHaveAttribute("open");
     expect(comparison.compareDocumentPosition(provenance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(detail).queryByText("frozen-binding")).not.toBeInTheDocument();
     fireEvent.click(within(detail).getByText("溯源信息"));
-    expect(await within(detail).findByText("frozen-binding")).toBeVisible();
-    fireEvent.click(within(provenance).getByRole("button", { name: "复制 请求 ID · 1" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("frozen-request"));
+    fireEvent.click(await within(provenance).findByText("完整技术数据", { selector: "summary" }));
+    const raw = within(provenance).getByLabelText("完整溯源数据");
+    expect(raw).toBeVisible();
+    expect(JSON.parse(raw.textContent!)).toEqual(expect.objectContaining({
+      "请求 ID": ["frozen-request"], "绑定 ID": ["frozen-binding"], "参数定义 ID": ["frozen-spec"]
+    }));
+    fireEvent.click(within(provenance).getByRole("button", { name: "复制完整技术数据" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(raw.textContent));
     fireEvent.click(screen.getByRole("button", { name: "查看 另一轮冻结配置 提交详情" }));
     expect(within(detail).getByText("溯源信息").closest("details")).not.toHaveAttribute("open");
   });
@@ -152,7 +180,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
       items: [{ ...pending.items[0], requestId: "contained-history-request" }] };
     const search = "?project=aurora&legacyRequest=contained-history-request&type=legacy";
     window.history.replaceState(null, "", `/parameter-submissions${search}`);
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterSubmissionsPage state={{ ...initialState, currentUserId: "u-xu-yun", parameterSubmissionRounds: [pending, history] }}
         dispatch={vi.fn()} onNavigate={() => {}} search={search} runtimeMode="mock" />
     </TopBarActionsContext.Provider>);
@@ -165,6 +193,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
     window.history.pushState(null, "", "/parameter-submissions?project=aurora&legacyRequest=pending-round&view=pending&type=legacy");
     fireEvent.popState(window);
     expect(await screen.findByRole("heading", { level: 2, name: "待处理节点" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "筛选" }));
     expect(screen.getByRole("combobox", { name: "变更类型" })).toHaveAttribute("data-value", "legacy");
     window.history.pushState(null, "", `/parameter-submissions${search}&view=history`);
     fireEvent.popState(window);
@@ -177,7 +206,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "已处理参数" })).toBeInTheDocument();
     window.history.pushState(null, "", "/parameter-submissions?project=aurora&legacyRequest=unknown-request");
     fireEvent.popState(window);
-    expect(await screen.findByRole("alert")).toHaveTextContent("请求不存在");
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法打开该请求");
     expect(screen.queryByRole("region", { name: "提交轮次详情" })).not.toBeInTheDocument();
   });
 
@@ -186,16 +215,22 @@ describe("ParameterSubmissionsPage unified inbox", () => {
       listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [] }),
       listMemberRemovalRequests: vi.fn().mockResolvedValue({ items: [] })
     } } as unknown as AppRuntime;
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterSubmissionsPage state={initialState} dispatch={vi.fn()} onNavigate={() => {}}
         search="?project=aurora" runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
 
-    expect(await screen.findByText("暂无待审核请求")).toBeInTheDocument();
-    expect(screen.getAllByText("暂无待审核请求")).toHaveLength(1);
+    expect(await screen.findByText("你还没有进行中的提交")).toBeInTheDocument();
+    expect(screen.getAllByText("你还没有进行中的提交")).toHaveLength(1);
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
     expect(screen.queryByRole("region", { name: "提交轮次详情" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "查看已处理记录" }));
+    expect(screen.queryByRole("button", { name: "查看已处理记录" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
     expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByText("暂无已处理记录")).toHaveLength(1);
+    expect(screen.queryByRole("region", { name: "提交轮次详情" })).not.toBeInTheDocument();
+    expect(runtime.parameterRepository.listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora", mine: true });
+    expect(runtime.parameterCatalogRepository!.listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", { mine: true });
+    expect(runtime.parameterCatalogRepository!.listMemberRemovalRequests).toHaveBeenCalledWith("aurora", { mine: true });
   });
 });

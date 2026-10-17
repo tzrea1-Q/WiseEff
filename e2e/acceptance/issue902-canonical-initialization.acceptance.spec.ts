@@ -171,6 +171,10 @@ test.describe("issue902 canonical-only JSON project initialization", () => {
     const approved = page.waitForResponse(response => response.request().method() === "POST"
       && response.url().endsWith(`/api/v1/parameters/admin/initialization-reviews/${review.id}/approve`));
     await detail.getByRole("button", { name: "通过初始化", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "确认通过初始化", exact: true });
+    await expect(confirmation).toContainText(targetProjectName);
+    await expect(confirmation).toContainText("1 项初始化参数");
+    await confirmation.getByRole("button", { name: "确认通过", exact: true }).click();
     const approval = await approved;
     expect(approval.ok(), await approval.text()).toBe(true);
     expect((await approval.json()).item).toMatchObject({ id: review.id, projectId: targetProjectId, status: "approved" });

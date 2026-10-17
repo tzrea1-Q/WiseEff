@@ -22805,6 +22805,24 @@
                   "null"
                 ]
               },
+              "submitterName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assignedToName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "reviewerNote": {
                 "type": [
                   "string",
@@ -22984,6 +23002,24 @@
                   ]
                 },
                 "reviewerUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "submitterName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "assignedToName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerName": {
                   "type": [
                     "string",
                     "null"
@@ -23299,6 +23335,24 @@
                   "null"
                 ]
               },
+              "submitterName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assignedToName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "appliedSourceResult": {
                 "type": [
                   "object",
@@ -23550,6 +23604,24 @@
                   ]
                 },
                 "reviewerNote": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "submitterName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "assignedToName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerName": {
                   "type": [
                     "string",
                     "null"
@@ -24141,6 +24213,24 @@
                 ]
               },
               "reviewerNote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "submitterName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assignedToName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerName": {
                 "type": [
                   "string",
                   "null"
@@ -24951,6 +25041,24 @@
                     "null"
                   ]
                 },
+                "submitterName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "assignedToName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "sourceProofToken": {
                   "type": "string"
                 },
@@ -25265,6 +25373,24 @@
                       "null"
                     ]
                   },
+                  "submitterName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignedToName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "reviewerNote": {
                     "type": [
                       "string",
@@ -25875,6 +26001,24 @@
                       "null"
                     ]
                   },
+                  "submitterName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignedToName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "sourceProofToken": {
                     "type": "string"
                   },
@@ -26238,6 +26382,24 @@
                     ]
                   },
                   "reviewerNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "submitterName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignedToName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerName": {
                     "type": [
                       "string",
                       "null"
@@ -26399,6 +26561,24 @@
                       "null"
                     ]
                   },
+                  "submitterName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignedToName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "reviewerNote": {
                     "type": [
                       "string",
@@ -27009,6 +27189,24 @@
                       "null"
                     ]
                   },
+                  "submitterName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignedToName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "sourceProofToken": {
                     "type": "string"
                   },
@@ -27377,6 +27575,24 @@
                       "null"
                     ]
                   },
+                  "submitterName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "assignedToName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewerName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "appliedSourceResult": {
                     "type": [
                       "object",
@@ -27476,6 +27692,22 @@
                   },
                   "after": {
                     "type": "string"
+                  },
+                  "targetIdentity": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "beforeText": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "beforeText"
+                    ],
+                    "additionalProperties": false
                   },
                   "bindings": {
                     "type": "array",
@@ -27813,6 +28045,9 @@
                           "type": "string"
                         },
                         "afterText": {
+                          "type": "string"
+                        },
+                        "path": {
                           "type": "string"
                         },
                         "decision": {

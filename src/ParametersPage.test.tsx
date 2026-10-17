@@ -85,7 +85,7 @@ describe("ParametersPage read-only access", () => {
     const topbar = container.querySelector(".topbar");
     expect(topbar).not.toBeNull();
     expect(within(topbar as HTMLElement).getByRole("button", { name: "导出 Excel" })).toBeInTheDocument();
-    expect(within(topbar as HTMLElement).queryByRole("button", { name: "历史提交" })).not.toBeInTheDocument();
+    expect(within(topbar as HTMLElement).queryByRole("button", { name: "我的提交" })).not.toBeInTheDocument();
     expect(within(topbar as HTMLElement).queryByRole("button", { name: "AI 巡检" })).not.toBeInTheDocument();
   });
 
@@ -211,7 +211,7 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
   const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {
     setActions(nextActions);
   }, []);
-  const contextValue = useMemo(() => ({ setActions: setStableActions }), [setStableActions]);
+  const contextValue = useMemo(() => ({ setActions: setStableActions, setLeadingActions: () => {} }), [setStableActions]);
 
   return (
     <TopBarActionsContext.Provider value={contextValue}>
@@ -337,6 +337,8 @@ function createApiBoundaryRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
   return {
+    createNodeEnablementDraft: vi.fn<ParameterTopologyRepository["createNodeEnablementDraft"]>()
+      .mockRejectedValue(new Error("Unexpected node draft in the binding boundary fixture")),
     listNodeEnablementDrafts: vi.fn().mockResolvedValue([]),
     listBindings: vi
       .fn<ParameterTopologyRepository["listBindings"]>()
@@ -668,7 +670,7 @@ describe("ParametersPage draft edge cases", () => {
     const topbar = container.querySelector(".topbar");
 
     expect(topbar).not.toBeNull();
-    ["导出 Excel", "历史提交"].forEach((label) => {
+    ["导出 Excel", "我的提交"].forEach((label) => {
       const action = within(topbar as HTMLElement).getByRole("button", { name: label });
       expect(action).toHaveClass("button", "subtle");
     });
@@ -1322,9 +1324,9 @@ describe("ParametersPage · 提交契约", () => {
     const genericHeadingRuleIndex = allRules.findIndex((rule) =>
       rule.selectors.includes(".submission-diff-card strong")
     );
-    const complexHeadingRuleIndex = allRules.findLastIndex((rule) =>
+    const complexHeadingRuleIndex = allRules.map((rule) =>
       rule.selectors.includes(".submission-diff-card--complex strong")
-    );
+    ).lastIndexOf(true);
     expect(codeRule.background).toBe("var(--surface)");
     expect(codeRule.color).toBe("var(--text)");
     // The complex-card heading override must stay after the generic heading

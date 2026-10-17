@@ -1,11 +1,9 @@
 import {
   type ChangeRequest,
-  type ParameterRecord,
   type ParameterSubmissionItem,
   type ParameterSubmissionRound
 } from "@/domain/prototype/types";
 import {
-  buildReviewDetailSummary,
   getParameterValueSummary,
   isRedundantReviewSummary,
   shouldShowReviewDetailReason,
@@ -116,33 +114,38 @@ function SubmissionHistoryDiff({ baseValue, targetValue }: { baseValue: string; 
   );
 }
 
-export function SubmissionHistoryDiffCard({ item }: { item: ParameterSubmissionItem }) {
+export function SubmissionHistoryDiffCard({ item, compactIdentity = false, incompleteMetadata = false, showReason = true }: {
+  item: ParameterSubmissionItem;
+  compactIdentity?: boolean;
+  incompleteMetadata?: boolean;
+  showReason?: boolean;
+}) {
   const isComplexItem = isComplexSubmissionHistoryItem(item);
-  const sourceLabel = isComplexItem ? "DTS / 多行参数" : "数值配置";
   const currentDisplayValue = formatSubmissionHistoryValue(item.currentValue, item.unit, isComplexItem);
   const targetDisplayValue = formatSubmissionHistoryValue(item.targetValue, item.unit, isComplexItem);
 
   return (
     <article
-      className={["submission-diff-card", "submission-diff-card--history", isComplexItem ? "submission-diff-card--history-complex" : ""]
+      className={["submission-diff-card", "submission-diff-card--history", compactIdentity ? "submission-diff-card--compact" : "", isComplexItem ? "submission-diff-card--history-complex" : ""]
         .filter(Boolean)
         .join(" ")}
       key={item.requestId}
     >
       <div className="submission-diff-card__head">
         <div>
-          <strong>{item.name}</strong>
-          <small>{item.module} · {riskLabels[item.risk]}</small>
+          {!compactIdentity ? <strong>{item.name}</strong> : null}
+          <small>{item.module}{!incompleteMetadata ? ` · ${riskLabels[item.risk]}风险` : ""}</small>
         </div>
-        <span>{isComplexItem ? "复杂配置" : "数值配置"}</span>
+        {!compactIdentity ? <span>{item.editSubjectKind === "node-enablement" ? "节点状态" : isComplexItem ? "复杂配置" : "数值配置"}</span> : null}
       </div>
-      <div className="history-submission-meta-row" aria-label={`${item.name} 历史提交摘要`}>
-        <span>{sourceLabel}</span>
+      {isComplexItem ? <div className="history-submission-meta-row" aria-label={`${item.name} 历史提交摘要`}>
+        <span>配置文本</span>
         <span>当前 {getSubmissionHistoryLineCount(item.currentValue)} 行</span>
         <span>目标 {getSubmissionHistoryLineCount(item.targetValue)} 行</span>
-      </div>
+      </div> : null}
       <SubmissionHistoryDiff baseValue={currentDisplayValue} targetValue={targetDisplayValue} />
-      <p>{item.reason}</p>
+      {showReason && item.reason.trim() ? <p className="submission-diff-card__reason"><span>修改原因：</span>{item.reason}</p> : null}
+      {incompleteMetadata ? <p role="note">未记录冻结的单位与风险信息，以上保留原始提交值。</p> : null}
     </article>
   );
 }
@@ -192,26 +195,15 @@ export function ReviewChangeValueSummary({
 
 export function ReviewDetailSummary({
   request,
-  parameter,
   moduleName,
   moduleDescription,
-  parameterDescription,
-  onOpenSubmissionDetail
+  parameterDescription
 }: {
   request: ChangeRequest;
-  parameter?: ParameterRecord;
   moduleName?: string;
   moduleDescription?: string;
   parameterDescription?: string;
-  onOpenSubmissionDetail?: () => void;
 }) {
-  const summary = buildReviewDetailSummary({
-    title: request.title,
-    currentValue: request.currentValue,
-    targetValue: request.targetValue,
-    valueKind: request.valueKind ?? parameter?.valueKind,
-    configFormat: parameter?.configFormat
-  });
   const supplementalSummary = request.aiSummary.trim();
   const showSupplementalSummary =
     supplementalSummary.length > 0 && !isRedundantReviewSummary(supplementalSummary);
@@ -222,37 +214,11 @@ export function ReviewDetailSummary({
 
   return (
     <div className="review-detail-summary">
-      {summary.isComplex ? (
-        <>
-          <p className="review-detail-summary__headline">{summary.headline}</p>
-          <div className="review-change-complex-summary__meta">
-            <span className="review-change-complex-badge">复杂配置</span>
-            <small>{summary.differenceLabel}</small>
-          </div>
-          {summary.hasDifference ? (
-            <p className="review-detail-summary__hint">
-              配置内容存在差异，请{" "}
-              <button
-                className="review-detail-summary__link"
-                type="button"
-                onClick={onOpenSubmissionDetail}
-              >
-                查看提交详情
-              </button>
-              {" "}了解行级对比。
-            </p>
-          ) : (
-            <p className="review-detail-summary__hint">配置内容与目标一致。</p>
-          )}
-        </>
-      ) : (
-        <p className="review-detail-summary__headline">
-          {summary.headline}
-        </p>
-      )}
       {showSupplementalSummary ? (
         <p className="review-detail-summary__supplement">{supplementalSummary}</p>
       ) : null}
+      {resolvedModuleDescription || resolvedParameterDescription || reasons.length > 0 ? <details>
+        <summary>背景与风险说明</summary>
       {resolvedModuleDescription || resolvedParameterDescription ? (
         <dl className="review-identity-intros review-identity-intros--compact" aria-label="模块与参数介绍">
           {resolvedModuleDescription ? (
@@ -282,13 +248,14 @@ export function ReviewDetailSummary({
           ))}
         </ul>
       ) : null}
+      </details> : null}
     </div>
   );
 }
 
 export function shouldShowSubmissionRoundSummary(round: ParameterSubmissionRound) {
   const summary = round.summary.trim();
-  if (!summary) {
+  if (!summary || /^Parameter changes submitted\.(?: 已由提交人撤回。)?$/.test(summary)) {
     return false;
   }
   return !/本轮提交包含\s*\d+\s*个参数/.test(summary);

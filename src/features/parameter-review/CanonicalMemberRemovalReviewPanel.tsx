@@ -9,6 +9,10 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
 import { canonicalStatusLabels } from "./canonicalSubmissionTracking";
 import { ReviewProvenance } from "./ReviewProvenance";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { reviewLocator } from "./ReviewSourceDiff";
 
 type MemberRequest = CatalogMemberRemovalRequestResponse["item"];
 type View = "pending" | "history";
@@ -44,7 +48,7 @@ function proofMatchesRequest(request: MemberRequest): boolean {
 
 export function CanonicalMemberRemovalReviewPanel({ projectId, repository, currentUserId, canReview = false,
   mineOnly = false, initialRequestId, onSelectRequest, detailOnly = false, externalView,
-  onRequestsChanged, users = [] }: {
+  onRequestsChanged, onBusyChange, refreshVersion = 0, users = [] }: {
   projectId: string;
   repository?: ParameterCatalogRepository;
   currentUserId?: string;
@@ -55,6 +59,8 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
   detailOnly?: boolean;
   externalView?: View;
   onRequestsChanged?: () => void;
+  onBusyChange?: (busy: boolean) => void;
+  refreshVersion?: number;
   users?: Array<{ id: string; name: string }>;
 }) {
   const [view, setView] = useState<View>(externalView ?? "pending");
@@ -63,7 +69,13 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
   const [selected, setSelected] = useState<MemberRequest | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [blocked, setBlocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +84,7 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
   const mountedRef = useRef(false);
   const scopeRef = useRef({ projectId, currentUserId });
   const currentScope = () => mountedRef.current && scopeRef.current.projectId === projectId && scopeRef.current.currentUserId === currentUserId;
-  const userName = (id: string | null | undefined) => users.find((user) => user.id === id)?.name ?? id ?? "未指派";
+  const userName = (id: string | null | undefined) => users.find((user) => user.id === id)?.name ?? (id ? "项目成员（姓名暂不可用）" : "未指派");
 
   useEffect(() => {
     mountedRef.current = true;
@@ -83,8 +95,10 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
 
   useEffect(() => {
     setRejectOpen(false);
+    setApproveOpen(false);
+    setWithdrawOpen(false);
     setRejectReason("");
-  }, [selected?.id, projectId, currentUserId, view]);
+  }, [initialRequestId, projectId, currentUserId, view]);
 
   useEffect(() => {
     if (externalView) {
@@ -121,6 +135,7 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
       }
       setItems(visible);
       setSelected(detail);
+      if (detail && proofMatchesRequest(detail)) setBlocked(false);
       requestedRef.current = null;
     }).catch((cause) => {
       if (!cancelled) {
@@ -130,31 +145,58 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
       }
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [projectId, repository, currentUserId, detailOnly, mineOnly, initialRequestId, view, reload]);
+  }, [projectId, repository, currentUserId, detailOnly, mineOnly, initialRequestId, view, reload, refreshVersion]);
 
   if (!repository?.listMemberRemovalRequests || !repository.getMemberRemovalRequest) return null;
   const valid = Boolean(selected && proofMatchesRequest(selected));
   const assignedReviewer = Boolean(selected && canReview && currentUserId
     && selected.assignedToUserId === currentUserId && selected.submitterUserId !== currentUserId);
   const submitter = Boolean(selected && currentUserId === selected.submitterUserId);
+  const sourceName = selected?.frozenProof.members.find((member) => member.fileId === selected.fileId)?.sourceName ?? "配置文件";
   const refresh = () => {
     requestedRef.current = selected?.id ?? null;
-    setBlocked(false);
     setReload((value) => value + 1);
   };
   const select = async (id: string) => {
     if (busy) return;
+    setRejectOpen(false);
+    setApproveOpen(false);
+    setWithdrawOpen(false);
+    setRejectReason("");
     setError(null);
-    setBlocked(false);
+    setSelected(null);
     try {
       const detail = (await repository.getMemberRemovalRequest!(projectId, id)).item;
       if (!currentScope()) return;
       if (detail.id !== id || detail.projectId !== projectId) throw new Error("请求详情与当前选择不一致，已阻止显示。");
+      if (!proofMatchesRequest(detail)) throw new Error("成员快照或来源证明不完整，暂不能审核。");
       setSelected(detail);
+      setBlocked(false);
       onSelectRequest?.(id);
     } catch (cause) {
       if (currentScope()) setError(presentError(cause, "读取成员删除证明失败。"));
     }
+  };
+  const refreshDecision = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    try {
+      const latest = (await repository.getMemberRemovalRequest!(projectId, selected.id)).item;
+      if (!currentScope()) return;
+      if (latest.id !== selected.id || latest.projectId !== projectId || !proofMatchesRequest(latest)) {
+        throw new Error("请求详情或来源证明不一致，已阻止再次操作。");
+      }
+      setSelected(latest);
+      setBlocked(false);
+      setError(null);
+      if (latest.status !== "pending") {
+        setRejectOpen(false);
+        requestedRef.current = latest.id;
+        setView("history");
+      }
+    } catch (cause) {
+      if (currentScope()) setError(presentError(cause, "重新核对请求失败，请重试。"));
+    } finally { if (currentScope()) setBusy(false); }
   };
   const decide = async (decision: "approve" | "reject" | "withdraw", note = "") => {
     if (!selected || !valid || busy || blocked || selected.status !== "pending") return;
@@ -187,11 +229,15 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
       }
       setSelected(latest);
       setRejectOpen(false);
+      setApproveOpen(false);
+      setWithdrawOpen(false);
       onRequestsChanged?.();
       requestedRef.current = id;
       setView("history");
     } catch (cause) {
       if (!currentScope()) return;
+      setApproveOpen(false);
+      setWithdrawOpen(false);
       setBlocked(true);
       setError(cause instanceof WiseEffApiError && cause.code === "CONFLICT"
         ? `来源过期或请求冲突（409）：${presentError(cause, "请刷新后核对状态。")}`
@@ -211,63 +257,74 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
 
   return <section className="canonical-project-value-review" aria-label={mineOnly ? "我的 JSON 成员删除" : "JSON 成员删除审核"}>
     {!detailOnly ? <><header><h2>{mineOnly ? "我的 JSON 成员删除" : "JSON 成员删除审核"}</h2>
-      <p>逐项核对服务端冻结的成员与存活 Binding 来源；批准由服务端作为一次事务提交。</p></header>
+      <p>核对提交时的成员与关联参数来源；批准后服务端将一次应用全部变更。</p></header>
     <ViewSwitch variant="tabs" ariaLabel="成员删除视角" value={view} onValueChange={(value) => setView(value as View)}
       items={[
         { value: "pending", label: "待审核", id: `${tabsId}-pending-tab`, panelId: `${tabsId}-pending-panel`, disabled: busy },
         { value: "history", label: "历史", id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel`, disabled: busy }
       ]} /></> : null}
     <TabPanel role={detailOnly ? undefined : "tabpanel"} id={detailOnly ? undefined : `${tabsId}-${view}-panel`} aria-labelledby={detailOnly ? undefined : `${tabsId}-${view}-tab`}>
-    <button className="button subtle" type="button" onClick={refresh} disabled={busy}>刷新成员删除结果</button>
+    {!selected ? <button className="button subtle" type="button" onClick={refresh} disabled={busy || loading}>{loading ? "刷新中…" : "刷新成员删除结果"}</button> : null}
     {loading ? <p role="status">正在加载成员删除请求…</p> : null}
-    {error ? <p role="alert">{error}</p> : null}
+    {error && !selected ? <p role="alert">{error}</p> : null}
     {!detailOnly && !loading && !error && !items.length && !selected ? <p role="status">当前没有成员删除请求。</p> : null}
     {!detailOnly && items.length ? <div className="table-wrap"><table aria-label="成员删除请求列表">
-      <thead><tr><th>源文件</th><th>成员</th><th>Binding</th><th>状态</th><th>原因</th></tr></thead>
+      <thead><tr><th>源文件</th><th>成员</th><th>关联参数</th><th>状态</th><th>原因</th></tr></thead>
       <tbody>{items.map((item) => <tr key={item.id}><td><button className="button subtle" type="button" disabled={busy}
         aria-current={selected?.id === item.id ? "true" : undefined}
         onClick={() => void select(item.id)}>{item.frozenProof.members.find((member) => member.fileId === item.fileId)?.sourceName ?? item.fileId}</button></td>
         <td>{item.frozenProof.members.length}</td><td>{item.frozenProof.cohort.length}</td>
         <td>{canonicalStatusLabels[item.status]}</td><td>{item.reason}</td></tr>)}</tbody>
     </table></div> : null}
-    {selected ? <article aria-label="JSON 成员删除请求详情">
-      <header>
-        <p>JSON 成员删除</p><h3>{selected.reason}</h3>
-        <span className="status-chip">{canonicalStatusLabels[selected.status]}</span>
-        <p>{userName(selected.submitterUserId)} → {userName(selected.assignedToUserId)}</p>
-        <time dateTime={selected.createdAt} title={formatAbsolute(selected.createdAt)}>{formatRelativeOrAbsolute(selected.createdAt)}</time>
-        {selected.reviewerUserId ? <p>实际审核人：{userName(selected.reviewerUserId)}</p> : null}
-        {selected.reviewerNote ? <p>审核意见：{selected.reviewerNote}</p> : null}
+    {selected ? <article className="review-inspector__detail" aria-label="JSON 成员删除请求详情">
+      <header className="review-inspector__header">
+        <div className="review-inspector__title"><h3>{sourceName}</h3><Badge variant="secondary">{canonicalStatusLabels[selected.status]}</Badge></div>
+        <p className="review-inspector__reason">{selected.reason}</p>
+        <dl className="review-inspector__meta">
+          <div><dt>提交人</dt><dd>{selected.submitterName ?? userName(selected.submitterUserId)}</dd></div>
+          <div><dt>指定审核人</dt><dd>{selected.assignedToName ?? userName(selected.assignedToUserId)}</dd></div>
+        </dl>
       </header>
-      <section aria-label="变更摘要"><h4>变更摘要</h4>
-        <p>从配置集中移除 {selected.frozenProof.members.find((member) => member.fileId === selected.fileId)?.sourceName ?? selected.fileId}，保留其余 {selected.frozenProof.members.length - 1} 个成员。</p>
+      {error || blocked || !valid ? <div className="review-state" role="alert">
+        <p>{error ?? (!valid ? "成员快照或来源证明不完整，暂不能审核。" : "结果尚未确认，请重新核对请求状态。")}</p>
+        {!rejectOpen && !approveOpen ? <button className="button subtle" type="button" onClick={refresh} disabled={busy || loading}>重新核对状态</button> : null}
+      </div> : null}
+        <div className="review-inspector__actions">
+          {selected.status === "pending" && valid && !blocked ? <>
+            {assignedReviewer && !mineOnly ? <><button className="button primary" type="button" disabled={busy} onClick={() => setApproveOpen(true)}>{busy ? "处理中…" : "批准移除"}</button>
+              <button className="button subtle" type="button" disabled={busy} onClick={() => setRejectOpen(true)}>驳回</button></> : null}
+            {submitter ? <button className="button subtle" type="button" disabled={busy} onClick={() => setWithdrawOpen(true)}>{busy ? "处理中…" : "撤回申请"}</button> : null}
+          </> : null}
+          {selected.status === "pending" && !assignedReviewer && !submitter ? <p role="note">仅指定的另一名项目软件审核人可以审批此请求。</p> : null}
+        </div>
+      <section aria-label="变更摘要" className="review-inspector__change-summary">
+        <h4 className="sr-only">变更摘要</h4>
+        <p>{selected.status === "pending" ? "拟从配置集移除" : "提交方案：移除"} 1 个文件 · 保留 {selected.frozenProof.members.length - 1} 个文件</p>
       </section>
-      {!valid ? <p role="alert">冻结成员、Binding 来源或证明摘要不完整，已阻止审核。</p> : null}
+      {selected.status !== "pending" ? <p className="review-inspector__notice" role="note">{selected.status === "approved" ? selected.appliedSourceResult ? "已批准并应用，配置集成员与参数来源已更新。" : "已批准，移除结果待核对。" : `${canonicalStatusLabels[selected.status]}，本次移除未应用。`}</p> : null}
       <section aria-label="前后对比"><h4>前后对比</h4>
-        <p role="note">以下成员配置固定于提交时，不随当前文件变化。</p>
-        <p>变更前</p><TabPanel aria-label="冻结成员变更前"><pre>{JSON.stringify(selected.frozenProof.members.map(({ sourceName, format, role, sortOrder, sizeBytes }) => ({ sourceName, format, role, sortOrder, sizeBytes })), null, 2)}</pre></TabPanel>
-        <p>变更后</p><TabPanel aria-label="冻结成员变更后"><pre>{JSON.stringify(selected.frozenProof.members.filter((member) => member.fileId !== selected.fileId).map(({ sourceName, format, role, sortOrder, sizeBytes }) => ({ sourceName, format, role, sortOrder, sizeBytes })), null, 2)}</pre></TabPanel>
+        <p role="note">提交时成员快照</p>
+        <ol aria-label="冻结成员列表" className="review-inspector__member-list">{selected.frozenProof.members.map((member) => <li key={member.fileId} data-kind={member.fileId === selected.fileId ? "remove" : "equal"}>
+          {member.sourceName} · {member.role === "base" ? "基础文件" : member.role === "overlay" ? "覆盖文件" : member.role} · 顺序 {member.sortOrder}
+          <span> · {member.fileId !== selected.fileId ? "保留" : selected.status === "pending" ? "拟移除" : selected.status === "approved" ? "已移除" : "移除未应用"}</span>
+        </li>)}</ol>
       </section>
       <section aria-label="影响范围"><h4>影响范围</h4>
-      <p>有序成员（{selected.frozenProof.members.length}）</p>
-      <ol aria-label="冻结成员列表">{selected.frozenProof.members.map((member, index) => <li key={`${index}:${member.fileId}`}>
-        {member.sourceName} — {member.fileId === selected.fileId ? "待移除" : "存活"}；角色 {member.role}，顺序 {member.sortOrder}
-      </li>)}</ol>
-      <p>完整 Binding cohort（{selected.frozenProof.cohort.length}）</p>
-      <ol aria-label="冻结 Binding cohort">{selected.frozenProof.cohort.map((entry, index) => <li key={`${index}:${entry.bindingId}`}>
-        <strong>Binding {index + 1}：{entry.fileId === selected.fileId ? "待移除成员" : "存活成员"}</strong>
-        <p>{selected.frozenProof.members.find((member) => member.fileId === entry.fileId)?.sourceName} · {JSON.stringify(entry.locator)}</p>
-      </li>)}</ol>
+      <p>提交方案：移除 {selected.frozenProof.cohort.filter((entry) => entry.fileId === selected.fileId).length} 项参数来源；其余 {selected.frozenProof.cohort.filter((entry) => entry.fileId !== selected.fileId).length} 项保留数值并更新来源关联。</p>
+      <details className="review-inspector__disclosure"><summary>处理记录</summary>
+      <dl className="review-inspector__meta">
+        <div><dt>提交时间</dt><dd><time dateTime={selected.createdAt} title={formatAbsolute(selected.createdAt)}>{formatRelativeOrAbsolute(selected.createdAt)}</time></dd></div>
+        {selected.reviewerUserId ? <div><dt>实际审核人</dt><dd>{selected.reviewerName ?? userName(selected.reviewerUserId)}</dd></div> : null}
+        {selected.status !== "pending" || selected.updatedAt !== selected.createdAt ? <div><dt>{selected.status === "pending" ? "更新时间" : "处理时间"}</dt><dd><time dateTime={selected.updatedAt} title={formatAbsolute(selected.updatedAt)}>{formatRelativeOrAbsolute(selected.updatedAt)}</time></dd></div> : null}
+      </dl>
+      {selected.reviewerNote ? <p>审核意见：{selected.reviewerNote}</p> : null}
+      </details>
+      <details className="review-inspector__disclosure"><summary>查看全部 {selected.frozenProof.cohort.length} 项关联参数</summary>
+      <ol aria-label="冻结关联参数">{selected.frozenProof.cohort.map((entry, index) => <li key={`${index}:${entry.bindingId}`}>
+        <strong>参数 {index + 1}：{entry.fileId === selected.fileId ? selected.status === "pending" ? "拟移除来源" : selected.status === "approved" ? "来源已移除" : "来源未移除" : "保留来源"}</strong>
+        <p>{selected.frozenProof.members.find((member) => member.fileId === entry.fileId)?.sourceName} · {reviewLocator(entry.locator)}</p>
+      </li>)}</ol></details>
       </section>
-      <footer className="dialog-actions">
-      {selected.status === "pending" && valid && !blocked ? <>
-        {assignedReviewer && !mineOnly ? <><button className="button primary" type="button" disabled={busy} onClick={() => void decide("approve")}>批准成员删除</button>
-          <button className="button subtle" type="button" disabled={busy} onClick={() => setRejectOpen(true)}>驳回成员删除</button></> : null}
-        {submitter ? <button className="button subtle" type="button" disabled={busy} onClick={() => void decide("withdraw")}>撤回成员删除</button> : null}
-      </> : null}
-      {selected.status === "pending" && !assignedReviewer && !submitter ? <p role="note">仅指定的另一名项目软件审核人可以审批此请求。</p> : null}
-      {blocked ? <p role="note">结果未确认，刷新并核对请求后才能再次操作。</p> : null}
-      </footer>
       <ReviewProvenance key={selected.id} entries={[
         { label: "请求 ID", value: selected.id }, { label: "项目", value: selected.projectId },
         { label: "配置集", value: selected.configSetId }, { label: "移除文件", value: selected.fileId },
@@ -279,13 +336,22 @@ export function CanonicalMemberRemovalReviewPanel({ projectId, repository, curre
       ]} />
     </article> : null}
     </TabPanel>
-    <ConfirmDialog open={rejectOpen && Boolean(selected)} title="驳回成员删除"
-      description="请说明保留成员的原因，方便提交人核对影响范围。" confirmLabel="确认驳回"
-      pending={busy} confirmDisabled={!rejectReason.trim()} error={error}
-      onCancel={() => { setRejectOpen(false); setRejectReason(""); }}
-      extra={<label>驳回原因<textarea required rows={4} value={rejectReason} disabled={busy}
-        onChange={(event) => setRejectReason(event.target.value)} /></label>}
+    <ConfirmDialog open={approveOpen && Boolean(selected)} title="确认从配置集移除文件"
+      description={`将从配置集中移除「${selected?.frozenProof.members.find((member) => member.fileId === selected.fileId)?.sourceName ?? "所选文件"}」及其 ${selected?.frozenProof.cohort.filter((entry) => entry.fileId === selected.fileId).length ?? 0} 项参数来源，保留其余 ${(selected?.frozenProof.members.length ?? 1) - 1} 个成员，并更新保留参数的来源关联。`}
+      confirmLabel="批准移除" tone="danger" pending={busy} confirmDisabled={!valid || blocked}
+      error={error} onCancel={() => setApproveOpen(false)} onConfirm={() => void decide("approve")} />
+    <ConfirmDialog open={rejectOpen && Boolean(selected)} title={`驳回「${sourceName}」的移除申请`}
+      description="本次申请不会移除配置文件。请说明需要调整的内容或补充的依据。" confirmLabel="驳回申请"
+      pending={busy} confirmDisabled={!rejectReason.trim() || blocked || !valid || !assignedReviewer || mineOnly} error={error}
+      onCancel={() => setRejectOpen(false)}
+      extra={<div className="review-inspector__field"><Label htmlFor={`${tabsId}-reject-reason`}>驳回原因</Label><Textarea id={`${tabsId}-reject-reason`} required rows={4} value={rejectReason} disabled={busy}
+        placeholder="说明需要调整的内容或补充的依据" onChange={(event) => setRejectReason(event.target.value)} />
+        {blocked ? <button type="button" className="button subtle" disabled={busy} onClick={() => void refreshDecision()}>刷新请求状态</button> : null}</div>}
       onConfirm={() => void decide("reject", rejectReason)} />
+    <ConfirmDialog open={withdrawOpen && Boolean(selected)} title="确认撤回移除申请"
+      description={`将终止「${sourceName}」的本次审核，配置文件尚未移除。后续需要重新提交审核。`}
+      confirmLabel="撤回申请" pending={busy} error={error} onCancel={() => setWithdrawOpen(false)}
+      onConfirm={() => void decide("withdraw")} />
     {!detailOnly ? <div role="tabpanel" id={`${tabsId}-${view === "pending" ? "history" : "pending"}-panel`}
       aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} hidden /> : null}
   </section>;

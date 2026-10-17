@@ -148,7 +148,8 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       await expect(detail).toBeVisible();
       await expect(detail.getByText("同批次审核两项设置")).toBeVisible();
       await detail.getByText("溯源信息", { exact: true }).click();
-      await expect(detail.getByText(acceptanceCast.sunMei.userId)).toBeVisible();
+      await detail.getByText("完整技术数据", { exact: true }).click();
+      expect(JSON.parse((await detail.getByLabel("完整溯源数据").textContent())!).assignedToUserId).toBe(acceptanceCast.sunMei.userId);
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
       await expect.poll(async () => Promise.all([1, 2].map(async (ordinal) =>
         (await detail.getByLabel(`目标 ${ordinal} 来源变更前`).textContent())?.trim()
@@ -158,6 +159,7 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       ))).toEqual(expect.arrayContaining(["50", "60"]));
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
       await detail.getByRole("button", { name: "批准全部 2 项" }).click();
+      await page.getByRole("dialog", { name: "确认批准整批变更", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       await expect(detail).toContainText("已批准");
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toHaveCount(0);
       const approved = await request.get(api(`${reviewPath}/batch`), { headers: reviewerHeaders });
@@ -167,6 +169,7 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       expect(approvedItem.targets.every((target) => Boolean(target.appliedValueId && target.appliedHistoryEventId))).toBe(true);
       await page.reload();
       await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText("已批准");
+      await detail.getByText("查看源文件差异", { exact: true }).click();
       await expect(page.getByRole("region", { name: "批量固定源差异" })).toBeVisible();
       expect(browserErrors).toEqual([]);
       await detail.scrollIntoViewIfNeeded();
@@ -175,6 +178,7 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       const staleDetail = page.getByRole("article", { name: "批量源文件请求详情" });
       await expect(staleDetail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
       await staleDetail.getByRole("button", { name: "批准全部 2 项" }).click();
+      await page.getByRole("dialog", { name: "确认批准整批变更", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       await expect(staleDetail.getByText(/来源或审核证明已变化/)).toBeVisible();
       await expect(staleDetail.getByRole("button", { name: "批准全部 2 项" })).toBeDisabled();
       const staleRead = await request.get(api(`/api/v2/projects/aurora/parameter-value-change-requests/${staleAfterApproval.id}/batch`), {

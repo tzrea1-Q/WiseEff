@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { useXiaozePageContextValue } from "./xiaozePageContext";
 import {
   dismissXiaozeToggleHint,
   markXiaozeToggleHintShown,
@@ -15,11 +16,13 @@ type XiaozeToggleHintProps = {
 };
 
 export function XiaozeToggleHint({ userId, visible, onOpen }: XiaozeToggleHintProps) {
+  const page = useXiaozePageContextValue();
+  const hintVisible = visible && page?.pageKey !== "parameter-review" && page?.pageKey !== "parameter-submissions";
   const [dismissed, setDismissed] = useState(() => readXiaozeToggleHintDismissed(userId));
   const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
-    if (!visible || dismissed || readXiaozeToggleHintShown(userId)) {
+    if (!hintVisible || dismissed || readXiaozeToggleHintShown(userId)) {
       setRevealed(false);
       return;
     }
@@ -30,14 +33,14 @@ export function XiaozeToggleHint({ userId, visible, onOpen }: XiaozeToggleHintPr
     }, XIAOZE_TOGGLE_HINT_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [dismissed, userId, visible]);
+  }, [dismissed, userId, hintVisible]);
 
-  const shown = visible && !dismissed && revealed;
+  const shown = hintVisible && !dismissed && revealed;
   const readiness = (
     <span
       hidden
       data-testid="xiaoze-toggle-hint-readiness"
-      data-state={shown ? "revealed" : !visible || dismissed || readXiaozeToggleHintShown(userId) ? "suppressed" : "pending"}
+      data-state={shown ? "revealed" : !hintVisible || dismissed || readXiaozeToggleHintShown(userId) ? "suppressed" : "pending"}
     />
   );
 

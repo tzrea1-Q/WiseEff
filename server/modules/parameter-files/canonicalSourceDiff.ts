@@ -59,11 +59,16 @@ export async function readCanonicalSourceDiff(
     || digest(serializeContract({ before,after,sourcePinId: manifest.sourcePinId,bindings } as ContractJsonValue)) !== candidate.diff_digest) {
     throw new ApiError("CONFLICT", "Submitted source diff failed integrity verification.");
   }
+  const property = manifest.format === "dts" ? await loadPinnedDtsProperty(db, manifest) : null;
+  const targetIdentity = property
+    ? { path: `${property.node_locator} · ${property.property_name}`, beforeText: property.raw_text }
+    : { path: String(manifest.locator.pointer), beforeText: readJsonSourceText(before,
+      String(manifest.locator.pointer), manifest.rootPointer!) };
   return {
     requestId: request.id,bindingId: request.binding_id,format: manifest.format,sourceName: source.name,
     sourcePinId: manifest.sourcePinId,candidateId: request.candidate_id,
     baseDigest: candidate.base_digest,proposedDigest: candidate.proposed_digest,diffDigest: candidate.diff_digest,
-    before,after,bindings,
+    before,after,bindings,targetIdentity,
   };
 }
 
@@ -155,6 +160,7 @@ export async function readCanonicalBatchSourceDiff(
   if (candidate.format === "dts") {
     const pinned = [];
     const beforeTexts = [];
+    const paths = [];
     for (const target of targetRows) {
       const frozen = bindings.find((binding) => binding.bindingId === target.binding_id);
       const source = await loadCanonicalSourceSnapshot(db, storage, {
@@ -176,6 +182,7 @@ export async function readCanonicalBatchSourceDiff(
       }
       pinned.push(source.manifest);
       beforeTexts.push(property.raw_text);
+      paths.push(`${property.node_locator} · ${property.property_name}`);
     }
     const changes = await readPinnedDtsSourceBatchChanges(db, pinned, before, after);
     if (changes.size !== targetRows.length) throw new ApiError("CONFLICT", "Submitted DTS batch target set is incomplete.");
@@ -188,7 +195,7 @@ export async function readCanonicalBatchSourceDiff(
       }
       targets.push({ ordinal: target.ordinal, bindingId: target.binding_id,
         sourcePinId: target.source_pin_id, action: target.action,
-        beforeText: beforeTexts[ordinal]!, ...(change.rawText === undefined ? {} : { afterText: change.rawText }) });
+        path: paths[ordinal]!, beforeText: beforeTexts[ordinal]!, ...(change.rawText === undefined ? {} : { afterText: change.rawText }) });
     }
   } else if (candidate.format === "json") {
     for (const target of targetRows) {
@@ -219,7 +226,7 @@ export async function readCanonicalBatchSourceDiff(
       targets.push({
         ordinal: target.ordinal, bindingId: target.binding_id,
         sourcePinId: target.source_pin_id, action: target.action,
-        beforeText, ...(afterText === undefined ? {} : { afterText })
+        path: pointer, beforeText, ...(afterText === undefined ? {} : { afterText })
       });
     }
   } else throw new ApiError("CONFLICT", "Submitted batch format is unsupported.");

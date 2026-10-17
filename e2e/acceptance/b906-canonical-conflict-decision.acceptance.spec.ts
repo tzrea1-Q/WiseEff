@@ -10,6 +10,7 @@ import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
 import { registerCanonicalJsonSource } from "../../server/modules/parameter-files/canonicalJsonSource";
 import { addConfigSetFile, createConfigSet } from "../../server/modules/parameter-files/configSetService";
 import { insertFileVersion } from "../../server/modules/parameter-files/repository";
+import type { ParsedIndex } from "../../server/modules/parameter-files/types";
 import { parseDtsValue } from "../../server/modules/dts";
 import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../../server/modules/parameter-topology/types";
@@ -83,9 +84,9 @@ for (const [format, choice, decision] of [
         let versionId: string;
         let fileName: string;
         let proposed: string;
-        let selectedBindingId: string;
-        let siblingBindingId: string;
-        let baseValueId: string;
+        let selectedBindingId: string | undefined;
+        let siblingBindingId: string | undefined;
+        let baseValueId: string | undefined;
         if (format === "json") {
           await installConfigurationSourceFixture(db, admin, {
             subjectId: "csub_906_b_conflict_ui", schemaId: "wiseeff.906.b.conflict.ui"
@@ -163,7 +164,8 @@ for (const [format, choice, decision] of [
           siblingBindingId = sibling.bindingId;
           baseValueId = selected.baseCurrentValueId;
         }
-        expect(await Promise.all([selectedBindingId!, siblingBindingId!].map((bindingId) =>
+        if (!selectedBindingId || !siblingBindingId || !baseValueId) throw new Error("Canonical candidate binding identities unavailable");
+        expect(await Promise.all([selectedBindingId, siblingBindingId].map((bindingId) =>
           loadLegacyBindingIdentity(getRootPostgresPool(db)!, bindingId)))).toEqual([null, null]);
         const pin = await loadOwnedProjectValueSourcePin(db, { organizationId, projectId,
           bindingId: selectedBindingId!, projectValueId: baseValueId! });
@@ -230,12 +232,12 @@ for (const [format, choice, decision] of [
         await conflict.getByRole("textbox", { name: "决策理由" }).fill(`${format} ${choice} 页面决策`);
         await selectControlOption(conflict.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
         if (decision === "stale-submit") {
-          const old = (await db.query<{ storage_key: string; checksum: string; size_bytes: number; parsed_index: unknown }>(
-            "select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
+          const old = (await db.query<{ version_number: number; storage_key: string; checksum: string; size_bytes: number; parsed_index: ParsedIndex }>(
+            "select version_number,storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
             [versionId])).rows[0]!;
           const driftVersionId = randomUUID();
-          await insertFileVersion(db, { id: driftVersionId, fileId, storageKey: old.storage_key,
-            checksum: old.checksum, sizeBytes: old.size_bytes, parsedIndex: old.parsed_index as Record<string, unknown>,
+          await insertFileVersion(db, { id: driftVersionId, fileId, versionNumber: old.version_number + 1, storageKey: old.storage_key,
+            checksum: old.checksum, sizeBytes: old.size_bytes, parsedIndex: old.parsed_index,
             origin: "upload", createdByUserId: acceptanceCast.xuYun.userId });
           await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [fileId, driftVersionId]);
         }
@@ -306,6 +308,7 @@ for (const [format, choice, decision] of [
           const withdrawn = page.waitForResponse((response) => response.request().method() === "POST"
             && response.url().endsWith(`${requestPath}/withdraw`));
           await mine.getByRole("button", { name: "撤回我的提交" }).click();
+          await page.getByRole("dialog", { name: "确认撤回提交", exact: true }).getByRole("button", { name: "撤回提交", exact: true }).click();
           expect((await withdrawn).status()).toBe(200);
           await page.reload();
           await expect(page.getByRole("article", { name: "源文件请求详情" })).toContainText("已撤回");
@@ -318,12 +321,12 @@ for (const [format, choice, decision] of [
           await decisionRegion.scrollIntoViewIfNeeded();
           await page.screenshot({ path: testInfo.outputPath(`b906-${format}-${decision}-review-1440x900.png`) });
           if (decision === "drift") {
-            const old = (await db.query<{ storage_key: string; checksum: string; size_bytes: number; parsed_index: unknown }>(
-              "select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
+            const old = (await db.query<{ version_number: number; storage_key: string; checksum: string; size_bytes: number; parsed_index: ParsedIndex }>(
+              "select version_number,storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
               [versionId])).rows[0]!;
             const driftVersionId = randomUUID();
-            await insertFileVersion(db, { id: driftVersionId, fileId, storageKey: old.storage_key,
-              checksum: old.checksum, sizeBytes: old.size_bytes, parsedIndex: old.parsed_index as Record<string, unknown>,
+            await insertFileVersion(db, { id: driftVersionId, fileId, versionNumber: old.version_number + 1, storageKey: old.storage_key,
+              checksum: old.checksum, sizeBytes: old.size_bytes, parsedIndex: old.parsed_index,
               origin: "upload", createdByUserId: acceptanceCast.xuYun.userId });
             await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [fileId, driftVersionId]);
           }
@@ -331,10 +334,12 @@ for (const [format, choice, decision] of [
             && response.url().endsWith(`${requestPath}/review`));
           await detail.getByRole("button", { name: decision === "reject" ? "驳回" : "批准软件配置" }).click();
           if (decision === "reject") {
-            const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+            const rejectDialog = page.getByRole("dialog", { name: /^驳回「/ });
             await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
             await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("单项来源冲突需要补充依据");
             await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
+          } else {
+            await page.getByRole("dialog", { name: "确认应用软件配置", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
           }
           expect((await reviewed).status()).toBe(decision === "drift" ? 409 : 200);
           if (decision === "drift") {
@@ -342,7 +347,7 @@ for (const [format, choice, decision] of [
             await expect(detail.getByRole("button", { name: "批准软件配置" })).toHaveCount(0);
             const priorDetailReads = network.filter((entry) => entry.endsWith("/conflict-decision")).length;
             const priorDiffReads = network.filter((entry) => entry.endsWith("/source-diff")).length;
-            await detail.getByRole("button", { name: "刷新冲突请求与来源" }).click();
+            await detail.getByRole("button", { name: "重新核对状态" }).click();
             await expect.poll(() => network.filter((entry) => entry.endsWith("/conflict-decision")).length).toBeGreaterThan(priorDetailReads);
             await expect.poll(() => network.filter((entry) => entry.endsWith("/source-diff")).length).toBeGreaterThan(priorDiffReads);
             await expect(page.getByRole("article", { name: "源文件请求详情" })).toContainText("待审核");

@@ -20,6 +20,7 @@ import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJson
 import { addConfigSetFile, createConfigSet } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { insertFileVersion } from "../../parameter-files/repository";
+import type { ParsedIndex } from "../../parameter-files/types";
 
 const organizationId = "org-906-c-member-entry";
 const projectId = "project-906-c-member-entry";
@@ -151,8 +152,27 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     const detail = await requestJson(route(reviewer),
       `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`);
     expect(detail.status).toBe(200);
-    expect((await requestJson(route(reviewer),
-      `/api/v2/projects/${projectId}/parameter-value-change-requests/member-removals?status=pending`)).status).toBe(200);
+    expect(detail.body).toMatchObject({ item: {
+      submitterName: "admin", assignedToName: "reviewer", reviewerName: null
+    }});
+    const list = await requestJson(route(reviewer),
+      `/api/v2/projects/${projectId}/parameter-value-change-requests/member-removals?status=pending`);
+    expect(list.status).toBe(200);
+    expect(list.body).toMatchObject({ items: [{
+      id: pendingId, submitterName: "admin", assignedToName: "reviewer", reviewerName: null
+    }] });
+    // A stale actor reference must not reveal a name from a different organization.
+    await db.query("update users set organization_id=$1 where id=$2", [foreign.organization.id, adminId]);
+    try {
+      const staleActor = await requestJson(route(reviewer),
+        `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`);
+      expect(staleActor.status).toBe(200);
+      expect(staleActor.body).toMatchObject({ item: {
+        submitterUserId: adminId, submitterName: null, assignedToName: "reviewer", reviewerName: null
+      }});
+    } finally {
+      await db.query("update users set organization_id=$1 where id=$2", [organizationId, adminId]);
+    }
   }, 120_000);
 
   it("conceals foreign requests and lets the separate reviewer reject without touching the source", async () => {
@@ -189,6 +209,9 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     const rejected = await review(pendingId, pendingDigest, "reject");
     expect(rejected.status).toBe(200);
     expect(rejected.body.item.status).toBe("rejected");
+    expect((await requestJson(route(reviewer),
+      `/api/v2/projects/${projectId}/parameter-value-change-requests/${pendingId}/member-removal`)).body)
+      .toMatchObject({ item: { submitterName: "admin", assignedToName: "reviewer", reviewerName: "reviewer" } });
     expect((await review(pendingId, pendingDigest, "reject")).body).toEqual(rejected.body);
     expect((await review(pendingId, pendingDigest)).status).toBe(409);
     expect((await db.query<{ count: number }>(`select count(*)::int as count from audit_events
@@ -234,16 +257,16 @@ describe("#906 C reviewed JSON member removal HTTP entry", () => {
     const pending = await submit();
     expect(pending.status).toBe(201);
     const oldVersion = (await db.query<{
-      storage_key: string; checksum: string; size_bytes: number; parsed_index: unknown
-    }>(`select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index
+      storage_key: string; checksum: string; size_bytes: number; parsed_index: ParsedIndex; version_number: number
+    }>(`select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index,version_number
       from project_parameter_file_versions where id=$1`, [pending.body.item.fileVersionId])).rows[0]!;
     const currentVersion = (await db.query<{ current_version_id: string }>(
       "select current_version_id from project_parameter_files where id=$1", [removedFileId]
     )).rows[0]!.current_version_id;
     const drift = await insertFileVersion(db, {
-      id: randomUUID(), fileId: removedFileId, storageKey: oldVersion.storage_key,
+      id: randomUUID(), fileId: removedFileId, versionNumber: oldVersion.version_number + 1, storageKey: oldVersion.storage_key,
       checksum: oldVersion.checksum, sizeBytes: oldVersion.size_bytes,
-      parsedIndex: oldVersion.parsed_index as Record<string, unknown>, origin: "upload", createdByUserId: adminId
+      parsedIndex: oldVersion.parsed_index, origin: "upload", createdByUserId: adminId
     });
     await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [removedFileId, drift.id]);
     try {

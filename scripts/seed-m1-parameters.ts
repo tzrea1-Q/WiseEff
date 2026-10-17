@@ -671,7 +671,7 @@ export async function seedM1BindingRevisionHistory(
   const invocation = createUserInvocation(submitter);
   const draft = await createCanonicalValueDraft(db, submitter, {
     projectId, bindingId: binding.id, targetValue: parseDtsValue(propertyKey, targetValue).value,
-    reason: "M1 canonical source history demo", baseRevisionId: pins.configRevisionId,
+    reason: "将看门狗超时时间调整为 6000 毫秒", baseRevisionId: pins.configRevisionId,
     baseCurrentValueId: pins.currentValueId,
   }, { objectStore, invocation, requestId: "seed-m1-history-draft", refusalSink });
   const request = await submitCanonicalValueChange(db, submitter, {
