@@ -199,53 +199,94 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(list.getByRole("tabpanel")).toBeVisible();
           const records = discovery.locator(".canonical-driver-discovery__list");
           await expect(records).toHaveCount(1);
-          await expect(records).toBeVisible();
-          await expect(discovery.locator(".canonical-driver-discovery__item").first()).toBeVisible();
-          await expect(discovery.getByRole("combobox", { name: "发现项目范围", exact: true })).toBeVisible();
-          await expect(discovery.getByRole("searchbox", { name: "搜索发现记录", exact: true })).toBeVisible();
-          await expect(discovery.getByRole("combobox", { name: "筛选来源状态", exact: true })).toBeVisible();
+          const rows = discovery.locator(".canonical-driver-discovery__item");
+          const scope = discovery.getByRole("combobox", { name: "发现项目范围", exact: true });
+          const search = discovery.getByRole("searchbox", { name: "搜索发现记录", exact: true });
+          const sourceFilter = discovery.getByRole("combobox", { name: "筛选来源状态", exact: true });
+          const nextPage = discovery.getByRole("button", { name: "加载下一页", exact: true });
+          const summary = discovery.getByText(/^已加载 \d+ 条，匹配 \d+ 条/);
+          const counts = /^已加载 (\d+) 条，匹配 (\d+) 条/.exec(await summary.innerText());
+          expect(counts).not.toBeNull();
+          const loadedCount = Number(counts![1]);
+          const matchedCount = Number(counts![2]);
+          expect(matchedCount).toBeLessThanOrEqual(loadedCount);
+          await expect(rows).toHaveCount(matchedCount);
+          await expect(scope).toBeVisible();
           await expect(discovery.getByRole("link", { name: "打开待审核事项", exact: true }))
             .toHaveAttribute("href", "/parameter-admin/specs?review=open");
           await expect(panel.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
           await expect(panel.getByRole("tree", { name: "模块归属树", exact: true })).toHaveCount(0);
           await expect(panel.locator(".navigator-workbench")).toHaveCount(0);
-          const geometry = await records.evaluate((element) => {
-            const firstRecord = element.querySelector(".canonical-driver-discovery__item > p")!;
-            const rect = firstRecord.getBoundingClientRect();
-            const listRect = element.getBoundingClientRect();
-            const clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
-            for (let parent = firstRecord.parentElement; parent; parent = parent.parentElement) {
-              const style = getComputedStyle(parent);
-              const bounds = parent.getBoundingClientRect();
-              if (/hidden|clip|auto|scroll/.test(style.overflowX)) {
-                clip.left = Math.max(clip.left, bounds.left + parent.clientLeft);
-                clip.right = Math.min(clip.right, bounds.left + parent.clientLeft + parent.clientWidth);
+          const empty = discovery.locator(".canonical-discovery-empty");
+          const filteredEmpty = discovery.getByRole("status").filter({ hasText: /^已加载记录中没有匹配结果，请调整筛选/ });
+          if (loadedCount === 0 && await nextPage.count() === 0) {
+            await expect(empty).toBeVisible();
+            await expect(empty.getByRole("heading", { name: "暂无发现记录", exact: true })).toBeVisible();
+            await expect(empty.getByRole("status")).toHaveText(/^(当前范围没有来源观察记录。|当前范围没有兼容发现。)$/);
+            const projectId = await scope.getAttribute("data-value");
+            await expect(empty.getByRole("link", { name: "前往项目配置", exact: true }))
+              .toHaveAttribute("href", projectId ? `/parameter-admin/projects/${encodeURIComponent(projectId)}/configuration` : "/parameter-admin/projects");
+            await expect(search).toHaveCount(0);
+            await expect(sourceFilter).toHaveCount(0);
+            await expect(filteredEmpty).toHaveCount(0);
+          } else {
+            await expect(empty).toHaveCount(0);
+            await expect(search).toBeVisible();
+            await expect(sourceFilter).toBeVisible();
+            if (loadedCount > 0 && matchedCount === 0) await expect(filteredEmpty).toBeVisible();
+            else if (loadedCount === 0) await expect(nextPage).toBeEnabled();
+            else await expect(filteredEmpty).toHaveCount(0);
+          }
+          if (matchedCount > 0) {
+            await expect(records).toBeVisible();
+            await expect(rows.first()).toBeVisible();
+            const geometry = await records.evaluate((element) => {
+              const firstRecord = element.querySelector(".canonical-driver-discovery__item > p")!;
+              const rect = firstRecord.getBoundingClientRect();
+              const listRect = element.getBoundingClientRect();
+              const clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+              for (let parent = firstRecord.parentElement; parent; parent = parent.parentElement) {
+                const style = getComputedStyle(parent);
+                const bounds = parent.getBoundingClientRect();
+                if (/hidden|clip|auto|scroll/.test(style.overflowX)) {
+                  clip.left = Math.max(clip.left, bounds.left + parent.clientLeft);
+                  clip.right = Math.min(clip.right, bounds.left + parent.clientLeft + parent.clientWidth);
+                }
+                if (/hidden|clip|auto|scroll/.test(style.overflowY)) {
+                  clip.top = Math.max(clip.top, bounds.top + parent.clientTop);
+                  clip.bottom = Math.min(clip.bottom, bounds.top + parent.clientTop + parent.clientHeight);
+                }
               }
-              if (/hidden|clip|auto|scroll/.test(style.overflowY)) {
-                clip.top = Math.max(clip.top, bounds.top + parent.clientTop);
-                clip.bottom = Math.min(clip.bottom, bounds.top + parent.clientTop + parent.clientHeight);
-              }
+              const range = document.createRange();
+              range.selectNodeContents(firstRecord);
+              return { row: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+                list: { left: listRect.left, right: listRect.right, width: listRect.width }, viewportWidth: innerWidth,
+                clip, listClientWidth: element.clientWidth, listScrollWidth: element.scrollWidth,
+                textRects: Array.from(range.getClientRects(), (text) => ({ left: text.left, top: text.top, right: text.right, bottom: text.bottom })) };
+            });
+            expect(geometry.row.width).toBeGreaterThan(0);
+            expect(geometry.row.height).toBeGreaterThan(0);
+            expect(geometry.list.width).toBeGreaterThan(0);
+            expect(geometry.list.left).toBeGreaterThanOrEqual(-1);
+            expect(geometry.list.right).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+            expect(geometry.listScrollWidth, "discovery records must not create horizontal scrolling")
+              .toBeLessThanOrEqual(geometry.listClientWidth + 1);
+            expect(geometry.textRects.length).toBeGreaterThan(0);
+            for (const rect of [geometry.row, ...geometry.textRects]) {
+              expect(rect.left, "first discovery record must remain inside its scroll clip").toBeGreaterThanOrEqual(geometry.clip.left - 1);
+              expect(rect.right).toBeLessThanOrEqual(geometry.clip.right + 1);
+              expect(rect.top).toBeGreaterThanOrEqual(geometry.clip.top - 1);
+              expect(rect.bottom).toBeLessThanOrEqual(geometry.clip.bottom + 1);
             }
-            const range = document.createRange();
-            range.selectNodeContents(firstRecord);
-            return { row: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
-              list: { left: listRect.left, right: listRect.right, width: listRect.width }, viewportWidth: innerWidth,
-              clip, listClientWidth: element.clientWidth, listScrollWidth: element.scrollWidth,
-              textRects: Array.from(range.getClientRects(), (text) => ({ left: text.left, top: text.top, right: text.right, bottom: text.bottom })) };
-          });
-          expect(geometry.row.width).toBeGreaterThan(0);
-          expect(geometry.row.height).toBeGreaterThan(0);
-          expect(geometry.list.width).toBeGreaterThan(0);
-          expect(geometry.list.left).toBeGreaterThanOrEqual(-1);
-          expect(geometry.list.right).toBeLessThanOrEqual(geometry.viewportWidth + 1);
-          expect(geometry.listScrollWidth, "discovery records must not create horizontal scrolling")
-            .toBeLessThanOrEqual(geometry.listClientWidth + 1);
-          expect(geometry.textRects.length).toBeGreaterThan(0);
-          for (const rect of [geometry.row, ...geometry.textRects]) {
-            expect(rect.left, "first discovery record must remain inside its scroll clip").toBeGreaterThanOrEqual(geometry.clip.left - 1);
-            expect(rect.right).toBeLessThanOrEqual(geometry.clip.right + 1);
-            expect(rect.top).toBeGreaterThanOrEqual(geometry.clip.top - 1);
-            expect(rect.bottom).toBeLessThanOrEqual(geometry.clip.bottom + 1);
+            const originalSearch = await search.inputValue();
+            await search.fill(`quality-no-discovery-match-${Date.now()}`);
+            await expect(rows).toHaveCount(0);
+            await expect(summary).toContainText(`已加载 ${loadedCount} 条，匹配 0 条`);
+            await expect(filteredEmpty).toBeVisible();
+            await expect(empty).toHaveCount(0);
+            await search.fill(originalSearch);
+            await expect(rows).toHaveCount(matchedCount);
+            await expect(filteredEmpty).toHaveCount(0);
           }
         }
         if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath)
