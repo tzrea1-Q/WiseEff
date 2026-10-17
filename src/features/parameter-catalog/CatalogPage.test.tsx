@@ -313,7 +313,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     renderCatalog({ repository, search: `?subjectId=${historicalSubject.id}&definitionId=${historicalDefinition.id}`,
       definitionAuthoringAllowed: true, renderDefinitionEditor: () => <p>完整详情</p> });
     const dialog = await screen.findByRole("dialog", { name: "查看 historical-key" });
-    expect(within(dialog).getByText("主体已退役 · 只读")).toBeVisible();
+    expect(await within(dialog).findByText("主体已退役 · 只读")).toBeVisible();
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-release", CATALOG_RELEASE_ID);
     expect(screen.queryByLabelText("目录发布")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("目录版本状态")).not.toBeInTheDocument();
