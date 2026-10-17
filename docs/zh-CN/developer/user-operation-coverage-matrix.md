@@ -6,6 +6,10 @@
 
 ## 使用方式
 
+`PCAT-REGISTRATION-INITIALIZE-001`（P1，`coverage: future`）：组织管理员在 `/parameter-admin/modules` 明确选择业务父分类和目标名称，确认原子创建目标并登记主体。组件测试及原生 PostgreSQL 覆盖租户、发布、重试并发和失败回滚；专属浏览器写入与审计回执仍待补。
+
+`PROJ-ARCHIVE-001`（P1，`coverage: future`）：Admin 在 `/parameter-admin/projects` 确认归档或恢复为在研。默认隐藏已归档项目，状态筛选可查；保留规范历史，不改变现有读写权限。focused 组件/客户端用例：`src/components/admin/ProjectAdminTable.test.tsx`、`src/components/parameter-admin-next/ProjectsOperationsPanel.test.tsx`、`src/infrastructure/http/parameterAdminClient.test.ts`；原有服务端状态/鉴权/审计契约：`server/modules/parameters/projectAdminMutations.test.ts`。归档专属浏览器、数据库与审计验收尚未完成。
+
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
 - 命令、路径、环境变量、API 路径、角色名、状态名和脚本名称保持英文原样，避免复制时出错。
 - 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。

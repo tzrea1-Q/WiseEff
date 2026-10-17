@@ -20,6 +20,10 @@ describe("canonical module governance", () => {
       { id: "node_one", name: "Node placement", parentId: null, sortOrder: 1,
         description: "", scope: "", importance: "medium" as const, kind: "node-type" as const,
         origin: "curated" as const, sourceKey: null, attributionSubjectId: null,
+        effectiveImportance: "medium" as const, parameterCount: 0, definitionCount: 0 },
+      { id: "business_two", name: "Other business", parentId: null, sortOrder: 2,
+        description: "", scope: "", importance: "medium" as const, kind: "business" as const,
+        origin: "curated" as const, sourceKey: null, attributionSubjectId: null,
         effectiveImportance: "medium" as const, parameterCount: 0, definitionCount: 0 }],
       mappings: [], navigationOnly: true
     };
@@ -31,7 +35,7 @@ describe("canonical module governance", () => {
       updateModule: vi.fn().mockResolvedValue(navigation)
     }), ...retiredWrites };
     render(<ParameterAdminProvider topology={createTestParameterTopologyRepository()} moduleRegistry={moduleRegistry}>
-      <OrganizationModuleGovernancePanel canonicalEnabled actor="org-admin" />
+      <OrganizationModuleGovernancePanel canonicalEnabled actor="org-admin" sessionPermissions={["admin:access"]} />
     </ParameterAdminProvider>);
     expect(await screen.findByRole("alert")).toHaveTextContent("规范目录发现服务不可用");
     fireEvent.click(screen.getByRole("button", { name: "新建模块" }));
@@ -57,10 +61,14 @@ describe("canonical module governance", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Business 更多操作" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 Business" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "调整上级模块 Business" }));
+    const moving = screen.getByRole("dialog");
+    expect(within(moving).getByRole("button", { name: "确认移动" })).toBeDisabled();
+    fireEvent.click(within(moving).getByRole("button", { name: "目标业务分类" }));
+    fireEvent.click(within(moving).getByRole("button", { name: "Other business" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认移动" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(moduleRegistry.updateModule).toHaveBeenCalledWith("business_one", { parentId: null });
+    expect(moduleRegistry.updateModule).toHaveBeenCalledWith("business_one", { parentId: "business_two" });
 
     fireEvent.click(screen.getByRole("button", { name: "Business 更多操作" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "添加子模块到 Business" }));
@@ -73,7 +81,7 @@ describe("canonical module governance", () => {
       name: "Child category", kind: "business", parentId: "business_one"
     }));
 
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 Node placement" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看模块 Node placement" }));
     expect(within(screen.getByRole("dialog")).queryByLabelText("模块类型")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Node placement 更多操作" })).not.toBeInTheDocument();
     expect(moduleRegistry.registerOrClaimDriver).not.toHaveBeenCalled();

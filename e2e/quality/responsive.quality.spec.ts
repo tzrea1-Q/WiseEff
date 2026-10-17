@@ -29,8 +29,8 @@ type QualityRoute = {
 
 const routes: QualityRoute[] = [
   { path: "/parameters", heading: "项目参数", headingScope: ".topbar-title" },
-  { path: "/parameter-review", heading: "参数管理员工作台" },
-  { path: "/parameter-admin", heading: "项目参数管理后台" },
+  { path: "/parameter-review", heading: "变更审阅", headingScope: ".topbar-title" },
+  { path: "/parameter-admin", heading: "参数管理后台" },
   { path: "/logs", heading: "日志智能分析" },
   { path: "/debugging", heading: "页面暂时不可用" },
   { path: "/node-debugging", heading: "节点调试平台" },
@@ -38,7 +38,7 @@ const routes: QualityRoute[] = [
   { path: "/organization/members", heading: "组织管理", headingScope: ".topbar-title" },
   // FA-25 expansion routes.
   { path: "/parameter-home", heading: "我的工作台", headingScope: ".topbar-title" },
-  { path: "/parameter-admin/projects/aurora/configuration", heading: "项目参数管理后台" },
+  { path: "/parameter-admin/projects/aurora/configuration", heading: "参数管理后台" },
   { path: "/dts-reload", heading: "参数调试", headingScope: ".topbar-title" },
   { path: "/feedback-admin", heading: "产品反馈管理" }
 ];
@@ -53,13 +53,13 @@ type LayoutBudgetRoute = QualityRoute & {
 };
 
 const layoutBudgetRoutes: LayoutBudgetRoute[] = [
-  { path: "/parameter-admin", heading: "项目参数管理后台" },
-  { path: "/parameter-admin/specs", heading: "项目参数管理后台" },
-  { path: "/parameter-admin/modules", heading: "项目参数管理后台" },
-  { path: "/parameter-admin/specs/identity-mapping", heading: "项目参数管理后台" },
+  { path: "/parameter-admin", heading: "参数管理后台" },
+  { path: "/parameter-admin/specs", heading: "参数管理后台" },
+  { path: "/parameter-admin/modules", heading: "参数管理后台" },
+  { path: "/parameter-admin/specs/identity-mapping", heading: "参数管理后台" },
   // FA-25 expansion routes.
   { path: "/parameter-home", heading: "我的工作台", headingScope: ".topbar-title" },
-  { path: "/parameter-admin/projects/aurora/configuration", heading: "项目参数管理后台" },
+  { path: "/parameter-admin/projects/aurora/configuration", heading: "参数管理后台" },
   {
     path: "/dts-reload",
     heading: "参数调试",

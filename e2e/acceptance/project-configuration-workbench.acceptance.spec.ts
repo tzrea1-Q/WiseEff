@@ -1570,7 +1570,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
       const ungrouped = page.getByRole("group", { name: "未编组项目文件" });
       await expect(ungrouped).toContainText(looseFileName);
-      await expect(ungrouped).toContainText("不参与当前工作配置");
+      await expect(ungrouped.locator(".configuration-workbench__ungrouped-file").filter({ hasText: looseFileName }))
+        .toContainText("尚未加入当前配置集");
 
       await page.getByRole("button", { name: `编入 ${looseFileName}` }).click();
       await expect(page.getByRole("treeitem", { name: new RegExp(looseFileName) })).toBeVisible({ timeout: 15_000 });
@@ -2093,10 +2094,12 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await dismissXiaozeHint(reviewerPage);
       await reviewerPage.bringToFront();
       const review = reviewerPage.getByRole("region", { name: "软件配置审核" });
+      await review.getByText("查看完整源文件", { exact: true }).click();
       await expect(review.getByLabel("固定源变更后")).toContainText("4510");
       const reviewed = reviewerPage.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${requestId}/review`));
       await review.getByRole("button", { name: "批准软件配置" }).click();
+      await reviewerPage.getByRole("dialog", { name: "确认应用软件配置", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       const approval = await reviewed;
       expect(approval.ok(), await approval.text()).toBe(true);
       const approvedRequest = (await approval.json()).item as { id: string; status: string; appliedValueId: string };

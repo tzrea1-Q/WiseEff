@@ -25,8 +25,8 @@ test("Platform-only identity redirect explains Organization permission without l
     && url.searchParams.get("review") === "open" && Boolean(url.searchParams.get("catalogReleaseId")?.trim()));
   await expect(page.getByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。"))
     .toBeVisible();
-  await expect(page.getByRole("button", { name: /待处理工作/ })).toHaveCount(0);
-  await expect(page.getByRole("dialog", { name: "待处理工作" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /待审核事项/ })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "待审核事项" })).toHaveCount(0);
   await expect(page.getByText(/审核队列加载失败/)).toHaveCount(0);
   expect(queueRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
@@ -47,14 +47,14 @@ test("Organization admin keeps the Review Queue after the identity redirect", as
   await expect(page.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "ready");
   await expect(page).toHaveURL((url) => url.pathname === "/parameter-admin/specs"
     && url.searchParams.get("review") === "open" && Boolean(url.searchParams.get("catalogReleaseId")?.trim()));
-  const dialog = page.getByRole("dialog", { name: "待处理工作" });
+  const dialog = page.getByRole("dialog", { name: "待审核事项" });
   await expect(dialog.getByRole("region", { name: "待审核事项" })).toBeVisible();
   await loaded;
   await expect(dialog.getByRole("status")).toHaveCount(0);
   await expect(page.getByText(/审核队列加载失败/)).toHaveCount(0);
   await expect(page.getByText(/Platform 权限不能代替组织审核权限/)).toHaveCount(0);
   await dialog.getByRole("button", { name: "关闭" }).click();
-  await page.getByRole("button", { name: /待处理工作/ }).focus();
+  await page.getByRole("button", { name: /待审核事项/ }).focus();
   await page.keyboard.press("Enter");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("status")).toHaveCount(0);

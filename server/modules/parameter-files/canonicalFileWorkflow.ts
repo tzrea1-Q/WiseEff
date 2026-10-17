@@ -74,6 +74,7 @@ export type CanonicalSourcePreviewBindingDto = {
   configRevisionId: string;
   sourcePinId: string;
   locator: string;
+  displayPath?: string;
   baseDigest: string;
   proposedDigest: string;
   action: SourceAction;
@@ -191,6 +192,7 @@ type SourceChange = {
   pin: CanonicalValueSourcePin;
   action: SourceAction;
   beforeTargetText: string;
+  displayPath?: string;
   targetText?: string;
   targetValue?: DtsValue;
   baseText: string;
@@ -692,6 +694,7 @@ async function inspectCandidate(
     try {
       let action: SourceAction;
       let beforeTargetText: string;
+      let displayPath: string;
       let targetText: string | undefined;
       let targetValue: DtsValue | undefined;
       if (candidate.format === "json") {
@@ -699,6 +702,7 @@ async function inspectCandidate(
           continue;
         }
         const pointer = match.pin.locator.pointer;
+        displayPath = pointer;
         const rootPointer = match.pin.rootPointer;
         jsonBaseBytes ??= baseBytes;
         if (!baseBytes.equals(jsonBaseBytes)) continue;
@@ -722,7 +726,9 @@ async function inspectCandidate(
           jsonPatchPlans.push({ baseBytes, pointer, rootPointer, action, targetText });
         }
       } else {
-        beforeTargetText = (await loadPinnedDtsProperty(db, match.source.manifest)).raw_text;
+        const pinnedProperty = await loadPinnedDtsProperty(db, match.source.manifest);
+        beforeTargetText = pinnedProperty.raw_text;
+        displayPath = `${pinnedProperty.node_locator} · ${pinnedProperty.property_name}`;
         const batchTarget = dtsBatchChanges?.get(match.pin.sourcePinId);
         if (batchTarget) {
           action = batchTarget.action;
@@ -793,6 +799,7 @@ async function inspectCandidate(
         pin: match.pin,
         action,
         beforeTargetText,
+        displayPath,
         ...(targetText === undefined ? {} : { targetText }),
         ...(targetValue === undefined ? {} : { targetValue }),
         baseText,
@@ -893,7 +900,7 @@ function previewFromInspection(inspection: SourceInspection,
       reason: inspection.reason ?? "canonical-batch-review-required",
       baseDigest: inspection.changes[0]!.baseDigest,
       proposedDigest: inspection.changes[0]!.proposedDigest,
-      bindings: inspection.changes.map(previewBinding),
+      bindings: inspection.changes.map((entry) => ({ ...previewBinding(entry), displayPath: entry.displayPath })),
       before: inspection.changes[0]!.baseText,
       after: inspection.changes[0]!.candidateText
     };
@@ -913,7 +920,7 @@ function previewFromInspection(inspection: SourceInspection,
     locator: sourceLocator(change.pin),
     baseDigest: change.baseDigest,
     proposedDigest: change.proposedDigest,
-    bindings: [previewBinding(change)],
+    bindings: [{ ...previewBinding(change), displayPath: change.displayPath }],
     before: change.baseText,
     after: change.candidateText
   };

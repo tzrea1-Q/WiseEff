@@ -1,0 +1,62 @@
+.review-queue__toolbar,
+.review-queue__tools,
+.review-queue__filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.review-queue__toolbar {
+  justify-content: space-between;
+}
+
+.review-queue__toolbar p,
+.review-queue__count {
+  margin: 0;
+  color: var(--app-muted);
+}
+
+.review-queue__filters .search-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.review-queue__object {
+  display: grid;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.review-queue__object > span,
+.review-queue__object details {
+  color: var(--app-muted);
+  font-size: var(--text-sm);
+}
+
+.review-queue__object summary {
+  cursor: pointer;
+  color: var(--app-primary);
+}
+
+.review-queue__object dl {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+}
+
+.review-queue__object dd {
+  margin: 0;
+}
+
+.review-workbench-dialog {
+  min-height: 0;
+}
+
+.review-workbench-dialog > .confirm-dialog__scroll {
+  min-height: 0;
+}
+
+.review-workbench-dialog .review-resolution {
+  min-height: 0;
+}

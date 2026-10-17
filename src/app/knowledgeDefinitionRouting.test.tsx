@@ -34,6 +34,7 @@ describe("Knowledge Definition navigation", () => {
         page={getPageByPath(url.pathname)} search={url.search}
         state={{ ...initialState, activeRoleId: roleId }} dispatch={() => undefined}
         runtime={runtime} runtimeMode="api" onNavigate={(path) => { navigate(path); setHref(path); }} onFeedback={() => undefined}
+        sessionPermissions={[]}
         knowledgeCapability={{ userId: initialState.currentUserId, canView: true, canEdit: false, canManage: false }}
         DebuggingAdminPage={() => null}
       /></ToastProvider>;
@@ -59,7 +60,15 @@ describe("Knowledge Definition navigation", () => {
       expect(closedDestination.searchParams.get("catalogReleaseId")).toBe(CATALOG_RELEASE_ID);
       expect(closedDestination.searchParams.has("definitionId")).toBe(false);
     } else {
-      expect(within(detail).getByDisplayValue(activeDefinition.propertyKey)).toBeInTheDocument();
+      // Administrative page access does not grant Catalog authoring permission.
+      expect(within(detail).getByText(activeDefinition.id, { selector: "header code" })).toBeVisible();
+      expect(within(detail).getByText(activeDefinition.subject.canonicalName)).toBeVisible();
+      expect(within(detail).getByText(activeDefinition.currentRevision.displayName)).toBeVisible();
+      expect(within(detail).getByText(activeDefinition.currentRevision.documentation!)).toBeVisible();
+      expect(within(detail).getByText(`修订 #${activeDefinition.currentRevision.revisionNumber}`, { selector: "dd" }))
+        .toBeVisible();
+      expect(within(detail).queryByRole("textbox")).not.toBeInTheDocument();
+      expect(within(detail).queryByRole("button", { name: /保存.*修订/ })).not.toBeInTheDocument();
       expect(destination.pathname).toBe("/parameter-admin/specs");
     }
   });

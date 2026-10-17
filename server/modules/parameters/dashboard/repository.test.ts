@@ -141,6 +141,11 @@ describe.skipIf(!databaseAvailable)("canonical dashboard assigned review queue",
         expect(visibleBatches.map((item) => item.id)).toEqual([batches[index]!.id]);
         const visibleSingles = await listCanonicalValueChangesForAuth(db, actor, { projectId, status: "pending" });
         expect(new Set(visibleSingles.map((item) => item.id))).toEqual(new Set(singles.map((item) => item.id)));
+        for (const request of [...visibleRemovals, ...visibleBatches, ...visibleSingles]) {
+          expect(request.submitterName).toBe(cId);
+          expect(request.assignedToName).toBe(request.assignedToUserId);
+          expect(request.reviewerName).toBeNull();
+        }
         const ids = new Set([...visibleRemovals, ...visibleBatches, ...visibleSingles]
           .filter((item) => item.submitterUserId !== actor.user.id).map((item) => item.id));
         expect(ids.size).toBe(4);

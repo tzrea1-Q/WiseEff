@@ -1,27 +1,20 @@
-import { Buffer } from "node:buffer";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { stringify } from "yaml";
 
 import {
   CatalogReleaseId,
   CatalogSubjectId,
-  serializeContract,
   type CatalogReleasePin,
-  type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import {
-  refreshReleaseAggregateDigest,
   validCatalogReleaseBundle,
 } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { refreshSuccessorSource } from "../../catalog-publication/builder/bundleCodec";
 import type {
-  CatalogReleaseAliasDocument,
   CatalogReleaseBundle,
-  CatalogReleaseNode,
-  CatalogReleaseSubjectDocument,
 } from "../../catalog-kernel/compiler/types";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
@@ -69,9 +62,6 @@ const MODULE_ID = "pmod-s4-reg-driver";
 const MODULE_ID_B = "pmod-s4-reg-driver-b";
 const SUBJECT_ID = CatalogSubjectId("csub_acme_power");
 
-const sha256 = (bytes: string | Uint8Array): string =>
-  `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-
 const firstReleaseBundle = (): CatalogReleaseBundle => {
   const full = validCatalogReleaseBundle();
   const first = structuredClone(full.releases[0]!);
@@ -82,120 +72,42 @@ const firstReleaseBundle = (): CatalogReleaseBundle => {
   };
 };
 
-const refreshReleaseSource = (release: CatalogReleaseNode): void => {
-  for (const document of release.documents) {
-    if (document.kind === "definition") {
-      const revision = document.content.revision;
-      const model: Record<string, ContractJsonValue> = {
-        "/lifecycle": revision.lifecycle,
-        "/displayName": revision.displayName,
-        "/documentation": revision.documentation,
-        "/valueSchema": revision.valueSchema,
-        "/matching": revision.matching,
-      };
-      if (revision.unit !== undefined) model["/unit"] = revision.unit;
-      document.content.revision.contentDigest = sha256(serializeContract(model));
-    }
-    document.normalizedDigest = sha256(
-      serializeContract(document.content as unknown as ContractJsonValue),
-    );
-  }
-  const bytes = Buffer.from(
-    stringify(
-      {
-        schemaVersion: "1.0.0",
-        documents: release.documents.map((document) => ({
-          kind: document.kind,
-          content: document.content,
-        })),
-      },
-      { lineWidth: 0 },
-    ),
-    "utf8",
-  );
-  const digest = sha256(bytes);
-  const sourcePath = release.manifest.files[0]?.path ?? "schemas/dts/vendor/acme-power.yaml";
-  release.sources = [
-    {
-      path: sourcePath,
-      mediaType: "application/yaml",
-      encoding: "base64",
-      bytes: bytes.toString("base64"),
-    },
-  ];
-  release.manifest.files = [{ path: sourcePath, mediaType: "application/yaml", digest }];
-  for (const document of release.documents) {
-    document.source = { path: sourcePath, mediaType: "application/yaml", digest };
-  }
-  release.manifest.documents = release.documents.map((document) => ({
-    sourcePath: document.source.path,
-    kind: document.kind,
-    documentId: document.content.id,
-    normalizedDigest: document.normalizedDigest,
-  }));
-  refreshReleaseAggregateDigest(release);
-};
-
 const retiringSuccessorBundle = (): CatalogReleaseBundle => {
   const bundle = structuredClone(validCatalogReleaseBundle());
   const current = bundle.releases.find(
     (release) => release.manifest.release.id === bundle.targetReleaseId,
   );
   if (!current) throw new Error("current successor missing");
-  const target = structuredClone(current);
-  target.manifest.release.id = "crel_acme_3";
-  target.manifest.release.version = "1.2.0";
-  target.manifest.release.sequence = 3;
-  target.manifest.release.publishedAt = "2026-09-03T00:00:00Z";
-  target.manifest.release.predecessor = {
-    id: current.manifest.release.id,
-    digest: current.manifest.release.digest,
-  };
-
-  const subject = target.documents.find(
-    (document): document is CatalogReleaseSubjectDocument => document.kind === "subject",
-  );
-  const alias = target.documents.find(
-    (document): document is CatalogReleaseAliasDocument => document.kind === "alias",
-  );
-  if (!subject || !alias) throw new Error("successor subject/alias missing");
-
-  const successorSubject = structuredClone(subject);
-  successorSubject.content.id = "csub_acme_power_next";
-  successorSubject.content.canonicalKey = "driver:acme,power-next";
-  successorSubject.content.selector = {
-    ...successorSubject.content.selector,
-    value: "acme,power-next",
-  };
-  successorSubject.content.lifecycle = "active";
-  successorSubject.content.tombstone = null;
-
-  const successorAlias = structuredClone(alias);
-  successorAlias.content.id = "cali_acme_power_next";
-  successorAlias.content.subjectId = successorSubject.content.id;
-  successorAlias.content.normalizedSelector = "acme,power-next-v1";
-  successorAlias.content.lifecycle = "active";
-  successorAlias.content.tombstone = null;
-
-  subject.content.lifecycle = "retired";
-  subject.content.tombstone = {
-    reason: "withdrawn",
-    withdrawnByReleaseId: target.manifest.release.id,
-    previousSelector: "acme,power",
-    successorId: successorSubject.content.id,
-  };
-  alias.content.lifecycle = "retired";
-  alias.content.tombstone = {
-    reason: "withdrawn",
-    withdrawnByReleaseId: target.manifest.release.id,
-    previousSelector: alias.content.normalizedSelector,
-    successorId: successorAlias.content.id,
-  };
-  target.documents.push(successorSubject, successorAlias);
-  refreshReleaseSource(target);
-  bundle.releases.push(target);
-  bundle.targetReleaseId = target.manifest.release.id;
-  return bundle;
+  const subject = current.documents.find((document) => document.kind === "subject");
+  const alias = current.documents.find((document) => document.kind === "alias");
+  if (subject?.kind !== "subject" || alias?.kind !== "alias") throw new Error("successor subject/alias missing");
+  // Shared object references would serialize as aliases, which Catalog sources forbid.
+  const successorSubject = structuredClone({ ...subject, content: { ...subject.content,
+    id: "csub_acme_power_next", canonicalKey: "driver:acme,power-next",
+    selector: { ...subject.content.selector, value: "acme,power-next" },
+    lifecycle: "active" as const, tombstone: null,
+  } });
+  const successorAlias = structuredClone({ ...alias, content: { ...alias.content,
+    id: "cali_acme_power_next", subjectId: successorSubject.content.id,
+    normalizedSelector: "acme,power-next-v1", lifecycle: "active" as const, tombstone: null,
+  } });
+  const releaseId = "crel_acme_3";
+  const target = refreshSuccessorSource({ ...current,
+    manifest: { ...current.manifest, release: { ...current.manifest.release,
+      id: releaseId, version: "1.2.0", sequence: 3, publishedAt: "2026-09-03T00:00:00Z",
+      predecessor: { id: current.manifest.release.id, digest: current.manifest.release.digest },
+    } },
+    documents: [...current.documents.map((document) => document === subject ? {
+      ...subject, content: { ...subject.content, lifecycle: "retired" as const, tombstone: {
+        reason: "withdrawn", withdrawnByReleaseId: releaseId, previousSelector: "acme,power",
+        successorId: successorSubject.content.id,
+      } },
+    } : document === alias ? { ...alias, content: { ...alias.content, lifecycle: "retired" as const,
+      tombstone: { reason: "withdrawn", withdrawnByReleaseId: releaseId,
+        previousSelector: alias.content.normalizedSelector, successorId: successorAlias.content.id },
+    } } : document), successorSubject, successorAlias],
+  }, current.manifest.files[0]?.path ?? "schemas/dts/vendor/acme-power.yaml");
+  return { ...bundle, releases: [...bundle.releases, target], targetReleaseId: releaseId };
 };
 
 const compileOrThrow = (bundle: CatalogReleaseBundle) => {
@@ -322,6 +234,38 @@ describe("guarded Registration and Placement", () => {
       placements: "1",
       placement_registration: result.value.registrationId,
     });
+  });
+
+  it("atomically initializes a typed destination, replays it and rolls back rejected or duplicate initialization", async () => {
+    const org = `org-init-${randomUUID()}`;
+    const parent = `business-${randomUUID()}`;
+    const target = `driver-${randomUUID()}`;
+    await pool.query(`insert into public.organizations(id,name) values($1,'Initialization')`, [org]);
+    await pool.query(`insert into public.parameter_modules(id,organization_id,name,path,kind,origin) values($1,$2,'Business',$1,'business','curated')`, [parent, org]);
+    const command = registerCommand({ organizationId: org, destinationModuleId: target, newDestination: { parentModuleId: parent, name: "Canonical driver" }, idempotencyKey: "initialize-exact" });
+    const initialized = await Promise.all([service.execute(command), service.execute(command)]);
+    expect(initialized.every((result) => result.ok)).toBe(true);
+    expect(initialized.map((result) => result.ok ? result.value.outcome : "failed").sort()).toEqual(["committed", "replayed"]);
+    expect(await service.execute(command)).toMatchObject({ ok: true, value: { outcome: "replayed", moduleId: target } });
+    const created = await pool.query(`select module.kind,module.parent_id,module.path,subject.source_key from public.parameter_modules module join public.attribution_subjects subject on subject.id=module.attribution_subject_id where module.id=$1`, [target]);
+    expect(created.rows[0]).toEqual({ kind: "driver-group", parent_id: parent, path: `${parent}/${target}`, source_key: `catalog-subject:${SUBJECT_ID}` });
+    const before = await residue();
+    expect(await service.execute({ ...command, destinationModuleId: `${target}-foreign`, idempotencyKey: "wrong-parent", newDestination: { parentModuleId: MODULE_ID, name: "Foreign parent" } })).toMatchObject({ ok: false, error: { kind: "invalid-placement-parent" } });
+    expect(await residue()).toEqual(before);
+    const lateOrg = `${org}-late`;
+    const lateParent = `${parent}-late`;
+    const lateTarget = `${target}-late`;
+    await pool.query(`insert into public.organizations(id,name) values($1,'Late rollback')`, [lateOrg]);
+    await pool.query(`insert into public.parameter_modules(id,organization_id,name,path,kind,origin) values($1,$2,'Business',$1,'business','curated')`, [lateParent, lateOrg]);
+    expect(await service.execute({ ...command, organizationId: lateOrg, subjectKind: "node-type", destinationModuleId: lateTarget, newDestination: { parentModuleId: lateParent, name: "Wrong subject kind" } })).toMatchObject({ ok: false });
+    expect((await pool.query(`select id from public.parameter_modules where id=$1`, [lateTarget])).rows).toHaveLength(0);
+    expect((await pool.query(`select id from public.attribution_subjects where id=$1`, [`asub:canonical:${lateTarget}`])).rows).toHaveLength(0);
+    expect(await residue()).toEqual(before);
+    expect(await service.execute({ ...command, destinationModuleId: `${target}-duplicate`, idempotencyKey: "duplicate-init" })).toMatchObject({ ok: false });
+    expect(await residue()).toEqual(before);
+    expect((await pool.query(`select id from public.parameter_modules where id=$1`, [`${target}-duplicate`])).rows).toHaveLength(0);
+    expect(await service.execute({ ...command, destinationModuleId: `${target}-wrong-kind`, idempotencyKey: "wrong-kind-parent", newDestination: { parentModuleId: target, name: "Wrong kind" } })).toMatchObject({ ok: false, error: { kind: "invalid-placement-parent" } });
+    expect(await residue()).toEqual(before);
   });
 
   it("does not automatically restore a retired Registration", async () => {

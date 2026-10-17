@@ -127,6 +127,11 @@ export type CatalogGovernanceQueryScope = {
   readonly principalId?: string;
 };
 
+export type ReviewItemDetails = Pick<
+  ReturnType<typeof import("../../contracts/dtoSchemas/parameterCatalog").catalogReviewItemDtoSchema.parse>,
+  "observation" | "sourceSummary" | "sources" | "candidates" | "restorableRegistrations" | "allowedResolutions"
+>;
+
 export type CatalogGovernancePorts = {
   readonly authenticate: (
     request: CatalogGovernanceRequest,
@@ -147,6 +152,9 @@ export type CatalogGovernancePorts = {
   readonly getReviewItem: (
     query: GetReviewItemQuery,
   ) => Promise<Result<ReviewQueueItem, ReviewQueueFailure>>;
+  readonly readReviewItemDetails?: (
+    input: CatalogGovernanceQueryScope & { readonly items: readonly ReviewQueueItem[]; readonly pin: CatalogReleasePin },
+  ) => Promise<ReadonlyMap<string, ReviewItemDetails>>;
   readonly resolveSubjectKind?: (
     subjectId: string,
   ) => Promise<"driver" | "node-type" | "configuration-schema" | null>;

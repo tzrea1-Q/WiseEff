@@ -167,6 +167,7 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.type) params.set("type", query.type);
   if (query.lifecycle) params.set("lifecycle", query.lifecycle);
+  if (query.subjectLifecycle) params.set("subjectLifecycle", query.subjectLifecycle);
   if (query.registration) params.set("registration", query.registration);
   if (query.search) params.set("search", query.search);
   if (query.subjectId) params.set("subjectId", query.subjectId);

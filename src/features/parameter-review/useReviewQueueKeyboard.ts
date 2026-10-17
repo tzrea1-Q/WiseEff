@@ -28,7 +28,7 @@ export function useReviewQueueKeyboard({
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (document.querySelector('[role="dialog"], [data-slot="alert-dialog-content"]')) {
+      if (event.defaultPrevented || document.querySelector('[role="dialog"], [data-slot="alert-dialog-content"]')) {
         return;
       }
       if (event.altKey && event.key === "1") {
@@ -43,6 +43,11 @@ export function useReviewQueueKeyboard({
         return;
       }
       if (shouldIgnoreAppShortcut(event)) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || !queueRef.current?.contains(target)
+        || target.closest('[role="tree"], [role="listbox"], [role="combobox"], summary')) {
         return;
       }
 

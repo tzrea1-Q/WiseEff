@@ -166,6 +166,16 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
     async (fileId: string, role: ConfigSetRole, sortOrder: number) => {
       if (!canAdmin || !selectedConfigSet) return;
       const file = projectFiles.find((item) => item.id === fileId);
+      if (!file || !ungroupedFiles.some((item) => item.id === fileId)) {
+        throw new Error("文件已不在未编组列表，请刷新后重试。");
+      }
+      // Recheck both entry points against current source proofs before changing membership.
+      for (const targetId of new Set([...selectedMembers.map((item) => item.fileId), fileId])) {
+        const workflow = await fileRepository.getSourceWorkflow(projectId, targetId);
+        if (workflow.canonical !== false) {
+          throw new Error("此来源的成员变更需要审核，当前不能直接编入文件。");
+        }
+      }
       const result = await configSetOpsSession.addMember(
         projectId,
         selectedConfigSet.id,
@@ -194,6 +204,9 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
       members,
       projectId,
       projectFiles,
+      fileRepository,
+      selectedMembers,
+      ungroupedFiles,
       selectedConfigSet,
       setInspectorLevelOverride,
       setInspectorOpen,

@@ -180,12 +180,14 @@ describe("canonical structured staging", () => {
     expect(session.rows).toEqual([]);
   });
 
-  it("accepts a staged pending receipt when the Binding current value remains null", async () => {
+  it("accepts an explicitly null staged receipt when the Binding has no current value", async () => {
     const session = await editedCanonicalSession(["board"]);
+    const binding = canonicalBinding("board");
+    delete binding.currentValueId;
     await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
       revisionId: "revision-1", dtsRepository: { submitStructuredEdits: vi.fn() },
       catalogRepository: createTestParameterTopologyRepository({
-        listBindings: vi.fn(async () => [{ ...canonicalBinding("board"), currentValueId: null }]),
+        listBindings: vi.fn(async () => [binding]),
         createBindingDraft: vi.fn(async () => ({ ...stagingReceipt("pbind_file-board_board"), currentValueId: null }))
       }) });
     expect(session.stagedDrafts).toEqual([expect.objectContaining({
@@ -263,7 +265,7 @@ describe("canonical structured staging", () => {
     const pending = new Promise<void>((resolve) => { finish = resolve; });
     const listConfigRevisions = vi.fn(async () => {
       if (lookup === "revisions") await pending;
-      return [{ id: "revision-1", status: "resolved" as const, projectId: SCOPE.projectId, configSetId: SCOPE.configSetId }];
+      return [{ id: "revision-1", status: "resolved" as const, revisionNumber: 1, createdAt: "2026-08-17T10:00:00.000Z", configSetId: SCOPE.configSetId }];
     });
     const listBindings = vi.fn(async () => {
       if (lookup === "bindings") await pending;
@@ -310,7 +312,7 @@ describe("canonical structured staging", () => {
   });
 
   it.each([
-    [null, undefined], [null, "unexpected-current"], ["ppv_board", null]
+    [undefined, undefined], [undefined, "unexpected-current"], ["ppv_board", null]
   ] as const)("keeps the edit when current-value confirmation differs: %s to %s", async (currentValueId, receiptValueId) => {
     const session = await editedCanonicalSession(["board"]);
     await expect(session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",

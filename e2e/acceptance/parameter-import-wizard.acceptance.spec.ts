@@ -180,7 +180,21 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await expect(confirmApply).toContainText("AURORA");
     await expect(confirmApply).toContainText("更新");
     await confirmApply.getByRole("button", { name: /确认应用|暂存待提交/ }).click();
+    const receipt = wizard.getByRole("region", { name: "导入处理回执" });
+    await expect(receipt).toBeVisible({ timeout: 30_000 });
+    await expect(wizard.getByRole("heading", { name: "导入处理完成", exact: true })).toBeVisible();
+    await expect(receipt.getByRole("heading", { name: "草稿已暂存", exact: true })).toBeVisible();
+    await expect(receipt).toContainText("已暂存 1 条待提交草稿。当前值和源文件尚未改变");
+    await expect(receipt).toContainText(seeded!.propertyKey);
+    await expect(receipt.getByRole("list", { name: "本次选择的参数" }).getByRole("listitem"))
+      .toHaveText([seeded!.propertyKey]);
+    await expect(receipt.getByRole("button", { name: "查看草稿并继续提交审核", exact: true })).toBeVisible();
+    await expect(receipt.locator("code")).toHaveText(/\S+/);
+    const receiptBatchId = (await receipt.locator("code").textContent())!.trim();
+    await expect(wizard.getByRole("button", { name: /^(确认应用|暂存待提交)$/ })).toHaveCount(0);
+    await receipt.getByRole("button", { name: "完成", exact: true }).click();
     await expect(wizard).not.toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("dialog", { name: "退出批量导入向导？" })).toHaveCount(0);
 
     const applied = await withPgClient(async (client) => {
       const batchResult = await client.query<{
@@ -237,6 +251,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
       };
     });
     expect(applied.batch).toBeTruthy();
+    expect(applied.batch!.id).toBe(receiptBatchId);
     expect(applied.batch).toMatchObject({ status: "staged", summary: { updated: 1 } });
     const afterBindingsResponse = await request.get(apiRoute(bindingsRoute), { headers: authHeadersForRole("admin") });
     expect(afterBindingsResponse.status(), await afterBindingsResponse.text()).toBe(200);

@@ -58,6 +58,9 @@ export type CanonicalValueChangeRequestRow = {
   submitter_user_id: string | null;
   assigned_to_user_id: string | null;
   reviewer_user_id: string | null;
+  submitter_name?: string | null;
+  assigned_to_name?: string | null;
+  reviewer_name?: string | null;
   reviewer_note: string | null;
   applied_value_id: string | null;
   apply_outcome: CanonicalChangeApplyOutcome | null;
@@ -88,7 +91,7 @@ async function hydrateRequest(db: Queryable, row: CanonicalValueChangeRequestRow
        left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
       where request.organization_id=$1 and request.project_id=$2 and request.id=$3`,
     [row.organization_id, row.project_id, row.id]);
-  return result.rows[0] ?? row;
+  return result.rows[0] ? { ...row, ...result.rows[0] } : row;
 }
 
 export async function insertCanonicalValueChangeRequest(
@@ -166,8 +169,12 @@ export async function getCanonicalValueChangeRequest(
 ): Promise<CanonicalValueChangeRequestRow | null> {
   const result = await db.query<CanonicalValueChangeRequestRow>(
     `
-    select request.*, pin.format as source_format, applied.value_state as applied_value_state
+    select request.*, pin.format as source_format, applied.value_state as applied_value_state,
+      submitter.name as submitter_name, assignee.name as assigned_to_name, reviewer.name as reviewer_name
       from project_parameter_value_change_requests request
+      left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
+      left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
+      left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
       left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
       left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
      where request.organization_id = $1
@@ -253,15 +260,19 @@ export async function listCanonicalValueChangeRequests(
 ): Promise<CanonicalValueChangeRequestRow[]> {
   const result = await db.query<CanonicalValueChangeRequestRow>(
     `
-    select request.*, pin.format as source_format, applied.value_state as applied_value_state
+    select request.*, pin.format as source_format, applied.value_state as applied_value_state,
+      submitter.name as submitter_name, assignee.name as assigned_to_name, reviewer.name as reviewer_name
       from project_parameter_value_change_requests request
+      left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
+      left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
+      left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
       left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
       left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
      where request.organization_id = $1
        and request.project_id = $2
        and ($3::text is null or request.status = $3)
        and request.request_kind = 'single'
-     order by updated_at desc, id
+     order by request.updated_at desc, request.id
     `,
     [input.organizationId, input.projectId, input.status ?? null]
   );

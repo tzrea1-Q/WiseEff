@@ -7,8 +7,8 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
 import type {
-  CatalogDefinitionResponse,
   CatalogPublicationCandidateResponse,
   CatalogPublicationJobResponse,
   CatalogSubjectResponse
@@ -49,14 +49,12 @@ import {
   publicationValueTypeLabel,
   publicationSupportedValueTypes,
   type PublicationDraft,
-  type PublicationReviseClass,
   type PublicationSubjectKind,
   type PublicationSubmitGate,
   type PublicationValueType
 } from "./publicationState";
 
 type SubjectItem = CatalogSubjectResponse["item"];
-type DefinitionItem = CatalogDefinitionResponse["item"];
 type ConfirmKind = "preview" | "publish";
 type FollowupStatus = "idle" | "failed" | "succeeded";
 
@@ -114,11 +112,13 @@ export function PublicationDialog({
   const formId = useId();
   const [draft, setDraft] = useState<PublicationDraft>(emptyPublicationDraft);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [definitions, setDefinitions] = useState<DefinitionItem[]>([]);
+  const [subjectReadEpoch, setSubjectReadEpoch] = useState(0);
   const [followup, setFollowup] = useState<FollowupStatus>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [proposalId, setProposalId] = useState<string | null>(null);
   const [candidate, setCandidate] = useState<CatalogPublicationCandidateResponse["item"] | null>(null);
+  const [candidateVerified, setCandidateVerified] = useState(false);
   const [previewFingerprint, setPreviewFingerprint] = useState<string | null>(null);
   const [job, setJob] = useState<CatalogPublicationJobResponse["item"] | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
@@ -131,9 +131,18 @@ export function PublicationDialog({
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
 
-  const previewStale = publicationPreviewIsStale(previewFingerprint, draft);
+  const previewStale = publicationPreviewIsStale(previewFingerprint, draft) ||
+    Boolean(candidate && (!candidateVerified || candidate.expectedBaseReleaseId !== catalogReleaseId));
   const selectedSubject = subjects.find((item) => item.id === draft.subjectId) ?? null;
-  const publishedSubjects = subjects.filter((item) => item.membership.status === "active");
+  const publishedSubjects = subjects.filter((item) => item.membership.status === "active" && item.registration.status !== "retired");
+  const publishedSubjectIds = new Set(publishedSubjects.map((item) => item.id));
+  const targetAllowed = !loading && !loadError && (draft.mode === "create-subject" ||
+    (draft.mode === "create-definition" && publishedSubjectIds.has(draft.subjectId)));
+  const targetUnavailable = !loading && !loadError && draft.mode === "create-definition" &&
+    Boolean(draft.subjectId) && !targetAllowed;
+  useEffect(() => {
+    if (!targetAllowed) setConfirm(null);
+  }, [targetAllowed]);
   const mustRePreview = publicationMustRePreview({
     previewStale,
     jobStatus: job?.status,
@@ -141,7 +150,7 @@ export function PublicationDialog({
   });
   const succeeded = job ? publicationSuccessKind(job) : null;
   const draftDirty =
-    !succeeded &&
+    draft.mode !== "revise-definition" && !succeeded &&
     fingerprintPublicationDraft(draft) !== fingerprintPublicationDraft(emptyPublicationDraft());
 
   useEffect(() => {
@@ -213,72 +222,82 @@ export function PublicationDialog({
       return undefined;
     }
     gateRef.current = createPublicationSubmitGate();
+    completedRef.current = false;
     setFailure(null);
     setFieldError(null);
     setConfirm(null);
     setPending(false);
+    setCandidateVerified(false);
+    setProposalId(null);
+    setDraftSaved(false);
+    setFollowup("idle");
+    const stored = readStoredPublicationJob({ userId: currentPersonId, organizationId });
+    if (stored) {
+      const restoredDraft = { ...emptyPublicationDraft(), ...stored.draft };
+      setDraft(restoredDraft);
+      setCandidate({
+        id: stored.candidateId, expectedBaseReleaseId: stored.catalogReleaseId,
+        expectedBaseReleaseDigest: "", riskClass: "low",
+        impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0, addedSubjectCount: 0 },
+        capabilityContract: { revision: "", allowListId: "" }
+      });
+      setJob({
+        id: stored.jobId, candidateId: stored.candidateId, status: "queued", attemptCount: 0,
+        effective: false, isCurrent: false, currentness: null, failure: null
+      });
+      setPreviewFingerprint(fingerprintPublicationDraft(restoredDraft));
+      setIdempotencyKey(stored.idempotencyKey);
+      startPolling(stored.jobId);
+    } else {
+      setDraft(emptyPublicationDraft());
+      setCandidate(null);
+      setPreviewFingerprint(null);
+      setJob(null);
+      setIdempotencyKey(null);
+    }
+    return stopPolling;
+  }, [open, catalog, currentPersonId, organizationId]);
+
+  useEffect(() => {
+    if (!open) return;
     let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    setSubjects([]);
     void (async () => {
       try {
-        const [listed, listedDefinitions] = await Promise.all([
-          catalog.listSubjects({ catalogReleaseId }),
-          catalog.listDefinitions({ catalogReleaseId })
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setSubjects([...listed.items]);
-        setDefinitions([...listedDefinitions.items]);
-        setLoadError(listed.items.length === 0 ? publicationCopy.unpublishedEmpty : null);
-        const stored = readStoredPublicationJob({
-          userId: currentPersonId,
-          organizationId
-        });
-        if (stored && stored.catalogReleaseId === catalogReleaseId) {
-          const restoredDraft = { ...emptyPublicationDraft(), ...stored.draft };
-          setDraft(restoredDraft);
-          setCandidate({
-            id: stored.candidateId,
-            expectedBaseReleaseId: stored.catalogReleaseId,
-            expectedBaseReleaseDigest: "",
-            riskClass: "low",
-            impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0, addedSubjectCount: 0 },
-            capabilityContract: { revision: "", allowListId: "" }
-          });
-          setJob({
-            id: stored.jobId,
-            candidateId: stored.candidateId,
-            status: "queued",
-            attemptCount: 0,
-            effective: false,
-            isCurrent: false,
-            currentness: null,
-            failure: null
-          });
-          setPreviewFingerprint(fingerprintPublicationDraft(restoredDraft));
-          setIdempotencyKey(stored.idempotencyKey);
-          startPolling(stored.jobId);
-          return;
-        }
-        setDraft(emptyPublicationDraft());
-        setProposalId(null);
-        setCandidate(null);
-        setPreviewFingerprint(null);
-        setJob(null);
-        setIdempotencyKey(null);
-        setDraftSaved(false);
-        setFollowup("idle");
+        const listed = await listAllCanonicalPages((query) => catalog.listSubjects(query), { catalogReleaseId });
+        if (!cancelled) setSubjects(listed);
       } catch {
         if (!cancelled) {
           setLoadError("主体列表加载失败，请稍后重试。");
         }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
-      stopPolling();
     };
-  }, [open, catalog, catalogReleaseId, currentPersonId, organizationId]);
+  }, [open, catalog, catalogReleaseId, subjectReadEpoch]);
+
+  useEffect(() => {
+    setProposalId(null);
+    setDraftSaved(false);
+  }, [catalogReleaseId]);
+
+  const retryPublicationState = async () => {
+    setPending(true);
+    try {
+      await onRefreshEvidence?.();
+      setFailure(null);
+      setSubjectReadEpoch((value) => value + 1);
+    } catch (error) {
+      setFailure(publicationFailureCopy(error));
+    } finally {
+      setPending(false);
+    }
+  };
 
   const captureError = (error: unknown) => {
     const reason = error instanceof WiseEffApiError ? catalogFailureReason(error) : null;
@@ -297,11 +316,13 @@ export function PublicationDialog({
       }));
       return;
     }
-    setFailure(publicationFailureCopy(error));
+    setFailure(reason === "release-drift"
+      ? "目录已更新，请更新发布状态后重新预览。已填写内容会保留。"
+      : publicationFailureCopy(error));
   };
 
   const saveDraft = async () => {
-    if (!canSaveDraft || pending || !draft.propertyKey.trim() || !draft.reason.trim()) {
+    if (!canSaveDraft || !targetAllowed || pending || !draft.propertyKey.trim() || !draft.reason.trim()) {
       return;
     }
     if (draft.mode === "create-definition" && !draft.subjectId) {
@@ -352,7 +373,7 @@ export function PublicationDialog({
   };
 
   const runPreview = async () => {
-    if (!canPreview || pending || !draft.propertyKey.trim() || !draft.displayName.trim()) {
+    if (!canPreview || !targetAllowed || pending || !draft.propertyKey.trim() || !draft.displayName.trim()) {
       return;
     }
     if (draft.mode === "create-definition" && !draft.subjectId) {
@@ -377,6 +398,8 @@ export function PublicationDialog({
         { catalogReleaseId }
       );
       setCandidate(created.item);
+      completedRef.current = false;
+      setCandidateVerified(true);
       setPreviewFingerprint(fingerprintPublicationDraft(draft));
       setJob(null);
       setIdempotencyKey(null);
@@ -394,6 +417,7 @@ export function PublicationDialog({
   const runPublish = async () => {
     if (
       !canPublish ||
+      !targetAllowed ||
       pending ||
       !candidate ||
       publicationMustRePreview({
@@ -416,7 +440,6 @@ export function PublicationDialog({
         { idempotencyKey: key },
         { catalogReleaseId }
       );
-      applyJob(published.item);
       writeStoredPublicationJob({
         jobId: published.item.id,
         candidateId: candidate.id,
@@ -426,6 +449,7 @@ export function PublicationDialog({
         draft,
         idempotencyKey: key
       });
+      applyJob(published.item);
       if (publicationJobIsPending(published.item.status)) {
         startPolling(published.item.id);
       }
@@ -488,7 +512,7 @@ export function PublicationDialog({
       >
         {({ titleId, descriptionId }) => (
           <>
-            <h2 id={titleId}>{publicationDialogTitle(draft.mode)}</h2>
+            <h2 id={titleId}>{draft.mode === "revise-definition" ? "历史发布任务" : publicationDialogTitle(draft.mode)}</h2>
             <div className="confirm-dialog__scroll">
               <div id={descriptionId} className="governance-confirm-dialog__body">
                 <p id={describedById}>{publicationCopy.noInternalIds}</p>
@@ -525,11 +549,20 @@ export function PublicationDialog({
                 {loadError ? (
                   <p className="governance-confirm-dialog__error" role="alert">
                     {loadError}
+                    <button type="button" className="button ghost sm" disabled={loading || pending}
+                      onClick={() => setSubjectReadEpoch((value) => value + 1)}>重试</button>
                   </p>
                 ) : null}
-                {draft.mode === "create-definition" && publishedSubjects.length === 0 ? (
+                {targetUnavailable ? <p role="alert" className="governance-confirm-dialog__error">
+                  所选主体当前不可编写，可能已退役、登记已退役或无法核实有效状态。请重新选择有效主体，或切换为新增主体。
+                </p> : null}
+                {!loading && draft.mode === "create-definition" && publishedSubjects.length === 0 ? (
                   <p>{publicationCopy.unpublishedEmpty}</p>
-                ) : canPreview ? (
+                ) : null}
+                {draft.mode === "revise-definition" ? <p role="status">
+                  此处仅跟踪已有发布任务。修改已有定义，请关闭此窗口后使用目录列表中的“编辑”。
+                </p> : null}
+                {canPreview && draft.mode !== "revise-definition" ? (
                   <div className="parameter-catalog-publication-dialog__form">
                     <fieldset className="parameter-catalog-publication-dialog__modes">
                       <legend>{publicationCopy.mode}</legend>
@@ -552,16 +585,6 @@ export function PublicationDialog({
                           onChange={() => patchDraft({ mode: "create-subject", subjectId: "", unit: "mA" })}
                         />
                         {publicationCopy.modeCreateSubject}
-                      </label>
-                      <label>
-                        <input
-                          type="radio"
-                          name={`${formId}-mode`}
-                          value="revise-definition"
-                          checked={draft.mode === "revise-definition"}
-                          onChange={() => patchDraft({ mode: "revise-definition", unit: "" })}
-                        />
-                        {publicationCopy.modeRevise}
                       </label>
                     </fieldset>
                     {draft.mode === "create-subject" ? (
@@ -621,54 +644,6 @@ export function PublicationDialog({
                         ) : null}
                         <p>{publicationCopy.neverLowCreate}</p>
                       </>
-                    ) : draft.mode === "revise-definition" ? (
-                      <>
-                        <label>
-                          {publicationCopy.definition}
-                          <SelectControl
-                            ariaLabel={publicationCopy.definition}
-                            value={draft.definitionId}
-                            onValueChange={(value) => {
-                              const next = definitions.find((item) => item.id === value);
-                              const schema = next?.currentRevision.valueShape.schema as {
-                                type?: string;
-                                minimum?: number;
-                                maximum?: number;
-                              } | undefined;
-                              patchDraft({
-                                definitionId: value,
-                                subjectId: next?.subject.id ?? "",
-                                propertyKey: next?.propertyKey ?? "",
-                                displayName: next?.propertyKey ?? "",
-                                documentation: next?.currentRevision.documentation ?? "",
-                                valueType:
-                                  schema?.type === "number" || schema?.type === "string"
-                                    ? schema.type
-                                    : "integer",
-                                minimum: schema?.minimum !== undefined ? String(schema.minimum) : "",
-                                maximum: schema?.maximum !== undefined ? String(schema.maximum) : "",
-                                unit: ""
-                              });
-                            }}
-                            options={[{ value: "", label: "选择定义" }, ...definitions.map((item) => ({
-                              value: item.id,
-                              label: `${item.subject.canonicalName} · ${item.propertyKey}`
-                            }))]}
-                          />
-                        </label>
-                        <label>
-                          {publicationCopy.reviseClass}
-                          <SelectControl
-                            ariaLabel={publicationCopy.reviseClass}
-                            value={draft.reviseClass}
-                            onValueChange={(value) =>
-                              patchDraft({ reviseClass: value as PublicationReviseClass })
-                            }
-                            options={[{ value: "documentation", label: publicationCopy.reviseDocumentation }, { value: "semantic", label: publicationCopy.reviseSemantic }]}
-                          />
-                        </label>
-                        {draft.reviseClass === "semantic" ? <p>{publicationCopy.catalogNotAdopted}</p> : null}
-                      </>
                     ) : (
                     <label>
                       {publicationCopy.subject}
@@ -678,7 +653,9 @@ export function PublicationDialog({
                         ariaInvalid={fieldError?.input === "subjectId"}
                         ariaDescribedBy={fieldError?.input === "subjectId" ? fieldMessageId : describedById}
                         onValueChange={(value) => patchDraft({ subjectId: value })}
-                        options={[{ value: "", label: "选择主体" }, ...publishedSubjects.map((item) => ({ value: item.id, label: item.canonicalName }))]}
+                        options={[{ value: "", label: "选择主体" },
+                          ...(draft.subjectId && !publishedSubjectIds.has(draft.subjectId) ? [{ value: draft.subjectId, label: `${selectedSubject?.canonicalName || "原主体"}（当前不可编写）`, disabled: true }] : []),
+                          ...publishedSubjects.map((item) => ({ value: item.id, label: item.canonicalName }))]}
                       />
                     </label>
                     )}
@@ -731,7 +708,6 @@ export function PublicationDialog({
                       <SelectControl
                         ariaLabel={publicationCopy.valueType}
                         value={draft.valueType}
-                        disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
                         onValueChange={(value) =>
                           patchDraft({ valueType: value as PublicationValueType })
                         }
@@ -746,7 +722,6 @@ export function PublicationDialog({
                             aria-label={publicationCopy.minimum}
                             inputMode="decimal"
                             value={draft.minimum}
-                            disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
                             onChange={(event) => patchDraft({ minimum: event.target.value })}
                           />
                         </label>
@@ -756,7 +731,6 @@ export function PublicationDialog({
                             aria-label={publicationCopy.maximum}
                             inputMode="decimal"
                             value={draft.maximum}
-                            disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
                             onChange={(event) => patchDraft({ maximum: event.target.value })}
                           />
                         </label>
@@ -768,7 +742,6 @@ export function PublicationDialog({
                         aria-label={publicationCopy.unit}
                         list="publication-unit-options"
                         value={draft.unit}
-                        disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
                         onChange={(event) => patchDraft({ unit: event.target.value })}
                         placeholder={publicationCopy.unitNone}
                       />
@@ -795,9 +768,9 @@ export function PublicationDialog({
                       />
                     </label>
                   </div>
-                ) : (
+                ) : !canPreview ? (
                   <p>{publicationCopy.authorRequired}</p>
-                )}
+                ) : null}
                 {fieldError ? (
                   <p id={fieldMessageId} className="governance-confirm-dialog__error" role="alert">
                     {fieldError.message}
@@ -853,26 +826,40 @@ export function PublicationDialog({
               </div>
             </div>
             <div className="dialog-actions">
-              {canSaveDraft ? (
+              {draft.mode === "revise-definition" && job && !publicationJobIsPending(job.status) ? (
+                <button type="button" className="button primary sm" onClick={() => {
+                  clearStoredPublicationJob();
+                  stopPolling();
+                  completedRef.current = false;
+                  setDraft(emptyPublicationDraft());
+                  setCandidate(null);
+                  setCandidateVerified(false);
+                  setPreviewFingerprint(null);
+                  setJob(null);
+                  setIdempotencyKey(null);
+                  setFailure(null);
+                }}>结束跟踪并开始新增</button>
+              ) : null}
+              {canSaveDraft && draft.mode !== "revise-definition" ? (
                 <button
                   type="button"
                   className="button subtle sm"
-                  disabled={pending || !draft.reason.trim() || !draft.propertyKey.trim()}
+                  disabled={!targetAllowed || pending || !draft.reason.trim() || !draft.propertyKey.trim()}
                   onClick={() => void saveDraft()}
                 >
                   {pending ? publicationCopy.processing : publicationCopy.saveDraft}
                 </button>
               ) : null}
-              {canPreview ? (
+              {canPreview && draft.mode !== "revise-definition" ? (
                 <button
                   type="button"
                   className="button sm"
                   disabled={
                     pending ||
+                    !targetAllowed ||
                     !draft.propertyKey.trim() ||
                     !draft.displayName.trim() ||
                     (draft.mode === "create-definition" && !draft.subjectId) ||
-                    (draft.mode === "revise-definition" && !draft.definitionId) ||
                     (draft.mode === "create-subject" && !draft.selectorValue.trim())
                   }
                   onClick={() => setConfirm("preview")}
@@ -880,12 +867,13 @@ export function PublicationDialog({
                   {mustRePreview ? publicationCopy.rebase : publicationCopy.preview}
                 </button>
               ) : null}
-              {canPublish ? (
+              {canPublish && draft.mode !== "revise-definition" ? (
                 <button
                   type="button"
                   className="button primary sm"
                   disabled={
                     pending ||
+                    !targetAllowed ||
                     !candidate ||
                     mustRePreview ||
                     publicationJobIsPending(job?.status ?? "cancelled")
@@ -915,14 +903,14 @@ export function PublicationDialog({
                   {publicationCopy.refreshJob}
                 </button>
               ) : null}
-              {onRefreshEvidence ? (
+              {onRefreshEvidence && (failure || job?.status === "needs-rebase" || job?.failure?.reason === "needs-rebase" || publicationAdvisory) && draft.mode !== "revise-definition" ? (
                 <button
                   type="button"
                   className="button ghost sm"
                   disabled={pending}
-                  onClick={() => void onRefreshEvidence()}
+                  onClick={() => void retryPublicationState()}
                 >
-                  刷新证据
+                  更新发布状态
                 </button>
               ) : null}
               <button
@@ -938,7 +926,7 @@ export function PublicationDialog({
         )}
       </ModalDialog>
       <ConfirmDialog
-        open={confirm !== null}
+        open={confirm !== null && targetAllowed && (confirm === "publish" ? canPublish : canPreview)}
         title={confirm === "publish" ? publicationCopy.confirmPublishTitle : publicationCopy.confirmPreviewTitle}
         description={
           <p>{confirm === "publish" ? publicationCopy.requiredApproval : publicationCopy.noInternalIds}</p>

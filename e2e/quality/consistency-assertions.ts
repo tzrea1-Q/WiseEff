@@ -230,8 +230,8 @@ export function requireCompactControlHeights(
       }
     }
   }
-  const required = (requiredCategories ?? consistencyRoutes.find((route) => route.path === routePath.split("?")[0])?.required)
-    .filter((category) => category === "filterControls" || category === "sortControls" || category === "paginationControls") ?? [];
+  const required = (requiredCategories ?? consistencyRoutes.find((route) => route.path === routePath.split("?")[0])?.required ?? [])
+    .filter((category) => category === "filterControls" || category === "sortControls" || category === "paginationControls");
   if (required.length && measurements.unmarkedCompactControls?.length) {
     throw new Error(`${routePath}: unmarked compact control: ${measurements.unmarkedCompactControls[0].dom}`);
   }
@@ -261,12 +261,14 @@ export function shouldRequireXiaozeHint({ hasDialog, viewportWidth }: { hasDialo
 
 export function requireNavigatorWorkbenchGeometry(workbenches: ConsistencyMeasurements["navigatorWorkbenches"], routePath: string) {
   requireMeasuredCategories({ navigatorWorkbenches: workbenches }, ["navigatorWorkbenches"], routePath);
+  const readOnlyCatalog = routePath.split("?")[0] === "/parameters/definitions";
   for (const workbench of workbenches) {
     const { root, navigator, task, toolbar, primaryAction, firstRow, firstRowClip, contract, viewport } = workbench;
-    if (!navigator || !task || !toolbar || !primaryAction || !firstRow || !firstRowClip) {
+    if (!navigator || !task || !toolbar || (!primaryAction && !readOnlyCatalog) || !firstRow || !firstRowClip) {
       throw new Error(`${routePath}: missing navigator-workbench region, primary action or first row`);
     }
-    if (![root, navigator, task, toolbar, primaryAction, firstRow, firstRowClip, contract, viewport]
+    if (readOnlyCatalog && primaryAction) throw new Error(`${routePath}: read-only Catalog must not expose a primary operation`);
+    if (![root, navigator, task, toolbar, ...(primaryAction ? [primaryAction] : []), firstRow, firstRowClip, contract, viewport]
       .flatMap((measurement) => Object.values(measurement)).every(Number.isFinite)
       || !Number.isFinite(workbench.pageOverflow) || !Number.isInteger(workbench.noticeCount)
       || Object.values(contract).some((value) => value <= 0)) {
@@ -278,8 +280,8 @@ export function requireNavigatorWorkbenchGeometry(workbenches: ConsistencyMeasur
       || !aligned(task.left, root.left + width + contract.gap)) {
       throw new Error(`${routePath}: navigator-workbench pane geometry differs from the token contract`);
     }
-    if (toolbar.bottom > task.top + 1 || !aligned(primaryAction.right, toolbar.right - contract.toolbarPadding - 1)
-      || primaryAction.top < toolbar.top || primaryAction.bottom > toolbar.bottom || primaryAction.left < toolbar.left) {
+    if (toolbar.bottom > task.top + 1 || (primaryAction && (!aligned(primaryAction.right, toolbar.right - contract.toolbarPadding - 1)
+      || primaryAction.top < toolbar.top || primaryAction.bottom > toolbar.bottom || primaryAction.left < toolbar.left))) {
       throw new Error(`${routePath}: navigator-workbench toolbar or primary action is misplaced`);
     }
     if (workbench.noticeCount > 1) throw new Error(`${routePath}: navigator-workbench has more than one notice`);

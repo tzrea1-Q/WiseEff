@@ -1,4 +1,5 @@
 import type { ConsistencyCategory } from "./consistency-collector";
+import { parseParameterAdminModulesSubView } from "../../src/application/parameters/parameterAdminOrganizationPath";
 
 const catalogPaths = [
   "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping",
@@ -6,7 +7,8 @@ const catalogPaths = [
 ];
 const projectConfigurationPaths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
   .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
-const moduleGovernancePaths = ["/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry"];
+const moduleGovernancePaths = ["/parameter-admin/modules"];
+const moduleListPaths = ["/parameter-admin/modules/queue", "/parameter-admin/modules/registry"];
 const adminListPaths = ["/parameter-admin/projects", "/organization/members", "/user-permissions",
   "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"];
 export const collectionPaths = ["/knowledge-admin", "/log-admin"];
@@ -15,7 +17,7 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/log-admin": ["tabs", "toggle"],
   "/log-admin?tab=domains": ["tabs"],
   "/log-admin?tab=quality": ["tabs"],
-  ...Object.fromEntries(projectConfigurationPaths.map((path) => [path, ["section", "tabs"] as const])),
+  ...Object.fromEntries(projectConfigurationPaths.map((path) => [path, ["tabs"] as const])),
   "/organization": ["section"],
   "/organization/members": ["section", "tabs"],
   "/parameter-home": ["toggle"],
@@ -40,7 +42,7 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/user-permissions": ["section", "tabs"]
 };
 export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
-const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges"> = {
+const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges" | "workbenchTables"> = {
   viewSwitches: viewSwitchStylePaths,
   viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
@@ -48,9 +50,9 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
     "/debugging-admin/nodes", "/feedback-admin", ...collectionPaths, "/dts-reload",
-    "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/knowledge"],
+    "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/knowledge", "/parameter-admin/modules/registry"],
   moduleTreeLabels: [...catalogPaths, ...moduleGovernancePaths, "/parameters", "/node-debugging", "/dts-reload"],
-  filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions", "/parameter-admin/projects"],
+  filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions", "/parameter-admin/projects", ...moduleListPaths],
   sortControls: ["/parameter-admin/projects"],
   paginationControls: catalogPaths,
   navigatorWorkbenches: ["/parameters", "/logs", ...catalogPaths, "/node-debugging", "/dts-reload", ...moduleGovernancePaths, ...projectConfigurationPaths],
@@ -67,14 +69,7 @@ const otherPhaseTwoPaths = [
 ];
 
 export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).flat(), ...otherPhaseTwoPaths])]
-  .map((path) => ({
-    path,
-    required: [
-      "titles", "buttons", "typeScale", "pageEdges",
-      "xiaozeLaunchers",
-      ...(Object.keys(applicablePaths) as (keyof typeof applicablePaths)[]).filter((category) => applicablePaths[category].includes(path) || applicablePaths[category].includes(path.split("?")[0]))
-    ] satisfies ConsistencyCategory[]
-  }))
+  .map((path) => ({ path }))
   .flatMap((route) => [
     route,
     ...(route.path === "/knowledge-admin"
@@ -92,7 +87,19 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
     ...(["/parameter-admin/spec-review", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"].includes(route.path)
       ? [{ ...route, path: `${route.path}?review=open` }]
       : [])
-  ]);
+  ])
+  .map(({ path }) => {
+    const [pathname, search = ""] = path.split("?");
+    const moduleView = parseParameterAdminModulesSubView(pathname, search);
+    const contractPath = moduleView && moduleView !== "tree" ? `/parameter-admin/modules/${moduleView}` : pathname;
+    return {
+      path,
+      required: [
+        "titles", "buttons", "typeScale", "pageEdges", "xiaozeLaunchers",
+        ...(Object.keys(applicablePaths) as (keyof typeof applicablePaths)[]).filter((category) => applicablePaths[category].includes(path) || applicablePaths[category].includes(contractPath))
+      ] satisfies ConsistencyCategory[]
+    };
+  });
 
 const parameterRoute = consistencyRoutes.find((route) => route.path === "/parameters")!;
 export const consistencyReadOnlyRoutes = [

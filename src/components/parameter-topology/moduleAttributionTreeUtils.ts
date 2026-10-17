@@ -97,6 +97,7 @@ export function mappingsForModule(
 }
 
 export type AttributionFilters = {
+  search?: string;
   kinds: Array<ParameterModule["kind"]>;
   origins: Array<ParameterModule["origin"]>;
   hideNotYetObserved: boolean;
@@ -110,6 +111,31 @@ export const DEFAULT_ATTRIBUTION_FILTERS: AttributionFilters = {
   hideNotYetObserved: false,
   onlyUncoveredParse: false
 };
+
+export const MODULE_TREE_QUERY_KEYS = ["treeQ", "treeKinds", "treeOrigins", "treeHideUnobserved", "treeOnlyUncovered", "treeExpanded"] as const;
+
+export function readModuleTreeSearch(search: string, modules: readonly ParameterModule[]) {
+  const params = new URLSearchParams(search);
+  let expandedIds = defaultExpandedModuleIds(modules);
+  if (params.has("treeExpanded")) {
+    try {
+      const stored: unknown = JSON.parse(params.get("treeExpanded") ?? "");
+      if (Array.isArray(stored) && stored.every((id) => typeof id === "string")) expandedIds = new Set<string>(stored);
+    } catch { /* A malformed bookmark falls back to the normal root disclosure. */ }
+  }
+  const filters: AttributionFilters = {
+    ...DEFAULT_ATTRIBUTION_FILTERS,
+    search: params.get("treeQ") ?? "",
+  };
+  return { filters, expandedIds };
+}
+
+export function writeModuleTreeSearch(filters: AttributionFilters, expandedIds: ReadonlySet<string>): string {
+  const params = new URLSearchParams();
+  if (filters.search) params.set("treeQ", filters.search);
+  params.set("treeExpanded", JSON.stringify([...expandedIds]));
+  return params.toString();
+}
 
 export type DriverCoverageSummary = {
   total: number;
@@ -187,31 +213,38 @@ export function isNotYetObservedDriverGroup(module: ParameterModule): boolean {
 }
 
 
-/**
- * Keep a module if it matches filters, or if an ancestor/descendant does so the tree
- * stays connected for matching rows.
- */
-export function filterModulesForAttribution(
+/** Actual matches, excluding structural ancestors retained only for tree context. */
+export function matchingModulesForAttribution(
   modules: readonly ParameterModule[],
   filters: AttributionFilters,
   coverage?: ReadonlyMap<string, DriverCoverageSummary>
 ): ParameterModule[] {
   const kindSet = new Set(filters.kinds);
   const originSet = new Set(filters.origins);
-  const byId = new Map(modules.map((module) => [module.id, module]));
 
   const matches = (module: ParameterModule) => {
+    if (filters.search?.trim() && !module.name.toLocaleLowerCase().includes(filters.search.trim().toLocaleLowerCase())) return false;
     if (!kindSet.has(module.kind) || !originSet.has(module.origin)) return false;
     if (filters.hideNotYetObserved && isNotYetObservedModule(module)) return false;
     if (filters.onlyUncoveredParse) {
       if (module.kind !== "driver-group") return false;
       const summary = coverage?.get(module.id);
-      if (!summary || summary.total === 0 || summary.covered >= summary.total) return false;
+      if (!summary || (summary.total > 0 && summary.covered >= summary.total)) return false;
     }
     return true;
   };
 
-  const matchedIds = new Set(modules.filter(matches).map((module) => module.id));
+  return modules.filter(matches);
+}
+
+/** Keep matching modules and their ancestors so the tree remains connected. */
+export function filterModulesForAttribution(
+  modules: readonly ParameterModule[],
+  filters: AttributionFilters,
+  coverage?: ReadonlyMap<string, DriverCoverageSummary>
+): ParameterModule[] {
+  const byId = new Map(modules.map((module) => [module.id, module]));
+  const matchedIds = new Set(matchingModulesForAttribution(modules, filters, coverage).map((module) => module.id));
 
   const keep = new Set<string>();
   for (const id of matchedIds) {

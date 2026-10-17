@@ -1,5 +1,5 @@
 import { selectControlOption } from "@/test/selectControlOption";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,7 @@ import {
   CATALOG_RELEASE_ID,
   CATALOG_REVIEW_ITEM_ID,
   CATALOG_SUBJECT_ID,
+  catalogRegistration,
   readyCatalogDocument,
   unregisteredSubject
 } from "@/application/parameter-catalog/fixtures";
@@ -22,6 +23,7 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 
 import { RegistrationDialog } from "./RegistrationDialog";
 import { CatalogOrganizationSurface } from "./CatalogOrganizationSurface";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 
 const unregistered = deriveCatalogDomainState({
   document: readyCatalogDocument,
@@ -37,6 +39,7 @@ function renderDialog(options: {
   catalogReleaseId?: string;
   ifMatch?: string;
   moduleOptions?: { id: string; displayName: string; kind?: string }[];
+  newDestinationParents?: { id: string; displayName: string }[];
   initialDestinationModuleId?: string;
   createIdempotencyKey?: () => string;
   onRefreshEvidence?: () => void;
@@ -47,6 +50,7 @@ function renderDialog(options: {
     createMockParameterCatalogGovernanceRepository({ scenario: "unregistered" });
   const createRegistration = vi.spyOn(repository, "createRegistration");
   const updatePlacement = vi.spyOn(repository, "updatePlacement");
+  const onOpenChange = vi.fn();
   const view = render(
     <RegistrationDialog
       open
@@ -61,14 +65,15 @@ function renderDialog(options: {
       ifMatch={options.ifMatch}
       placementOptions={[{ id: CATALOG_PLACEMENT_ID, displayName: "根放置" }]}
       moduleOptions={options.moduleOptions}
+      newDestinationParents={options.newDestinationParents}
       initialDestinationModuleId={options.initialDestinationModuleId}
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "key-reg")}
-      onOpenChange={vi.fn()}
+      onOpenChange={onOpenChange}
       onCompleted={options.onCompleted}
       onRefreshEvidence={options.onRefreshEvidence}
     />
   );
-  return { ...view, repository, createRegistration, updatePlacement };
+  return { ...view, repository, createRegistration, updatePlacement, onOpenChange };
 }
 
 async function confirmWrite(confirmName: string) {
@@ -81,13 +86,47 @@ async function confirmWrite(confirmName: string) {
 }
 
 describe("RegistrationDialog", () => {
+  it("initializes a typed destination only after an explicit business parent, name and confirmation", async () => {
+    const { createRegistration } = renderDialog({ newDestinationParents: [{ id: "parent-business", displayName: "电源 / 充电" }] });
+    const user = userEvent.setup();
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    await selectControlOption(screen.getByLabelText("新模块业务分类"), "parent-business");
+    await user.type(screen.getByLabelText("新模块名称"), "充电驱动");
+    await user.click(screen.getByRole("button", { name: "继续确认" }));
+    const confirm = screen.getByRole("dialog", { name: "确认登记主体" });
+    expect(confirm).toHaveTextContent("电源 / 充电 / 充电驱动");
+    await user.click(within(confirm).getByRole("checkbox"));
+    await user.click(within(confirm).getByRole("button", { name: "确认登记" }));
+    await waitFor(() => expect(createRegistration).toHaveBeenCalled());
+    expect(createRegistration.mock.calls[0][1]).toMatchObject({ newDestination: { parentModuleId: "parent-business", name: "充电驱动" } });
+    expect(createRegistration.mock.calls[0][1]).not.toHaveProperty("destinationModuleId");
+  });
+
+  it("guards dirty dismissal and SPA navigation without discarding the selected target", async () => {
+    const { onOpenChange } = renderDialog({ moduleOptions: [{ id: "target", displayName: "电源 / 驱动" }] });
+    const user = userEvent.setup();
+    await selectControlOption(screen.getByLabelText("目标模块"), "target");
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByLabelText("目标模块")).toHaveAttribute("data-value", "target");
+    expect(onOpenChange).not.toHaveBeenCalled();
+    let decision: boolean | Promise<boolean> = false;
+    act(() => { decision = requestSettingsLeave(); });
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(await decision).toBe(false);
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "放弃修改" }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
   it("opens the exact Review Item when the module discovery link carries its ID", async () => {
     const ports = createMockCatalogPorts();
+    const read = vi.spyOn(ports.governance, "getReviewItem");
     render(<CatalogOrganizationSurface {...ports} actor="org-admin"
       search={`?reviewItemId=${CATALOG_REVIEW_ITEM_ID}`}
       onAnchorChange={vi.fn()} organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="person-admin" />);
-    expect(await screen.findByRole("dialog", { name: "待处理工作" })).toBeVisible();
     expect(await screen.findByRole("dialog", { name: "处理审核" })).toBeVisible();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(read).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, CATALOG_REVIEW_ITEM_ID);
   });
   it("refreshes the organization surface after first registration succeeds", async () => {
     const ports = createMockCatalogPorts({ scenario: "unregistered" });
@@ -224,7 +263,7 @@ describe("RegistrationDialog", () => {
 
   it("does not start a second Registration command while the first confirmation is pending", async () => {
     const repository = createMockParameterCatalogGovernanceRepository({ scenario: "unregistered" });
-    let release!: (value: unknown) => void;
+    let release!: (value: Awaited<ReturnType<ParameterCatalogGovernanceRepository["createRegistration"]>>) => void;
     const createRegistration = vi.spyOn(repository, "createRegistration").mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -240,7 +279,7 @@ describe("RegistrationDialog", () => {
     await user.click(within(confirm).getByRole("button", { name: "确认登记" }));
     expect(await screen.findByRole("button", { name: "处理中…" })).toBeDisabled();
     expect(createRegistration).toHaveBeenCalledTimes(1);
-    release({ item: { id: CATALOG_REGISTRATION_ID } });
+    release({ item: { ...catalogRegistration, id: CATALOG_REGISTRATION_ID } });
   });
 
   it("updates Placement with If-Match and does not infer a parent", async () => {

@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
-import { activeDefinition, readyCatalogDocument, registeredSubject } from "@/application/parameter-catalog/fixtures";
+import { activeDefinition, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID, readyCatalogDocument, registeredSubject } from "@/application/parameter-catalog/fixtures";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import type { CatalogPageProps } from "@/features/parameter-catalog/CatalogPage";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -23,6 +23,7 @@ vi.mock("@/features/parameter-catalog", () => ({
       <button onClick={() => setOpen(true)}>打开定义编辑器</button>
       <button onClick={props.onEditorClosed}>刷新目录</button>
       {open && props.renderDefinitionEditor?.(activeDefinition, {
+        domainState: deriveCatalogDomainState({ document: readyCatalogDocument }),
         timeline: null, revisions: [], onRequestHistory: vi.fn(), onClose: vi.fn()
       })}
     </>;
@@ -37,8 +38,8 @@ const firstSubjects = Array.from({ length: 100 }, (_, index) => ({
   canonicalName: `主体 ${index + 1}`
 }));
 const laterSubject = { ...registeredSubject, id: "subject-101", canonicalName: "最后一页主体" };
-const firstPage: SubjectPage = { items: firstSubjects, hasMore: true, nextCursor: "page-2" };
-const lastPage: SubjectPage = { items: [laterSubject], hasMore: false, nextCursor: null };
+const firstPage: SubjectPage = { items: firstSubjects, hasMore: true, nextCursor: "page-2", totalCount: 101, catalogReleaseId: CATALOG_RELEASE_ID };
+const lastPage: SubjectPage = { items: [laterSubject], hasMore: false, nextCursor: null, totalCount: 101, catalogReleaseId: CATALOG_RELEASE_ID };
 
 function deferredPage() {
   let resolve!: (page: SubjectPage) => void;
@@ -65,6 +66,31 @@ async function readSubjectOptions() {
 }
 
 describe("CatalogOrganizationSurface editor subject collection", () => {
+  it("ignores an automatic evidence check that finishes after the organization changes", async () => {
+    const oldPorts = createMockCatalogPorts({ scenario: "ready" });
+    let finishOldRead!: (value: Awaited<ReturnType<ParameterCatalogRepository["getCatalog"]>>) => void;
+    const oldRead = vi.spyOn(oldPorts.catalog, "getCatalog").mockImplementation(() =>
+      new Promise((resolve) => { finishOldRead = resolve; }));
+    const props = { actor: "org-admin" as const, sessionPermissions: ["catalog:author", "catalog:publish"],
+      search: "?review=open", onAnchorChange: vi.fn(), currentPersonId: "person-admin" };
+    const view = render(<CatalogOrganizationSurface {...props} organizationId={CATALOG_ORGANIZATION_ID}
+      catalog={oldPorts.catalog} governance={oldPorts.governance} />);
+    await userEvent.click(await screen.findByRole("button", { name: "处理审核" }));
+    await waitFor(() => expect(oldRead).toHaveBeenCalledTimes(1));
+    const newPorts = createMockCatalogPorts({ scenario: "ready" });
+    vi.spyOn(newPorts.catalog, "listSubjects").mockResolvedValue({ ...lastPage, items: [registeredSubject, laterSubject] });
+    view.rerender(<CatalogOrganizationSurface {...props} organizationId="new-org"
+      catalog={newPorts.catalog} governance={newPorts.governance} />);
+    await userEvent.click(await screen.findByRole("button", { name: "关闭" }));
+    await userEvent.click(screen.getByRole("button", { name: "打开定义编辑器" }));
+    await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取主体列表" })).not.toBeInTheDocument());
+    expect((await readSubjectOptions()).find((option) => option.textContent === laterSubject.canonicalName)).toBeDefined();
+    await act(async () => { finishOldRead(readyCatalogDocument); });
+    const options = await readSubjectOptions();
+    expect(options).toHaveLength(2);
+    expect(options.find((option) => option.textContent === laterSubject.canonicalName)).toHaveAttribute("data-value", laterSubject.id);
+  });
+
   it("supplies all 101 subjects to the real editor selection boundary", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const second = deferredPage();
@@ -73,6 +99,10 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     render(surface(ports.catalog));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
+    expect(screen.getByRole("status", { name: "正在读取主体列表" })).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "主体" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "属性键" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "定义详情" })).toHaveTextContent(activeDefinition.subject.canonicalName);
     await act(async () => second.resolve(lastPage));
     const select = screen.getByRole("combobox", { name: "主体" });
     const options = await readSubjectOptions();
@@ -83,33 +113,44 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     expect(read.mock.calls.map(([query]) => query)).toEqual([{ limit: 100 }, { limit: 100, cursor: "page-2" }]);
   });
 
-  it("shows a second-page failure without partial subjects and retries without discarding the editor draft", async () => {
+  it("keeps an edited draft through a read-only reload, second-page failure and retry", async () => {
+    const initialPorts = createMockCatalogPorts({ scenario: "ready" });
+    vi.spyOn(initialPorts.catalog, "listSubjects").mockResolvedValueOnce(firstPage).mockResolvedValueOnce(lastPage);
+    const view = render(surface(initialPorts.catalog));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
+    const property = await screen.findByRole("textbox", { name: "属性键" });
+    await user.clear(property);
+    await user.type(property, "preserved-draft");
+
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const second = deferredPage();
     const retrySecond = deferredPage();
-    vi.spyOn(ports.catalog, "listSubjects").mockResolvedValueOnce(firstPage)
+    const read = vi.spyOn(ports.catalog, "listSubjects").mockResolvedValueOnce(firstPage)
       .mockReturnValueOnce(second.promise).mockResolvedValueOnce(firstPage).mockReturnValueOnce(retrySecond.promise);
     const publicationRead = vi.spyOn(ports.catalog, "getPublicationSurface");
-    render(surface(ports.catalog));
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
-    const property = screen.getByRole("textbox", { name: "属性键" });
-    await user.clear(property);
-    await user.type(property, "preserved-draft");
+    // Replacing the port reloads its collection without remounting the editor.
+    view.rerender(surface(ports.catalog));
     expect(screen.getByRole("status", { name: "正在读取主体列表" })).toBeVisible();
-    expect(await readSubjectOptions()).toHaveLength(0);
+    expect(screen.queryByRole("combobox", { name: "主体" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "属性键" })).not.toBeInTheDocument();
     await act(async () => second.reject(new Error("private transport diagnostic")));
     const error = await screen.findByRole("alert");
     expect(error).toHaveTextContent("无法读取主体列表，请重试。");
     expect(error).not.toHaveTextContent("private transport diagnostic");
-    expect(await readSubjectOptions()).toHaveLength(0);
+    expect(screen.queryByRole("combobox", { name: "主体" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "属性键" })).not.toBeInTheDocument();
     await user.click(within(error).getByRole("button", { name: "重试" }));
     expect(screen.getByRole("status", { name: "正在读取主体列表" })).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "属性键" })).not.toBeInTheDocument();
     await act(async () => retrySecond.resolve(lastPage));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(await readSubjectOptions()).toHaveLength(101);
-    expect(screen.getByRole("textbox", { name: "属性键" })).toBe(property);
-    expect(property).toHaveValue("preserved-draft");
+    expect(screen.getByRole("textbox", { name: "属性键" })).toHaveValue("preserved-draft");
+    expect(read.mock.calls.map(([query]) => query)).toEqual([
+      { limit: 100 }, { limit: 100, cursor: "page-2" },
+      { limit: 100 }, { limit: 100, cursor: "page-2" }
+    ]);
     expect(publicationRead).toHaveBeenCalledTimes(1);
   });
 
@@ -122,14 +163,16 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
     await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取主体列表" })).not.toBeInTheDocument());
     expect(await readSubjectOptions()).toHaveLength(101);
+    await user.clear(screen.getByRole("textbox", { name: "显示名" }));
+    await user.type(screen.getByRole("textbox", { name: "显示名" }), "刷新时保留浏览上下文");
     await user.click(screen.getByRole("button", { name: "刷新目录" }));
-    await user.click(screen.getByRole("button", { name: "打开定义编辑器" }));
     await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取主体列表" })).not.toBeInTheDocument());
     const options = await readSubjectOptions();
     expect(options).toHaveLength(1);
     expect(options.some((option) => option.textContent === laterSubject.canonicalName)).toBe(false);
     expect(read).toHaveBeenLastCalledWith({ limit: 100 });
+    expect(screen.getByRole("textbox", { name: "显示名" })).toHaveValue("刷新时保留浏览上下文");
   });
 
   it.each(["success", "failure"] as const)("ignores stale %s after the catalog changes", async (outcome) => {
@@ -140,14 +183,14 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
     const view = render(surface(oldPorts.catalog));
     await waitFor(() => expect(oldRead).toHaveBeenCalledTimes(2));
     const newPorts = createMockCatalogPorts({ scenario: "ready" });
-    vi.spyOn(newPorts.catalog, "listSubjects").mockResolvedValue(lastPage);
+    vi.spyOn(newPorts.catalog, "listSubjects").mockResolvedValue({ ...lastPage, items: [registeredSubject, laterSubject] });
     view.rerender(surface(newPorts.catalog));
     await userEvent.setup().click(screen.getByRole("button", { name: "打开定义编辑器" }));
     await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取主体列表" })).not.toBeInTheDocument());
     expect((await readSubjectOptions()).find((option) => option.textContent === laterSubject.canonicalName)).toHaveAttribute("data-value", laterSubject.id);
     await act(async () => outcome === "success" ? stale.resolve({ ...lastPage, items: firstSubjects }) : stale.reject(new Error("stale")));
     const options = await readSubjectOptions();
-    expect(options).toHaveLength(1);
+    expect(options).toHaveLength(2);
     expect(options.find((option) => option.textContent === laterSubject.canonicalName)).toHaveAttribute("data-value", laterSubject.id);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });

@@ -16,7 +16,7 @@ import type {
   DefinitionReplacementPreviewView,
   DefinitionReplacementView,
 } from "../../parameter-catalog-migration/types";
-import type { ObservationRecord, ProposalRecord, RegistrationRecord } from "./types";
+import type { ObservationRecord, ProposalRecord, RegistrationRecord, ReviewItemDetails } from "./types";
 import { quoteEtag } from "./query";
 
 export function replacementEtag(replacementId: string, version: number): string {
@@ -107,8 +107,8 @@ export function mapObservation(
 
 export function mapReviewItem(
   item: ReviewQueueItem,
+  details?: ReviewItemDetails,
 ): ReturnType<typeof catalogReviewItemDtoSchema.parse> {
-  const firstEvidence = item.evidenceRefs[0];
   return catalogReviewItemDtoSchema.parse({
     id: item.id,
     organizationId: item.organizationId,
@@ -116,21 +116,10 @@ export function mapReviewItem(
     status: item.status,
     etag: item.etag,
     catalogReleaseId: item.catalogReleaseId,
-    ...(firstEvidence
-      ? {
-          observation: {
-            id: firstEvidence.id,
-            propertyKey: item.identityKey,
-            sourceRef: { kind: "review-evidence", id: firstEvidence.id },
-          },
-        }
-      : {}),
-    candidates: item.evidenceRefs.map((ref) => ({
-      subjectId: item.identityKey,
-      evidence: [ref.candidateSafeDigest],
-    })),
+    candidates: [],
     allowedResolutions: [...item.allowedResolutions],
     candidateState: item.candidateState,
+    ...details,
   });
 }
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { appReducer } from "@/application/state/appState";
 import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import { declarationFor, hasRule, readStylesheet } from "@/test/cssAssertions";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 import { ParameterSubmissionsPage } from "./ParameterSubmissionsPage";
@@ -15,7 +15,7 @@ afterEach(() => {
 
 function renderReview(state: PrototypeState) {
   render(
-    <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage state={state} dispatch={vi.fn()} onNavigate={() => {}} search="" />
     </TopBarActionsContext.Provider>
   );
@@ -23,7 +23,7 @@ function renderReview(state: PrototypeState) {
 
 function renderSubmissions(state: PrototypeState) {
   render(
-    <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterSubmissionsPage state={state} dispatch={vi.fn()} onNavigate={() => {}} search="" />
     </TopBarActionsContext.Provider>
   );
@@ -38,12 +38,13 @@ function actionSnapshot(button: HTMLElement) {
 }
 
 describe("parameter action panels", () => {
-  it("keeps all six review and submission actions ordered, styled, and independent of the legacy full hook", () => {
+  it("keeps the five meaningful review and submission actions styled without a duplicate scalar modal", () => {
     renderReview({ ...initialState, activeRoleId: "admin" });
+    fireEvent.click(screen.getByRole("button", { name: `查看 ${initialState.changeRequests[0].title} 提交详情` }));
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
-    const detailAction = within(reviewDetail).getByRole("button", { name: /查看提交详情/ });
-    const advanceAction = within(reviewDetail).getByRole("button", { name: "推进流程" });
+    expect(within(reviewDetail).queryByRole("button", { name: /查看提交详情/ })).not.toBeInTheDocument();
+    const advanceAction = within(reviewDetail).getByRole("button", { name: "通过检视" });
     const reviewActionPanel = advanceAction.closest(".action-panel");
     expect(reviewActionPanel).not.toBeNull();
     const reviewActions = within(reviewActionPanel as HTMLElement).getAllByRole("button");
@@ -90,13 +91,11 @@ describe("parameter action panels", () => {
     const withdrawAction = within(submissionDetail).getByRole("button", { name: "撤回本轮提交" });
 
     expect([
-      actionSnapshot(detailAction),
       ...reviewActions.map(actionSnapshot),
       ...initializationActions.map(actionSnapshot),
       actionSnapshot(withdrawAction)
     ]).toEqual([
-      { name: "查看提交详情（1 项变更）", variant: "outline", hasFullClass: false },
-      { name: "推进流程", variant: "default", hasFullClass: false },
+      { name: "通过检视", variant: "default", hasFullClass: false },
       { name: "打回修改", variant: "destructive", hasFullClass: false },
       { name: "通过初始化", variant: "default", hasFullClass: false },
       { name: "驳回初始化", variant: "destructive", hasFullClass: false },
@@ -134,8 +133,15 @@ describe("parameter action panels", () => {
     expect(actionPanel).not.toBeNull();
     expect(mergeLinkGroup).not.toBeNull();
     expect(confirmMerge.closest(".action-panel")).toBe(actionPanel);
-    expect(Array.from(actionPanel!.children)).toEqual([mergeLinkGroup, confirmMerge]);
+    const consequence = within(actionPanel as HTMLElement).getByText("确认后将本条修改记为已合入，并保存填写的合入链接。");
+    expect(Array.from(actionPanel!.children)).toEqual([consequence, mergeLinkGroup, confirmMerge]);
     expect(actionPanel!.querySelector(".full")).toBeNull();
+    expect(confirmMerge).toBeDisabled();
+    fireEvent.change(mergeLink, { target: { value: "https://example.com/merge/123" } });
+    fireEvent.click(confirmMerge);
+    const dialog = screen.getByRole("dialog", { name: "确认合入" });
+    expect(dialog).toHaveTextContent("https://example.com/merge/123");
+    expect(within(dialog).getByRole("button", { name: "确认合入" })).toBeEnabled();
   });
 
 });

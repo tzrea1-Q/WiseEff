@@ -57,7 +57,7 @@ function renderTable(overrides: {
   const onUpdateSearch = overrides.onUpdateSearch ?? vi.fn();
   const onEditProject = overrides.onEditProject ?? vi.fn();
   const onDeleteProject = overrides.onDeleteProject ?? vi.fn();
-  const onManageFiles = overrides.onManageFiles ?? vi.fn();
+  const onManageFiles = vi.fn(overrides.onManageFiles);
   const view = render(
     <ProjectAdminTable
       rows={overrides.rows ?? rows}
@@ -74,6 +74,15 @@ function renderTable(overrides: {
 }
 
 describe("ProjectAdminTable", () => {
+  it("hides archived projects by default while the archived filter exposes them", () => {
+    const archived = { ...rows[0]!, status: "archived" as const, statusLabel: "已归档" };
+    const view = renderTable({ rows: [archived, rows[1]!] });
+    expect(screen.queryByText(archived.name)).not.toBeInTheDocument();
+    view.unmount();
+    renderTable({ rows: [archived, rows[1]!], search: { ...defaultSearch, statuses: ["archived"] } });
+    expect(screen.getByText(archived.name)).toBeVisible();
+    expect(screen.queryByText(rows[1]!.name)).not.toBeInTheDocument();
+  });
   it("exposes the shared status filter and sortable headers to the live consistency collector", () => {
     const { container } = render(<main><ProjectAdminTable rows={rows} search={defaultSearch}
       onUpdateSearch={vi.fn()} onCreateProject={vi.fn()} onEditProject={vi.fn()}
@@ -88,7 +97,7 @@ describe("ProjectAdminTable", () => {
     expect(measurements.sortControls).toHaveLength(3);
     expect(() => requireCompactControlHeights(measurements, "/parameter-admin/projects")).not.toThrow();
     for (const name of ["筛选状态", "项目名称", "参数", "最近更新"]) {
-      expect(screen.getByRole("button", { name, exact: true })).toHaveClass("compact-filter-control");
+      expect(screen.getByRole("button", { name })).toHaveClass("compact-filter-control");
     }
   });
 
@@ -99,8 +108,8 @@ describe("ProjectAdminTable", () => {
     await userEvent.click(screen.getByRole("button", { name: `${canonical.name}操作：更多` }));
     const disabledDelete = screen.getByRole("menuitem", { name: `删除 ${canonical.name}` });
     expect(disabledDelete).toHaveAttribute("data-disabled");
-    expect(disabledDelete).toHaveAccessibleDescription("项目需保留规范历史，不能删除；归档或处置功能尚未开放。");
-    expect(screen.getByText("项目需保留规范历史，不能删除；归档或处置功能尚未开放。")).toBeVisible();
+    expect(disabledDelete).toHaveAccessibleDescription("项目需保留规范历史，不能删除；可归档后从默认清单收起。");
+    expect(screen.getByText("项目需保留规范历史，不能删除；可归档后从默认清单收起。")).toBeVisible();
     await userEvent.click(disabledDelete);
     expect(onDeleteProject).not.toHaveBeenCalled();
     await userEvent.keyboard("{Escape}");

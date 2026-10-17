@@ -19,6 +19,7 @@ import type { RegistrationFailure } from "./failures";
 import { mapWriterDatabaseError } from "./failures";
 import {
   commitIdempotency,
+  createRegistrationDestination,
   insertPlacement,
   insertRegistration,
   loadPlacementById,
@@ -101,6 +102,10 @@ const writeRegister = async (
   command: RegisterSubjectCommand,
   fingerprint: string,
 ): Promise<Result<RegistrationResult, RegistrationFailure>> => {
+  if (command.newDestination) {
+    const created = await createRegistrationDestination(client, command);
+    if (!created) return fail({ kind: "invalid-placement-parent", destinationModuleId: command.newDestination.parentModuleId });
+  }
   const destination = await requireDestination(
     client,
     command.organizationId,

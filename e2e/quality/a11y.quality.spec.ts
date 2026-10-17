@@ -5,13 +5,17 @@ import {
   prepareInteractionSurface,
   seedQualityRuntime,
   settleQualityRoute,
-  settleXiaozePopupClosed
+  settleXiaozePopupClosed,
+  visualReviewFixtureAllowed,
+  waitForFontsAndNextPaint
 } from "./helpers";
+import { signInBrowserAsRole } from "../acceptance/helpers/bearerAuth";
 
 const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const coreRoutes = [
   "/parameters",
   "/parameter-review",
+  "/parameter-submissions",
   "/parameter-admin",
   "/logs",
   "/debugging",
@@ -113,14 +117,34 @@ test.describe("M5.11 accessibility quality gate", () => {
     });
   }
 
-  for (const route of coreRoutes) {
-    test(`has no WCAG A/AA violations on ${route}`, async ({ page }, testInfo) => {
-      await test.step("quality:navigation", () => page.goto(route));
+  for (const { route, theme } of [
+    ...coreRoutes.map((route) => ({ route, theme: "light" as const })),
+    { route: "/parameter-review", theme: "dark" as const }
+  ]) {
+    test(`has no WCAG A/AA violations on ${route}${theme === "dark" ? " (dark)" : ""}`, async ({ page }, testInfo) => {
+      const populatedReview = route === "/parameter-review" && visualReviewFixtureAllowed();
+      if (populatedReview) {
+        await signInBrowserAsRole(page, "software-committer", route);
+      } else {
+        await test.step("quality:navigation", () => page.goto(route));
+      }
       await expect(page.locator("main, .main-content").first()).toBeVisible();
       await test.step("quality:readiness", () => settleQualityRoute(page, route));
       await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
+      if (populatedReview) {
+        const title = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";
+        const row = page.getByRole("table", { name: "审阅队列" }).getByRole("row").filter({ hasText: title });
+        await row.getByRole("button", { name: `cccv_0，查看 ${title} 提交详情`, exact: true }).click();
+        const diff = page.getByRole("region", { name: "固定源修改片段" });
+        await expect(diff.locator('[data-kind="remove"] code')).toHaveText(/<4500 0>/);
+        await expect(diff.locator('[data-kind="add"] code')).toHaveText(/<4600 0>/);
+        await expect(diff.locator('[data-kind="remove"] code')).toBeVisible();
+        await expect(diff.locator('[data-kind="add"] code')).toBeVisible();
+      }
+      await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+      await waitForFontsAndNextPaint(page);
 
-      await scan(page, testInfo, route.replace(/[/?=]+/g, "-") || "home");
+      await scan(page, testInfo, `${route.replace(/[/?=]+/g, "-") || "home"}-${theme}`);
     });
   }
 

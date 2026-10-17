@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { XiaozeToggleHint } from "./XiaozeToggleHint";
+import { XiaozePageContext } from "./xiaozePageContext";
 import {
   readXiaozeToggleHintDismissed,
   resetXiaozeToggleHintPageState,
@@ -17,6 +18,20 @@ describe("XiaozeToggleHint", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each(["parameter-review", "parameter-submissions"])("suppresses promotion on %s without consuming another page's introduction", (pageKey) => {
+    const hint = render(<XiaozePageContext.Provider value={{ path: `/${pageKey}`, pageKey }}>
+      <XiaozeToggleHint visible onOpen={vi.fn()} />
+    </XiaozePageContext.Provider>);
+    act(() => vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS));
+    expect(screen.getByTestId("xiaoze-toggle-hint-readiness")).toHaveAttribute("data-state", "suppressed");
+    expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+    hint.rerender(<XiaozePageContext.Provider value={{ path: "/parameters", pageKey: "parameters" }}>
+      <XiaozeToggleHint visible onOpen={vi.fn()} />
+    </XiaozePageContext.Provider>);
+    act(() => vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS));
+    expect(screen.getByTestId("xiaoze-toggle-hint")).toBeInTheDocument();
   });
 
   it("reveals after a delay", () => {

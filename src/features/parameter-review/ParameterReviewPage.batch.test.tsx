@@ -1,9 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterPageActions } from "@/app/routes";
 import type { AppRuntime } from "@/app/appRuntime";
 
@@ -19,7 +19,7 @@ function hardwareCommitterState(): PrototypeState {
 function renderReview(state: PrototypeState, parameterActions?: ParameterPageActions) {
   const dispatch = vi.fn();
   render(
-    <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage
         state={state}
         dispatch={dispatch}
@@ -55,7 +55,7 @@ describe("ParameterReviewPage deep link", () => {
       }
     } as unknown as AppRuntime;
     window.history.replaceState(null, "", `/parameter-review?project=aurora&request=${legacy.id}`);
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage state={{ ...state, changeRequests: [], parameterSubmissionRounds: [] }}
         dispatch={vi.fn()} onNavigate={() => {}} search={`?project=aurora&request=${legacy.id}`}
         runtime={runtime} runtimeMode="api" />
@@ -84,12 +84,12 @@ describe("ParameterReviewPage deep link", () => {
     } } as unknown as AppRuntime;
     const user = { ...initialState.users[0], id: "reviewer", isActive: true,
       roles: [{ projectId: roleProject, roleId }] };
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage state={{ ...initialState, currentUserId: user.id, users: [user], activeRoleId: "software-committer" }}
         dispatch={vi.fn()} onNavigate={() => {}} search="?project=aurora" runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
     const panel = await screen.findByRole("region", { name: "软件配置审核" });
-    await within(panel).findByRole("heading", { name: "Scoped review" });
+    await within(panel).findByText(/Scoped review/);
     await waitFor(() => expect(within(panel).queryByRole("button", { name: "批准软件配置" }) !== null).toBe(allowed));
   });
 
@@ -99,12 +99,12 @@ describe("ParameterReviewPage deep link", () => {
       listProjectValueChangeRequests,
       reviewProjectValueChangeRequest: vi.fn()
     } } as unknown as AppRuntime;
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage state={{ ...initialState, changeRequests: [] }} dispatch={vi.fn()}
         onNavigate={() => {}} search="?project=aurora" runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
     await waitFor(() => expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", undefined));
-    expect(screen.getByRole("table", { name: "审阅队列" })).toBeVisible();
+    expect(screen.getByText("暂无待审核请求")).toBeVisible();
     expect(screen.getByRole("tab", { name: "已处理" })).toBeEnabled();
   });
 
@@ -116,7 +116,7 @@ describe("ParameterReviewPage deep link", () => {
 
     const dispatch = vi.fn();
     render(
-      <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+      <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
         <ParameterReviewPage
           state={state}
           dispatch={dispatch}
@@ -152,7 +152,7 @@ describe("ParameterReviewPage deep link", () => {
 
     window.history.replaceState(null, "", `/parameter-review?project=aurora&request=${legacy.id}`);
     render(
-      <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+      <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
         <ParameterReviewPage
           state={{ ...state, changeRequests: [legacy] }}
           dispatch={vi.fn()}
@@ -179,13 +179,35 @@ describe("ParameterReviewPage deep link", () => {
 });
 
 describe("ParameterReviewPage batch advance", () => {
+  it("stops a confirmed batch before the next write when the authenticated scope changes", async () => {
+    const requests = ["scope-one", "scope-two"].map((id) => ({ ...initialState.changeRequests[0], id, status: "硬件Committer检视" as const }));
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const reviewChange = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(undefined);
+    const dispatch = vi.fn();
+    const page = (userId: string) => <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
+      <ParameterReviewPage state={{ ...initialState, activeRoleId: "admin", currentUserId: userId, changeRequests: requests,
+        parameterSubmissionRounds: [], parameterInitializationReviews: [] }} dispatch={dispatch} onNavigate={() => {}}
+        parameterActions={{ reviewChange } as never} search="?project=aurora" runtimeMode="mock" />
+    </TopBarActionsContext.Provider>;
+    const { rerender } = render(page("u-xu-yun"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选可批量通过的变更" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量通过（2 项）" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认批量通过" })).getByRole("button", { name: "通过 2 项" }));
+    expect(reviewChange).toHaveBeenCalledTimes(1);
+    rerender(page("u-wang-jie"));
+    expect(screen.queryByRole("dialog", { name: "确认批量通过" })).not.toBeInTheDocument();
+    await act(async () => { finish(); await pending; });
+    expect(reviewChange).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_NOTIFICATION" }));
+  });
+
   it("offers checkboxes only for actionable review-stage rows and arms the batch button", () => {
     const state = hardwareCommitterState();
     renderReview(state);
 
-    expect(screen.getByRole("toolbar", { name: "批量审阅操作" })).toBeInTheDocument();
-    const batchButton = screen.getByRole("button", { name: /批量通过（0 项）/ });
-    expect(batchButton).toBeDisabled();
+    expect(screen.queryByRole("toolbar", { name: "批量审阅操作" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /批量通过（0 项）/ })).not.toBeInTheDocument();
 
     const selectAll = screen.getByRole("checkbox", { name: "全选可批量通过的变更" });
     fireEvent.click(selectAll);
@@ -224,15 +246,14 @@ describe("ParameterReviewPage batch advance", () => {
     });
   });
 
-  it("summarizes API failures once, keeps failed rows selected, and suppresses per-item toasts", async () => {
+  it.each(["notification", "exception"])("summarizes API %s failures once, keeps failed rows selected, and suppresses per-item toasts", async (failureKind) => {
     const state = hardwareCommitterState();
     const expectedIds = pendingHardwareReviewIds(state);
     expect(expectedIds.length).toBeGreaterThanOrEqual(2);
 
-    const reviewChange = vi
-      .fn()
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValue({ notification: "数据已被其他人修改，请刷新后基于最新状态重试。" });
+    const reviewChange = vi.fn().mockResolvedValueOnce(undefined);
+    if (failureKind === "exception") reviewChange.mockRejectedValue(new Error("network unavailable"));
+    else reviewChange.mockResolvedValue({ notification: "数据已被其他人修改，请刷新后基于最新状态重试。" });
     const parameterActions = { reviewChange } as unknown as ParameterPageActions;
     const { dispatch } = renderReview(state, parameterActions);
 
@@ -254,7 +275,7 @@ describe("ParameterReviewPage batch advance", () => {
     });
     expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_NOTIFICATION",
-      message: expect.stringMatching(/^批量通过失败 \d+ 项（.+：数据已被其他人修改/)
+      message: expect.stringMatching(failureKind === "exception" ? /^批量通过失败 \d+ 项（.+：处理失败/ : /^批量通过失败 \d+ 项（.+：数据已被其他人修改/)
     });
 
     // Failed rows stay selected for retry.

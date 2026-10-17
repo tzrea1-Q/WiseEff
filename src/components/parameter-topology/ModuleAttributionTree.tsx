@@ -1,11 +1,10 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ModuleCreateDialog, type ModuleCreateSaveDraft } from "@/components/admin/ModuleCreateDialog";
 import { ModuleEditDialog, type ModuleEditSavePatch } from "@/components/admin/ModuleEditDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import { presentError } from "@/infrastructure/http/presentError";
 import type {
   DriverNature,
@@ -21,7 +20,6 @@ import { ModuleAttributionRowActions } from "./ModuleAttributionRowActions";
 import { ModuleMoveDialog } from "./ModuleMoveDialog";
 import { UnclassifiedRootViewDialog } from "./UnclassifiedRootViewDialog";
 import {
-  DEFAULT_ATTRIBUTION_FILTERS,
   MODULE_KIND_LABEL,
   MODULE_ORIGIN_LABEL,
   buildAttributionTree,
@@ -31,6 +29,10 @@ import {
   isNotYetObservedModule,
   isUnclassifiedRoot,
   mappingsForModule,
+  matchingModulesForAttribution,
+  MODULE_TREE_QUERY_KEYS,
+  readModuleTreeSearch,
+  writeModuleTreeSearch,
   siblingModuleNames,
   sortOrderSwapUpdates,
   type AttributionFilters,
@@ -55,6 +57,13 @@ export type ModuleAttributionTreeProps = {
   /** Whether the canonical subject placement panel is available on this page. */
   canonicalPlacementAvailable?: boolean;
   onOpenCanonicalPlacement?: () => void;
+  selectedModuleId?: string | null;
+  onSelectModule?: (moduleId: string | null) => void;
+  onVisibleModuleIdsChange?: (ids: readonly string[] | null) => void;
+  createRootRequest?: number;
+  showRootCreateAction?: boolean;
+  search?: string;
+  onSearchChange?: (query: string) => void;
   onUpdateModule: (
     moduleId: string,
     patch: {
@@ -76,14 +85,6 @@ export type ModuleAttributionTreeProps = {
     kind?: "business";
   }) => void | Promise<void>;
 };
-
-const KIND_FILTER_OPTIONS = (Object.keys(MODULE_KIND_LABEL) as Array<ParameterModule["kind"]>).map(
-  (kind) => ({ value: kind, label: MODULE_KIND_LABEL[kind] })
-);
-
-const ORIGIN_FILTER_OPTIONS = (
-  Object.keys(MODULE_ORIGIN_LABEL) as Array<ParameterModule["origin"]>
-).map((origin) => ({ value: origin, label: MODULE_ORIGIN_LABEL[origin] }));
 
 function DepthGuides({ depth }: { depth: number }) {
   if (depth <= 0) return null;
@@ -113,6 +114,11 @@ type RowProps = {
   onStartMove: (id: string) => void;
   onDelete: (id: string) => void;
   onReorder?: (moduleId: string, direction: "up" | "down") => void;
+  selectedModuleId?: string | null;
+  onSelectModule?: (moduleId: string | null) => void;
+  focusedModuleId: string | null;
+  onFocusModule: (moduleId: string) => void;
+  onTreeKeyDown: (event: KeyboardEvent<HTMLLIElement>, node: ModuleTreeNode) => void;
 };
 
 function formatCoverageChip(summary: DriverCoverageSummary): {
@@ -164,7 +170,12 @@ function ModuleAttributionTreeRow({
   onAddChild,
   onStartMove,
   onDelete,
-  onReorder
+  onReorder,
+  selectedModuleId,
+  onSelectModule,
+  focusedModuleId,
+  onFocusModule,
+  onTreeKeyDown
 }: RowProps) {
   const module = modulesById.get(node.id);
   if (!module) return null;
@@ -188,7 +199,11 @@ function ModuleAttributionTreeRow({
         .filter(Boolean)
         .join(" ")}
       role="treeitem"
-      aria-selected={false}
+      data-module-tree-id={module.id}
+      tabIndex={focusedModuleId === module.id ? 0 : -1}
+      onFocus={(event) => { if (event.target === event.currentTarget || event.target.closest('[data-module-tree-id]') === event.currentTarget) onFocusModule(module.id); }}
+      onKeyDown={(event) => { if (event.target === event.currentTarget) onTreeKeyDown(event, node); }}
+      aria-selected={selectedModuleId === module.id}
       aria-expanded={hasChildren ? isExpanded : undefined}
       aria-level={depth + 1}
       style={{ ["--mod-attr-depth" as string]: String(depth) }}
@@ -201,7 +216,9 @@ function ModuleAttributionTreeRow({
               type="button"
               className="module-attribution-tree__toggle"
               aria-label={isExpanded ? `折叠 ${module.name}` : `展开 ${module.name} 子模块`}
-              onClick={() => onToggle(module.id)}
+              aria-expanded={isExpanded}
+              onClick={(event) => { onToggle(module.id); event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus(); }}
+              tabIndex={-1}
             >
               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
@@ -209,9 +226,11 @@ function ModuleAttributionTreeRow({
             <span className="module-attribution-tree__toggle is-spacer" aria-hidden="true" />
           )}
 
-          <span className="module-attribution-tree__label" title={module.name}>
-            {module.name}
-          </span>
+          {onSelectModule ? <button type="button" className="module-attribution-tree__label module-attribution-tree__select"
+            title={module.name} aria-label={`查看模块：${module.name}`} aria-pressed={selectedModuleId === module.id}
+            tabIndex={-1}
+            onClick={(event) => { event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus(); onSelectModule(module.id); }}>{module.name}</button>
+            : <span className="module-attribution-tree__label" title={module.name}>{module.name}</span>}
 
           {/* Root「未分类」name already states the kind — skip the redundant badge. */}
           {!isUnclassifiedRoot(module) ? (
@@ -252,13 +271,14 @@ function ModuleAttributionTreeRow({
           ) : null}
         </div>
 
-        {canAdmin || canViewUnclassifiedRoot(module) ? (
+        {(
           <ModuleAttributionRowActions
             module={module}
             modules={modules}
             busy={busy}
             canAdmin={canAdmin}
             canonicalModeEnabled
+            tabIndex={focusedModuleId === module.id ? 0 : -1}
             onView={canViewUnclassifiedRoot(module) ? () => onView(module.id) : undefined}
             onEdit={() => onEdit(module.id)}
             onAddChild={() => onAddChild(module.id)}
@@ -268,8 +288,6 @@ function ModuleAttributionTreeRow({
               onReorder ? (direction) => onReorder(module.id, direction) : undefined
             }
           />
-        ) : (
-          <span className="module-attribution-tree__actions is-spacer" aria-hidden="true" />
         )}
       </div>
 
@@ -294,6 +312,11 @@ function ModuleAttributionTreeRow({
               onStartMove={onStartMove}
               onDelete={onDelete}
               onReorder={onReorder}
+              selectedModuleId={selectedModuleId}
+              onSelectModule={onSelectModule}
+              focusedModuleId={focusedModuleId}
+              onFocusModule={onFocusModule}
+              onTreeKeyDown={onTreeKeyDown}
             />
           ))}
         </ul>
@@ -314,15 +337,52 @@ export function ModuleAttributionTree({
   driverRegistrationByModuleId,
   canonicalPlacementAvailable = false,
   onOpenCanonicalPlacement,
+  selectedModuleId,
+  onSelectModule,
+  onVisibleModuleIdsChange,
+  createRootRequest = 0,
+  showRootCreateAction = true,
+  search,
+  onSearchChange,
   onUpdateModule,
   onMove,
   onDelete,
   onCreateModule,
 }: ModuleAttributionTreeProps) {
-  const [filters, setFilters] = useState<AttributionFilters>(DEFAULT_ATTRIBUTION_FILTERS);
+  const [filters, setLocalFilters] = useState<AttributionFilters>(() => readModuleTreeSearch(search ?? "", modules).filters);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
-    defaultExpandedModuleIds(modules)
+    readModuleTreeSearch(search ?? "", modules).expandedIds
   );
+  const treeQuery = useMemo(() => {
+    const params = new URLSearchParams(search);
+    const query = new URLSearchParams();
+    for (const key of MODULE_TREE_QUERY_KEYS) if (params.has(key)) query.set(key, params.get(key)!);
+    return query.toString();
+  }, [search]);
+  const lastAppliedTreeQuery = useRef(treeQuery);
+  const lastEmittedTreeQuery = useRef<string | null>(null);
+  const knownModuleIds = useRef(new Set(modules.map((module) => module.id)));
+  useEffect(() => {
+    if (treeQuery === lastAppliedTreeQuery.current) return;
+    lastAppliedTreeQuery.current = treeQuery;
+    const emitted = lastEmittedTreeQuery.current;
+    lastEmittedTreeQuery.current = null;
+    if (treeQuery === emitted) return;
+    const restored = readModuleTreeSearch(treeQuery, modules);
+    setLocalFilters(restored.filters);
+    setExpandedIds(restored.expandedIds);
+  }, [treeQuery, modules]);
+  const publishTreeSearch = (nextFilters: AttributionFilters, nextExpanded: ReadonlySet<string>) => {
+    if (search === undefined || !onSearchChange) return;
+    const query = writeModuleTreeSearch(nextFilters, nextExpanded);
+    lastEmittedTreeQuery.current = query;
+    onSearchChange(query);
+  };
+  const setFilters = (update: (current: AttributionFilters) => AttributionFilters) => {
+    const next = update(filters);
+    setLocalFilters(next);
+    publishTreeSearch(next, expandedIds);
+  };
   const [moveModuleId, setMoveModuleId] = useState<string | null>(null);
   const [createParentId, setCreateParentId] = useState<string | null | undefined>(undefined);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
@@ -330,24 +390,95 @@ export function ModuleAttributionTree({
   const [deleteModuleId, setDeleteModuleId] = useState<string | null>(null);
   const [dialogMutationBusy, setDialogMutationBusy] = useState(false);
   const [dialogMutationError, setDialogMutationError] = useState<string | null>(null);
+  const [focusedModuleId, setFocusedModuleId] = useState<string | null>(selectedModuleId ?? modules[0]?.id ?? null);
+  const treeRef = useRef<HTMLUListElement>(null);
+  const lastCreateRootRequest = useRef(createRootRequest);
+  useEffect(() => {
+    if (createRootRequest <= 0 || createRootRequest === lastCreateRootRequest.current) return;
+    lastCreateRootRequest.current = createRootRequest;
+    if (!canAdmin) return;
+    setDialogMutationError(null);
+    setCreateParentId(null);
+  }, [createRootRequest, canAdmin]);
 
   useEffect(() => {
+    const previousKnownIds = knownModuleIds.current;
     setExpandedIds((current) => {
       const defaults = defaultExpandedModuleIds(modules);
       const next = new Set(current);
-      for (const id of defaults) next.add(id);
+      for (const id of defaults) if (!previousKnownIds.has(id)) next.add(id);
+      const byId = new Map(modules.map((module) => [module.id, module]));
+      const seen = new Set<string>();
+      let ancestor = selectedModuleId ? byId.get(selectedModuleId)?.parentId : null;
+      while (ancestor && !seen.has(ancestor)) {
+        seen.add(ancestor);
+        next.add(ancestor);
+        ancestor = byId.get(ancestor)?.parentId;
+      }
       return next;
     });
-  }, [modules]);
+    knownModuleIds.current = new Set(modules.map((module) => module.id));
+    if (selectedModuleId) setFocusedModuleId(selectedModuleId);
+  }, [modules, selectedModuleId]);
 
   const tree = useMemo(
     () => buildAttributionTree(modules, filters, driverCoverage),
     [filters, modules, driverCoverage]
   );
+  const matchingModuleIds = useMemo(() => {
+    const filtered = Boolean(filters.search?.trim());
+    return filtered ? matchingModulesForAttribution(modules, filters, driverCoverage).map((module) => module.id) : null;
+  }, [modules, filters, driverCoverage]);
+  useEffect(() => { onVisibleModuleIdsChange?.(matchingModuleIds); }, [matchingModuleIds, onVisibleModuleIdsChange]);
   const modulesById = useMemo(
     () => new Map(modules.map((module) => [module.id, module])),
     [modules]
   );
+  const visibleExpandedIds = useMemo(() => filters.search?.trim()
+    ? new Set([...expandedIds, ...modules.map((module) => module.id)]) : expandedIds, [expandedIds, filters.search, modules]);
+  const visibleIds: string[] = [];
+  const collectVisible = (nodes: readonly ModuleTreeNode[]) => {
+    for (const node of nodes) {
+      visibleIds.push(node.id);
+      if (visibleExpandedIds.has(node.id)) collectVisible(node.children);
+    }
+  };
+  collectVisible(tree);
+  const selectedNodeVisible = Boolean(selectedModuleId && visibleIds.includes(selectedModuleId));
+  const rovingModuleId = focusedModuleId && visibleIds.includes(focusedModuleId) ? focusedModuleId : visibleIds[0] ?? null;
+  useEffect(() => {
+    if (!selectedModuleId) return;
+    const frame = window.requestAnimationFrame(() => {
+      [...(treeRef.current?.querySelectorAll<HTMLElement>('[data-module-tree-id]') ?? [])]
+        .find((element) => element.dataset.moduleTreeId === selectedModuleId)?.scrollIntoView?.({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedModuleId, selectedNodeVisible, modules]);
+  const focusModule = (id: string | undefined) => {
+    if (!id) return;
+    setFocusedModuleId(id);
+    [...(treeRef.current?.querySelectorAll<HTMLElement>('[data-module-tree-id]') ?? [])]
+      .find((element) => element.dataset.moduleTreeId === id)?.focus();
+  };
+  const handleTreeKeyDown = (event: KeyboardEvent<HTMLLIElement>, node: ModuleTreeNode) => {
+    const index = visibleIds.indexOf(node.id);
+    if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End", "Enter", " "].includes(event.key)) event.preventDefault();
+    if (event.key === "ArrowDown") focusModule(visibleIds[Math.min(index + 1, visibleIds.length - 1)]);
+    else if (event.key === "ArrowUp") focusModule(visibleIds[Math.max(0, index - 1)]);
+    else if (event.key === "Home") focusModule(visibleIds[0]);
+    else if (event.key === "End") focusModule(visibleIds.at(-1));
+    else if (event.key === "ArrowRight" && node.children.length) {
+      if (visibleExpandedIds.has(node.id)) focusModule(node.children[0].id);
+      else toggleExpanded(node.id);
+    } else if (event.key === "ArrowLeft") {
+      if (node.children.length && visibleExpandedIds.has(node.id) && !filters.search?.trim()) toggleExpanded(node.id);
+      else focusModule(modulesById.get(node.id)?.parentId ?? undefined);
+    } else if (event.key === "Enter" || event.key === " ") onSelectModule?.(node.id);
+    else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const ordered = [...visibleIds.slice(index + 1), ...visibleIds.slice(0, index + 1)];
+      focusModule(ordered.find((id) => modulesById.get(id)?.name.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase())));
+    }
+  };
 
   const createDialogOpen = createParentId !== undefined;
   const createParent =
@@ -364,12 +495,11 @@ export function ModuleAttributionTree({
       : undefined;
 
   const toggleExpanded = (moduleId: string) => {
-    setExpandedIds((current) => {
-      const next = new Set(current);
-      if (next.has(moduleId)) next.delete(moduleId);
-      else next.add(moduleId);
-      return next;
-    });
+    const next = new Set(expandedIds);
+    if (next.has(moduleId)) next.delete(moduleId);
+    else next.add(moduleId);
+    setExpandedIds(next);
+    publishTreeSearch(filters, next);
   };
 
   const handleViewUnclassified = (moduleId: string) => {
@@ -448,6 +578,7 @@ export function ModuleAttributionTree({
   };
 
   const handleReorder = async (moduleId: string, direction: "up" | "down") => {
+    if (busy || dialogMutationBusy) return;
     const module = modulesById.get(moduleId);
     if (!module) return;
     const updates = sortOrderSwapUpdates(module, direction, modules, true);
@@ -486,14 +617,14 @@ export function ModuleAttributionTree({
   };
 
   return (
-    <section className="module-attribution-tree" aria-labelledby="module-attribution-tree-title">
+    <section className="module-attribution-tree is-compact" aria-label={PARAMETER_ADMIN_UI.moduleTreeTitle}>
       <div className="module-attribution-tree__head">
-        <div className="module-attribution-tree__head-main">
-          <div>
-            <h4 id="module-attribution-tree-title">{PARAMETER_ADMIN_UI.moduleTreeTitle}</h4>
-            <p className="muted">默认只展开顶层业务分类；再逐级点开驱动组与节点类型。</p>
-          </div>
-          {canAdmin ? (
+        {!onSelectModule || (canAdmin && showRootCreateAction) ? <div className="module-attribution-tree__head-main">
+          {!onSelectModule ? <div>
+            <h4>{PARAMETER_ADMIN_UI.moduleTreeTitle}</h4>
+            <p className="muted">展开分类查看驱动组与节点类型。</p>
+          </div> : null}
+          {canAdmin && showRootCreateAction ? (
             <button
               type="button"
               className="button"
@@ -503,63 +634,15 @@ export function ModuleAttributionTree({
               新建模块
             </button>
           ) : null}
-        </div>
-        <div className="module-attribution-tree__filters" aria-label="模块树筛选">
-          <MultiSelectDropdown
-            compact
-            label="类型"
-            value={[...filters.kinds]}
-            options={KIND_FILTER_OPTIONS}
-            onChange={(next) =>
-              setFilters((current) => ({
-                ...current,
-                kinds: next as Array<ParameterModule["kind"]>
-              }))
-            }
-          />
-          <MultiSelectDropdown
-            compact
-            label="来源"
-            value={[...filters.origins]}
-            options={ORIGIN_FILTER_OPTIONS}
-            onChange={(next) =>
-              setFilters((current) => ({
-                ...current,
-                origins: next as Array<ParameterModule["origin"]>
-              }))
-            }
-          />
-          <label className="module-attribution-tree__filter-toggle">
-            <input
-              type="checkbox"
-              checked={filters.hideNotYetObserved}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  hideNotYetObserved: event.target.checked
-                }))
-              }
-            />
-            <span>{PARAMETER_ADMIN_UI.moduleAttributionHideNotYetObserved}</span>
-          </label>
-          <label className="module-attribution-tree__filter-toggle">
-            <input
-              type="checkbox"
-              checked={filters.onlyUncoveredParse}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  onlyUncoveredParse: event.target.checked
-                }))
-              }
-            />
-            <span>{PARAMETER_ADMIN_UI.moduleAttributionOnlyUncoveredParse}</span>
-          </label>
-        </div>
+        </div> : null}
+        <label className="module-attribution-tree__search"><span className={onSelectModule ? "sr-only" : undefined}>搜索模块</span>
+          <input type="search" aria-label="搜索模块" placeholder="按模块名称搜索" value={filters.search ?? ""}
+            onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} />
+        </label>
       </div>
 
       <div className="module-attribution-tree__scroll">
-        <ul className="module-attribution-tree__list" role="tree" aria-label="模块归属树">
+        <ul ref={treeRef} className="module-attribution-tree__list" role="tree" aria-label="模块归属树">
           {tree.length === 0 ? (
             <li className="module-attribution-tree__empty">没有匹配的模块。</li>
           ) : null}
@@ -572,10 +655,15 @@ export function ModuleAttributionTree({
               modules={modules}
               mappings={mappings}
               driverCoverage={driverCoverage}
-              expandedIds={expandedIds}
+              expandedIds={visibleExpandedIds}
               canAdmin={canAdmin}
               busy={busy}
               onToggle={toggleExpanded}
+              selectedModuleId={selectedModuleId}
+              onSelectModule={onSelectModule}
+              focusedModuleId={rovingModuleId}
+              onFocusModule={setFocusedModuleId}
+              onTreeKeyDown={handleTreeKeyDown}
               onView={handleViewUnclassified}
               onEdit={(id) => {
                 setDialogMutationError(null);
@@ -633,6 +721,7 @@ export function ModuleAttributionTree({
           }}
           onSave={handleSaveEdit}
           canAdmin={canAdmin}
+          readOnly={!canAdmin}
           driverNature={editingDriverRegistration?.driverNature ?? null}
           instanceCardinality={editingDriverRegistration?.instanceCardinality ?? null}
           historicalCompatibles={editingDriverRegistration?.compatibles}

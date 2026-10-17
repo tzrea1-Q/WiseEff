@@ -1,8 +1,12 @@
+/// <reference lib="dom" />
+
+import { createRequire } from "node:module";
 import type { BrowserContext, Route } from "playwright/test";
 import { requireOverviewGeometry, requireRetiredNotice } from "../e2e/quality/consistency-assertions";
-import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
 import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireNavigatorWorkbenchGeometry, requireAdminListGeometry, requireRowActionVisibility, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
+
+const { JSDOM }: { JSDOM: new (markup: string) => { window: Window & typeof globalThis } } = createRequire(import.meta.url)("jsdom");
 
 describe("admin list template contract", () => {
   it("measures an outline header action without marking it as a filled primary action", () => {
@@ -222,8 +226,8 @@ describe("project configuration workbench coverage", () => {
   });
   const paths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
     .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
-  it.each(paths)("requires shared config-set sections and content tabs on %s", (path) => {
-    expect(viewSwitchStyleExpectations[path]).toEqual(["section", "tabs"]);
+  it.each(paths)("requires project content tabs without redundant administration sections on %s", (path) => {
+    expect(viewSwitchStyleExpectations[path]).toEqual(["tabs"]);
   });
   it.each(paths)("requires template geometry on %s in every source mode", (path) => {
     for (const mode of ["working", "history", "candidate", "unified-diff", "side-by-side"]) {
@@ -266,6 +270,20 @@ describe("project configuration workbench coverage", () => {
       inspector: { ...workbench.inspector, width: 360 } }], "/configuration")).toThrow(/inspector/);
     expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench, inspectorOverlay: false,
       task: { ...workbench.task, right: 1108, width: 808 } }], "/configuration")).not.toThrow();
+    const readOnly = { ...workbench, pageKey: "parameter-definitions", primaryAction: null, inspector: null };
+    for (const path of ["/parameters/definitions", "/parameters/definitions?definitionId=exact-definition"]) {
+      expect(() => requireNavigatorWorkbenchGeometry([readOnly], path)).not.toThrow();
+      expect(() => requireNavigatorWorkbenchGeometry([workbench], path)).toThrow(/read-only/);
+      for (const invalid of [
+        { ...readOnly, firstRow: null },
+        { ...readOnly, navigator: { ...readOnly.navigator, width: 290 } },
+        { ...readOnly, toolbar: { ...readOnly.toolbar, bottom: 63 } },
+        { ...readOnly, pageOverflow: 2 },
+        { ...readOnly, navigatorCounts: [] },
+        { ...readOnly, firstRowClip: { ...firstRow, height: 20 } }
+      ]) expect(() => requireNavigatorWorkbenchGeometry([invalid], path)).toThrow();
+    }
+    expect(() => requireNavigatorWorkbenchGeometry([readOnly], "/parameter-admin/specs")).toThrow(/primary/);
   });
 });
 import { installConsistencyReadGuard } from "../e2e/quality/consistency";
@@ -384,6 +402,21 @@ describe("unified review inbox structure", () => {
 
 describe("view-switch collection", () => {
   it.each([
+    ['<div class="parameter-catalog__actions"><button data-test-top="40">待审核事项</button><button class="button primary" data-test-top="72">新增定义</button></div>', "catalog-definitions"],
+    ['<div class="navigator-workbench__primary"><button data-test-top="40">刷新</button><button data-slot="button" data-variant="default" data-test-top="72">新建模块</button></div>', "module-governance"],
+    ['<div class="navigator-workbench__primary"><button data-primary-action="true" data-test-top="72">主操作</button><button data-test-top="40">次要操作</button></div>', "explicit-primary"]
+  ])("measures the marked primary in the actual toolbar action group: %s", (actions, pageKey) => {
+    const measurements = collectMarkup(`<div class="navigator-workbench" data-workbench-page="${pageKey}">
+      <div class="navigator-workbench__toolbar">${actions}</div>
+      <section class="navigator-workbench__task"><table><tbody><tr><td>当前记录</td></tr></tbody></table></section>
+    </div>`);
+    expect(measurements.navigatorWorkbenches[0].primaryAction?.top).toBe(72);
+    expect(measurements.navigatorWorkbenches[0].firstRow).not.toBeNull();
+    expect(collectMarkup(`<div class="navigator-workbench"><section class="navigator-workbench__task">${actions}</section></div>`)
+      .navigatorWorkbenches[0].primaryAction).toBeNull();
+  });
+
+  it.each([
     ['<li class="canonical-driver-discovery__item">发现记录</li>', 100],
     ['<p role="status">当前范围没有来源观察记录。</p>', 100],
     ["", null]
@@ -451,6 +484,16 @@ describe("view-switch collection", () => {
       </div>
     `);
     expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["4", "12 个参数"]);
+  });
+
+  it("measures the project file count when the structure tree is in the task pane", () => {
+    const measurements = collectMarkup(`<div class="navigator-workbench" data-workbench-page="project-configuration:aurora">
+      <div class="navigator-workbench__navigation"><aside class="configuration-workbench__tree">
+        <div class="configuration-workbench__region-head"><div><span>源结构</span><strong>2 个文件</strong></div></div>
+      </aside></div>
+      <section class="navigator-workbench__task"><span class="dts-topology-navigator__count">3 个属性</span></section>
+    </div>`);
+    expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["2 个文件"]);
   });
 
   it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping", "/parameters/definitions", "/node-debugging", "/dts-reload"])(
@@ -606,7 +649,14 @@ describe("compact filter, sort and pagination height contract", () => {
     expect(() => requireCompactControlHeights({}, "/audit"))
       .toThrow("missing consistency measurements: filterControls");
   });
-  const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: null, height, compactControl });
+  const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: "button", height, compactControl });
+
+  it("checks rendered controls without inventing categories for an unregistered route", () => {
+    expect(() => requireCompactControlHeights({ filterControls: [control("select", 32)] }, "/unregistered-route"))
+      .not.toThrow();
+    expect(() => requireCompactControlHeights({ filterControls: [control("select", 38)] }, "/unregistered-route"))
+      .toThrow("has height 38px; expected 32px");
+  });
 
   it("does not invent pagination for read-only identity evidence but still validates rendered controls", () => {
     expect(() => requireCompactControlHeights({}, "/parameter-admin/specs/identity-mapping", ["navigatorWorkbenches"]))

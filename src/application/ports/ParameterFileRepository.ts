@@ -324,6 +324,7 @@ export type ParameterFileSourcePreview = {
     configRevisionId: string;
     sourcePinId: string;
     locator: string;
+    displayPath?: string;
     baseDigest: string;
     proposedDigest: string;
     action: "set" | "delete";

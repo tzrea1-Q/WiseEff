@@ -257,8 +257,11 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
       await signInBrowserAsRole(page, "software-committer",
         `${runtime.frontendUrl}/parameter-review?project=aurora&request=${receipt.id}`);
       const detail = page.getByRole("article", { name: "批量源文件请求详情" });
-      await expect(detail).toContainText("兄弟 Binding · 结构性 re-pin");
+      await detail.getByText("查看全部 3 项参数与草稿影响", { exact: true }).click();
+      await expect(detail.getByRole("group", { name: "完整草稿影响" })).toContainText("保留数值，更新来源关联");
       await expect(detail).toContainText("未选中，保留并预计过期");
+      await detail.getByText("查看源文件差异", { exact: true }).click();
+      await detail.getByText("查看完整源文件", { exact: true }).click();
       if (firstChoice === "draft") await expect(detail.getByLabel("批量原上传来源"))
         .toContainText(format === "json" ? "50" : "<50>");
       await expect(detail.getByLabel("批量固定源变更后"))
@@ -268,6 +271,7 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
       await expect(approve).toBeEnabled();
       const reviewing = page.waitForResponse((response) => response.url().endsWith(`/parameter-value-change-requests/${receipt.id}/review`));
       await approve.click();
+      await page.getByRole("dialog", { name: "确认批准整批变更", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       expect((await reviewing).status()).toBe(200);
       await expect(detail).toContainText("已批准");
       const applied = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });

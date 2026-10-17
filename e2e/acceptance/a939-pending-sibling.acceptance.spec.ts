@@ -130,7 +130,7 @@ test("#939 blocks a pending sibling JSON request, then allows refreshed batch su
     const beforeObjects = await objectInventory(runtime.objectStoreRoot);
     const refused = page.waitForResponse((response) => response.request().method() === "POST"
       && response.url().endsWith("/parameter-value-change-requests/batches"));
-    await dialog.getByRole("button", { name: "一次提交全部 2 项" }).click();
+    await dialog.getByRole("button", { name: "提交 2 项审核" }).click();
     const refusal = await refused;
     expect(refusal.status()).toBe(409);
     expect(await refusal.json()).toMatchObject({ error: { details: {
@@ -148,7 +148,7 @@ test("#939 blocks a pending sibling JSON request, then allows refreshed batch su
     dialog = await openDialog();
     const submitted = page.waitForResponse((response) => response.request().method() === "POST"
       && response.url().endsWith("/parameter-value-change-requests/batches"));
-    await dialog.getByRole("button", { name: "一次提交全部 2 项" }).click();
+    await dialog.getByRole("button", { name: "提交 2 项审核" }).click();
     const resumed = await submitted;
     expect(resumed.status(), await resumed.text()).toBe(201);
     await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText("Pending sibling browser proof");

@@ -300,6 +300,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         const mine = page.getByRole("article", { name: "批量源文件请求详情" });
         await expect(mine).toBeVisible();
         await mine.getByRole("button", { name: "撤回我的批量提交" }).click();
+        await page.getByRole("dialog", { name: "确认撤回提交", exact: true }).getByRole("button", { name: "撤回提交", exact: true }).click();
         await expect(mine).toContainText("已撤回");
         await page.reload();
         await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText("已撤回");
@@ -349,12 +350,14 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
       await detail.getByText("溯源信息", { exact: true }).click();
       await expect(detail).toContainText(receipt.batchProofDigest);
-      await expect(detail).toContainText(format.toUpperCase());
+      await detail.getByText("完整技术数据", { exact: true }).click();
+      await expect.poll(async () => JSON.parse((await detail.getByLabel("完整溯源数据").textContent())!)["来源元数据"]?.format).toBe(format);
+      await detail.getByText("查看源文件差异", { exact: true }).click();
       await expect(detail.getByRole("region", { name: "批量固定源差异" })).toBeVisible();
       const approve = detail.getByRole("button", { name: "批准全部 2 项" });
       if (outcomeKind === "reject") {
         await detail.getByRole("button", { name: "驳回全部 2 项" }).click();
-        const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+        const rejectDialog = page.getByRole("dialog", { name: /^驳回「/ });
         await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
         await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("手动同步需要补充依据");
         await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
@@ -363,6 +366,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         await expect(approve).toBeEnabled();
         const reviewResponse = page.waitForResponse((response) => response.url().endsWith(`/parameter-value-change-requests/${receipt.id}/review`));
         await approve.click();
+        await page.getByRole("dialog", { name: "确认批准整批变更", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
         expect((await reviewResponse).status()).toBe(outcomeKind === "drift" ? 409 : 200);
         await expect(detail).toContainText(outcomeKind === "drift" ? "来源或审核证明已变化" : "已批准");
       }

@@ -30,6 +30,7 @@ export type StepSourceAndProjectProps = {
   onSourceChange: (input: StepSourceAndProjectSourceInput) => void;
   onDownloadTemplate: () => void;
   onNext: () => void;
+  pending?: boolean;
 };
 
 export function StepSourceAndProject({
@@ -43,7 +44,8 @@ export function StepSourceAndProject({
   sourceFromFile,
   onSourceChange,
   onDownloadTemplate,
-  onNext
+  onNext,
+  pending = false
 }: StepSourceAndProjectProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -53,7 +55,7 @@ export function StepSourceAndProject({
   const uploadedTextLength = sourceFromFile ? sourceText.trim().length : 0;
 
   const handleFileChange = (file: File | undefined) => {
-    if (!file) {
+    if (!file || pending) {
       return;
     }
     const reader = new FileReader();
@@ -117,7 +119,7 @@ export function StepSourceAndProject({
           ]} />
         </label>
         <div className="parameter-import-wizard-new-project">
-          <button type="button" className="button subtle" onClick={onCreateProject}>
+          <button type="button" className="button subtle" disabled={pending} onClick={onCreateProject}>
             + 新建项目
           </button>
         </div>
@@ -144,6 +146,7 @@ export function StepSourceAndProject({
               type="file"
               className="parameter-import-wizard-file-input"
               accept={IMPORT_SOURCE_FILE_ACCEPT}
+              disabled={pending}
               aria-labelledby="parameter-import-file-label"
               onChange={(event) => handleFileChange(event.target.files?.[0])}
             />
@@ -177,10 +180,10 @@ export function StepSourceAndProject({
                 </div>
               </div>
               <div className="parameter-import-wizard-paste-summary__actions">
-                <button type="button" className="button subtle" onClick={openPasteDialog}>
+                <button type="button" className="button subtle" disabled={pending} onClick={openPasteDialog}>
                   编辑
                 </button>
-                <button type="button" className="button subtle" onClick={clearPastedContent}>
+                <button type="button" className="button subtle" disabled={pending} onClick={clearPastedContent}>
                   清除
                 </button>
               </div>
@@ -190,6 +193,7 @@ export function StepSourceAndProject({
               type="button"
               className="parameter-import-wizard-paste-entry"
               aria-label="粘贴 JSON / CSV / DTS 内容"
+              disabled={pending}
               onClick={openPasteDialog}
             >
               <ClipboardPaste size={22} strokeWidth={2} aria-hidden="true" />
@@ -222,10 +226,11 @@ export function StepSourceAndProject({
         <button type="button" className="button subtle" onClick={onDownloadTemplate}>
           下载导入模板
         </button>
-        <button type="button" className="button primary" disabled={!canProceed} onClick={onNext}>
-          下一步
+        <button type="button" className="button primary" disabled={pending || !canProceed} onClick={onNext}>
+          {pending ? "正在解析…" : "下一步"}
         </button>
       </div>
+      {pending ? <p role="status">正在解析来源并匹配项目参数，请稍候。</p> : null}
     </section>
   );
 }

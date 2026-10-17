@@ -15,6 +15,7 @@ import {
   ParameterDefinitionId,
   type CatalogCursor,
   type OptionalValue,
+  type SubjectLifecycle,
 } from "../../parameter-catalog-contract/index";
 import {
   emptyReasonFor,
@@ -170,11 +171,14 @@ function listEnvelope(
   };
 }
 
-function catalogSubjectUniverse(snapshot: CatalogSnapshot): CatalogSubjectId[] {
+function catalogSubjectUniverse(
+  snapshot: CatalogSnapshot,
+  lifecycles: readonly SubjectLifecycle[] = ["active", "retired"],
+): CatalogSubjectId[] {
   const result = snapshot.listSubjects({
     selection: { kind: "all" },
     kinds: [],
-    lifecycles: ["active", "retired"],
+    lifecycles,
     search: absent,
     page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent },
   });
@@ -476,7 +480,34 @@ async function handleListDefinitions(
     registration: parsed.query.registration,
     catalogDefinitions: parsed.query.registration ? catalogDefinitionIndex(snapshot) : undefined,
   });
-  const selection = mergeIdSelection(scope.definitions, registrationSelection);
+  let selection = mergeIdSelection(scope.definitions, registrationSelection);
+  if (parsed.query.subjectLifecycle) {
+    const allowedSubjects = new Set(catalogSubjectUniverse(snapshot, [parsed.query.subjectLifecycle]));
+    const explicitSubjects = parsed.query.subjectIds ? new Set(parsed.query.subjectIds) : null;
+    const definitionIds = catalogDefinitionIndex(snapshot)
+      .filter(({ subjectId }) =>
+        allowedSubjects.has(subjectId) &&
+        !hiddenId(scope.subjects, subjectId) &&
+        !hiddenId(placementSelection.selection, subjectId) &&
+        (!parsed.query.subjectId || parsed.query.subjectId === subjectId) &&
+        (!explicitSubjects || explicitSubjects.has(subjectId)),
+      )
+      .map(({ id }) => id);
+    const filtered = mergeIdSelection(selection, {
+      kind: "only",
+      ids: definitionIds,
+      fingerprint: fingerprintIdSelection(definitionIds),
+    });
+    // Bind the filter itself as well as its IDs, including an empty selection.
+    selection = {
+      kind: "only",
+      ids: filtered.kind === "only" ? filtered.ids : definitionIds,
+      fingerprint: fingerprintIdSelection([
+        `subjectLifecycle=${parsed.query.subjectLifecycle}`,
+        filtered.kind === "only" ? filtered.fingerprint : "all",
+      ]),
+    };
+  }
   const result = snapshot.listDefinitions({
     selection,
     scope: definitionScope,
@@ -521,6 +552,7 @@ async function handleListDefinitions(
   }
   const filtered = Boolean(
     parsed.query.lifecycle ||
+      parsed.query.subjectLifecycle ||
       parsed.query.registration ||
       parsed.query.search ||
       parsed.query.propertyKey ||

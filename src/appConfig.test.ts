@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, utilityItems } from "./appConfig";
 
 describe("WiseEff prototype configuration", () => {
+  it("names the personal workflow for both pending and completed submissions", () => {
+    expect(getPageByPath("/parameter-submissions")).toMatchObject({ label: "我的提交", title: "我的提交" });
+    expect(getPageByPath("/parameter-review")).toMatchObject({ label: "变更审阅", title: "变更审阅" });
+  });
   it("keeps personal feedback deep links outside the sidebar navigation", () => {
     expect(getPageByPath("/feedback")).toMatchObject({ key: "feedback", title: "我的反馈" });
     expect([...navigationItems, ...utilityItems].map((item) => item.path)).not.toContain("/feedback");
@@ -11,6 +15,7 @@ describe("WiseEff prototype configuration", () => {
       "/",
       "/parameter-home",
       "/parameters",
+      "/parameter-submissions",
       "/parameter-review",
       "/parameter-admin",
       "/dts-reload",

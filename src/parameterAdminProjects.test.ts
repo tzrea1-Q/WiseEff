@@ -7,6 +7,11 @@ import {
 import { initialState } from "./mockData";
 
 describe("parameterAdminProjects", () => {
+  it("keeps archived lifecycle visible even when initialization is incomplete", () => {
+    expect(mapProjectAdminSummaryDto({ id: "archived", name: "Archived", code: "ARC", status: "archived",
+      initializationStatus: "not_initialized", moduleCount: 0, parameterCount: 0, openConflictCount: 0,
+      releasedBaselineCount: 1, updatedAt: "2026-10-15T00:00:00Z" })).toMatchObject({ status: "archived", statusLabel: "已归档" });
+  });
   it("builds project rows from mock state", () => {
     const rows = buildParameterAdminProjectsFromState(initialState);
     expect(rows.length).toBeGreaterThan(0);

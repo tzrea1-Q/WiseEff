@@ -5,6 +5,7 @@ import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepos
 import type { Project } from "@/domain/prototype/types";
 import { buildImportReviewMetadata } from "@/application/parameters/import/buildImportReviewMetadata";
 import type { ReviewedImportRow } from "@/application/parameters/import/types";
+import { Button } from "@/components/ui/button";
 
 export type StepConfirmApplyProps = {
   project?: Project;
@@ -16,6 +17,8 @@ export type StepConfirmApplyProps = {
   dispatch: Dispatch<AppAction>;
   onBack: () => void;
   onApplied: () => void;
+  onCompleted?: () => void;
+  onNavigate: (path: string) => void;
   /** Lets the wizard shell block closing while the apply request is in flight. */
   onPendingChange?: (pending: boolean) => void;
 };
@@ -30,10 +33,13 @@ export function StepConfirmApply({
   dispatch,
   onBack,
   onApplied,
+  onCompleted,
+  onNavigate,
   onPendingChange
 }: StepConfirmApplyProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [receipt, setReceipt] = useState<ParameterImportBatchDto | null>(null);
   const stagesDrafts = previewBatch?.items.some((item) => item.baseRevisionId !== undefined) ?? false;
 
   const updatePending = (next: boolean) => {
@@ -42,6 +48,7 @@ export function StepConfirmApply({
   };
 
   const handleApply = async () => {
+    if (pending || receipt) return;
     if (!previewBatch || !parameterActions) {
       setError("导入预览不可用，请返回上一步重新生成。");
       return;
@@ -64,13 +71,31 @@ export function StepConfirmApply({
       dispatch({ type: "ADD_NOTIFICATION", message: result?.status === "staged"
         ? `已暂存 ${result.summary.staged ?? 0} 条待提交草稿；当前值和源文件未改变，请提交审核后生效。`
         : "批量导入已应用。" });
-      onApplied();
+      setReceipt(result && "items" in result ? result : { ...previewBatch, status: "applied" });
+      onCompleted?.();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "应用导入批次失败。");
     } finally {
       updatePending(false);
     }
   };
+
+  if (receipt) return (
+    <section className="parameter-import-wizard-step" aria-label="导入处理回执">
+      <div role="status">
+        <h3>{receipt.status === "staged" ? "草稿已暂存" : "导入已应用"}</h3>
+        <p>{receipt.status === "staged"
+          ? `已暂存 ${receipt.summary.staged ?? selectedItemIds.size} 条待提交草稿。当前值和源文件尚未改变，请到项目参数工作台填写原因并提交审核。`
+          : "本次导入已完成。"}</p>
+      </div>
+      <p>目标项目：{project?.name ?? receipt.projectId} · 批次：<code>{receipt.id}</code></p>
+      <ul aria-label="本次选择的参数">{receipt.items.filter((item) => selectedItemIds.has(item.id)).map((item) => <li key={item.id}>{item.name}</li>)}</ul>
+      <div className="dialog-actions">
+        <Button type="button" variant="outline" onClick={onApplied}>完成</Button>
+        {receipt.status === "staged" ? <Button type="button" onClick={() => onNavigate(`/parameters?project=${encodeURIComponent(receipt.projectId)}`)}>查看草稿并继续提交审核</Button> : null}
+      </div>
+    </section>
+  );
 
   return (
     <section className="parameter-import-wizard-step" aria-label={stagesDrafts ? "确认暂存待提交" : "确认应用"}>

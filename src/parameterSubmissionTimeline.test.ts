@@ -65,10 +65,11 @@ describe("parameter submission timeline", () => {
     ["已合入", 4],
     ["已打回", 2],
     ["已撤回", 2],
+    ["已暂存", 1],
     ["待审阅", 2],
     ["自动检查通过", 3],
     ["等待合入", 4]
-  ] as const)("maps %s rounds to timeline index %i", (status, activeIndex) => {
+  ] as const)("preserves %s stage coordinate %i for shared workflow projections", (status, activeIndex) => {
     expect(deriveSubmissionTimeline(createRound(status, [submissionItem])).activeIndex).toBe(activeIndex);
   });
 });

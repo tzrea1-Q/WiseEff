@@ -29,31 +29,8 @@
   color: var(--pcat-text);
 }
 
-.parameter-catalog__anchor,
 .parameter-catalog__banner {
   min-width: 0;
-}
-
-.parameter-catalog__anchor {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-4);
-}
-
-.parameter-catalog__anchor-label {
-  color: var(--pcat-muted);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: var(--leading-xs);
-}
-
-.parameter-catalog__anchor-value {
-  overflow-wrap: anywhere;
-  font-size: var(--text-md);
-  font-weight: 600;
-  line-height: var(--leading-md);
 }
 
 .parameter-catalog__anchor-id {
@@ -84,6 +61,32 @@
   min-width: 0;
 }
 
+.parameter-catalog__historical-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  color: var(--pcat-secondary);
+  cursor: pointer;
+}
+
+.parameter-catalog__historical-filter input {
+  width: var(--space-4);
+  height: var(--space-4);
+  accent-color: var(--pcat-accent);
+}
+
+.parameter-catalog__read-only {
+  width: fit-content;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--pcat-secondary);
+  font-size: var(--text-sm);
+}
+
 .parameter-catalog__banner {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--pcat-border);
@@ -110,10 +113,6 @@
   line-height: var(--leading-base);
 }
 
-/* The module navigator mirrors the workbench navigator the other admin pages
-   use: 42px rows on a 2px rhythm, a 28px disclosure column, a muted row label
-   with an ink branch label, a 10px right-aligned count, and a left rule for
-   nested levels. */
 /* One dialog body for a definition: the identity header, the identity/content
    form, and the read-only facts behind 更多信息. */
 .definition-editor {
@@ -389,6 +388,45 @@
 }
 
 /* Sticky Dialog Footer Action Bar */
+.definition-editor__inputs {
+  display: contents;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.definition-editor__projects {
+  display: grid;
+  gap: var(--space-2);
+  max-height: calc(var(--space-12) * 4);
+  overflow: auto;
+  padding: var(--space-3);
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.definition-editor__projects label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.definition-editor__projects input[type="checkbox"] {
+  width: auto;
+}
+
+.parameter-catalog__history-body pre,
+.definition-editor__readonly pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.parameter-catalog__history-body tr[data-changed="true"] {
+  background: var(--accent-soft);
+}
+
 .definition-editor__footer {
   position: sticky;
   bottom: 0;
@@ -552,8 +590,20 @@
   list-style: none;
 }
 
-.parameter-catalog__tree-row {
+.parameter-catalog .parameter-catalog__tree-row {
   min-width: 0;
+  min-height: var(--space-8);
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+}
+
+.parameter-catalog .navigator-workbench__navigation {
+  padding: var(--space-2);
+  scrollbar-gutter: stable;
+}
+
+.parameter-catalog__navigator-search {
+  margin-bottom: var(--space-2);
 }
 
 .parameter-catalog__tree-toggle {
@@ -571,7 +621,7 @@ button.parameter-catalog__tree-toggle:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-1);
+  gap: var(--space-2);
   width: 100%;
   min-width: 0;
   min-height: var(--module-navigator-disclosure-size);
@@ -610,7 +660,7 @@ button.parameter-catalog__tree-toggle:hover {
 /* Branch labels read as structure; subject leaves stay muted supporting text. */
 .parameter-catalog__tree-select[data-catalog-node-kind="module"] .parameter-catalog__tree-label,
 .parameter-catalog__tree-select--group .parameter-catalog__tree-label {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--pcat-nav-ink);
 }
 
@@ -640,32 +690,13 @@ button.parameter-catalog__tree-toggle:hover {
   flex-shrink: 0;
 }
 
-.parameter-catalog__editor-dialog-title-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+.parameter-catalog__editor-dialog-head h2 {
   min-width: 0;
-}
-
-.parameter-catalog__editor-dialog-title-wrap h2 {
   margin: 0;
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text);
   line-height: 1.3;
-}
-
-.parameter-catalog__editor-dialog-eyebrow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.parameter-catalog__editor-meta-pill {
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--text-secondary);
 }
 
 .parameter-catalog__editor-id-pill {
@@ -772,8 +803,8 @@ button.parameter-catalog__tree-toggle:hover {
 
 .parameter-catalog__table td:not(.parameter-catalog__lifecycle):not([data-label="操作"]) {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .parameter-catalog__table .parameter-catalog__lifecycle {
@@ -798,6 +829,27 @@ button.parameter-catalog__tree-toggle:hover {
   white-space: nowrap;
 }
 
+.parameter-catalog__tree-content {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.parameter-catalog__tree-icon {
+  flex: 0 0 auto;
+  color: var(--pcat-nav-meta);
+}
+
+.parameter-catalog__tree-row.is-selected .parameter-catalog__tree-label,
+.parameter-catalog__tree-row.is-selected .parameter-catalog__tree-icon {
+  color: var(--pcat-accent);
+}
+
+.parameter-catalog__tree-row[data-retired="true"] .parameter-catalog__tree-select .parameter-catalog__subject-meta {
+  color: var(--pcat-warning);
+}
+
 /* A subject leaf inside the module tree: name plus its type/registration meta. */
 .parameter-catalog__tree-select[data-catalog-node-kind="subject"] {
   gap: var(--space-2);
@@ -810,7 +862,6 @@ button.parameter-catalog__tree-toggle:hover {
 }
 
 .parameter-catalog__tree-select[data-catalog-node-kind="subject"] .parameter-catalog__subject-meta {
-  flex: 0 0 auto;
   overflow: hidden;
   color: var(--pcat-nav-meta);
   font-size: var(--text-xs);
@@ -832,15 +883,19 @@ button.parameter-catalog__tree-toggle:hover {
 
 .parameter-catalog__module-count {
   flex: 0 0 auto;
-  min-width: 0;
+  min-width: var(--space-5);
   max-width: 120px;
   overflow: hidden;
   color: var(--pcat-nav-meta);
   font-size: var(--text-xs);
   line-height: 1.3;
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
   text-overflow: ellipsis;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-variant-numeric: tabular-nums;
 }
 
 .parameter-catalog__list-head {

@@ -134,6 +134,7 @@ export function ParameterImportWizard({
   activeProjectId,
   parameterActions,
   dispatch,
+  onNavigate,
   runtimeMode
 }: ParameterImportWizardProps) {
   const isApiMode = runtimeMode === "api";
@@ -155,6 +156,8 @@ export function ParameterImportWizard({
   const [previewBatch, setPreviewBatch] = useState<ParameterImportBatchDto | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [applyPending, setApplyPending] = useState(false);
+  const [parsePending, setParsePending] = useState(false);
+  const [completed, setCompleted] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingProjectChangeId, setPendingProjectChangeId] = useState<string | null>(null);
 
@@ -194,6 +197,8 @@ export function ParameterImportWizard({
     setPreviewBatch(null);
     setSelectedItemIds(new Set());
     setApplyPending(false);
+    setParsePending(false);
+    setCompleted(false);
     setCloseConfirmOpen(false);
     return () => { importRequestGeneration.current += 1; };
   }, [open, activeProjectId]);
@@ -206,10 +211,10 @@ export function ParameterImportWizard({
 
   const requestClose = () => {
     // Never allow closing while the apply request is in flight.
-    if (createProjectPending || applyPending) {
+    if (createProjectPending || applyPending || parsePending) {
       return;
     }
-    if (hasGuardedProgress) {
+    if (hasGuardedProgress && !completed) {
       setCloseConfirmOpen(true);
       return;
     }
@@ -220,6 +225,8 @@ export function ParameterImportWizard({
   }
 
   const parseAndMatch = async (projectId: string) => {
+    setPreviewBatch(null);
+    setSelectedItemIds(new Set());
     const requestGeneration = ++importRequestGeneration.current;
     const errors: string[] = [];
     let parsed: ParsedImportRow[] = [];
@@ -269,8 +276,14 @@ export function ParameterImportWizard({
   };
 
   const handleParseAndAdvance = async () => {
-    if (await parseAndMatch(targetProjectId)) {
-      setStep(2);
+    if (parsePending) return;
+    setParsePending(true);
+    const request = parseAndMatch(targetProjectId);
+    const generation = importRequestGeneration.current;
+    try {
+      if (await request) setStep(2);
+    } finally {
+      if (generation === importRequestGeneration.current) setParsePending(false);
     }
   };
 
@@ -295,6 +308,7 @@ export function ParameterImportWizard({
       return;
     }
     importRequestGeneration.current += 1;
+    setParsePending(false);
     setCanonicalLibrary(null);
     setTargetProjectId(nextProjectId);
   };
@@ -321,16 +335,19 @@ export function ParameterImportWizard({
   };
 
   const handleApproveRow = (rowId: string) => {
+    setPreviewBatch(null);
     setReviewedRows((current) => current.map((row) => (row.rowId === rowId ? { ...row, status: "approved" as const } : row)));
   };
 
   const handleSkipRow = (rowId: string, reason: string) => {
+    setPreviewBatch(null);
     setReviewedRows((current) =>
       current.map((row) => (row.rowId === rowId ? { ...row, status: "skipped" as const, skipReason: reason } : row))
     );
   };
 
   const handleUpdateRow = (rowId: string, patch: Partial<ParsedImportRow>) => {
+    setPreviewBatch(null);
     setReviewedRows((current) => {
       const updated = current.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row));
       return reconcileReviewedRows(updated, importParameters, targetProjectId);
@@ -338,6 +355,7 @@ export function ParameterImportWizard({
   };
 
   const handleConfirmNewRow = (rowId: string, patch: Partial<ParsedImportRow>) => {
+    setPreviewBatch(null);
     setReviewedRows((current) =>
       current.map((row) => (row.rowId === rowId ? { ...row, ...patch, status: "new-confirmed" as const } : row))
     );
@@ -356,10 +374,10 @@ export function ParameterImportWizard({
             <div className="param-admin-editor-dialog-head-text">
               {/* The eyebrow names the wizard so its accessible name stays stable across steps. */}
               <span className="eyebrow" id={titleId}>批量参数导入</span>
-              <h2>步骤 {step} / 5</h2>
-              <p>选择目标项目与导入来源，逐步核对后再应用变更。</p>
+              <h2>{completed ? "导入处理完成" : `步骤 ${step} / 5`}</h2>
+              <p>{completed ? "保留本次处理回执，继续完成项目参数审核。" : "选择目标项目与导入来源，逐步核对后再应用变更。"}</p>
             </div>
-            <button type="button" className="audit-dialog-close-icon" onClick={requestClose} aria-label="关闭">
+            <button type="button" className="audit-dialog-close-icon" disabled={parsePending || applyPending || createProjectPending} onClick={requestClose} aria-label="关闭">
               <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
             </button>
           </div>
@@ -414,6 +432,7 @@ export function ParameterImportWizard({
               }}
               onDownloadTemplate={downloadImportTemplate}
               onNext={handleParseAndAdvance}
+              pending={parsePending}
             />
           ) : step === 2 ? (
             <StepParseReport
@@ -461,6 +480,8 @@ export function ParameterImportWizard({
               dispatch={dispatch}
               onBack={() => setStep(4)}
               onApplied={onClose}
+              onCompleted={() => setCompleted(true)}
+              onNavigate={onNavigate}
               onPendingChange={setApplyPending}
             />
           )}

@@ -8,6 +8,7 @@ import { installDriverSourceFixture } from "../../server/testing/parameterCatalo
 import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
 import { parseDtsValue } from "../../server/modules/dts";
 import { insertFileVersion } from "../../server/modules/parameter-files/repository";
+import type { ParsedIndex } from "../../server/modules/parameter-files/types";
 import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
 import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../../server/modules/parameter-bindings/catalogProjectValueSync";
 import { loadLegacyBindingIdentity } from "../../server/modules/parameter-bindings/binding/migrationAdapter";
@@ -143,7 +144,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
         }
         const submitted = page.waitForResponse((response) => response.request().method() === "POST"
           && response.url().endsWith("/api/v2/projects/aurora/parameter-value-change-requests/batches"));
-        await dialog.getByRole("button", { name: "一次提交全部 2 项" }).click();
+        await dialog.getByRole("button", { name: "提交 2 项审核" }).click();
         const response = await submitted;
         expect(response.status(), await response.text()).toBe(201);
         const item = (await response.json()).item as { id: string; status: string; batchProofDigest: string;
@@ -161,7 +162,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
         const mine = page.getByRole("article", { name: "批量源文件请求详情" });
         await expect(mine).toContainText(reason);
         await expect(mine.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
-        await mine.getByRole("button", { name: "刷新批量请求与来源" }).click();
+        await page.getByRole("button", { name: "刷新队列", exact: true }).click();
         await mine.getByText("溯源信息", { exact: true }).click();
         await expect(mine).toContainText(item.batchProofDigest);
         return item;
@@ -170,10 +171,10 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
         await signInBrowserAsRole(page, "software-committer", `${runtime!.frontendUrl}/parameter-review?project=aurora`);
         const row = page.getByRole("table", { name: "审阅队列", exact: true }).getByRole("row").filter({ hasText: reason });
         await expect(row).toBeVisible();
-        await row.getByRole("button", { name: `查看 ${reason} 提交详情`, exact: true }).click();
+        await row.getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
         const detail = page.getByRole("article", { name: "批量源文件请求详情" });
         await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
-        await expect(detail.getByText("DTS", { exact: true })).toBeVisible();
+        await expect(detail).toContainText(".dts");
         return detail;
       };
 
@@ -188,6 +189,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const approvalResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${approved.id}/review`));
       await detail.getByRole("button", { name: "批准全部 2 项" }).click();
+      await page.getByRole("dialog", { name: "确认批准整批变更", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       expect((await approvalResponse).status()).toBe(200);
       await expect(detail).toContainText("已批准");
       await page.reload();
@@ -238,7 +240,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const rejectResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${rejected.id}/review`));
       await rejectDetail.getByRole("button", { name: "驳回全部 2 项" }).click();
-      const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+      const rejectDialog = page.getByRole("dialog", { name: /^驳回「/ });
       await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
       await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("DTS 浏览器驳回：需要补充依据");
       await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
@@ -255,6 +257,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const withdrawResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${withdrawn.id}/withdraw`));
       await mine.getByRole("button", { name: "撤回我的批量提交" }).click();
+      await page.getByRole("dialog", { name: "确认撤回提交", exact: true }).getByRole("button", { name: "撤回提交", exact: true }).click();
       expect((await withdrawResponse).status()).toBe(200);
       await expect(mine).toContainText("已撤回");
       await page.reload();
@@ -265,13 +268,13 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const stale = await submitFromPage(staleFixture, "DTS 浏览器来源漂移");
       const staleDetail = await reviewFromQueue("DTS 浏览器来源漂移");
       await expect(staleDetail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
-      const oldVersion = (await db.query<{ storage_key: string; checksum: string; size_bytes: number; parsed_index: unknown }>(
-        "select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
+      const oldVersion = (await db.query<{ version_number: number; storage_key: string; checksum: string; size_bytes: number; parsed_index: ParsedIndex }>(
+        "select version_number,storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
         [staleFixture.versionId])).rows[0]!;
       const driftVersionId = randomUUID();
-      await insertFileVersion(db, { id: driftVersionId, fileId: staleFixture.fileId,
+      await insertFileVersion(db, { id: driftVersionId, fileId: staleFixture.fileId, versionNumber: oldVersion.version_number + 1,
         storageKey: oldVersion.storage_key, checksum: oldVersion.checksum, sizeBytes: oldVersion.size_bytes,
-        parsedIndex: oldVersion.parsed_index as Record<string, unknown>, origin: "upload",
+        parsedIndex: oldVersion.parsed_index, origin: "upload",
         createdByUserId: acceptanceCast.xuYun.userId });
       await db.query("update project_parameter_files set current_version_id=$2 where id=$1",
         [staleFixture.fileId, driftVersionId]);
@@ -279,6 +282,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const conflictResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${stale.id}/review`));
       await staleDetail.getByRole("button", { name: "批准全部 2 项" }).click();
+      await page.getByRole("dialog", { name: "确认批准整批变更", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       expect((await conflictResponse).status()).toBe(409);
       await expect(staleDetail.getByText(/来源或审核证明已变化/)).toBeVisible();
       await expect(staleDetail.getByRole("button", { name: "批准全部 2 项" })).toBeDisabled();

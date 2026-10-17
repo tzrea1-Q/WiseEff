@@ -1,6 +1,6 @@
 import type pg from "pg";
 
-import type { RegistrationCommand } from "./command";
+import type { RegistrationCommand, RegisterSubjectCommand } from "./command";
 import { registrationCommandFamily } from "./command";
 import type { RegistrationMethod } from "./result";
 
@@ -38,6 +38,41 @@ export type DestinationModuleRow = {
   organization_id: string;
   parent_id: string | null;
   kind: string;
+};
+
+/** Canonical initialization shares the registration transaction and rollback. */
+export const createRegistrationDestination = async (
+  client: RegistrationWriterClient,
+  command: RegisterSubjectCommand,
+): Promise<DestinationModuleRow | null> => {
+  const choice = command.newDestination;
+  if (!choice) return null;
+  const parent = await client.query<{ id: string; path: string; depth: number }>(
+    `select id, path, depth from public.parameter_modules
+     where organization_id = $1 and id = $2 and kind = 'business' for update`,
+    [command.organizationId, choice.parentModuleId],
+  );
+  const business = parent.rows[0];
+  if (!business) return null;
+  const kind = command.subjectKind === "driver" ? "driver-group" : command.subjectKind === "node-type" ? "node-type" : "business";
+  const attributionId = kind === "business" ? null : `asub:canonical:${command.destinationModuleId}`;
+  if (attributionId) {
+    // The retained module constraint requires this compatibility projection;
+    // Catalog Subject + organization registration remain the only identity owner.
+    await client.query(
+      `insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key)
+       values ($1,$2,$3,$4,'curated',$5)`,
+      [attributionId, command.organizationId, kind === "driver-group" ? "driver-registration" : "node-type-definition", choice.name, `catalog-subject:${command.subjectId}`],
+    );
+  }
+  const result = await client.query<DestinationModuleRow>(
+    `insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, attribution_subject_id)
+     values ($1,$2,$3,$4,$5,$6,$7,'curated',$8)
+     returning id, organization_id, parent_id, kind`,
+    [command.destinationModuleId, command.organizationId, business.id, choice.name,
+      `${business.path}/${command.destinationModuleId}`, business.depth + 1, kind, attributionId],
+  );
+  return result.rows[0] ?? null;
 };
 
 export const loadIdempotency = async (

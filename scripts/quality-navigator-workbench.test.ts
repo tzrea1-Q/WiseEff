@@ -10,6 +10,8 @@ const measurement = () => ({
   root: rect(280, 88, 1136, 700),
   navigator: rect(280, 168, 240, 600),
   task: rect(532, 168, 884, 600),
+  inspector: null,
+  inspectorOverlay: false,
   toolbar: rect(280, 88, 1136, 68),
   primaryAction: rect(1283, 108, 120, 36),
   noticeCount: 1,
@@ -18,20 +20,43 @@ const measurement = () => ({
   firstRowClip: rect(533, 210, 882, 40),
   viewport: { width: 1440, height: 900 },
   pageOverflow: 0,
-  contract: { navigatorWidth: 240, collapsedWidth: 40, gap: 12, toolbarPadding: 12 }
+  contract: { navigatorWidth: 240, collapsedWidth: 40, gap: 12, toolbarPadding: 12, inspectorWidth: 320 }
 });
 
 describe("navigator-workbench geometry", () => {
-  it.each([
-    "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
-    "/parameter-admin/modules?tab=queue", "/parameter-admin/modules?tab=registry"
-  ])("gates module governance geometry and content tabs on %s", (path) => {
-    expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("navigatorWorkbenches");
+  it.each(["configuration", "files", "config-sets", "structure", "conflicts"])(
+    "retains project workbench geometry and content tabs for %s", (view) => {
+      const path = `/parameter-admin/projects/aurora/${view}`;
+      expect(consistencyRoutes.find((route) => route.path === path)?.required)
+        .toEqual(expect.arrayContaining(["navigatorWorkbenches", "rowActions", "viewSwitches", "viewSwitchSignatures"]));
+      expect(viewSwitchStyleExpectations[path]).toEqual(["tabs"]);
+    }
+  );
+  it("gates module tree geometry and content tabs", () => {
+    const path = "/parameter-admin/modules";
+    expect(consistencyRoutes.find((route) => route.path === path)?.required)
+      .toEqual(expect.arrayContaining(["navigatorWorkbenches", "moduleTreeLabels"]));
     expect(viewSwitchStyleExpectations[path.split("?")[0]]).toEqual(["section", "tabs"]);
     for (const theme of ["light", "dark"]) {
       expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), pageKey: "module-governance" }], `${path} (${theme})`)).not.toThrow();
       expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), pageOverflow: 2 }], `${path} (${theme})`)).toThrow("horizontal");
     }
+  });
+  it.each(["queue", "registry"])("gates the real %s subview without inheriting module tree geometry", (view) => {
+    const path = `/parameter-admin/modules/${view}`;
+    const required = consistencyRoutes.find((route) => route.path === path)!.required;
+    expect(required).toEqual(expect.arrayContaining([
+      "titles", "buttons", "typeScale", "pageEdges", "xiaozeLaunchers",
+      "viewSwitches", "viewSwitchSignatures", "filterControls"
+    ]));
+    expect(required).not.toContain("moduleTreeLabels");
+    expect(required).not.toContain("navigatorWorkbenches");
+    expect(required).not.toContain("adminLists");
+    expect(required).not.toContain("rowActions");
+    expect(required.includes("tableScrollports")).toBe(view === "registry");
+    expect(consistencyRoutes.find((route) => route.path === `/parameter-admin/modules?tab=${view}`)?.required)
+      .toEqual(required);
+    expect(viewSwitchStyleExpectations[path]).toEqual(["section", "tabs"]);
   });
   it("rejects count text clipped by its own box or the navigator edge", () => {
     const count = measurement().navigatorCounts[0];

@@ -470,7 +470,7 @@ export function createStructuredEditSession(
                 || saved.writeTarget.role !== "canonical-project-value-draft"
                 || saved.projectParameterBindingId !== binding.id
                 || saved.currentValueId === undefined
-                || saved.currentValueId !== binding.currentValueId) {
+                || saved.currentValueId !== (binding.currentValueId ?? null)) {
                 throw new Error("未确认待审核草稿。");
               }
               stagedDrafts.push({ key: row.key, draftId: saved.draftId, bindingId: binding.id,

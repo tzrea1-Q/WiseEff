@@ -4,7 +4,8 @@ import { createHttpServer } from "../../../shared/http/server";
 import { createRouter } from "../../../shared/http/router";
 import { registerCatalogReadRoutes } from "./routes";
 
-import type { CurrentCatalogSnapshot } from "../../catalog-kernel/interface";
+import { DriverCompatible, PropertyKey, type CurrentCatalogSnapshot, type CatalogSubjectDetailSnapshot, type CatalogSnapshot, type DefinitionContentDigest, type DefinitionRevisionSnapshot, type ParameterDefinitionSnapshot } from "../../catalog-kernel/interface";
+import { CapturedCatalogSnapshot } from "../../catalog-kernel/runtime/currentSnapshot";
 import {
   CATALOG_RELEASE_HEADER,
   catalogDocumentResponseSchema,
@@ -15,9 +16,16 @@ import {
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import {
   CatalogCursor,
+  CatalogAliasId,
+  CatalogCanonicalKey,
+  CatalogEventTime,
+  CatalogMaterializationFingerprint,
   CatalogReleaseDigest,
   CatalogReleaseId,
+  CatalogReleaseSequence,
+  CatalogReleaseVersion,
   CatalogSubjectId,
+  CatalogTimelineFactId,
   DefinitionRevisionId,
   ParameterDefinitionId,
 } from "../../parameter-catalog-contract/index";
@@ -34,15 +42,15 @@ import type {
 
 const digest = CatalogReleaseDigest(`sha256:${"a".repeat(64)}`);
 const pin = { id: CatalogReleaseId("crel_acme_2"), digest };
-const fingerprint = `sha256:${"b".repeat(64)}`;
-const release = { id: pin.id, version: "1.1.0", digest };
+const fingerprint = CatalogMaterializationFingerprint(`sha256:${"b".repeat(64)}`);
+const release = { id: pin.id, version: CatalogReleaseVersion("1.1.0"), digest };
 const cursor = CatalogCursor("opaque-kernel-cursor");
 
-const selectedRevision = {
+const selectedRevision: DefinitionRevisionSnapshot = {
   id: DefinitionRevisionId("drev_acme_power_iin_max_1"),
   definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"),
   revisionNumber: 1,
-  contentDigest: `sha256:${"c".repeat(64)}`,
+  contentDigest: `sha256:${"c".repeat(64)}` as DefinitionContentDigest,
   publishedIn: release,
   content: {
     lifecycle: "active" as const,
@@ -62,27 +70,27 @@ const selectedRevision = {
   },
 };
 
-const definition = {
+const definition: ParameterDefinitionSnapshot = {
   id: ParameterDefinitionId("pdef_acme_power_iin_max"),
   subjectId: CatalogSubjectId("csub_acme_power"),
-  propertyKey: "iin_max",
+  propertyKey: PropertyKey("iin_max"),
   selectedRevision,
 };
 
-const subject = {
+const subject: CatalogSubjectDetailSnapshot = {
   id: CatalogSubjectId("csub_acme_power"),
   kind: "driver" as const,
-  canonicalKey: "driver:acme,power",
+  canonicalKey: CatalogCanonicalKey("driver:acme,power"),
   membership: {
     release,
     lifecycle: "active" as const,
-    selector: { kind: "driver-compatible" as const, values: ["acme,power"] },
+    selector: { kind: "driver-compatible" as const, values: [DriverCompatible("acme,power")] },
     tombstone: { kind: "absent" as const },
   },
   aliases: [
     {
-      id: "cali_acme_power_v1",
-      selector: { kind: "driver-compatible" as const, value: "acme,power-v1" },
+      id: CatalogAliasId("cali_acme_power_v1"),
+      selector: { kind: "driver-compatible" as const, value: DriverCompatible("acme,power-v1") },
       subjectId: CatalogSubjectId("csub_acme_power"),
       membership: {
         release,
@@ -97,7 +105,7 @@ const subject = {
 const otherSubject = {
   ...subject,
   id: CatalogSubjectId("csub_zeta"),
-  canonicalKey: "driver:zeta,last",
+  canonicalKey: CatalogCanonicalKey("driver:zeta,last"),
   aliases: [],
 };
 
@@ -128,6 +136,130 @@ const page = <T>(items: readonly T[], next: typeof cursor | null = cursor) => ({
   pageInfo: { totalCount: items.length, hasMore: next !== null },
 });
 
+describe("definition owner lifecycle filtering", () => {
+  function lifecycleHarness(subjectCount = 3, trustedScope = scope) {
+    const subjects: CatalogSubjectDetailSnapshot[] = Array.from({ length: subjectCount }, (_, index) => ({
+      ...subject,
+      id: CatalogSubjectId(`csub_owner_${index}`),
+      canonicalKey: CatalogCanonicalKey(`driver:owner,${String(index).padStart(4, "0")}`),
+      membership: {
+        ...subject.membership,
+        lifecycle: index === 0 ? "retired" : "active",
+      },
+      aliases: [],
+    }));
+    const definitions = subjects.map((owner, index) => ({
+      ...definition,
+      id: ParameterDefinitionId(`pdef_owner_${index}`),
+      subjectId: owner.id,
+      propertyKey: PropertyKey("iin_max"),
+      selectedRevision: {
+        ...selectedRevision,
+        id: DefinitionRevisionId(`drev_owner_${index}`),
+        definitionId: ParameterDefinitionId(`pdef_owner_${index}`),
+      },
+    }));
+    const snapshot = Object.assign(new CapturedCatalogSnapshot({
+      release,
+      sequence: CatalogReleaseSequence(2),
+      publishedAt: CatalogEventTime(facts.publishedAt),
+      materializedAt: CatalogEventTime(facts.materializedAt),
+      compiledFingerprint: CatalogMaterializationFingerprint(fingerprint),
+      databaseFingerprint: CatalogMaterializationFingerprint(fingerprint),
+      subjects,
+      definitions,
+      revisions: definitions.map((entry) => entry.selectedRevision),
+      facts: [],
+    }), { snapshotKind: "current" as const, materializationFingerprint: fingerprint });
+    const { ports } = createHarness({ scope: trustedScope });
+    ports.runtime.loadCurrentCatalog = async () => ({ ok: true, value: snapshot });
+    return { ports, subjects, definitions };
+  }
+
+  it("leaves the unfiltered default intact and filters/counts the complete set before pagination", async () => {
+    const { ports } = lifecycleHarness(503);
+    const all = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", { query: { limit: "1" } }));
+    expect(all.status).toBe(200);
+    expect(all.body).toMatchObject({ totalCount: 503, hasMore: true, items: [{ subject: { id: "csub_owner_0" } }] });
+    const first = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", {
+      query: { subjectLifecycle: "active", limit: "1" },
+    }));
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ totalCount: 502, hasMore: true, items: [{ subject: { id: "csub_owner_1" } }] });
+    const nextCursor = (first.body as { nextCursor: string }).nextCursor;
+    const second = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", {
+      query: { subjectLifecycle: "active", limit: "1", cursor: nextCursor },
+    }));
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({ totalCount: 502, items: [{ subject: { id: "csub_owner_2" } }] });
+    const changedQueries: NonNullable<CatalogReadRequest["query"]>[] = [{ cursor: nextCursor }, { cursor: nextCursor, subjectLifecycle: "retired" }];
+    for (const query of changedQueries) {
+      const changed = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", { query }));
+      expect(changed.status).toBe(400);
+      expect(changed.body).toMatchObject({ error: { details: { field: "cursor" } } });
+    }
+  });
+
+  it("distinguishes owner retirement from the definition lifecycle and keeps direct subject scope", async () => {
+    const { ports } = lifecycleHarness();
+    const retired = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", {
+      query: { subjectLifecycle: "retired", lifecycle: "active" },
+    }));
+    expect(retired.status).toBe(200);
+    expect(retired.body).toMatchObject({ totalCount: 1, items: [{ subject: { id: "csub_owner_0" } }] });
+    const scoped = await handleCatalogRead(ports, get("/api/v2/catalog/subjects/csub_owner_0/definitions", {
+      query: { subjectLifecycle: "active" },
+    }));
+    expect(scoped.status).toBe(200);
+    expect(scoped.body).toMatchObject({ totalCount: 0, items: [] });
+    const historical = await handleCatalogRead(ports, get("/api/v2/catalog/subjects/csub_owner_0/definitions"));
+    expect(historical.status).toBe(200);
+    expect(historical.body).toMatchObject({ totalCount: 1, items: [{ subject: { id: "csub_owner_0" } }] });
+    const intersected = await handleCatalogRead(ports, get("/api/v2/catalog/subjects/csub_owner_1/definitions", {
+      query: { subjectLifecycle: "active", subjectId: "csub_owner_2" },
+    }));
+    expect(intersected.status).toBe(200);
+    expect(intersected.body).toMatchObject({ totalCount: 0, items: [] });
+  });
+
+  it("intersects module, explicit subjects, tenant subjects, definitions and registration selections", async () => {
+    const { ports } = lifecycleHarness(5, {
+      ...scope,
+      subjects: { kind: "only", ids: [CatalogSubjectId("csub_owner_1"), CatalogSubjectId("csub_owner_2")], fingerprint: "subjects" },
+      definitions: { kind: "only", ids: [ParameterDefinitionId("pdef_owner_1"), ParameterDefinitionId("pdef_owner_4")], fingerprint: "definitions" },
+    });
+    const selectModule = vi.fn(async () => ({
+      subjectIds: [CatalogSubjectId("csub_owner_1"), CatalogSubjectId("csub_owner_3"), CatalogSubjectId("csub_owner_4")],
+      moduleName: "Power",
+    }));
+    const filteredPorts = { ...ports, registration: {
+      ...ports.registration,
+      selectPlacementSubtreeSubjectIds: selectModule,
+      selectDefinitionIds: async () => ({ kind: "only" as const, ids: [ParameterDefinitionId("pdef_owner_1"), ParameterDefinitionId("pdef_owner_2"), ParameterDefinitionId("pdef_owner_4")], fingerprint: "registrations" }),
+    } };
+    const query = { subjectLifecycle: "active", placementModuleId: "mod_power", registration: "active" };
+    const result = await handleCatalogRead(filteredPorts, get("/api/v2/catalog/definitions", { query }));
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ totalCount: 1, items: [{ subject: { id: "csub_owner_1" } }], placementModuleName: "Power" });
+    expect(selectModule).toHaveBeenCalledWith(expect.objectContaining({ organizationId: scope.organizationId, principalId: scope.principalId }));
+    const extraQueries: NonNullable<CatalogReadRequest["query"]>[] = [{ subjectIds: ["csub_owner_2"] }, { subjectId: "csub_owner_2" }];
+    for (const extra of extraQueries) {
+      const empty = await handleCatalogRead(filteredPorts, get("/api/v2/catalog/definitions", { query: { ...query, ...extra } }));
+      expect(empty.status).toBe(200);
+      expect(empty.body).toMatchObject({ totalCount: 0, items: [] });
+    }
+  });
+
+  it("rejects invalid owner lifecycle values at the HTTP boundary", async () => {
+    const { ports } = lifecycleHarness();
+    for (const subjectLifecycle of ["all", "deprecated", ""]) {
+      const response = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", { query: { subjectLifecycle } }));
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({ error: { details: { field: "subjectLifecycle" } } });
+    }
+  });
+});
+
 function createHarness(options: {
   readonly snapshotCalls?: string[];
   readonly runtimeCalls?: string[];
@@ -142,8 +274,13 @@ function createHarness(options: {
   const snapshotCalls = options.snapshotCalls ?? [];
   const runtimeCalls = options.runtimeCalls ?? [];
   const listItems = options.listSubjectsItems ?? [otherSubject, subject];
-  const snapshot = {
+  const snapshot: CatalogSnapshot = {
     release,
+    sequence: CatalogReleaseSequence(2),
+    publishedAt: CatalogEventTime(facts.publishedAt),
+    materializedAt: CatalogEventTime(facts.materializedAt),
+    compiledFingerprint: fingerprint,
+    databaseFingerprint: fingerprint,
     getSubject: (subjectId: ReturnType<typeof CatalogSubjectId>) => {
       snapshotCalls.push("getSubject");
       if (subjectId === subject.id) {
@@ -201,13 +338,13 @@ function createHarness(options: {
         definition,
         page: page([
           {
-            id: "fact-1",
+            id: CatalogTimelineFactId("fact-1"),
             definitionId: definition.id,
             revisionId: selectedRevision.id,
             revisionNumber: 1,
             release,
-            releaseSequence: 2,
-            publishedAt: "2026-09-02T00:00:00Z",
+            releaseSequence: CatalogReleaseSequence(2),
+            publishedAt: CatalogEventTime("2026-09-02T00:00:00Z"),
             previousRevisionId: { kind: "absent" as const },
             changes: ["introduced" as const],
           },
@@ -215,10 +352,10 @@ function createHarness(options: {
       };
     },
   };
-  const current = Object.assign(snapshot, {
+  const current: CurrentCatalogSnapshot = { ...snapshot,
     snapshotKind: "current" as const,
-    materializationFingerprint: options.fingerprint ?? fingerprint,
-  }) as CurrentCatalogSnapshot;
+    materializationFingerprint: CatalogMaterializationFingerprint(options.fingerprint ?? fingerprint),
+  };
 
   const ports: CatalogReadPorts = {
     runtime: {
@@ -423,6 +560,8 @@ describe("S8-READ nine canonical catalog read routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers[CATALOG_RELEASE_HEADER]).toBe(pin.id);
     const body = catalogDocumentResponseSchema.parse(response.body);
+    expect(body.item).not.toBeNull();
+    if (!body.item) throw new Error("ready document missing");
     expect(body.item.status).toBe("ready");
     expect(body.item.digest).toBe(digest);
     expect(body.item.materializationFingerprint).toBe(fingerprint);

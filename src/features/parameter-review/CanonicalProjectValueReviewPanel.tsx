@@ -5,6 +5,10 @@ import { ViewSwitch } from "@/components/ui/view-switch";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { ReviewProvenance } from "./ReviewProvenance";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { ReviewSourceDiff, reviewLocator } from "./ReviewSourceDiff";
+import type { ParameterRecord } from "@/domain/parameters/types";
 import type {
   CatalogBatchValueChangeRequestResponse,
   CatalogSourceConflictDecisionResponse,
@@ -35,8 +39,11 @@ type CanonicalProjectValueReviewPanelProps = {
   mineOnly?: boolean;
   detailOnly?: boolean;
   externalView?: "pending" | "history";
+  refreshVersion?: number;
   onRequestsChanged?: () => void;
+  onBusyChange?: (busy: boolean) => void;
   users?: Array<{ id: string; name: string }>;
+  parameters?: ParameterRecord[];
 };
 
 type ReviewView = "pending" | "history";
@@ -172,8 +179,11 @@ export function CanonicalProjectValueReviewPanel({
   mineOnly = false,
   detailOnly = false,
   externalView,
+  refreshVersion = 0,
   onRequestsChanged,
-  users = []
+  onBusyChange,
+  users = [],
+  parameters = []
 }: CanonicalProjectValueReviewPanelProps) {
   const canonicalRepository = repository;
   const tabsId = useId();
@@ -187,8 +197,16 @@ export function CanonicalProjectValueReviewPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [rejectRequestId, setRejectRequestId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
+  const [rejectRequestScope, setRejectRequestScope] = useState<string | null>(null);
+  const [rejection, setRejection] = useState<{ scope: string; reason: string } | null>(null);
+  const [approveRequestScope, setApproveRequestScope] = useState<string | null>(null);
+  const [withdrawRequestScope, setWithdrawRequestScope] = useState<string | null>(null);
+  const [withdrawBlockedScope, setWithdrawBlockedScope] = useState<string | null>(null);
+  const [batchWriteBlockedScope, setBatchWriteBlockedScope] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceDiff, setSourceDiff] = useState<SourceDiff | null>(null);
   const [sourceDiffState, setSourceDiffState] = useState<SourceDiffState>("idle");
@@ -206,14 +224,29 @@ export function CanonicalProjectValueReviewPanel({
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
-  const userName = (id: string | null | undefined) => users.find((user) => user.id === id)?.name ?? id ?? "未指派";
+  const userName = (id: string | null | undefined) => users.find((user) => user.id === id)?.name ?? (id ? "项目成员（姓名暂不可用）" : "未指派");
   const selected = batchSelected ? null : requests.find((request) => request.id === selectedId) ?? null;
   const selectedRequestId = selected?.id ?? null;
   const effectiveSelectedId = batchSelected ? batchRequest?.id ?? null : selected?.id ?? null;
+  const selectionScope = effectiveSelectedId ? JSON.stringify([projectId, currentUserId, view, effectiveSelectedId]) : null;
+  // Exact-request refreshes temporarily clear loaded detail, but retain their explicit target.
+  const intendedRequestId = effectiveSelectedId ?? deepLinkRequestRef.current ?? initialRequestId ?? null;
+  const rejectionScope = intendedRequestId ? JSON.stringify([projectId, currentUserId, view, intendedRequestId]) : null;
+  const rejectReason = rejection && rejection.scope === rejectionScope ? rejection.reason : "";
+  const approveOpen = Boolean(approveRequestScope && approveRequestScope === selectionScope);
+  const rejectOpen = Boolean(rejectRequestScope && rejectRequestScope === selectionScope);
+  const withdrawOpen = Boolean(withdrawRequestScope && withdrawRequestScope === selectionScope);
+  const withdrawBlocked = Boolean(withdrawBlockedScope && withdrawBlockedScope === selectionScope);
+  const batchWriteBlocked = Boolean(batchWriteBlockedScope && batchWriteBlockedScope === selectionScope);
   useEffect(() => {
-    setRejectRequestId(null);
-    setRejectReason("");
-  }, [effectiveSelectedId, projectId, currentUserId, view]);
+    // A first-commit click may precede this passive effect; keep dialogs opened for this same scope.
+    setRejectRequestScope((scope) => scope === selectionScope ? scope : null);
+    setApproveRequestScope((scope) => scope === selectionScope ? scope : null);
+    setWithdrawRequestScope((scope) => scope === selectionScope ? scope : null);
+  }, [selectionScope]);
+  useEffect(() => {
+    setRejection((value) => value?.scope === rejectionScope ? value : null);
+  }, [rejectionScope]);
   const canReviewSelected = Boolean(
     !mineOnly && canReview && currentUserId && selected && selected.submitterUserId !== currentUserId
       && (conflictDecisionState === "ordinary" || (conflictDecisionState === "ready"
@@ -304,6 +337,9 @@ export function CanonicalProjectValueReviewPanel({
             try {
               const batch = (await canonicalRepository.getProjectValueBatchChangeRequest(projectId, deepLinkRequestId)).item;
               if (cancelled) return;
+              if (batch.id !== deepLinkRequestId || batch.projectId !== projectId) {
+                throw new Error("请求详情与当前请求不一致，已阻止审核。");
+              }
               if ((view === "pending") !== (batch.status === "pending")) {
                 setView(batch.status === "pending" ? "pending" : "history");
                 return;
@@ -311,6 +347,7 @@ export function CanonicalProjectValueReviewPanel({
               setRequests(nextRequests);
               setBatchRequest(batch);
               setBatchDetailLoadedId(batch.id);
+              setBatchWriteBlockedScope(null);
               setBatchSelected(true);
               setSelectedId(null);
               deepLinkRequestRef.current = null;
@@ -340,6 +377,7 @@ export function CanonicalProjectValueReviewPanel({
           : nextRequests[0]?.id ?? null;
         setRequests(nextRequests);
         setSelectedId(nextSelectedId);
+        setWithdrawBlockedScope(null);
         if (!nextSelectedId && nextBatches.length > 0) {
           setBatchRequest(nextBatches[0]);
           setBatchDetailLoadedId(null);
@@ -358,7 +396,7 @@ export function CanonicalProjectValueReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [batchRefresh, canReview, canonicalRepository, currentUserId, detailOnly, initialRequestId, mineOnly, projectId, view]);
+  }, [batchRefresh, canReview, canonicalRepository, currentUserId, detailOnly, initialRequestId, mineOnly, projectId, refreshVersion, view]);
 
   useEffect(() => {
     if (!batchSelected || !batchRequest || batchDetailLoadedId === batchRequest.id) return;
@@ -374,6 +412,7 @@ export function CanonicalProjectValueReviewPanel({
       }
       setBatchRequest(item);
       setBatchDetailLoadedId(requestId);
+      setBatchWriteBlockedScope(null);
     }).catch((cause) => {
       if (!cancelled) setError(presentError(cause, "加载批量请求详情失败，已阻止审核。"));
     });
@@ -410,7 +449,7 @@ export function CanonicalProjectValueReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [canonicalRepository, projectId, effectiveSelectedId, batchSelected, batchDetailLoadedId, batchRefresh]);
+  }, [canonicalRepository, projectId, effectiveSelectedId, batchSelected, batchDetailLoadedId]);
 
   useEffect(() => {
     setConflictDecision(null);
@@ -437,7 +476,7 @@ export function CanonicalProjectValueReviewPanel({
       }
     });
     return () => { cancelled = true; };
-  }, [canonicalRepository, projectId, selectedRequestId, batchRefresh]);
+  }, [canonicalRepository, projectId, selectedRequestId]);
 
   if (!canonicalRepository?.listProjectValueChangeRequests || (!mineOnly && !canonicalRepository.reviewProjectValueChangeRequest)) {
     return (
@@ -448,7 +487,7 @@ export function CanonicalProjectValueReviewPanel({
   }
   const reviewProjectValueChangeRequest = canonicalRepository.reviewProjectValueChangeRequest;
   const withdrawSelected = async () => {
-    if (!selected || busy || selected.status !== "pending" || selected.submitterUserId !== currentUserId
+    if (!selected || busy || withdrawBlocked || selected.status !== "pending" || selected.submitterUserId !== currentUserId
       || !canonicalRepository.withdrawProjectValueChangeRequest) return;
     setBusy(true);
     setError(null);
@@ -475,7 +514,11 @@ export function CanonicalProjectValueReviewPanel({
       setSelectedId(nextId);
       onSelectRequest?.(nextId);
     } catch (withdrawError) {
-      if (isCurrentScope()) setError(presentError(withdrawError, "撤回失败，请稍后重试。"));
+      if (isCurrentScope()) {
+        setWithdrawRequestScope(null);
+        setWithdrawBlockedScope(selectionScope);
+        setError(presentError(withdrawError, "撤回结果尚未确认，请重新核对状态。"));
+      }
     } finally {
       if (isCurrentScope()) setBusy(false);
     }
@@ -498,7 +541,8 @@ export function CanonicalProjectValueReviewPanel({
         { catalogReleaseId, idempotencyKey: idempotencyKey() }
       );
       if (!isCurrentScope()) return;
-      setRejectRequestId(null);
+      setRejectRequestScope(null);
+      setApproveRequestScope(null);
       onRequestsChanged?.();
       if (conflictDecisionState === "ready" || detailOnly) {
         deepLinkRequestRef.current = selected.id;
@@ -514,13 +558,13 @@ export function CanonicalProjectValueReviewPanel({
       onSelectRequest?.(nextId);
     } catch (reviewError) {
       if (isCurrentScope()) {
-        setError(reviewError instanceof WiseEffApiError && reviewError.code === "CONFLICT"
+        setApproveRequestScope(null);
+        const failureMessage = reviewError instanceof WiseEffApiError && reviewError.code === "CONFLICT"
           ? "来源或决策证明已过期（409），审核未应用；请刷新请求状态。"
-          : presentError(reviewError, "软件审核失败，请稍后重试。"));
-        if (conflictDecisionState === "ready") {
-          setConflictDecisionState("error");
-          setConflictDecisionError("审核结果待重新核对，已阻止再次批准；请刷新请求状态。");
-        }
+          : presentError(reviewError, "软件审核失败，请稍后重试。");
+        setError(failureMessage);
+        setConflictDecisionState("error");
+        setConflictDecisionError(failureMessage);
       }
     } finally {
       if (isCurrentScope()) setBusy(false);
@@ -534,13 +578,24 @@ export function CanonicalProjectValueReviewPanel({
   );
   const singleDiff = sourceDiff && !("kind" in sourceDiff) ? sourceDiff : null;
   const batchDiff = sourceDiff && "kind" in sourceDiff ? sourceDiff : null;
+  const selectedParameter = parameters.find((parameter) => parameter.projectId === projectId
+    && (parameter.id === selected?.bindingId || parameter.projectParameterBindingId === selected?.bindingId));
+  const selectedLocator = singleDiff?.targetIdentity?.path ?? reviewLocator(singleDiff?.bindings.find((binding) => binding.bindingId === selected?.bindingId)?.locator);
+  const selectedBefore = singleDiff?.targetIdentity?.beforeText;
+  const requestLabel = batchSelected ? `${batchDiff?.sourceName ?? "源文件"}的 ${batchRequest?.targets.length ?? 0} 项变更`
+    : selectedParameter?.name ?? selectedLocator;
+  const reviewIssue = batchSelected ? sourceDiffError ?? error : error ?? sourceDiffError ?? conflictDecisionError;
+  const refreshSelection = () => {
+    deepLinkRequestRef.current = effectiveSelectedId;
+    setBatchRefresh((value) => value + 1);
+  };
   const batchProofReady = Boolean(batchRequest && batchSelected && batchDetailLoadedId === batchRequest.id
     && sourceDiffState === "ready"
     && batchDiff && matchesFrozenBatch(batchRequest, batchDiff));
   const canReviewBatch = Boolean(!mineOnly && canReview && currentUserId && batchRequest
     && batchRequest.submitterUserId !== currentUserId && batchRequest.assignedToUserId === currentUserId);
   const reviewBatch = async (decision: "approve" | "reject", note = "") => {
-    if (!batchRequest || (decision === "approve" && !batchProofReady) || !canReviewBatch || busy || batchRequest.status !== "pending"
+    if (!batchRequest || batchWriteBlocked || (decision === "approve" && !batchProofReady) || !canReviewBatch || busy || batchRequest.status !== "pending"
       || !reviewProjectValueChangeRequest || !canonicalRepository.getProjectValueBatchChangeRequest) return;
     if (decision === "reject" && !note.trim()) return;
     setBusy(true);
@@ -570,17 +625,20 @@ export function CanonicalProjectValueReviewPanel({
         throw new Error("批量审核结果不完整，已停止展示成功状态。");
       }
       setBatchRequest(refreshed);
-      setRejectRequestId(null);
+      setRejectRequestScope(null);
+      setApproveRequestScope(null);
       onRequestsChanged?.();
       deepLinkRequestRef.current = requestId;
       setView("history");
     } catch (reviewError) {
       if (!isCurrentScope()) return;
+      setApproveRequestScope(null);
+      setBatchWriteBlockedScope(selectionScope);
       setError(presentError(reviewError, "批量软件审核失败，请刷新状态后重试。"));
       setSourceDiffState("error");
       setSourceDiffError(reviewError instanceof WiseEffApiError && reviewError.code === "CONFLICT"
-        ? "来源或审核证明已变化，已阻止再次批准；请刷新请求状态。"
-        : "审核结果尚未确认，已阻止再次批准；请刷新请求状态。");
+        ? "来源或审核证明已变化，已阻止再次审核；请刷新请求状态。"
+        : "审核结果尚未确认，已阻止再次审核；请刷新请求状态。");
       try {
         const latest = (await canonicalRepository.getProjectValueBatchChangeRequest(projectId, requestId)).item;
         if (!isCurrentScope()) return;
@@ -598,7 +656,7 @@ export function CanonicalProjectValueReviewPanel({
     }
   };
   const withdrawBatch = async () => {
-    if (!batchRequest || busy || batchRequest.status !== "pending"
+    if (!batchRequest || busy || batchWriteBlocked || batchRequest.status !== "pending"
       || batchRequest.submitterUserId !== currentUserId
       || !canonicalRepository.withdrawProjectValueChangeRequest) return;
     const requestId = batchRequest.id;
@@ -621,6 +679,8 @@ export function CanonicalProjectValueReviewPanel({
       setView("history");
     } catch (withdrawError) {
       if (isCurrentScope()) {
+        setWithdrawRequestScope(null);
+        setBatchWriteBlockedScope(selectionScope);
         setError(presentError(withdrawError, "批量撤回失败，请刷新状态后重试。"));
         deepLinkRequestRef.current = requestId;
         setBatchRefresh((value) => value + 1);
@@ -643,7 +703,9 @@ export function CanonicalProjectValueReviewPanel({
           ]} />
       </header> : null}
       <TabPanel role={detailOnly ? undefined : "tabpanel"} id={detailOnly ? undefined : `${tabsId}-${view}-panel`} aria-labelledby={detailOnly ? undefined : `${tabsId}-${view}-tab`}>
-      {error ? <p role="alert">{error}</p> : null}
+      {reviewIssue && !selected && !batchRequest ? <p role="alert">{reviewIssue}</p> : null}
+      {error && !selected && !batchRequest ? <button type="button" className="button subtle" disabled={loading || busy}
+        onClick={() => setBatchRefresh((value) => value + 1)}>重新加载请求</button> : null}
       {staleRequestId ? (
         <p role="alert">请求「{staleRequestId}」已失效、已归档或不属于当前项目，未自动切换到其他请求。</p>
       ) : null}
@@ -654,7 +716,7 @@ export function CanonicalProjectValueReviewPanel({
           {!detailOnly ? <div className="table-wrap">
             <table aria-label={mineOnly ? "我的参数提交请求" : "软件配置审核请求"}>
               <thead>
-                <tr><th>绑定</th><th>格式</th><th>动作</th><th>状态</th><th>原因</th></tr>
+                <tr><th>变更</th><th>格式</th><th>动作</th><th>状态</th><th>原因</th></tr>
               </thead>
               <tbody>
                 {(batchRequest && !batchRequests.some((request) => request.id === batchRequest.id)
@@ -699,96 +761,73 @@ export function CanonicalProjectValueReviewPanel({
             </table>
           </div> : null}
           {selected ? (
-            <article aria-label="源文件请求详情">
+            <article className="review-inspector__detail" aria-label="源文件请求详情">
               <header className="review-inspector__header">
-                <p className="review-inspector__eyebrow">软件配置 · {selected.sourceFormat.toUpperCase()}</p>
                 <div className="review-inspector__title">
-                  <h3>{selected.reason}</h3><Badge variant="secondary">{canonicalStatusLabels[selected.status]}</Badge>
+                  <h3>{selectedParameter?.name ?? singleDiff?.sourceName ?? `${selected.sourceFormat.toUpperCase()} 参数变更`}</h3><Badge variant="secondary">{canonicalStatusLabels[selected.status]}</Badge>
                 </div>
+                <p className="review-inspector__reason">修改原因：{selected.reason}</p>
                 <dl className="review-inspector__meta">
-                  <div><dt>提交人</dt><dd>{userName(selected.submitterUserId)}</dd></div>
-                  <div><dt>指定审核人</dt><dd>{userName(selected.assignedToUserId)}</dd></div>
-                  <div><dt>提交时间</dt><dd><time dateTime={selected.createdAt} title={formatAbsolute(selected.createdAt)}>{formatRelativeOrAbsolute(selected.createdAt)}</time></dd></div>
-                  {selected.reviewerUserId ? <div><dt>实际审核人</dt><dd>{userName(selected.reviewerUserId)}</dd></div> : null}
+                  <div><dt>提交人</dt><dd>{selected.submitterName ?? userName(selected.submitterUserId)}</dd></div>
+                  <div><dt>指定审核人</dt><dd>{selected.assignedToName ?? userName(selected.assignedToUserId)}</dd></div>
                 </dl>
-                {selected.reviewerNote ? <p>{selected.reviewerNote}</p> : null}
+              </header>
+              {reviewIssue && !approveOpen && !rejectOpen ? <div className="review-state" role="alert"><p>{reviewIssue}</p>
+                <button type="button" className="button subtle" disabled={busy || loading} onClick={refreshSelection}>{loading ? "核对中…" : "重新核对状态"}</button></div> : null}
                 <div className="review-inspector__actions">
                   {view === "pending" && selected.status === "pending" && canReviewSelected ? (
                     <>
-                      <button type="button" className="button primary" disabled={busy || !sourceDiffReadyForSelected}
-                        onClick={() => void reviewSelected("approve")}>批准软件配置</button>
-                      <button type="button" className="button subtle" disabled={busy} onClick={() => setRejectRequestId(selected.id)}>驳回</button>
+                      <button type="button" className={`button ${selected.action === "delete" ? "danger" : "primary"}`} disabled={busy || !sourceDiffReadyForSelected}
+                        onClick={() => setApproveRequestScope(selectionScope)}>{busy ? "处理中…" : selected.action === "delete" ? "批准删除属性" : "批准软件配置"}</button>
+                      <button type="button" className="button subtle" disabled={busy} onClick={() => setRejectRequestScope(selectionScope)}>驳回</button>
                     </>
-                  ) : view === "pending" && selected.status === "pending" ? (
+                  ) : view === "pending" && selected.status === "pending"
+                    && !(reviewIssue && conflictDecisionState === "error" && !mineOnly && canReview
+                      && selected.submitterUserId !== currentUserId) ? (
                     <p role="note">{selected.submitterUserId === currentUserId
-                      ? "不能审核自己的提交；请由其他合格审核员处理。"
+                      ? `等待${selected.assignedToName ?? userName(selected.assignedToUserId)}审核。`
+                      : !mineOnly && canReview && (conflictDecisionState === "loading" || conflictDecisionState === "idle")
+                      ? "正在核对请求状态，请稍候…"
+                      : !mineOnly && canReview && conflictDecisionState === "error"
+                      ? "请求状态核对失败，请刷新后继续审核。"
+                      : !mineOnly && canReview && conflictDecisionState === "ready"
+                      ? "此请求已指派给其他审核人。"
                       : "当前账号不是该项目的软件审核员；审核操作由服务端拒绝。"}</p>
                   ) : null}
                   {view === "pending" && selected.status === "pending" && selected.submitterUserId === currentUserId
                     && canonicalRepository.withdrawProjectValueChangeRequest ? (
-                      <button type="button" className="button subtle" disabled={busy} onClick={() => void withdrawSelected()}>撤回我的提交</button>
+                      <button type="button" className="button subtle" disabled={busy || withdrawBlocked} onClick={() => setWithdrawRequestScope(selectionScope)}>{busy ? "处理中…" : "撤回我的提交"}</button>
                     ) : null}
                 </div>
-              </header>
-              <dl aria-label="请求标识与更新时间">
-                <div><dt>参数记录</dt><dd><code>{selected.bindingId}</code></dd></div>
-                <div><dt>请求 ID</dt><dd><code>{selected.id}</code></dd></div>
-                <div><dt>来源快照</dt><dd><code>{selected.sourcePinId ?? "—"}</code></dd></div>
-                <div><dt>候选文件</dt><dd><code>{selected.candidateId ?? "—"}</code></dd></div>
-                <div><dt>状态更新时间</dt><dd><time dateTime={selected.updatedAt} title={formatAbsolute(selected.updatedAt)}>{formatRelativeOrAbsolute(selected.updatedAt)}</time></dd></div>
-              </dl>
-              <section aria-label="变更摘要"><h4>变更摘要</h4>
-                <p>{singleDiff?.sourceName ?? selected.sourceFormat.toUpperCase()}：<span>{selected.action === "delete" && selected.status === "pending"
-                  ? "删除属性（批准后生效）" : canonicalRequestActionLabel(selected)}</span></p>
-                <pre aria-label="固定源目标内容">{canonicalRequestSourceText(selected)}</pre>
+              <section aria-label="变更摘要" className="review-inspector__change-summary">
+                <h4 className="sr-only">变更摘要</h4>
+                <p>{singleDiff?.sourceName ?? selected.sourceFormat.toUpperCase()} · {selectedLocator}</p>
               </section>
+              {selected.status !== "pending" ? <p className="review-inspector__notice" role="note">{selected.status === "approved" ? selected.applyOutcome ? "已批准并应用。" : "已批准，应用结果待核对。" : `${canonicalStatusLabels[selected.status]}，本次变更未应用。`}</p> : null}
               <section aria-label="前后对比"><h4>前后对比</h4>
-              <p role="note">以下差异固定于提交时，不随当前文件变化。</p>
+              <p role="note">提交时来源快照</p>
+              {!singleDiff && sourceDiffState !== "loading" ? <p className="review-target-change"><code>{selectedBefore ?? "原值待核对"}</code><span aria-hidden="true"> → </span><code aria-label="固定源目标内容">{selected.action === "delete" ? "删除属性" : canonicalRequestSourceText(selected)}</code>{selectedParameter?.unit ? ` ${selectedParameter.unit}` : ""}</p> : null}
               {sourceDiffState === "loading" ? <p role="status">正在加载固定源差异…</p> : null}
-              {sourceDiffError ? <p role="alert">{sourceDiffError}</p> : null}
               {singleDiff ? (
-                <section aria-label="固定源差异" className="canonical-project-value-review__diff">
-
-                  <div>
-                    <p>变更前</p>
-                    <pre
-                      tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */}
-                      aria-label="固定源变更前"
-                      className="canonical-project-value-review__diff-text"
-                    >{singleDiff.before}</pre>
-                  </div>
-                  <div>
-                    <p>变更后</p>
-                    <pre
-                      tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */}
-                      aria-label="固定源变更后"
-                      className="canonical-project-value-review__diff-text"
-                    >{singleDiff.after}</pre>
-                  </div>
-                </section>
+                <section aria-label="固定源差异"><ReviewSourceDiff before={singleDiff.before} after={singleDiff.after} /></section>
               ) : null}
               </section>
               <section aria-label="影响范围"><h4>影响范围</h4>
-                <p>{singleDiff?.sourceName ?? "固定来源"} · 受影响绑定 {singleDiff?.bindings.length ?? "待核对"} 项</p>
-                {singleDiff ? <ol aria-label="受影响绑定">{singleDiff.bindings.map((binding, index) =>
-                  <li key={binding.bindingId}>Binding {index + 1} · {JSON.stringify(binding.locator)}</li>)}</ol> : null}
-                <p>应用结果：{selected.applyOutcome === "committed" ? "已应用" : selected.applyOutcome === "replayed" ? "已应用（幂等重放）" : "—"}</p>
-              {conflictDecisionState === "loading" ? <p role="status">正在核对冲突决策详情…</p> : null}
-              {conflictDecisionError ? <p role="alert">{conflictDecisionError}</p> : null}
-              {conflictDecisionState !== "ordinary" ? <button type="button" className="button subtle"
-                disabled={busy} onClick={() => {
-                  deepLinkRequestRef.current = selected.id;
-                  setBatchRefresh((value) => value + 1);
-                }}>刷新冲突请求与来源</button> : null}
+                <p>{selected.action === "delete" ? "删除" : "设置"} 1 项参数{singleDiff && singleDiff.bindings.length > 1 ? `；另 ${singleDiff.bindings.length - 1} 项保留数值并更新来源关联` : ""}。</p>
+                {selected.reviewerNote ? <p>审核意见：{selected.reviewerNote}</p> : null}
+                <details className="review-inspector__disclosure"><summary>处理记录</summary>
+                <dl className="review-inspector__meta">
+                  <div><dt>提交时间</dt><dd><time dateTime={selected.createdAt} title={formatAbsolute(selected.createdAt)}>{formatRelativeOrAbsolute(selected.createdAt)}</time></dd></div>
+                  {selected.reviewerUserId ? <div><dt>实际审核人</dt><dd>{selected.reviewerName ?? userName(selected.reviewerUserId)}</dd></div> : null}
+                  {selected.status !== "pending" || selected.updatedAt !== selected.createdAt ? <div><dt>{selected.status === "pending" ? "更新时间" : "处理时间"}</dt><dd><time dateTime={selected.updatedAt} title={formatAbsolute(selected.updatedAt)}>{formatRelativeOrAbsolute(selected.updatedAt)}</time></dd></div> : null}
+                </dl>
+                </details>
+                {singleDiff && singleDiff.bindings.length > 1 ? <details className="review-inspector__disclosure"><summary>查看 {singleDiff.bindings.length} 项关联参数</summary><ol aria-label="受影响绑定">{singleDiff.bindings.map((binding) =>
+                  <li key={binding.bindingId}>{reviewLocator(binding.locator)}{binding.bindingId === selected.bindingId ? " · 本次修改" : " · 保留现值，更新来源关联"}</li>)}</ol></details> : null}
               {conflictDecisionState === "ready" && conflictDecision ? (
                 <section aria-label="冻结的单项来源冲突决策">
-                  <h5>单项来源冲突决策</h5>
-                  <p><span>{conflictDecision.choice === "file" ? "文件值" : "界面草稿值"}</span> · {conflictDecision.sourceDiff.format.toUpperCase()}</p>
-                  {matchesFrozenConflict(selected, sourceDiff, conflictDecision) ? <>
-                    <p>经验证的冻结来源差异</p>
-                    <pre aria-label="冲突来源变更前">{conflictDecision.sourceDiff.before}</pre>
-                    <pre aria-label="冲突来源变更后">{conflictDecision.sourceDiff.after}</pre>
-                  </> : <p role="alert">冲突详情、目标、顺序或证明与请求来源不符，已阻止批准。</p>}
+                  <p>冲突选择：采用{conflictDecision.choice === "file" ? "文件值" : "界面草稿值"}。</p>
+                  {!matchesFrozenConflict(selected, sourceDiff, conflictDecision) ? <p role="alert">冲突选择与请求来源不符，已阻止批准。</p> : null}
                 </section>
               ) : null}
               </section>
@@ -802,101 +841,83 @@ export function CanonicalProjectValueReviewPanel({
             </article>
           ) : null}
           {batchSelected && batchRequest ? (
-            <article aria-label="批量源文件请求详情">
+            <article className="review-inspector__detail" aria-label="批量源文件请求详情">
               <header className="review-inspector__header">
-                <p className="review-inspector__eyebrow">软件配置 · 批量来源变更 · <span>{batchDiff?.format.toUpperCase()}</span></p>
                 <div className="review-inspector__title">
-                  <h3>{batchRequest.reason}</h3><Badge variant="secondary">{canonicalStatusLabels[batchRequest.status]}</Badge>
+                  <h3>{batchDiff?.sourceName ?? "源文件"} · {batchRequest.targets.length} 项变更</h3><Badge variant="secondary">{canonicalStatusLabels[batchRequest.status]}</Badge>
                 </div>
+                <p className="review-inspector__reason">{batchRequest.reason}</p>
                 <dl className="review-inspector__meta">
-                  <div><dt>提交人</dt><dd>{userName(batchRequest.submitterUserId)}</dd></div>
-                  <div><dt>指定审核人</dt><dd>{userName(batchRequest.assignedToUserId)}</dd></div>
-                  <div><dt>提交时间</dt><dd>{batchRequest.createdAt ? <time dateTime={batchRequest.createdAt} title={formatAbsolute(batchRequest.createdAt)}>
-                    {formatRelativeOrAbsolute(batchRequest.createdAt)}
-                  </time> : "提交时间未记录"}</dd></div>
-                  {batchRequest.reviewerUserId ? <div><dt>实际审核人</dt><dd>{userName(batchRequest.reviewerUserId)}</dd></div> : null}
+                  <div><dt>提交人</dt><dd>{batchRequest.submitterName ?? userName(batchRequest.submitterUserId)}</dd></div>
+                  <div><dt>指定审核人</dt><dd>{batchRequest.assignedToName ?? userName(batchRequest.assignedToUserId)}</dd></div>
                 </dl>
-                {batchRequest.reviewerNote ? <p>{batchRequest.reviewerNote}</p> : null}
+              </header>
+              {reviewIssue && !approveOpen && !rejectOpen ? <div className="review-state" role="alert"><p>{reviewIssue}</p>
+                <button type="button" className="button subtle" disabled={busy || loading} onClick={refreshSelection}>{loading ? "核对中…" : "重新核对状态"}</button></div> : null}
                 <div className="review-inspector__actions">
                   {batchRequest.status === "pending" && canReviewBatch ? (
                     <>
-                      <p role="note">批准时服务端会重新核对当前来源，并将全部目标作为一次事务提交。</p>
-                      <button type="button" className="button primary" disabled={busy || !batchProofReady}
-                        onClick={() => void reviewBatch("approve")}>批准全部 {batchRequest.targets.length} 项</button>
-                      <button type="button" className="button subtle" disabled={busy}
-                        onClick={() => setRejectRequestId(batchRequest.id)}>驳回全部 {batchRequest.targets.length} 项</button>
+                      <button type="button" className="button primary" disabled={busy || batchWriteBlocked || !batchProofReady}
+                        onClick={() => setApproveRequestScope(selectionScope)}>{busy ? "处理中…" : `批准全部 ${batchRequest.targets.length} 项`}</button>
+                      <button type="button" className="button subtle" disabled={busy || batchWriteBlocked}
+                        onClick={() => setRejectRequestScope(selectionScope)}>驳回全部 {batchRequest.targets.length} 项</button>
                     </>
                   ) : batchRequest.status === "pending" ? (
                     <p role="note">{batchRequest.submitterUserId === currentUserId
-                      ? "不能审核自己的提交；请由其他合格审核员处理。"
+                      ? `等待${batchRequest.assignedToName ?? userName(batchRequest.assignedToUserId)}审核。`
                       : "当前账号不是此请求的被指派审核人；审核操作由服务端拒绝。"}</p>
                   ) : null}
                   {batchRequest.status === "pending" && batchRequest.submitterUserId === currentUserId
                     && canonicalRepository.withdrawProjectValueChangeRequest ? (
-                      <button type="button" className="button subtle" disabled={busy} onClick={() => void withdrawBatch()}>撤回我的批量提交</button>
+                      <button type="button" className="button subtle" disabled={busy || batchWriteBlocked} onClick={() => setWithdrawRequestScope(selectionScope)}>{busy ? "处理中…" : "撤回我的批量提交"}</button>
                     ) : null}
                 </div>
-              </header>
-              <section aria-label="变更摘要"><h4>变更摘要</h4>
-                <p>将 {batchDiff?.sourceName ?? "固定来源"} 的 {batchRequest.targets.length} 项变更作为一次事务提交，核对完整 {batchRequest.cohortCount} 项 Binding 来源。</p>
+              <section aria-label="变更摘要" className="review-inspector__change-summary">
+                <h4 className="sr-only">变更摘要</h4>
+                <p>{batchRequest.targets.filter((target) => target.action !== "delete").length} 项设置{batchRequest.targets.some((target) => target.action === "delete") ? ` · ${batchRequest.targets.filter((target) => target.action === "delete").length} 项删除` : ""}{batchRequest.cohortCount > batchRequest.targets.length ? ` · 另 ${batchRequest.cohortCount - batchRequest.targets.length} 项保留数值并更新来源关联` : ""}</p>
               </section>
               {sourceDiffState === "loading" ? <p role="status">正在加载全部目标的固定源差异…</p> : null}
-              {mineOnly ? <p role="note">这里显示本人提交时冻结的目标与源差异；审核仍由被指派审核人处理。</p> : null}
-              {sourceDiffError ? <p role="alert">{sourceDiffError}</p> : null}
-              <button type="button" className="button subtle" disabled={busy} onClick={() => {
-                deepLinkRequestRef.current = batchRequest.id;
-                setBatchRefresh((value) => value + 1);
-              }}>刷新批量请求与来源</button>
               {sourceDiffState === "ready" && !batchProofReady ? (
                 <p role="alert">批量请求与来源差异的目标、顺序或证明不一致，已阻止批准。</p>
               ) : null}
               <section aria-label="前后对比"><h4>前后对比</h4>
-                <p role="note">以下差异固定于提交时，不随当前文件变化。</p>
+                <p role="note">提交时来源快照</p>
+                <ol aria-label="批量审核目标" className="review-target-list">{batchRequest.targets.map((target, index) => {
+                  const source = batchProofReady ? batchDiff!.targets[index] : null;
+                  const competing = batchRequest.draftImpact?.find((entry) => entry.bindingId === target.bindingId);
+                  return <li key={`${target.ordinal}:${target.bindingId}`}>
+                    <strong>{source?.path ?? reviewLocator(batchDiff?.bindings.find((binding) => binding.bindingId === target.bindingId)?.locator)}</strong>
+                    <div className="review-target-change"><code aria-label={`目标 ${index + 1} 来源变更前`}>{source?.beforeText ?? "原值待核对"}</code><span aria-hidden="true"> → </span><code aria-label={`目标 ${index + 1} 来源变更后`}>{target.action === "delete" ? "删除属性" : target.targetText}</code></div>
+                    {competing?.drafts.length ? <p>采用{target.decision === "draft" ? "界面草稿值" : "文件值"}{target.draftId ? ` · ${userName(competing.drafts.find((draft) => draft.draftId === target.draftId)?.authorUserId)}` : ""}</p> : null}
+                  </li>;
+                })}</ol>
               {batchProofReady && batchDiff ? (
-                <section aria-label="批量固定源差异" className="canonical-project-value-review__diff">
-
-                  <div><p>变更前</p><pre tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */} aria-label="批量固定源变更前" className="canonical-project-value-review__diff-text">{batchDiff.before}</pre></div>
-                  {batchDiff.uploadAfter ? <div><p>原上传候选</p><pre tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */} aria-label="批量原上传来源" className="canonical-project-value-review__diff-text">{batchDiff.uploadAfter}</pre></div> : null}
-                  <div><p>变更后</p><pre tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing read-only diff must support keyboard scrolling. */} aria-label="批量固定源变更后" className="canonical-project-value-review__diff-text">{batchDiff.after}</pre></div>
-                </section>
+                <details className="review-inspector__disclosure"><summary>查看源文件差异</summary><section aria-label="批量固定源差异"><ReviewSourceDiff before={batchDiff.before} after={batchDiff.after} uploadAfter={batchDiff.uploadAfter ?? undefined} label="批量固定源" /></section></details>
               ) : null}
               </section>
               <section aria-label="影响范围"><h4>影响范围</h4>
-              <ol aria-label="批量审核目标">
-                {batchRequest.targets.map((target, index) => {
-                  const source = batchProofReady ? batchDiff!.targets[index] : null;
-                  return (
-                    <li key={`${target.ordinal}:${target.bindingId}`}>
-                      <h5>目标 {index + 1}：{target.action === "delete" ? "删除" : "设置"}</h5>
-                      <dl>
-                        <div><dt>最终选择</dt><dd>{target.decision === "draft" ? "界面草稿值" : target.decision === "file" ? "文件值" : "未验证的草稿"}</dd></div>
-                        {target.draftId ? <div><dt>选中草稿</dt><dd>作者 <span>{userName(batchRequest.draftImpact?.find((entry) =>
-                          entry.bindingId === target.bindingId)?.drafts.find((draft) => draft.draftId === target.draftId)?.authorUserId)}</span></dd></div> : null}
-                        <div><dt>目标</dt><dd>{target.action === "delete" ? "删除（无替换值）" : <pre>{target.targetText}</pre>}</dd></div>
-                      </dl>
-                      {source ? (
-                        <div>
-                          <p>来源变更前</p><pre aria-label={`目标 ${index + 1} 来源变更前`}>{source.beforeText}</pre>
-                          <p>来源变更后</p><pre aria-label={`目标 ${index + 1} 来源变更后`}>{source.afterText ?? "删除"}</pre>
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ol>
-              {batchRequest.draftImpact ? <section aria-label="完整草稿影响">
-                <h5>完整 cohort 与草稿预计效果</h5>
+              {batchRequest.status !== "pending" ? <p role="note">{batchRequest.status === "approved" ? batchRequest.appliedAt ? "已批准，整批变更已应用。" : "已批准，应用结果待核对。" : `${canonicalStatusLabels[batchRequest.status]}，整批变更未应用。`}</p> : null}
+              {batchRequest.reviewerNote ? <p>审核意见：{batchRequest.reviewerNote}</p> : null}
+              <details className="review-inspector__disclosure"><summary>处理记录</summary>
+              <dl className="review-inspector__meta">
+                <div><dt>提交时间</dt><dd>{batchRequest.createdAt ? <time dateTime={batchRequest.createdAt} title={formatAbsolute(batchRequest.createdAt)}>{formatRelativeOrAbsolute(batchRequest.createdAt)}</time> : "提交时间未记录"}</dd></div>
+                {batchRequest.reviewerUserId ? <div><dt>实际审核人</dt><dd>{batchRequest.reviewerName ?? userName(batchRequest.reviewerUserId)}</dd></div> : null}
+                {batchRequest.status !== "pending" || batchRequest.updatedAt !== batchRequest.createdAt ? <div><dt>{batchRequest.status === "pending" ? "更新时间" : "处理时间"}</dt><dd>{batchRequest.updatedAt ? <time dateTime={batchRequest.updatedAt} title={formatAbsolute(batchRequest.updatedAt)}>{formatRelativeOrAbsolute(batchRequest.updatedAt)}</time> : "时间未记录"}</dd></div> : null}
+              </dl>
+              </details>
+              {batchRequest.draftImpact ? <details className="review-inspector__disclosure" aria-label="完整草稿影响">
+                <summary>查看全部 {batchRequest.draftImpact.length} 项参数与草稿影响</summary>
                 <ol>{batchRequest.draftImpact.map((entry) => <li key={entry.bindingId}>
-                  <strong>{entry.role === "sibling" ? "兄弟 Binding · 结构性 re-pin" : "变更目标"}</strong> · {entry.decision}
+                  <strong>{batchDiff?.targets.find((target) => target.bindingId === entry.bindingId)?.path ?? reviewLocator(batchDiff?.bindings.find((binding) => binding.bindingId === entry.bindingId)?.locator)}</strong> · {entry.role === "sibling" ? "保留数值，更新来源关联" : entry.decision === "draft" ? "采用草稿值" : "采用文件值"}
                   {entry.drafts.length ? <ul>{entry.drafts.map((draft) => <li key={draft.draftId}>
                     草稿 · 作者 <span>{userName(draft.authorUserId)}</span>
                     {entry.selectedDraftId === draft.draftId ? " · 本次选中" : " · 未选中，保留并预计过期"}
                     {draft.currentlyStale ? "（当前已过期）" : ""}
-                    <div>动作：{draft.action === "delete" ? "删除" : "设置"}；原因：{draft.reason}；预计效果：保留并过期</div>
+                    <div>{draft.action === "delete" ? "删除" : "设置"} · 原因：{draft.reason}</div>
                     <pre>{typeof draft.targetValue === "string" ? draft.targetValue : JSON.stringify(draft.targetValue)}</pre>
                   </li>)}</ul> : " · 无竞争草稿"}
                 </li>)}</ol>
-              </section> : null}
+              </details> : null}
               </section>
               <ReviewProvenance key={batchRequest.id} entries={[
                 { label: "请求 ID", value: batchRequest.id }, { label: "批量证明摘要", value: batchRequest.batchProofDigest },
@@ -909,13 +930,30 @@ export function CanonicalProjectValueReviewPanel({
         </div>
       ) : null}
       </TabPanel>
-      <ConfirmDialog open={Boolean(rejectRequestId && rejectRequestId === effectiveSelectedId)}
-        title="驳回请求" description="请说明驳回原因，方便提交人补充依据或调整变更。"
-        confirmLabel="确认驳回" pending={busy} confirmDisabled={!rejectReason.trim()}
-        error={error} onCancel={() => { setRejectRequestId(null); setRejectReason(""); }}
-        extra={<label>驳回原因<textarea required rows={4} value={rejectReason} disabled={busy}
-          onChange={(event) => setRejectReason(event.target.value)} /></label>}
+      <ConfirmDialog open={approveOpen}
+        title={batchSelected ? "确认批准整批变更" : selected?.action === "delete" ? "确认删除属性" : "确认应用软件配置"}
+        description={batchSelected ? `将应用「${batchDiff?.sourceName ?? "源文件"}」的全部 ${batchRequest?.targets.length ?? 0} 项变更${batchRequest?.targets.some((target) => target.action === "delete") ? `（其中 ${batchRequest.targets.filter((target) => target.action === "delete").length} 项删除）` : ""}，同步更新参数记录与源文件。`
+          : `将${selected?.action === "delete" ? "删除" : "更新"}「${singleDiff?.sourceName ?? "源文件"}」中的 ${selectedLocator}。`}
+        confirmLabel="确认批准并应用" pending={busy} confirmDisabled={batchSelected ? batchWriteBlocked || !batchProofReady : !sourceDiffReadyForSelected}
+        extra={!batchSelected && selected ? <div className="review-inspector__notice"><p>原值 → {selected.action === "delete" ? "删除属性" : "拟值"}</p>
+          <pre>{selectedBefore ?? "原值待核对"} → {selected.action === "delete" ? "删除（不再出现在配置中）" : canonicalRequestSourceText(selected)}</pre></div>
+          : <ul>{batchDiff?.targets.map((target) => <li key={target.bindingId}>{target.path ?? reviewLocator(batchDiff.bindings.find((binding) => binding.bindingId === target.bindingId)?.locator)}：{target.beforeText} → {target.action === "delete" ? "删除属性" : target.afterText}</li>)}</ul>}
+        tone={selected?.action === "delete" || batchRequest?.targets.some((target) => target.action === "delete") ? "danger" : "primary"}
+        error={error} onCancel={() => setApproveRequestScope(null)}
+        onConfirm={() => { void (batchSelected ? reviewBatch("approve") : reviewSelected("approve")); }} />
+      <ConfirmDialog open={rejectOpen}
+        title={`驳回「${requestLabel}」`} description={batchSelected ? "本次驳回针对整批变更，全部目标均不会应用。请说明需要调整的内容或补充的依据。" : "本次变更不会应用。请说明需要调整的内容或补充的依据。"}
+        confirmLabel="确认驳回" pending={busy} confirmDisabled={!rejectReason.trim() || (batchSelected ? batchWriteBlocked || !canReviewBatch : !canReviewSelected)}
+        error={error} onCancel={() => setRejectRequestScope(null)}
+        extra={<div className="review-inspector__field"><Label htmlFor={`${tabsId}-reject-reason`}>驳回原因</Label><Textarea id={`${tabsId}-reject-reason`} required rows={4} value={rejectReason} disabled={busy}
+          placeholder="说明需要调整的内容或补充的依据" onChange={(event) => { if (rejectionScope) setRejection({ scope: rejectionScope, reason: event.target.value }); }} />
+          {!batchSelected && selected && !canReviewSelected ? <button type="button" className="button subtle" disabled={busy}
+            onClick={() => { deepLinkRequestRef.current = selected.id; setBatchRefresh((value) => value + 1); }}>保留原因并刷新请求</button> : null}</div>}
         onConfirm={() => { void (batchSelected ? reviewBatch("reject", rejectReason) : reviewSelected("reject", rejectReason)); }} />
+      <ConfirmDialog open={withdrawOpen} title="确认撤回提交"
+        description={`将终止「${requestLabel}」的本次审核，参数尚未应用。后续需要重新提交审核。`}
+        confirmLabel="撤回提交" pending={busy} confirmDisabled={batchSelected ? batchWriteBlocked : withdrawBlocked} error={error} onCancel={() => setWithdrawRequestScope(null)}
+        onConfirm={() => { void (batchSelected ? withdrawBatch() : withdrawSelected()); }} />
       {!detailOnly ? <div role="tabpanel" id={`${tabsId}-${view === "pending" ? "history" : "pending"}-panel`}
         aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} hidden /> : null}
     </section>

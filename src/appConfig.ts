@@ -101,13 +101,22 @@ export const navigationItems: PageConfig[] = [
     subtitle: "查看、筛选、对比并提交充电与电池参数修改请求"
   },
   {
+    key: "parameter-submissions",
+    path: "/parameter-submissions",
+    label: "我的提交",
+    group: "参数管理",
+    icon: FileText,
+    title: "我的提交",
+    subtitle: ""
+  },
+  {
     key: "parameter-review",
     path: "/parameter-review",
     label: "变更审阅",
     group: "参数管理",
     icon: ShieldCheck,
-    title: "参数管理员工作台",
-    subtitle: "审阅快充、温控与电池保护变更并推进合入上库流程"
+    title: "变更审阅",
+    subtitle: ""
   },
   {
     key: "parameter-admin",
@@ -115,7 +124,7 @@ export const navigationItems: PageConfig[] = [
     label: "参数后台",
     group: "参数管理",
     icon: Database,
-    title: "项目参数管理后台",
+    title: "参数管理后台",
     subtitle: PARAMETER_ADMIN_UI.adminSubtitle
   },
   {
@@ -211,18 +220,6 @@ export function getPageByPath(path: string): PageConfig {
       subtitle: "只读浏览已发布的规范参数定义与修订历史"
     };
   }
-  if (path === "/parameter-submissions") {
-    return {
-      key: "parameter-submissions",
-      path: "/parameter-submissions",
-      label: "我的历史提交",
-      group: "参数管理",
-      icon: FileText,
-      title: "我的历史提交",
-      subtitle: "查看、撤回和追踪当前用户发起的参数变更请求"
-    };
-  }
-
   if (isOrganizationAdminPath(path)) {
     const area = parseOrganizationAdminArea(path) ?? "profile";
     return {

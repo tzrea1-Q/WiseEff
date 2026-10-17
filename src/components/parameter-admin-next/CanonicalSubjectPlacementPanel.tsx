@@ -1,5 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 
 import {
@@ -29,11 +29,15 @@ import type {
 import type { CatalogResponseWithEtag } from "@/infrastructure/http/parameterCatalogClient";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import { presentError } from "@/infrastructure/http/presentError";
+import { buildCatalogHref, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
+import { collectSubtreeModuleIds } from "@/domain/modules/moduleTree";
+import { toAttributionFlatNodes } from "@/components/parameter-topology/moduleAttributionTreeUtils";
+import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 
 const SUBJECT_KIND_LABEL: Record<CatalogSubjectResponse["item"]["type"], string> = {
-  driver: "Driver",
-  "node-type": "NodeType",
-  "configuration-schema": "ConfigurationSchema"
+  driver: "驱动",
+  "node-type": "节点类型",
+  "configuration-schema": "配置规范"
 };
 
 const SUBJECT_KIND_MODULE_KIND: Record<
@@ -60,19 +64,23 @@ type CatalogPage<T> = {
  */
 export async function listAllCanonicalPages<T>(
   fetchPage: (query: CatalogListQuery) => Promise<CatalogPage<T>>,
-  query: CatalogListQuery = {}
+  query: CatalogListQuery = {},
+  progress?: { onPage: (items: T[]) => void; isCancelled: () => boolean }
 ): Promise<T[]> {
   const result: T[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
 
   for (let pageNumber = 0; pageNumber < 1000; pageNumber += 1) {
+    if (progress?.isCancelled()) return result;
     const page = await fetchPage({
       ...query,
       limit: query.limit ?? 100,
       ...(cursor ? { cursor } : {})
     });
+    if (progress?.isCancelled()) return result;
     result.push(...page.items);
+    progress?.onPage([...result]);
     if (!page.hasMore) return result;
     const nextCursor = page.nextCursor?.trim() ?? "";
     if (!nextCursor || nextCursor === cursor || seenCursors.has(nextCursor)) {
@@ -114,6 +122,13 @@ export type CanonicalSubjectPlacementPanelProps = {
   canAdmin?: boolean;
   modules?: readonly ParameterModule[];
   onChanged?: () => void | Promise<void>;
+  selectedModuleId?: string | null;
+  refreshKey?: number;
+  managedRefresh?: boolean;
+  onNavigate?: (path: string) => void;
+  search?: string;
+  visibleModuleIds?: readonly string[] | null;
+  onCreateBusinessModule?: () => void;
 };
 
 /**
@@ -129,7 +144,14 @@ export function CanonicalSubjectPlacementPanel({
   sessionPermissions,
   canAdmin = false,
   modules = [],
-  onChanged
+  onChanged,
+  selectedModuleId,
+  refreshKey = 0,
+  managedRefresh = false,
+  onNavigate,
+  search: searchProp,
+  visibleModuleIds,
+  onCreateBusinessModule
 }: CanonicalSubjectPlacementPanelProps) {
   const [domainState, setDomainState] = useState<CatalogDomainState>({
     kind: "loading",
@@ -142,10 +164,31 @@ export function CanonicalSubjectPlacementPanel({
   const [registrations, setRegistrations] = useState<RegistrationRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | SubjectRow["type"]>("all");
-  const [subjectPage, setSubjectPage] = useState(0);
-  const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
+  const [inventoryComplete, setInventoryComplete] = useState(false);
+  const [localSearch, setLocalSearch] = useState("");
+  const params = useMemo(() => new URLSearchParams(searchProp ?? localSearch), [searchProp, localSearch]);
+  const search = params.get("subjectQ") ?? "";
+  const requestedKind = params.get("subjectKind") ?? "all";
+  const typeFilter = Object.hasOwn(SUBJECT_KIND_LABEL, requestedKind) ? requestedKind : "all";
+  const registrationFilter = ["registered", "unregistered"].includes(params.get("subjectRegistration") ?? "") ? params.get("subjectRegistration")! : "all";
+  const definitionsFilter = ["with", "without"].includes(params.get("subjectDefinitions") ?? "") ? params.get("subjectDefinitions")! : "all";
+  const pageParameter = Number(params.get("subjectPage"));
+  const requestedPage = Number.isSafeInteger(pageParameter) && pageParameter > 0 ? pageParameter - 1 : 0;
+  const expandedSubjectId = params.get("expandedSubject");
+  const updateQuery = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(params);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === "" || value === "all") next.delete(key);
+      else next.set(key, value);
+    }
+    if (searchProp !== undefined && onNavigate) onNavigate(`/parameter-admin/modules${next.size ? `?${next}` : ""}`);
+    else setLocalSearch(next.toString());
+  };
+  const readGeneration = useRef(0);
+  const placementGeneration = useRef(0);
+  const [openingSubjectId, setOpeningSubjectId] = useState<string | null>(null);
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  const [definitionRefresh, setDefinitionRefresh] = useState(0);
   const [definitionStates, setDefinitionStates] = useState<Map<string, DefinitionState>>(
     () => new Map()
   );
@@ -156,11 +199,24 @@ export function CanonicalSubjectPlacementPanel({
     ifMatch?: string;
     subjectImpact?: RegistrationSubjectImpact;
     currentModuleName?: string;
+    currentModuleId?: string;
   } | null>(null);
 
   const loadCanonical = useCallback(async () => {
+    const generation = ++readGeneration.current;
+    let failed = false;
+    let subjectsReceived = false;
+    let registrationsReceived = false;
+    const isCancelled = () => failed || generation !== readGeneration.current;
+    const revealFirstBatch = () => {
+      if (subjectsReceived && registrationsReceived) setLoading(false);
+    };
     setLoading(true);
+    setInventoryComplete(false);
     setLoadError(null);
+    setSubjects([]);
+    setRegistrations([]);
+    setDefinitionStates(new Map());
     setDomainState({
       kind: "loading",
       catalogReleaseId: null,
@@ -169,44 +225,53 @@ export function CanonicalSubjectPlacementPanel({
     });
     try {
       const document = await catalog.getCatalog();
+      if (generation !== readGeneration.current) return null;
       const nextState = deriveCatalogDomainState({ document });
       setDomainState(nextState);
       if (!document.item) {
         setCatalogReleaseId("");
         setSubjects([]);
         setRegistrations([]);
-        return;
+        return null;
       }
 
       const release = document.item.catalogReleaseId;
+      setCatalogReleaseId(release);
       const [nextSubjects, nextRegistrations] = await Promise.all([
         listAllCanonicalPages(
           (query) => catalog.listSubjects(query),
-          { catalogReleaseId: release, limit: 100 }
+          { catalogReleaseId: release, limit: 100 },
+          { isCancelled, onPage: (items) => { setSubjects(items); subjectsReceived = true; revealFirstBatch(); } }
         ),
         listAllCanonicalPages(
           (query) => governance.listRegistrations(organizationId, query),
-          { catalogReleaseId: release, limit: 100 }
+          { catalogReleaseId: release, limit: 100 },
+          { isCancelled, onPage: (items) => { setRegistrations(items); registrationsReceived = true; revealFirstBatch(); } }
         )
       ]);
+      if (generation !== readGeneration.current) return null;
       setCatalogReleaseId(release);
       setSubjects(nextSubjects);
       setRegistrations(nextRegistrations);
-      setSubjectPage(0);
+      setInventoryComplete(true);
+      return { subjects: nextSubjects, registrations: nextRegistrations, releaseId: release };
     } catch (error) {
+      if (generation !== readGeneration.current) return null;
+      failed = true;
       const nextState = catalogStateFromFailure(error);
       setDomainState(nextState);
       setLoadError(presentError(error, "无法加载规范主体归属，请稍后重试。"));
-      setSubjects([]);
-      setRegistrations([]);
+      return null;
     } finally {
-      setLoading(false);
+      if (generation === readGeneration.current) setLoading(false);
     }
   }, [catalog, governance, organizationId]);
 
   useEffect(() => {
     void loadCanonical();
-  }, [loadCanonical]);
+    return () => { readGeneration.current += 1; };
+  }, [loadCanonical, refreshKey]);
+  useEffect(() => () => { readGeneration.current += 1; placementGeneration.current += 1; }, []);
 
   const registrationBySubjectId = useMemo(() => {
     const map = new Map<string, RegistrationRow>();
@@ -216,22 +281,41 @@ export function CanonicalSubjectPlacementPanel({
     return map;
   }, [registrations]);
 
+  const selectedModuleIds = useMemo(() => {
+    if (!selectedModuleId) return null;
+    return collectSubtreeModuleIds(toAttributionFlatNodes(modules), [selectedModuleId]);
+  }, [modules, selectedModuleId]);
   const filteredSubjects = useMemo(() => {
     const token = search.trim().toLowerCase();
     return subjects.filter((subject) => {
+      const registration = registrationBySubjectId.get(subject.id);
+      const placement = registration?.status === "active" ? registration.placement
+        : subject.registration.status !== "unregistered" ? subject.registration.placement : undefined;
+      if (selectedModuleIds && (!placement?.moduleId || !selectedModuleIds.has(placement.moduleId))) return false;
+      if (visibleModuleIds && (!placement?.moduleId || !visibleModuleIds.includes(placement.moduleId))) return false;
       if (typeFilter !== "all" && subject.type !== typeFilter) return false;
+      const registered = (registration?.status ?? subject.registration.status) === "active";
+      if (registrationFilter === "registered" && !registered) return false;
+      if (registrationFilter === "unregistered" && (registration?.status ?? subject.registration.status) !== "unregistered") return false;
+      if (definitionsFilter === "with" && subject.definitionCounts.active === 0) return false;
+      if (definitionsFilter === "without" && subject.definitionCounts.active !== 0) return false;
       if (!token) return true;
       return [subject.canonicalName, subject.id, ...subject.aliases]
         .join(" ")
         .toLowerCase()
         .includes(token);
     });
-  }, [search, subjects, typeFilter]);
+  }, [search, subjects, typeFilter, registrationBySubjectId, selectedModuleIds, registrationFilter, definitionsFilter, visibleModuleIds]);
+  const subjectPageCount = Math.max(1, Math.ceil(filteredSubjects.length / SUBJECTS_PER_PAGE));
+  const subjectPage = Math.min(requestedPage, subjectPageCount - 1);
   const visibleSubjects = filteredSubjects.slice(
     subjectPage * SUBJECTS_PER_PAGE,
     (subjectPage + 1) * SUBJECTS_PER_PAGE
   );
-  const subjectPageCount = Math.max(1, Math.ceil(filteredSubjects.length / SUBJECTS_PER_PAGE));
+  const moduleLabels = useMemo(() => {
+    const flat = toAttributionFlatNodes(modules);
+    return new Map(flat.map((module) => [module.id, modulePathSegments(module, flat).join(" / ")]));
+  }, [modules]);
 
   const moduleImpactById = useMemo(() => {
     const summary = new Map<string, { subjects: number; definitions: number }>();
@@ -260,7 +344,7 @@ export function CanonicalSubjectPlacementPanel({
             const impact = moduleImpactById.get(module.id);
             return {
               id: module.id,
-              displayName: module.name,
+              displayName: moduleLabels.get(module.id) ?? module.name,
               kind: module.kind,
               impactSummary: impact
                 ? `当前 ${impact.subjects} 个主体、${impact.definitions} 个有效定义`
@@ -271,79 +355,88 @@ export function CanonicalSubjectPlacementPanel({
       );
     }
     return result;
-  }, [moduleImpactById, modules]);
+  }, [moduleImpactById, modules, moduleLabels]);
 
   const activeSubjectCount = useMemo(
-    () => subjects.filter((subject) => subject.membership.status === "active").length,
-    [subjects]
+    () => filteredSubjects.filter((subject) => subject.membership.status === "active").length,
+    [filteredSubjects]
   );
+  const expandedSubject = subjects.find((subject) => subject.id === expandedSubjectId);
 
-  const loadDefinitions = async (subject: SubjectRow) => {
-    if (expandedSubjectId === subject.id) {
-      setExpandedSubjectId(null);
-      return;
-    }
-    setExpandedSubjectId(subject.id);
-    setDefinitionStates((current) => new Map(current).set(subject.id, { status: "loading" }));
-    try {
+  useEffect(() => {
+    if (!expandedSubjectId || !catalogReleaseId || loading || !expandedSubject) return;
+    let cancelled = false;
+    const generation = readGeneration.current;
+    setDefinitionStates((current) => new Map(current).set(expandedSubjectId, { status: "loading" }));
+    void (async () => { try {
       const items = await listAllCanonicalPages(
         (query) => catalog.listDefinitions(query),
         {
-          subjectId: subject.id,
+          subjectId: expandedSubjectId,
           lifecycle: "active",
           catalogReleaseId,
           limit: 100
         }
       );
+      if (cancelled || generation !== readGeneration.current) return;
       setDefinitionStates((current) =>
         new Map(current).set(
-          subject.id,
+          expandedSubjectId,
           items.length > 0 ? { status: "ready", items } : { status: "empty" }
         )
       );
     } catch (error) {
+      if (cancelled || generation !== readGeneration.current) return;
       setDefinitionStates((current) =>
-        new Map(current).set(subject.id, {
+        new Map(current).set(expandedSubjectId, {
           status: "error",
           message: presentError(error, "无法加载该主体的有效定义。")
         })
       );
-    }
-  };
+    } })();
+    return () => { cancelled = true; };
+  }, [catalog, catalogReleaseId, expandedSubjectId, loading, expandedSubject, definitionRefresh]);
 
   const openRegistration = (subject: SubjectRow) => {
+    if (!inventoryComplete) return;
+    placementGeneration.current += 1;
+    setOpeningSubjectId(null);
     setPlacementDialog({
       intent: "register-subject",
       subject,
       subjectImpact: {
         activeDefinitionCount: subject.definitionCounts.active,
-        bindingCount: 0,
-        projectCount: 0
+        bindingCount: null,
+        projectCount: null
       }
     });
   };
 
   const openPlacement = async (subject: SubjectRow, registrationId: string) => {
-    setLoadError(null);
+    if (!inventoryComplete) return;
+    const generation = ++placementGeneration.current;
+    setOpeningSubjectId(subject.id);
+    setRowErrors((current) => ({ ...current, [subject.id]: "" }));
     try {
       const [registration, placement] = await Promise.all([
         governance.getRegistration(organizationId, registrationId),
         governance.getPlacement(organizationId, registrationId)
       ]);
+      if (generation !== placementGeneration.current) return;
       const ifMatch = placementEtag(placement);
       if (!ifMatch) {
-        setLoadError("当前归属缺少可用版本条件，无法安全调整；请刷新后重试。");
+        setRowErrors((current) => ({ ...current, [subject.id]: "当前归属缺少可用版本条件，无法安全调整；请刷新后重试。" }));
         return;
       }
       const placementModuleId = placement.item.moduleId;
       const placementDisplayName = placement.item.displayName;
       const currentModuleName =
-        modules.find((module) => module.id === placementModuleId)?.name ??
+        moduleLabels.get(placementModuleId ?? "") ??
         placementDisplayName ??
         placementModuleId;
       const impact = registration.item.impact;
       if (!impact) {
-        setLoadError("当前主体缺少影响数据，无法安全调整归属；请刷新后重试。");
+        setRowErrors((current) => ({ ...current, [subject.id]: "当前主体缺少影响数据，无法安全调整归属；请刷新后重试。" }));
         return;
       }
       setPlacementDialog({
@@ -356,32 +449,43 @@ export function CanonicalSubjectPlacementPanel({
           bindingCount: impact.bindingCount,
           projectCount: impact.projectCount
         },
-        currentModuleName
+        currentModuleName,
+        currentModuleId: placementModuleId ?? undefined
       });
     } catch (error) {
-      setLoadError(presentError(error, "无法读取当前主体归属，请刷新后重试。"));
+      if (generation === placementGeneration.current) setRowErrors((current) => ({ ...current, [subject.id]: presentError(error, "无法读取当前主体归属，请刷新后重试。") }));
+    } finally {
+      if (generation === placementGeneration.current) setOpeningSubjectId(null);
     }
   };
 
   const refreshPlacementEvidence = async () => {
-    if (!placementDialog?.registrationId) {
-      await loadCanonical();
+    if (!placementDialog) return;
+    const source = placementDialog;
+    const generation = ++placementGeneration.current;
+    const refreshed = await loadCanonical();
+    if (!refreshed) throw new Error("规范数据刷新失败，请重试。");
+    const subject = refreshed.subjects.find((item) => item.id === source.subject.id);
+    if (!subject) throw new Error("当前发布中找不到该主体，请关闭后重新选择。");
+    if (!source.registrationId) {
+      if (generation === placementGeneration.current) setPlacementDialog((current) => current ? { ...current, subject,
+        subjectImpact: { activeDefinitionCount: subject.definitionCounts.active, bindingCount: null, projectCount: null } } : null);
       return;
     }
-    try {
-      const placement = await governance.getPlacement(
-        organizationId,
-        placementDialog.registrationId
-      );
+      const [registration, placement] = await Promise.all([
+        governance.getRegistration(organizationId, source.registrationId), governance.getPlacement(organizationId, source.registrationId)
+      ]);
+      if (generation !== placementGeneration.current) return;
       const ifMatch = placementEtag(placement);
       if (!ifMatch) {
-        setLoadError("刷新后仍缺少归属版本条件，未发送写入。");
-        return;
+        throw new Error("刷新后仍缺少归属版本条件，未发送写入。");
       }
-      setPlacementDialog((current) => (current ? { ...current, ifMatch } : current));
-    } catch (error) {
-      setLoadError(presentError(error, "无法刷新当前主体归属，请稍后重试。"));
-    }
+      const impact = registration.item.impact;
+      if (!impact) throw new Error("刷新后缺少主体影响数据，未发送写入。");
+      setPlacementDialog((current) => current ? { ...current, subject, ifMatch,
+        currentModuleId: placement.item.moduleId ?? undefined,
+        currentModuleName: moduleLabels.get(placement.item.moduleId ?? "") ?? placement.item.displayName,
+        subjectImpact: { activeDefinitionCount: subject.definitionCounts.active, ...impact } } : null);
   };
 
   const selectedRegistration = placementDialog
@@ -390,13 +494,15 @@ export function CanonicalSubjectPlacementPanel({
   const selectedModuleOptions = placementDialog
     ? moduleOptionsByType.get(placementDialog.subject.type) ?? []
     : [];
-  const selectedModuleId =
+  const newDestinationParents = modules.filter((module) => module.kind === "business")
+    .map((module) => ({ id: module.id, displayName: moduleLabels.get(module.id) ?? module.name, kind: module.kind }));
+  const selectedDestinationModuleId =
+    placementDialog?.currentModuleId ??
     selectedRegistration?.placement.moduleId ??
     (placementDialog?.subject.registration.status === "unregistered"
       ? undefined
       : placementDialog?.subject.registration.placement?.moduleId) ??
     (placementDialog?.intent === "update-placement" ? "" : undefined);
-  const moduleSummary = moduleImpactById;
 
   const handleCompleted = async () => {
     setPlacementDialog(null);
@@ -415,14 +521,12 @@ export function CanonicalSubjectPlacementPanel({
       <section>
         <header className="parameter-module-mapping-panel__section-head">
           <div>
-            <h4>规范主体与归属</h4>
+            <h4>{selectedModuleId ? `${modules.find((module) => module.id === selectedModuleId)?.name ?? "所选模块"} · 主体与归属` : "规范主体与归属"}</h4>
             <p>
-              目录发布 {catalogReleaseId || "未就绪"}
-              {!loading && !loadError ? ` · ${activeSubjectCount} 个有效主体` : ""}。Driver、NodeType、
-              ConfigurationSchema 是独立身份；DTS 覆盖只表示解析能力。
+              {!loading && inventoryComplete ? `${activeSubjectCount} 个有效主体。` : ""}查看参数定义，或维护主体的模块归属。
             </p>
           </div>
-          <button
+          {!managedRefresh ? <button
             type="button"
             className="button subtle"
             onClick={() => void loadCanonical()}
@@ -434,7 +538,7 @@ export function CanonicalSubjectPlacementPanel({
               aria-hidden="true"
             />
             刷新规范数据
-          </button>
+          </button> : null}
         </header>
 
         {loading ? (
@@ -448,24 +552,30 @@ export function CanonicalSubjectPlacementPanel({
             <AlertCircle size={15} aria-hidden="true" /> {loadError}
           </p>
         ) : null}
+        {!loading && !inventoryComplete && domainState.kind !== "unpublished" ? <p role="status">
+          已加载 {subjects.length} 个主体、{registrations.length} 条登记。{loadError ? "后续记录读取失败。" : "仍在读取后续记录。"}搜索与筛选仅覆盖已加载记录；完整读取前暂不能登记或调整归属。
+          {loadError ? <button type="button" className="button subtle sm" onClick={() => void loadCanonical()}>重新读取完整目录</button> : null}
+        </p> : null}
+        {!loading && !loadError && (!canAdmin || !domainState.writesEnabled) ? <p className="parameter-module-mapping-panel__notice" role="status">
+          {!canAdmin ? "此页仅可查看；登记主体和调整归属需要组织管理员权限。" : "当前目录状态暂不允许修改，请刷新规范数据后重试。"}
+        </p> : null}
         {!loading && !loadError && domainState.kind === "unpublished" ? (
           <p className="parameter-module-mapping-panel__notice" role="status">
             当前没有可读取的目录发布，规范主体暂不可用。
           </p>
         ) : null}
-        {!loading && !loadError && domainState.kind !== "unpublished" ? (
+        {!loading && (!loadError || subjects.length > 0) && domainState.kind !== "unpublished" ? (
           <>
-            <div className="parameter-module-mapping-panel__form">
+            <div className="parameter-module-mapping-panel__form canonical-subject-toolbar">
               <label>
                 筛选规范主体
                 <input
                   type="search"
                   value={search}
                   onChange={(event) => {
-                    setSearch(event.target.value);
-                    setSubjectPage(0);
+                    updateQuery({ subjectQ: event.target.value, subjectPage: null });
                   }}
-                  placeholder="名称、别名或主体 ID"
+                  placeholder="搜索名称或别名"
                   aria-label="筛选规范主体"
                 />
               </label>
@@ -476,38 +586,27 @@ export function CanonicalSubjectPlacementPanel({
                   ariaLabel="筛选主体身份"
                   value={typeFilter}
                   onValueChange={(value) => {
-                    setTypeFilter(value as "all" | SubjectRow["type"]);
-                    setSubjectPage(0);
+                    updateQuery({ subjectKind: value, subjectPage: null });
                   }}
                   size="filter"
-                  options={[{ value: "all", label: "全部" }, { value: "driver", label: "Driver" }, { value: "node-type", label: "NodeType" }, { value: "configuration-schema", label: "ConfigurationSchema" }]}
+                  options={[{ value: "all", label: "全部" }, ...Object.entries(SUBJECT_KIND_LABEL).map(([value, label]) => ({ value, label }))]}
                 />
               </label>
+              <label>登记状态<SelectControl ariaLabel="筛选登记状态" value={registrationFilter} size="filter"
+                onValueChange={(value) => updateQuery({ subjectRegistration: value, subjectPage: null })}
+                options={[{ value: "all", label: "全部登记状态" }, { value: "registered", label: "已登记" }, { value: "unregistered", label: "未登记" }]} /></label>
+              <label>定义数量<SelectControl ariaLabel="筛选有效定义" value={definitionsFilter} size="filter"
+                onValueChange={(value) => updateQuery({ subjectDefinitions: value, subjectPage: null })}
+                options={[{ value: "all", label: "全部定义数量" }, { value: "with", label: "有有效定义" }, { value: "without", label: "无有效定义" }]} /></label>
+              {search || typeFilter !== "all" || registrationFilter !== "all" || definitionsFilter !== "all" ? <button type="button" className="button subtle sm"
+                onClick={() => updateQuery({ subjectQ: null, subjectKind: null, subjectRegistration: null, subjectDefinitions: null, subjectPage: null })}>清除主体筛选</button> : null}
             </div>
-            {moduleSummary.size > 0 ? (
-              <details>
-                <summary>规范模块统计（{moduleSummary.size} 个模块）</summary>
-                <ul aria-label="规范模块统计">
-                  {[...moduleSummary.entries()].map(([moduleId, summary]) => {
-                    const module = modules.find((item) => item.id === moduleId);
-                    return (
-                      <li key={moduleId}>
-                        <strong>{module?.name ?? moduleId}</strong>
-                        <span>
-                          {summary.subjects} 个主体 · {summary.definitions} 个有效定义
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </details>
-            ) : null}
             {filteredSubjects.length === 0 ? (
               <p className="muted" role="status">
-                {subjects.length === 0 ? "当前目录没有规范主体。" : "没有匹配的规范主体。"}
+                {!inventoryComplete ? "已加载记录中暂无匹配主体，完整目录尚未读取完成。" : subjects.length === 0 ? "当前目录没有规范主体。" : "没有匹配的规范主体。"}
               </p>
             ) : (
-              <ul aria-label="规范主体列表">
+              <ul aria-label="规范主体列表" className="canonical-subject-list">
                 {visibleSubjects.map((subject) => {
                   const registration = registrationBySubjectId.get(subject.id);
                   const placement =
@@ -526,7 +625,7 @@ export function CanonicalSubjectPlacementPanel({
                     canAdmin &&
                     subject.membership.status === "active" &&
                     isCatalogActionEnabled(actor, "register-subject", domainState, sessionPermissions) &&
-                    modulesForSubject.length > 0;
+                    (modulesForSubject.length > 0 || newDestinationParents.length > 0);
                   const placementAllowed =
                     canAdmin &&
                     subject.membership.status === "active" &&
@@ -536,38 +635,41 @@ export function CanonicalSubjectPlacementPanel({
                   return (
                     <li
                       key={subject.id}
+                      className="canonical-subject-row"
                       aria-label={`${subject.canonicalName}（${subjectTypeLabel(subject.type)}）`}
                       data-canonical-subject-id={subject.id}
                       data-canonical-subject-kind={subject.type}
                     >
-                      <div className="parameter-module-mapping-panel__tree-label">
+                      <div className="parameter-module-mapping-panel__tree-label canonical-subject-identity">
                         <strong>{subject.canonicalName}</strong>
                         <span className="parameter-module-mapping-panel__auto-tag">
                           {subjectTypeLabel(subject.type)}
                         </span>
-                        <small>{subject.id}</small>
                       </div>
-                      <span>
-                        {subject.definitionCounts.active} 个有效定义 · {subject.definitionCounts.deprecated} 个已废弃定义
+                      <span className="canonical-subject-meta">
+                        {subject.definitionCounts.active} 个有效定义{subject.definitionCounts.deprecated > 0 ? ` · ${subject.definitionCounts.deprecated} 个已废弃定义` : ""}
                       </span>
-                      <span>
+                      <span className="canonical-subject-meta">
                         {placement
-                          ? `归属：${modules.find((item) => item.id === placement?.moduleId)?.name ?? placement.moduleId ?? placement.displayName}`
+                          ? `归属：${moduleLabels.get(placement.moduleId ?? "") ?? placement.displayName}`
                           : "未登记"}
                       </span>
-                      <div className="parameter-module-mapping-panel__actions">
+                      <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
                         <button
                           type="button"
                           className="button subtle"
-                          onClick={() => void loadDefinitions(subject)}
+                          aria-expanded={expandedSubjectId === subject.id}
+                          disabled={subject.definitionCounts.active === 0}
+                          onClick={() => updateQuery({ expandedSubject: expandedSubjectId === subject.id ? null : subject.id })}
                         >
-                          {expandedSubjectId === subject.id ? "收起参数" : "查看参数"}
+                          {subject.definitionCounts.active === 0 ? "暂无有效参数" : expandedSubjectId === subject.id ? "收起参数" : "查看参数"}
                         </button>
                         {registrationAllowed && subject.registration.status === "unregistered" ? (
                           <button
                             type="button"
                             className="button primary"
                             aria-label={`登记主体：${subject.canonicalName}`}
+                            disabled={!inventoryComplete}
                             onClick={() => openRegistration(subject)}
                           >
                             登记主体
@@ -575,28 +677,35 @@ export function CanonicalSubjectPlacementPanel({
                         ) : null}
                         {canAdmin &&
                         subject.registration.status === "unregistered" &&
-                        modulesForSubject.length === 0 ? (
-                          <span className="muted">没有可用的共享目标模块，暂不能登记。</span>
+                        modulesForSubject.length === 0 && newDestinationParents.length === 0 ? (
+                          <span className="muted">请先新建业务分类，再创建目标模块并登记。
+                            {onCreateBusinessModule ? <button type="button" className="button subtle sm" onClick={onCreateBusinessModule}>新建业务分类</button> : null}
+                          </span>
                         ) : null}
                         {placementAllowed ? (
                           <button
                             type="button"
                             className="button subtle"
                             aria-label={`调整归属：${subject.canonicalName}`}
+                            disabled={!inventoryComplete || openingSubjectId === subject.id}
                             onClick={() =>
                               void openPlacement(subject, registrationId ?? "")
                             }
                           >
-                            调整归属
+                            {openingSubjectId === subject.id ? "读取归属…" : "调整归属"}
                           </button>
                         ) : null}
                       </div>
+                      {rowErrors[subject.id] ? <div className="canonical-subject-row-error" role="alert">
+                        {rowErrors[subject.id]}<button type="button" className="button subtle sm" onClick={() => void openPlacement(subject, registrationId ?? "")}>重试读取归属</button>
+                      </div> : null}
                       {expandedSubjectId === subject.id ? (
-                        <div role="region" aria-label={`${subject.canonicalName} 的有效参数`}>
+                        <div role="region" className="canonical-subject-definitions" aria-label={`${subject.canonicalName} 的有效参数`}>
                           {definitionState.status === "loading" ? <p role="status">正在加载有效参数…</p> : null}
                           {definitionState.status === "error" ? (
                             <p className="parameter-module-mapping-panel__error" role="alert">
                               {definitionState.message}
+                              <button type="button" className="button subtle sm" onClick={() => setDefinitionRefresh((value) => value + 1)}>重试读取参数</button>
                             </p>
                           ) : null}
                           {definitionState.status === "empty" ? (
@@ -606,8 +715,11 @@ export function CanonicalSubjectPlacementPanel({
                             <ul>
                               {definitionState.items.map((definition) => (
                                 <li key={definition.id}>
-                                  <strong>{definition.propertyKey}</strong>
-                                  <span>{definition.currentRevision.displayName || "未命名定义"}</span>
+                                  <a href={buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, subjectId: subject.id, definitionId: definition.id, catalogReleaseId })}
+                                    onClick={onNavigate ? (event) => { if (!event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) { event.preventDefault(); onNavigate(event.currentTarget.href.replace(window.location.origin, "")); } } : undefined}>
+                                    <strong>{definition.currentRevision.displayName || definition.propertyKey}</strong>
+                                  </a>
+                                  <code>{definition.propertyKey}</code>
                                   <span>{definition.usageSummary.currentValueCount} 个当前值</span>
                                 </li>
                               ))}
@@ -626,16 +738,16 @@ export function CanonicalSubjectPlacementPanel({
                   type="button"
                   className="button subtle"
                   disabled={subjectPage === 0}
-                  onClick={() => setSubjectPage((page) => page - 1)}
+                  onClick={() => updateQuery({ subjectPage: subjectPage === 1 ? null : String(subjectPage) })}
                 >
                   上一页
                 </button>
-                <span>第 {subjectPage + 1} / {subjectPageCount} 页 · 共 {filteredSubjects.length} 个主体</span>
+                <span>第 {subjectPage + 1} / {subjectPageCount} 页 · {inventoryComplete ? "共" : "已加载匹配"} {filteredSubjects.length} 个主体</span>
                 <button
                   type="button"
                   className="button subtle"
                   disabled={subjectPage + 1 >= subjectPageCount}
-                  onClick={() => setSubjectPage((page) => page + 1)}
+                  onClick={() => updateQuery({ subjectPage: String(subjectPage + 2) })}
                 >
                   下一页
                 </button>
@@ -650,7 +762,7 @@ export function CanonicalSubjectPlacementPanel({
           open
           intent={placementDialog.intent}
           actor={actor}
-          domainState={domainState}
+          domainState={inventoryComplete ? domainState : { kind: "loading", catalogReleaseId, stale: false, writesEnabled: false }}
           repository={governance}
           organizationId={organizationId}
           subjectId={placementDialog.subject.id}
@@ -658,15 +770,16 @@ export function CanonicalSubjectPlacementPanel({
           registrationId={placementDialog.registrationId}
           ifMatch={placementDialog.ifMatch}
           moduleOptions={selectedModuleOptions}
-          initialDestinationModuleId={selectedModuleId}
+          newDestinationParents={newDestinationParents}
+          initialDestinationModuleId={selectedDestinationModuleId}
           subjectImpact={placementDialog.subjectImpact}
           currentModuleName={placementDialog.currentModuleName}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onOpenChange={(open) => {
-            if (!open) setPlacementDialog(null);
+            if (!open) { placementGeneration.current += 1; setPlacementDialog(null); }
           }}
           onCompleted={() => void handleCompleted()}
-          onRefreshEvidence={() => void refreshPlacementEvidence()}
+          onRefreshEvidence={refreshPlacementEvidence}
         />
       ) : null}
     </section>

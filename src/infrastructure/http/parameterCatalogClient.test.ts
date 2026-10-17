@@ -69,6 +69,19 @@ const catalogDocument = {
 };
 
 describe("parameter catalog client contract", () => {
+  it.each(["active", "retired"] as const)("serializes the %s owner lifecycle for both definition list routes", async (subjectLifecycle) => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({
+      items: [], nextCursor: null, catalogReleaseId: "crel_01K42", totalCount: 0, hasMore: false
+    }));
+    const client = createParameterCatalogClient({ fetchImpl: fetchMock });
+    await client.listDefinitions({ lifecycle: "active", subjectLifecycle });
+    await client.listSubjectDefinitions("csub_acme_power", { subjectLifecycle });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `/api/v2/catalog/definitions?lifecycle=active&subjectLifecycle=${subjectLifecycle}`,
+      `/api/v2/catalog/subjects/csub_acme_power/definitions?subjectLifecycle=${subjectLifecycle}`
+    ]);
+  });
+
   it("passes only discovery filters through the port and rejects mixed-release pages", async () => {
     const page = {status:"ready",catalogRelease:{id:"crel_one",digest:"sha256:one"},
       matcherRevision:"matcher-one",items:[],nextCursor:null,ignoredReviewItemCount:null,

@@ -10,8 +10,16 @@ import {
 import { CATALOG_DEFINITION_ID, CATALOG_RELEASE_ID, CATALOG_REVIEW_ITEM_ID, CATALOG_SUBJECT_ID } from "./fixtures";
 
 describe("catalog URL and release anchors", () => {
+  it("persists the explicit retired-subject filter without accepting arbitrary truthy values", () => {
+    const anchor = parseCatalogUrlAnchor("?q=power&pageSize=20&includeRetiredSubjects=true");
+    expect(anchor.includeRetiredSubjects).toBe(true);
+    expect(parseCatalogUrlAnchor(serializeCatalogUrlAnchor(anchor))).toEqual(anchor);
+    expect(parseCatalogUrlAnchor("?includeRetiredSubjects=false").includeRetiredSubjects).toBe(false);
+    expect(parseCatalogUrlAnchor("?includeRetiredSubjects=yes").includeRetiredSubjects).toBe(false);
+  });
   it("round-trips opaque subject, definition, review, and catalog release ids", () => {
     const search = serializeCatalogUrlAnchor({
+      ...parseCatalogUrlAnchor(""),
       subjectId: CATALOG_SUBJECT_ID,
       definitionId: CATALOG_DEFINITION_ID,
       catalogReleaseId: CATALOG_RELEASE_ID,

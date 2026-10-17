@@ -9,6 +9,16 @@ export type AcceptanceRequirement = {
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
+    id: "PCAT-REGISTRATION-INITIALIZE-001", workflow: "C", required: false,
+    title: "An authorized organization administrator explicitly creates a typed destination under a business parent and registers its subject atomically, with tenant, release, retry and rollback guards."
+  },
+  {
+    id: "PROJ-ARCHIVE-001",
+    workflow: "C",
+    title: "Admin confirms reversible project archive/restore; default lists hide archived projects while history and existing write permissions remain unchanged.",
+    required: false
+  },
+  {
     id: "AUTH-RUNTIME-001",
     workflow: "A",
     title: "API-mode browser runtime loads current user with the same auth contract used by local dev.",

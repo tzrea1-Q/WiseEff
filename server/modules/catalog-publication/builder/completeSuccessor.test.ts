@@ -14,9 +14,9 @@ import {
   compileVendorCatalogSuccessor,
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { buildCompleteSuccessor } from "./completeSuccessor";
-import type { BuildCompleteSuccessorInput } from "./types";
 import {
   allocationFor,
+  allocationForRevision,
   firstAcmePredecessor,
   frozenPageIdentity,
   integerContent,
@@ -50,8 +50,9 @@ describe("buildCompleteSuccessor", () => {
       digest: predecessor.digest,
     });
 
-    const target = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    const { artifact } = result.value;
+    const target = artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === artifact.targetReleaseId,
     );
     expect(target).toBeDefined();
     if (!target) return;
@@ -221,9 +222,10 @@ describe("buildCompleteSuccessor", () => {
         .find((release) => release.manifest.release.id === vendor.bundle.targetReleaseId)
         ?.documents.map((document) => `${document.kind}:${document.content.id}`) ?? [],
     );
+    const { artifact } = result.value;
     const successorIds = new Set(
-      result.value.artifact.bundle.releases
-        .find((release) => release.manifest.release.id === result.value.artifact.targetReleaseId)
+      artifact.bundle.releases
+        .find((release) => release.manifest.release.id === artifact.targetReleaseId)
         ?.documents.map((document) => `${document.kind}:${document.content.id}`) ?? [],
     );
     for (const id of predecessorIds) {
@@ -258,8 +260,9 @@ describe("buildCompleteSuccessor", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
-    const successorTarget = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    const { artifact } = result.value;
+    const successorTarget = artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === artifact.targetReleaseId,
     );
     if (!successorTarget) throw new Error("built successor target missing");
     const carriedSubject = successorTarget.documents.find(
@@ -294,6 +297,42 @@ describe("buildCompleteSuccessor", () => {
     if (!result.ok) {
       expect(result.error).toEqual({ kind: "subject-not-active", subjectId: "csub_acme_power" });
     }
+  });
+
+  it.each([
+    ["revise-definition", false],
+    ["revise-definition", true],
+    ["retire-definition", false],
+    ["restore-definition", false],
+  ] as const)("refuses %s under a retired owner, including unchanged content=%s", async (op, unchanged) => {
+    const vendor = compileVendorCatalogSuccessor();
+    const target = vendor.bundle.releases.find((release) => release.manifest.release.id === vendor.bundle.targetReleaseId)!;
+    const definition = target.documents.find((document) => document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max");
+    if (definition?.kind !== "definition") throw new Error("acme definition missing");
+    const revision = definition.content.revision;
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: {
+        digest: vendor.compiled.aggregateDigest,
+        bytes: new TextEncoder().encode(serializeContract(vendor.bundle as unknown as ContractJsonValue)),
+      },
+      productPath: "m2-core",
+      changeSet: [{
+        op,
+        definitionId: definition.content.id,
+        class: "documentation",
+        content: {
+          displayName: revision.displayName,
+          documentation: unchanged ? revision.documentation : `${revision.documentation} Updated.`,
+          valueSchema: revision.valueSchema as ReturnType<typeof integerContent>["valueSchema"],
+          ...(revision.unit !== undefined ? { unit: revision.unit } : {}),
+        },
+      }],
+      frozenIdentity: {
+        ...frozenPageIdentity([allocationForRevision("iin_max", revision.number + 1)], "retired-owner"),
+        releaseVersion: CatalogReleaseVersion("1.2.0"),
+      },
+    });
+    expect(result).toEqual({ ok: false, error: { kind: "subject-not-active", subjectId: "csub_acme_power" } });
   });
 
   it("rejects M2 ops on the default M1 product path", async () => {
@@ -355,8 +394,9 @@ describe("buildCompleteSuccessor", () => {
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
       frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], "path"),
+      // @ts-expect-error Deliberately invalid input exercises runtime validation.
       productPath: "m2",
-    } as BuildCompleteSuccessorInput);
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toEqual({
@@ -447,8 +487,9 @@ describe("buildCompleteSuccessor", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
-    const target = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    const { artifact } = result.value;
+    const target = artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === artifact.targetReleaseId,
     );
     expect(target).toBeDefined();
     if (!target) return;
@@ -906,8 +947,9 @@ describe("buildCompleteSuccessor", () => {
     });
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
-    const target = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    const { artifact } = result.value;
+    const target = artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === artifact.targetReleaseId,
     );
     expect(target).toBeDefined();
     if (!target) return;

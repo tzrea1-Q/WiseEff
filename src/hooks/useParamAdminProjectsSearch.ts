@@ -74,3 +74,15 @@ export function buildParamAdminProjectsPath(search: Partial<ParamAdminProjectsSe
   const query = params.toString();
   return `/parameter-admin/projects${query ? `?${query}` : ""}`;
 }
+
+/** Only restore the project list's supported filters; never follow an arbitrary return URL. */
+export function resolveParamAdminProjectsReturnPath(search: string): string {
+  const returnTo = new URLSearchParams(search).get("returnTo") ?? "";
+  if (!returnTo.startsWith("/parameter-admin/projects?") && returnTo !== "/parameter-admin/projects") {
+    return "/parameter-admin/projects";
+  }
+  const url = new URL(returnTo, "http://local");
+  return url.pathname === "/parameter-admin/projects" && !url.hash
+    ? buildParamAdminProjectsPath(parseParamAdminProjectsSearch(url.search))
+    : "/parameter-admin/projects";
+}

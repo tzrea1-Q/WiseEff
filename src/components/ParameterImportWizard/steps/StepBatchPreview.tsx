@@ -67,6 +67,7 @@ export function StepBatchPreview({
     let cancelled = false;
 
     async function loadPreview() {
+      if (previewBatch) return;
       if (!parameterActions) {
         setError("当前环境不支持创建导入预览。");
         return;
@@ -182,6 +183,12 @@ export function StepBatchPreview({
             </div>
           </dl>
 
+          {previewBatch.summary.conflict > 0 ? (
+            <p role="status" className="parameter-import-wizard-empty-hint">
+              冲突条目不能应用。请返回逐行核对，检查目标参数与来源；仍有冲突时，请管理员核对项目绑定后重新预览。
+            </p>
+          ) : null}
+
           <HorizontalDragScroll className="parameter-import-preview-table-wrap">
             <table className="import-review-diff-table parameter-import-preview-table" aria-label="预览条目">
               <thead>
@@ -244,7 +251,7 @@ export function StepBatchPreview({
         <button type="button" className="button subtle" onClick={onBack}>
           上一步
         </button>
-        <button type="button" className="button primary" disabled={!hasEligibleSelection} onClick={onNext}>
+        <button type="button" className="button primary" disabled={loading || Boolean(error) || !hasEligibleSelection} onClick={onNext}>
           下一步
         </button>
       </div>
