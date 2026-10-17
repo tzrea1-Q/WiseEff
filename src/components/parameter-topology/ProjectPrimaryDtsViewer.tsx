@@ -14,7 +14,8 @@ export type DtsViewerSessionChangeMarker = {
 
 export type ProjectPrimaryDtsViewerProps = {
   fileName: string;
-  versionNumber: number;
+  versionNumber?: number;
+  hideHeader?: boolean;
   text: string;
   /** 1-based line to scroll into view and highlight; null clears highlight */
   focusLine?: number | null;
@@ -106,6 +107,7 @@ function renderLineText(
 export function ProjectPrimaryDtsViewer({
   fileName,
   versionNumber,
+  hideHeader = false,
   text,
   focusLine = null,
   focusSpan = null,
@@ -210,8 +212,8 @@ export function ProjectPrimaryDtsViewer({
   let globalMatchOffset = 0;
 
   return (
-    <section className={rootClassName} aria-label={`${fileName} · v${versionNumber}`}>
-      <header className="project-primary-dts-viewer__meta"><strong>{fileName}</strong><span>版本 {versionNumber}</span><span>只读来源</span></header>
+    <section className={rootClassName} aria-label={versionNumber == null ? fileName : `${fileName} · v${versionNumber}`}>
+      {!hideHeader ? <header className="project-primary-dts-viewer__meta"><strong>{fileName}</strong>{versionNumber != null ? <span>版本 {versionNumber}</span> : null}<span>只读来源</span></header> : null}
       <div ref={bodyRef} className="project-primary-dts-viewer__body" role="region" aria-label={bodyAriaLabel ?? "DTS 源码"} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing source scrollport must support keyboard scrolling. */}>
         {lines.map((line, index) => {
           const lineNumber = index + 1;

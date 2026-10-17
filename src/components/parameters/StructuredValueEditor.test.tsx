@@ -250,17 +250,22 @@ describe("StructuredValueEditor", () => {
     });
   });
 
-  it("shows normalizedValue preview aligned with client typing", () => {
-    render(
-      <StructuredValueEditor
+  it("emits normalized values without a preview or dangling preview descriptions", () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ControlledEditor
         propertyName="reg"
         valueType="u32-array"
         rawText="<0xB 0x4B>"
-        onChange={vi.fn()}
+        onChange={onChange}
       />
     );
 
-    const preview = screen.getByLabelText(/normalized|规范化|预览/i);
-    expect(preview).toHaveTextContent("<0xb 0x4b>");
+    fireEvent.change(screen.getByRole("textbox", { name: "数值 1" }), { target: { value: "0xC" } });
+    expect(onChange).toHaveBeenLastCalledWith({
+      rawText: "<0xC 0x4B>", valueType: "u32-array", normalizedValue: "<0xc 0x4b>", valid: true, error: undefined
+    });
+    expect(screen.queryByLabelText(/normalized|规范化|预览/i)).not.toBeInTheDocument();
+    expect(container.querySelector('[id$="-normalized"], [aria-describedby*="-normalized"]')).toBeNull();
   });
 });

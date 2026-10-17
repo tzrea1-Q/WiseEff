@@ -41,7 +41,7 @@ export function WorkbenchShellChrome({
       ) : null}
       {!canAdmin ? (
         <p className="configuration-workbench__ops-banner" role="note">
-          仅管理员可变更配置集成员、同步或导出。只读上下文仍可查看。
+          仅管理员可变更配置文件、同步或导出。只读上下文仍可查看。
         </p>
       ) : null}
 

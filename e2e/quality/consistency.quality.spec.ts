@@ -331,13 +331,112 @@ for (const route of consistencyReadOnlyRoutes) {
         }
         if (/^\/parameter-admin\/projects\/[^/]+\/(?:configuration|files|config-sets|structure|conflicts)$/.test(routePath)) {
           const workbench = page.getByRole("region", { name: "项目配置工作台", exact: true });
-          await expect(workbench.getByRole("button", { name: "项目清单", exact: true })).toBeVisible();
-          const contentTabs = workbench.getByRole("tablist", { name: "项目配置内容", exact: true });
-          await expect(contentTabs.getByRole("tab")).toHaveCount(3);
-          for (const name of ["源码", "结构", "冲突"]) {
-            await expect(contentTabs.getByRole("tab", { name, exact: true })).toBeVisible();
+          const files = page.getByRole("dialog", { name: "文件管理", exact: true });
+          const requestedInspector = new URLSearchParams(route.path.split("?")[1]).get("inspector")
+            ?? (routePath.endsWith("/config-sets") ? "config-set" : routePath.endsWith("/files") ? "file" : null);
+          if (requestedInspector === "config-set") {
+            await expect(files).toBeVisible();
+            await expect(files).toBeInViewport({ ratio: 1 });
+          } else if (requestedInspector === "file") {
+            await expect(page.getByRole("complementary", { name: "配置检查器", exact: true })).toBeVisible();
+            const initialMeasurements = await page.evaluate(collectConsistencyMeasurements);
+            requireNavigatorWorkbenchGeometry(initialMeasurements.navigatorWorkbenches, route.path);
           }
+          if (await files.isVisible()) {
+            await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
+            await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+          }
+          const configurationVersions = page.getByRole("dialog", { name: "配置版本", exact: true });
+          if (await configurationVersions.isVisible()) await configurationVersions.getByRole("button", { name: "关闭配置版本", exact: true }).click();
+          await expect(workbench.getByRole("button", { name: "项目清单", exact: true })).toBeVisible();
+          const versionsEntry = workbench.getByRole("button", { name: /^配置版本/ });
+          await expect(versionsEntry).toHaveAttribute("data-variant", "outline");
+          await versionsEntry.click();
+          await expect(configurationVersions).toBeVisible();
+          await expect(configurationVersions).toBeInViewport({ ratio: 1 });
+          await expect(configurationVersions.getByRole("region", { name: "配置版本列表与详情", exact: true })).toBeVisible();
+          await expect(configurationVersions.getByText("正在加载配置版本…", { exact: true })).toHaveCount(0);
+          const versionHistory = configurationVersions.getByRole("list", { name: "配置版本历史", exact: true });
+          await expect(versionHistory).toHaveCount(1);
+          if (await versionHistory.getByRole("button").count()) {
+            await expect(configurationVersions.getByLabel("配置版本详情", { exact: true }).getByRole("heading")).toBeVisible();
+            await expect(configurationVersions.getByText("正在读取快照文件…", { exact: true })).toHaveCount(0);
+            await expect(configurationVersions.getByRole("alert")).toHaveCount(0);
+            const snapshotFiles = configurationVersions.getByRole("table", { name: "快照中的文件版本", exact: true });
+            if (await snapshotFiles.count()) await expect(snapshotFiles).toBeVisible();
+            else await expect(configurationVersions.getByText("此快照未记录文件。", { exact: true })).toBeVisible();
+          } else {
+            await expect(configurationVersions.getByText("尚未保存版本快照。", { exact: true })).toBeVisible();
+          }
+          const versionBounds = await configurationVersions.evaluate((dialog) => ({ clientWidth: dialog.clientWidth, scrollWidth: dialog.scrollWidth }));
+          expect(versionBounds.scrollWidth).toBeLessThanOrEqual(versionBounds.clientWidth + 1);
+          await configurationVersions.getByRole("button", { name: "关闭配置版本", exact: true }).click();
+          await expect(versionsEntry).toBeFocused();
+          const more = workbench.getByRole("group", { name: "配置工作台操作", exact: true }).getByRole("button", { name: "更多", exact: true });
+          await more.click();
+          await expect(page.getByRole("menuitem", { name: "冲突处理", exact: true })).toHaveCount(0);
+          await page.keyboard.press("Escape");
+          const legacyConflictsUrl = new URL(page.url());
+          legacyConflictsUrl.searchParams.set("tab", "conflicts");
+          await page.goto(legacyConflictsUrl.toString());
+          await settleQualityRoute(page, legacyConflictsUrl.pathname, { readOnly: true });
+          await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+          await waitForFontsAndNextPaint(page);
+          const contentTabs = workbench.getByRole("tablist", { name: "项目配置内容", exact: true });
+          await expect(contentTabs.getByRole("tab")).toHaveCount(2);
+          await expect(contentTabs.getByRole("tab", { name: "结构", exact: true })).toHaveCount(0);
+          const conflictTab = contentTabs.getByRole("tab", { name: /^冲突/ });
+          await expect(conflictTab).toHaveAttribute("aria-selected", "true");
+          const conflictsPanelId = await conflictTab.getAttribute("aria-controls");
+          expect(conflictsPanelId).toBeTruthy();
+          const conflictsPanel = page.locator(`[id="${conflictsPanelId}"]`);
+          await expect(conflictsPanel).toHaveAttribute("role", "tabpanel");
+          await expect(conflictsPanel).toHaveAttribute("aria-labelledby", (await conflictTab.getAttribute("id"))!);
+          await expect(conflictsPanel).toBeVisible();
+          await expect(conflictsPanel.getByRole("heading", { name: "冲突处理", exact: true })).toBeVisible();
+          await expect(workbench.getByText("正在加载冲突…", { exact: true })).toHaveCount(0);
+          await expect(workbench.getByText("冲突加载失败，请重试。", { exact: true })).toHaveCount(0);
+          const conflictCount = Number((await conflictTab.textContent())?.match(/\d+/)?.[0] ?? 0);
+          const conflictMeasurements = await page.evaluate(collectConsistencyMeasurements);
+          requireViewSwitchStyles(conflictMeasurements, "/parameter-admin/projects/aurora/configuration?tab=conflicts");
+          await contentTabs.getByRole("tab", { name: "源码", exact: true }).click();
+          await expect(workbench.getByRole("region", { name: "配置内容", exact: true })).toBeVisible();
+          await expect(workbench.getByRole("heading", { name: "冲突处理", exact: true })).toHaveCount(0);
+          if (conflictCount === 0) {
+            await expect(contentTabs).toHaveCount(0);
+            await expect(workbench.getByRole("tabpanel")).toHaveCount(0);
+          } else {
+            await expect(contentTabs.getByRole("tab")).toHaveCount(2);
+            const sourceTab = contentTabs.getByRole("tab", { name: "源码", exact: true });
+            await expect(sourceTab).toHaveAttribute("aria-selected", "true");
+            const sourcePanelId = await sourceTab.getAttribute("aria-controls");
+            expect(sourcePanelId).toBeTruthy();
+            const sourcePanel = page.locator(`[id="${sourcePanelId}"]`);
+            await expect(sourcePanel).toHaveAttribute("role", "tabpanel");
+            await expect(sourcePanel).toHaveAttribute("aria-labelledby", (await sourceTab.getAttribute("id"))!);
+            await expect(sourcePanel).toBeVisible();
+          }
+          await expect(workbench.getByRole("button", { name: /^更新来源/ })).toHaveCount(0);
+          await workbench.getByRole("button", { name: "配置", exact: true }).click();
+          await page.getByRole("menuitem", { name: /^(文件管理|查看文件)$/ }).click();
+          await files.getByRole("button", { name: /^(更新文件|更新记录|上传来源文件)$/ }).first().click();
+          const inspector = page.getByRole("complementary", { name: "配置检查器", exact: true });
+          await expect(inspector.getByRole("region", { name: "候选记录", exact: true })).toBeVisible();
+          await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
+          await workbench.getByRole("button", { name: "配置", exact: true }).click();
+          await page.getByRole("menuitem", { name: /^(文件管理|查看文件)$/ }).click();
+          await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
+          await expect(files).toBeInViewport({ ratio: 1 });
+          await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
           await expect(page.getByRole("navigation", { name: "参数管理后台配置范围", exact: true })).toHaveCount(0);
+          if (new URLSearchParams(route.path.split("?")[1]).get("tab") === "conflicts") {
+            await page.goto(legacyConflictsUrl.toString());
+            await settleQualityRoute(page, legacyConflictsUrl.pathname, { readOnly: true });
+            await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+            await expect(contentTabs.getByRole("tab", { name: /^冲突/ })).toHaveAttribute("aria-selected", "true");
+            await waitForFontsAndNextPaint(page);
+          }
+          expect(await page.locator("html").evaluate((element) => element.classList.contains("dark"))).toBe(theme === "dark");
         }
         if (routePath === "/audit") {
           await test.step("audit kind filter inventory", async () => {
@@ -573,6 +672,9 @@ for (const route of consistencyReadOnlyRoutes) {
         required = hasHistoricalIdentity
           ? route.required.filter((category) => category !== "rowActions" && category !== "paginationControls")
           : route.required;
+        const measuredUrl = new URL(page.url());
+        const geometryPath = routePath.startsWith("/parameter-admin/projects/aurora/")
+          ? `${measuredUrl.pathname}${measuredUrl.search}` : route.path;
         if (theme === "light" && requiresHint) {
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
         }
@@ -628,7 +730,7 @@ for (const route of consistencyReadOnlyRoutes) {
           }
           requireViewSwitchStyles(measurements, route.path);
           if (route.required.includes("navigatorWorkbenches")) {
-            requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, route.path);
+            requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, geometryPath);
           }
           if (theme === "light") {
             if (requiresHint) {
@@ -665,19 +767,52 @@ for (const route of consistencyReadOnlyRoutes) {
               contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
             });
           }
-          const navigatorLabel = routePath.startsWith("/parameter-admin/projects/aurora") ? "文件与配置集" : "模块导航";
+          const navigatorLabel = routePath.startsWith("/parameter-admin/projects/aurora") ? "配置导航" : "模块导航";
           await page.getByRole("button", { name: `收起${navigatorLabel}`, exact: true }).click();
           await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
           const collapsed = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
-          requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, route.path);
-          if (route.required.includes("rowActions")) requireRowActionVisibility(collapsed.rowActions, route.path);
+          requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, geometryPath);
+          if (routePath.startsWith("/parameter-admin/projects/aurora")) {
+            expect(collapsed.rowActions, "file navigation must not duplicate toolbar actions").toHaveLength(0);
+            await expect(page.locator(".navigator-workbench__navigation .row-action-menu")).toHaveCount(0);
+            const toolbar = page.locator(".configuration-workbench__command");
+            await expect(toolbar.locator(".row-action-menu")).toHaveCount(1);
+            const more = toolbar.getByRole("button", { name: "更多", exact: true });
+            await expect(more).toBeEnabled();
+            await expect(more).toBeInViewport({ ratio: 1 });
+            expect(await more.evaluate((button) => button.scrollWidth - button.clientWidth), "toolbar menu label must not be clipped").toBeLessThanOrEqual(1);
+            await more.focus();
+            await page.keyboard.press("Enter");
+            const menu = page.getByRole("menu");
+            await expect(menu.getByRole("menuitem", { name: "版本历史与下载", exact: true })).toHaveCount(0);
+            await expect(menu.getByRole("menuitem", { name: "冲突处理", exact: true })).toHaveCount(0);
+            await expect(menu.getByRole("menuitem", { name: "项目活动", exact: true })).toBeVisible();
+            await page.keyboard.press("Escape");
+            await expect(menu).toBeHidden();
+            await expect(more).toBeFocused();
+            const scheme = toolbar.getByRole("button", { name: "配置", exact: true });
+            await expect(scheme).toBeEnabled();
+            await expect(scheme).toBeInViewport({ ratio: 1 });
+            const selectedSchemeId = await scheme.getAttribute("data-value");
+            expect(selectedSchemeId).toBeTruthy();
+            await scheme.focus();
+            await page.keyboard.press("Enter");
+            const schemeMenu = page.getByRole("menu");
+            await expect(schemeMenu.getByRole("menuitemradio", { checked: true })).toHaveAttribute("data-value", selectedSchemeId!);
+            await expect(schemeMenu.getByRole("menuitem", { name: /^(文件管理|查看文件)$/ })).toBeVisible();
+            await page.keyboard.press("Escape");
+            await expect(schemeMenu).toBeHidden();
+            await expect(scheme).toBeFocused();
+          } else if (route.required.includes("rowActions")) {
+            requireRowActionVisibility(collapsed.rowActions, route.path);
+          }
           await testInfo.attach(`navigator-workbench-collapsed-${theme}`, {
             contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
           await page.getByRole("button", { name: `展开${navigatorLabel}`, exact: true }).click();
           await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         }
-        if (route.required.includes("rowActions")) {
+        if (route.required.includes("rowActions") || routePath.startsWith("/parameter-admin/projects/aurora")) {
           expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
             `${route.path}: the page must not scroll horizontally`).toBeLessThanOrEqual(1);
           await testInfo.attach(`row-actions${route.path.replaceAll("/", "-")}-${theme}`, {

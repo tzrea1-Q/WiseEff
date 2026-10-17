@@ -34,6 +34,74 @@ function passedRun(overrides: Partial<ValidationRun> = {}): ValidationRun {
 }
 
 describe("createConfigRevisionGateSession", () => {
+  it.each(["project", "config-set"])("clears the previous %s revision and validation before the next scope finishes loading", async (changed) => {
+    const session = createConfigRevisionGateSession();
+    await session.load("project-1", "cs-1", { listConfigRevisions: async () => REVISIONS });
+    await session.validate("project-1", { validateRevision: async () => passedRun({ requiresConfirmation: true }) });
+    let resolveNext!: (items: ConfigRevisionSummary[]) => void;
+    const pending = session.load(changed === "project" ? "project-2" : "project-1", changed === "config-set" ? "cs-2" : "cs-1", {
+      listConfigRevisions: () => new Promise((resolve) => { resolveNext = resolve; })
+    });
+    expect(session.loading).toBe(true);
+    expect(session.revisions).toEqual([]);
+    expect(session.selectedRevisionId).toBeNull();
+    expect(session.lastRun).toBeNull();
+    expect(session.requiresConfirmation).toBe(false);
+    resolveNext([{ ...REVISIONS[0]!, id: "new-revision", configSetId: changed === "config-set" ? "cs-2" : "cs-1" }]);
+    await pending;
+    expect(session.selectedRevisionId).toBe("new-revision");
+  });
+
+  it("preserves a valid selected revision and its validation when refreshing the same scope", async () => {
+    const session = createConfigRevisionGateSession();
+    await session.load("project-1", "cs-1", { listConfigRevisions: async () => REVISIONS });
+    session.select("rev-cs-1");
+    await session.validate("project-1", { validateRevision: async () => passedRun() });
+    let resolveNext!: (items: ConfigRevisionSummary[]) => void;
+    const pending = session.load("project-1", "cs-1", {
+      listConfigRevisions: () => new Promise((resolve) => { resolveNext = resolve; })
+    });
+    expect(session.selectedRevisionId).toBe("rev-cs-1");
+    expect(session.lastRun?.id).toBe("run-1");
+    resolveNext(REVISIONS);
+    await pending;
+    expect(session.selectedRevisionId).toBe("rev-cs-1");
+    expect(session.lastRun?.id).toBe("run-1");
+  });
+
+  it.each(["success", "failure"])("ignores a late validation %s after changing scope", async (outcome) => {
+    const session = createConfigRevisionGateSession();
+    await session.load("project-1", "cs-1", { listConfigRevisions: async () => REVISIONS });
+    let resolveOld!: (run: ValidationRun) => void;
+    let rejectOld!: (cause: Error) => void;
+    const pending = session.validate("project-1", { validateRevision: () => new Promise((resolve, reject) => {
+      resolveOld = resolve;
+      rejectOld = reject;
+    }) });
+    await session.load("project-2", "cs-2", { listConfigRevisions: async () => [{ ...REVISIONS[0]!, id: "new-revision", configSetId: "cs-2" }] });
+    expect(session.validating).toBe(false);
+    await session.validate("project-2", { validateRevision: async () => passedRun({ id: "new-run" }) });
+    if (outcome === "success") resolveOld(passedRun({ id: "old-run", requiresConfirmation: true }));
+    else rejectOld(new Error("old validation failed"));
+    expect(await pending).toBeNull();
+    expect(session.lastRun?.id).toBe("new-run");
+    expect(session.actionError).toBe("");
+    expect(session.requiresConfirmation).toBe(false);
+  });
+
+  it("ignores the previous revision's validation after selecting another revision in the same scope", async () => {
+    const session = createConfigRevisionGateSession();
+    await session.load("project-1", "cs-1", { listConfigRevisions: async () => REVISIONS });
+    let resolveOld!: (run: ValidationRun) => void;
+    const pending = session.validate("project-1", { validateRevision: () => new Promise((resolve) => { resolveOld = resolve; }) });
+    session.select("rev-cs-1");
+    expect(session.validating).toBe(false);
+    resolveOld(passedRun({ requiresConfirmation: true }));
+    expect(await pending).toBeNull();
+    expect(session.lastRun).toBeNull();
+    expect(session.selectedRevisionId).toBe("rev-cs-1");
+  });
+
   it("surfaces the pinned revision refusal from the validation API", async () => {
     const session = createConfigRevisionGateSession();
     await session.load("project-1", "cs-1", { listConfigRevisions: vi.fn(async () => REVISIONS) });

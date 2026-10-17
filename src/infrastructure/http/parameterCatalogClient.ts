@@ -130,6 +130,7 @@ export type CatalogResponseWithEtag<T> = T & {
 type CatalogRequestInit = {
   body?: unknown;
   context?: Partial<CatalogWriteContext>;
+  requestId?: string;
   preserveEtag?: boolean;
 };
 
@@ -235,6 +236,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     if (init.context?.idempotencyKey) {
       headers[CATALOG_IDEMPOTENCY_HEADER] = init.context.idempotencyKey;
     }
+    if (init.requestId) headers["X-Request-Id"] = init.requestId;
     if (init.context?.ifMatch) {
       headers[CATALOG_IF_MATCH_HEADER] = init.context.ifMatch;
     }
@@ -740,7 +742,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/batches`,
       catalogBatchValueChangeRequestResponseSchema,
       "ProjectValueBatchChangeRequestResponse",
-      { body: catalogSubmitBatchValueChangeRequestSchema.parse(body), context }
+      // Source batches deduplicate by the HTTP request ID.
+      { body: catalogSubmitBatchValueChangeRequestSchema.parse(body), context, requestId: context.idempotencyKey }
     ),
     listProjectValueBatchChangeRequests: (projectId: string, query?: { status?: string; mine?: boolean }) =>
       request(

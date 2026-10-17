@@ -32,6 +32,44 @@ function encodeFile(name: string, text: string): File {
 }
 
 describe("createCandidateVersionFlow", () => {
+  it.each(["success", "failure"])("does not attach a delayed %s from update A to the selected update B", async (outcome) => {
+    const flow = createCandidateVersionFlow();
+    const repo = {
+      getCandidate: vi.fn(async (_project: string, id: string) => candidate({ id })),
+      downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", bytes: new TextEncoder().encode("source") })),
+      getCandidateSourcePreview: vi.fn(async (_project: string, id: string) => ({
+        kind: "canonical" as const, canSubmit: true, candidateId: id, format: "dts", baseVersionId: "ver-1", proofToken: `proof-${id}`
+      }))
+    };
+    await flow.load("proj-1", "update-a", repo);
+    let settle!: () => void;
+    const submitCandidateSourceReview = vi.fn(() => new Promise<{ requestId: string; status: "pending"; replayed: boolean }>((resolve, reject) => {
+      settle = () => outcome === "success" ? resolve({ requestId: "review-a", status: "pending", replayed: false }) : reject(new Error("A failed"));
+    }));
+    const submitting = flow.submitSourceReview("proj-1", "review A", { submitCandidateSourceReview }, "reviewer").catch(() => null);
+    await flow.load("proj-1", "update-b", repo);
+    expect(flow.submittingSourceReview).toBe(false);
+    settle();
+    await submitting;
+    expect(flow.candidate?.id).toBe("update-b");
+    expect(flow.sourcePreview).toMatchObject({ candidateId: "update-b", canSubmit: true });
+    expect(flow.sourcePreview?.request).toBeUndefined();
+    expect(flow.sourceReviewResult).toBeNull();
+    expect(flow.sourceReviewError).toBe("");
+    expect(flow.error).toBe("");
+  });
+
+  it.each([0, 2 * 1024 * 1024 + 1])("rejects an invalid source size %s before reading or uploading", async (size) => {
+    const file = encodeFile("board.dts", "x");
+    Object.defineProperty(file, "size", { value: size });
+    const createCandidate = vi.fn();
+    const flow = createCandidateVersionFlow();
+    await expect(flow.create("proj-1", { file }, { createCandidate })).rejects.toThrow("源文件必须非空且不超过 2 MiB");
+    expect(createCandidate).not.toHaveBeenCalled();
+    expect(flow.uploading).toBe(false);
+    expect(flow.error).toContain("2 MiB");
+  });
+
   it.each(["NOT_FOUND", "GONE"])("treats an absent candidate (%s) as empty rather than failed", async (code) => {
     const flow = createCandidateVersionFlow();
     await flow.load("proj", "removed", {
@@ -43,7 +81,7 @@ describe("createCandidateVersionFlow", () => {
   });
   it("create encodes File to contentBase64 and calls narrow createCandidate Pick", async () => {
     const created = candidate({ status: "ready" });
-    const createCandidate = vi.fn(async () => created);
+    const createCandidate = vi.fn<ParameterFileRepository["createCandidate"]>(async () => created);
     const repo = { createCandidate } as Pick<ParameterFileRepository, "createCandidate">;
     const flow = createCandidateVersionFlow();
 
@@ -62,7 +100,7 @@ describe("createCandidateVersionFlow", () => {
         contentBase64: expect.any(String)
       })
     );
-    expect(createCandidate.mock.calls[0][1].contentBase64.length).toBeGreaterThan(0);
+    expect(createCandidate.mock.calls[0]![1].contentBase64.length).toBeGreaterThan(0);
     expect(flow.candidate?.id).toBe("cand-1");
     expect(flow.canActivate).toBe(false);
     expect(flow.uploading).toBe(false);
@@ -107,6 +145,7 @@ describe("createCandidateVersionFlow", () => {
       configRevisionId: "revision-1",
       sourcePinId: "pin-1",
       proofToken: "proof-1",
+      cohortProofToken: "workflow-proof-1",
       before: '{"mode":"old"}',
       after: '{"mode":"new"}'
     };
@@ -135,11 +174,13 @@ describe("createCandidateVersionFlow", () => {
     expect(flow.canActivate).toBe(false);
     expect(flow.canSubmitSourceReview).toBe(true);
 
-    await flow.submitSourceReview("proj-1", "  canonical review  ", { submitCandidateSourceReview });
+    await flow.submitSourceReview("proj-1", "  canonical review  ", { submitCandidateSourceReview }, "reviewer-1");
 
     expect(submitCandidateSourceReview).toHaveBeenCalledWith("proj-1", item.id, {
       expectedCurrentVersionId: "version-json-3",
       expectedProofToken: "proof-1",
+      expectedWorkflowProofToken: "workflow-proof-1",
+      assignedToUserId: "reviewer-1",
       reason: "canonical review"
     });
     expect(flow.sourcePreview?.request).toEqual({ id: "request-1", status: "pending", kind: "single" });
@@ -255,7 +296,7 @@ describe("createCandidateVersionFlow", () => {
         candidateId: item.id,
         format: "dts",
         proofToken: "proof-approved",
-        request: { id: "request-approved", status: "approved" as const }
+        request: { id: "request-approved", status: "approved" as const, kind: "single" as const }
       }))
     });
 
@@ -271,7 +312,8 @@ describe("createCandidateVersionFlow", () => {
         id: "file-board",
         projectId: "proj-1",
         organizationId: "org-1",
-        name: "board.dts",
+        fileName: "board.dts",
+        enabled: true,
         format: "dts",
         currentVersionId: "ver-2",
         createdAt: "2026-08-01T00:00:00.000Z",
@@ -307,7 +349,7 @@ describe("createCandidateVersionFlow", () => {
   });
 
   it("activate for new file requires configSetId and sends activateRole", async () => {
-    const item = candidate({ fileId: undefined, baseVersionId: null, status: "ready" });
+    const item = candidate({ fileId: undefined, baseVersionId: undefined, status: "ready" });
     const activateCandidate = vi.fn(async () => ({
       item,
       file: { id: "file-new" } as never,

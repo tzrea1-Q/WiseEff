@@ -1,10 +1,6 @@
 import type { RefObject } from "react";
 
 import type {
-  DtsReleaseReadiness,
-  DtsReleaseReadinessIssue
-} from "@/application/ports/DtsStructuredRepository";
-import type {
   ParameterFileRepository,
   ParameterFileSourceWorkflow,
   ParameterFileSyncConflict
@@ -12,7 +8,7 @@ import type {
 import type { SessionDraftRow } from "@/application/project-configuration/sessionDrafts";
 import type { StagedStructuredDraft, StructuredEditRecoveryStatus } from "@/application/project-configuration/structuredEditSession";
 import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
-import { WorkbenchReleaseReadinessIssues } from "./WorkbenchReleaseReadiness";
+import { ReviewProvenance } from "@/features/parameter-review/ReviewProvenance";
 
 export type WorkbenchTaskDockProps = {
   tasksOpen: boolean;
@@ -21,10 +17,10 @@ export type WorkbenchTaskDockProps = {
   syncEvidence: string;
   canonicalSyncCheck: boolean;
   exportEvidence: string;
+  onDismissOperationResults?: () => void;
   syncConflicts: ParameterFileSyncConflict[];
   autoLocateConflicts?: boolean;
   showConflictArbitration?: boolean;
-  releaseReadiness: DtsReleaseReadiness | null;
   draftRecoveryStatus: StructuredEditRecoveryStatus;
   draftCopyFallbackRef: RefObject<HTMLTextAreaElement | null>;
   draftCopyStatus: string;
@@ -32,10 +28,11 @@ export type WorkbenchTaskDockProps = {
   onReconfirmStaleDrafts: () => void;
   selectedDraftKeys: ReadonlySet<string>;
   onToggleDraftKey: (key: string) => void;
+  onDiscardDraft?: (key: string) => void;
+  onDiscardAllDrafts?: () => void;
   submitReason: string;
   onSubmitReasonChange: (value: string) => void;
   canEdit: boolean;
-  onValidateSelected: () => void;
   onSubmitSelected: () => void;
   submittingEdits: boolean;
   validateStatus: string;
@@ -49,11 +46,6 @@ export type WorkbenchTaskDockProps = {
   sourceWorkflowLoading: boolean;
   onConflictsChange: (next: ParameterFileSyncConflict[]) => void;
   onLocateConflict: (conflict: ParameterFileSyncConflict) => void;
-  canAdmin: boolean;
-  acknowledgedWarningIds: ReadonlySet<string>;
-  onAcknowledgeWarning: (issueId: string) => void;
-  onSelectReadinessIssue: (issue: DtsReleaseReadinessIssue) => void;
-  onReadinessRetry: () => void;
 };
 
 export function WorkbenchTaskDock({
@@ -61,12 +53,11 @@ export function WorkbenchTaskDock({
   onTasksOpenChange,
   sessionDraftRows,
   syncEvidence,
-  canonicalSyncCheck,
   exportEvidence,
+  onDismissOperationResults,
   syncConflicts,
   autoLocateConflicts = true,
   showConflictArbitration = true,
-  releaseReadiness,
   draftRecoveryStatus,
   draftCopyFallbackRef,
   draftCopyStatus,
@@ -74,10 +65,11 @@ export function WorkbenchTaskDock({
   onReconfirmStaleDrafts,
   selectedDraftKeys,
   onToggleDraftKey,
+  onDiscardDraft,
+  onDiscardAllDrafts,
   submitReason,
   onSubmitReasonChange,
   canEdit,
-  onValidateSelected,
   onSubmitSelected,
   submittingEdits,
   validateStatus,
@@ -90,13 +82,14 @@ export function WorkbenchTaskDock({
   sourceWorkflowByFileId,
   sourceWorkflowLoading,
   onConflictsChange,
-  onLocateConflict,
-  canAdmin,
-  acknowledgedWarningIds,
-  onAcknowledgeWarning,
-  onSelectReadinessIssue,
-  onReadinessRetry
+  onLocateConflict
 }: WorkbenchTaskDockProps) {
+  const invalidCount = sessionDraftRows.filter((row) => row.valid === false).length;
+  const hasEvidence = Boolean(syncEvidence || exportEvidence);
+  const hasTasks = Boolean(sessionDraftRows.length || stagedDrafts.length || syncConflicts.length || hasEvidence ||
+    validateStatus || submitStatus || submitError);
+  if (!hasTasks) return null;
+
   return (
     <footer className={tasksOpen ? "configuration-workbench__tasks is-open" : "configuration-workbench__tasks"}>
       <button
@@ -106,33 +99,32 @@ export function WorkbenchTaskDock({
         aria-expanded={tasksOpen}
         onClick={() => onTasksOpenChange(!tasksOpen)}
       >
-        <span>
-          本轮更改 <strong>{sessionDraftRows.length + (exportEvidence || (syncEvidence && !canonicalSyncCheck) ? 1 : 0)}</strong>
-        </span>
-        <span>
-          校验问题 <strong>{sessionDraftRows.filter((row) => row.valid === false).length}</strong>
-        </span>
-        <span>
+        {sessionDraftRows.length > 0 ? <span>
+          本轮更改 <strong>{sessionDraftRows.length}</strong>
+        </span> : null}
+        {invalidCount > 0 ? <span>
+          校验问题 <strong>{invalidCount}</strong>
+        </span> : null}
+        {syncConflicts.length > 0 ? <span>
           冲突 <strong>{syncConflicts.length}</strong>
-        </span>
-        <span>
-          就绪问题{" "}
-          <strong>{(releaseReadiness?.blockers.length ?? 0) + (releaseReadiness?.warnings.length ?? 0)}</strong>
-        </span>
+        </span> : null}
+        {stagedDrafts.length > 0 ? <span>待提交审核 <strong>{stagedDrafts.length}</strong></span> : null}
+        {hasEvidence ? <span>操作结果</span> : null}
         <span>{tasksOpen ? "收起" : "展开任务"}</span>
       </button>
       {tasksOpen ? (
         <div role="region" aria-label="配置任务" className="configuration-workbench__task-content">
         <div className="configuration-workbench__task-panel">
-          <strong>会话变更</strong>
-          {sessionDraftRows.length === 0 ? (
-            <p>没有本轮更改。从结构树或源码定位选中属性后，用类型化编辑器写入本地会话变更。</p>
-          ) : (
+          {sessionDraftRows.length > 0 ? (
             <>
+              <div className="configuration-workbench__task-actions">
+                <strong>未提交变更</strong>
+                {onDiscardAllDrafts && sessionDraftRows.length > 1 ? <button className="button subtle" type="button" disabled={submittingEdits} onClick={onDiscardAllDrafts}>全部撤销</button> : null}
+              </div>
               {draftRecoveryStatus === "stale-base" ? (
                 <div className="configuration-workbench__stale-draft" role="status">
                   <p>
-                    基线版本已变更。这些会话草稿仍可检查与复制，但在基于当前基线继续编辑之前不能校验或提交。
+                    基线版本已变更。请先基于当前基线继续编辑；保存时会自动校验。草稿仍可检查与复制。
                   </p>
                   <div className="configuration-workbench__task-actions">
                     <button className="button subtle" type="button" onClick={() => void onCopySessionDrafts()}>
@@ -175,6 +167,8 @@ export function WorkbenchTaskDock({
                           </small>
                         </span>
                       </label>
+                      {row.error ? <p role="alert">{row.error}</p> : null}
+                      {onDiscardDraft ? <button className="button subtle" type="button" disabled={submittingEdits} aria-label={`撤销 ${row.nodePath}/${row.propertyName}`} onClick={() => onDiscardDraft(row.key)}>撤销</button> : null}
                     </li>
                   );
                 })}
@@ -191,23 +185,21 @@ export function WorkbenchTaskDock({
               </label>
 
             </>
-          )}
+          ) : null}
           {validateStatus ? <p role="status">{validateStatus}</p> : null}
-          {submitStatus ? <p role="status">{submitStatus}</p> : null}
+          {submitStatus && stagedDrafts.length === 0 ? <p role="status">{submitStatus}</p> : null}
           {stagedDrafts.length > 0 ? (
             <section aria-label="待审核草稿回执">
-              <ul>
-                {stagedDrafts.map((draft) => (
-                  <li key={draft.draftId}>
-                    <code>{draft.draftId}</code> · 待提交审核 · 当前值未变：<code>{draft.currentValueId}</code>
-                  </li>
-                ))}
-              </ul>
+              <p>已保存 {stagedDrafts.length} 项待审核草稿，当前值未变。提交审核并获通过后生效。</p>
+              <ReviewProvenance entries={[{ label: "待审核草稿", value: stagedDrafts }]} />
               <button className="button primary" type="button" onClick={onSubmitReview}>前往提交审核</button>
             </section>
           ) : null}
           {submitError ? <p role="alert">{submitError}</p> : null}
-          <strong>任务证据</strong>
+          {hasEvidence ? <div className="configuration-workbench__task-actions">
+            <strong>操作结果</strong>
+            {onDismissOperationResults ? <button className="button subtle" type="button" onClick={onDismissOperationResults}>关闭操作结果</button> : null}
+          </div> : null}
           {syncEvidence ? <p role="status">{syncEvidence}</p> : null}
           {exportEvidence ? <p role="status">{exportEvidence}</p> : null}
           {showConflictArbitration && syncConflicts.length > 0 ? (
@@ -223,29 +215,9 @@ export function WorkbenchTaskDock({
               onLocateConflict={onLocateConflict}
             />
           ) : null}
-          {canAdmin ? (
-            <WorkbenchReleaseReadinessIssues
-              readiness={releaseReadiness}
-              acknowledgedWarningIds={acknowledgedWarningIds}
-              onAcknowledgeWarning={onAcknowledgeWarning}
-              onSelectIssue={onSelectReadinessIssue}
-              onRetry={onReadinessRetry}
-            />
-          ) : null}
-          {!syncEvidence && !exportEvidence && syncConflicts.length === 0 ? (
-            <p>暂无同步或导出证据。手动同步与配置集导出结果会显示在这里。</p>
-          ) : null}
         </div>
       {sessionDraftRows.length > 0 ? (
               <div className="configuration-workbench__task-actions configuration-workbench__submit-actions">
-                <button
-                  className="button subtle"
-                  type="button"
-                  onClick={onValidateSelected}
-                  disabled={!canEdit || sessionDraftRows.length === 0 || draftRecoveryStatus === "stale-base"}
-                >
-                  校验所选
-                </button>
                 <button
                   className="button primary"
                   type="button"
@@ -257,7 +229,7 @@ export function WorkbenchTaskDock({
                     draftRecoveryStatus === "stale-base"
                   }
                 >
-                  {submittingEdits ? "提交中…" : `提交所选（${selectedDraftKeys.size}）`}
+                  {submittingEdits ? "保存中…" : `保存为待审核草稿（${selectedDraftKeys.size}）`}
                 </button>
               </div>
       ) : null}

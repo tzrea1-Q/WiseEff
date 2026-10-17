@@ -23,7 +23,7 @@ function describeBaselineActionError(error: unknown, fallback: string): string {
   if (error instanceof WiseEffApiError) {
     const detailCode = typeof error.details?.code === "string" ? error.details.code : "";
     if (detailCode.startsWith("readiness-")) {
-      return "就绪状态已变化，请重新查看就绪问题后再操作。";
+      return "检查结果已变化，请重新查看版本检查问题后再操作。";
     }
   }
   return presentError(error, fallback);
@@ -42,9 +42,9 @@ export type ReleaseBaselineRepository = Pick<
 >;
 
 export function baselineRestoreBlockedReason(preview: DtsRestorePreviewResult | null, baselineId: string | null): string {
-  if (!preview || preview.baselineId !== baselineId) return "请先加载当前基线的恢复预览。";
+  if (!preview || preview.baselineId !== baselineId) return "请先加载当前版本的恢复预览。";
   if (preview.members.some((member) => member.canonicalOwned !== false)) {
-    return "此基线涉及规范源，不能整源恢复。需要已准备并批准的规范源事务；此预览仅用于查看漂移，不会改变工作配置。";
+    return "此快照涉及规范源，不能整源恢复。需要已准备并批准的规范源事务；此预览仅用于查看版本差异，不会改变工作配置。";
   }
   return "";
 }
@@ -59,6 +59,8 @@ export type ReleaseBaselineSessionSnapshot = {
   acknowledgedWarningIds: ReadonlySet<string>;
   selectedBaselineId: string | null;
   pinnedMembers: Array<{ fileId: string; fileVersionId: string; versionNumber: number }>;
+  pinnedMembersLoading: boolean;
+  pinnedMembersError: string;
   compareResult: DtsCompareBaselineResult | null;
   compareAgainst: "working" | "released";
   restorePreview: DtsRestorePreviewResult | null;
@@ -128,6 +130,8 @@ function emptySnapshot(): ReleaseBaselineSessionSnapshot {
     acknowledgedWarningIds: new Set(),
     selectedBaselineId: null,
     pinnedMembers: [],
+    pinnedMembersLoading: false,
+    pinnedMembersError: "",
     compareResult: null,
     compareAgainst: "working",
     restorePreview: null,
@@ -147,14 +151,20 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
   let baselines: DtsReleaseBaseline[] = [];
   let baselinesLoading = false;
   let baselinesError = "";
+  let baselinesProjectId: string | null = null;
+  let baselinesConfigSetId: string | null = null;
   let readiness: DtsReleaseReadiness | null = null;
   let readinessLoading = false;
   let readinessError = "";
   let acknowledgedWarningIds = new Set<string>();
   let selectedBaselineId: string | null = null;
   let pinnedMembers: ReleaseBaselineSessionSnapshot["pinnedMembers"] = [];
+  let pinnedMembersLoading = false;
+  let pinnedMembersError = "";
+  let pinnedMembersGeneration = 0;
   let compareResult: DtsCompareBaselineResult | null = null;
   let compareAgainst: "working" | "released" = "working";
+  let compareGeneration = 0;
   let restorePreview: DtsRestorePreviewResult | null = null;
   let restorePreviewGeneration = 0;
   let actionError = "";
@@ -174,6 +184,8 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       acknowledgedWarningIds,
       selectedBaselineId,
       pinnedMembers,
+      pinnedMembersLoading,
+      pinnedMembersError,
       compareResult,
       compareAgainst,
       restorePreview,
@@ -221,6 +233,12 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
     get pinnedMembers() {
       return cached.pinnedMembers;
     },
+    get pinnedMembersLoading() {
+      return cached.pinnedMembersLoading;
+    },
+    get pinnedMembersError() {
+      return cached.pinnedMembersError;
+    },
     get compareResult() {
       return cached.compareResult;
     },
@@ -250,6 +268,15 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
 
     async loadBaselines(projectId, configSetId, repo) {
       const generation = ++baselinesGeneration;
+      if (baselinesProjectId !== projectId || baselinesConfigSetId !== configSetId) {
+        baselinesProjectId = projectId;
+        baselinesConfigSetId = configSetId;
+        baselines = [];
+        session.selectBaseline(null);
+        session.clearCompare();
+        session.clearRestorePreview();
+        actionError = "";
+      }
       if (!configSetId) {
         baselines = [];
         baselinesError = "";
@@ -267,7 +294,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       } catch (err: unknown) {
         if (generation !== baselinesGeneration) return;
         baselines = [];
-        baselinesError = presentError(err, "发布基线加载失败。");
+        baselinesError = presentError(err, "配置版本加载失败。");
       } finally {
         if (generation === baselinesGeneration) {
           baselinesLoading = false;
@@ -297,7 +324,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       } catch (err: unknown) {
         if (generation !== readinessGeneration) return;
         readiness = null;
-        readinessError = presentError(err, "发布就绪评估失败。");
+        readinessError = presentError(err, "版本检查失败。");
       } finally {
         if (generation === readinessGeneration) {
           readinessLoading = false;
@@ -317,38 +344,48 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
     selectBaseline(baselineId) {
       if (selectedBaselineId === baselineId) return;
       selectedBaselineId = baselineId;
+      pinnedMembersGeneration += 1;
+      pinnedMembers = [];
+      pinnedMembersLoading = false;
+      pinnedMembersError = "";
       compareResult = null;
+      compareGeneration += 1;
       restorePreview = null;
       restorePreviewGeneration += 1;
       emit();
     },
 
     async loadPinnedMembers(projectId, repo) {
-      if (!selectedBaselineId) {
-        if (pinnedMembers.length > 0) {
-          pinnedMembers = [];
-          emit();
-        }
-        return;
-      }
+      const generation = ++pinnedMembersGeneration;
+      const baselineId = selectedBaselineId;
+      pinnedMembers = [];
+      pinnedMembersError = "";
+      pinnedMembersLoading = Boolean(baselineId);
+      emit();
+      if (!baselineId) return;
       try {
-        const detail = await repo.getBaseline(projectId, selectedBaselineId);
+        const detail = await repo.getBaseline(projectId, baselineId);
+        if (generation !== pinnedMembersGeneration || selectedBaselineId !== baselineId) return;
         pinnedMembers = detail.members.map((member) => ({
           fileId: member.fileId,
           fileVersionId: member.fileVersionId,
           versionNumber: member.versionNumber
         }));
-        emit();
       } catch {
-        pinnedMembers = [];
-        emit();
+        if (generation !== pinnedMembersGeneration || selectedBaselineId !== baselineId) return;
+        pinnedMembersError = "快照文件读取失败，请重试。";
+      } finally {
+        if (generation === pinnedMembersGeneration && selectedBaselineId === baselineId) {
+          pinnedMembersLoading = false;
+          emit();
+        }
       }
     },
 
     async create(projectId, configSetId, input, repo) {
       const name = input.name.trim();
       if (!name) {
-        actionError = "请先填写基线名称。";
+        actionError = "请先填写版本名称。";
         emit();
         throw new Error(actionError);
       }
@@ -362,8 +399,8 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
         emit();
         if (!releaseReadinessAllowsCreate(nextReadiness, input.localSessionDirty)) {
           actionError = input.localSessionDirty
-            ? "还有未保存的本机会话变更，不能创建基线。"
-            : presentErrorMessage(nextReadiness.unavailableReason, "发布就绪门禁阻止创建基线。");
+            ? "还有未保存的本机会话变更，不能保存版本快照。"
+            : presentErrorMessage(nextReadiness.unavailableReason, "版本检查未通过，不能保存快照。");
           emit();
           throw new Error(actionError);
         }
@@ -378,7 +415,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
         return created;
       } catch (error) {
         if (!actionError) {
-          actionError = describeBaselineActionError(error, "创建基线失败，请重试。");
+          actionError = describeBaselineActionError(error, "保存版本快照失败，请重试。");
           emit();
         }
         throw error;
@@ -387,26 +424,34 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
 
     async compare(projectId, against, repo) {
       if (!selectedBaselineId) {
-        actionError = "请先选择基线。";
+        actionError = "请先选择版本。";
         emit();
         throw new Error(actionError);
       }
       actionError = "";
       emit();
+      const generation = ++compareGeneration;
+      const baselineId = selectedBaselineId;
       try {
-        const result = await repo.compareBaseline(projectId, selectedBaselineId, { against });
+        const result = await repo.compareBaseline(projectId, baselineId, { against });
+        if (generation !== compareGeneration || selectedBaselineId !== baselineId) {
+          throw new Error("版本选择已变化，请重新对比。");
+        }
         compareResult = result;
         compareAgainst = against;
         emit();
         return result;
       } catch (error) {
-        actionError = describeBaselineActionError(error, "对比基线失败，请重试。");
-        emit();
+        if (generation === compareGeneration && selectedBaselineId === baselineId) {
+          actionError = describeBaselineActionError(error, "对比版本失败，请重试。");
+          emit();
+        }
         throw error;
       }
     },
 
     clearCompare() {
+      compareGeneration += 1;
       compareResult = null;
       emit();
     },
@@ -419,7 +464,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
 
     async release(projectId, configSetId, input, repo) {
       if (!selectedBaselineId) {
-        actionError = "请先选择基线。";
+        actionError = "请先选择版本。";
         emit();
         throw new Error(actionError);
       }
@@ -433,8 +478,8 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
         emit();
         if (!releaseReadinessAllowsRelease(nextReadiness, input.localSessionDirty)) {
           actionError = input.localSessionDirty
-            ? "还有未保存的本机会话变更，不能发布基线。"
-            : presentErrorMessage(nextReadiness.unavailableReason, "发布就绪门禁阻止发布基线。");
+            ? "还有未保存的本机会话变更，不能设为正式版本。"
+            : presentErrorMessage(nextReadiness.unavailableReason, "版本检查未通过，不能设为正式版本。");
           emit();
           throw new Error(actionError);
         }
@@ -442,7 +487,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
           (item) => item.acknowledgementRequired && !acknowledgedWarningIds.has(item.id)
         );
         if (unacked.length > 0) {
-          actionError = "请先在 Issues 坞确认策略允许的警告，再发布。";
+          actionError = "请先确认策略允许的警告，再设为正式版本。";
           emit();
           throw new Error(actionError);
         }
@@ -462,7 +507,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
         return result;
       } catch (error) {
         if (!actionError) {
-          actionError = describeBaselineActionError(error, "发布基线失败，请重试。");
+          actionError = describeBaselineActionError(error, "设为正式版本失败，请重试。");
           emit();
         }
         throw error;
@@ -472,7 +517,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
     async previewRestore(projectId, repo) {
       const generation = ++restorePreviewGeneration;
       if (!selectedBaselineId) {
-        actionError = "请先选择基线。";
+        actionError = "请先选择版本。";
         emit();
         throw new Error(actionError);
       }
@@ -483,7 +528,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       try {
         const preview = await repo.previewRestoreBaseline(projectId, baselineId);
         if (generation !== restorePreviewGeneration || selectedBaselineId !== baselineId || preview.baselineId !== baselineId) {
-          throw new Error("基线选择已变化，请重新加载恢复预览。");
+          throw new Error("版本选择已变化，请重新加载恢复预览。");
         }
         restorePreview = preview;
         emit();
@@ -505,13 +550,13 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
 
     async restore(projectId, configSetId, repo) {
       if (!selectedBaselineId) {
-        actionError = "请先选择基线。";
+        actionError = "请先选择版本。";
         emit();
         throw new Error(actionError);
       }
       const blockedReason = baselineRestoreBlockedReason(restorePreview, selectedBaselineId);
       if (blockedReason || restorePreview?.configSetId !== configSetId) {
-        actionError = blockedReason || "配置集选择已变化，请重新加载恢复预览。";
+        actionError = blockedReason || "配置选择已变化，请重新加载恢复预览。";
         emit();
         throw new Error(actionError);
       }
@@ -527,7 +572,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
         emit();
         return { result, tipUnchanged: Boolean(tipBefore && tipAfter && tipBefore === tipAfter) };
       } catch (error) {
-        actionError = describeBaselineActionError(error, "恢复基线失败，请重试。");
+        actionError = describeBaselineActionError(error, "恢复版本失败，请重试。");
         emit();
         throw error;
       }

@@ -266,7 +266,7 @@ export function WorkbenchConflictArbitrationDock({
   const fileVersionTime = formatConflictTime(activeConflict.fileVersionCreatedAt);
   const uiDraftTime = formatConflictTime(activeConflict.uiDraftUpdatedAt);
   const identityBits = [
-    activeConflict.configSetId ? `配置集 ${activeConflict.configSetId}` : null,
+    activeConflict.configSetId ? `配置 ${activeConflict.configSetId}` : null,
     activeConflict.fileName ?? null,
     activeConflict.nodePath ?? null,
     activeConflict.propertyName ?? null

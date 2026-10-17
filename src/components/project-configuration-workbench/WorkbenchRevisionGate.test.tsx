@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { selectControlOption } from "@/test/selectControlOption";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ConfigRevisionGateSnapshot } from "@/application/project-configuration/configRevisionGateSession";
+import { createConfigRevisionGateSession, type ConfigRevisionGateSnapshot } from "@/application/project-configuration/configRevisionGateSession";
 import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 
 afterEach(() => cleanup());
@@ -69,8 +69,41 @@ describe("WorkbenchRevisionGate", () => {
         onRetry={vi.fn()}
       />
     );
-    expect(screen.getByRole("status")).toHaveTextContent("尚未生成配置修订");
+    expect(screen.getByRole("status")).toHaveTextContent("尚无配置修订。添加来源文件并完成解析后，可在这里校验。");
+    expect(screen.queryByRole("combobox", { name: "配置修订" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "校验修订" })).toBeDisabled();
+  });
+
+  it("renders the sole automatically selected revision read-only and validates its real id", async () => {
+    const session = createConfigRevisionGateSession();
+    const revision = snapshot().revisions[0]!;
+    await session.load("project-1", "cs-1", { listConfigRevisions: async () => [revision] });
+    const validateRevision = vi.fn(async () => ({ id: "run-1", status: "passed" as const, stage: "toolchain" as const }));
+    const props = { snapshot: session.getSnapshot(), canAdmin: true, onSelect: vi.fn(), onRetry: vi.fn(),
+      onValidate: () => { void session.validate("project-1", { validateRevision }); } };
+    const { rerender } = render(<WorkbenchRevisionGate {...props} />);
+    expect(session.selectedRevisionId).toBe(revision.id);
+    expect(screen.getByText("修订 2 · 已解析")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "配置修订" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "校验修订" }));
+    expect(validateRevision).toHaveBeenCalledWith("project-1", revision.id);
+    await waitFor(() => expect(session.lastRun?.id).toBe("run-1"));
+    expect(props.onSelect).not.toHaveBeenCalled();
+    rerender(<WorkbenchRevisionGate {...props} canAdmin={false} />);
+    expect(screen.getByRole("button", { name: "校验修订" })).toBeDisabled();
+    rerender(<WorkbenchRevisionGate {...props} snapshot={{ ...props.snapshot, validating: true }} />);
+    expect(screen.getByRole("button", { name: "校验中…" })).toBeDisabled();
+  });
+
+  it("keeps revision load failures retryable without an empty selector", () => {
+    const onRetry = vi.fn();
+    render(<WorkbenchRevisionGate snapshot={snapshot({ revisions: [], selectedRevisionId: null, error: "修订加载失败" })}
+      canAdmin onSelect={vi.fn()} onValidate={vi.fn()} onRetry={onRetry} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("修订加载失败");
+    expect(screen.queryByRole("combobox", { name: "配置修订" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "校验修订" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 
   it("disables validate for non-admin viewers with a product reason", () => {

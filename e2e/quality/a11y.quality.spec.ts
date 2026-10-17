@@ -10,6 +10,7 @@ import {
   waitForFontsAndNextPaint
 } from "./helpers";
 import { signInBrowserAsRole } from "../acceptance/helpers/bearerAuth";
+import { openWorkbenchPanel } from "../acceptance/helpers/runtime";
 
 const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const coreRoutes = [
@@ -90,13 +91,13 @@ test.describe("M5.11 accessibility quality gate", () => {
       await test.step("quality:navigation", () => page.goto(route));
       await test.step("quality:readiness", () => settleQualityRoute(page, "/parameter-admin/projects/aurora/configuration"));
       await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
-      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
-      if (await inspectorToggle.getAttribute("aria-expanded") !== "true") {
-        await inspectorToggle.click();
-      }
-      await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
       const configSetInspector = route.endsWith("/config-sets") || route.includes("inspector=config-set");
-      await expect(page.getByText(configSetInspector ? "成员管理" : "文件格式", { exact: true }).first()).toBeVisible();
+      await openWorkbenchPanel(page, configSetInspector ? "config-set" : "file");
+      if (configSetInspector) {
+        await expect(page.getByRole("dialog", { name: "文件管理", exact: true }).getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
+      } else {
+        await expect(page.getByText("文件格式", { exact: true }).first()).toBeVisible();
+      }
       const results = await test.step("quality:axe", () => new AxeBuilder({ page }).withRules(["definition-list", "dlitem"]).analyze());
       expect(results.violations).toEqual([]);
     });

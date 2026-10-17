@@ -2,7 +2,6 @@ import { useEffect, useId, useState } from "react";
 import type { DtsValueType } from "@/application/ports/DtsStructuredRepository";
 import { shouldShowFieldError } from "@/components/common/fieldValidation";
 import {
-  classifyDtsValue,
   formatBytes,
   formatPhandleList,
   formatStringList,
@@ -51,14 +50,6 @@ export function StructuredValueEditor({
   const reactId = useId();
   const baseId = id ?? `dts-value-${reactId}`;
   const [touched, setTouched] = useState(false);
-  const classified = classifyDtsValue(rawText, propertyName);
-  const previewNormalized =
-    valueType === "bool" && rawText.trim() === ""
-      ? "true"
-      : valueType === "empty" && rawText.trim() === ""
-        ? "empty"
-        : classified.normalizedValue;
-
   const emit = (nextRaw: string, override?: Partial<StructuredValueChange>) => {
     const validated = validateDtsValue(nextRaw, propertyName, valueType);
     onChange({
@@ -135,7 +126,7 @@ export function StructuredValueEditor({
 
       {valueType === "empty" ? (
         <p className="structured-value-empty-note" id={`${baseId}-empty`}>
-          空属性（只读）— 规范化预览为 empty
+          空属性（只读）
         </p>
       ) : null}
 
@@ -150,14 +141,6 @@ export function StructuredValueEditor({
           onChangeRaw={(next) => emit(next)}
         />
       ) : null}
-
-      <div
-        className="structured-value-normalized-preview"
-        aria-label="规范化预览"
-        id={`${baseId}-normalized`}
-      >
-        {previewNormalized}
-      </div>
     </div>
   );
 }

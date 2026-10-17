@@ -5,6 +5,7 @@ import type {
   ParameterFileSourcePreview
 } from "@/application/ports/ParameterFileRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { ReviewProvenance } from "@/features/parameter-review/ReviewProvenance";
 
 export type WorkbenchCandidateSourceReviewDialogProps = {
   open: boolean;
@@ -39,19 +40,16 @@ export function WorkbenchCandidateSourceReviewDialog({
       description={
         <div>
           <p>
-            候选 <code>{activeCandidate?.fileName}</code> 将依据服务端来源快照进入既有审核流程，审核通过前不会成为活跃版本。
+            提交 <code>{activeCandidate?.fileName}</code> 的来源变更；审核通过后才更新当前配置。
           </p>
-          <ul>
-            <li>来源绑定：<code className="mono">{sourcePreview?.bindingId ?? "缺失"}</code></li>
-            <li>来源 pin：<code className="mono">{sourcePreview?.sourcePinId ?? "缺失"}</code></li>
-            <li>对照基版本：<code className="mono">{sourcePreview?.baseVersionId ?? "缺失"}</code></li>
-          </ul>
+          <ReviewProvenance entries={[{ label: "候选版本", value: activeCandidate }, { label: "来源预览", value: sourcePreview }]} />
         </div>
       }
       confirmLabel="提交审核"
       pendingLabel="提交中…"
       pending={submitting}
-      error={error || (!trimmedReason ? "请填写来源变更原因。" : "")}
+      error={error}
+      confirmDisabled={!trimmedReason}
       extra={
         <label className="configuration-workbench__source-review-reason">
           <span>变更原因（必填）</span>

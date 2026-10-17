@@ -16,6 +16,8 @@ export type WorkbenchNavigationSnapshot = {
   selectedNodePath: string | null;
   selectedPropertyName: string | null;
   searchDraft: string;
+  /** Last successfully completed search, including searches with zero hits. */
+  searchQuery: string | null;
   searchHits: DtsSearchHit[];
   searchError: string;
   searchLoading: boolean;
@@ -116,6 +118,7 @@ function emptySnapshot(): WorkbenchNavigationSnapshot {
     selectedNodePath: null,
     selectedPropertyName: null,
     searchDraft: "",
+    searchQuery: null,
     searchHits: [],
     searchError: "",
     searchLoading: false,
@@ -130,6 +133,8 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
   let selectedNodePath: string | null = null;
   let selectedPropertyName: string | null = null;
   let searchDraft = "";
+  let searchQuery: string | null = null;
+  let searchGeneration = 0;
   let searchHits: DtsSearchHit[] = [];
   let searchError = "";
   let searchLoading = false;
@@ -144,6 +149,7 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
       selectedNodePath,
       selectedPropertyName,
       searchDraft,
+      searchQuery,
       searchHits,
       searchError,
       searchLoading,
@@ -167,6 +173,9 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
     },
     get searchDraft() {
       return searchDraft;
+    },
+    get searchQuery() {
+      return searchQuery;
     },
     get searchHits() {
       return searchHits;
@@ -194,7 +203,14 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
       return snapshot;
     },
     setSearchDraft(value) {
+      if (value === searchDraft) return;
+      searchGeneration += 1;
       searchDraft = value;
+      searchQuery = null;
+      searchHits = [];
+      searchError = "";
+      searchLoading = false;
+      findQuery = "";
       scheduleEmit();
     },
     consumePendingFocusLine() {
@@ -324,7 +340,9 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
         node: null,
         property: null,
         sourceMode: null,
-        version: null
+        version: null,
+        candidate: null,
+        baseline: null
       });
     },
     selectMember(projectId, search, input) {
@@ -353,9 +371,13 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
       });
     },
     async runSearch(projectId, repo) {
+      const generation = ++searchGeneration;
       const q = searchDraft.trim();
+      searchQuery = null;
+      searchHits = [];
+      findQuery = "";
       if (!q) {
-        searchHits = [];
+        searchLoading = false;
         searchError = "";
         scheduleEmit();
         return;
@@ -365,14 +387,19 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
       scheduleEmit();
       try {
         const result = await repo.search(projectId, { q });
+        if (generation !== searchGeneration) return;
         searchHits = result.hits;
+        searchQuery = q;
         findQuery = q;
       } catch (error: unknown) {
+        if (generation !== searchGeneration) return;
         searchHits = [];
         searchError = error instanceof Error ? error.message : "搜索失败。";
       } finally {
-        searchLoading = false;
-        scheduleEmit();
+        if (generation === searchGeneration) {
+          searchLoading = false;
+          scheduleEmit();
+        }
       }
     },
     selectSearchHit(projectId, search, input) {

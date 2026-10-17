@@ -297,12 +297,16 @@ test.describe("canonical value workflow on real sources", () => {
       await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=${requestId}`);
       await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
       await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
-      await expect(page.getByText(requestId, { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据")).toBeVisible();
+      await expect.poll(async () => JSON.parse((await page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据").textContent())!))
+        .toMatchObject({ "请求 ID": requestId, projectId });
       await page.getByRole("article", { name: "源文件请求详情" }).getByText("查看完整源文件", { exact: true }).click();
       await expect(page.getByLabel("固定源变更前")).toBeVisible();
       await page.reload();
       await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
-      await expect(page.getByText(requestId, { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据")).toBeVisible();
+      await expect.poll(async () => JSON.parse((await page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据").textContent())!))
+        .toMatchObject({ "请求 ID": requestId, projectId });
       await page.getByRole("article", { name: "源文件请求详情" }).getByText("查看完整源文件", { exact: true }).click();
       await expect(page.getByLabel("固定源变更前")).toBeVisible();
       await page.screenshot({ path: info.outputPath(`tracking-${status}.png`), animations: "disabled" });
@@ -354,12 +358,16 @@ test.describe("canonical value workflow on real sources", () => {
     await expect(page).toHaveURL(new RegExp(`request=${rejectedId}(?:&|$)`));
     await expect(page.getByRole("complementary", { name: "提交详情", exact: true })).toBeFocused();
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
-    await expect(page.getByRole("article", { name: "源文件请求详情" }).locator("details").getByText(rejectedId, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据")).toBeVisible();
+    await expect.poll(async () => JSON.parse((await page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据").textContent())!))
+      .toMatchObject({ "请求 ID": rejectedId, projectId });
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("查看完整源文件", { exact: true }).click();
     await expect(page.getByLabel("固定源变更前")).toBeVisible();
     await page.reload();
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
-    await expect(page.getByRole("article", { name: "源文件请求详情" }).locator("details").getByText(rejectedId, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据")).toBeVisible();
+    await expect.poll(async () => JSON.parse((await page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据").textContent())!))
+      .toMatchObject({ "请求 ID": rejectedId, projectId });
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=missing-request`);
     await expect(page.getByRole("alert").filter({ hasText: "无法打开该请求，它可能已移出当前项目队列。" })).toBeVisible();
     await expect(page.getByRole("button", { name: "返回当前项目队列", exact: true })).toBeVisible();

@@ -61,6 +61,24 @@ describe("workbenchActivityModel", () => {
     );
   });
 
+  it("uses known object and related file names while retaining IDs for evidence and navigation", () => {
+    const names = new Map([["file-board", "board.dts"], ["cs-1", "设备配置"], ["bl-1", "稳定版"]]);
+    const file = presentWorkbenchActivity(event({ targetType: "project-parameter-file", targetId: "file-board", metadata: {} }), names);
+    expect(file.targetLabel).toBe("参数文件 · board.dts");
+    expect(file.targetId).toBe("file-board");
+    expect(presentWorkbenchActivity(event({ targetType: "dts-config-set", targetId: "cs-1", metadata: {} }), names).targetLabel).toBe("配置 · 设备配置");
+    expect(presentWorkbenchActivity(event({ targetType: "dts-release-baseline", targetId: "bl-1", metadata: {} }), names).targetLabel).toBe("发布基线 · 稳定版");
+    expect(presentWorkbenchActivity(event({ targetType: "project-parameter-value-change-request", targetId: "request-uuid", metadata: { fileId: "file-board" } }), names).targetLabel).toBe("参数变更审核 · board.dts");
+  });
+
+  it("uses compact business object names without exposing IDs or unknown type slugs", () => {
+    expect(presentWorkbenchActivity(event({ targetType: "project-parameter-value-change-request", targetId: "request-uuid", metadata: {} })).targetLabel).toBe("参数变更审核");
+    const row = presentWorkbenchActivity(event({ targetType: "future-internal-slug", targetId: "raw-uuid", metadata: {} }));
+    expect(row.targetLabel).toBe("配置对象");
+    expect(row.targetId).toBe("raw-uuid");
+    expect(row.targetType).toBe("future-internal-slug");
+  });
+
   it("resolves file and candidate targets when they still exist", () => {
     const catalog = {
       configSetIds: new Set(["cs-1"]),

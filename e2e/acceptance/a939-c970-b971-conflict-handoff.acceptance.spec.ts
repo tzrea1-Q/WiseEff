@@ -1,4 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
+import { openWorkbenchPanel, openWorkbenchVersionMenu } from "./helpers/runtime";
+import { selectControlOption } from "./helpers/selectControl";
 import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { expect, test } from "playwright/test";
@@ -68,7 +70,8 @@ for (const format of ["json", "dts"] as const) {
         roles: [{ roleId: "software-committer", projectId: "aurora" }] });
       const network: string[] = [];
       page.on("response", (response) => {
-        if (/source-manual-sync|source-batch-rollback|source-conflicts|parameter-value-change-requests/.test(response.url())) {
+        if (/source-manual-sync|source-batch-rollback|source-conflicts|parameter-value-change-requests/.test(response.url())
+          || (workflow === "manual" && /parameter-file-candidates/.test(response.url()))) {
           network.push(`${response.request().method()} ${response.status()} ${new URL(response.url()).pathname}`);
         }
       });
@@ -206,24 +209,42 @@ for (const format of ["json", "dts"] as const) {
           }))].sort((left, right) => left.id.localeCompare(right.id)),
         });
         await dismissXiaozeHint(page);
-        await page.getByRole("button", { name: "检查器", exact: true }).click();
+        await openWorkbenchPanel(page, workflow === "manual" ? "file" : "versions");
         const inspector = page.getByRole("complementary", { name: "配置检查器" });
+        const uploadSource = async () => {
+          const choosing = page.waitForEvent("filechooser");
+          await inspector.getByRole("button", { name: "上传新文件", exact: true }).click();
+          await (await choosing).setFiles({ name: fileName,
+            mimeType: format === "json" ? "application/json" : "text/plain", buffer: Buffer.from(changed[format]) });
+        };
+        let manualCandidateId: string | undefined;
+        let manualProof: { candidateId: string; proofToken: string; bindings: Array<{ bindingId: string }> } | undefined;
         let dialog;
         if (workflow === "manual") {
-          await inspector.getByRole("button", { name: "上传来源并预览批量候选" }).click();
-          dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备审核` });
-          await dialog.getByLabel(/选择来源文件/).setInputFiles({ name: fileName,
-            mimeType: format === "json" ? "application/json" : "text/plain",
-            buffer: Buffer.from(changed[format]) });
+          await openWorkbenchPanel(page, "candidates");
+          dialog = inspector.getByRole("region", { name: `提交 ${format.toUpperCase()} 批量来源审核` });
         } else {
-          dialog = page.getByRole("dialog", { name: "提交多目标历史回滚审核" });
+          dialog = page.getByRole("dialog", { name: "申请回滚审核" });
         }
         const firstPrepare = page.waitForResponse((response) => response.url().endsWith(
-          workflow === "manual" ? "/source-manual-sync/prepare" : "/source-batch-rollback/prepare"));
+          workflow === "manual" ? "/parameter-file-candidates" : "/source-batch-rollback/prepare")
+          && (workflow !== "manual" || response.request().method() === "POST"));
         const firstConflicts = page.waitForResponse((response) => response.url().endsWith("/source-conflicts"));
-        if (workflow === "manual") await dialog.getByRole("button", { name: "预览有序目标与证明" }).click();
-        else await inspector.getByRole("button", { name: `将版本 ${file.version.versionNumber} 恢复为当前` }).click();
-        expect((await firstPrepare).status()).toBe(201);
+        if (workflow === "manual") await uploadSource();
+        else {
+          await openWorkbenchVersionMenu(page, file.version.versionNumber);
+          await page.getByRole("menuitem", { name: `申请回滚至版本 ${file.version.versionNumber}`, exact: true }).click();
+        }
+        const firstPrepared = await firstPrepare;
+        expect(firstPrepared.status()).toBe(201);
+        if (workflow === "manual") {
+          manualCandidateId = (await firstPrepared.json()).item.id as string;
+          const previewResponse = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${manualCandidateId}/source-preview`), { headers: adminHeaders });
+          expect(previewResponse.status(), await previewResponse.text()).toBe(200);
+          manualProof = (await previewResponse.json()).item;
+          expect(manualProof).toMatchObject({ kind: "canonical", candidateId: manualCandidateId });
+          expect(manualProof?.bindings).toHaveLength(2);
+        }
         const blockedResponse = await firstConflicts;
         expect(blockedResponse.status()).toBe(200);
         const blocked = await blockedResponse.json() as { items: unknown[];
@@ -233,15 +254,18 @@ for (const format of ["json", "dts"] as const) {
           expect.objectContaining({ selectedDraftId: unprepared.id, reason: "selected-draft-source-proof-missing" }),
           expect.objectContaining({ selectedDraftId: pending.id, reason: "selected-draft-pending" })
         ]));
-        await expect(dialog).toContainText(unprepared.id);
-        await expect(dialog).toContainText(pending.id);
+        await dialog.getByText("溯源信息", { exact: true }).click();
+        const provenance = dialog.getByLabel("完整溯源数据");
+        await expect(provenance).toContainText(unprepared.id);
+        await expect(provenance).toContainText(pending.id);
         await expect(dialog.getByRole("alert").filter({ hasText: workflow === "manual"
-          ? "未取得可验证的选择证明" : "不可处理" })).toContainText(
-          workflow === "manual" ? "未取得可验证的选择证明" : "不可处理"
+          ? "存在不可处理的竞争草稿" : "不可处理" })).toContainText(
+          workflow === "manual" ? "存在不可处理的竞争草稿" : "不可处理"
         );
         await dialog.getByRole("textbox", { name: workflow === "manual" ? "修改原因" : "来源回滚原因" })
           .fill("A joint conflict handoff proof");
-        await expect(dialog.getByRole("button", { name: workflow === "manual" ? /一次提交全部/ : "提交审核" })).toBeDisabled();
+        if (workflow === "manual") await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
+        await expect(dialog.getByRole("button", { name: workflow === "manual" ? "提交 2 项审核" : "提交审核" })).toBeDisabled();
         const blockedState = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
         const blockedObjects = await objectInventory(runtime.objectStoreRoot);
         expect(network.some((entry) => /POST .*parameter-value-change-requests\/batches$/.test(entry)
@@ -262,33 +286,47 @@ for (const format of ["json", "dts"] as const) {
         });
         expect(withdrawn.status(), await withdrawn.text()).toBe(200);
         const nextPrepare = page.waitForResponse((response) => response.url().endsWith(
-          workflow === "manual" ? "/source-manual-sync/prepare" : "/source-batch-rollback/prepare"));
+          workflow === "manual" ? "/parameter-file-candidates" : "/source-batch-rollback/prepare")
+          && (workflow !== "manual" || response.request().method() === "POST"));
         const nextConflicts = page.waitForResponse((response) => response.url().endsWith("/source-conflicts"));
         if (workflow === "manual") {
-          await dialog.getByLabel(/选择来源文件/).setInputFiles({ name: fileName,
-            mimeType: format === "json" ? "application/json" : "text/plain",
-            buffer: Buffer.from(changed[format]) });
-          await dialog.getByRole("button", { name: "预览有序目标与证明" }).click();
-        } else await dialog.getByRole("button", { name: "重新预览历史目标与证明" }).click();
-        expect((await nextPrepare).status()).toBe(201);
+          await uploadSource();
+        } else await dialog.getByRole("button", { name: "重新核对回滚内容" }).click();
+        const nextPrepared = await nextPrepare;
+        expect(nextPrepared.status()).toBe(201);
+        if (workflow === "manual") {
+          const nextCandidateId = (await nextPrepared.json()).item.id as string;
+          expect(nextCandidateId).not.toBe(manualCandidateId);
+          manualCandidateId = nextCandidateId;
+          const previewResponse = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${manualCandidateId}/source-preview`), { headers: adminHeaders });
+          expect(previewResponse.status(), await previewResponse.text()).toBe(200);
+          manualProof = (await previewResponse.json()).item;
+          expect(manualProof).toMatchObject({ kind: "canonical", candidateId: manualCandidateId });
+          expect(manualProof?.bindings).toHaveLength(2);
+        }
         const readyResponse = await nextConflicts;
         expect(readyResponse.status()).toBe(200);
-        const ready = await readyResponse.json() as { items: Array<{ selectedDraftId: string }>;
+        const ready = await readyResponse.json() as { items: Array<{ selectedBindingId: string; selectedDraftId: string;
+          choices: { file: { decisionProofDigest: string } } }>;
           ineligible: Array<{ selectedDraftId: string; reason: string }> };
         expect(ready.ineligible).toEqual([]);
         expect(ready.items.map((item) => item.selectedDraftId).sort()).toEqual([unprepared.id, pending.id].sort());
         if (workflow === "manual") {
-          for (const row of await dialog.getByRole("list", { name: "手动同步完整有序目标" }).getByRole("listitem").all()) {
-            await row.getByRole("radio", { name: /采用文件值/ }).check();
+          const fileChoices = dialog.getByRole("radio", { name: "采用文件值", exact: true });
+          await expect(fileChoices).toHaveCount(2);
+          for (const choice of await fileChoices.all()) {
+            await choice.check();
+            await expect(choice).toBeChecked();
           }
           await dialog.getByRole("textbox", { name: "修改原因" }).fill("A joint proof recovery");
+          await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
         } else {
           for (const box of await dialog.getByRole("checkbox", { name: /确认此目标采用历史文件值/ }).all()) {
             await box.check();
           }
           await dialog.getByRole("textbox", { name: "来源回滚原因" }).fill("A joint rollback proof recovery");
         }
-        const submitButton = dialog.getByRole("button", { name: workflow === "manual" ? /一次提交全部/ : "提交审核" });
+        const submitButton = dialog.getByRole("button", { name: workflow === "manual" ? "提交 2 项审核" : "提交审核" });
         await expect(submitButton).toBeEnabled();
         const beforeSubmit = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
         const submitting = page.waitForResponse((response) => response.request().method() === "POST"
@@ -298,6 +336,17 @@ for (const format of ["json", "dts"] as const) {
         const submitted = await submitting;
         expect(submitted.status(), await submitted.text()).toBe(201);
         const body = submitted.request().postDataJSON();
+        if (workflow === "manual") {
+          expect(body.candidateId).toBe(manualCandidateId);
+          expect(body.expectedProofToken).toBe(manualProof!.proofToken);
+          expect(body.assignedToUserId).toBe(acceptanceCast.sunMei.userId);
+          expect(body.targetDecisions).toEqual(manualProof!.bindings.map((binding) => ({
+            bindingId: binding.bindingId, choice: "file", expectedConflictProofs: ready.items
+              .filter((item) => item.selectedBindingId === binding.bindingId)
+              .map((item) => ({ draftId: item.selectedDraftId, decisionProofDigest: item.choices.file.decisionProofDigest }))
+          })));
+          expect(network.filter((entry) => entry.endsWith("/source-manual-sync/prepare"))).toHaveLength(0);
+        }
         expect(body.targetDecisions).toHaveLength(2);
         expect(body.targetDecisions.every((decision: { choice: string; expectedConflictProofs: unknown[] }) =>
           decision.choice === "file" && decision.expectedConflictProofs.length === 1)).toBe(true);

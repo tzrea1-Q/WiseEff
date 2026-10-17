@@ -55,6 +55,66 @@ describe("createReleaseBaselineSession", () => {
     expect(session.baselinesLoading).toBe(false);
   });
 
+  it.each([
+    { projectId: "proj-1", configSetId: "cs-2" },
+    { projectId: "proj-2", configSetId: "cs-1" }
+  ])("clears old configuration details and invalidates requests when switching to $projectId/$configSetId", async ({ projectId, configSetId }) => {
+    const session = createReleaseBaselineSession();
+    await session.loadBaselines("proj-1", "cs-1", { listBaselines: async () => [baseline()] });
+    session.selectBaseline("bl-1");
+    const comparison: DtsCompareBaselineResult = { baselineId: "bl-1", against: "working", members: [] };
+    const preview: DtsRestorePreviewResult = {
+      baselineId: "bl-1", configSetId: "cs-1", members: [], driftedCount: 0, releasedBaselineUnchanged: true
+    };
+    await session.compare("proj-1", "working", { compareBaseline: async () => comparison });
+    await session.previewRestore("proj-1", { previewRestoreBaseline: async () => preview });
+    let resolveFiles!: (value: Awaited<ReturnType<DtsStructuredRepository["getBaseline"]>>) => void;
+    let resolveComparison!: (value: DtsCompareBaselineResult) => void;
+    let resolvePreview!: (value: DtsRestorePreviewResult) => void;
+    const filesRequest = session.loadPinnedMembers("proj-1", {
+      getBaseline: () => new Promise((resolve) => { resolveFiles = resolve; })
+    });
+    const comparisonRequest = session.compare("proj-1", "working", {
+      compareBaseline: () => new Promise((resolve) => { resolveComparison = resolve; })
+    });
+    const previewRequest = session.previewRestore("proj-1", {
+      previewRestoreBaseline: () => new Promise((resolve) => { resolvePreview = resolve; })
+    });
+    const nextLoad = session.loadBaselines(projectId, configSetId, { listBaselines: async () => [] });
+    expect(session.baselines).toEqual([]);
+    expect(session.selectedBaselineId).toBeNull();
+    expect(session.pinnedMembers).toEqual([]);
+    expect(session.pinnedMembersLoading).toBe(false);
+    expect(session.pinnedMembersError).toBe("");
+    expect(session.compareResult).toBeNull();
+    expect(session.restorePreview).toBeNull();
+    resolveFiles({ item: baseline(), members: [{ baselineId: "bl-1", fileId: "old-file", fileVersionId: "old-version", versionNumber: 1 }] });
+    resolveComparison(comparison);
+    resolvePreview(preview);
+    await Promise.all([
+      filesRequest, nextLoad,
+      expect(comparisonRequest).rejects.toThrow("版本选择已变化"),
+      expect(previewRequest).rejects.toThrow("版本选择已变化")
+    ]);
+    expect(session.pinnedMembers).toEqual([]);
+    expect(session.compareResult).toBeNull();
+    expect(session.restorePreview).toBeNull();
+    expect(session.actionError).toBe("");
+  });
+
+  it("preserves selection and snapshot files when reloading the same configuration", async () => {
+    const session = createReleaseBaselineSession();
+    const listBaselines = async () => [baseline()];
+    await session.loadBaselines("proj-1", "cs-1", { listBaselines });
+    session.selectBaseline("bl-1");
+    await session.loadPinnedMembers("proj-1", { getBaseline: async () => ({ item: baseline(), members: [
+      { baselineId: "bl-1", fileId: "f1", fileVersionId: "v1", versionNumber: 1 }
+    ] }) });
+    await session.loadBaselines("proj-1", "cs-1", { listBaselines });
+    expect(session.selectedBaselineId).toBe("bl-1");
+    expect(session.pinnedMembers).toEqual([{ fileId: "f1", fileVersionId: "v1", versionNumber: 1 }]);
+  });
+
   it("create refreshes readiness and passes fresh gateToken with acknowledged warnings", async () => {
     const getReleaseReadiness = vi.fn(async () => readiness({ gateToken: "gate-create" }));
     const createBaseline = vi.fn(async () => baseline({ id: "bl-new", name: "release-a" }));
@@ -223,6 +283,12 @@ describe("createReleaseBaselineSession", () => {
 
   it("compare and restore preview/restore go through narrow repository picks", async () => {
     const session = createReleaseBaselineSession();
+    await session.loadBaselines("proj-1", "cs-1", {
+      listBaselines: vi.fn(async () => [
+        baseline({ id: "bl-1", status: "draft" }),
+        baseline({ id: "tip", status: "released", createdAt: "2026-08-02T00:00:00.000Z" })
+      ])
+    });
     session.selectBaseline("bl-1");
 
     const comparePayload: DtsCompareBaselineResult = {
@@ -245,13 +311,6 @@ describe("createReleaseBaselineSession", () => {
     const previewRestoreBaseline = vi.fn(async () => preview);
     await session.previewRestore("proj-1", { previewRestoreBaseline });
     expect(session.restorePreview?.baselineId).toBe("bl-1");
-
-    await session.loadBaselines("proj-1", "cs-1", {
-      listBaselines: vi.fn(async () => [
-        baseline({ id: "bl-1", status: "draft" }),
-        baseline({ id: "tip", status: "released", createdAt: "2026-08-02T00:00:00.000Z" })
-      ])
-    });
 
     const rollback: DtsRollbackBaselineResult = { baselineId: "bl-1", restored: 2 };
     const rollbackBaseline = vi.fn(async () => rollback);
@@ -302,7 +361,7 @@ describe("createReleaseBaselineSession", () => {
     ).rejects.toThrow("network unreachable");
     // Raw backend text never renders: unknown English messages fall back to
     // the scenario copy via the presentError layer.
-    expect(session.actionError).toBe("创建基线失败，请重试。");
+    expect(session.actionError).toBe("保存版本快照失败，请重试。");
   });
 
   it("maps stale gate-token conflicts to a readiness-changed actionError", async () => {
@@ -322,7 +381,7 @@ describe("createReleaseBaselineSession", () => {
     await expect(
       session.release("proj-1", "cs-1", { localSessionDirty: false }, { getReleaseReadiness, releaseBaseline })
     ).rejects.toThrow();
-    expect(session.actionError).toBe("就绪状态已变化，请重新查看就绪问题后再操作。");
+    expect(session.actionError).toBe("检查结果已变化，请重新查看版本检查问题后再操作。");
   });
 
   it("writes actionError when compare, restore preview, or restore reject", async () => {
@@ -334,7 +393,7 @@ describe("createReleaseBaselineSession", () => {
         compareBaseline: vi.fn().mockRejectedValue(new Error("compare 500"))
       })
     ).rejects.toThrow("compare 500");
-    expect(session.actionError).toBe("对比基线失败，请重试。");
+    expect(session.actionError).toBe("对比版本失败，请重试。");
 
     await expect(
       session.previewRestore("proj-1", {
@@ -353,7 +412,7 @@ describe("createReleaseBaselineSession", () => {
         listBaselines: vi.fn(async () => [])
       })
     ).rejects.toThrow("rollback 409");
-    expect(session.actionError).toBe("恢复基线失败，请重试。");
+    expect(session.actionError).toBe("恢复版本失败，请重试。");
   });
 
   it("loadPinnedMembers maps getBaseline members for selected baseline", async () => {
@@ -366,5 +425,55 @@ describe("createReleaseBaselineSession", () => {
 
     await session.loadPinnedMembers("proj-1", { getBaseline });
     expect(session.pinnedMembers).toEqual([{ fileId: "f1", fileVersionId: "v1", versionNumber: 3 }]);
+  });
+
+  it("ignores stale snapshot files when a newer selection loads first", async () => {
+    const session = createReleaseBaselineSession();
+    let resolveOld!: (value: Awaited<ReturnType<DtsStructuredRepository["getBaseline"]>>) => void;
+    const getBaseline = vi.fn<DtsStructuredRepository["getBaseline"]>()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ item: baseline({ id: "bl-2" }), members: [
+        { baselineId: "bl-2", fileId: "new-file", fileVersionId: "new-version", versionNumber: 2 }
+      ] });
+    session.selectBaseline("bl-1");
+    const oldRequest = session.loadPinnedMembers("proj-1", { getBaseline });
+    expect(session.pinnedMembersLoading).toBe(true);
+    session.selectBaseline("bl-2");
+    expect(session.pinnedMembers).toEqual([]);
+    await session.loadPinnedMembers("proj-1", { getBaseline });
+    resolveOld({ item: baseline(), members: [
+      { baselineId: "bl-1", fileId: "old-file", fileVersionId: "old-version", versionNumber: 1 }
+    ] });
+    await oldRequest;
+    expect(session.pinnedMembers).toEqual([{ fileId: "new-file", fileVersionId: "new-version", versionNumber: 2 }]);
+    expect(session.pinnedMembersLoading).toBe(false);
+    expect(session.pinnedMembersError).toBe("");
+  });
+
+  it("clears snapshot file loading and ignores a failed request after selection is cleared", async () => {
+    const session = createReleaseBaselineSession();
+    let rejectOld!: (reason: Error) => void;
+    const getBaseline = vi.fn<DtsStructuredRepository["getBaseline"]>(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+    session.selectBaseline("bl-1");
+    const request = session.loadPinnedMembers("proj-1", { getBaseline });
+    session.selectBaseline(null);
+    expect(session.pinnedMembersLoading).toBe(false);
+    rejectOld(new Error("old request failed"));
+    await request;
+    expect(session.pinnedMembers).toEqual([]);
+    expect(session.pinnedMembersError).toBe("");
+  });
+
+  it("exposes snapshot file failure and clears the error when retry succeeds", async () => {
+    const session = createReleaseBaselineSession();
+    session.selectBaseline("bl-1");
+    const getBaseline = vi.fn<DtsStructuredRepository["getBaseline"]>()
+      .mockRejectedValueOnce(new Error("network failure"))
+      .mockResolvedValueOnce({ item: baseline(), members: [] });
+    await session.loadPinnedMembers("proj-1", { getBaseline });
+    expect(session.pinnedMembersLoading).toBe(false);
+    expect(session.pinnedMembersError).toBe("快照文件读取失败，请重试。");
+    await session.loadPinnedMembers("proj-1", { getBaseline });
+    expect(session.pinnedMembersError).toBe("");
   });
 });

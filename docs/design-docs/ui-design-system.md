@@ -107,12 +107,12 @@ Small text, including bold chips and visible line numbers hidden from assistive 
 | `--danger` | `--danger-soft` | 5.00 / 4.99 | Danger status text and badges |
 | `--info` (`#036b9f` / `#38bdf8`) | `--info-soft` | 4.89 / 5.92 | Informational status text and chips |
 | `--success` | `color-mix(in srgb, var(--success) 14%, var(--surface))` | 4.91 / at least 4.5 | “工作配置” chip |
-| `--configuration-source-text` | `--configuration-source-surface` | 13.69 in both themes | Dark source canvas and unified diff |
-| `--configuration-source-line-number` (aliases `--configuration-source-text-muted`) | `--configuration-source-surface` | 6.66; 5.25 on focused rows | Both source-viewer gutters, including hovered and focused rows |
+| `--configuration-source-text` (aliases `--text`) | `--configuration-source-surface` (aliases `--surface`) | at least 4.5 in both themes | Platform-themed source canvas and unified diff |
+| `--configuration-source-line-number` (aliases `--configuration-source-text-muted`) | `--configuration-source-surface` | at least 4.5, including focused rows | Both source-viewer gutters, including hovered and focused rows |
 | `--configuration-source-text-muted/secondary/strong` | `--configuration-source-surface`, `--configuration-source-surface-raised` | at least 4.5 in both themes | Source metadata and header |
-| `--configuration-source-surface` | `--configuration-source-find`, `--configuration-source-find-active` | 11.16 default; 7.96 active, in both themes | Search matches: explicit dark ink on opaque yellow/amber fills |
+| `--configuration-source-text` | `--configuration-source-find`, `--configuration-source-find-active` | at least 4.5 in both themes | Search matches use platform warning and accent soft fills |
 
-The configuration source canvas stays dark in both themes. Standalone source viewers use `--text-secondary` and `--text-muted` on `--surface-sunken`. `src/contrast.styles.test.ts` checks the actual stylesheet declarations, resolving token derivations and compositing translucent row backgrounds before applying the WCAG threshold. The accessibility quality gate scans all ten UIA-001 pathnames at 1440×900 without the hotspot, working-chip, or line-number exclusions. Token-pair tests do not replace the live API-runtime accessibility scan or before/after screenshots.
+The configuration source canvas uses the platform surface, text and border tokens, giving it the same light palette as the surrounding platform in light mode. It has no separate dark palette. Standalone source viewers use `--text-secondary` and `--text-muted` on `--surface-sunken`. `src/contrast.styles.test.ts` checks the actual stylesheet declarations, resolving token derivations and compositing translucent row backgrounds before applying the WCAG threshold. The accessibility quality gate scans all ten UIA-001 pathnames at 1440×900 without the hotspot, working-chip, or line-number exclusions. Token-pair tests do not replace the live API-runtime accessibility scan or before/after screenshots.
 
 ### Typography
 

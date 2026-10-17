@@ -1,5 +1,6 @@
 import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
+import { openWorkbenchPanel } from "./helpers/runtime";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "playwright/test";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
@@ -120,20 +121,17 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const submitFromPage = async (fixture: Fixture, reason: string) => {
         await signInBrowserAsRole(page, "admin", `${runtime!.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${fixture.setId}&file=${fixture.fileId}&sourceMode=candidate&candidate=${fixture.candidateId}`);
         await dismissXiaozeHint(page);
-        const toggle = page.getByRole("button", { name: "检查器", exact: true });
-        if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+        await openWorkbenchPanel(page, "candidates");
         const inspector = page.getByRole("complementary", { name: "配置检查器" });
-        await expect(inspector.getByRole("list", { name: "来源变更目标" }).getByRole("listitem")).toHaveCount(2);
-        const open = inspector.getByRole("button", { name: "提交 DTS 批量审核" });
-        await expect(open).toBeEnabled();
-        await open.click();
-        const dialog = page.getByRole("dialog", { name: "提交 DTS 批量来源审核" });
+        const dialog = inspector.getByRole("region", { name: "提交 DTS 批量来源审核" });
+        await expect(dialog).toBeVisible();
         if (reason === "DTS 浏览器批准") {
-          await page.keyboard.press("Tab");
-          expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
-          await page.keyboard.press("Escape");
-          await expect(dialog).toBeHidden();
-          await open.click();
+          await dialog.getByRole("textbox", { name: "修改原因" }).focus();
+          await expect(dialog.getByRole("textbox", { name: "修改原因" })).toBeFocused();
+          await inspector.getByRole("button", { name: "关闭检查器" }).press("Enter");
+          await expect(inspector).toHaveCount(0);
+          await openWorkbenchPanel(page, "candidates");
+          await expect(dialog).toBeVisible();
         }
         await expect(dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem")).toHaveCount(2);
         await dialog.getByRole("textbox", { name: "修改原因" }).fill(reason);
@@ -183,7 +181,8 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const approved = await submitFromPage(approvedFixture, "DTS 浏览器批准");
       const detail = await reviewFromQueue("DTS 浏览器批准");
       await detail.getByText("溯源信息", { exact: true }).click();
-      await expect(detail.locator("details").getByText(approved.batchProofDigest, { exact: true }).first()).toBeVisible();
+      await expect(detail.getByLabel("完整溯源数据")).toBeVisible();
+      await expect.poll(async () => JSON.parse((await detail.getByLabel("完整溯源数据").textContent())!)["批量证明摘要"]).toBe(approved.batchProofDigest);
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
       await page.screenshot({ path: testInfo.outputPath("b906-dts-review-1440x900.png") });
       const approvalResponse = page.waitForResponse((response) => response.request().method() === "POST"

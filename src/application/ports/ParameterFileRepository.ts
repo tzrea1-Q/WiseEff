@@ -315,6 +315,7 @@ export type ParameterFileSourcePreview = {
   proposedDigest?: string;
   /** Server-frozen cohort/source-pin proof; present for canonical previews. */
   proofToken?: string;
+  cohortProofToken?: string;
   before?: string;
   after?: string;
   bindings?: Array<{
@@ -347,6 +348,8 @@ export type ParameterFileSourceReviewResult = {
 export type SubmitParameterFileSourceReviewInput = {
   expectedCurrentVersionId: string;
   expectedProofToken: string;
+  expectedWorkflowProofToken?: string;
+  assignedToUserId?: string;
   reason: string;
 };
 

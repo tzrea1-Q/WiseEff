@@ -52,17 +52,6 @@ export type DtsBindingDetailDialogProps = {
   onRetryCompare?: () => void;
 };
 
-function constraintsLabel(value: unknown): string | null {
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  if (record.kind === "none" || Object.keys(record).length === 0) return null;
-  return [
-    record.min != null || record.max != null ? `范围 ${record.min ?? "不限"} – ${record.max ?? "不限"}` : null,
-    record.cells != null ? `每组 ${record.cells} 项` : null,
-    record.minItems != null || record.maxItems != null ? `项数 ${record.minItems ?? "不限"} – ${record.maxItems ?? "不限"}` : null,
-    Array.isArray(record.enum) ? `可选值 ${record.enum.join(" / ")}` : null
-  ].filter(Boolean).join(" · ") || JSON.stringify(value);
-}
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   return value ? <div><dt>{label}</dt><dd>{value}</dd></div> : null;
@@ -102,7 +91,7 @@ export function DtsBindingDetailDialog({
   const documentation = row.documentation?.trim() || specDetail?.documentation?.trim();
   const description = row.description?.trim() || legacy?.description?.trim();
   const unit = canonical?.unit || legacy?.units;
-  const constraints = constraintsLabel(specDetail?.constraints);
+  const constraints = formatParameterConstraints(specDetail?.constraints);
   const currentDisplay = formatDtsValueForUi(row.rawValue, row.effectiveValue);
   const targetDisplay = formatDtsValueForUi(value.rawValue, row.effectiveValue, isDelete ? "deleted" : "present");
   const scalar = row.effectiveValue.kind === "cells" && row.effectiveValue.groups.length === 1
@@ -184,3 +173,4 @@ export function DtsBindingDetailDialog({
     <ConfirmDialog open={Boolean(compareReplacement)} title="替换未保存的修改？" description="引用的项目配置将替换当前目标值和修改原因，其他参数的输入不受影响。" confirmLabel="引用并替换" cancelLabel="继续编辑" onCancel={() => setCompareReplacement(null)} onConfirm={() => { if (compareReplacement) onUseCompareAsDraft?.(compareReplacement); setCompareReplacement(null); setTab("configuration"); setFeedback(null); }} />
   </>;
 }
+import { formatParameterConstraints } from "@/domain/parameter-topology/formatParameterConstraints";

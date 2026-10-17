@@ -21,7 +21,7 @@ describe("member removal submission recovery", () => {
     const button = screen.getByRole("button", { name: "提交移除审核" });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
-    const refresh = await screen.findByRole("button", { name: "重新核对配置成员" });
+    const refresh = await screen.findByRole("button", { name: "重新核对配置文件" });
     expect(button).toBeDisabled();
     fireEvent.click(refresh);
     await waitFor(() => expect(button).toBeEnabled());
@@ -45,6 +45,8 @@ describe("member removal submission recovery", () => {
       governanceClient={{ getProjectWorkflowRoleBindings: loadReviewers } as never}
       onDismiss={vi.fn()} onSubmitted={vi.fn()} />);
     await screen.findByText(/加载项目软件审核人失败/);
+    expect(screen.getByRole("combobox", { name: "指定软件审核人" })).toHaveTextContent("审核人加载失败");
+    expect(screen.queryByRole("link", { name: "配置审核角色" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("移除原因"), { target: { value: "替换旧覆盖文件" } });
     fireEvent.click(screen.getByRole("button", { name: "重新加载审核人" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "提交移除审核" })).toBeEnabled());

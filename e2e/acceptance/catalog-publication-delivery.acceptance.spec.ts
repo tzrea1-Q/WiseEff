@@ -1,4 +1,5 @@
 import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
+import { ensureWorkbenchInspectorOpen } from "./helpers/runtime";
 import { expect, test, type Page, type TestInfo } from "playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -388,7 +389,7 @@ test.describe("isolated formal-image catalog delivery M1", () => {
     await page.getByRole("treeitem", { name: new RegExp(firstKey) }).click();
     const inspector = page.getByRole("complementary", { name: "配置检查器" });
     if (!(await inspector.isVisible().catch(() => false))) {
-      await page.getByRole("button", { name: "检查器" }).click();
+      await ensureWorkbenchInspectorOpen(page);
     }
     await expect(inspector).toBeVisible({ timeout: 30_000 });
     const integerInput = inspector.getByRole("textbox", { name: "数值 1" });
@@ -410,7 +411,7 @@ test.describe("isolated formal-image catalog delivery M1", () => {
         response.url().includes(`/parameter-bindings/${binding.id}/drafts`),
       { timeout: 60_000 },
     );
-    await tasks.getByRole("button", { name: /提交所选/ }).click();
+    await tasks.getByRole("button", { name: /保存为待审核草稿/ }).click();
     const draftResponse = await saveRequest;
     expect(draftResponse.status(), await draftResponse.text()).toBe(201);
     const draftBody = (await draftResponse.json()) as {

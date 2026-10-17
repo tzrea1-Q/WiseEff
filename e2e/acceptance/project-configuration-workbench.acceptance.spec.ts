@@ -1,6 +1,8 @@
 import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import JSZip from "jszip";
 import { expect, test, type APIResponse, type Page } from "playwright/test";
 import type { DtsReleaseReadiness } from "../../src/application/ports/DtsStructuredRepository";
 
@@ -14,23 +16,23 @@ import {
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
-import { apiRoute } from "./helpers/runtime";
+import { apiRoute, createWorkbenchConfigSet, ensureWorkbenchInspectorOpen, openWorkbenchCreateConfigSet, openWorkbenchFileActions, openWorkbenchPanel, openWorkbenchVersionMenu, selectWorkbenchConfigSet } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 import { registerCatalogDriverSubjects } from "./helpers/topologyFixture";
 import {
   assertPostCutoverIdentity,
   bindHardwareUserToProject,
-  createAndSubmitBindingDraft,
+  submitBindingDraftViaApi,
   disposablePageUrl,
   lookupParameterFileVersion,
   numericCellsDts,
-  quotedStringTarget,
   seedIsolatedBinding,
   seedIsolatedBindings,
   seedSemanticFileUiConflict,
   startSwappedDisposablePostCutoverRuntime,
   type RestoreDisposablePostCutoverRuntime,
-  type IsolatedBinding
+  type IsolatedBinding,
+  type BindingDraftHandle
 } from "./helpers/semanticBindingFixture";
 import {
   disposableRuntimeOutcomeFromTestInfo,
@@ -56,11 +58,7 @@ const adminHeaders = () => authHeadersForRole("admin");
 const hardwareHeaders = () => authHeadersForRole("hardware-user");
 
 async function ensureInspectorOpen(page: Page) {
-  const toggle = page.getByRole("button", { name: "检查器", exact: true });
-  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
-    await toggle.click();
-  }
-  await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
+  await ensureWorkbenchInspectorOpen(page);
 }
 const sampleDts = `/dts-v1/;
 / {
@@ -76,6 +74,13 @@ async function dismissXiaozeHint(page: Page) {
   if (await dismiss.isVisible().catch(() => false)) {
     await dismiss.click({ force: true });
   }
+}
+
+async function openVersionCheckIssues(page: Page) {
+  const dialog = await openWorkbenchPanel(page, "release");
+  const summary = dialog.locator("summary").filter({ hasText: /^定版检查/ });
+  if (await summary.locator("..").getAttribute("open") === null) await summary.click();
+  return dialog.getByRole("region", { name: "版本检查问题" });
 }
 
 test.describe("project configuration workbench read-only browser acceptance", () => {
@@ -110,25 +115,25 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     const route = `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(item.configSetId)}&file=${encodeURIComponent(item.members[0].fileId)}&baseline=${baselineId}`;
     await signInBrowserAsRole(page, "admin", route);
     await dismissXiaozeHint(page);
-    await ensureInspectorOpen(page);
+    await openWorkbenchPanel(page, "release");
     const rollbackRequests: string[] = [];
     page.on("request", (sent) => {
       if (sent.method() === "POST" && sent.url().endsWith(`/baselines/${baselineId}/rollback`)) rollbackRequests.push(sent.url());
     });
-    const openPreview = page.getByRole("button", { name: "恢复预览", exact: true });
-    await expect(openPreview).toBeEnabled();
-    await openPreview.click();
-    const dialog = page.getByRole("dialog", { name: "恢复基线预览" });
-    await expect(dialog).toContainText("只读漂移预览");
-    await expect(dialog).toContainText("已准备并批准的规范源事务");
-    await expect(dialog.getByLabel("恢复 blast radius")).toContainText(item.members[0].fileName);
-    await expect(dialog.getByRole("button", { name: "确认恢复" })).toHaveCount(0);
+    const baselinePanel = page.getByRole("region", { name: "配置版本列表与详情" });
+    await expect(baselinePanel.getByRole("note")).toContainText("需要回退时，请在文件管理的版本历史中申请回滚审核。");
+    await expect(baselinePanel.getByRole("button", { name: /恢复到此版本|查看恢复限制/ })).toHaveCount(0);
+    await expect(baselinePanel.getByRole("button", { name: /对比已发布/ })).toHaveCount(0);
+    await baselinePanel.getByRole("button", { name: "对比当前配置", exact: true }).click();
+    await expect(page).toHaveURL(/sourceMode=unified-diff/);
+    await expect(page.getByLabel("统一差异对比")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "确认恢复" })).toHaveCount(0);
+    await openWorkbenchPanel(page, "release");
+    await expect(baselinePanel.getByLabel("文件差异")).toContainText(item.members[0].fileName);
     const screenshot = testInfo.outputPath("canonical-baseline-restore-1440x900.png");
     await page.screenshot({ path: screenshot });
     await testInfo.attach("canonical baseline read-only restore", { path: screenshot, contentType: "image/png" });
-    await page.keyboard.press("Escape");
-    await expect(dialog).not.toBeVisible();
-    await expect(openPreview).toBeFocused();
     expect(rollbackRequests).toEqual([]);
     await recordOperationEvidence({
       operationId: "PROJ-CONFIG-BASELINE-001", title: "canonical baseline read-only restore preview",
@@ -257,16 +262,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
         await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible({ timeout: 30_000 });
         await expect(page.getByRole("treeitem", { name: new RegExp(primaryFileName) })).toBeVisible();
-        await expect(page.getByRole("group", { name: "未编组项目文件" })).toContainText(looseFileName);
-        await expect(page.getByText("工作配置", { exact: true })).toBeVisible();
-        await page.getByRole("button", { name: /版本/ }).click();
-        await expect(page.getByText("发布基线：尚未发布")).toBeVisible();
-        await page.getByRole("button", { name: /版本/ }).click();
-        await expect(page.getByRole("region", { name: "版本详情" })).toHaveCount(0);
-        await expect(page.getByRole("button", { name: "上传候选" })).toBeEnabled();
-        await expect(page.getByRole("status", { name: "发布就绪" })).toContainText("加载中");
-        await page.getByRole("button", { name: "更多" }).click();
-        await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
+        await expect(page.getByRole("group", { name: "待分配项目文件" })).toContainText(looseFileName);
+        await expect(page.locator(".configuration-workbench__source-head")).toContainText("工作配置");
+        await openWorkbenchPanel(page, "release");
+        await expect(page.getByRole("region", { name: "配置版本列表与详情" })).toContainText("尚未保存版本快照。");
+        await expect(page.getByRole("button", { name: /^更新来源/ })).toHaveCount(0);
+        await expect(page.getByRole("status", { name: "配置版本状态", includeHidden: true })).toContainText("检查中…");
+        await expect(page.getByRole("button", { name: "保存版本快照", exact: true })).toBeDisabled();
       } catch (reason) {
         failure ??= { status: "rejected", reason };
       } finally {
@@ -282,7 +284,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const { item: readiness } = await evaluated.json() as { item: DtsReleaseReadiness };
       expect(readiness).toMatchObject({ configSetId, projectId,
         available: expect.any(Boolean), canCreateBaseline: expect.any(Boolean) });
-      const readinessSummary = page.getByRole("status", { name: "发布就绪" });
+      const readinessSummary = page.getByRole("status", { name: "配置版本状态", includeHidden: true });
       if (readiness.available) {
         await expect(readinessSummary).toHaveAttribute("data-can-create", String(readiness.canCreateBaseline));
         await expect(readinessSummary).toHaveAttribute("data-level", readiness.level);
@@ -291,12 +293,12 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         await expect(readinessSummary).toContainText("不可用");
       }
       if (readiness.available && readiness.canCreateBaseline) {
-        await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "保存版本快照", exact: true })).toBeEnabled();
       } else {
-        await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
+        await expect(page.getByRole("button", { name: "保存版本快照", exact: true })).toBeDisabled();
       }
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("main", { name: "只读 DTS 源码" })).toContainText("Configuration tracer");
+      await page.getByRole("button", { name: "关闭配置版本", exact: true }).click();
+      await expect(page.getByRole("main", { name: /只读 DTS 源码$/ })).toContainText("Configuration tracer");
       expect(memberRequests.some((url) => url.includes(`/config-sets/${configSetId}/files`))).toBe(true);
 
       await page.setViewportSize({ width: 1440, height: 900 });
@@ -348,7 +350,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         };
       });
       expect(desktopShell.mobileToolsDisplay).toBeNull();
-      expect(desktopShell.dock?.height).toBe(44);
+      expect(desktopShell.dock?.height ?? 0).toBe(0);
       expect(desktopShell.source?.width ?? 0).toBeGreaterThan(600);
       expect(desktopShell.scrollWidth).toBeLessThanOrEqual(desktopShell.clientWidth);
       expect(desktopShell.commandOverlaps).toEqual([]);
@@ -413,7 +415,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
             }
           }
         }
-        const fold = command.querySelector(".configuration-workbench__identity-fold") as HTMLElement | null;
+        const fold = document.querySelector<HTMLButtonElement>('.configuration-workbench__command-actions button[aria-haspopup="menu"]');
         const foldBox = fold?.getBoundingClientRect() ?? null;
         return {
           clipped,
@@ -428,26 +430,30 @@ test.describe("project configuration workbench read-only browser acceptance", ()
             : null
         };
       });
-      expect(commandControlAudit.fold?.text).toMatch(/版本/);
+      expect(commandControlAudit.fold?.text).toMatch(/更多/);
       expect(commandControlAudit.fold?.scrollWidth ?? 0).toBeLessThanOrEqual((commandControlAudit.fold?.clientWidth ?? 0) + 1);
       expect(commandControlAudit.fold?.width ?? 0).toBeGreaterThanOrEqual(52);
       expect(commandControlAudit.clipped).toEqual([]);
       expect(commandControlAudit.overlaps).toEqual([]);
 
-      await page.getByRole("button", { name: "检查器", exact: true }).click();
+      await openWorkbenchPanel(page, "file");
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
       const inspectorOverlay = await page.evaluate(() => {
         const inspector = document.querySelector(".configuration-workbench__inspector");
         if (!inspector) return null;
         const style = getComputedStyle(inspector);
         const box = inspector.getBoundingClientRect();
-        return { position: style.position, width: box.width, x: box.x };
+        const sourceRight = document.querySelector(".configuration-workbench__source")?.getBoundingClientRect().right;
+        return { position: style.position, width: box.width, x: box.x, layout: inspector.getAttribute("data-layout"), sourceRight };
       });
-      expect(inspectorOverlay?.position).toMatch(/absolute|fixed/);
-      await page.getByRole("button", { name: "任务", exact: true }).click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toContainText(/没有本轮更改|任务证据|会话变更/);
-      await page.getByRole("button", { name: "任务", exact: true }).click();
-      await page.getByRole("button", { name: "检查器", exact: true }).click();
+      expect(inspectorOverlay?.layout).toBe("persistent");
+      expect(inspectorOverlay?.position).toBe("relative");
+      expect(inspectorOverlay!.sourceRight).toBeLessThanOrEqual(inspectorOverlay!.x + 1);
+      await openWorkbenchPanel(page, "release");
+      await expect(await openVersionCheckIssues(page)).toBeVisible();
+      await expect(page.getByRole("region", { name: "配置任务" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "任务", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "关闭配置版本", exact: true }).click();
 
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench.json", {
         route: page.url(),
@@ -543,14 +549,17 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     await tasks.getByLabel("变更原因").fill("Issue 1062 structured staging browser proof");
     const stagedResponse = page.waitForResponse((response) => response.request().method() === "POST"
       && response.url().endsWith(`/parameter-bindings/${binding!.id}/drafts`));
-    await tasks.getByRole("button", { name: /提交所选/ }).click();
+    await tasks.getByRole("button", { name: /保存为待审核草稿/ }).click();
     const staged = await stagedResponse;
     expect(staged.status(), await staged.text()).toBe(201);
     const draft = (await staged.json()).item;
     expect(draft).toMatchObject({ pending: true, currentValueId: binding!.currentValueId,
       projectParameterBindingId: binding!.id, writeTarget: { role: "canonical-project-value-draft" } });
-    await expect(tasks).toContainText("已暂存 1 项待审核草稿；当前值未变。");
+    await expect(tasks).toContainText("已保存 1 项待审核草稿，当前值未变。提交审核并获通过后生效。");
+    await expect(tasks.getByText(/已(?:保存|暂存) 1 项待审核草稿/)).toHaveCount(1);
     const receipt = tasks.getByRole("region", { name: "待审核草稿回执" });
+    await receipt.getByText("溯源信息", { exact: true }).click();
+    await expect(receipt.getByLabel("完整溯源数据", { exact: true })).toBeVisible();
     await expect(receipt).toContainText(draft.draftId);
     await expect(receipt).toContainText(binding!.currentValueId);
     await expect(tasks).not.toContainText("已写入正式项目值");
@@ -693,7 +702,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page).toHaveURL(new RegExp(`property=model`));
 
       await page.getByRole("searchbox", { name: "统一搜索查询" }).fill(overlayNode);
-      await page.getByRole("button", { name: "搜索", exact: true }).click();
+      await page.getByRole("searchbox", { name: "统一搜索查询" }).press("Enter");
       const results = page.getByLabel("搜索结果");
       await expect(results).toContainText(overlayFileName);
       await results.getByRole("button", { name: new RegExp(overlayNode) }).click();
@@ -829,70 +838,81 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(v1Body.item.id)}`
       );
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-      await expect(page.getByLabel("配置身份")).toContainText("工作配置");
-      await page.getByRole("button", { name: /版本/ }).click();
-      await expect(page.getByRole("region", { name: "版本详情" })).toContainText("候选文件版本");
-      await expect(page.getByRole("region", { name: "版本详情" })).toContainText("发布基线");
-
-      await page.getByRole("button", { name: "检查器" }).click();
+      await expect(page.locator(".configuration-workbench__source-head")).toContainText("工作配置");
+      await openWorkbenchPanel(page, "release");
+      await expect(page.getByRole("region", { name: "配置版本列表与详情" })).toBeVisible();
+      await openWorkbenchPanel(page, "file");
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector).toBeVisible();
       await expect(inspector).toContainText("文件格式");
-      await expect(inspector.getByLabel("不可变版本历史")).toBeVisible();
+      await expect(inspector.getByRole("button", { name: `查看版本 ${v2Body.item.versionNumber} 历史源码`, exact: true })).toContainText("活跃");
+      await openWorkbenchPanel(page, "versions");
+      await expect(inspector.getByLabel("版本历史")).toBeVisible();
       await expect(inspector).toContainText(`版本 ${v1Body.version.versionNumber}`);
 
       await page.getByRole("treeitem", { name: "节点 board" }).click();
       await expect(inspector).toContainText("节点路径");
-      await expect(inspector).toContainText("只读");
+      await expect(inspector.getByText("只读", { exact: true })).toHaveCount(0);
 
       await page.getByRole("treeitem", { name: "属性 board/model" }).click();
-      await expect(inspector).toContainText("属性名");
+      await expect(inspector.getByRole("group", { name: "属性值编辑" })).toBeVisible();
+      await expect(inspector.getByLabel("规范化预览")).toHaveCount(0);
+      await expect(inspector.locator(".configuration-workbench__region-head")).toContainText("model");
       await expect(inspector).toContainText("InspectV2");
 
       await page.getByRole("treeitem", { name: "节点 board" }).click();
       await expect(inspector).toContainText("节点路径");
       await page.getByRole("treeitem", { name: new RegExp(primaryFileName) }).click();
       await expect(inspector).toContainText("文件格式");
+      await expect(inspector.getByRole("region", { name: "版本历史" })).toBeVisible();
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
       await expect(inspector.getByRole("button", { name: "关闭检查器" })).toBeVisible();
 
       const historyVersion = versionsBody.items.find((item) => item.id === v1Body.version.id) ?? versionsBody.items.at(-1);
       expect(historyVersion).toBeTruthy();
+      await openWorkbenchPanel(page, "versions");
       await page
         .getByRole("button", { name: `查看版本 ${historyVersion!.versionNumber} 历史源码` })
         .click();
       await expect(page).toHaveURL(/sourceMode=history/);
-      await expect(page.getByLabel("历史只读源码模式")).toBeVisible();
+      await expect(page.locator(".configuration-workbench__source-head")).toContainText("历史版本 · 只读");
       await expect(page.getByText(/model = "InspectV1"/)).toBeVisible();
 
       const downloadPromise = page.waitForEvent("download");
-      await page.getByRole("button", { name: `下载版本 ${historyVersion!.versionNumber}` }).click();
+      await openWorkbenchVersionMenu(page, historyVersion!.versionNumber);
+      await page.getByRole("menuitem", { name: `下载版本 ${historyVersion!.versionNumber}`, exact: true }).click();
       const download = await downloadPromise;
       expect(download.suggestedFilename()).toContain(primaryFileName);
 
-      await page.getByRole("button", { name: `统一差异版本 ${historyVersion!.versionNumber}` }).click();
+      await page.getByRole("button", { name: "对比", exact: true }).click();
       await expect(page).toHaveURL(/sourceMode=unified-diff/);
       await expect(page.getByLabel("统一差异对比")).toBeVisible();
 
-      await page.getByRole("button", { name: "检查器", exact: true }).click();
-      await page.getByRole("button", { name: "并排对比", exact: true }).click();
-      await expect(page).toHaveURL(/sourceMode=side-by-side/);
-      await expect(page.getByLabel("并排差异对比")).toBeVisible();
+      await page.getByRole("button", { name: "关闭检查器", exact: true }).click();
+      await expect(page.getByRole("button", { name: "并排对比", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "统一差异", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "对比", exact: true })).toHaveCount(0);
+      await expect(page.getByLabel("并排差异对比")).toHaveCount(0);
 
       await page.getByRole("button", { name: "退出对比" }).click();
       await expect(page).not.toHaveURL(/sourceMode=/);
       await expect(page.getByText(/model = "InspectV2"/)).toBeVisible();
 
-      await page.getByRole("button", { name: "检查器" }).click();
+      await openWorkbenchPanel(page, "file");
       const openInspector = page.getByRole("complementary", { name: "配置检查器" });
       await page.setViewportSize({ width: 1440, height: 900 });
       await expect(openInspector).toBeVisible();
       const layout = await openInspector.getAttribute("data-layout");
       expect(layout === "overlay" || layout === "persistent").toBe(true);
       if (layout === "persistent") {
-        const sourceWidth = await page.locator(".configuration-workbench__source").evaluate((el) => el.getBoundingClientRect().width);
-        expect(sourceWidth).toBeGreaterThanOrEqual(640);
+        const sourceBox = await page.locator(".configuration-workbench__source").boundingBox();
+        const inspectorBox = await openInspector.boundingBox();
+        expect(sourceBox!.x + sourceBox!.width).toBeLessThanOrEqual(inspectorBox!.x + 1);
       }
+      // Adjacent PC panes share width; closing details restores the full source workspace.
+      await openInspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
+      const sourceWidth = await page.locator(".configuration-workbench__source").evaluate((el) => el.getBoundingClientRect().width);
+      expect(sourceWidth).toBeGreaterThanOrEqual(640);
 
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-inspect.json", {
         route: page.url(),
@@ -1062,18 +1082,15 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await page.goto(
         `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(v1Body.item.id)}&sourceMode=candidate&candidate=${encodeURIComponent(candidateBody.item.id)}`
       );
-      await expect(page.getByLabel("候选只读源码模式")).toBeVisible();
-      await page.getByRole("button", { name: /版本/ }).click();
-      await expect(page.getByRole("region", { name: "版本详情" })).toContainText(candidateBody.item.status);
-      const inspectorToggle = page.getByRole("button", { name: "检查器" });
-      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
-        await inspectorToggle.click();
-      }
+      await expect(page.locator(".configuration-workbench__source-head")).toContainText(`${candidateBody.item.status === "ready" ? "待核对" : "需处理问题"} · 只读`);
+      await openWorkbenchPanel(page, "candidates");
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector).toBeVisible();
+      await expect(inspector.getByText("更新状态", { exact: true }).locator("..")).toContainText(candidateBody.item.status === "ready" ? "待核对" : "需处理问题");
       await expect(inspector).toContainText("结构差异");
-      await expect(inspector).toContainText("文本差异");
-      await page.getByRole("button", { name: "放弃候选" }).click();
+      await expect(page.getByLabel("来源更新差异")).toContainText('model = "CandV1";');
+      await expect(page.getByLabel("来源更新差异")).toContainText('model = "CandV2";');
+      await page.getByRole("button", { name: "放弃更新" }).click();
       await expect(page.getByRole("status").filter({ hasText: "候选已放弃" })).toBeVisible();
 
       if (failedCandidateId) {
@@ -1202,7 +1219,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
 
       const tasks = page.getByRole("region", { name: "配置任务" });
       await expect(tasks).toBeVisible();
-      await expect(tasks).toContainText("会话变更");
+      await expect(tasks).toContainText("未提交变更");
       await expect(tasks.getByRole("checkbox", { name: /board\/model/ })).toBeChecked();
       await tasks.getByLabel("变更原因").fill(draftReason);
 
@@ -1275,8 +1292,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(staleTasks).toBeVisible();
       await expect(staleTasks).toContainText(/基线版本已变更/);
       await expect(staleTasks.getByRole("checkbox", { name: /board\/model/ })).toBeVisible();
-      await expect(staleTasks.getByRole("button", { name: "校验所选" })).toBeDisabled();
-      await expect(staleTasks.getByRole("button", { name: /提交所选/ })).toBeDisabled();
+      await expect(staleTasks.getByRole("button", { name: "校验所选" })).toHaveCount(0);
+      await expect(staleTasks.getByRole("button", { name: /保存为待审核草稿/ })).toBeDisabled();
 
       // Logout clearing is wired in App.handleLogout → clearSessionDraftsForLogout().
       // Browser auth logout may 404 depending on AUTH_PROVIDER; prove the storage clear
@@ -1286,16 +1303,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       }, storageKey);
       await page.reload({ waitUntil: "networkidle" });
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-      const afterClearTasksToggle = page.getByRole("button", { name: "任务" });
-      if (await page.getByRole("region", { name: "配置任务" }).isVisible().catch(() => false)) {
-        await expect(page.getByRole("region", { name: "配置任务" })).not.toContainText("DraftV2");
-        await expect(page.getByRole("region", { name: "配置任务" })).toContainText(/没有本轮更改/);
-      } else {
-        await afterClearTasksToggle.click();
-        const emptyTasks = page.getByRole("region", { name: "配置任务" });
-        await expect(emptyTasks).toBeVisible();
-        await expect(emptyTasks).toContainText(/没有本轮更改/);
-      }
+      await expect(page.getByRole("checkbox", { name: /board\/model/ })).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "配置任务" }).getByText("DraftV2")).toHaveCount(0);
       await expect
         .poll(async () =>
           page.evaluate((key) => window.localStorage.getItem(key), storageKey)
@@ -1435,11 +1444,18 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByLabel("治理审计")).toHaveCount(0);
 
       await page.getByRole("button", { name: "更多" }).click();
-      await page.getByRole("menuitem", { name: "活动" }).click();
+      await page.getByRole("menuitem", { name: "项目活动" }).click();
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector).toContainText("项目活动");
       await expect(inspector.getByLabel("项目活动事件")).toBeVisible();
       await expect(inspector).toHaveAttribute("data-layout", /overlay|persistent/);
+      for (const width of [1280, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        const activitySize = await inspector.locator(".configuration-workbench__inspector-body").evaluate((body) => ({
+          width: body.clientWidth, scrollWidth: body.scrollWidth
+        }));
+        expect(activitySize.scrollWidth).toBeLessThanOrEqual(activitySize.width + 1);
+      }
 
       const firstEvent = inspector.getByRole("button").filter({ hasText: /创建|上传|放弃|重算/ }).first();
       await firstEvent.click();
@@ -1447,9 +1463,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const missingVisible = await missing.isVisible().catch(() => false);
       if (missingVisible) {
         await expect(missing).toBeVisible();
-        await expect(page.getByRole("main", { name: "只读 DTS 源码" })).toBeVisible();
+        await expect(page.getByRole("main", { name: /只读 DTS 源码$/ })).toBeVisible();
       } else {
-        await expect(page.getByRole("main", { name: "只读 DTS 源码" })).toBeVisible();
+        await expect(page.getByRole("main", { name: /只读 DTS 源码$/ })).toBeVisible();
       }
 
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-activity.json", {
@@ -1520,13 +1536,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect(looseUpload.ok()).toBe(true);
       const looseBody = (await looseUpload.json()) as { item: { id: string; fileName: string } };
 
-      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-        headers: adminHeaders(),
-        data: { name: configSetName, description: "File config ops acceptance" }
-      });
+      await signInBrowserAsRole(page, "admin", `/parameter-admin/projects/${projectId}/configuration`);
+      await dismissXiaozeHint(page);
+      const { response: createConfigSet, item: createdConfigSet } = await createWorkbenchConfigSet(page, configSetName);
       expect(createConfigSet.status()).toBe(201);
-      const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
-      const configSetId = configSetBody.item.id;
+      const configSetId = createdConfigSet.id;
 
       const addMember = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
@@ -1568,25 +1582,26 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await dismissXiaozeHint(page);
       await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-      const ungrouped = page.getByRole("group", { name: "未编组项目文件" });
+      const ungrouped = page.getByRole("group", { name: "待分配项目文件" });
       await expect(ungrouped).toContainText(looseFileName);
       await expect(ungrouped.locator(".configuration-workbench__ungrouped-file").filter({ hasText: looseFileName }))
-        .toContainText("尚未加入当前配置集");
+        .toContainText("待分配");
 
-      await page.getByRole("button", { name: `编入 ${looseFileName}` }).click();
+      await page.getByRole("button", { name: `加入 ${looseFileName}` }).click();
       await expect(page.getByRole("treeitem", { name: new RegExp(looseFileName) })).toBeVisible({ timeout: 15_000 });
 
       await page.goto(
         `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&inspector=config-set`
       );
       await dismissXiaozeHint(page);
-      const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      await expect(inspector).toBeVisible();
-      await expect(inspector).toContainText("成员管理");
-      await expect(inspector.getByRole("button", { name: "关闭检查器" })).toBeVisible();
-      await inspector.getByRole("button", { name: `移除 ${looseFileName}` }).click();
-      const removeMemberDialog = page.getByRole("dialog", { name: "移除配置集成员" });
-      await expect(page.getByRole("dialog")).toHaveCount(1);
+      const files = page.getByRole("dialog", { name: "文件管理", exact: true });
+      await expect(files).toBeVisible();
+      await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
+      await expect(files.getByRole("button", { name: "关闭文件管理" })).toBeVisible();
+      const fileActions = await openWorkbenchFileActions(page, looseFileName);
+      await fileActions.getByRole("menuitem", { name: "从配置移除", exact: true }).click();
+      const removeMemberDialog = page.getByRole("dialog", { name: "从配置移除文件" });
+      await expect(removeMemberDialog).toBeVisible();
       await expect(removeMemberDialog).toContainText("后续基线与导出将不再包含它");
       const removeMemberResponsePromise = page.waitForResponse(
         (response) =>
@@ -1596,14 +1611,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await removeMemberDialog.getByRole("button", { name: "确认移除" }).click();
       const removeMemberResponse = await removeMemberResponsePromise;
       expect(removeMemberResponse.ok()).toBe(true);
+      await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
       await expect(ungrouped).toContainText(looseFileName);
 
-      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
-      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
-        await inspectorToggle.click();
-      }
+      await openWorkbenchPanel(page, "file");
       await page.getByRole("treeitem", { name: new RegExp(primaryFileName) }).click();
-      const syncButton = inspector.getByRole("button", { name: "手动同步" });
+      await page.getByRole("button", { name: "更多", exact: true }).click();
+      const syncButton = page.getByRole("menuitem", { name: "手动同步", exact: true });
       await expect(syncButton).toBeVisible();
       await expect(syncButton).toBeEnabled();
       const manualSyncResponsePromise = page.waitForResponse((response) => response.request().method() === "POST"
@@ -1612,32 +1626,53 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect((await manualSyncResponsePromise).ok()).toBe(true);
       await expect(page.getByRole("region", { name: "配置任务" })).toContainText(primaryFileName);
 
-      await page.getByRole("button", { name: "更多" }).click();
-      await page.getByRole("menuitem", { name: "导出配置集" }).click();
-      await expect(page.locator(".configuration-workbench__ops-banner").filter({ hasText: "已导出配置集" })).toBeVisible({ timeout: 15_000 });
+      const uiExportResponsePromise = page.waitForResponse((response) => response.request().method() === "GET"
+        && new URL(response.url()).pathname === `/api/v1/projects/${projectId}/config-sets/${configSetId}/export`);
+      const exportDownloadPromise = page.waitForEvent("download");
+      await page.getByRole("button", { name: "配置", exact: true }).click();
+      await page.getByRole("menuitem", { name: "导出当前配置", exact: true }).click();
+      const uiExportResponse = await uiExportResponsePromise;
+      expect(uiExportResponse.ok()).toBe(true);
+      const uiExportBody = await uiExportResponse.json() as typeof exportBody;
+      const exportDownload = await exportDownloadPromise;
+      expect(exportDownload.suggestedFilename()).toBe(`${configSetName}-export.zip`);
+      const exportDownloadPath = await exportDownload.path();
+      expect(exportDownloadPath).not.toBeNull();
+      const zip = await JSZip.loadAsync(await readFile(exportDownloadPath!));
+      const manifestFile = zip.file("wiseeff-config-set-export-manifest.json");
+      expect(manifestFile).not.toBeNull();
+      const downloadedManifest = JSON.parse(await manifestFile!.async("string"));
+      expect(downloadedManifest).toEqual(uiExportBody.manifest);
+      expect(downloadedManifest).toMatchObject({ configSetId, name: configSetName, projectId,
+        members: [{ fileId: primaryBody.item.id, role: "base", sortOrder: 0 }] });
+      expect(Object.values(zip.files).filter((file) => !file.dir).map((file) => file.name).sort())
+        .toEqual(["wiseeff-config-set-export-manifest.json", ...uiExportBody.files.map((file) => file.name)].sort());
+      for (const file of uiExportBody.files) {
+        const archived = zip.file(file.name);
+        expect(archived).not.toBeNull();
+        expect(await archived!.async("string")).toBe(file.content);
+      }
+      expect(uiExportBody.files.map((file) => file.name)).toEqual([primaryFileName]);
+      expect(uiExportBody.files[0]!.content).toContain('compatible = "wiseeff,tracer"');
+      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("已导出配置", { timeout: 15_000 });
 
-      await selectControlOption(page.getByRole("combobox", { name: "配置集" }), "__create_config_set__");
-      await expect(page.getByRole("heading", { name: "新建配置集" })).toBeVisible();
-      await page.getByLabel("配置集名称").fill(configSetName);
-      await page.getByRole("button", { name: "创建配置集" }).click();
+      const createDialog = await openWorkbenchCreateConfigSet(page);
+      await createDialog.getByLabel("配置名称", { exact: true }).fill(configSetName);
+      await createDialog.getByRole("button", { name: "创建配置", exact: true }).click();
       await expect(page.getByRole("alert").filter({ hasText: "已存在名为" })).toBeVisible();
+      await createDialog.getByRole("button", { name: "取消", exact: true }).click();
 
-      const emptyCreate = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-        headers: adminHeaders(),
-        data: { name: emptyConfigSetName, description: "Empty focused upload path" }
-      });
+      const { response: emptyCreate, item: emptyCreatedConfigSet } = await createWorkbenchConfigSet(page, emptyConfigSetName);
       expect(emptyCreate.status()).toBe(201);
-      const emptyBody = (await emptyCreate.json()) as { item: { id: string; name: string } };
-
-      await page.goto(
-        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(emptyBody.item.id)}`
-      );
-      await dismissXiaozeHint(page);
+      const emptyBody = { item: emptyCreatedConfigSet };
+      await selectWorkbenchConfigSet(page, configSetId);
+      await expect(page.getByRole("treeitem", { name: new RegExp(primaryFileName) })).toBeVisible();
+      await selectWorkbenchConfigSet(page, emptyBody.item.id);
       await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByText("当前配置集没有成员文件")).toBeVisible();
-      await expect(page.getByText(/上传候选不会自动激活工作配置/)).toBeVisible();
-      await expect(page.getByRole("button", { name: "上传候选" }).first()).toBeVisible();
-      await expect(page.getByRole("group", { name: "未编组项目文件" })).toBeVisible();
+      await expect(page.getByText("当前配置还没有文件", { exact: true })).toBeVisible();
+      await openWorkbenchPanel(page, "candidates");
+      await expect(page.getByRole("complementary", { name: "配置检查器" }).getByRole("button", { name: "添加来源文件", exact: true })).toBeEnabled();
+      await expect(page.getByRole("group", { name: "待分配项目文件" })).toBeVisible();
       await expect(page.getByText(/已自动激活|自动成为工作配置/)).toHaveCount(0);
 
       const deniedAdd = await request.post(
@@ -1657,8 +1692,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       // Parameter-admin page requires Admin, so non-admin denial is asserted via API while
       // the Admin browser session keeps the workbench read context visible.
       await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible();
-      await expect(page.getByText("当前配置集没有成员文件")).toBeVisible();
-      await expect(page.getByRole("group", { name: "未编组项目文件" })).toContainText(looseFileName);
+      await expect(page.getByText("当前配置还没有文件", { exact: true })).toBeVisible();
+      await expect(page.getByRole("group", { name: "待分配项目文件" })).toContainText(looseFileName);
 
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-file-config-ops.json", {
         route: page.url(),
@@ -1667,6 +1702,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         primaryFileId: primaryBody.item.id,
         looseFileId: looseBody.item.id,
         exportMembers: exportBody.manifest.members.length,
+        downloadFilename: exportDownload.suggestedFilename(),
+        downloadedManifest,
         uiRemoveMemberStatus: removeMemberResponse.status(),
         nonAdminDeniedAddStatus: deniedAdd.status(),
         nonAdminDeniedExportStatus: deniedExport.status()
@@ -1842,22 +1879,21 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await dismissXiaozeHint(page);
 
       await page.setViewportSize({ width: 1440, height: 900 });
-      const readinessSummary = page.getByRole("status", { name: "发布就绪" });
+      const readinessSummary = page.getByRole("status", { name: "配置版本状态", includeHidden: true });
       await expect(readinessSummary).toBeVisible({ timeout: 30_000 });
       if (!readinessBody.item.available) {
         await expect(readinessSummary).toContainText(/不可用/);
-        await expect(readinessSummary.getByRole("button", { name: "重试就绪评估" })).toBeVisible();
       }
       await readinessSummary.getByRole("button").first().click();
-      await expect(page.getByRole("region", { name: "发布就绪问题" })).toBeVisible();
-
-      await page.getByRole("button", { name: "更多" }).click();
-      const createButton = page.getByRole("menuitem", { name: "创建基线" });
+      await expect(await openVersionCheckIssues(page)).toBeVisible();
+      if (!readinessBody.item.available) {
+        await expect(page.getByRole("region", { name: "版本检查问题" }).getByRole("button", { name: "重新检查" })).toBeVisible();
+      }
+      const createButton = page.getByRole("button", { name: "保存版本快照", exact: true });
       await expect(createButton).toBeVisible();
       if (!readinessBody.item.available || !readinessBody.item.canCreateBaseline || readinessBody.item.level === "blocked") {
         await expect(createButton).toBeDisabled();
       }
-      await page.keyboard.press("Escape");
 
       const desktopOverflow = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
@@ -1972,6 +2008,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           canRelease: boolean;
           canCreateBaseline: boolean;
           blockers: Array<{ code: string }>;
+          warnings: Array<{ code: string }>;
         };
       };
       readinessStates.push({ phase, available: item.available, canRelease: item.canRelease,
@@ -1981,10 +2018,10 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         responseSummary: `${phase}: canRelease=${item.canRelease}; blockers=${item.blockers.map((blocker) => blocker.code).join(",")}`
       }));
       expect(item.available).toBe(true);
-      const summary = page.getByRole("status", { name: "发布就绪" });
+      const summary = page.getByRole("status", { name: "配置版本状态", includeHidden: true });
       await expect(summary).toHaveAttribute("data-can-release", String(item.canRelease));
       await summary.getByRole("button").first().click();
-      await expect(page.getByRole("region", { name: "发布就绪问题" })).toBeVisible();
+      await expect(await openVersionCheckIssues(page)).toBeVisible();
       return item;
     };
 
@@ -2072,7 +2109,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       }));
 
       const pending = await openWorkbench("pending-review");
-      const pendingIssue = page.getByRole("region", { name: "发布就绪问题" }).locator('[data-code="pending-change"]');
+      const pendingIssue = page.getByRole("region", { name: "版本检查问题" }).locator('[data-code="pending-change"]');
       await expect(pendingIssue).toBeVisible();
       await expect(pendingIssue).toContainText(/1\D/);
       const reviewRoute = `/parameter-review?project=${scopedProjectId}&request=${requestId}`;
@@ -2082,10 +2119,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect(pending.blockers.map((blocker) => blocker.code)).toContain("pending-change");
       expect(pending.canRelease).toBe(false);
       expect(pending.canCreateBaseline).toBe(false);
-      await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "false");
-      await page.getByRole("button", { name: "更多", exact: true }).click();
-      await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
-      await page.keyboard.press("Escape");
+      await expect(page.getByRole("status", { name: "配置版本状态", includeHidden: true })).toHaveAttribute("data-can-release", "false");
+      await expect(page.getByRole("button", { name: "保存版本快照", exact: true })).toBeDisabled();
       const blockedScreenshot = testInfo.outputPath("canonical-readiness-blocked.png");
       await page.screenshot({ path: blockedScreenshot, animations: "disabled" });
       screenshots.push(blockedScreenshot);
@@ -2119,14 +2154,12 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       readinessStates.push({ phase: "after-approval-mounted", available: cleared.available,
         canRelease: cleared.canRelease, canCreateBaseline: cleared.canCreateBaseline,
         blockerCodes: cleared.blockers.map((blocker: { code: string }) => blocker.code) });
-      await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "true");
+      await expect(page.getByRole("status", { name: "配置版本状态", includeHidden: true })).toHaveAttribute("data-can-release", "true");
       expect(cleared.blockers.map((blocker: { code: string }) => blocker.code)).not.toContain("pending-change");
-      await expect(page.getByRole("region", { name: "发布就绪问题" }).locator('[data-code="pending-change"]')).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "版本检查问题" }).locator('[data-code="pending-change"]')).toHaveCount(0);
       expect(cleared.canCreateBaseline).toBe(true);
       expect(cleared.canRelease).toBe(true);
-      await page.getByRole("button", { name: "更多", exact: true }).click();
-      await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeEnabled();
-      await page.keyboard.press("Escape");
+      await expect(page.getByRole("button", { name: "保存版本快照", exact: true })).toBeEnabled();
       const clearedScreenshot = testInfo.outputPath("canonical-readiness-cleared.png");
       await page.screenshot({ path: clearedScreenshot, animations: "disabled" });
       screenshots.push(clearedScreenshot);
@@ -2180,7 +2213,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect(pendingResponse.status(), await pendingResponse.text()).toBe(200);
       expect((await pendingResponse.json()).item.blockers.map((blocker: { code: string }) => blocker.code))
         .toContain("pending-change");
-      await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "false");
+      await expect(page.getByRole("status", { name: "配置版本状态", includeHidden: true })).toHaveAttribute("data-can-release", "false");
       const withdrawal = await request.post(apiRoute(`/api/v2/projects/${scopedProjectId}/parameter-value-change-requests/${requestId}/withdraw`), {
         headers: authHeadersForRole("software-user"), data: {}
       });
@@ -2196,7 +2229,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const withdrawnReadiness = (await afterWithdrawal.json()).item;
       expect(withdrawnReadiness.canRelease).toBe(true);
       expect(withdrawnReadiness.blockers.map((blocker: { code: string }) => blocker.code)).not.toContain("pending-change");
-      await expect(page.getByRole("status", { name: "发布就绪" })).toHaveAttribute("data-can-release", "true");
+      await expect(page.getByRole("status", { name: "配置版本状态", includeHidden: true })).toHaveAttribute("data-can-release", "true");
       readinessStates.push({ phase: "after-withdrawal-mounted", available: withdrawnReadiness.available,
         canRelease: withdrawnReadiness.canRelease, canCreateBaseline: withdrawnReadiness.canCreateBaseline,
         blockerCodes: withdrawnReadiness.blockers.map((blocker: { code: string }) => blocker.code) });
@@ -2448,9 +2481,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await dismissXiaozeHint(page);
 
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.getByRole("button", { name: "检查器" }).click();
-      await expect(page.getByRole("region", { name: "发布基线" })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByLabel("基线历史")).toBeVisible();
+      await openWorkbenchPanel(page, "release");
+      await expect(page.getByRole("region", { name: "配置版本列表与详情" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByLabel("配置版本历史")).toBeVisible();
 
       const evidencePath = await writeOperationJsonArtifact(
         testInfo,
@@ -2561,7 +2594,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         {
           from: `/parameter-admin/projects/${projectId}/structure?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}&node=chosen`,
           expectQuery: /sourceMode=working/,
-          contentTab: "结构"
+          contentTab: "源码"
         },
         {
           from: `/parameter-admin/projects/${projectId}/conflicts?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`,
@@ -2578,9 +2611,19 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         );
         await expect(page).toHaveURL(item.expectQuery);
         await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
-        await expect(page.getByRole("tab", { name: item.contentTab, exact: true })).toHaveAttribute("aria-selected", "true");
-        await expect(page.getByRole("tabpanel", { name: item.contentTab, exact: true })).toBeVisible();
-        await expect(page.getByRole("region", { name: "文件与配置集", exact: true })).toBeVisible();
+        if (item.contentTab === "冲突") {
+          await expect(page.getByRole("tab", { name: /^冲突/ })).toHaveAttribute("aria-selected", "true");
+          await expect(page.getByRole("tabpanel", { name: /^冲突/ })).toBeVisible();
+        } else {
+          await expect(page.getByRole("region", { name: "配置内容", exact: true })).toBeVisible();
+          await expect(page.getByRole("tab", { name: "结构", exact: true })).toHaveCount(0);
+          const contentTabs = page.getByRole("tablist", { name: "项目配置内容", exact: true });
+          if (await contentTabs.isVisible()) {
+            await expect(contentTabs.getByRole("tab", { name: "源码", exact: true })).toHaveAttribute("aria-selected", "true");
+            await expect(page.getByRole("tabpanel", { name: "源码", exact: true })).toBeVisible();
+          } else await expect(page.getByRole("tabpanel")).toHaveCount(0);
+        }
+        await expect(page.getByRole("region", { name: "配置导航", exact: true })).toBeVisible();
         await expect(page.getByRole("navigation", { name: "项目运营视图" })).toHaveCount(0);
       }
 
@@ -2733,21 +2776,21 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
       await dismissXiaozeHint(page);
       await expect(page.getByRole("heading", { name: binding.fileName })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByLabel("只读 DTS 源码").locator('[contenteditable="true"]')).toHaveCount(0);
+      await expect(page.getByLabel(/只读 DTS 源码$/).locator('[contenteditable="true"]')).toHaveCount(0);
 
       await page.getByRole("treeitem", { name: "节点 board" }).click();
       await page.getByRole("treeitem", { name: "属性 board/rx_mod_cm_cfg" }).click();
       await ensureInspectorOpen(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      await expect(inspector).toContainText("可编辑");
-      await expect(inspector).toContainText("变更原因");
+      await expect(inspector.getByRole("group", { name: "属性值编辑" })).toBeVisible();
+      await expect(inspector).toContainText("当前值");
       const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
       await expect(stringInput).toBeEnabled();
       await stringInput.fill("EditV2");
 
       const tasks = page.getByRole("region", { name: "配置任务" });
       await expect(tasks).toBeVisible();
-      await expect(tasks).toContainText("会话变更");
+      await expect(tasks).toContainText("未提交变更");
       await expect(tasks.getByRole("checkbox", { name: /board\/rx_mod_cm_cfg/ })).toBeChecked();
       await expect(page.getByRole("treeitem", { name: "属性 board/rx_mod_cm_cfg" })).toHaveAttribute(
         "data-property-identity",
@@ -2755,15 +2798,22 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       );
       await expect(page.locator('[data-session-gutter="board::rx_mod_cm_cfg"]')).toHaveCount(1);
 
-      await tasks.getByLabel("变更原因").fill("acceptance structured edit");
-      await tasks.getByRole("button", { name: "校验所选" }).click();
-      await expect(tasks.getByRole("status")).toContainText(/校验通过/);
-
-      const submitted = await createAndSubmitBindingDraft(request, {
-        binding,
-        targetValue: quotedStringTarget("EditV2"),
-        reason: "PROJ-CONFIG-EDIT-001 typed binding draft"
-      });
+      const reason = "PROJ-CONFIG-EDIT-001 typed binding draft";
+      await tasks.getByLabel("变更原因").fill(reason);
+      await expect(tasks.getByRole("button", { name: "校验所选" })).toHaveCount(0);
+      const stagedResponsePromise = page.waitForResponse((response) => response.request().method() === "POST"
+        && new URL(response.url()).pathname === `/api/v2/projects/${projectId}/parameter-bindings/${binding!.bindingId}/drafts`);
+      await tasks.getByRole("button", { name: /保存为待审核草稿/ }).click();
+      const stagedResponse = await stagedResponsePromise;
+      expect(stagedResponse.status(), await stagedResponse.text()).toBe(201);
+      const stagedBody = await stagedResponse.json() as { item: Omit<BindingDraftHandle, "reason"> };
+      const draft: BindingDraftHandle = { ...stagedBody.item, reason };
+      expect(draft.projectParameterBindingId).toBe(binding.bindingId);
+      await expect(tasks.getByRole("region", { name: "待审核草稿回执" })).toContainText("提交审核并获通过后生效");
+      const reviewSubmission = await submitBindingDraftViaApi(request, { projectId, draft, reason });
+      expect(reviewSubmission.status, reviewSubmission.bodyText).toBe(201);
+      expect(reviewSubmission.requestId).toBeTruthy();
+      const submitted = { draft, requestId: reviewSubmission.requestId! };
       expect(submitted.draft.rawText).toMatch(/EditV2/);
       const requests = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests`), {
         headers: adminHeaders()
@@ -2818,7 +2868,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
           }
         ],
         notes:
-          "Typed property edit entered the session dock with shared markers; subset validate stayed on the read-only canvas; submit used a typed binding draft on disposable post-cutover (retired /dts-structured-edits/submit PPV adapter, TD-079)."
+          "Typed property edit entered the session dock with shared markers; saving validated and staged the same binding draft on the disposable post-cutover runtime; submitting that draft for review left the official value unchanged."
       });
     } finally {
       // The disposable post-cutover database is discarded with the runtime.

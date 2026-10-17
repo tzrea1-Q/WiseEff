@@ -1308,7 +1308,7 @@ function Sidebar({
 }) {
   const activePageKey = getPageByPath(activePath).key;
   const visibleNavigationItems = navigationItems.filter(
-    (item) => canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group)
+    (item) => item.key !== "parameter-submissions" && canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group)
   );
   const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];

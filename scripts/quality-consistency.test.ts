@@ -213,27 +213,34 @@ describe("administration collection coverage", () => {
 });
 
 describe("project configuration workbench coverage", () => {
-  it.each([false, true])("measures real navigator and task row actions with navigator collapsed=%s", (collapsed) => {
-    const row = `<div data-row-action-row><span data-row-action-status>活跃 v1</span>
-      <div class="row-action-menu"><button>详情</button></div></div>`;
+  it.each([false, true])("keeps the toolbar menu separate from navigation with no row actions, collapsed=%s", (collapsed) => {
+    const row = '<div role="treeitem"><span>活跃 v1</span></div>';
     const measurements = collectMarkup(`<div class="navigator-workbench">
+      <header class="configuration-workbench__command"><div class="row-action-menu"><button aria-haspopup="menu">更多</button></div></header>
       <div class="navigator-workbench__navigation" ${collapsed ? "hidden" : ""}>${row}</div>
-      <div class="navigator-workbench__task">${row}</div></div>
-      <div class="row-action-menu"><button>非行操作</button></div>`);
-    expect(measurements.rowActions).toHaveLength(collapsed ? 1 : 2);
-    expect(() => requireRowActionVisibility(measurements.rowActions, "/parameter-admin/projects/aurora/configuration"))
-      .not.toThrow();
+      <div class="navigator-workbench__task"><header class="configuration-workbench__source-head">board.dts</header></div></div>`);
+    expect(measurements.rowActions).toHaveLength(0);
   });
   const paths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
     .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
-  it.each(paths)("requires project content tabs without redundant administration sections on %s", (path) => {
+  it.each(paths)("does not require persistent content tabs in the source navigation mode on %s", (path) => {
+    expect(viewSwitchStyleExpectations[path]).toBeUndefined();
+  });
+  it("retains the shared tab-style contract for the explicit conflict navigation mode", () => {
+    const path = "/parameter-admin/projects/aurora/configuration?tab=conflicts";
     expect(viewSwitchStyleExpectations[path]).toEqual(["tabs"]);
+    expect(consistencyRoutes.filter((route) => route.path === path)).toHaveLength(1);
+    expect(consistencyRoutes.find((route) => route.path === path)?.required)
+      .toEqual(expect.arrayContaining(["navigatorWorkbenches", "viewSwitches", "viewSwitchSignatures"]));
   });
   it.each(paths)("requires template geometry on %s in every source mode", (path) => {
     for (const mode of ["working", "history", "candidate", "unified-diff", "side-by-side"]) {
       const route = mode === "working" ? path : `${path}?sourceMode=${mode}`;
-      expect(consistencyRoutes.find((item) => item.path === route)?.required)
-        .toEqual(expect.arrayContaining(["navigatorWorkbenches", "rowActions", "viewSwitches", "viewSwitchSignatures"]));
+      const required = consistencyRoutes.find((item) => item.path === route)?.required;
+      expect(required).toContain("navigatorWorkbenches");
+      expect(required).not.toContain("viewSwitches");
+      expect(required).not.toContain("viewSwitchSignatures");
+      expect(required).not.toContain("rowActions");
     }
   });
   it.each([
@@ -404,11 +411,14 @@ describe("view-switch collection", () => {
   it.each([
     ['<div class="parameter-catalog__actions"><button data-test-top="40">待审核事项</button><button class="button primary" data-test-top="72">新增定义</button></div>', "catalog-definitions"],
     ['<div class="navigator-workbench__primary"><button data-test-top="40">刷新</button><button data-slot="button" data-variant="default" data-test-top="72">新建模块</button></div>', "module-governance"],
+    ['<div class="navigator-workbench__primary"><div class="configuration-workbench__readiness"><button data-slot="button" data-variant="outline" data-test-top="72">配置版本</button></div></div>', "project-configuration:aurora"],
     ['<div class="navigator-workbench__primary"><button data-primary-action="true" data-test-top="72">主操作</button><button data-test-top="40">次要操作</button></div>', "explicit-primary"]
   ])("measures the marked primary in the actual toolbar action group: %s", (actions, pageKey) => {
     const measurements = collectMarkup(`<div class="navigator-workbench" data-workbench-page="${pageKey}">
       <div class="navigator-workbench__toolbar">${actions}</div>
-      <section class="navigator-workbench__task"><table><tbody><tr><td>当前记录</td></tr></tbody></table></section>
+      <section class="navigator-workbench__task">${pageKey.startsWith("project-configuration:")
+        ? '<header class="configuration-workbench__source-head">board.dts</header>'
+        : '<table><tbody><tr><td>当前记录</td></tr></tbody></table>'}</section>
     </div>`);
     expect(measurements.navigatorWorkbenches[0].primaryAction?.top).toBe(72);
     expect(measurements.navigatorWorkbenches[0].firstRow).not.toBeNull();
@@ -486,14 +496,19 @@ describe("view-switch collection", () => {
     expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["4", "12 个参数"]);
   });
 
-  it("measures the project file count when the structure tree is in the task pane", () => {
+  it.each([false, true])("measures real file versions and member roles with structure in the navigator=%s", (showStructure) => {
     const measurements = collectMarkup(`<div class="navigator-workbench" data-workbench-page="project-configuration:aurora">
       <div class="navigator-workbench__navigation"><aside class="configuration-workbench__tree">
-        <div class="configuration-workbench__region-head"><div><span>源结构</span><strong>2 个文件</strong></div></div>
+        <div data-row-action-row><button class="configuration-workbench__member">
+          <span><strong>board.dts</strong><small>版本 v2</small></span>
+          <span class="configuration-workbench__member-meta"><span>基础</span></span>
+        </button></div>
+        ${showStructure ? '<span class="dts-topology-navigator__count">5 个属性</span>' : ""}
       </aside></div>
       <section class="navigator-workbench__task"><span class="dts-topology-navigator__count">3 个属性</span></section>
     </div>`);
-    expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["2 个文件"]);
+    expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text))
+      .toEqual(["版本 v2", "基础", ...(showStructure ? ["5 个属性"] : [])]);
   });
 
   it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping", "/parameters/definitions", "/node-debugging", "/dts-reload"])(

@@ -9,6 +9,8 @@ import type { ParameterFileRepository } from "@/application/ports/ParameterFileR
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import * as canonicalConflictClient from "@/infrastructure/http/canonicalConflictClient";
+import * as userGovernanceClient from "@/infrastructure/http/userGovernanceClient";
 import {
   ProjectConfigurationWorkbench,
   type ProjectConfigurationWorkbenchProps
@@ -26,6 +28,8 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   localStorage.removeItem(SESSION_DRAFT_STORAGE_KEY);
   localStorage.removeItem(`wiseeff.navigator-workbench.collapsed:project-configuration:${PROJECT.id}`);
 });
@@ -59,6 +63,12 @@ const PROJECT = {
   name: "Aurora Production",
   code: "AURORA",
   statusLabel: "进行中"
+};
+
+const ACTIVE_BOARD_VERSION = {
+  id: "version-board-12", fileId: "file-board", versionNumber: 12,
+  checksum: "abc", sizeBytes: 32, parsedIndex: {}, origin: "upload" as const,
+  createdAt: "2026-08-06T08:00:00.000Z"
 };
 
 function createDtsRepository(
@@ -245,24 +255,68 @@ function createTopologyRepository(
 }
 
 async function openWorkbenchMoreMenu() {
-  fireEvent.click(screen.getByRole("button", { name: "更多" }));
-  return screen.findByRole("menu", { name: "更多操作" });
+  await userEvent.click(screen.getByRole("button", { name: "更多" }));
+  return screen.findByRole("menu");
+}
+
+async function openWorkbenchReleaseDetails() {
+  fireEvent.click(screen.getByRole("button", { name: /^配置版本/ }));
+  return screen.findByRole("dialog", { name: "配置版本" });
+}
+
+async function openSourceUpdates() {
+  const fileName = document.querySelector('.configuration-workbench__member-row[aria-selected="true"] strong')?.textContent;
+  const files = await openSchemeFiles();
+  const scope = fileName ? within(files).getByRole("button", { name: fileName }).closest("tr")! : files;
+  await userEvent.click(await within(scope).findByRole("button", { name: /^(更新文件|更新记录|上传来源文件)$/ }));
+  return screen.findByRole("complementary", { name: "配置检查器" });
+}
+
+async function openSchemeMenu() {
+  await userEvent.click(screen.getByRole("button", { name: "配置" }));
+  return screen.findByRole("menu");
+}
+
+async function selectScheme(id: string) {
+  const menu = await openSchemeMenu();
+  const option = within(menu).getAllByRole("menuitemradio").find((item) => item.getAttribute("data-value") === id);
+  expect(option).toBeDefined();
+  await userEvent.click(option!);
+}
+
+async function openSchemeFiles() {
+  const menu = await openSchemeMenu();
+  await userEvent.click(within(menu).getByRole("menuitem", { name: /^(文件管理|查看文件)$/ }));
+  return screen.findByRole("dialog", { name: "文件管理" });
 }
 
 async function openWorkbenchVersionDetails() {
-  fireEvent.click(screen.getByRole("button", { name: /版本/ }));
-  return screen.findByText(/发布基线：/);
+  const fileName = document.querySelector('.configuration-workbench__member-row[aria-selected="true"] strong')?.textContent;
+  expect(fileName).toBeTruthy();
+  const files = await openSchemeFiles();
+  await userEvent.click(within(files).getByRole("button", { name: `${fileName} 更多` }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "版本历史与下载" }));
+  return screen.findByRole("region", { name: "版本历史" });
+}
+
+async function openVersionMenu(versionNumber: number) {
+  await userEvent.click(screen.getByRole("button", { name: `版本 ${versionNumber} 操作：更多` }));
+  return screen.findByRole("menu");
 }
 
 async function openCreateConfigSetDialog() {
-  await selectControlOption(screen.getByRole("combobox", { name: "配置集" }), "__create_config_set__");
-  return screen.findByRole("heading", { name: "新建配置集" });
+  const menu = await openSchemeMenu();
+  await userEvent.click(within(menu).getByRole("menuitem", { name: "新建配置…" }));
+  return screen.findByRole("heading", { name: "新建配置" });
 }
 
-function ensureInspectorOpen() {
-  const toggle = screen.getByRole("button", { name: "检查器" });
-  if (toggle.getAttribute("aria-expanded") !== "true") {
-    fireEvent.click(toggle);
+async function ensureInspectorOpen() {
+  if (screen.queryByRole("complementary", { name: "配置检查器" })) return;
+  const selected = screen.queryAllByRole("treeitem", { selected: true })
+    .find((item) => /^(属性|节点) /.test(item.getAttribute("aria-label") ?? ""));
+  if (selected) fireEvent.click(selected);
+  else {
+    await openWorkbenchVersionDetails();
   }
 }
 
@@ -280,6 +334,8 @@ function renderWorkbench(options: {
   organizationId?: string;
   draftStorage?: ProjectConfigurationWorkbenchProps["draftStorage"];
   topologyRepository?: ProjectConfigurationWorkbenchProps["topologyRepository"];
+  memberRemovalRepository?: ProjectConfigurationWorkbenchProps["memberRemovalRepository"];
+  apiMode?: boolean;
 } = {}) {
   const onNavigate = vi.fn(options.onNavigate ?? (() => undefined));
   const sharedProps = {
@@ -295,7 +351,9 @@ function renderWorkbench(options: {
     ...(options.currentUserId === undefined ? {} : { currentUserId: options.currentUserId }),
     ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
     ...(options.draftStorage ? { draftStorage: options.draftStorage } : {}),
-    ...(options.topologyRepository ? { topologyRepository: options.topologyRepository } : {})
+    ...(options.topologyRepository ? { topologyRepository: options.topologyRepository } : {}),
+    ...(options.memberRemovalRepository ? { memberRemovalRepository: options.memberRemovalRepository } : {}),
+    ...(options.apiMode === undefined ? {} : { apiMode: options.apiMode })
   };
   if (options.syncSearch) {
     function Harness() {
@@ -413,74 +471,360 @@ const BOARD_STRUCTURE: DtsStructureResult = {
 };
 
 describe("ProjectConfigurationWorkbench", () => {
-  it("keeps read-only row details available after collapsing the navigator and switching content tabs", async () => {
-    const user = userEvent.setup();
-    renderWorkbench({ syncSearch: true, canAdmin: false });
-    await screen.findByRole("main", { name: "只读 DTS 源码" });
-    const fileActions = screen.getByRole("group", { name: "aurora-board.dts 操作" });
-    const fileItem = screen.getByRole("treeitem", { name: /aurora-board\.dts.*基础.*v12/ });
-    expect(fileItem).toContainElement(fileActions);
-    expect(screen.getAllByRole("button", { name: /更多/ })).toHaveLength(1);
-    fileItem.focus();
-    await user.tab();
-    expect(within(fileActions).getByRole("button", { name: "详情" })).toHaveFocus();
-    await user.keyboard("{Enter}");
-    expect(screen.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "关闭检查器" }));
-    await user.click(screen.getByRole("button", { name: "收起文件与配置集" }));
-    expect(fileActions).not.toBeVisible();
-    const actions = screen.getByRole("group", { name: "当前配置项操作" });
-    for (const tab of ["结构", "冲突", "源码"]) {
-      await user.click(screen.getByRole("tab", { name: tab }));
-      expect(within(actions).getByRole("button", { name: "详情" })).toBeVisible();
+  it.each([true, false])("restores source updates through file management and preserves them across close/reopen (admin=%s)", async (canAdmin) => {
+    const base = { projectId: PROJECT.id, format: "dts" as const, status: "ready" as const,
+      diagnostics: [], blockers: [], impact: { textDiff: '--- previous\n+++ incoming\n-model = "Old";\n+model = "Updated";' }, createdAt: "2026-08-07T00:00:00.000Z", updatedAt: "2026-08-07T00:00:00.000Z" };
+    const current = { ...base, id: "update-current", fileId: "file-board", fileName: "aurora-board.dts" };
+    const records = [{ ...base, id: "update-other", fileId: "file-overlay", fileName: "charging-overlay.dtsi", createdAt: "2026-08-08T00:00:00.000Z" },
+      current, { ...current, id: "completed", status: "active" as const }, { ...current, id: "discarded", status: "abandoned" as const }];
+    const createCandidate = vi.fn();
+    const activateCandidate = vi.fn();
+    const abandonCandidate = vi.fn();
+    const recomputeCandidate = vi.fn();
+    const getCandidate = vi.fn(async () => current);
+    const listCandidates = vi.fn(async () => records);
+    renderWorkbench({ canAdmin, canEdit: canAdmin, syncSearch: true,
+      search: "?configSet=cs-default&file=file-board&sourceMode=candidate&candidate=update-current&inspector=candidates",
+      fileRepository: createFileRepository({ createCandidate, getCandidate, listCandidates, activateCandidate, abandonCandidate, recomputeCandidate,
+        getCandidateSourcePreview: vi.fn(async () => ({ kind: "legacy" as const, canSubmit: false, candidateId: current.id, fileId: current.fileId, format: "dts" })),
+        downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", fileName: current.fileName, bytes: new TextEncoder().encode('model = "Updated";') })) }) });
+    expect(screen.queryByRole("button", { name: /^更新来源/ })).not.toBeInTheDocument();
+    const panel = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(panel.querySelector(".configuration-workbench__region-head")).toHaveTextContent("来源更新");
+    expect(panel).toHaveTextContent("更新「aurora-board.dts」，上传后先核对差异。");
+    if (canAdmin) expect(within(panel).getByRole("button", { name: "上传新文件" })).toBeEnabled();
+    else {
+      expect(within(panel).queryByRole("button", { name: /上传新文件|添加来源文件/ })).not.toBeInTheDocument();
+      expect(within(panel).getByText("仅项目管理员可上传文件，已有更新记录可查看。")).toBeVisible();
+      for (const name of ["确认应用", "放弃更新", "重新核对"]) expect(within(panel).queryByRole("button", { name })).not.toBeInTheDocument();
     }
-    await user.click(within(actions).getByRole("button", { name: "配置项操作：aurora-board.dts" }));
-    await user.click(screen.getByRole("menuitem", { name: "配置集详情" }));
-    expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent("成员管理");
-    expect(screen.getByRole("button", { name: "上传候选" })).toBeDisabled();
-    expect(within(screen.getByLabelText("配置命令栏")).getByRole("button", { name: "上传候选" })).toBeDisabled();
+    const list = within(panel).getByRole("region", { name: "候选记录" });
+    const pendingList = list.querySelector<HTMLUListElement>(":scope > ul")!;
+    expect(within(pendingList).getAllByRole("listitem")[0]).toHaveTextContent(current.fileName);
+    expect(within(pendingList).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(list).getByText("已完成与已放弃（2）").closest("details")).not.toHaveAttribute("open");
+    expect(await screen.findByLabelText("来源更新差异")).toHaveTextContent('+model = "Updated";');
+    expect(screen.getByLabelText("来源更新差异")).toHaveTextContent('-model = "Old";');
+    const recordLoads = listCandidates.mock.calls.length;
+    fireEvent.click(within(panel).getByRole("button", { name: "关闭检查器" }));
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument());
+    await openSourceUpdates();
+    expect(screen.queryByRole("button", { name: /^更新来源/ })).not.toBeInTheDocument();
+    expect(getCandidate).toHaveBeenCalledExactlyOnceWith(PROJECT.id, current.id);
+    expect(listCandidates).toHaveBeenCalledTimes(recordLoads);
+    expect(listCandidates).toHaveBeenCalledWith(PROJECT.id, { fileId: undefined, includeAbandoned: true });
+    for (const mutate of [createCandidate, activateCandidate, abandonCandidate, recomputeCandidate]) expect(mutate).not.toHaveBeenCalled();
+    await openWorkbenchMoreMenu();
+    expect(screen.queryByRole("menuitem", { name: "候选记录" })).not.toBeInTheDocument();
+  });
+
+  it("keeps source updates behind one entry and conflict records behind their own task", async () => {
+    const listCandidates = vi.fn<ParameterFileRepository["listCandidates"]>(async () => []);
+    renderWorkbench({ syncSearch: true, fileRepository: createFileRepository({ listCandidates }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: /候选加载/ })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "候选" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "版本" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /^冲突/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "任务" })).not.toBeInTheDocument();
+    const menu = await openWorkbenchMoreMenu();
+    expect(within(menu).queryByRole("menuitem", { name: "版本历史与下载" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "冲突处理" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "保存版本快照" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "候选记录" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await openSourceUpdates();
+    expect(screen.getByRole("button", { name: "上传新文件" })).toBeEnabled();
+    expect(await screen.findByText("暂无来源更新记录。上传来源文件后，可在这里继续核对或查看处理结果。")).toBeInTheDocument();
+    expect(listCandidates).toHaveBeenCalledExactlyOnceWith(PROJECT.id, { fileId: undefined, includeAbandoned: true });
+    fireEvent.click(screen.getByRole("button", { name: "关闭检查器" }));
+    expect(screen.queryByRole("button", { name: "候选" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /^冲突/ })).not.toBeInTheDocument();
+    await openWorkbenchReleaseDetails();
+    fireEvent.click(screen.getByText("定版检查"));
+    expect(screen.getByRole("region", { name: "版本检查问题" })).toBeVisible();
+    expect(within(screen.getByRole("dialog", { name: "配置版本" })).getByRole("button", { name: "保存版本快照" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "任务" })).not.toBeInTheDocument();
+  });
+
+  it("shows loading and request errors inside source updates and retries its project records", async () => {
+    let rejectCandidates!: (reason: Error) => void;
+    const listCandidates = vi.fn<ParameterFileRepository["listCandidates"]>()
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectCandidates = reject; }))
+      .mockResolvedValueOnce([]);
+    renderWorkbench({ syncSearch: true, fileRepository: createFileRepository({ listCandidates }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    await openSourceUpdates();
+    expect(screen.getByRole("status", { name: "正在加载候选记录…" })).toBeInTheDocument();
+    await act(async () => { rejectCandidates(new Error("candidate service offline")); });
+    const records = await screen.findByRole("region", { name: "候选记录" });
+    expect(within(records).getByRole("alert")).toBeVisible();
+    fireEvent.click(within(records).getByRole("button", { name: "重试" }));
+    expect(await within(records).findByText("暂无来源更新记录。上传来源文件后，可在这里继续核对或查看处理结果。")).toBeVisible();
+    expect(listCandidates).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "关闭检查器" }));
+    expect(screen.queryByRole("button", { name: /候选/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^更新来源/ })).not.toBeInTheDocument();
+  });
+
+  it.each(["source", "conflicts"])("keeps file versions only in file management in the %s view", async (tab) => {
+    const user = userEvent.setup();
+    renderWorkbench({ syncSearch: true, canAdmin: false,
+      search: `?configSet=cs-default&file=file-board&tab=${tab}` });
+    const navigator = screen.getByRole("region", { name: "配置导航" });
+    const fileItem = await screen.findByRole("treeitem", { name: /aurora-board\.dts.*基础.*v12/ });
+    expect(within(navigator).queryByRole("button", { name: "详情" })).not.toBeInTheDocument();
+    expect(within(navigator).queryByRole("group", { name: "aurora-board.dts 操作" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /更多/ })).toHaveLength(1);
+    if (tab === "source") {
+      fileItem.focus();
+      await user.keyboard("{Enter}");
+    }
+    await openWorkbenchMoreMenu();
+    expect(screen.queryByRole("menuitem", { name: "文件详情" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "版本历史与下载" })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await openWorkbenchVersionDetails();
+    expect(screen.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "版本历史" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "关闭检查器" }));
+    await user.click(screen.getByRole("button", { name: "收起配置导航" }));
+    expect(fileItem).not.toBeVisible();
+    expect(screen.queryByRole("tab", { name: "结构" })).not.toBeInTheDocument();
+    await openWorkbenchVersionDetails();
+    expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent("aurora-board.dts");
+    expect(screen.getByRole("region", { name: "版本历史" })).toBeVisible();
+    const files = await openSchemeFiles();
+    expect(within(files).getByRole("table", { name: "配置文件" })).toBeVisible();
+    await user.click(within(files).getByRole("button", { name: "关闭文件管理" }));
+    expect(within(screen.getByLabelText("配置命令栏")).queryByRole("button", { name: /^更新来源/ })).not.toBeInTheDocument();
   });
 
   it("keeps the single config-set selector available when the file navigator is collapsed", async () => {
     renderWorkbench({ syncSearch: true });
-    await screen.findByRole("main", { name: "只读 DTS 源码" });
-    const navigator = screen.getByRole("region", { name: "文件与配置集" });
-    expect(screen.getAllByRole("combobox", { name: "配置集" })).toHaveLength(1);
-    fireEvent.click(within(navigator).getByRole("button", { name: "收起文件与配置集" }));
-    await selectControlOption(screen.getByRole("combobox", { name: "配置集" }), "cs-alpha");
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-alpha"));
-    fireEvent.click(within(navigator).getByRole("button", { name: "展开文件与配置集" }));
+    await screen.findByRole("main", { name: /只读 DTS 源码/ });
+    const navigator = screen.getByRole("region", { name: "配置导航" });
+    expect(screen.getAllByRole("button", { name: "配置" })).toHaveLength(1);
+    fireEvent.click(within(navigator).getByRole("button", { name: "收起配置导航" }));
+    await selectScheme("cs-alpha");
+    await waitFor(() => expect(screen.getByRole("button", { name: "配置" })).toHaveAttribute("data-value", "cs-alpha"));
+    fireEvent.click(within(navigator).getByRole("button", { name: "展开配置导航" }));
     expect(await within(navigator).findByRole("button", { name: /alpha.dts 基础/ })).toBeVisible();
   });
 
-  it("switches structure and conflicts as URL-backed content tabs without losing source focus", async () => {
+  it.each(["closed", "release"] as const)("switches schemes without opening or replacing the %s inspector", async (panel) => {
+    const { onNavigate } = renderWorkbench({ syncSearch: true,
+      search: `?configSet=cs-default&file=file-board${panel === "closed" ? "" : `&inspector=${panel}`}` });
+    await screen.findByRole("main", { name: /只读 DTS 源码/ });
+    if (panel === "release") await userEvent.click(screen.getByRole("button", { name: "关闭配置版本" }));
+    expect(screen.getByRole("button", { name: "配置" })).toHaveTextContent("默认配置");
+    if (panel === "closed") expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    const menu = await openSchemeMenu();
+    expect(within(menu).getByRole("menuitemradio", { name: "默认配置" })).toHaveAttribute("aria-checked", "true");
+    expect(within(menu).getByRole("menuitem", { name: "文件管理" })).toBeEnabled();
+    await userEvent.click(within(menu).getByRole("menuitemradio", { name: "alpha" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "配置" })).toHaveAttribute("data-value", "cs-alpha"));
+    expect(screen.getByRole("button", { name: "配置" })).toHaveTextContent("alpha");
+    await screen.findByRole("heading", { name: "alpha.dts" });
+    if (panel === "closed") expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    else expect(screen.queryByRole("dialog", { name: "配置版本" })).not.toBeInTheDocument();
+    const latest = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+    expect(latest.get("configSet")).toBe("cs-alpha");
+    expect(latest.get("inspector")).toBeNull();
+  });
+
+  it.each([true, false])("opens configuration versions with the official snapshot selected and restores focus on close (admin=%s)", async (canAdmin) => {
+    const user = userEvent.setup();
+    renderWorkbench({ canAdmin, syncSearch: true });
+    const entry = await screen.findByRole("button", { name: /^配置版本/ });
+    await user.click(entry);
+    const versions = await screen.findByRole("dialog", { name: "配置版本" });
+    expect(await within(versions).findByRole("heading", { name: "seed-v1" })).toBeVisible();
+    expect(within(versions).getByRole("button", { name: /^seed-v1.*正式版本/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    if (canAdmin) expect(within(versions).getByRole("button", { name: "保存版本快照" })).toBeEnabled();
+    else {
+      expect(within(versions).queryByRole("button", { name: "保存版本快照" })).not.toBeInTheDocument();
+      expect(within(versions).queryByText("定版检查")).not.toBeInTheDocument();
+      expect(within(versions).queryByRole("button", { name: "设为正式版本" })).not.toBeInTheDocument();
+    }
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "配置版本" })).not.toBeInTheDocument();
+    await waitFor(() => expect(entry).toHaveFocus());
+  });
+
+  it("omits standalone source validation and legacy sync actions for canonical files", async () => {
+    const syncFile = vi.fn();
+    renderWorkbench({ fileRepository: createFileRepository({ syncFile,
+      getSourceWorkflow: vi.fn(async () => ({ canonical: true, bindingCount: 1, configSetId: "cs-default", proofToken: "proof" })) }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const menu = await openWorkbenchMoreMenu();
+    expect(within(menu).queryByRole("menuitem", { name: "来源一致性校验" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "手动同步" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "冲突处理" })).not.toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["项目活动"]);
+    expect(syncFile).not.toHaveBeenCalled();
+  });
+
+  it("opens canonical file management in a modal and targets the chosen file for versions and source updates", async () => {
+    const getSourceWorkflow = vi.fn<ParameterFileRepository["getSourceWorkflow"]>(async (_projectId, fileId) => ({
+      canonical: fileId === "file-board" || fileId === "file-overlay", bindingCount: 1,
+      ...(fileId === "file-board" || fileId === "file-overlay" ? { configSetId: "cs-default", proofToken: `proof-${fileId}` } : {})
+    }));
+    const { onNavigate } = renderWorkbench({ syncSearch: true, search: "?configSet=cs-default&file=file-board&inspector=config-set",
+      fileRepository: createFileRepository({ getSourceWorkflow }) });
+    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    await waitFor(() => expect(getSourceWorkflow).toHaveBeenCalledWith(PROJECT.id, "file-overlay"));
+    expect(within(files).getByRole("table", { name: "配置文件" })).toBeVisible();
+    expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
+    expect(await within(files).findByText("此配置已登记来源，暂不支持添加文件或移除 DTS 文件；更新及 JSON 移除需审核。")).toBeVisible();
+    const overlayRow = within(files).getByRole("button", { name: "charging-overlay.dtsi" }).closest("tr")!;
+    expect(within(overlayRow).getByRole("button", { name: "更新文件" })).toBeEnabled();
+    await userEvent.click(within(overlayRow).getByRole("button", { name: "charging-overlay.dtsi 更多" }));
+    expect(screen.queryByRole("menuitem", { name: /从配置移除/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "版本历史与下载" }));
+    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "版本历史" })).toBeVisible();
+    await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/file=file-overlay.*inspector=versions/)));
+    const reopened = await openSchemeFiles();
+    const reopenedRow = within(reopened).getByRole("button", { name: "charging-overlay.dtsi" }).closest("tr")!;
+    await userEvent.click(within(reopenedRow).getByRole("button", { name: "更新文件" }));
+    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "候选记录" })).toBeVisible();
+    const target = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+    expect(target.get("file")).toBe("file-overlay");
+    expect(target.get("inspector")).toBe("candidates");
+    expect(target.get("candidate")).toBeNull();
+  });
+
+  it("keeps file management read-only while allowing file and version navigation", async () => {
+    const addConfigSetFile = vi.fn();
+    const removeConfigSetFile = vi.fn();
+    const syncFile = vi.fn();
+    const { onNavigate } = renderWorkbench({ syncSearch: true, canAdmin: false,
+      dtsRepository: createDtsRepository({ addConfigSetFile, removeConfigSetFile }),
+      fileRepository: createFileRepository({ syncFile }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const menu = await openSchemeMenu();
+    expect(within(menu).queryByRole("menuitem", { name: "导出当前配置" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "新建配置…" })).not.toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "查看文件" }));
+    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    expect(files).toHaveTextContent("只读");
+    expect(within(files).queryByRole("button", { name: "更新文件" })).not.toBeInTheDocument();
+    expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
+    await userEvent.click(within(files).getByRole("button", { name: "charging-overlay.dtsi" }));
+    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith(expect.stringContaining("file=file-overlay")));
+    const reopened = await openSchemeFiles();
+    await userEvent.click(within(reopened).getByRole("button", { name: "charging-overlay.dtsi 更多" }));
+    expect(screen.queryByRole("menuitem", { name: /从配置移除/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "版本历史与下载" }));
+    expect(await screen.findByRole("region", { name: "版本历史" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "手动同步" })).not.toBeInTheDocument();
+    expect(addConfigSetFile).not.toHaveBeenCalled();
+    expect(removeConfigSetFile).not.toHaveBeenCalled();
+    expect(syncFile).not.toHaveBeenCalled();
+  });
+
+  it("opens the selected file in source when file management was opened from conflicts", async () => {
+    const { onNavigate } = renderWorkbench({ syncSearch: true,
+      search: "?configSet=cs-default&file=file-board&tab=conflicts" });
+    await screen.findByRole("tabpanel", { name: "冲突" });
+    const files = await openSchemeFiles();
+    await userEvent.click(await within(files).findByRole("button", { name: "charging-overlay.dtsi" }));
+    expect(await screen.findByRole("heading", { name: "charging-overlay.dtsi" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "冲突处理" })).not.toBeInTheDocument();
+    const target = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+    expect(target.get("tab")).toBe("source");
+    expect(target.get("file")).toBe("file-overlay");
+    expect(target.get("inspector")).toBeNull();
+  });
+
+  it("does not offer a project file already assigned to another configuration", async () => {
+    const addConfigSetFile = vi.fn();
+    const getSourceWorkflow = vi.fn<ParameterFileRepository["getSourceWorkflow"]>(async (_projectId, fileId) => ({
+      canonical: false, bindingCount: 0,
+      ...(fileId === "file-loose" || fileId === "file-alpha" ? { configSetId: "cs-alpha" } : {})
+    }));
+    renderWorkbench({ dtsRepository: createDtsRepository({ addConfigSetFile }),
+      fileRepository: createFileRepository({ getSourceWorkflow }) });
+    await waitFor(() => expect(getSourceWorkflow).toHaveBeenCalledWith(PROJECT.id, "file-alpha"));
+    await waitFor(() => expect(screen.queryByRole("group", { name: "待分配项目文件" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "加入 notes.json" })).not.toBeInTheDocument();
+    const files = await openSchemeFiles();
+    expect(within(files).queryByRole("combobox", { name: "待加入文件" })).not.toBeInTheDocument();
+    expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
+    expect(files).not.toHaveTextContent("notes.json");
+    expect(addConfigSetFile).not.toHaveBeenCalled();
+  });
+
+  it("rechecks ownership before adding an available project file and reports a concurrent assignment inside file management", async () => {
+    let assignedElsewhere = false;
+    const addConfigSetFile = vi.fn();
+    const getSourceWorkflow = vi.fn<ParameterFileRepository["getSourceWorkflow"]>(async (_projectId, fileId) => ({
+      canonical: false, bindingCount: 0,
+      ...(assignedElsewhere && fileId === "file-loose" ? { configSetId: "cs-other" } : {})
+    }));
+    renderWorkbench({ dtsRepository: createDtsRepository({ addConfigSetFile }),
+      fileRepository: createFileRepository({ getSourceWorkflow }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const files = await openSchemeFiles();
+    const available = await within(files).findByRole("combobox", { name: "待加入文件" });
+    await selectControlOption(available, "file-loose");
+    const add = within(files).getByRole("button", { name: "添加文件" });
+    await waitFor(() => expect(add).toBeEnabled());
+    const readsBeforeAdd = getSourceWorkflow.mock.calls.filter(([, fileId]) => fileId === "file-loose").length;
+    assignedElsewhere = true;
+    await userEvent.click(add);
+    expect(await within(files).findByRole("alert")).toHaveTextContent("此文件已属于其他配置");
+    expect(getSourceWorkflow.mock.calls.filter(([, fileId]) => fileId === "file-loose")).toHaveLength(readsBeforeAdd + 1);
+    expect(addConfigSetFile).not.toHaveBeenCalled();
+    expect(files).toBeVisible();
+  });
+
+  it("renders a legacy structure tab as source while preserving left-tree editing", async () => {
     const user = userEvent.setup();
     const { onNavigate } = renderWorkbench({ syncSearch: true,
-      search: "?configSet=cs-default&file=file-board&node=board&property=model&sourceMode=history&version=version-board-1",
+      search: "?configSet=cs-default&file=file-board&node=board&property=model&tab=structure",
       dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
-    const tabs = await screen.findByRole("tablist", { name: "项目配置内容" });
-    await user.click(within(tabs).getByRole("tab", { name: "结构" }));
-    const structure = await screen.findByRole("tabpanel", { name: "结构" });
-    expect(within(structure).getByRole("tree", { name: "DTS 结构树" })).toBeTruthy();
-    const task = within(structure).getByRole("region", { name: "配置内容" });
-    const details = within(task).getByRole("button", { name: "详情" });
-    details.focus();
-    expect(details).toHaveFocus();
-    expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("tab=structure");
-    expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("version=version-board-1");
-    await user.click(within(tabs).getByRole("tab", { name: "冲突" }));
+    await screen.findByRole("main", { name: /只读 DTS 源码/ });
+    await waitFor(() => expect(screen.queryByRole("tablist", { name: "项目配置内容" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("tab", { name: "源码" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "配置内容" })).toBeVisible();
+    expect(screen.queryByRole("tabpanel", { name: "结构" })).not.toBeInTheDocument();
+    const navigator = screen.getByRole("region", { name: "配置导航" });
+    const property = await within(navigator).findByRole("treeitem", { name: "属性 board/model" });
+    expect(onNavigate).not.toHaveBeenCalled();
+    await user.click(property);
+    expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent("model");
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toBeVisible();
+    expect(within(screen.getByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1")).toHaveValue("Aurora");
+    expect(screen.queryByRole("tab", { name: "冲突" })).not.toBeInTheDocument();
+    await openWorkbenchMoreMenu();
+    expect(screen.queryByRole("menuitem", { name: "冲突处理" })).not.toBeInTheDocument();
+  });
+
+  it("returns from an empty legacy conflicts link to source with keyboard focus", async () => {
+    const user = userEvent.setup();
+    const { onNavigate } = renderWorkbench({ syncSearch: true,
+      search: "?configSet=cs-default&file=file-board&node=board&property=model&tab=conflicts" });
     const conflicts = await screen.findByRole("tabpanel", { name: "冲突" });
-    expect(within(conflicts).getByText("当前没有待处理冲突。")).toBeTruthy();
+    expect(within(conflicts).getByText("当前没有待处理同步冲突。来源冲突请在候选记录中查看。")).toBeTruthy();
     expect(within(conflicts).queryByText("会话变更")).not.toBeInTheDocument();
-    await user.click(within(tabs).getByRole("tab", { name: "源码" }));
-    expect(await screen.findByRole("tabpanel", { name: "源码" })).toBeTruthy();
-    expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("node=board&property=model&sourceMode=history&version=version-board-1");
+    screen.getByRole("tab", { name: "冲突" }).focus();
+    await user.keyboard("{ArrowLeft}{Enter}");
+    expect(await screen.findByRole("main", { name: /只读 DTS 源码/ })).toBeVisible();
+    expect(screen.queryByRole("tablist", { name: "项目配置内容" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toHaveFocus());
+    expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("node=board&property=model");
   });
 
   it.each([
     ["unified-diff", "选择要对比的版本"],
     ["side-by-side", "选择要对比的版本"],
-    ["candidate", "暂无上传的候选"],
+    ["candidate", "尚未选择来源更新"],
     ["history", "暂无历史版本"]
   ])("respects the requested empty %s mode without navigating away", async (canvasMode, title) => {
     const { onNavigate } = renderWorkbench({
@@ -489,7 +833,7 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     expect(await screen.findByText(title)).toBeInTheDocument();
     expect(onNavigate).not.toHaveBeenCalled();
-    expect(within(screen.getByRole("main", { name: "只读 DTS 源码" })).queryByRole("button", { name: "上传候选" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("main", { name: /只读 DTS 源码/ })).queryByRole("button", { name: /更新来源|添加来源文件/ })).not.toBeInTheDocument();
   });
 
   it("opens version history from the canvas without changing the requested mode", async () => {
@@ -502,8 +846,8 @@ describe("ProjectConfigurationWorkbench", () => {
       }]) })
     });
     fireEvent.click(await screen.findByRole("button", { name: "选择版本" }));
-    expect(await screen.findByRole("region", { name: "不可变版本历史" })).toBeInTheDocument();
-    expect(onNavigate).not.toHaveBeenCalled();
+    expect(await screen.findByRole("region", { name: "版本历史" })).toBeInTheDocument();
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects/project-1/configuration?configSet=cs-default&file=file-board&sourceMode=unified-diff&inspector=versions");
   });
 
   it.each(["unified-diff", "side-by-side"])("returns explicitly from an unavailable %s version to working source", async (canvasMode) => {
@@ -542,7 +886,7 @@ describe("ProjectConfigurationWorkbench", () => {
         message: "1 canonical request awaits review",
         remediation: { kind: "complete-pending-change" as const, label: "Review pending requests" } }] : [] }));
     renderWorkbench({ dtsRepository: createDtsRepository({ getReleaseReadiness }) });
-    const summary = await screen.findByRole("status", { name: "发布就绪" });
+    const summary = await screen.findByRole("status", { name: "配置版本状态" });
     await waitFor(() => expect(summary).toHaveAttribute("data-can-release", "false"));
     const evaluations = getReleaseReadiness.mock.calls.length;
     act(() => window.dispatchEvent(new CustomEvent("wiseeff:canonical-requests-changed", { detail: { projectId: "other-project" } })));
@@ -577,9 +921,9 @@ describe("ProjectConfigurationWorkbench", () => {
           message: "1 canonical request awaits review", target: { changeRequestId: "request-pending" },
           remediation: { kind: "complete-pending-change", label: "Review pending requests", href } }] }))
     }) });
-    const summary = await screen.findByRole("status", { name: "发布就绪" });
+    const summary = await screen.findByRole("status", { name: "配置版本状态" });
     fireEvent.click(within(summary).getByRole("button"));
-    const issues = await screen.findByRole("region", { name: "发布就绪问题" });
+    const issues = await screen.findByRole("region", { name: "版本检查问题" });
     fireEvent.click(within(issues).getByRole("button", { name: /Review pending requests/ }));
     expect(onNavigate).toHaveBeenLastCalledWith(href);
   });
@@ -588,42 +932,36 @@ describe("ProjectConfigurationWorkbench", () => {
     const { onNavigate } = renderWorkbench();
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-default");
-    expect(screen.getByText("工作配置")).toBeInTheDocument();
-    await openWorkbenchVersionDetails();
-    expect(screen.getByText(/发布基线：seed-v1/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "配置" })).toHaveAttribute("data-value", "cs-default");
+    expect(screen.getByText(/工作配置.*v12/)).toBeInTheDocument();
+    await openWorkbenchReleaseDetails();
+    expect(within(screen.getByRole("region", { name: "配置版本列表与详情" })).getByRole("heading", { name: "seed-v1" })).toBeInTheDocument();
     expect(screen.getByRole("treeitem", { name: /aurora-board\.dts.*基础.*v12/ })).toBeInTheDocument();
     // Raw version ids stay discoverable via tooltip but never render as text (FA-23).
-    expect(screen.getAllByTitle("version-board-12").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByTitle("version-board-12").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("version-board-12")).not.toBeInTheDocument();
-    expect(screen.getAllByText("版本 v12").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("notes.json");
+    expect(screen.getByText(/工作配置.*v12/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "待分配项目文件" })).toHaveTextContent("notes.json");
     expect(await screen.findByText(/model = "Aurora"/)).toBeInTheDocument();
     await waitFor(() =>
       expect(onNavigate).toHaveBeenCalledWith(
         "/parameter-admin/projects/project-1/configuration?configSet=cs-default&file=file-board"
       )
     );
-    expect(screen.getByRole("button", { name: "上传候选" })).toBeEnabled();
-    const uploadAction = screen.getByRole("button", { name: "上传候选" });
-    expect(uploadAction.closest(".navigator-workbench__primary")).not.toBeNull();
-    expect(screen.getByLabelText("后续阶段操作")).toContainElement(uploadAction);
-    expect(screen.getByLabelText("后续阶段操作").lastElementChild).toBe(uploadAction.parentElement);
+    expect(screen.queryByRole("button", { name: /更新来源|添加来源文件/ })).not.toBeInTheDocument();
     expect(screen.getByRole("group", { name: "工作台操作" })).toContainElement(screen.getByLabelText("配置命令栏"));
-    expect(screen.getAllByRole("button", { name: "上传候选" })).toHaveLength(1);
-    await openWorkbenchMoreMenu();
-    expect(screen.getByRole("menuitem", { name: "创建基线" })).toBeEnabled();
-    expect(await screen.findByLabelText("发布就绪")).toHaveAttribute("data-level", "ready");
+    expect(within(screen.getByRole("dialog", { name: "配置版本" })).getByRole("button", { name: "保存版本快照" })).toBeEnabled();
+    expect(await screen.findByLabelText("配置版本状态")).toHaveAttribute("data-level", "ready");
   });
 
   it("lets a valid URL-selected Config set win and keeps source selection shareable", async () => {
     const { onNavigate } = renderWorkbench({ search: "?configSet=cs-alpha" });
 
     expect(await screen.findByRole("heading", { name: "alpha.dts" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-alpha");
+    expect(screen.getByRole("button", { name: "配置" })).toHaveAttribute("data-value", "cs-alpha");
     expect(await screen.findByText(/model = "Alpha"/)).toBeInTheDocument();
 
-    await selectControlOption(screen.getByRole("combobox", { name: "配置集" }), "cs-default");
+    await selectScheme("cs-default");
     expect(onNavigate).toHaveBeenCalledWith(
       "/parameter-admin/projects/project-1/configuration?configSet=cs-default"
     );
@@ -683,7 +1021,7 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-first");
+    expect(screen.getByRole("button", { name: "配置" })).toHaveAttribute("data-value", "cs-first");
     await waitFor(() =>
       expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-12")
     );
@@ -707,6 +1045,31 @@ describe("ProjectConfigurationWorkbench", () => {
 
     await waitFor(() => expect(screen.getByText(/recovered/)).toBeInTheDocument());
     expect(downloadVersion).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["history", "unified-diff", "side-by-side"])("retries a failed %s source download instead of only clearing the error", async (mode) => {
+    let failHistory = true;
+    const downloadVersion = vi.fn<ParameterFileRepository["downloadVersion"]>(async (_projectId, _fileId, versionId) => {
+      if (versionId === "version-board-11" && failHistory) throw new Error("historical source unavailable");
+      return { contentType: "text/plain", fileName: "aurora-board.dts", bytes: new TextEncoder().encode(
+        versionId === "version-board-11" ? '/dts-v1/;\n/ { model = "recovered-history"; };\n' : '/dts-v1/;\n/ { model = "Aurora"; };\n'
+      ) };
+    });
+    const getStructure = vi.fn(async () => BOARD_STRUCTURE);
+    const { onNavigate } = renderWorkbench({ search: `?configSet=cs-default&file=file-board&sourceMode=${mode}&version=version-board-11`,
+      dtsRepository: createDtsRepository({ getStructure }), fileRepository: createFileRepository({ downloadVersion }) });
+    expect(await screen.findByText("historical source unavailable")).toBeInTheDocument();
+    const historyDownloads = downloadVersion.mock.calls.filter(([, , version]) => version === "version-board-11").length;
+    const workingDownloads = downloadVersion.mock.calls.filter(([, , version]) => version === "version-board-12").length;
+    const structureLoads = getStructure.mock.calls.length;
+    failHistory = false;
+    fireEvent.click(screen.getByRole("button", { name: "重试源码" }));
+    await waitFor(() => expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toHaveTextContent("recovered-history"));
+    expect(downloadVersion.mock.calls.filter(([, , version]) => version === "version-board-11")).toHaveLength(historyDownloads + 1);
+    expect(downloadVersion.mock.calls.filter(([, , version]) => version === "version-board-12")).toHaveLength(workingDownloads + (mode === "history" ? 0 : 1));
+    expect(getStructure).toHaveBeenCalledTimes(structureLoads);
+    expect(screen.queryByText("historical source unavailable")).not.toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("joins membership ids with file metadata so mock-added members load active source", async () => {
@@ -773,38 +1136,31 @@ describe("ProjectConfigurationWorkbench", () => {
     renderWorkbench({ dtsRepository: createDtsRepository({ listBaselines }) });
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
-    await openWorkbenchVersionDetails();
-    expect(screen.getByText(/发布基线：不可用/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "重试发布基线" }));
+    await openWorkbenchReleaseDetails();
+    expect(screen.getByRole("alert")).toHaveTextContent("配置版本加载失败");
+    fireEvent.click(within(screen.getByRole("region", { name: "配置版本列表与详情" })).getByRole("button", { name: "重新加载" }));
 
-    await waitFor(() => expect(screen.getByText(/发布基线：尚未发布/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("尚未保存版本快照。")).toBeInTheDocument());
     expect(listBaselines).toHaveBeenCalledTimes(2);
   });
 
-  it("exposes tree, inspector, and task dock as explicitly controlled shells", async () => {
+  it("keeps navigation and object details controlled while hiding empty task chrome", async () => {
     renderWorkbench();
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-
     expect(screen.getByRole("complementary", { name: "源结构" })).toBeInTheDocument();
-    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
-    const taskToggle = screen.getByRole("button", { name: "任务" });
-    expect(inspectorToggle).toHaveAttribute("aria-expanded", "false");
-    expect(taskToggle).toHaveAttribute("aria-expanded", "false");
-
-    fireEvent.click(screen.getByRole("button", { name: "收起文件与配置集" }));
+    expect(screen.queryByRole("button", { name: "任务" })).not.toBeInTheDocument();
+    expect(screen.queryByText("任务证据")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "收起配置导航" }));
     expect(screen.queryByRole("complementary", { name: "源结构" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "展开文件与配置集" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开配置导航" }));
     expect(screen.getByRole("complementary", { name: "源结构" })).toBeInTheDocument();
-
-    fireEvent.click(inspectorToggle);
+    await ensureInspectorOpen();
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toBeInTheDocument();
-    fireEvent.click(taskToggle);
-    const tasksRegion = screen.getByRole("region", { name: "配置任务" });
-    expect(tasksRegion).toHaveTextContent("会话变更");
-    expect(tasksRegion).toHaveTextContent("任务证据");
+    fireEvent.click(screen.getByRole("button", { name: "关闭检查器" }));
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
   });
 
-  it("does not auto-open the inspector when navigating the DTS tree or search hits", async () => {
+  it("opens precise object details when navigating DTS nodes, properties, or search hits", async () => {
     const search = vi.fn(async () => ({
       hits: [
         {
@@ -836,13 +1192,53 @@ describe("ProjectConfigurationWorkbench", () => {
 
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent("model"));
 
     fireEvent.change(screen.getByLabelText("统一搜索查询"), { target: { value: "model" } });
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    fireEvent.submit(screen.getByRole("form", { name: "统一结构搜索" }));
     const results = await screen.findByLabelText("搜索结果");
     fireEvent.click(within(results).getByRole("button", { name: /board/ }));
+    await waitFor(() => expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent("model"));
+  });
+
+  it("reopens details when clicking the same selected property after closing the panel", async () => {
+    const target = "?configSet=cs-default&file=file-board&node=board&property=model";
+    const { onNavigate } = renderWorkbench({ search: target, syncSearch: true,
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
+    const property = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    await waitFor(() => expect(property).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(property);
+    expect(await screen.findByRole("group", { name: "属性值编辑" })).toBeInTheDocument();
+    expect(new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]).get("inspector")).toBe("selection");
+    fireEvent.click(screen.getByRole("button", { name: "关闭检查器" }));
     expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    expect(new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]).has("inspector")).toBe(false);
+    fireEvent.click(property);
+    expect(await screen.findByRole("group", { name: "属性值编辑" })).toBeInTheDocument();
+    const reopened = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+    expect(reopened.get("inspector")).toBe("selection");
+    expect(reopened.get("file")).toBe("file-board");
+    expect(reopened.get("node")).toBe("board");
+    expect(reopened.get("property")).toBe("model");
+    expect(property).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("hydrates an inspector=selection URL into the requested property after structure loading", async () => {
+    let finishStructure!: (result: DtsStructureResult) => void;
+    const pendingStructure = new Promise<DtsStructureResult>((resolve) => { finishStructure = resolve; });
+    const getStructure = vi.fn(async () => pendingStructure);
+    renderWorkbench({ search: "?configSet=cs-default&file=file-board&node=board&property=model&inspector=selection",
+      syncSearch: true, canEdit: true, canEditCritical: true,
+      dtsRepository: createDtsRepository({ getStructure }) });
+    await waitFor(() => expect(getStructure).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-12"));
+    await act(async () => { finishStructure(BOARD_STRUCTURE); await pendingStructure; });
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(await within(inspector).findByRole("group", { name: "属性值编辑" })).toBeInTheDocument();
+    expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora");
+    expect(within(inspector).queryByLabelText("规范化预览")).not.toBeInTheDocument();
+    expect(inspector).toHaveTextContent("model");
+    expect(inspector).not.toHaveTextContent("文件格式");
+    expect(screen.getByRole("treeitem", { name: "属性 board/model" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("opens a typed StructuredValueEditor for an editable property with context metadata", async () => {
@@ -854,19 +1250,19 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
 
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent("字符串列表");
     expect(inspector).toHaveTextContent('"Aurora"');
     expect(inspector).toHaveTextContent("Aurora");
     expect(inspector).toHaveTextContent(/L2:3/);
-    expect(inspector).toHaveTextContent("常规");
-    expect(inspector).toHaveTextContent(/变更原因/);
-    expect(inspector).toHaveTextContent("可编辑");
+    expect(inspector).not.toHaveTextContent("偏高");
+    expect(inspector).toHaveTextContent("单位与业务约束尚不可用");
+    expect(within(inspector).getByRole("group", { name: "属性值编辑" })).toBeInTheDocument();
     expect(within(inspector).getByRole("group", { name: "字符串列表" })).toBeInTheDocument();
     expect(within(inspector).getByLabelText("字符串 1")).toBeEnabled();
-    expect(screen.getByLabelText("只读 DTS 源码").querySelector('[contenteditable="true"]')).toBeNull();
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ }).querySelector('[contenteditable="true"]')).toBeNull();
   });
 
   it("locks writes with product language when parameter edit capability is missing", async () => {
@@ -878,7 +1274,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
 
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent(/你的角色没有修改参数的权限/);
@@ -896,7 +1292,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 regulator" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 regulator/regulator-min-microvolt" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
 
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent(/安全关键节点，你的角色没有修改它的权限/);
@@ -913,14 +1309,14 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-X" }
     });
 
     const tasks = await screen.findByRole("region", { name: "配置任务" });
-    expect(tasks).toHaveTextContent("会话变更");
+    expect(tasks).toHaveTextContent("未提交变更");
     expect(screen.getByRole("button", { name: "任务" })).toHaveTextContent("1");
     const draftRow = within(tasks).getByRole("checkbox", { name: /board\/model/ });
     expect(draftRow).toBeChecked();
@@ -956,7 +1352,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(boardNode);
     const modelProperty = await screen.findByRole("treeitem", { name: "属性 board/model" });
     fireEvent.click(modelProperty);
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     let inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-X" }
@@ -974,8 +1370,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.change(within(tasks).getByLabelText("变更原因"), {
       target: { value: "board model bump" }
     });
-    fireEvent.click(within(tasks).getByRole("button", { name: "校验所选" }));
-    expect(within(tasks).getByRole("status")).toHaveTextContent(/校验通过/);
+    expect(within(tasks).queryByRole("button", { name: "校验所选" })).not.toBeInTheDocument();
 
     structureResult = {
       nodes: [
@@ -993,7 +1388,7 @@ describe("ProjectConfigurationWorkbench", () => {
         BOARD_STRUCTURE.nodes[1]
       ]
     };
-    fireEvent.click(within(tasks).getByRole("button", { name: /提交所选/ }));
+    fireEvent.click(within(tasks).getByRole("button", { name: /保存.*待审核草稿/ }));
 
     await waitFor(() =>
       expect(submitStructuredEdits).toHaveBeenCalledWith(
@@ -1020,6 +1415,27 @@ describe("ProjectConfigurationWorkbench", () => {
     );
   });
 
+  it("validates direct draft saves without a separate validate action and preserves invalid changes until corrected", async () => {
+    const submitStructuredEdits = vi.fn().mockResolvedValue({ id: "round-valid", projectId: PROJECT.id, status: "submitted", items: [] });
+    renderWorkbench({ canEdit: true, canEditCritical: true,
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE), submitStructuredEdits }) });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 regulator/regulator-min-microvolt" }));
+    const input = await screen.findByLabelText("数值 1");
+    fireEvent.change(input, { target: { value: "invalid" } });
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    fireEvent.change(within(tasks).getByLabelText("变更原因"), { target: { value: "regulator update" } });
+    expect(within(tasks).queryByRole("button", { name: "校验所选" })).not.toBeInTheDocument();
+    fireEvent.click(within(tasks).getByRole("button", { name: /保存.*待审核草稿/ }));
+    expect(submitStructuredEdits).not.toHaveBeenCalled();
+    expect(await within(tasks).findByText(/仍有未通过校验的变更/)).toBeInTheDocument();
+    expect(within(tasks).getByRole("checkbox", { name: "regulator/regulator-min-microvolt" })).toBeChecked();
+    fireEvent.change(input, { target: { value: "8192" } });
+    fireEvent.click(within(tasks).getByRole("button", { name: /保存.*待审核草稿/ }));
+    await waitFor(() => expect(submitStructuredEdits).toHaveBeenCalledExactlyOnceWith(PROJECT.id, expect.objectContaining({
+      edits: [expect.objectContaining({ nodePath: "regulator", propertyName: "regulator-min-microvolt", rawText: "<8192>", reason: "regulator update" })]
+    })));
+  });
+
   it("preserves session drafts when submitStructuredEdits fails", async () => {
     const submitStructuredEdits = vi.fn().mockRejectedValue(new Error("submit failed"));
     renderWorkbench({
@@ -1033,7 +1449,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-X" }
@@ -1042,7 +1458,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.change(within(tasks).getByLabelText("变更原因"), {
       target: { value: "attempt" }
     });
-    fireEvent.click(within(tasks).getByRole("button", { name: /提交所选/ }));
+    fireEvent.click(within(tasks).getByRole("button", { name: /保存.*待审核草稿/ }));
     expect(await within(tasks).findByRole("alert")).toHaveTextContent("submit failed");
     expect(within(tasks).getByRole("checkbox", { name: /board\/model/ })).toBeInTheDocument();
     expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora-X");
@@ -1053,13 +1469,42 @@ describe("ProjectConfigurationWorkbench", () => {
       dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     const property = await screen.findByRole("treeitem", { name: "属性 board/model" });
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     vi.useFakeTimers();
     try {
       fireEvent.scroll(screen.getByLabelText("DTS 源码"));
       fireEvent.click(property);
       await act(async () => { await vi.advanceTimersByTimeAsync(100); });
       expect(screen.getByLabelText("字符串 1")).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves a cold deep-link property when programmatic source scrolling reaches the root after the suppression window", async () => {
+    const board = BOARD_STRUCTURE.nodes[0]!;
+    const { onNavigate } = renderWorkbench({ syncSearch: true, canEdit: true, canEditCritical: true,
+      search: "?configSet=cs-default&file=file-board&node=board&property=model&inspector=selection",
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => ({ nodes: [
+        { nodePath: "", name: "/", labels: [], properties: [], phandleRefs: [],
+          source: { ...board.source!, startLine: 1, endLine: 7 } },
+        { ...board, source: { ...board.source!, startLine: 4, endLine: 6 },
+          properties: [{ ...board.properties[0]!, source: { ...board.properties[0]!.source!, startLine: 5, endLine: 5 } }] }
+      ] })) }),
+      fileRepository: createFileRepository({ downloadVersion: vi.fn(async () => ({ contentType: "text/plain", fileName: "aurora-board.dts",
+        bytes: new TextEncoder().encode('/dts-v1/;\n/ {\n\n  board {\n    model = "Aurora";\n  };\n};\n') })) }) });
+    const property = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    expect(await screen.findByLabelText("字符串 1")).toHaveValue("Aurora");
+    const source = await screen.findByLabelText("DTS 源码");
+    vi.useFakeTimers();
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+      fireEvent.scroll(source);
+      await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+      expect(screen.getByLabelText("字符串 1")).toHaveValue("Aurora");
+      expect(property).toHaveAttribute("aria-selected", "true");
+      expect(screen.queryByRole("region", { name: "版本历史" })).not.toBeInTheDocument();
+      expect(onNavigate).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -1087,15 +1532,25 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), { target: { value: "Updated" } });
     const tasks = await screen.findByRole("region", { name: "配置任务" });
     fireEvent.change(within(tasks).getByLabelText("变更原因"), { target: { value: "Stage board update" } });
-    fireEvent.click(within(tasks).getByRole("button", { name: /提交所选/ }));
-    await waitFor(() => expect(tasks).toHaveTextContent("已暂存 1 项待审核草稿；当前值未变。"));
-    expect(tasks).toHaveTextContent("pvdr_workbench");
-    expect(tasks).toHaveTextContent(currentValueId ?? "无当前值");
+    fireEvent.click(within(tasks).getByRole("button", { name: /保存.*待审核草稿/ }));
+    await waitFor(() => expect(tasks).toHaveTextContent("已保存 1 项待审核草稿，当前值未变。提交审核并获通过后生效。"));
+    expect(createBindingDraft).toHaveBeenCalledWith(PROJECT.id, "pbind_board", expect.objectContaining({
+      action: "set", baseRevisionId: "rev-cs-listed", reason: "Stage board update"
+    }));
+    const receipt = within(tasks).getByRole("region", { name: "待审核草稿回执" });
+    expect(within(tasks).getAllByText(/已(?:保存|暂存) 1 项待审核草稿/)).toHaveLength(1);
+    expect(receipt).toHaveTextContent("已保存 1 项待审核草稿");
+    fireEvent.click(within(receipt).getByText("溯源信息", { exact: true }));
+    const evidence = await within(receipt).findByLabelText("完整溯源数据");
+    expect(evidence).toHaveTextContent("pvdr_workbench");
+    expect(evidence).toHaveTextContent("pbind_board");
+    expect(evidence).toHaveTextContent(currentValueId === null ? /"currentValueId":\s*null/ : currentValueId);
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toHaveTextContent('model = "Aurora"');
     expect(tasks).not.toHaveTextContent("已写入正式项目值");
     fireEvent.click(within(tasks).getByRole("button", { name: "前往提交审核" }));
     expect(onNavigate).toHaveBeenLastCalledWith("/parameters?project=project-1");
@@ -1116,7 +1571,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-Recovered" }
@@ -1181,7 +1636,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     fireEvent.change(
       within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
       { target: { value: "Aurora-Stale-Lock" } }
@@ -1203,7 +1658,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent(/基线版本已变更：会话草稿仅可检查或复制/);
     expect(within(inspector).getByLabelText("字符串 1")).toBeDisabled();
@@ -1236,7 +1691,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     fireEvent.change(
       within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
       { target: { value: "Aurora-Reconfirm" } }
@@ -1255,12 +1710,11 @@ describe("ProjectConfigurationWorkbench", () => {
     const tasks = await screen.findByRole("region", { name: "配置任务" });
     fireEvent.click(within(tasks).getByRole("button", { name: "基于当前基线继续编辑" }));
     await waitFor(() => {
-      expect(within(tasks).getByRole("button", { name: "校验所选" })).not.toBeDisabled();
-      expect(within(tasks).getByRole("button", { name: /提交所选/ })).not.toBeDisabled();
+      expect(within(tasks).getByRole("button", { name: /保存.*待审核草稿/ })).not.toBeDisabled();
     });
     expect(readSessionDraftStore(draftStorage).buckets[0]?.scope.baseVersionId).toBe("version-board-13");
-    fireEvent.click(within(tasks).getByRole("button", { name: "校验所选" }));
-    expect(within(tasks).getByText(/校验通过：1 项/)).toBeInTheDocument();
+    expect(within(tasks).getByRole("checkbox", { name: "board/model" })).toBeChecked();
+    expect(within(tasks).queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("asks before leaving with dirty drafts and discard clears storage then navigates", async () => {
@@ -1277,7 +1731,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
-    ensureInspectorOpen();
+    await ensureInspectorOpen();
     fireEvent.change(
       within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
       { target: { value: "Aurora-Leave" } }
@@ -1301,6 +1755,131 @@ describe("ProjectConfigurationWorkbench", () => {
     );
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
     expect(draftStorage.getItem(SESSION_DRAFT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("removes reverted local drafts and leaves without an unsaved-work confirmation", async () => {
+    const draftStorage = createMemoryStorage();
+    const { onNavigate } = renderWorkbench({ canEdit: true, canEditCritical: true,
+      currentUserId: "user-1", organizationId: "org-1", draftStorage,
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    const editor = await screen.findByLabelText("字符串 1");
+    fireEvent.change(editor, { target: { value: "Aurora-X" } });
+    await waitFor(() => expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1));
+    expect(screen.getByRole("status", { name: "配置版本状态" })).toHaveTextContent("有未提交变更");
+    fireEvent.change(editor, { target: { value: "Aurora" } });
+    await waitFor(() => expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(0));
+    expect(screen.getByRole("status", { name: "配置版本状态" })).toHaveAttribute("data-can-create", "true");
+    expect(screen.queryByRole("checkbox", { name: "board/model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "配置任务" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameter-admin/projects");
+    expect(screen.queryByRole("dialog", { name: /离开/ })).not.toBeInTheDocument();
+  });
+
+  it("undoes one property without dropping its sibling and then clears all remaining local changes", async () => {
+    const draftStorage = createMemoryStorage();
+    renderWorkbench({ syncSearch: true, canEdit: true, canEditCritical: true,
+      currentUserId: "user-1", organizationId: "org-1", draftStorage,
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
+    for (const [name, value] of [["model", "Aurora-X"], ["compatible", "wiseeff,changed"]]) {
+      fireEvent.click(await screen.findByRole("treeitem", { name: `属性 board/${name}` }));
+      await waitFor(() => expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent(name!));
+      fireEvent.change(screen.getByLabelText("字符串 1"), { target: { value } });
+    }
+    expect(screen.getByRole("button", { name: "全部撤销" })).toBeEnabled();
+    fireEvent.click(await screen.findByRole("button", { name: "撤销 board/model" }));
+    expect(screen.queryByRole("checkbox", { name: "board/model" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "board/compatible" })).toBeChecked();
+    expect(screen.queryByRole("button", { name: "全部撤销" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/model" }));
+    await waitFor(() => expect(screen.getByLabelText("字符串 1")).toHaveValue("Aurora"));
+    fireEvent.change(screen.getByLabelText("字符串 1"), { target: { value: "Aurora-X" } });
+    expect(await screen.findByRole("button", { name: "全部撤销" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "全部撤销" }));
+    expect(screen.queryByRole("checkbox", { name: "board/compatible" })).not.toBeInTheDocument();
+    expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(0);
+    fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/compatible" }));
+    await waitFor(() => expect(screen.getByLabelText("字符串 1")).toHaveValue("wiseeff,aurora"));
+  });
+
+  it("announces an empty search result and clears the search without changing the source target", async () => {
+    const search = vi.fn(async () => ({ hits: [] }));
+    const { onNavigate } = renderWorkbench({ search: "?configSet=cs-default&file=file-board", syncSearch: true,
+      dtsRepository: createDtsRepository({ search }) });
+    const input = await screen.findByRole("searchbox", { name: "统一搜索查询" });
+    fireEvent.change(input, { target: { value: "missing-property" } });
+    fireEvent.submit(screen.getByRole("form", { name: "统一结构搜索" }));
+    expect(await screen.findByText("未找到“missing-property”")).toBeInTheDocument();
+    expect(search).toHaveBeenCalledWith(PROJECT.id, { q: "missing-property" });
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toHaveTextContent("aurora-board.dts");
+    fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
+    await waitFor(() => expect(input).toHaveValue(""));
+    expect(screen.queryByText("未找到“missing-property”")).not.toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("allows comparing the same snapshot again after an unchanged result", async () => {
+    const compareBaseline = vi.fn(async () => ({ baselineId: "baseline-seed-v1", against: "working" as const,
+      members: [{ fileId: "file-board", status: "unchanged" as const,
+        baselineVersionId: "version-board-12", currentVersionId: "version-board-12" }] }));
+    renderWorkbench({ search: "?configSet=cs-default&file=file-board&baseline=baseline-seed-v1",
+      syncSearch: true, dtsRepository: createDtsRepository({ compareBaseline }) });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    await openWorkbenchReleaseDetails();
+    const compare = screen.getByRole("button", { name: "对比当前配置" });
+    await waitFor(() => expect(compare).toBeEnabled());
+    fireEvent.click(compare);
+    await screen.findByText("文件版本一致，无需查看差异。");
+    await waitFor(() => expect(compare).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "关闭配置版本" }));
+    await openWorkbenchReleaseDetails();
+    fireEvent.click(screen.getByRole("button", { name: "对比当前配置" }));
+    await waitFor(() => expect(compareBaseline).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps baseline results in release details and clears the comparison from its single source exit before comparing again", async () => {
+    const compareBaseline = vi.fn(async () => ({ baselineId: "baseline-seed-v1", against: "working" as const,
+      members: [{ fileId: "file-board", status: "version_changed" as const,
+        baselineVersionId: "version-board-11", currentVersionId: "version-board-12" }] }));
+    const { onNavigate } = renderWorkbench({ search: "?configSet=cs-default&file=file-board&node=board&property=model&baseline=baseline-seed-v1",
+      syncSearch: true, dtsRepository: createDtsRepository({ compareBaseline, getStructure: vi.fn(async () => BOARD_STRUCTURE) }) });
+    const selectedProperty = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    await waitFor(() => expect(selectedProperty).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: /^配置版本/ }));
+    const compare = await screen.findByRole("button", { name: "对比当前配置" });
+    expect(screen.queryByRole("button", { name: /对比已发布/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(compare).toBeEnabled());
+    fireEvent.click(compare);
+    await screen.findByLabelText("统一差异对比");
+    expect(screen.queryByRole("dialog", { name: "配置版本" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^配置版本/ })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: /^配置版本/ }));
+    const releasePanel = await screen.findByRole("dialog", { name: "配置版本" });
+    expect(releasePanel).toHaveTextContent("配置版本");
+    expect(within(releasePanel).getByLabelText("配置版本对比结果")).toBeVisible();
+    expect(within(releasePanel).queryByRole("button", { name: "退出对比" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^配置版本/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(releasePanel).getByRole("button", { name: "关闭配置版本" }));
+    const region = screen.getByRole("main", { name: /只读 DTS 源码/ });
+    expect(screen.getAllByRole("button", { name: "退出对比" })).toHaveLength(1);
+    fireEvent.click(within(region).getByRole("button", { name: "退出对比" }));
+    await waitFor(() => expect(screen.queryByLabelText("配置版本对比结果")).not.toBeInTheDocument());
+    expect(screen.queryByLabelText("统一差异对比")).not.toBeInTheDocument();
+    await waitFor(() => {
+      const returned = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+      expect(returned.get("file")).toBe("file-board");
+      expect(returned.get("node")).toBe("board");
+      expect(returned.get("property")).toBe("model");
+      expect(returned.get("sourceMode")).toBeNull();
+      expect(returned.get("inspector")).toBe("release");
+      expect(selectedProperty).toHaveAttribute("aria-selected", "true");
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^配置版本/ }));
+    const restart = await screen.findByRole("button", { name: "对比当前配置" });
+    await waitFor(() => expect(restart).toBeEnabled());
+    fireEvent.click(restart);
+    await waitFor(() => expect(compareBaseline).toHaveBeenCalledTimes(2));
   });
 
   it("loads nested structure under the selected member and focuses source spans from tree selection", async () => {
@@ -1405,7 +1984,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "统一搜索查询" }), {
       target: { value: "board" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    fireEvent.submit(screen.getByRole("form", { name: "统一结构搜索" }));
 
     const results = await screen.findByLabelText("搜索结果");
     expect(results).toHaveTextContent("charging-overlay.dtsi");
@@ -1417,6 +1996,50 @@ describe("ProjectConfigurationWorkbench", () => {
       const urls = onNavigate.mock.calls.map((call) => String(call[0]));
       expect(urls.some((url) => url.includes("configSet=cs-default") && url.includes("file=file-overlay") && url.includes("node=charger"))).toBe(true);
     });
+  });
+
+  it.each(["history", "candidate"])("opens a cross-file search hit in working mode without reusing the previous %s version or candidate", async (mode) => {
+    const downloadVersion = vi.fn<ParameterFileRepository["downloadVersion"]>(async (_projectId, fileId, versionId) => {
+      if (fileId === "file-overlay" && versionId !== "version-overlay-4") throw new Error("Version belongs to the previous file");
+      const value = fileId === "file-overlay" ? "B-working-source" : versionId === "version-board-11" ? "A-history-source" : "A-working-source";
+      return { contentType: "text/plain", fileName: fileId === "file-overlay" ? "charging-overlay.dtsi" : "aurora-board.dts",
+        bytes: new TextEncoder().encode(`/dts-v1/;\n/ { model = "${value}"; };\n`) };
+    });
+    const search = vi.fn<DtsStructuredRepository["search"]>(async () => ({ hits: [{
+      fileId: "file-overlay", fileName: "charging-overlay.dtsi", versionId: "version-overlay-4", nodePath: "charger", propertyName: "status",
+      snippet: "charger/status", source: { startOffset: 0, endOffset: 7, startLine: 2, startColumn: 1, endLine: 2, endColumn: 8 }
+    }] }));
+    const getStructure = vi.fn<DtsStructuredRepository["getStructure"]>(async (_projectId, fileId) => fileId === "file-overlay"
+      ? { nodes: [{ nodePath: "charger", name: "charger", labels: [], phandleRefs: [],
+          properties: [{ name: "status", valueType: "string-list", rawText: '"okay"', normalizedValue: "okay" }] }] }
+      : BOARD_STRUCTURE);
+    const { onNavigate } = renderWorkbench({ syncSearch: true,
+      search: `?configSet=cs-default&file=file-board&sourceMode=${mode}&version=version-board-11&candidate=cand-board`,
+      dtsRepository: createDtsRepository({ search, getStructure }), fileRepository: createFileRepository({ downloadVersion,
+        getCandidate: vi.fn(async () => ({ id: "cand-board", projectId: PROJECT.id, fileId: "file-board", fileName: "aurora-board.dts",
+          format: "dts" as const, status: "ready" as const, baseVersionId: "version-board-12", diagnostics: [], blockers: [],
+          impact: { textDiff: "", structuralDiff: [], diagnostics: [], blockers: [], conflicts: [] },
+          createdAt: "2026-10-17T00:00:00.000Z", updatedAt: "2026-10-17T00:00:00.000Z" })),
+        getCandidateSourcePreview: vi.fn(async () => ({ kind: "legacy" as const, candidateId: "cand-board", fileId: "file-board", format: "dts", canSubmit: false })),
+        downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", fileName: "aurora-board.dts",
+          bytes: new TextEncoder().encode('/dts-v1/;\n/ { model = "A-candidate-source"; };\n') }))
+      }) });
+    await waitFor(() => expect(screen.getByRole("main", { name: /只读 DTS 源码/ }))
+      .toHaveTextContent(mode === "history" ? "A-history-source" : "A-candidate-source"));
+    fireEvent.change(screen.getByRole("searchbox", { name: "统一搜索查询" }), { target: { value: "charger" } });
+    fireEvent.submit(screen.getByRole("form", { name: "统一结构搜索" }));
+    const results = await screen.findByLabelText("搜索结果");
+    fireEvent.click(within(results).getByRole("button", { name: /charger/ }));
+    await waitFor(() => expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toHaveTextContent("B-working-source"));
+    const selected = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+    expect(selected.get("configSet")).toBe("cs-default");
+    expect(selected.get("file")).toBe("file-overlay");
+    expect(selected.get("node")).toBe("charger");
+    expect(selected.get("property")).toBe("status");
+    for (const key of ["sourceMode", "version", "candidate"]) expect(selected.has(key)).toBe(false);
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toHaveTextContent(/工作配置.*v4/);
+    expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-overlay", "version-overlay-4");
+    expect(downloadVersion).not.toHaveBeenCalledWith(PROJECT.id, "file-overlay", "version-board-11");
   });
 
   it("restores node and property deep links from the URL", async () => {
@@ -1461,8 +2084,8 @@ describe("ProjectConfigurationWorkbench", () => {
     const propertyItem = await screen.findByRole("treeitem", { name: "属性 board/model" });
     await waitFor(() => expect(propertyItem).toHaveAttribute("aria-selected", "true"));
     expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
-    ensureInspectorOpen();
-    expect(await screen.findByText("属性名")).toBeInTheDocument();
+    await ensureInspectorOpen();
+    expect(await screen.findByText("属性与来源详情")).toBeInTheDocument();
     const inspector = screen.getByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent("model");
     expect(inspector).toHaveTextContent("字符串列表");
@@ -1506,11 +2129,66 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.keyDown(window, { key: "f", altKey: true });
     expect(search).toHaveFocus();
     fireEvent.change(search, { target: { value: "Aurora" } });
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    fireEvent.submit(screen.getByRole("form", { name: "统一结构搜索" }));
     fireEvent.keyDown(window, { key: "n", altKey: true });
     // Next-match token is accepted without throwing; browser shortcuts remain untouched for ctrl/meta.
     fireEvent.keyDown(window, { key: "f", ctrlKey: true });
     expect(search).toHaveFocus();
+  });
+
+  it("keeps version evidence in one disclosure and omits empty node context without changing legacy file identity", async () => {
+    const { onNavigate } = renderWorkbench({ syncSearch: true, search: "?configSet=cs-default&file=file-board&inspector=file",
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }),
+      fileRepository: createFileRepository({ listVersions: vi.fn(async () => [ACTIVE_BOARD_VERSION]) }) });
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    const versions = await within(inspector).findByRole("region", { name: "版本历史" });
+    expect(within(versions).getByLabelText("文件信息")).toBeVisible();
+    expect(within(versions).getByText("DTS", { exact: true })).toBeVisible();
+    expect(within(versions).getByText("来源一致性", { exact: true })).toBeVisible();
+    expect(within(inspector).queryByText("文件用途", { exact: true })).not.toBeInTheDocument();
+    expect(inspector.querySelector(".configuration-workbench__region-head")).not.toHaveTextContent("默认配置");
+    expect(within(inspector).queryByText("版本身份", { exact: true })).not.toBeInTheDocument();
+    expect(within(inspector).queryByText("版本标识", { exact: true })).not.toBeInTheDocument();
+    expect(within(inspector).getAllByText("溯源信息", { exact: true })).toHaveLength(1);
+    expect(within(inspector).queryByLabelText("完整溯源数据")).not.toBeInTheDocument();
+    fireEvent.click(within(versions).getByText("溯源信息", { exact: true }));
+    const evidence = await within(versions).findByLabelText("完整溯源数据");
+    expect(evidence).toHaveTextContent("version-board-12");
+    expect(evidence).toHaveTextContent('"checksum": "abc"');
+    expect(within(versions).getAllByRole("button", { name: "复制完整技术数据" })).toHaveLength(1);
+    expect(onNavigate).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 regulator" }));
+    await waitFor(() => expect(within(inspector).getByText("节点路径", { exact: true })).toBeVisible());
+    expect(within(inspector).queryByText("节点标签", { exact: true })).not.toBeInTheDocument();
+    expect(within(inspector).queryByText("compatible", { exact: true })).not.toBeInTheDocument();
+    expect(within(inspector).queryByText("读权限", { exact: true })).not.toBeInTheDocument();
+    expect(within(inspector).queryByText("只读", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("keeps candidate diagnostics visible and complete raw evidence in one disclosure when source preview is unavailable", async () => {
+    const candidate = { id: "cand-diagnostics", projectId: PROJECT.id, fileId: "file-board", fileName: "aurora-board.dts",
+      format: "dts" as const, status: "blocked" as const, baseVersionId: "version-board-12",
+      diagnostics: [{ code: "parse-context", severity: "warning" as const, message: "核对第 7 行的参数类型", line: 7 }],
+      blockers: [{ code: "open-conflict", message: "请先处理来源冲突" }],
+      impact: { conflicts: [{ id: "conflict-source-raw", parameterName: "model", status: "open", fileValue: "File", uiDraftValue: "UI" }] },
+      createdAt: "2026-08-07T00:00:00.000Z", updatedAt: "2026-08-07T00:00:00.000Z" };
+    renderWorkbench({ search: "?configSet=cs-default&file=file-board&sourceMode=candidate&candidate=cand-diagnostics&inspector=candidates",
+      fileRepository: createFileRepository({ getCandidate: vi.fn(async () => candidate),
+        getCandidateSourcePreview: vi.fn(async () => { throw new Error("preview unavailable"); }),
+        downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", fileName: candidate.fileName, bytes: new TextEncoder().encode("/dts-v1/;\n/ {};\n") })) }) });
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(await within(inspector).findByText("来源状态未知，激活与来源审核均已禁用。")).toBeVisible();
+    expect(within(inspector).getByText("核对第 7 行的参数类型", { exact: true })).toBeVisible();
+    expect(within(inspector).getByText("请先处理来源冲突", { exact: true })).toBeVisible();
+    expect(within(inspector).queryByText("诊断详情", { exact: true })).not.toBeInTheDocument();
+    expect(within(inspector).queryByText("冲突标识", { exact: true })).not.toBeInTheDocument();
+    expect(within(inspector).getAllByText("溯源信息", { exact: true })).toHaveLength(1);
+    expect(within(inspector).queryByLabelText("完整溯源数据")).not.toBeInTheDocument();
+    fireEvent.click(within(inspector).getByText("溯源信息", { exact: true }));
+    const evidence = await within(inspector).findByLabelText("完整溯源数据");
+    for (const raw of ["parse-context", "conflict-source-raw", '"line": 7', '"fileValue": "File"']) expect(evidence).toHaveTextContent(raw);
+    expect(within(inspector).getAllByRole("button", { name: "复制完整技术数据" })).toHaveLength(1);
+    expect(within(inspector).queryByTestId("activate-candidate")).not.toBeInTheDocument();
   });
 
   it("opens inspector content for config set, file, node, and property without changing source identity unexpectedly", async () => {
@@ -1581,18 +2259,17 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
 
-    fireEvent.click(screen.getByRole("button", { name: "检查器" }));
+    await ensureInspectorOpen();
     const inspector = screen.getByRole("complementary", { name: "配置检查器" });
-    expect(inspector).toHaveTextContent("检查层级");
-    expect(inspector).toHaveTextContent("文件");
-    expect(inspector).toHaveTextContent("候选文件版本");
-    expect(inspector).toHaveTextContent("尚未上传");
+    expect(inspector).toHaveTextContent("aurora-board.dts");
+    expect(inspector).not.toHaveTextContent("候选文件版本");
+    expect(inspector).not.toHaveTextContent("配置版本");
     expect(within(inspector).getByRole("button", { name: "关闭检查器" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("treeitem", { name: /aurora-board\.dts/ }));
     expect(await screen.findByText("文件格式")).toBeInTheDocument();
-    expect(screen.getByText("dts")).toBeInTheDocument();
-    expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
+    expect(screen.getByText("DTS", { exact: true })).toBeInTheDocument();
+    expect(within(inspector).getByRole("region", { name: "版本历史" })).toBeInTheDocument();
     expect(screen.getByText(/版本 11/)).toBeInTheDocument();
     expect(listVersions).toHaveBeenCalledWith(PROJECT.id, "file-board");
 
@@ -1600,16 +2277,16 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(await screen.findByText("节点路径")).toBeInTheDocument();
     expect(screen.getByText("board_label")).toBeInTheDocument();
     expect(screen.getByText("wiseeff,aurora")).toBeInTheDocument();
-    expect(screen.getByText("常规")).toBeInTheDocument();
-    expect(screen.getByText("只读")).toBeInTheDocument();
+    expect(inspector).not.toHaveTextContent("偏高");
+    expect(within(inspector).queryByText("只读", { exact: true })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/model" }));
-    expect(await screen.findByText("属性名")).toBeInTheDocument();
+    expect(await screen.findByText("属性与来源详情")).toBeInTheDocument();
     expect(within(inspector).getByText("字符串列表")).toBeInTheDocument();
     expect(within(inspector).getAllByText('"Aurora"').length).toBeGreaterThanOrEqual(1);
     expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora");
     expect(within(inspector).getByLabelText("字符串 1")).toBeVisible();
-    expect(within(inspector).getByText("配置与发布信息").closest("details")).not.toHaveAttribute("open");
+    expect(within(inspector).getByText("属性与来源详情").closest("details")).not.toHaveAttribute("open");
     expect(within(inspector).getByText(/L2:3/)).toBeInTheDocument();
 
     const sourceHeading = screen.getByRole("heading", { name: "aurora-board.dts" });
@@ -1672,14 +2349,17 @@ describe("ProjectConfigurationWorkbench", () => {
       fileRepository: createFileRepository({ listVersions, rollbackVersion })
     });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    ensureInspectorOpen();
-    expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
+    await openWorkbenchVersionDetails();
+    expect(await screen.findByLabelText("版本历史")).toBeInTheDocument();
     expect(screen.getByText("操作人：Xu Yun")).toBeInTheDocument();
     expect(screen.getByText("操作人：用户已注销或未记录")).toBeInTheDocument();
     expect(screen.queryByText("user-ops")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "将版本 12 恢复为当前" })).not.toBeInTheDocument();
+    await openVersionMenu(12);
+    expect(screen.queryByRole("menuitem", { name: "将版本 12 恢复为当前" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
 
-    fireEvent.click(screen.getByRole("button", { name: "将版本 11 恢复为当前" }));
+    await openVersionMenu(11);
+    await userEvent.click(screen.getByRole("menuitem", { name: "将版本 11 恢复为当前" }));
     expect(await screen.findByRole("heading", { name: "恢复为当前版本" })).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toHaveTextContent("历史版本全部保留，不会倒带");
     fireEvent.click(screen.getByRole("button", { name: "恢复为当前" }));
@@ -1718,10 +2398,12 @@ describe("ProjectConfigurationWorkbench", () => {
       fileRepository: createFileRepository({ listVersions })
     });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    ensureInspectorOpen();
-    expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
+    await openWorkbenchVersionDetails();
+    expect(await screen.findByLabelText("版本历史")).toBeInTheDocument();
     expect(screen.getByText("操作人：Riley Chen")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "将版本 11 恢复为当前" })).not.toBeInTheDocument();
+    await openVersionMenu(11);
+    expect(screen.queryByRole("menuitem", { name: "将版本 11 恢复为当前" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "下载版本 11" })).toBeEnabled();
   });
 
   it("updates inspector level from tree selection while preserving source selection", async () => {
@@ -1766,8 +2448,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     await screen.findByRole("treeitem", { name: "属性 board/model" });
     expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
-    ensureInspectorOpen();
-    expect(await screen.findByText("属性名")).toBeInTheDocument();
+    await ensureInspectorOpen();
+    expect(await screen.findByText("属性与来源详情")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "关闭检查器" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("treeitem", { name: "节点 board" }));
@@ -1775,7 +2457,10 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("treeitem", { name: /aurora-board\.dts/ }));
-    await waitFor(() => expect(screen.getByText("文件格式")).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("文件格式"), JSON.stringify({
+      urls: onNavigate.mock.calls.map((call) => call[0]),
+      inspector: screen.queryByRole("complementary", { name: "配置检查器" })?.textContent
+    })).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
     const urls = onNavigate.mock.calls.map((call) => String(call[0]));
     expect(urls.some((url) => url.includes("file=file-board") && !url.includes("node="))).toBe(true);
@@ -1827,8 +2512,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     if (tab === "source") await screen.findByText(/model = "Aurora"/);
     else await screen.findByRole("treeitem", { name: /aurora-board\.dts/ });
-    fireEvent.click(screen.getByRole("button", { name: "检查器" }));
-    expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
+    await openWorkbenchVersionDetails();
+    expect(await screen.findByLabelText("版本历史")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "查看版本 11 历史源码" }));
     await waitFor(() => {
@@ -1837,10 +2522,11 @@ describe("ProjectConfigurationWorkbench", () => {
         true
       );
     });
-    expect(await screen.findByLabelText("历史只读源码模式")).toBeInTheDocument();
+    expect(await screen.findByText(/历史版本 · 只读/)).toBeInTheDocument();
     expect(await screen.findByText(/model = "Legacy"/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "下载版本 11" }));
+    await openVersionMenu(11);
+    await userEvent.click(screen.getByRole("menuitem", { name: "下载版本 11" }));
     await waitFor(() =>
       expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-11")
     );
@@ -1853,7 +2539,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(await screen.findByText(/model = "Aurora"/)).toBeInTheDocument();
   });
 
-  it("supports unified and side-by-side diff modes and restores working source afterward", async () => {
+  it("compares historical source through one diff action and restores working source afterward", async () => {
     const downloadVersion = vi.fn(async (_projectId: string, _fileId: string, versionId: string) => ({
       contentType: "text/plain",
       fileName: "aurora-board.dts",
@@ -1886,19 +2572,23 @@ describe("ProjectConfigurationWorkbench", () => {
       }
     ]);
     const { onNavigate } = renderWorkbench({
-      search: "?configSet=cs-default&file=file-board&sourceMode=unified-diff&version=version-board-11",
+      search: "?configSet=cs-default&file=file-board",
       fileRepository: createFileRepository({ downloadVersion, listVersions }),
       syncSearch: true
     });
-    expect(await screen.findByLabelText("统一差异对比")).toBeInTheDocument();
-    expect(screen.getByLabelText("只读 DTS 源码")).toHaveTextContent("只读对比");
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    await openWorkbenchVersionDetails();
+    fireEvent.click(screen.getByRole("button", { name: "查看版本 11 历史源码" }));
+    expect(await screen.findByText(/历史版本 · 只读/)).toBeInTheDocument();
+    expect(await screen.findByText(/model = "Legacy"/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "对比" }));
+    await waitFor(() => expect(screen.getByLabelText("统一差异对比")).toHaveTextContent("Legacy"));
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toHaveTextContent("只读对比");
     expect(screen.getByLabelText("统一差异对比")).toHaveTextContent("Legacy");
 
-    fireEvent.click(screen.getByRole("button", { name: "并排对比" }));
-    await waitFor(() =>
-      expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("sourceMode=side-by-side"))).toBe(true)
-    );
-    expect(await screen.findByLabelText("并排差异对比")).toBeInTheDocument();
+    for (const name of ["对比", "统一差异", "并排对比"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("并排差异对比")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "退出对比" })).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "退出对比" }));
     await waitFor(() =>
@@ -1910,25 +2600,49 @@ describe("ProjectConfigurationWorkbench", () => {
     );
   });
 
-  it("keeps inspector overlay by default and becomes persistent only when source stays ≥640px", async () => {
+  it("maps an old side-by-side URL to the single read-only diff and restores its exact working target on exit", async () => {
+    const { onNavigate } = renderWorkbench({ syncSearch: true,
+      search: "?configSet=cs-default&file=file-board&node=board&property=model&sourceMode=side-by-side&version=version-board-11",
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }),
+      fileRepository: createFileRepository({ downloadVersion: vi.fn(async (_projectId, _fileId, versionId) => ({
+        contentType: "text/plain", fileName: "aurora-board.dts",
+        bytes: new TextEncoder().encode(versionId === "version-board-11" ? 'model = "Legacy";' : 'model = "Aurora";')
+      })) }) });
+    await waitFor(() => expect(screen.getByLabelText("统一差异对比")).toHaveTextContent("Legacy"));
+    const selected = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    await waitFor(() => expect(selected).toHaveAttribute("aria-selected", "true"));
+    expect(screen.queryByLabelText("并排差异对比")).not.toBeInTheDocument();
+    for (const name of ["对比", "统一差异", "并排对比"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ }).querySelector('[contenteditable="true"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "退出对比" }));
+    await waitFor(() => {
+      const returned = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+      expect(returned.get("file")).toBe("file-board");
+      expect(returned.get("node")).toBe("board");
+      expect(returned.get("property")).toBe("model");
+      expect(returned.has("sourceMode")).toBe(false);
+      expect(returned.has("version")).toBe(false);
+    });
+    expect(screen.queryByLabelText("统一差异对比")).not.toBeInTheDocument();
+    expect(selected).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps desktop details beside source content at compact and wide PC widths", async () => {
+    const originalWidth = window.innerWidth;
     renderWorkbench();
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "检查器" }));
+    await openWorkbenchVersionDetails();
     const inspector = screen.getByRole("complementary", { name: "配置检查器" });
-    expect(inspector).toHaveAttribute("data-layout", "overlay");
-
-    const body = screen.getByRole("tabpanel", { name: "源码" });
-    Object.defineProperty(body, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({ width: 1400, height: 800, top: 0, left: 0, bottom: 800, right: 1400, x: 0, y: 0, toJSON: () => ({}) })
-    });
-    const tree = screen.getByRole("region", { name: "文件与配置集" });
-    Object.defineProperty(tree, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({ width: 260, height: 800, top: 0, left: 0, bottom: 800, right: 260, x: 0, y: 0, toJSON: () => ({}) })
-    });
-    fireEvent(window, new Event("resize"));
-    await waitFor(() => expect(inspector).toHaveAttribute("data-layout", "persistent"));
+    try {
+      for (const width of [1280, 1440]) {
+        Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+        fireEvent(window, new Event("resize"));
+        await waitFor(() => expect(inspector).toHaveAttribute("data-layout", "persistent"));
+        expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toBeVisible();
+      }
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+    }
   });
 
   it("clears history version identity when switching member files", async () => {
@@ -1946,7 +2660,7 @@ describe("ProjectConfigurationWorkbench", () => {
             url.includes("file=file-overlay") &&
             !url.includes("sourceMode=history") &&
             !url.includes("version=version-board-11")
-        )
+        ), urls.join("\n")
       ).toBe(true);
     });
   });
@@ -1998,6 +2712,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
+    await openSourceUpdates();
+    fireEvent.click(screen.getByRole("button", { name: "上传新文件" }));
     const uploadInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     expect(uploadInput).toBeTruthy();
     const file = new File(['/dts-v1/;\n/ { model = "Cand"; };\n'], "aurora-board.dts", {
@@ -2010,21 +2726,18 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.change(uploadInput);
 
     await waitFor(() => expect(createCandidate).toHaveBeenCalled());
+    expect(createCandidate).toHaveBeenCalledExactlyOnceWith(PROJECT.id, expect.objectContaining({ fileId: "file-board", fileName: "aurora-board.dts" }));
     await waitFor(() =>
       expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("sourceMode=candidate"))).toBe(true)
     );
-    expect(await screen.findByLabelText("候选只读源码模式")).toBeInTheDocument();
-    await openWorkbenchVersionDetails();
-    expect(screen.getByLabelText("配置身份")).toHaveTextContent("ready");
-    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
-    if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
-      fireEvent.click(inspectorToggle);
-    }
+    expect(await screen.findByText(/待核对 · 只读/)).toBeInTheDocument();
+    expect(screen.getByText(/待核对 · 只读/)).toBeInTheDocument();
+    if (!screen.queryByRole("complementary", { name: "配置检查器" })) await openSourceUpdates();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent("结构差异");
-    expect(inspector).toHaveTextContent("覆盖/映射");
-    expect(inspector).toHaveTextContent("文本差异");
-    fireEvent.click(screen.getByRole("button", { name: "放弃候选" }));
+    expect(inspector).toHaveTextContent("覆盖");
+    expect(screen.getByLabelText("来源更新差异")).toHaveTextContent('+model = "Cand";');
+    fireEvent.click(screen.getByRole("button", { name: "放弃更新" }));
     await waitFor(() => expect(abandonCandidate).toHaveBeenCalledWith(PROJECT.id, "cand-1"));
   });
 
@@ -2095,17 +2808,14 @@ describe("ProjectConfigurationWorkbench", () => {
       })
     });
 
-    expect(await screen.findByLabelText("候选只读源码模式")).toBeInTheDocument();
-    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
-    if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
-      fireEvent.click(inspectorToggle);
-    }
+    expect(await screen.findByText(/待核对 · 只读/)).toBeInTheDocument();
+    await openSourceUpdates();
     const activateButton = await screen.findByTestId("activate-candidate");
     expect(activateButton).toBeEnabled();
     fireEvent.click(activateButton);
-    expect(await screen.findByRole("heading", { name: "确认激活候选" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "确认应用来源更新" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox"));
-    fireEvent.click(screen.getByRole("button", { name: "确认激活" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认应用" }));
     await waitFor(() =>
       expect(activateCandidate).toHaveBeenCalledWith(PROJECT.id, "cand-ready", {
         expectedCurrentVersionId: "version-board-12",
@@ -2117,6 +2827,220 @@ describe("ProjectConfigurationWorkbench", () => {
       expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("file=file-board"))).toBe(true)
     );
     expect(screen.queryByTestId("activate-candidate")).not.toBeInTheDocument();
+  });
+
+  it("retains batch and single-conflict forms while a sibling pending draft blocks the multi-binding batch", async () => {
+    const digest = "a".repeat(64);
+    const candidate = { id: "multi-conflict", projectId: PROJECT.id, fileId: "file-board", fileName: "aurora-board.dts",
+      baseVersionId: ACTIVE_BOARD_VERSION.id, checksum: "b".repeat(64), format: "dts" as const, status: "ready" as const,
+      diagnostics: [], blockers: [], impact: {}, createdAt: "2026-08-07", updatedAt: "2026-08-07" };
+    const bindings = ["binding-a", "binding-b"].map((bindingId) => ({ bindingId, definitionId: "definition",
+      baseCurrentValueId: "value", configRevisionId: "revision", sourcePinId: `pin-${bindingId}`,
+      locator: `/board/${bindingId}`, baseDigest: digest, proposedDigest: candidate.checksum,
+      action: "set" as const, beforeText: "<36>", afterText: "<77>" }));
+    const preview: Awaited<ReturnType<ParameterFileRepository["getCandidateSourcePreview"]>> = {
+      kind: "canonical", canSubmit: false, reason: "canonical-batch-review-required", candidateId: candidate.id,
+      fileId: candidate.fileId, baseVersionId: candidate.baseVersionId, format: "dts", proofToken: "multi-proof",
+      cohortProofToken: "workflow", proposedDigest: candidate.checksum, bindings
+    };
+    const fileProof: canonicalConflictClient.CanonicalSourceConflictList["items"][number]["choices"]["file"] = {
+      choice: "file", candidateId: candidate.id, selectedBindingId: "binding-a", selectedDraftId: "draft-a",
+      fileId: candidate.fileId, baseVersionId: candidate.baseVersionId, configSetId: "cs-default",
+      sourceProofToken: "multi-proof", cohortProofToken: "workflow", sourceCandidateDigest: candidate.checksum,
+      selectedSourcePinId: "pin-binding-a", selectedBaseValueId: "value", selectedRevisionId: "revision",
+      selectedDraftProof: digest, selectedDraftCandidateId: "draft-candidate", selectedDraftCandidateDigest: "c".repeat(64),
+      decisionProofDigest: digest, action: "set", targetText: "<77>",
+      members: [{ memberId: "member", fileId: candidate.fileId, fileVersionId: candidate.baseVersionId,
+        sourceName: candidate.fileName, format: "dts", role: "base", sortOrder: 0, checksum: digest, sizeBytes: 10,
+        configSetId: "cs-default", isCandidateFile: true }],
+      cohort: bindings.map((binding) => ({ bindingId: binding.bindingId, oldValueId: binding.baseCurrentValueId,
+        sourcePinId: binding.sourcePinId, sourceOccurrenceId: `occurrence-${binding.bindingId}`, definitionId: binding.definitionId,
+        effectiveRevisionId: "revision", catalogReleaseId: "release", locator: { path: binding.locator },
+        valueKind: "u32-array", valueDigest: digest, configSetId: "cs-default" }))
+    };
+    const listCandidateSourceConflicts = vi.fn(async () => ({ items: [{ selectedBindingId: "binding-a", selectedDraftId: "draft-a",
+      authorUserId: "other-author", choices: { file: fileProof, draft: { ...fileProof, choice: "draft" as const,
+        targetText: "<88>", decisionProofDigest: "d".repeat(64) } } }],
+      ineligible: [{ selectedBindingId: "binding-b", selectedDraftId: "draft-b", reason: "selected-draft-pending" }] }));
+    const submitCandidateSourceConflict = vi.fn<ReturnType<typeof canonicalConflictClient.createCanonicalConflictClient>["submitCandidateSourceConflict"]>()
+      .mockResolvedValue({ requestId: "single-conflict-request", status: "pending", replayed: false });
+    vi.spyOn(canonicalConflictClient, "createCanonicalConflictClient").mockReturnValue({ listCandidateSourceConflicts, submitCandidateSourceConflict });
+    const governanceClient = userGovernanceClient.createUserGovernanceClient();
+    vi.spyOn(userGovernanceClient, "createUserGovernanceClient").mockReturnValue({ ...governanceClient,
+      getProjectWorkflowRoleBindings: vi.fn(async () => ({ projectId: PROJECT.id, ready: true, missingRoles: [],
+        bindings: [{ userId: "reviewer", name: "软件审核员", username: null, email: null, title: "", isActive: true,
+          roles: ["software-committer" as const] }] })) });
+    const submitBatch = vi.fn();
+    const submitOrdinary = vi.fn();
+    const { onNavigate } = renderWorkbench({ syncSearch: true, apiMode: true, canAdmin: true, canEdit: true,
+      currentUserId: "author", search: "?configSet=cs-default&file=file-board&sourceMode=candidate&candidate=multi-conflict&inspector=candidates",
+      memberRemovalRepository: { getCatalog: vi.fn(), submitProjectValueBatchChangeRequest: submitBatch } as unknown as ProjectConfigurationWorkbenchProps["memberRemovalRepository"],
+      fileRepository: createFileRepository({ getCandidate: vi.fn(async () => candidate),
+        getCandidateSourcePreview: vi.fn(async () => preview),
+        getSourceWorkflow: vi.fn(async () => ({ canonical: true, bindingCount: 2, configSetId: "cs-default", proofToken: "workflow" })),
+        downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", fileName: candidate.fileName, bytes: new TextEncoder().encode("updated") })),
+        submitCandidateSourceReview: submitOrdinary }) });
+    await screen.findByRole("heading", { name: "提交 DTS 批量来源审核" });
+    const batchDraft = await screen.findByRole("radio", { name: /采用界面草稿 1/ });
+    fireEvent.click(batchDraft);
+    fireEvent.change(screen.getByRole("textbox", { name: "修改原因" }), { target: { value: "整批修改原因" } });
+    expect(await screen.findByText("存在不可处理的竞争草稿，不能提交；请刷新来源。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "提交 2 项审核" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "单独处理一项冲突" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "单独处理一项冲突" }));
+    expect(await screen.findByRole("region", { name: "来源变更审核" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "提交 DTS 批量来源审核" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "提交前批量目标" })).not.toBeInTheDocument();
+    const singleDraft = await screen.findByRole("radio", { name: /保留界面草稿值/ });
+    expect(singleDraft).toBeEnabled();
+    fireEvent.click(singleDraft);
+    fireEvent.change(screen.getByRole("textbox", { name: "修改原因" }), { target: { value: "只处理当前冲突" } });
+    expect(screen.getByRole("button", { name: "提交审核" })).toBeEnabled();
+    expect(screen.getAllByRole("textbox", { name: "修改原因" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "关闭检查器" }));
+    await openSourceUpdates();
+    expect(screen.getByRole("textbox", { name: "修改原因" })).toHaveValue("只处理当前冲突");
+    expect(screen.getByRole("radio", { name: /保留界面草稿值/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "返回整批更新" }));
+    expect(await screen.findByRole("heading", { name: "提交 DTS 批量来源审核" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "来源变更审核" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "修改原因" })).toHaveValue("整批修改原因");
+    expect(screen.getByRole("radio", { name: /采用界面草稿 1/ })).toBeChecked();
+    expect(screen.getByRole("button", { name: "提交 2 项审核" })).toBeDisabled();
+    expect(screen.getAllByRole("textbox", { name: "修改原因" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "单独处理一项冲突" }));
+    expect(screen.getByRole("textbox", { name: "修改原因" })).toHaveValue("只处理当前冲突");
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    await waitFor(() => expect(submitCandidateSourceConflict).toHaveBeenCalledExactlyOnceWith(PROJECT.id, candidate.id, {
+      selectedBindingId: "binding-a", selectedDraftId: "draft-a", choice: "draft", expectedDecisionProofDigest: "d".repeat(64),
+      assignedToUserId: "reviewer", reason: "只处理当前冲突"
+    }));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameter-submissions?project=project-1&request=single-conflict-request"));
+    expect(submitBatch).not.toHaveBeenCalled();
+    expect(submitOrdinary).not.toHaveBeenCalled();
+  });
+
+  it("keeps inline source review closed until conflict and reviewer checks succeed, then retains its form across reopening", async () => {
+    const candidate = {
+      id: "cand-single", projectId: PROJECT.id, fileId: "file-board", fileName: "aurora-board.dts",
+      format: "dts" as const, status: "ready" as const, baseVersionId: "version-board-12",
+      diagnostics: [], blockers: [], impact: {}, createdAt: "2026-08-07T00:00:00.000Z", updatedAt: "2026-08-07T00:00:00.000Z"
+    };
+    let rejectConflicts!: (error: Error) => void;
+    const listCandidateSourceConflicts = vi.fn<ReturnType<typeof canonicalConflictClient.createCanonicalConflictClient>["listCandidateSourceConflicts"]>()
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectConflicts = reject; }))
+      .mockResolvedValue({ items: [], ineligible: [] });
+    const conflictClient = canonicalConflictClient.createCanonicalConflictClient();
+    vi.spyOn(canonicalConflictClient, "createCanonicalConflictClient").mockReturnValue({ ...conflictClient, listCandidateSourceConflicts });
+    const governanceClient = userGovernanceClient.createUserGovernanceClient();
+    const getProjectWorkflowRoleBindings = vi.fn<typeof governanceClient.getProjectWorkflowRoleBindings>(async () => ({
+      projectId: PROJECT.id, ready: true, missingRoles: [], bindings: [{ userId: "reviewer-2", name: "软件审核员", username: null,
+        email: null, title: "", isActive: true, roles: ["software-committer"] }]
+    }));
+    vi.spyOn(userGovernanceClient, "createUserGovernanceClient").mockReturnValue({ ...governanceClient, getProjectWorkflowRoleBindings });
+    const submitCandidateSourceReview = vi.fn<ParameterFileRepository["submitCandidateSourceReview"]>(async () => ({ requestId: "single-request", status: "pending", replayed: false }));
+    const activateCandidate = vi.fn();
+    const getCandidateSourcePreview = vi.fn<ParameterFileRepository["getCandidateSourcePreview"]>(async () => ({
+      kind: "canonical", candidateId: candidate.id, fileId: candidate.fileId, format: "dts", canSubmit: true,
+      baseVersionId: candidate.baseVersionId, proofToken: "single-proof", before: '"Aurora"', after: '"Reviewed"',
+      ...(submitCandidateSourceReview.mock.calls.length ? { request: { id: "single-request", status: "pending" as const, kind: "single" as const } } : {})
+    }));
+    renderWorkbench({ syncSearch: true, canAdmin: true, canEdit: true,
+      search: "?configSet=cs-default&file=file-board&sourceMode=candidate&candidate=cand-single&inspector=candidates",
+      fileRepository: createFileRepository({ getCandidate: vi.fn(async () => candidate), getCandidateSourcePreview,
+        getSourceWorkflow: vi.fn(async () => ({ canonical: true, bindingCount: 1, configSetId: "cs-default", proofToken: "single-proof" })),
+        downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", fileName: candidate.fileName, bytes: new TextEncoder().encode("updated") })),
+        submitCandidateSourceReview, activateCandidate }) });
+    await screen.findByText("正在读取来源冲突…");
+    expect(screen.queryByRole("button", { name: /^提交审核$/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("activate-candidate")).not.toBeInTheDocument();
+    await act(async () => { rejectConflicts(new Error("conflict service unavailable")); });
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载来源冲突失败，请重新核对。");
+    expect(screen.queryByRole("button", { name: /^提交审核$/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新核对冲突" }));
+    const form = await screen.findByRole("region", { name: "来源变更审核" });
+    const reason = await within(form).findByRole("textbox", { name: "修改原因" });
+    const submit = within(form).getByRole("button", { name: /^提交审核$/ });
+    expect(submit).toBeDisabled();
+    fireEvent.change(reason, { target: { value: "核对板卡来源更新" } });
+    expect(submit).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "关闭检查器" }));
+    await openSourceUpdates();
+    expect(screen.getByRole("textbox", { name: "修改原因" })).toHaveValue("核对板卡来源更新");
+    expect(screen.getByRole("combobox", { name: "指定软件审核人" })).toHaveTextContent("软件审核员");
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核$/ }));
+    await waitFor(() => expect(submitCandidateSourceReview).toHaveBeenCalledExactlyOnceWith(PROJECT.id, candidate.id, {
+      expectedCurrentVersionId: candidate.baseVersionId, expectedProofToken: "single-proof", assignedToUserId: "reviewer-2", reason: "核对板卡来源更新"
+    }));
+    expect(await screen.findByText("审核状态：待审核 · 单目标")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /^提交审核$/ })).not.toBeInTheDocument();
+    expect(activateCandidate).not.toHaveBeenCalled();
+    expect(listCandidateSourceConflicts).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { status: "pending", bulkStatus: undefined },
+    { status: "approved", bulkStatus: undefined },
+    { status: "approved", bulkStatus: "pending" }
+  ] as const)("keeps a candidate's $status review reachable without repeat submission or mutations (bulk=$bulkStatus)", async ({ status, bulkStatus }) => {
+    const candidate = {
+      id: "cand-reviewed", projectId: PROJECT.id, fileId: "file-board", fileName: "aurora-board.dts",
+      format: "dts" as const, status: "ready" as const, baseVersionId: "version-board-12",
+      diagnostics: [], impact: { textDiff: "", structuralDiff: [], diagnostics: [], blockers: [], conflicts: [] }, blockers: [],
+      createdAt: "2026-08-07T00:00:00.000Z", updatedAt: "2026-08-07T00:00:00.000Z"
+    };
+    const requestId = `existing-review-${status}`;
+    const submitCandidateSourceReview = vi.fn();
+    const activateCandidate = vi.fn();
+    const abandonCandidate = vi.fn();
+    const recomputeCandidate = vi.fn();
+    const getCandidateSourcePreview = vi.fn<ParameterFileRepository["getCandidateSourcePreview"]>(async () => ({
+      kind: "canonical", candidateId: candidate.id, fileId: candidate.fileId, format: "dts", canSubmit: true,
+      baseVersionId: candidate.baseVersionId, proofToken: "proof-reviewed", before: '"Aurora"', after: '"Reviewed"',
+      request: { id: requestId, status, kind: "single" }
+    }));
+    let finishBulk!: () => void;
+    const bulkGate = new Promise<void>((resolve) => { finishBulk = resolve; });
+    const listSingleReviews = vi.fn(async () => {
+      await bulkGate;
+      return { items: [
+        { id: "stale-bulk-current", projectId: PROJECT.id, candidateId: candidate.id, status: "pending" },
+        { id: "cached-other-review", projectId: PROJECT.id, candidateId: "other-update", status: "approved" }
+      ] };
+    });
+    const { onNavigate } = renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&sourceMode=candidate&candidate=cand-reviewed&inspector=candidates",
+      canAdmin: true, canEdit: true, canEditCritical: true,
+      ...(bulkStatus ? { memberRemovalRepository: { getCatalog: vi.fn(), listProjectValueChangeRequests: listSingleReviews,
+        listProjectValueBatchChangeRequests: vi.fn(async () => ({ items: [] })) } as unknown as ProjectConfigurationWorkbenchProps["memberRemovalRepository"] } : {}),
+      fileRepository: createFileRepository({ getCandidate: vi.fn(async () => candidate), getCandidateSourcePreview,
+        ...(bulkStatus ? { listCandidates: vi.fn(async () => [candidate, { ...candidate, id: "other-update", fileName: "other.dts" }]) } : {}),
+        getSourceWorkflow: vi.fn(async () => ({ canonical: true, bindingCount: 1, configSetId: "cs-default", proofToken: "proof-reviewed" })),
+        downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", fileName: "aurora-board.dts", bytes: new TextEncoder().encode('/dts-v1/;\n/ { model = "Reviewed"; };\n') })),
+        submitCandidateSourceReview, activateCandidate, abandonCandidate, recomputeCandidate })
+    });
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(await within(inspector).findByText(status === "pending" ? "审核状态：待审核 · 单目标" : "审核状态：已通过 · 单目标")).toBeVisible();
+    expect(getCandidateSourcePreview).toHaveBeenCalledWith(PROJECT.id, candidate.id);
+    if (bulkStatus) {
+      const records = within(inspector).getByRole("region", { name: "候选记录" });
+      expect(await within(records).findByRole("button", { name: /aurora-board\.dts.*审核通过/ })).toHaveAttribute("aria-pressed", "true");
+      await act(async () => { finishBulk(); });
+      expect(listSingleReviews).toHaveBeenCalledWith(PROJECT.id, { mine: true });
+      expect(within(records).getByRole("button", { name: /aurora-board\.dts.*审核通过/ })).toHaveAttribute("aria-pressed", "true");
+      expect(within(records).getByRole("button", { name: /other\.dts.*审核通过/ })).toHaveAttribute("aria-pressed", "false");
+      expect(within(records).queryByRole("button", { name: /aurora-board\.dts.*待审核/ })).not.toBeInTheDocument();
+    }
+    expect(within(inspector).queryByRole("button", { name: /提交.*审核/ })).not.toBeInTheDocument();
+    expect(within(inspector).queryByTestId("activate-candidate")).not.toBeInTheDocument();
+    expect(within(inspector).queryByRole("button", { name: "放弃更新" })).not.toBeInTheDocument();
+    expect(within(inspector).queryByRole("button", { name: "重新核对" })).not.toBeInTheDocument();
+    expect(within(inspector).getByText(status === "pending"
+      ? "已有待处理的来源审核，请等待审核完成后再放弃或重算候选。"
+      : "来源审核已通过，候选仍保留审核关联，不能放弃或重算。")).toBeVisible();
+    fireEvent.click(within(inspector).getByRole("button", { name: "查看审核" }));
+    expect(onNavigate).toHaveBeenLastCalledWith(`/parameter-submissions?project=project-1&request=${requestId}`);
+    for (const mutate of [submitCandidateSourceReview, activateCandidate, abandonCandidate, recomputeCandidate]) expect(mutate).not.toHaveBeenCalled();
   });
 
   it("does not offer activate for blocked, failed, abandoned, or stale candidates", async () => {
@@ -2147,55 +3071,118 @@ describe("ProjectConfigurationWorkbench", () => {
           }))
         })
       });
-      await screen.findByLabelText("候选只读源码模式");
-      const inspectorToggle = screen.getByRole("button", { name: "检查器" });
-      if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
-        fireEvent.click(inspectorToggle);
-      }
+      await screen.findByTitle(`cand-${status}`);
+      await openSourceUpdates();
       await screen.findByRole("complementary", { name: "配置检查器" });
       expect(screen.queryByTestId("activate-candidate")).not.toBeInTheDocument();
     }
   });
 
-  it("opens file and config-set inspectors from cutover query params", async () => {
+  it.each(["canonical", "unknown"])("blocks new-file candidate activation into a %s target configuration set", async (kind) => {
+    const activateCandidate = vi.fn();
+    const getSourceWorkflow = vi.fn(async () => {
+      if (kind === "unknown") throw new Error("来源状态未知");
+      return { canonical: true, bindingCount: 2, configSetId: "cs-default", proofToken: "source-proof" };
+    });
+    renderWorkbench({ search: "?configSet=cs-default&file=file-board&sourceMode=candidate&candidate=cand-new&inspector=candidates",
+      fileRepository: createFileRepository({
+        getSourceWorkflow, activateCandidate,
+        getCandidate: vi.fn(async () => ({ id: "cand-new", projectId: PROJECT.id, fileName: "new-overlay.dtsi",
+          format: "dts" as const, status: "ready" as const, diagnostics: [], blockers: [],
+          impact: { textDiff: "", structuralDiff: [], diagnostics: [], blockers: [], conflicts: [] },
+          createdAt: "2026-10-17T00:00:00.000Z", updatedAt: "2026-10-17T00:00:00.000Z" })),
+        getCandidateSourcePreview: vi.fn(async () => ({ kind: "legacy" as const, candidateId: "cand-new", format: "dts", canSubmit: false })),
+        downloadCandidate: vi.fn(async () => ({ contentType: "text/plain", fileName: "new-overlay.dtsi", bytes: new TextEncoder().encode("/dts-v1/;\n/ { };\n") }))
+      }) });
+    await screen.findByText(kind === "canonical" ? "当前配置受审核保护，暂不支持直接应用新文件候选。" : "来源校验尚未满足应用条件。");
+    await waitFor(() => expect(getSourceWorkflow).toHaveBeenCalledWith(PROJECT.id, "file-board"));
+    expect(screen.queryByTestId("activate-candidate")).not.toBeInTheDocument();
+    expect(activateCandidate).not.toHaveBeenCalled();
+    if (kind === "canonical") {
+      const files = await openSchemeFiles();
+      expect(within(files).getByText("此配置已登记来源，暂不支持添加文件或移除 DTS 文件；更新及 JSON 移除需审核。")).toBeVisible();
+      expect(within(files).queryByText(/同一文件可用于多个方案/)).not.toBeInTheDocument();
+      expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
+      await userEvent.click(within(files).getByRole("button", { name: "aurora-board.dts 更多" }));
+      expect(screen.queryByRole("menuitem", { name: /从配置移除/ })).not.toBeInTheDocument();
+    }
+  });
+
+  it("maps a legacy file inspector deep link to versions and keeps config-set membership details", async () => {
     renderWorkbench({
       search: "?configSet=cs-default&file=file-board&inspector=file"
     });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     const fileInspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(within(fileInspector).getByText("aurora-board.dts")).toBeInTheDocument();
-    expect(within(fileInspector).getByRole("button", { name: "手动同步" }).closest("dl")).toBeNull();
-    expect(within(fileInspector).getByRole("button", { name: "从配置集移除" }).closest("dl")).toBeNull();
+    expect(within(fileInspector).getByRole("region", { name: "版本历史" })).toBeVisible();
+    expect(within(fileInspector).queryByRole("button", { name: "手动同步" })).not.toBeInTheDocument();
+    expect(within(fileInspector).queryByRole("button", { name: /从配置移除/ })).not.toBeInTheDocument();
     const { default: axe } = await import("axe-core");
     expect((await axe.run(fileInspector, { runOnly: ["definition-list", "dlitem"] })).violations).toEqual([]);
 
     cleanup();
-    renderWorkbench({
+    const { onNavigate } = renderWorkbench({ syncSearch: true,
       search: "?configSet=cs-default&inspector=config-set"
     });
-    const configInspector = await screen.findByRole("complementary", { name: "配置检查器" });
-    expect(configInspector).toHaveTextContent("default");
-    expect(within(configInspector).getByRole("region", { name: "成员管理" }).closest("dl")).toBeNull();
-    expect((await axe.run(configInspector, { runOnly: ["definition-list", "dlitem"] })).violations).toEqual([]);
-    expect(screen.getByRole("button", { name: "检查器" })).toHaveAttribute("aria-expanded", "true");
+    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    expect(files).toHaveTextContent("默认配置");
+    expect(files).not.toHaveTextContent("default");
+    expect(within(files).queryByText("描述", { exact: true })).not.toBeInTheDocument();
+    expect(within(files).getByRole("table", { name: "配置文件" }).closest("dl")).toBeNull();
+    expect((await axe.run(files, { runOnly: ["definition-list", "dlitem"] })).violations).toEqual([]);
+    expect(files).toBeVisible();
+    await userEvent.click(within(files).getByRole("button", { name: "关闭文件管理" }));
+    await selectScheme("cs-alpha");
+    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    const latest = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+    expect(latest.get("configSet")).toBe("cs-alpha");
+    expect(latest.get("inspector")).toBeNull();
   });
 
   it("does not render the revision gate without a topology repository", async () => {
     renderWorkbench({
       search: "?configSet=cs-default&inspector=config-set"
     });
-    await screen.findByRole("complementary", { name: "配置检查器" });
+    await screen.findByRole("dialog", { name: "文件管理" });
     expect(screen.queryByRole("region", { name: "配置修订门禁" })).not.toBeInTheDocument();
+  });
+
+  it.each([0, 1])("uses no revision selector for %i revisions while retaining server validation for a real revision", async (count) => {
+    const topologyRepository = createTopologyRepository({ listConfigRevisions: vi.fn(async () => count === 0 ? [] : [{
+      id: "rev-only", configSetId: "cs-default", revisionNumber: 7, status: "resolved" as const, createdAt: "2026-08-17T10:00:00.000Z"
+    }]) });
+    renderWorkbench({ search: "?configSet=cs-default&inspector=release", topologyRepository });
+    const inspector = await screen.findByRole("dialog", { name: "配置版本" });
+    fireEvent.click(within(inspector).getByText("高级校验"));
+    const gate = await within(inspector).findByRole("region", { name: "配置修订门禁" });
+    if (count === 0) expect(await within(gate).findByText(/尚无配置修订/)).toBeVisible();
+    else expect(await within(gate).findByText("修订 7 · 已解析", { exact: true })).toBeVisible();
+    expect(within(gate).queryByRole("combobox", { name: "配置修订" })).not.toBeInTheDocument();
+    const validate = within(gate).getByRole("button", { name: "校验修订" });
+    if (count === 0) {
+      expect(validate).toBeDisabled();
+      fireEvent.click(validate);
+      expect(topologyRepository.validateRevision).not.toHaveBeenCalled();
+    } else {
+      expect(validate).toBeEnabled();
+      fireEvent.click(validate);
+      await waitFor(() => expect(topologyRepository.validateRevision).toHaveBeenCalledExactlyOnceWith(PROJECT.id, "rev-only"));
+      expect(await within(gate).findByRole("status")).toHaveTextContent("修订校验未硬性通过，发布前需确认该风险。");
+    }
   });
 
   it("lists real config revisions and validates the selected listed id", async () => {
     const topologyRepository = createTopologyRepository();
     renderWorkbench({
-      search: "?configSet=cs-default&inspector=config-set",
+      search: "?configSet=cs-default&inspector=release",
       topologyRepository
     });
 
-    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    const inspector = await screen.findByRole("dialog", { name: "配置版本" });
+    fireEvent.click(within(inspector).getByText("高级校验"));
     const gate = await within(inspector).findByRole("region", { name: "配置修订门禁" });
     const revisionSelect = await within(gate).findByRole("combobox", { name: "配置修订" });
     await waitFor(() => expect(revisionSelect).toHaveAttribute("data-value", "rev-cs-listed"));
@@ -2213,12 +3200,15 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(await within(gate).findByRole("status")).toHaveTextContent(
       "修订校验未硬性通过，发布前需确认该风险。"
     );
+    await selectControlOption(revisionSelect, "rev-cs-older");
+    fireEvent.click(within(gate).getByRole("button", { name: "校验修订" }));
+    await waitFor(() => expect(topologyRepository.validateRevision).toHaveBeenLastCalledWith(PROJECT.id, "rev-cs-older"));
   });
 
   it("requires acknowledgement on baseline release when revision validation is a soft pass", async () => {
     const topologyRepository = createTopologyRepository();
     renderWorkbench({
-      search: "?configSet=cs-default&inspector=config-set&baseline=baseline-draft-v2",
+      search: "?configSet=cs-default&inspector=release&baseline=baseline-draft-v2",
       topologyRepository,
       dtsRepository: createDtsRepository({
         listBaselines: vi.fn<DtsStructuredRepository["listBaselines"]>(async (_projectId, configSetId) =>
@@ -2246,7 +3236,8 @@ describe("ProjectConfigurationWorkbench", () => {
       })
     });
 
-    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    const inspector = await screen.findByRole("dialog", { name: "配置版本" });
+    fireEvent.click(within(inspector).getByText("高级校验"));
     const gate = await within(inspector).findByRole("region", { name: "配置修订门禁" });
     await waitFor(() =>
       expect(within(gate).getByRole("combobox", { name: "配置修订" })).toHaveAttribute("data-value", "rev-cs-listed")
@@ -2256,26 +3247,63 @@ describe("ProjectConfigurationWorkbench", () => {
       expect(topologyRepository.validateRevision).toHaveBeenCalledWith("project-1", "rev-cs-listed")
     );
 
-    fireEvent.click(await within(inspector).findByRole("button", { name: "发布" }));
-    const dialog = await screen.findByRole("dialog", { name: "发布基线确认" });
-    const confirm = within(dialog).getByRole("button", { name: "确认发布" });
+    fireEvent.click(await within(inspector).findByRole("button", { name: "设为正式版本" }));
+    const dialog = await screen.findByRole("dialog", { name: "设为正式版本确认" });
+    const confirm = within(dialog).getByRole("button", { name: "确认设为正式版本" });
     expect(confirm).toBeDisabled();
     fireEvent.click(
       within(dialog).getByRole("checkbox", {
-        name: "我已了解修订校验未硬性通过的风险，确认继续发布。"
+        name: "我已了解修订校验未硬性通过的风险，确认继续设为正式版本。"
       })
     );
     expect(confirm).toBeEnabled();
   });
 
-  it("opens the Conflicts task dock from tasks=conflicts cutover query", async () => {
+  it("opens the conflicts tab from the legacy task query without an empty task dock", async () => {
     renderWorkbench({
       search: "?configSet=cs-default&file=file-board&tasks=conflicts"
     });
     expect(await screen.findByRole("tabpanel", { name: "冲突" })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "任务" })).toHaveAttribute("aria-expanded", "true")
-    );
+    expect(screen.queryByRole("button", { name: "任务" })).not.toBeInTheDocument();
+    expect(screen.getByText("当前没有待处理同步冲突。来源冲突请在候选记录中查看。")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["更新来源", "candidates", "来源更新"],
+    ["版本历史与下载", "versions", "版本历史"],
+    ["配置版本", "release", "配置版本"]
+  ])("switches an activity URL to the %s task and clears the inspector query on close", async (button, level, title) => {
+    let finishStructure!: (result: DtsStructureResult) => void;
+    const pendingStructure = new Promise<DtsStructureResult>((resolve) => { finishStructure = resolve; });
+    const { onNavigate } = renderWorkbench({ syncSearch: true,
+      search: "?configSet=cs-default&file=file-board&node=board&property=model&inspector=activity",
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => pendingStructure) }) });
+    const initial = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(initial).toHaveTextContent("项目活动");
+    if (level === "release") fireEvent.click(screen.getByRole("button", { name: /^配置版本/ }));
+    else if (level === "candidates") await openSourceUpdates();
+    else await openWorkbenchVersionDetails();
+    await waitFor(() => {
+      const selected = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+      expect(selected.get("inspector")).toBe(level);
+      expect(selected.get("file")).toBe("file-board");
+    });
+    await act(async () => {
+      finishStructure({ nodes: [BOARD_STRUCTURE.nodes[1]!] });
+      await pendingStructure;
+    });
+    const panel = level === "release" ? screen.getByRole("dialog", { name: "配置版本" }) : screen.getByRole("complementary", { name: "配置检查器" });
+    await waitFor(() => expect(panel).toHaveTextContent(title!));
+    expect(panel).not.toHaveTextContent("活动时间线");
+    if (level === "release") expect(screen.getByRole("button", { name: /^配置版本/ })).toHaveAttribute("aria-pressed", "true");
+    if (level === "candidates") expect(screen.queryByRole("button", { name: /^更新来源/ })).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: level === "release" ? "关闭配置版本" : "关闭检查器" }));
+    await waitFor(() => expect(panel).not.toBeInTheDocument());
+    const closed = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
+    expect(closed.has("inspector")).toBe(false);
+    expect(closed.get("configSet")).toBe("cs-default");
+    expect(closed.get("file")).toBe("file-board");
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toBeVisible();
   });
 
   it("opens Activity from the command bar without a permanent audit banner above source", async () => {
@@ -2314,8 +3342,8 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     expect(screen.queryByLabelText("治理审计")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
+    await openWorkbenchMoreMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "项目活动" }));
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent("项目活动");
     await waitFor(() => expect(listAuditEvents).toHaveBeenCalled());
@@ -2323,7 +3351,7 @@ describe("ProjectConfigurationWorkbench", () => {
       projectId: PROJECT.id,
       apps: expect.arrayContaining(["parameters", "parameter-management", "parameter-admin"])
     });
-    expect(inspector).toHaveTextContent("Ada Admin");
+    await waitFor(() => expect(inspector).toHaveTextContent("Ada Admin"));
     expect(inspector).toHaveTextContent("创建");
     expect(inspector).toHaveTextContent("候选文件版本");
     expect(inspector).toHaveTextContent("成功");
@@ -2379,8 +3407,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
+    await openWorkbenchMoreMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "项目活动" }));
     await screen.findByLabelText("项目活动事件");
 
     fireEvent.click(screen.getByRole("button", { name: /上传 · 参数文件 · charging-overlay\.dtsi/i }));
@@ -2388,12 +3416,12 @@ describe("ProjectConfigurationWorkbench", () => {
       expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("file=file-overlay"))).toBe(true)
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
+    await openWorkbenchMoreMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "项目活动" }));
     await screen.findByLabelText("项目活动事件");
     fireEvent.click(screen.getByRole("button", { name: /创建 · 候选文件版本 · gone\.dts/i }));
     expect(await screen.findByRole("status", { name: "活动目标不可用" })).toHaveTextContent(/候选/);
-    expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toBeInTheDocument();
   });
 
   it("shows mutation toasts and refreshes the activity timeline from server evidence", async () => {
@@ -2425,10 +3453,12 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
+    await openWorkbenchMoreMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "项目活动" }));
     await waitFor(() => expect(listAuditEvents).toHaveBeenCalledTimes(1));
 
+    await openSourceUpdates();
+    fireEvent.click(screen.getByRole("button", { name: "上传新文件" }));
     const uploadInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['/dts-v1/;\n/ { model = "Cand"; };\n'], "aurora-board.dts", {
       type: "text/plain"
@@ -2438,10 +3468,12 @@ describe("ProjectConfigurationWorkbench", () => {
 
     await waitFor(() => expect(createCandidate).toHaveBeenCalled());
     expect(await screen.findByText("候选已创建，工作配置与活跃版本未改动。")).toBeInTheDocument();
+    await openWorkbenchMoreMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "项目活动" }));
     await waitFor(() => expect(listAuditEvents.mock.calls.length).toBeGreaterThan(1));
   });
 
-  it("keeps the workbench when activity loading fails and preserves PCW-D15 layout attribute", async () => {
+  it("keeps the workbench and desktop detail layout when activity loading fails", async () => {
     const listAuditEvents = vi.fn(async () => {
       throw new Error("audit unavailable");
     });
@@ -2452,11 +3484,11 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
+    await openWorkbenchMoreMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "项目活动" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/audit unavailable|活动|失败/i);
-    expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveAttribute("data-layout");
+    expect(screen.getByRole("main", { name: /只读 DTS 源码/ })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveAttribute("data-layout", "persistent");
   });
 
   it("creates a Config set from the empty project path with name validation and duplicate handling", async () => {
@@ -2476,6 +3508,7 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     const listConfigSets = vi.fn(async () => configSets);
     const { onNavigate } = renderWorkbench({
+      search: "?inspector=versions&baseline=old-baseline&candidate=old-candidate&sourceMode=history",
       dtsRepository: createDtsRepository({
         listConfigSets,
         createConfigSet,
@@ -2483,27 +3516,38 @@ describe("ProjectConfigurationWorkbench", () => {
       })
     });
 
-    expect(await screen.findByText("项目还没有配置集")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "打开旧配置集管理" })).not.toBeInTheDocument();
-    expect(screen.getByText(/上传不会自动激活/)).toBeInTheDocument();
+    expect(await screen.findByText("项目还没有配置")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开旧配置管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^更新来源/ })).not.toBeInTheDocument();
 
     await openCreateConfigSetDialog();
-    fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
-    expect(await screen.findByText(/请先填写配置集名称/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "配置" })).toHaveFocus());
+    await openCreateConfigSetDialog();
+    fireEvent.click(screen.getByRole("button", { name: "创建配置" }));
+    expect(await screen.findByText(/请先填写配置名称/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "board-a" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
+    fireEvent.change(screen.getByLabelText("配置名称"), { target: { value: "board-a" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建配置" }));
     await waitFor(() => expect(createConfigSet).toHaveBeenCalledWith(PROJECT.id, { name: "board-a" }));
     await waitFor(() =>
       expect(onNavigate).toHaveBeenCalledWith(
         expect.stringContaining("configSet=cs-board-a")
       )
     );
+    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    expect(files).toBeVisible();
+    const createdPath = onNavigate.mock.calls.map((call) => String(call[0]))
+      .find((path) => path.includes("configSet=cs-board-a"))!;
+    const createdQuery = new URLSearchParams(createdPath.split("?")[1]);
+    expect(createdQuery.get("inspector")).toBe("config-set");
+    for (const key of ["baseline", "candidate", "sourceMode"]) expect(createdQuery.has(key)).toBe(false);
+    await userEvent.click(within(files).getByRole("button", { name: "关闭文件管理" }));
 
     await openCreateConfigSetDialog();
-    fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "Board-A" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
-    expect(await screen.findByText(/已存在名为「Board-A」的配置集/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("配置名称"), { target: { value: "Board-A" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建配置" }));
+    expect(await screen.findByText(/已存在名为「Board-A」的配置/)).toBeInTheDocument();
   });
 
   it("adds and removes Config set members with role, sortOrder, and blast-radius confirmation", async () => {
@@ -2549,11 +3593,12 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    const ungrouped = screen.getByRole("group", { name: "未编组项目文件" });
+    const ungrouped = screen.getByRole("group", { name: "待分配项目文件" });
     expect(ungrouped).toHaveTextContent("notes.json");
-    expect(ungrouped).toHaveTextContent("尚未加入当前配置集");
+    expect(ungrouped).toHaveTextContent("待分配");
 
-    fireEvent.click(screen.getByRole("button", { name: "编入 notes.json" }));
+    const readsBeforeAdd = listConfigSetFiles.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "加入 notes.json" }));
     await waitFor(() =>
       expect(addConfigSetFile).toHaveBeenCalledWith(PROJECT.id, "cs-default", {
         fileId: "file-loose",
@@ -2562,29 +3607,22 @@ describe("ProjectConfigurationWorkbench", () => {
       })
     );
     await waitFor(() => expect(screen.getByRole("treeitem", { name: /notes\.json/ })).toBeInTheDocument());
+    expect(listConfigSetFiles.mock.calls.length).toBeGreaterThan(readsBeforeAdd);
 
-    cleanup();
-    renderWorkbench({
-      syncSearch: true,
-      search: "?configSet=cs-default&inspector=config-set",
-      dtsRepository: createDtsRepository({
-        listConfigSetFiles,
-        addConfigSetFile,
-        removeConfigSetFile
-      })
-    });
-    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
-    expect(inspector).toHaveTextContent("成员管理");
-    expect(within(inspector).getByRole("button", { name: "关闭检查器" })).toBeInTheDocument();
-
-    await waitFor(() => {
-      fireEvent.click(within(inspector).getByRole("button", { name: "移除 aurora-board.dts" }));
-      expect(screen.getByRole("dialog")).toHaveTextContent("后续基线与导出将不再包含它");
-    });
+    const files = await openSchemeFiles();
+    expect(within(files).getByRole("table", { name: "配置文件" })).toHaveTextContent("notes.json");
+    expect(within(files).getByRole("button", { name: "关闭文件管理" })).toBeInTheDocument();
+    await userEvent.click(within(files).getByRole("button", { name: "aurora-board.dts 更多" }));
+    const remove = await screen.findByRole("menuitem", { name: "从配置移除" });
+    await waitFor(() => expect(remove).toBeEnabled());
+    fireEvent.click(remove);
+    expect(await screen.findByRole("dialog", { name: "从配置移除文件" })).toHaveTextContent("后续基线与导出将不再包含它");
+    expect(removeConfigSetFile).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认移除" }));
     await waitFor(() =>
       expect(removeConfigSetFile).toHaveBeenCalledWith(PROJECT.id, "cs-default", "file-board")
     );
+    expect(removeConfigSetFile).toHaveBeenCalledTimes(1);
   });
 
   it.each(["source", "conflicts"])("keeps conflict locate on a non-member file and shows its source from %s", async (tab) => {
@@ -2640,11 +3678,12 @@ describe("ProjectConfigurationWorkbench", () => {
     if (taskToggle.getAttribute("aria-expanded") !== "true") {
       fireEvent.click(taskToggle);
     }
-    const dock = await screen.findByLabelText("冲突仲裁");
     if (tab === "source") {
-      await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(expect.stringMatching(/file=file-loose/)));
-      await screen.findByRole("heading", { name: "notes.json" });
+      expect(onNavigate).not.toHaveBeenCalledWith(expect.stringMatching(/file=file-loose/));
+      expect(screen.queryByRole("button", { name: "处理 1 项冲突" })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("tab", { name: /^冲突/ }));
     }
+    const dock = await screen.findByLabelText("冲突仲裁");
 
     fireEvent.click(within(dock).getByRole("button", { name: "在源码中定位" }));
     expect(await screen.findByRole("tabpanel", { name: "源码" })).toBeInTheDocument();
@@ -2660,7 +3699,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("heading", { name: "notes.json" })).toBeInTheDocument();
   });
 
-  it("runs manual sync from the file inspector and surfaces evidence in the task dock", async () => {
+  it("runs manual sync from the command menu and dismisses its result without losing drafts, conflicts, or a later error", async () => {
     const syncFile = vi.fn(async () => ({
       draftsCreated: 2,
       unchanged: 1,
@@ -2694,16 +3733,19 @@ describe("ProjectConfigurationWorkbench", () => {
 
     renderWorkbench({
       syncSearch: true,
+      canEdit: true,
+      canEditCritical: true,
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE),
+        exportConfigSet: vi.fn(async () => { throw new Error("导出记录不可用"); }) }),
       fileRepository: createFileRepository({ syncFile, listConflicts })
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
-    if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
-      fireEvent.click(inspectorToggle);
-    }
-    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
-    fireEvent.click(within(inspector).getByRole("button", { name: "手动同步" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    fireEvent.change(await screen.findByLabelText("字符串 1"), { target: { value: "Aurora-local" } });
+    expect(screen.getByRole("checkbox", { name: "board/model" })).toBeChecked();
+    await openWorkbenchMoreMenu();
+    await userEvent.click(screen.getByRole("menuitem", { name: "手动同步" }));
     await waitFor(() => expect(syncFile).toHaveBeenCalledWith(PROJECT.id, "file-board"));
     await waitFor(() => expect(listConflicts).toHaveBeenCalledWith(PROJECT.id));
 
@@ -2716,14 +3758,30 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(tasks).toHaveTextContent("已创建 2 条草稿");
     expect(taskToggle).toHaveTextContent("冲突");
     expect(taskToggle).toHaveTextContent("1");
-    expect(within(tasks).getByLabelText("冲突仲裁")).toBeInTheDocument();
-    expect(within(tasks).getByRole("button", { name: "使用文件值" })).toBeInTheDocument();
-    expect(within(tasks).getByRole("button", { name: "保留界面值" })).toBeInTheDocument();
-    expect(within(tasks).getByText("基线值")).toBeInTheDocument();
+    expect(within(tasks).queryByLabelText("冲突仲裁")).not.toBeInTheDocument();
+    expect(within(tasks).queryByRole("button", { name: "处理 1 项冲突" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: /^冲突/ }));
+    const conflicts = await screen.findByRole("tabpanel", { name: /冲突/ });
+    expect(within(conflicts).getByLabelText("冲突仲裁")).toBeInTheDocument();
+    expect(within(conflicts).getByRole("button", { name: "使用文件值" })).toBeInTheDocument();
+    expect(within(conflicts).getByRole("button", { name: "保留界面值" })).toBeInTheDocument();
+    expect(within(conflicts).getByText("基线值")).toBeInTheDocument();
     expect(tasks).not.toHaveTextContent("旧冲突视图");
+    const syncSuccess = within(tasks).getByText(/aurora-board.dts：同步成功/).textContent!;
+    expect(screen.getAllByText(syncSuccess, { exact: true })).toHaveLength(1);
+    await openSchemeMenu();
+    await userEvent.click(screen.getByRole("menuitem", { name: "导出当前配置" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("导出记录不可用");
+    fireEvent.click(within(tasks).getByRole("button", { name: "关闭操作结果" }));
+    expect(screen.queryByText(syncSuccess, { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("导出记录不可用");
+    expect(within(tasks).getByRole("checkbox", { name: "board/model" })).toBeChecked();
+    expect(within(tasks).getByText(/Aurora-local/)).toBeInTheDocument();
+    expect(taskToggle).toHaveTextContent(/冲突\s*1/);
+    expect(within(conflicts).getByLabelText("冲突仲裁")).toBeInTheDocument();
   });
 
-  it("exports the selected Config set from the command context", async () => {
+  it.each([false, true])("exports the current scheme ZIP and reports success only after download (archiveFailure=%s)", async (archiveFailure) => {
     const exportConfigSet = vi.fn(async () => ({
       manifest: {
         configSetId: "cs-default",
@@ -2744,10 +3802,12 @@ describe("ProjectConfigurationWorkbench", () => {
       },
       files: [{ name: "aurora-board.dts", format: "dts" as const, content: '/dts-v1/;\n/ { model = "Aurora"; };\n' }]
     }));
-    const createObjectURL = vi.fn(() => "blob:export");
+    const createObjectURL = vi.fn((_blob: Blob) => {
+      if (archiveFailure) throw new Error("archive download failed");
+      return "blob:export";
+    });
     const revokeObjectURL = vi.fn();
     const clickSpy = vi.fn();
-    const blobSpy = vi.spyOn(globalThis, "Blob");
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
     const originalCreateElement = document.createElement.bind(document);
     vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
@@ -2763,27 +3823,45 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "导出配置集" }));
+    await openSchemeMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "导出当前配置" }));
     await waitFor(() => expect(exportConfigSet).toHaveBeenCalledWith(PROJECT.id, "cs-default"));
-    expect(createObjectURL).toHaveBeenCalled();
-    expect(blobSpy).toHaveBeenCalled();
-    const blobParts = (blobSpy.mock.calls.at(-1)?.[0] ?? []) as BlobPart[];
-    const downloaded = blobParts.map((part) => (typeof part === "string" ? part : String(part))).join("");
-    expect(downloaded).toContain("wiseeff-config-set-export-manifest.json");
-    expect(downloaded).toContain('"role": "base"');
-    expect(downloaded).toContain('"sortOrder": 0');
-    expect(downloaded).toContain('"validation"');
-    expect(downloaded).toContain('"mode": "warn"');
-    expect(downloaded).toContain("aurora-board.dts");
-    expect(downloaded).toContain("wiseeff-config-set-export-files");
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    if (archiveFailure) {
+      expect(await screen.findByRole("alert")).toHaveTextContent("操作未完成");
+      expect(screen.queryByText(/已导出/)).not.toBeInTheDocument();
+      expect(clickSpy).not.toHaveBeenCalled();
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      return;
+    }
+    const blob = createObjectURL.mock.calls[0]![0];
+    expect(blob.type).toBe("application/zip");
+    const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === "string" || !reader.result ? reject(new Error("Expected ZIP bytes")) : resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(blob);
+    });
+    const { default: JSZip } = await import("jszip");
+    const archive = await JSZip.loadAsync(bytes, { checkCRC32: true });
+    expect(Object.keys(archive.files).sort()).toEqual(["aurora-board.dts", "wiseeff-config-set-export-manifest.json"]);
+    const exported = await exportConfigSet.mock.results[0]!.value;
+    expect(JSON.parse(await archive.file("wiseeff-config-set-export-manifest.json")!.async("string"))).toEqual(exported.manifest);
+    expect(await archive.file("aurora-board.dts")!.async("string")).toBe(exported.files[0]!.content);
     expect(clickSpy).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalled();
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    expect(tasks).toHaveTextContent("导出");
+    const exportSuccess = within(tasks).getByText(/已导出配置/).textContent!;
+    expect(screen.getAllByText(exportSuccess, { exact: true })).toHaveLength(1);
+    fireEvent.click(within(tasks).getByRole("button", { name: "关闭操作结果" }));
+    expect(screen.queryByRole("button", { name: "任务" })).not.toBeInTheDocument();
+    expect(screen.queryByText(exportSuccess, { exact: true })).not.toBeInTheDocument();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  it("downloads the active member DTS from the more menu", async () => {
+  it("downloads the active member DTS from the version record menu", async () => {
     const downloadVersion = vi.fn(async () => ({
       contentType: "text/plain",
       fileName: "aurora-board.dts",
@@ -2803,29 +3881,34 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     renderWorkbench({
-      fileRepository: createFileRepository({ downloadVersion })
+      fileRepository: createFileRepository({ downloadVersion, listVersions: vi.fn(async () => [ACTIVE_BOARD_VERSION]) })
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    const downloadItem = screen.getByRole("menuitem", { name: "下载 DTS" });
+    await openWorkbenchVersionDetails();
+    await openVersionMenu(12);
+    const downloadItem = screen.getByRole("menuitem", { name: "下载版本 12" });
     expect(downloadItem).toBeEnabled();
+    const downloadsBeforeAction = downloadVersion.mock.calls.length;
     fireEvent.click(downloadItem);
-    await waitFor(() =>
-      expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-12")
-    );
-    expect(clickSpy).toHaveBeenCalled();
-    expect(revokeObjectURL).toHaveBeenCalled();
+    await waitFor(() => expect(downloadVersion).toHaveBeenCalledTimes(downloadsBeforeAction + 1));
+    expect(downloadVersion).toHaveBeenLastCalledWith(PROJECT.id, "file-board", "version-board-12");
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledExactlyOnceWith());
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:dts");
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
   it("keeps download DTS available for non-admin viewers", async () => {
-    renderWorkbench({ canAdmin: false });
+    renderWorkbench({ canAdmin: false, fileRepository: createFileRepository({ listVersions: vi.fn(async () => [ACTIVE_BOARD_VERSION]) }) });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    expect(screen.getByRole("menuitem", { name: "下载 DTS" })).toBeEnabled();
-    expect(screen.queryByRole("menuitem", { name: "导出配置集" })).not.toBeInTheDocument();
+    const schemes = await openSchemeMenu();
+    expect(within(schemes).queryByRole("menuitem", { name: "导出当前配置" })).not.toBeInTheDocument();
+    expect(within(schemes).getByRole("menuitem", { name: "查看文件" })).toBeEnabled();
+    await userEvent.keyboard("{Escape}");
+    await openWorkbenchVersionDetails();
+    await openVersionMenu(12);
+    expect(screen.getByRole("menuitem", { name: "下载版本 12" })).toBeEnabled();
   });
 
   it("disables download DTS when the Config set has no members", async () => {
@@ -2834,21 +3917,23 @@ describe("ProjectConfigurationWorkbench", () => {
         listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => [])
       })
     });
-    await screen.findByText("当前配置集没有成员文件");
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    expect(screen.getByRole("menuitem", { name: "下载 DTS" })).toBeDisabled();
+    await screen.findByText("当前配置还没有文件");
+    await openWorkbenchMoreMenu();
+    expect(screen.queryByRole("menuitem", { name: "下载当前 DTS" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "版本历史与下载" })).not.toBeInTheDocument();
   });
 
   it("keeps read context visible and denies mutations when canAdmin is false", async () => {
     renderWorkbench({ canAdmin: false });
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("notes.json");
-    expect(screen.getByText(/仅管理员可变更配置集成员、同步或导出/)).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: /\+ 新建配置集/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    expect(screen.queryByRole("menuitem", { name: "导出配置集" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编入 notes.json" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "待分配项目文件" })).toHaveTextContent("notes.json");
+    expect(screen.getByText(/仅管理员可变更配置文件、同步或导出/)).toBeInTheDocument();
+    const schemes = await openSchemeMenu();
+    expect(within(schemes).queryByRole("menuitem", { name: "新建配置…" })).not.toBeInTheDocument();
+    expect(within(schemes).queryByRole("menuitem", { name: "导出当前配置" })).not.toBeInTheDocument();
+    expect(within(schemes).getByRole("menuitem", { name: "查看文件" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "加入 notes.json" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "手动同步" })).not.toBeInTheDocument();
   });
 
@@ -2859,11 +3944,12 @@ describe("ProjectConfigurationWorkbench", () => {
       })
     });
 
-    expect(await screen.findByText("当前配置集没有成员文件")).toBeInTheDocument();
-    expect(screen.getByText(/上传候选不会自动激活工作配置/)).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "上传候选" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "上传候选" })[0]).toBeEnabled();
-    expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("编入");
+    expect(await screen.findByText("当前配置还没有文件")).toBeInTheDocument();
+    await openSourceUpdates();
+    expect(screen.getByRole("button", { name: "添加来源文件" })).toBeEnabled();
+    expect(screen.getAllByRole("button", { name: /更新来源|添加来源文件/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /更新来源|添加来源文件/ })[0]).toBeEnabled();
+    expect(screen.getByRole("group", { name: "待分配项目文件" })).toHaveTextContent("加入");
   });
 
   it("assigns a verified ungrouped file to an empty config set", async () => {
@@ -2871,7 +3957,7 @@ describe("ProjectConfigurationWorkbench", () => {
     renderWorkbench({ dtsRepository: createDtsRepository({
       listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => []), addConfigSetFile
     }) });
-    const assign = await screen.findByRole("button", { name: "编入 notes.json" });
+    const assign = await screen.findByRole("button", { name: "加入 notes.json" });
     await waitFor(() => expect(assign).toBeEnabled());
     fireEvent.click(assign);
     await waitFor(() => expect(addConfigSetFile).toHaveBeenCalledWith(PROJECT.id, "cs-default", {
@@ -2889,7 +3975,7 @@ describe("ProjectConfigurationWorkbench", () => {
       if (changed && fileId === "file-loose") throw new Error("proof unavailable");
       return legacy.getSourceWorkflow(projectId, fileId);
     }) }) });
-    const assign = await screen.findByRole("button", { name: "编入 notes.json" });
+    const assign = await screen.findByRole("button", { name: "加入 notes.json" });
     await waitFor(() => expect(assign).toBeEnabled());
     changed = true;
     fireEvent.click(assign);
@@ -2908,8 +3994,8 @@ describe("ProjectConfigurationWorkbench", () => {
       if (kind === "unknown") throw new Error("来源校验不可用");
       return { ...(await legacy.getSourceWorkflow(projectId, fileId)), canonical: true };
     }) }) });
-    const assign = await screen.findByRole("button", { name: "编入 notes.json" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "编入 aurora-board.dts" })).toBeEnabled());
+    const assign = await screen.findByRole("button", { name: "加入 notes.json" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "加入 aurora-board.dts" })).toBeEnabled());
     expect(assign).toBeDisabled();
     fireEvent.click(assign);
     expect(addConfigSetFile).not.toHaveBeenCalled();
@@ -2919,9 +4005,9 @@ describe("ProjectConfigurationWorkbench", () => {
     const listConflicts = vi.fn<ParameterFileRepository["listConflicts"]>().mockRejectedValueOnce(new Error("offline")).mockResolvedValue([]);
     renderWorkbench({ search: "?configSet=cs-default&tab=conflicts", fileRepository: createFileRepository({ listConflicts }) });
     expect(await screen.findByText("冲突加载失败，请重试。")).toBeVisible();
-    expect(screen.queryByText("当前没有待处理冲突。")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前没有待处理同步冲突。来源冲突请在候选记录中查看。")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByText("当前没有待处理冲突。")).toBeVisible();
+    expect(await screen.findByText("当前没有待处理同步冲突。来源冲突请在候选记录中查看。")).toBeVisible();
     expect(listConflicts).toHaveBeenCalledTimes(2);
   });
 
@@ -3008,18 +4094,21 @@ describe("ProjectConfigurationWorkbench", () => {
 
     renderWorkbench({
       search: "?configSet=cs-default&file=file-board",
+      syncSearch: true,
       listAuditEvents,
       fileRepository: createFileRepository({ listConflicts })
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "更多" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
+    await openWorkbenchMoreMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "项目活动" }));
     await screen.findByLabelText("项目活动事件");
     fireEvent.click(screen.getByRole("button", { name: /裁决 · 文件冲突 · aurora-board\.dts/i }));
 
     const tasks = await screen.findByRole("region", { name: "配置任务" });
-    expect(within(tasks).getByLabelText("冲突仲裁")).toBeInTheDocument();
+    expect(within(tasks).queryByRole("button", { name: "处理 1 项冲突" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: /^冲突/ }));
+    expect(await screen.findByLabelText("冲突仲裁")).toBeInTheDocument();
     expect(screen.queryByText(/冲突裁决面板尚未接入/)).not.toBeInTheDocument();
   });
 

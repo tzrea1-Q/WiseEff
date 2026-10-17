@@ -1,0 +1,48 @@
+.workbench-configuration-files-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(calc(var(--space-16) * 14), calc(100vw - var(--space-12)));
+  max-height: calc(100dvh - var(--space-12));
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+}
+
+.workbench-configuration-files-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+}
+
+.workbench-configuration-files-dialog__header { border-bottom: 1px solid var(--border); }
+.workbench-configuration-files-dialog__header > div { min-width: 0; }
+.workbench-configuration-files-dialog__header h2 { margin: 0; font-size: var(--text-lg); line-height: var(--leading-lg); }
+.workbench-configuration-files-dialog__header p { margin: var(--space-1) 0 0; overflow-wrap: anywhere; color: var(--text-muted); }
+.workbench-configuration-files-dialog__body { min-width: 0; min-height: 0; overflow-y: auto; padding: var(--space-5) var(--space-6); }
+.workbench-configuration-files-dialog__body > :first-child { margin-top: 0; }
+.workbench-configuration-files-dialog__body > :last-child { margin-bottom: 0; }
+.workbench-configuration-files-dialog__note { color: var(--text-muted); margin: var(--space-4) 0; }
+.workbench-configuration-files-dialog__error,
+.workbench-configuration-files-dialog__status { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
+.workbench-configuration-files-dialog__error p { color: var(--danger); overflow-wrap: anywhere; }
+.workbench-configuration-files-dialog__operation-error { color: var(--danger); overflow-wrap: anywhere; }
+.workbench-configuration-files-dialog__table { min-width: 0; table-layout: auto; }
+.workbench-configuration-files-dialog__table th,
+.workbench-configuration-files-dialog__table td { padding: var(--space-3) var(--space-2); }
+.workbench-configuration-files-dialog__table .workbench-configuration-files-dialog__name { width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.workbench-configuration-files-dialog__table .workbench-configuration-files-dialog__file-link { display: inline; width: auto; height: auto; min-height: var(--space-8); padding: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.workbench-configuration-files-dialog__actions-heading { text-align: right; }
+.workbench-configuration-files-dialog__row-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); }
+.workbench-configuration-files-dialog__empty { display: grid; justify-items: center; gap: var(--space-3); padding: var(--space-8) var(--space-4); color: var(--text-muted); }
+.workbench-configuration-files-dialog__empty p { margin: 0; }
+.workbench-configuration-files-dialog__add { margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--border); }
+.workbench-configuration-files-dialog__add h3 { margin: 0 0 var(--space-3); font-size: var(--text-base); }
+.workbench-configuration-files-dialog__fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .45fr) minmax(0, .3fr) auto; align-items: end; gap: var(--space-3); }
+.workbench-configuration-files-dialog__fields label { display: grid; min-width: 0; gap: var(--space-2); color: var(--text-secondary); }
+.workbench-configuration-files-dialog__fields [role="combobox"] { width: 100%; min-width: 0; }
+.workbench-configuration-files-dialog__add [role="alert"] { margin: var(--space-2) 0 0; color: var(--danger); }

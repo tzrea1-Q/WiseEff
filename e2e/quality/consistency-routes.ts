@@ -17,7 +17,7 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/log-admin": ["tabs", "toggle"],
   "/log-admin?tab=domains": ["tabs"],
   "/log-admin?tab=quality": ["tabs"],
-  ...Object.fromEntries(projectConfigurationPaths.map((path) => [path, ["tabs"] as const])),
+  "/parameter-admin/projects/aurora/configuration?tab=conflicts": ["tabs"],
   "/organization": ["section"],
   "/organization/members": ["section", "tabs"],
   "/parameter-home": ["toggle"],
@@ -46,7 +46,7 @@ const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xia
   viewSwitches: viewSwitchStylePaths,
   viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
-  rowActions: [...catalogPaths, "/parameters", ...adminListPaths, ...projectConfigurationPaths],
+  rowActions: [...catalogPaths, "/parameters", ...adminListPaths],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
     "/debugging-admin/nodes", "/feedback-admin", ...collectionPaths, "/dts-reload",
@@ -80,7 +80,7 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
       ? ["history", "candidate", "unified-diff", "side-by-side"].map((mode) => ({ ...route, path: `${route.path}?sourceMode=${mode}` }))
       : []),
     ...(route.path === "/parameter-admin/projects/aurora/configuration"
-      ? ["tab=structure", "tab=conflicts", "inspector=file"].map((query) => ({ ...route, path: `${route.path}?${query}` }))
+      ? ["tab=structure", "inspector=file"].map((query) => ({ ...route, path: `${route.path}?${query}` }))
       : []),
     ...(route.path === "/parameter-admin/modules"
       ? ["queue", "registry"].map((tab) => ({ ...route, path: `${route.path}?tab=${tab}` })) : []),

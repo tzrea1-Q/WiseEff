@@ -82,7 +82,6 @@ describe("StructuredValueEditor styling contract", () => {
     expect(classNames).toContain("structured-value-phandle-list");
     expect(classNames).toContain("structured-value-bool");
     expect(classNames).toContain("structured-value-mixed");
-    expect(classNames).toContain("structured-value-normalized-preview");
   });
 
   it("styles every class the component emits", () => {

@@ -66,24 +66,26 @@ export function WorkbenchRevisionGate({
       ) : null}
 
       {empty ? (
-        <p role="status">尚未生成配置修订。请先在项目管理中上传 DTS 以触发 ingest。</p>
-      ) : (
+        <p role="status">尚无配置修订。添加来源文件并完成解析后，可在这里校验。</p>
+      ) : snapshot.revisions.length > 1 ? (
         <label>
-          <span>配置修订</span>
+          <span className="sr-only">配置修订</span>
           <SelectControl
             ariaLabel="配置修订"
             value={snapshot.selectedRevisionId ?? ""}
-            disabled={snapshot.loading || snapshot.revisions.length === 0}
+            disabled={snapshot.loading}
             onValueChange={(value) => {
               if (value) onSelect(value);
             }}
-            options={snapshot.revisions.length === 0 ? [{ value: "", label: "暂无配置修订" }] : snapshot.revisions.map((revision) => ({
+            options={snapshot.revisions.map((revision) => ({
               value: revision.id,
               label: configRevisionOptionLabel(revision.revisionNumber, revision.status)
             }))}
           />
         </label>
-      )}
+      ) : snapshot.revisions[0] ? (
+        <p>{configRevisionOptionLabel(snapshot.revisions[0].revisionNumber, snapshot.revisions[0].status)}</p>
+      ) : null}
 
       <div className="configuration-workbench__revision-gate-actions">
         <button

@@ -1,4 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
+import { openWorkbenchPanel } from "./helpers/runtime";
+import { selectControlOption } from "./helpers/selectControl";
 import { expect, test } from "playwright/test";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
 import { makeTestAuthContext } from "../../server/testing/authContext";
@@ -44,7 +46,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("response", (response) => {
-    if (/source-manual-sync|parameter-value-change-requests/.test(response.url())
+    if (/parameter-file-candidates|source-manual-sync|parameter-value-change-requests/.test(response.url())
       || (outcomeKind === "refresh" && /source-workflow/.test(response.url()))) {
       network.push(`${response.request().method()} ${response.status()} ${new URL(response.url()).pathname}`);
     }
@@ -123,55 +125,97 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
 
       await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${setId}&file=${fileId}`);
       await dismissXiaozeHint(page);
-      await page.getByRole("button", { name: "检查器", exact: true }).click();
+      await openWorkbenchPanel(page, "file");
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      await expect(inspector.getByRole("button", { name: "来源一致性校验" })).toBeVisible();
-      await inspector.getByRole("button", { name: "上传来源并预览批量候选" }).click();
-      const dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备审核` });
-      let unchangedKey: string | undefined;
+      await page.getByRole("button", { name: "更多", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "来源一致性校验", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "手动同步", exact: true })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await openWorkbenchPanel(page, "candidates");
+      const dialog = inspector.getByRole("region", { name: `提交 ${format.toUpperCase()} 批量来源审核` });
+      const uploadSource = async (buffer: Buffer) => {
+        const choosing = page.waitForEvent("filechooser");
+        await inspector.getByRole("button", { name: "上传新文件", exact: true }).click();
+        await (await choosing).setFiles({ name: fileName,
+          mimeType: format === "json" ? "application/json" : "text/plain", buffer });
+      };
+      const legacyPrepareChecks: ReturnType<typeof summarizeApiResponse>[] = [];
+      let unchangedCandidateId: string | undefined;
       if (outcomeKind === "approve") {
-        await dialog.getByLabel(/选择来源文件/).setInputFiles({ name: fileName,
-          mimeType: "application/octet-stream", buffer: Buffer.alloc(2 * 1024 * 1024 + 1) });
-        await expect(dialog.getByRole("alert")).toContainText("不超过 2 MiB");
-        await expect(dialog.getByRole("button", { name: "预览有序目标与证明" })).toBeDisabled();
-        expect(network).toEqual([]);
-        await dialog.getByLabel(/选择来源文件/).setInputFiles({ name: fileName,
-          mimeType: format === "json" ? "application/json" : "text/plain", buffer: Buffer.from(before[format]) });
-        const unchangedResponse = page.waitForResponse((response) => response.url().endsWith("/source-manual-sync/prepare"));
-        await dialog.getByRole("button", { name: "预览有序目标与证明" }).click();
+        await uploadSource(Buffer.alloc(2 * 1024 * 1024 + 1));
+        await expect(inspector.getByRole("alert")).toContainText("不超过 2 MiB");
+        await expect(dialog).toHaveCount(0);
+        expect(network.filter((entry) => entry.startsWith("POST "))).toEqual([]);
+        const unchangedResponse = page.waitForResponse((response) => response.url().endsWith("/parameter-file-candidates")
+          && response.request().method() === "POST");
+        await uploadSource(Buffer.from(before[format]));
         const unchanged = await unchangedResponse;
-        expect(unchanged.status(), await unchanged.text()).toBe(409);
-        unchangedKey = unchanged.request().headers()["x-request-id"];
-        expect((await unchanged.json()).error.details.reason).toBe("candidate-changed-unbound-or-non-target-bytes");
-        await expect(dialog.getByRole("alert")).toContainText("未形成可验证的目标变更");
+        expect(unchanged.status(), await unchanged.text()).toBe(201);
+        const unchangedId = (await unchanged.json()).item.id as string;
+        unchangedCandidateId = unchangedId;
+        expect(unchangedCandidateId).toBeTruthy();
+        const unchangedPreview = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${unchangedId}/source-preview`), { headers: adminHeaders });
+        expect(unchangedPreview.status(), await unchangedPreview.text()).toBe(200);
+        const unchangedProof = (await unchangedPreview.json()).item as { canSubmit: boolean; cohortProofToken: string };
+        expect(unchangedProof.canSubmit).toBe(false);
+        await expect(inspector).toContainText("单参数变更校验");
+        await expect(dialog).toHaveCount(0);
+        // The retired preparation endpoint remains an independent API contract, not the UI upload path.
+        const refused = await request.post(api(`/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`), {
+          headers: { ...adminHeaders, "X-Request-Id": `b906-legacy-unchanged-${format}` },
+          data: { contentBase64: Buffer.from(before[format]).toString("base64"), expectedCurrentVersionId: activeVersion,
+            expectedWorkflowProofToken: unchangedProof.cohortProofToken }
+        });
+        expect(refused.status(), await refused.text()).toBe(409);
+        expect((await refused.json()).error.details.reason).toBe("candidate-changed-unbound-or-non-target-bytes");
+        legacyPrepareChecks.push(summarizeApiResponse(refused, { method: "POST", path: `/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`, responseSummary: "Independent API: unchanged source refused" }));
       }
-      await dialog.getByLabel(/选择来源文件/).setInputFiles({ name: fileName,
-        mimeType: format === "json" ? "application/json" : "text/plain", buffer: Buffer.from(after[format]) });
-      const prepareResponse = page.waitForResponse((response) => response.url().endsWith("/source-manual-sync/prepare"));
-      await dialog.getByRole("button", { name: "预览有序目标与证明" }).click();
+      const prepareResponse = page.waitForResponse((response) => response.url().endsWith("/parameter-file-candidates")
+        && response.request().method() === "POST");
+      await uploadSource(Buffer.from(after[format]));
       const preparation = await prepareResponse;
       expect(preparation.status(), await preparation.text()).toBe(201);
-      expect(preparation.request().headers()["x-request-id"]).not.toBe(unchangedKey);
+      const createdCandidateId = (await preparation.json()).item.id as string;
+      expect(createdCandidateId).toBeTruthy();
+      const sourcePreviewResponse = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${createdCandidateId}/source-preview`), { headers: adminHeaders });
+      expect(sourcePreviewResponse.status(), await sourcePreviewResponse.text()).toBe(200);
+      const sourcePreview = (await sourcePreviewResponse.json()).item as { candidateId: string; cohortProofToken: string;
+        proofToken: string; bindings: Array<{ bindingId: string; beforeText: string; afterText?: string }> };
+      const prepared = { ...sourcePreview, targets: sourcePreview.bindings };
+      expect(prepared.candidateId).toBe(createdCandidateId);
       if (outcomeKind === "approve") {
-        const prepareCalls = network.filter((item) => item.endsWith("/source-manual-sync/prepare"));
-        expect(prepareCalls).toHaveLength(2);
-        const unchangedRequest = network.find((item) => item.includes("POST 409") && item.endsWith("/source-manual-sync/prepare"));
-        expect(unchangedRequest).toBeDefined();
+        expect(createdCandidateId).not.toBe(unchangedCandidateId);
+        expect(network.filter((entry) => entry.startsWith("POST 201") && entry.endsWith("/parameter-file-candidates"))).toHaveLength(2);
+        expect(network.filter((entry) => entry.endsWith("/source-manual-sync/prepare"))).toHaveLength(0);
+        const legacyBody = { contentBase64: Buffer.from(after[format]).toString("base64"), expectedCurrentVersionId: activeVersion,
+          expectedWorkflowProofToken: prepared.cohortProofToken };
+        const legacyHeaders = { ...adminHeaders, "X-Request-Id": `b906-legacy-prepare-${format}` };
+        const legacyPrepared = await request.post(api(`/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`), { headers: legacyHeaders, data: legacyBody });
+        expect(legacyPrepared.status(), await legacyPrepared.text()).toBe(201);
+        const legacyCandidateId = (await legacyPrepared.json()).item.candidateId as string;
+        expect(legacyCandidateId).not.toBe(createdCandidateId);
+        const legacyReplay = await request.post(api(`/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`), { headers: legacyHeaders, data: legacyBody });
+        expect(legacyReplay.status(), await legacyReplay.text()).toBe(201);
+        expect((await legacyReplay.json()).item).toMatchObject({ candidateId: legacyCandidateId, replayed: true });
+        legacyPrepareChecks.push(summarizeApiResponse(legacyPrepared, { method: "POST", path: `/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`, responseSummary: `Independent API preparation candidateId=${legacyCandidateId}` }),
+          summarizeApiResponse(legacyReplay, { method: "POST", path: `/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`, responseSummary: "Independent API: same preparation key replays the same candidate" }));
       }
-      const prepared = (await preparation.json()).item as { candidateId: string; batchProofDigest: string;
-        cohortProofToken: string; targets: Array<{ bindingId: string }> };
       expect(prepared.targets).toHaveLength(2);
       expect(prepared.targets.every((target) => bindings.some((binding) => binding.id === target.bindingId))).toBe(true);
       expect(await Promise.all(prepared.targets.map((target) =>
         loadLegacyBindingIdentity(getRootPostgresPool(db)!, target.bindingId)))).toEqual([null, null]);
-      await expect(dialog.getByRole("list", { name: "手动同步完整有序目标" }).getByRole("listitem")).toHaveCount(2);
-      for (const target of await dialog.getByRole("list", { name: "手动同步完整有序目标" }).getByRole("listitem").all()) {
-        await target.getByRole("radio", { name: /采用文件值/ }).check();
+      const targetRows = dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem");
+      await expect(targetRows).toHaveCount(2);
+      for (const [index, target] of prepared.targets.entries()) {
+        await expect(targetRows.nth(index)).toContainText(target.beforeText);
+        await expect(targetRows.nth(index)).toContainText(target.afterText!);
       }
       await expect(dialog).toContainText(format.toUpperCase());
-      await expect(dialog).toContainText("审核人批准后才一次应用全部目标");
-      await page.keyboard.press("Tab");
-      expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+      await expect(dialog).toContainText("审核通过后整批应用");
+      await dialog.getByRole("textbox", { name: "修改原因" }).focus();
+      await expect(dialog.getByRole("textbox", { name: "修改原因" })).toBeFocused();
+      await dialog.getByRole("textbox", { name: "修改原因" }).fill(`upload ${format} source`);
+      await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
       if (outcomeKind === "approve") await page.screenshot({
         path: testInfo.outputPath(`b906-${format}-manual-prepare-1440x900.png`)
       });
@@ -179,7 +223,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       const recordEvidence = async () => {
         const finalState = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
         const artifact = await writeOperationJsonArtifact(testInfo, "manual-sync-proof.json", {
-          format, outcomeKind, prepared, baseline, afterPrepare, finalState, network
+          format, outcomeKind, prepared, baseline, afterPrepare, finalState, network, legacyPrepareChecks
         });
         await recordOperationEvidence({
           operationId: "PARAM-FILE-SYNC-001",
@@ -191,9 +235,10 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
           assertions: ["ui", "api", "db"],
           artifacts: [artifact],
           api: [summarizeApiResponse(preparation, {
-            method: "POST", path: `/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`,
-            responseSummary: `candidateId=${prepared.candidateId}; batchProofDigest=${prepared.batchProofDigest}; outcome=${outcomeKind}`
-          })],
+            method: "POST", path: "/api/v1/projects/aurora/parameter-file-candidates",
+            responseSummary: `candidateId=${prepared.candidateId}; source-preview proof read separately; outcome=${outcomeKind}`
+          }), summarizeApiResponse(sourcePreviewResponse, { method: "GET", path: `/api/v1/projects/aurora/parameter-file-candidates/${prepared.candidateId}/source-preview`,
+            responseSummary: `bindings=${prepared.targets.length}` }), ...legacyPrepareChecks],
           db: [{ table: "parameter_catalog.project_parameter_bindings", predicate: `id in (${prepared.targets.map((target) => target.bindingId).join(", ")})`,
             rowCount: prepared.targets.length,
             observed: JSON.stringify({ before: baseline.bindings, afterPrepare: afterPrepare.bindings, after: finalState.bindings }) }]
@@ -218,7 +263,7 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         const advancedSubmit = await request.post(api("/api/v2/projects/aurora/parameter-value-change-requests/batches"), {
           headers: { ...adminHeaders, "X-Request-Id": "b906-manual-background-refresh" },
           data: { candidateId: advancedId, expectedProofToken: advancedProof.proofToken,
-            reason: "advance source while manual sync dialog stays open", assignedToUserId: acceptanceCast.sunMei.userId }
+            reason: "advance source while source update pane stays open", assignedToUserId: acceptanceCast.sunMei.userId }
         });
         expect(advancedSubmit.status(), await advancedSubmit.text()).toBe(201);
         const advancedRequest = (await advancedSubmit.json()).item as { id: string; batchProofDigest: string };
@@ -246,20 +291,24 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         const refreshed = page.waitForResponse((response) => response.url().endsWith(`/parameter-files/${fileId}/source-workflow`)
           && response.status() === 200);
         await switchSet(setId);
-        await expect(dialog.getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
-        expect(await dialog.getByLabel(/选择来源文件/).evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe(fileName);
-        await expect(dialog.getByRole("radio", { name: /采用文件值/ }).first()).toBeChecked();
+        await expect(dialog.getByRole("button", { name: "提交 2 项审核" })).toBeDisabled();
+        await expect(dialog).toContainText(fileName);
+        await expect(inspector.getByRole("button", { name: "上传新文件", exact: true })).toBeEnabled();
+        await expect(dialog.getByRole("textbox", { name: "修改原因" })).toHaveValue(`upload ${format} source`);
+        await expect(targetRows).toHaveCount(2);
         releaseRefresh();
         const refreshedResponse = await refreshed;
         expect((await refreshedResponse.json()).item.proofToken).not.toBe(prepared.cohortProofToken);
         await expect(dialog.getByRole("alert")).toContainText("文件版本或来源证明已变化");
-        await expect(dialog.getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
-        expect(await dialog.getByLabel(/选择来源文件/).evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe(fileName);
-        await expect(dialog.getByRole("radio", { name: /采用文件值/ }).first()).toBeChecked();
-        expect(network.filter((entry) => entry.endsWith("/parameter-value-change-requests/batches"))).toHaveLength(0);
+        await expect(dialog.getByRole("button", { name: "提交 2 项审核" })).toBeDisabled();
+        await expect(dialog).toContainText(fileName);
+        await expect(inspector.getByRole("button", { name: "上传新文件", exact: true })).toBeEnabled();
+        await expect(dialog.getByRole("textbox", { name: "修改原因" })).toHaveValue(`upload ${format} source`);
+        await expect(targetRows).toHaveCount(2);
+        expect(network.filter((entry) => entry.startsWith("POST ") && entry.endsWith("/parameter-value-change-requests/batches"))).toHaveLength(0);
         await dialog.getByRole("alert").scrollIntoViewIfNeeded();
         await page.screenshot({ path: testInfo.outputPath("b906-json-manual-background-refresh-alert-1440x900.png") });
-        await dialog.getByRole("radio", { name: /采用文件值/ }).first().scrollIntoViewIfNeeded();
+        await targetRows.first().scrollIntoViewIfNeeded();
         await page.screenshot({ path: testInfo.outputPath("b906-json-manual-background-refresh-1440x900.png") });
         await testInfo.attach("b906-json-manual-background-refresh-network", { body: JSON.stringify(network, null, 2),
           contentType: "application/json" });
@@ -268,21 +317,20 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
         outcome = "success";
         return;
       }
-      await dialog.getByRole("textbox", { name: "修改原因" }).fill(`upload ${format} source`);
       const submitResponse = page.waitForResponse((response) => response.url().endsWith("/parameter-value-change-requests/batches")
         && response.request().method() === "POST");
-      await dialog.getByRole("button", { name: "一次提交全部 2 项审核" }).click();
+      await dialog.getByRole("button", { name: "提交 2 项审核" }).click();
       const submitted = await submitResponse;
       expect(submitted.status(), await submitted.text()).toBe(201);
       const receipt = (await submitted.json()).item as { id: string; candidateId: string; batchProofDigest: string };
       expect(receipt.batchProofDigest).toMatch(/^[0-9a-f]{64}$/);
-      expect(receipt.batchProofDigest).toBe(prepared.batchProofDigest);
-      const prepareReplay = await request.post(api(`/api/v1/projects/aurora/parameter-files/${fileId}/source-manual-sync/prepare`), {
-        headers: { ...adminHeaders, "X-Request-Id": preparation.request().headers()["x-request-id"]! },
-        data: preparation.request().postDataJSON()
-      });
-      expect(prepareReplay.status(), await prepareReplay.text()).toBe(201);
-      expect((await prepareReplay.json()).item).toMatchObject({ candidateId: prepared.candidateId, replayed: true });
+      expect(receipt.candidateId).toBe(prepared.candidateId);
+      const frozenCandidate = (await db.query<{ diff_digest: string }>(
+        "select diff_digest from project_parameter_file_candidates where id=$1", [prepared.candidateId])).rows[0]!;
+      expect(receipt.batchProofDigest).toBe(frozenCandidate.diff_digest);
+      expect(submitted.request().postDataJSON().targetDecisions).toEqual(prepared.targets.map((target) => ({
+        bindingId: target.bindingId, choice: "file", expectedConflictProofs: []
+      })));
       const replay = await request.post(api("/api/v2/projects/aurora/parameter-value-change-requests/batches"), {
         headers: { ...adminHeaders, "X-Request-Id": submitted.request().headers()["x-request-id"]! },
         data: submitted.request().postDataJSON()
@@ -350,7 +398,6 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
       await detail.getByText("溯源信息", { exact: true }).click();
       await expect(detail).toContainText(receipt.batchProofDigest);
-      await detail.getByText("完整技术数据", { exact: true }).click();
       await expect.poll(async () => JSON.parse((await detail.getByLabel("完整溯源数据").textContent())!)["来源元数据"]?.format).toBe(format);
       await detail.getByText("查看源文件差异", { exact: true }).click();
       await expect(detail.getByRole("region", { name: "批量固定源差异" })).toBeVisible();
@@ -406,7 +453,8 @@ test(`#906 B ${format} manual source sync ${outcomeKind} through the pages`, asy
       else expect(now).toBe(activeVersion);
       expect(pageErrors).toEqual([]);
       expect(network).toEqual(expect.arrayContaining([
-        expect.stringMatching(/POST 201 .*source-manual-sync\/prepare$/),
+        expect.stringMatching(/POST 201 .*parameter-file-candidates$/),
+        expect.stringMatching(/GET 200 .*source-preview$/),
         expect.stringMatching(/POST 201 .*parameter-value-change-requests\/batches$/),
         expect.stringMatching(new RegExp(`POST ${outcomeKind === "drift" ? 409 : 200} .*parameter-value-change-requests/.*?/review$`))
       ]));

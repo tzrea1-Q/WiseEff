@@ -42,7 +42,10 @@ describe("shared consistency contracts", () => {
 
   it("preserves source canvas metrics, full-grid insets and the upward task dock shadow", () => {
     const configuration = readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css");
-    expect(declarationsFor(configuration, '.configuration-workbench__config-select [data-slot="select-trigger"]').padding).toBe("0 calc(var(--space-6) + var(--space-1)) 0 var(--space-2)");
+    expect(declarationsFor(configuration, ".configuration-workbench__config-select")["padding-left"]).toBe("var(--space-2)");
+    const configTrigger = declarationsFor(configuration, ".configuration-workbench__config-select > button");
+    expect(configTrigger.gap).toBe("var(--space-2)");
+    expect(configTrigger["font-size"]).toBe("var(--text-sm)");
     expect(declarationsFor(configuration, ".configuration-workbench__source-state").padding).toBe("calc(var(--space-6) + var(--space-1))");
     expect(declarationsFor(configuration, ".configuration-workbench__code").font).toBe("var(--text-sm) / 1.75 var(--font-code)");
     expect(declarationsFor(styles, ":root")["--font-code"]).toBe('"SFMono-Regular", Consolas, "Liberation Mono", monospace');
