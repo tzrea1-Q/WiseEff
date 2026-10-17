@@ -352,7 +352,7 @@ test.describe("canonical value workflow on real sources", () => {
     await selectRejected.focus();
     await selectRejected.press("Enter");
     await expect(page).toHaveURL(new RegExp(`request=${rejectedId}(?:&|$)`));
-    await expect(page.getByRole("complementary", { name: "审阅详情", exact: true })).toBeFocused();
+    await expect(page.getByRole("complementary", { name: "提交详情", exact: true })).toBeFocused();
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
     await expect(page.getByRole("article", { name: "源文件请求详情" }).locator("details").getByText(rejectedId, { exact: true }).first()).toBeVisible();
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("查看完整源文件", { exact: true }).click();
