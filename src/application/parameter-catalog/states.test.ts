@@ -136,6 +136,18 @@ describe("catalog domain states", () => {
     });
   });
 
+  it("keeps historical definition status pinned to the captured catalog, not its old revision release", () => {
+    expect(deriveCatalogDomainState({ document: readyCatalogDocument, definition: {
+      ...retiredDefinition, currentRevision: { ...retiredDefinition.currentRevision, publishedInCatalogReleaseId: "crel_old_revision" }
+    } })).toMatchObject({ kind: "retired", target: "definition", catalogReleaseId: CATALOG_RELEASE_ID });
+  });
+
+  it("treats retired registration evidence on the definition as read-only even before the subject read catches up", () => {
+    expect(deriveCatalogDomainState({ document: readyCatalogDocument, subject: registeredSubject,
+      definition: { ...activeDefinition, registration: { ...registeredSubject.registration, status: "retired" } }
+    })).toMatchObject({ kind: "retired", target: "registration", writesEnabled: false, catalogReleaseId: CATALOG_RELEASE_ID });
+  });
+
   it("maps conflict reasons to preserve-input and forbids silent retry", () => {
     for (const reason of catalogConflictReasons) {
       const state = catalogStateFromFailure(failure(reason, { catalogReleaseId: CATALOG_RELEASE_ID }));

@@ -1,6 +1,7 @@
 import { selectControlOption } from "@/test/selectControlOption";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -16,6 +17,7 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import type { CatalogListQuery } from "@/infrastructure/http/parameterCatalogDtos";
+import { catalogApiFailure } from "@/application/parameter-catalog/errors";
 
 import { CanonicalSubjectPlacementPanel } from "./CanonicalSubjectPlacementPanel";
 
@@ -250,6 +252,138 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("keeps a failed partial inventory readable and retries the complete inventory before enabling writes", async () => {
+    const ports = createPorts();
+    const original = ports.listSubjects.getMockImplementation()!;
+    let fail = true;
+    ports.listSubjects.mockImplementation(async (query) => {
+      if (query?.cursor && fail) throw new Error("offline");
+      return original(query);
+    });
+    render(<CanonicalSubjectPlacementPanel catalog={ports.catalog} governance={ports.governance}
+      organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin modules={ports.modules} />);
+    expect(await screen.findByRole("button", { name: "重新读取完整目录" })).toBeVisible();
+    expect(screen.getByText("vendor,node")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "登记主体：vendor,node" })).not.toBeInTheDocument();
+    fail = false;
+    await userEvent.setup().click(screen.getByRole("button", { name: "重新读取完整目录" }));
+    expect(await screen.findByText("vendor,configuration")).toBeVisible();
+    expect(screen.getByRole("button", { name: "登记主体：vendor,node" })).toBeEnabled();
+  });
+
+  it("keeps zero-definition subjects quiet while preserving a real empty response for nonzero counts", async () => {
+    const ports = createPorts();
+    const empty = { ...subject({ id: "empty", canonicalName: "empty-subject" }), definitionCounts: { active: 0, deprecated: 0, retired: 0 } };
+    const counted = subject({ id: "counted", canonicalName: "counted-subject" });
+    ports.listSubjects.mockResolvedValue({ items: [empty, counted], totalCount: 2, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    render(<CanonicalSubjectPlacementPanel catalog={ports.catalog} governance={ports.governance}
+      organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin modules={ports.modules} />);
+    const row = await screen.findByRole("listitem", { name: /empty-subject/ });
+    expect(within(row).getByRole("button", { name: "暂无有效参数" })).toBeDisabled();
+    expect(within(row).queryByText(/已废弃定义/)).not.toBeInTheDocument();
+    await userEvent.setup().click(within(screen.getByRole("listitem", { name: /counted-subject/ })).getByRole("button", { name: "查看参数" }));
+    expect(await screen.findByText("当前主体没有有效参数定义。")).toBeVisible();
+  });
+
+  it("shows the first batch while later pages load, blocks writes and stops cancelled pagination", async () => {
+    const ports = createPorts();
+    const secondPage = Promise.withResolvers<Awaited<ReturnType<typeof ports.listSubjects>>>();
+    const original = ports.listSubjects.getMockImplementation()!;
+    ports.listSubjects.mockImplementation(async (query) => {
+      if (query?.cursor === "subjects-2") return secondPage.promise;
+      return original(query);
+    });
+    const view = render(<CanonicalSubjectPlacementPanel catalog={ports.catalog} governance={ports.governance}
+      organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin
+      modules={[module("issue897-node", "Node", "node-type"), module("issue897-driver-a", "Driver A", "driver-group")]} />);
+    expect(await screen.findByText("vendor,node")).toBeVisible();
+    expect(screen.getByText(/搜索与筛选仅覆盖已加载记录/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "登记主体：vendor,node" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "调整归属：vendor,driver" })).toBeDisabled();
+    view.unmount();
+    secondPage.resolve({ items: [], totalCount: 3, hasMore: true, nextCursor: "subjects-3", catalogReleaseId: CATALOG_RELEASE_ID });
+    await secondPage.promise;
+    await Promise.resolve();
+    expect(ports.listSubjects).toHaveBeenCalledTimes(2);
+  });
+  it("restores a later subject page and treats an empty tree-filter scope as empty", async () => {
+    const ports = createPorts();
+    ports.listSubjects.mockResolvedValue({ items: Array.from({ length: 25 }, (_, index) => subject({ id: `subject-${index}`, canonicalName: `vendor,subject-${index}` })), totalCount: 25, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID } as never);
+    const view = render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="user" search="?subjectPage=3&expandedSubject=subject-24" />);
+    expect(await screen.findByRole("navigation", { name: "规范主体分页" })).toHaveTextContent("第 3 / 3 页");
+    expect(await screen.findByRole("region", { name: "vendor,subject-24 的有效参数" })).toBeVisible();
+    view.rerender(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="user" search="?subjectPage=3" visibleModuleIds={[]} />);
+    expect(screen.queryByRole("listitem", { name: /vendor,subject-/ })).not.toBeInTheDocument();
+    expect(screen.getByText("没有匹配的规范主体。")).toBeVisible();
+  });
+  it("ignores an earlier subject placement response after a later subject was selected", async () => {
+    const ports = createPorts();
+    const first = (await ports.catalog.listSubjects()).items[0];
+    const second = { ...first, id: "subject-second", canonicalName: "vendor,second", registration: { ...first.registration, id: "registration-second" } };
+    ports.listSubjects.mockResolvedValue({ items: [first, second], totalCount: 2, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID } as never);
+    const registrations = await ports.governance.listRegistrations(CATALOG_ORGANIZATION_ID);
+    ports.listRegistrations.mockResolvedValue({ ...registrations, items: [...registrations.items, { ...registrations.items[0], id: "registration-second", subjectId: second.id }], totalCount: 2 });
+    const initialRegistration = await ports.governance.getRegistration(CATALOG_ORGANIZATION_ID, "registration-driver");
+    const initialPlacement = await ports.governance.getPlacement(CATALOG_ORGANIZATION_ID, "registration-driver");
+    let releaseFirst!: (value: typeof initialPlacement) => void;
+    vi.spyOn(ports.governance, "getRegistration").mockImplementation(async (_org, id) => ({ item: { ...initialRegistration.item, id, subjectId: id === "registration-second" ? second.id : first.id } }));
+    vi.spyOn(ports.governance, "getPlacement").mockImplementation((_org, id) => id === "registration-driver"
+      ? new Promise((resolve) => { releaseFirst = resolve; }) : Promise.resolve({ ...initialPlacement, etag: "etag-second" }));
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "调整归属：vendor,driver" }));
+    await user.click(screen.getByRole("button", { name: "调整归属：vendor,second" }));
+    await screen.findByRole("dialog", { name: "调整放置" });
+    releaseFirst(initialPlacement);
+    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-driver-b");
+    await user.click(screen.getByRole("button", { name: "继续确认" }));
+    const confirm = screen.getByRole("dialog", { name: "确认调整放置" });
+    await user.click(within(confirm).getByRole("checkbox"));
+    await user.click(within(confirm).getByRole("button", { name: "确认调整放置" }));
+    await waitFor(() => expect(ports.updatePlacement).toHaveBeenCalled());
+    expect(ports.updatePlacement.mock.calls[0]).toMatchObject([CATALOG_ORGANIZATION_ID, "registration-second", expect.anything(), expect.objectContaining({ ifMatch: "etag-second" })]);
+  });
+
+  it("refreshes current placement and impact together while keeping the draft target and requiring confirmation again", async () => {
+    const ports = createPorts();
+    ports.updatePlacement.mockRejectedValueOnce(catalogApiFailure("placement-conflict"));
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "调整归属：vendor,driver" }));
+    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-driver-b");
+    const confirm = async () => { await user.click(screen.getByRole("button", { name: "继续确认" })); const dialog = screen.getByRole("dialog", { name: "确认调整放置" }); await user.click(within(dialog).getByRole("checkbox")); await user.click(within(dialog).getByRole("button", { name: "确认调整放置" })); };
+    await confirm();
+    await screen.findByRole("alert");
+    const registration = await ports.governance.getRegistration(CATALOG_ORGANIZATION_ID, "registration-driver");
+    ports.getRegistration.mockResolvedValue({ item: { ...registration.item, impact: { bindingCount: 9, projectCount: 3 } } });
+    const placement = await ports.governance.getPlacement(CATALOG_ORGANIZATION_ID, "registration-driver");
+    ports.getPlacement.mockResolvedValue({ ...placement, etag: "etag-refreshed", item: { ...placement.item, moduleId: "issue897-driver-b", displayName: "Driver B" } });
+    await user.click(screen.getByRole("button", { name: "刷新证据" }));
+    expect(await screen.findByText(/证据已刷新/)).toBeVisible();
+    expect(screen.getByText(/9 个参数绑定、3 个项目/)).toBeVisible();
+    expect(screen.getByLabelText("目标模块")).toHaveAttribute("data-value", "issue897-driver-b");
+    expect(ports.updatePlacement).toHaveBeenCalledTimes(1);
+    await confirm();
+    await waitFor(() => expect(ports.updatePlacement).toHaveBeenCalledTimes(2));
+    expect(ports.updatePlacement.mock.calls[1][3]).toMatchObject({ ifMatch: "etag-refreshed" });
+  });
+  it("restores subject filters and expanded definitions from the URL and preserves module query keys", async () => {
+    const ports = createPorts();
+    const navigate = vi.fn();
+    function Harness() {
+      const [search, setSearch] = useState("?tab=tree&moduleId=scope&subjectQ=driver&subjectKind=driver&subjectRegistration=registered&expandedSubject=subject-driver");
+      return <CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" search={search}
+        onNavigate={(path) => { navigate(path); setSearch(new URL(path, window.location.origin).search); }} />;
+    }
+    render(<Harness />);
+    const row = await screen.findByRole("listitem", { name: /vendor,driver/ });
+    expect(screen.getByRole("searchbox", { name: "筛选规范主体" })).toHaveValue("driver");
+    expect(await within(row).findByText("extra_119")).toBeVisible();
+    expect(screen.queryByRole("listitem", { name: /vendor,node/ })).not.toBeInTheDocument();
+    await userEvent.clear(screen.getByRole("searchbox", { name: "筛选规范主体" }));
+    expect(new URL(navigate.mock.calls.at(-1)![0], window.location.origin).searchParams.get("moduleId")).toBe("scope");
+    expect(screen.getByLabelText("筛选登记状态")).toHaveAttribute("data-value", "registered");
+  });
   it("pages a large subject list and searches across every page", async () => {
     const ports = createPorts();
     ports.listSubjects.mockReset();
@@ -298,9 +432,9 @@ describe("CanonicalSubjectPlacementPanel", () => {
     );
 
     expect(await screen.findByText("vendor,configuration")).toBeInTheDocument();
-    expect(screen.getAllByText("Driver").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("NodeType").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("ConfigurationSchema").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("驱动").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("节点类型").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("配置规范").length).toBeGreaterThan(0);
     expect(ports.subjectQueries).toEqual([
       { catalogReleaseId: CATALOG_RELEASE_ID, limit: 100 },
       { catalogReleaseId: CATALOG_RELEASE_ID, limit: 100, cursor: "subjects-2" }
@@ -309,6 +443,8 @@ describe("CanonicalSubjectPlacementPanel", () => {
     const driverRow = screen.getByRole("listitem", { name: /vendor,driver/ });
     await userEvent.setup().click(within(driverRow).getByRole("button", { name: "查看参数" }));
     expect(await within(driverRow).findByText("extra_119")).toBeInTheDocument();
+    expect(within(driverRow).getAllByRole("link")[0]).toHaveAttribute("href",
+      expect.stringContaining(`subjectId=subject-driver&definitionId=${activeDefinition.id}&catalogReleaseId=${CATALOG_RELEASE_ID}`));
     expect(ports.definitionQueries).toEqual([
       {
         subjectId: "subject-driver",
@@ -324,6 +460,24 @@ describe("CanonicalSubjectPlacementPanel", () => {
         cursor: "definitions-2"
       }
     ]);
+  });
+
+  it("filters placements by selected module and descendants while preserving search", async () => {
+    const ports = createPorts();
+    const modules = [...ports.modules, module("category-root", "业务分类", "business")]
+      .map((item) => item.id === "issue897-driver-a" ? { ...item, parentId: "category-root" } : item);
+    const view = (selectedModuleId: string | null) => <CanonicalSubjectPlacementPanel catalog={ports.catalog}
+      governance={ports.governance} organizationId={CATALOG_ORGANIZATION_ID} actor="user" modules={modules}
+      selectedModuleId={selectedModuleId} />;
+    const rendered = render(view("category-root"));
+    expect(await screen.findByRole("listitem", { name: /vendor,driver/ })).toBeInTheDocument();
+    expect(screen.queryByRole("listitem", { name: /vendor,node/ })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole("searchbox", { name: "筛选规范主体" }), "driver");
+    rendered.rerender(view("issue897-driver-b"));
+    expect(screen.queryByRole("listitem", { name: /vendor,driver/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "筛选规范主体" })).toHaveValue("driver");
+    rendered.rerender(view(null));
+    expect(screen.getByRole("listitem", { name: /vendor,driver/ })).toBeInTheDocument();
   });
 
   it("registers an unregistered subject with the selected real module ID", async () => {
@@ -387,7 +541,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
       CATALOG_ORGANIZATION_ID,
       "registration-driver"
     );
-    expect(screen.getByText(/14 个有效定义、1 个当前 Binding、1 个项目/)).toBeInTheDocument();
+    expect(screen.getByText(/14 个有效定义、1 个参数绑定、1 个项目/)).toBeInTheDocument();
     await selectControlOption(screen.getByLabelText("目标模块"), "issue897-driver-b");
     await user.click(screen.getByRole("button", { name: "继续确认" }));
     const confirmation = await screen.findByRole("dialog", { name: "确认调整放置" });
@@ -445,6 +599,8 @@ describe("CanonicalSubjectPlacementPanel", () => {
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent("当前主体缺少影响数据");
+    expect(screen.getByRole("listitem", { name: /vendor,node/ })).toBeVisible();
+    expect(screen.getByRole("listitem", { name: /vendor,driver/ })).toBeVisible();
     expect(screen.queryByLabelText("目标模块")).not.toBeInTheDocument();
     expect(ports.updatePlacement).not.toHaveBeenCalled();
   });
@@ -505,7 +661,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     );
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText(/目录发布 未就绪。/)).toBeInTheDocument();
+    expect(screen.getByText("查看参数定义，或维护主体的模块归属。")).toBeInTheDocument();
     expect(screen.queryByText(/个有效主体/)).not.toBeInTheDocument();
   });
 

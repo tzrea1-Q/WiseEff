@@ -6,6 +6,10 @@
 
 ## 使用方式
 
+`PCAT-REGISTRATION-INITIALIZE-001`：组织管理员明确选择业务父分类和目标名称，在同一事务创建对应类型目标并登记主体。组件及真实 PostgreSQL 并发、租户隔离、失败回滚已有专项覆盖；专属浏览器写入与审计回执仍待补，不记为已完成的自动化浏览器覆盖。
+
+`PROJ-ARCHIVE-001`：Admin 通过现有带鉴权、租户隔离和审计的项目状态接口确认归档或恢复为在研。默认清单收起已归档项目，通过状态筛选仍可访问；规范历史和现有读写权限保持不变。focused 组件/客户端覆盖见 `src/components/admin/ProjectAdminTable.test.tsx`、`src/components/parameter-admin-next/ProjectsOperationsPanel.test.tsx`、`src/infrastructure/http/parameterAdminClient.test.ts`；原有服务端状态/鉴权/审计契约见 `server/modules/parameters/projectAdminMutations.test.ts`。归档专属浏览器、数据库与审计验收仍待执行，未记为自动化浏览器覆盖。
+
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
 - 命令、路径、环境变量、API 路径、角色名、状态名和脚本名称保持英文原样，避免复制时出错。
 - 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。

@@ -15,6 +15,8 @@ export type CatalogNavigatorNode = {
   displayName: string;
   /** Secondary line for subject leaves (type and registration state). */
   meta?: string;
+  subjectType?: SubjectItem["type"];
+  retired?: boolean;
   /** Placed subjects at or below this node; `0` for a subject leaf. */
   subjectCount: number;
   /** Set on subject leaves so the page can filter by the exact subject. */
@@ -60,6 +62,8 @@ function subjectLeaf(subject: SubjectItem, describeSubject: (item: SubjectItem) 
     kind: "subject",
     displayName: subject.canonicalName,
     meta: describeSubject(subject),
+    subjectType: subject.type,
+    retired: subject.membership.status === "retired" || subject.registration.status === "retired",
     subjectCount: 0,
     subjectId: subject.id,
     children: []

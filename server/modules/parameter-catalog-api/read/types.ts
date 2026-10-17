@@ -201,6 +201,8 @@ export type CatalogListQuery = {
   readonly limit: number;
   readonly type?: "driver" | "node-type" | "configuration-schema";
   readonly lifecycle?: string;
+  /** Optional owner membership lifecycle filter for definition collections. */
+  readonly subjectLifecycle?: "active" | "retired";
   readonly registration?: string;
   readonly search?: string;
   readonly subjectId?: CatalogSubjectId;

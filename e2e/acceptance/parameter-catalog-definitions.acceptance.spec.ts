@@ -75,8 +75,8 @@ test.describe("restored definition workspace and governed authoring", () => {
       await moduleOption.click();
       await expect(region.getByText(/已选模块子树/)).toBeVisible();
       await expect(count).toContainText(/共 \d+ 项/);
-      // Clearing returns to the full organization collection.
-      await region.getByRole("button", { name: "清除选择" }).click();
+      // Activating the selected module again clears the scope.
+      await moduleOption.click();
       await expect(region.getByText(/已选模块子树/)).toHaveCount(0);
     }
 

@@ -67,6 +67,11 @@ const modules: ParameterModule[] = [
 ];
 
 describe("moduleAttributionTreeUtils", () => {
+  it("keeps zero-observation uncovered groups in the uncovered filter", () => {
+    const coverage = new Map([["g", { total: 0, covered: 0, overlayCovered: 0, platformCovered: 0, shadowedCount: 0, promotedCount: 0 }]]);
+    expect(filterModulesForAttribution(modules, { kinds: ["business", "driver-group", "node-type", "unclassified"], origins: ["curated", "auto"], hideNotYetObserved: false, onlyUncoveredParse: true }, coverage)
+      .map((module) => module.id)).toEqual(["b", "g"]);
+  });
   it("defaults expansion to business categories only", () => {
     expect([...defaultExpandedModuleIds(modules)].sort()).toEqual(["b"]);
   });

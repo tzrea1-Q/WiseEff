@@ -8,11 +8,66 @@ import { createTestModuleRegistryRepository } from "@/test/harness";
 import { ParameterModuleMappingPanel } from "./ParameterModuleMappingPanel";
 
 vi.mock("@/components/parameter-admin-next/CanonicalSubjectPlacementPanel", () => ({
-  CanonicalSubjectPlacementPanel: ({ onChanged }: { onChanged: () => Promise<void> }) =>
-    <button type="button" onClick={() => void onChanged()}>完成规范登记</button>
+  CanonicalSubjectPlacementPanel: ({ onChanged, selectedModuleId }: { onChanged: () => Promise<void>; selectedModuleId?: string | null }) =>
+    <button type="button" data-selected-module={selectedModuleId} onClick={() => void onChanged()}>完成规范登记</button>
 }));
 
 describe("canonical module page request boundary", () => {
+  it("selects a module, retains URL context across tabs, and isolates the discovery task", async () => {
+    const module = { id: "power", name: "电源", parentId: null, sortOrder: 0, description: "", scope: "organization",
+      importance: "medium" as const, effectiveImportance: "medium" as const, kind: "business" as const,
+      origin: "curated" as const, sourceKey: null, parameterCount: 0, definitionCount: 0 };
+    const repository = createTestModuleRegistryRepository({ getRegistry: vi.fn().mockResolvedValue({ modules: [module], mappings: [] }) });
+    const onNavigate = vi.fn();
+    render(<ParameterModuleMappingPanel repository={repository} canonicalEnabled search="?q=vendor"
+      onNavigate={onNavigate} canonicalCatalog={{} as ParameterCatalogRepository}
+      canonicalGovernance={{ listDriverCompatibleDiscovery: vi.fn().mockResolvedValue({ status: "ready",
+        catalogRelease: { id: "release", digest: "digest" }, matcherRevision: "matcher", items: [], nextCursor: null,
+        ignoredReviewItemCount: 0 }) } as unknown as ParameterCatalogGovernanceRepository} canonicalOrganizationId="org" />);
+    const selection = await screen.findByRole("button", { name: "查看模块：电源" });
+    fireEvent.click(selection);
+    expect(selection).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "完成规范登记" })).toHaveAttribute("data-selected-module", "power");
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameter-admin/modules?q=vendor&moduleId=power");
+    await userEvent.click(screen.getByRole("tab", { name: "来源识别" }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameter-admin/modules?q=vendor&moduleId=power&tab=queue");
+    expect(screen.queryByRole("button", { name: "全部模块" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "模块", exact: true }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "查看模块：电源" }).closest('[role="treeitem"]')!, { key: "Enter" });
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameter-admin/modules?q=vendor");
+  });
+  it("connects tree URL state without dropping subject and module context", async () => {
+    const module = { id: "power", name: "电源", parentId: null, sortOrder: 0, description: "", scope: "organization",
+      importance: "medium" as const, effectiveImportance: "medium" as const, kind: "business" as const,
+      origin: "curated" as const, sourceKey: null, parameterCount: 0, definitionCount: 0 };
+    const onNavigate = vi.fn();
+    render(<ParameterModuleMappingPanel repository={createTestModuleRegistryRepository({ getRegistry: vi.fn().mockResolvedValue({ modules: [module], mappings: [] }) })}
+      search="?moduleId=power&subjectQ=vendor&treeQ=电源" onNavigate={onNavigate} />);
+    const search = await screen.findByRole("searchbox", { name: "搜索模块" });
+    expect(search).toHaveValue("电源");
+    fireEvent.change(search, { target: { value: "充电" } });
+    await waitFor(() => expect(onNavigate).toHaveBeenCalled());
+    const href = new URL(onNavigate.mock.calls.at(-1)![0], "http://localhost");
+    expect(href.searchParams.get("treeQ")).toBe("充电");
+    expect(href.searchParams.get("moduleId")).toBe("power");
+    expect(href.searchParams.get("subjectQ")).toBe("vendor");
+  });
+  it("restores the bookmarked module after navigating forward and back", async () => {
+    const module = { id: "power", name: "电源", parentId: null, sortOrder: 0, description: "", scope: "organization",
+      importance: "medium" as const, effectiveImportance: "medium" as const, kind: "business" as const,
+      origin: "curated" as const, sourceKey: null, parameterCount: 0, definitionCount: 0 };
+    const props = { repository: createTestModuleRegistryRepository({ getRegistry: vi.fn().mockResolvedValue({ modules: [module,
+      { ...module, id: "battery", name: "电池" }], mappings: [] }) }), canonicalEnabled: true,
+      canonicalCatalog: {} as ParameterCatalogRepository, canonicalGovernance: {} as ParameterCatalogGovernanceRepository,
+      canonicalOrganizationId: "org", onNavigate: vi.fn() };
+    const view = render(<ParameterModuleMappingPanel {...props} search="?moduleId=power" />);
+    await userEvent.click(await screen.findByRole("button", { name: "查看模块：电池" }));
+    view.rerender(<ParameterModuleMappingPanel {...props} search="?moduleId=battery" />);
+    expect(screen.getByRole("button", { name: "查看模块：电池" })).toHaveAttribute("aria-pressed", "true");
+    view.rerender(<ParameterModuleMappingPanel {...props} search="?moduleId=power" />);
+    expect(screen.getByRole("button", { name: "查看模块：电源" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "查看模块：电池" })).toHaveAttribute("aria-pressed", "false");
+  });
   it.each(["driver-group", "node-type"] as const)("keeps historical %s name/details read-only with a canonical handoff", async (moduleKind) => {
     const registry = {
       modules: [{
@@ -53,11 +108,15 @@ describe("canonical module page request boundary", () => {
       canonicalGovernance={{ listDriverCompatibleDiscovery } as unknown as ParameterCatalogGovernanceRepository}
       canonicalOrganizationId="org_one" />);
 
+    expect(listDriverCompatibleDiscovery).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole("tab", { name: "来源识别" }));
     expect(await screen.findByText(/当前来源：device.dts/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
     await waitFor(() => expect(screen.getByRole("region", { name: "历史驱动注册表" }))
       .toHaveAttribute("aria-busy", "false"));
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 Historical driver" }));
+    expect(screen.queryByRole("tree", { name: "模块归属树" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "模块" }));
+    fireEvent.click(await screen.findByRole("button", { name: "查看模块 Historical driver" }));
     const dialog = screen.getByRole("dialog", { name: "Historical driver" });
     if (moduleKind === "driver-group") {
       expect(within(dialog).getByLabelText("驱动性质")).toHaveAttribute("readonly");
@@ -100,15 +159,17 @@ describe("canonical module page request boundary", () => {
       canonicalCatalog={{} as ParameterCatalogRepository}
       canonicalGovernance={{ listDriverCompatibleDiscovery } as unknown as ParameterCatalogGovernanceRepository}
       canonicalOrganizationId="org_one" />);
-    expect(await screen.findByText("当前范围没有来源观察记录。")).toBeInTheDocument();
+    await screen.findByRole("button", { name: "完成规范登记" });
+    expect(listDriverCompatibleDiscovery).not.toHaveBeenCalled();
     expect(getDiscoveryHints).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("tab", { name: "发现队列" }));
-    fireEvent.click(screen.getByRole("button", { name: "刷新发现" }));
+    await userEvent.click(screen.getByRole("tab", { name: "来源识别" }));
+    expect(await screen.findByText("当前范围没有来源观察记录。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     await waitFor(() => expect(listDriverCompatibleDiscovery).toHaveBeenCalledTimes(2));
     await userEvent.click(screen.getByRole("tab", { name: "模块" }));
     fireEvent.click(screen.getByRole("button", { name: "完成规范登记" }));
-    await waitFor(() => expect(listDriverCompatibleDiscovery).toHaveBeenCalledTimes(3));
-    expect(getRegistry).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(getRegistry).toHaveBeenCalledTimes(3));
+    expect(listDriverCompatibleDiscovery).toHaveBeenCalledTimes(2);
     expect(getDiscoveryHints).not.toHaveBeenCalled();
     expect(repository.createMapping).not.toHaveBeenCalled();
     expect(repository.recomputeBindings).not.toHaveBeenCalled();

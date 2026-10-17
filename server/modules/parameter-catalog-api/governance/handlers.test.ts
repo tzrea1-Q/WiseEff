@@ -284,6 +284,31 @@ describe("S8-GOV one-command HTTP mapping", () => {
     expect(commands[0]).toMatchObject({ destinationModuleId: "module-exact" });
   });
 
+  it("keeps initialized destinations deterministic and inside the guarded registration command", async () => {
+    const { ports, commands } = createHarness();
+    const input = request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {
+      headers: writeHeaders,
+      body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, newDestination: { parentModuleId: "business-parent", name: "Driver" } }
+    });
+    expect((await handleCatalogGovernance(ports, input)).status).toBe(201);
+    expect((await handleCatalogGovernance(ports, input)).status).toBe(201);
+    expect(commands[0]).toMatchObject({ newDestination: { parentModuleId: "business-parent", name: "Driver" }, destinationModuleId: expect.stringMatching(/^pmod_canonical_/), context: { actorKind: "org-admin" } });
+    expect(commands[0]).toEqual(commands[1]);
+  });
+
+  it("resolves the exact module selected for register-subject review resolution", async () => {
+    const { ports, commands } = createHarness();
+    const response = await handleCatalogGovernance({ ...ports, resolveDestinationModuleId: async (input) => {
+      expect(input.destinationModuleId).toBe("chosen-review-target");
+      return input.destinationModuleId ?? null;
+    } }, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/parameter-review-items/prit_s8_gov/resolve`, {
+      headers: writeHeaders,
+      body: { resolution: { type: "register-subject", subjectId: "csub_acme_power", placement: { mode: "use-default" }, destinationModuleId: "chosen-review-target" }, reason: "unknown" }
+    }));
+    expect(response.status).toBe(200);
+    expect(commands[0]).toMatchObject({ resolution: "register-subject", destinationModuleId: "chosen-review-target" });
+  });
+
   it("does not silently ignore an explicit module when a resolver cannot validate it", async () => {
     const { ports, commands } = createHarness();
     const response = await handleCatalogGovernance(ports, request("POST", `/api/v2/organizations/${orgAdmin.organizationId}/subject-registrations`, {

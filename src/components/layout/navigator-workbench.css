@@ -128,6 +128,7 @@
 
 .navigator-workbench__navigator-header > strong {
   padding-left: var(--space-3);
+  font: 600 var(--text-md) / var(--leading-md) var(--font-sans);
 }
 
 .navigator-workbench[data-navigator-collapsed="true"] .navigator-workbench__navigator-header {

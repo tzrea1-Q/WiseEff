@@ -10,7 +10,7 @@ import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase
 import { insertDtsObservationSourceFixture } from "../../../testing/parameterCatalog/dtsObservationSource";
 import type { AuthContext } from "../../auth/types";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
-import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { refreshAuthoritativeSource, validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../catalog-publication/runtime/provisionRuntimeLogins";
@@ -32,6 +32,14 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
   let baseUrl: string;
   let pin: CatalogReleasePin;
   let historicalReleaseId: string;
+
+  const itemForEvidence = async (items: any[], evidenceId: string) => {
+    const queue = await createReviewQueueReader(pool).list({ organizationId: ORG, capturedRelease: pin,
+      context: { actorKind: "org-admin", principalId: "admin", organizationId: ORG } });
+    if (!queue.ok) throw new Error("Review item fixture is unavailable");
+    const id = queue.value.items.find((item) => item.evidenceRefs.some((ref) => ref.id === evidenceId))?.id;
+    return items.find((item) => item.id === id);
+  };
 
   const ingestFixture = async (command: IngestEvidenceCommand, observationId?: string) => {
     if (!observationId) {
@@ -63,6 +71,15 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     root = createPostgresDatabase(database.url);
     pool = getRootPostgresPool(root)!;
     const bundle = validCatalogReleaseBundle();
+    const target = bundle.releases[1]!;
+    const driver = target.documents.find((document) => document.kind === "subject");
+    if (!driver || driver.kind !== "subject") throw new Error("Catalog driver fixture missing");
+    const nodeType = structuredClone(driver);
+    nodeType.content = { ...nodeType.content, id: "csub_charger", kind: "node-type",
+      canonicalKey: "node-type:charger", selector: { kind: "node-type-name", value: "charger",
+        provenance: structuredClone(driver.content.selector.provenance) }, subtype: {} };
+    target.documents.push(nodeType);
+    refreshAuthoritativeSource(target);
     historicalReleaseId = bundle.releases[0]!.manifest.release.id;
     const firstBundle = { schemaVersion: bundle.schemaVersion, targetReleaseId: historicalReleaseId, releases: [structuredClone(bundle.releases[0]!)] };
     const firstCompiled = compileCatalogRelease(firstBundle);
@@ -190,8 +207,12 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
     const queue = await request("admin", "GET", path);
     expect(queue.status).toBe(200);
-    const item = queue.body.items.find((entry: { observation?: { id: string } }) => entry.observation?.id === evidenceId);
+    const item = await itemForEvidence(queue.body.items, evidenceId);
     expect(item?.status).toBe("open");
+    expect(item.sourceSummary).toEqual({ status: "unavailable", evidenceCount: 1 });
+    expect(item.observation).toBeUndefined();
+    expect(item.candidates).toEqual([]);
+    expect(item.allowedResolutions).toEqual([]);
     const counts = async () => (await pool.query(`select
       (select count(*)::int from parameter_catalog.organization_subject_registrations) as registrations,
       (select count(*)::int from parameter_catalog.subject_placements) as placements,
@@ -227,9 +248,11 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
     const before = await request("admin", "GET", path);
     expect(before.status).toBe(200);
-    const closed = before.body.items.find((item: { observation?: { propertyKey: string } }) => item.observation?.propertyKey === "property:closed-key");
-    const sibling = before.body.items.find((item: { observation?: { propertyKey: string } }) => item.observation?.propertyKey === "property:sibling-key");
-    expect(closed?.candidates).toHaveLength(2);
+    const closed = before.body.items.find((item: { observation?: { propertyKey: string } }) => item.observation?.propertyKey === "closed-key");
+    const sibling = before.body.items.find((item: { observation?: { propertyKey: string } }) => item.observation?.propertyKey === "sibling-key");
+    expect(closed?.candidates).toEqual([]);
+    expect(closed?.sourceSummary).toMatchObject({ propertyKey: "closed-key", compatible: "vendor,device", evidenceCount: 2 });
+    expect(closed?.allowedResolutions).toEqual(["open-definition-proposal", "mark-out-of-scope"]);
     expect(sibling?.status).toBe("open");
     const count = async () => (await pool.query<{ count: number }>(
       "select count(distinct id)::int as count from parameter_catalog.parameter_review_items where organization_id=$1 and catalog_release_id=$2 and status='out-of-scope'", [ORG, pin.id],
@@ -274,7 +297,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     expect(refreshed.status).toBe(200);
     expect(refreshed.body.items.find((item: { id: string }) => item.id === closed.id)).toBeUndefined();
     expect(refreshed.body.items.find((item: { id: string }) => item.id === sibling.id)?.status).toBe("open");
-    expect(refreshed.body.items.filter((item: { observation?: { propertyKey: string } }) => item.observation?.propertyKey === "property:closed-key")).toHaveLength(1);
+    expect(refreshed.body.items.filter((item: { observation?: { propertyKey: string } }) => item.observation?.propertyKey === "closed-key")).toHaveLength(1);
     const afterQuery = await reader.list(queueQuery);
     expect(afterQuery.ok && afterQuery.value.ignoredReviewItemCount).toBe(1);
     expect(afterQuery.ok && afterQuery.value.items.some((item) => item.id === closed.id)).toBe(false);
@@ -284,6 +307,79 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     expect(detail.status).toBe(404);
     expect((await request("member", "GET", path)).status).toBe(403);
     expect((await request("other", "GET", path)).status).toBe(403);
+  });
+
+  it("projects Catalog candidates and only same-organization retired registrations with real identifiers", async () => {
+    await pool.query(`insert into public.attribution_subjects (id,organization_id,subject_kind,display_name,source_key)
+      values ('review-driver',$1,'driver-registration','Review driver','compatible:acme,power')`, [ORG]);
+    await pool.query(`insert into public.driver_registrations (attribution_subject_id,driver_nature,instance_cardinality)
+      values ('review-driver','physical-device','multiple')`);
+    await pool.query(`insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
+      values ('review-driver-module',$1,'Review driver','review-driver-module',1,'driver-group','curated','review-driver')`, [ORG]);
+    const evidenceId = await ingestFixture({ organizationId: ORG, sourceIdentity: `candidate:${randomUUID()}`,
+      catalogReleaseId: pin.id, matcherRevision: MATCHER, matcherOutput: { status: "unknown" },
+      evidence: { propertyKey: "candidate-key", compatible: "acme,power", privateValue: "not-for-the-browser" } });
+    const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
+    const queue = await request("admin", "GET", path);
+    const item = await itemForEvidence(queue.body.items, evidenceId);
+    expect(item.candidates).toEqual([{ subjectId: "csub_acme_power", canonicalName: "acme,power",
+      kind: "driver", evidence: ["acme,power"] }]);
+    expect(JSON.stringify(item)).not.toContain("not-for-the-browser");
+    expect(item.allowedResolutions).toContain("register-subject");
+    const registrationPath = `/api/v2/organizations/${ORG}/subject-registrations`;
+    const registered = await request("admin", "POST", registrationPath, {
+      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `register:${randomUUID()}` },
+      body: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, destinationModuleId: "review-driver-module" },
+    });
+    expect(registered.status, JSON.stringify(registered.body)).toBe(201);
+    const registrationId = registered.body.item.id;
+    const retired = await request("admin", "POST", `${registrationPath}/${registrationId}/retire`, {
+      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `retire:${randomUUID()}`, "If-Match": registered.headers.get("etag")! },
+      body: { reason: "Review restoration fixture" },
+    });
+    expect(retired.status, JSON.stringify(retired.body)).toBe(200);
+    const retiredEvidenceId = await ingestFixture({ organizationId: ORG, sourceIdentity: `restorable:${randomUUID()}`,
+      catalogReleaseId: pin.id, matcherRevision: MATCHER, matcherOutput: { status: "retired-registration-observed" },
+      evidence: { propertyKey: "restore-key", compatible: "acme,power" } });
+    const refreshed = await request("admin", "GET", path);
+    const restoreItem = await itemForEvidence(refreshed.body.items, retiredEvidenceId);
+    expect(restoreItem.restorableRegistrations).toEqual([{ id: registrationId, subjectId: "csub_acme_power",
+      canonicalName: "acme,power", placementDisplayName: "Review driver" }]);
+    expect(restoreItem.allowedResolutions).toEqual(["restore-registration", "mark-out-of-scope"]);
+    const foreign = await request("other", "GET", `/api/v2/organizations/${OTHER_ORG}/parameter-review-items`);
+    expect(foreign.status).toBe(200);
+    expect(JSON.stringify(foreign.body)).not.toContain(registrationId);
+    const stale = await request("admin", "GET", `${path}/${restoreItem.id}`, { headers: { "X-WiseEff-Catalog-Release": historicalReleaseId } });
+    expect(stale.status).toBe(409);
+  });
+
+  it("keeps every authorized source in a grouped cross-project item and folds duplicate evidence", async () => {
+    const evidenceIds: string[] = [];
+    for (const owner of ["own", "other", "own"]) evidenceIds.push(await ingestFixture({ organizationId: ORG,
+      sourceIdentity: `multi-source:${randomUUID()}`, catalogReleaseId: pin.id, matcherRevision: "matcher-d897",
+      matcherOutput: { status: "unknown" }, evidence: { propertyKey: "shared-source-property", compatible: "acme,power" },
+    }, `${owner}-observation`));
+    const queue = await request("admin", "GET", `/api/v2/organizations/${ORG}/parameter-review-items`);
+    const item = await itemForEvidence(queue.body.items, evidenceIds[0]!);
+    expect(item.sources).toHaveLength(2);
+    expect(item.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ observationId: "own-observation", projectId: "own-project", fileId: "own-file", evidenceCount: 2 }),
+      expect.objectContaining({ observationId: "other-observation", projectId: "other-project", fileId: "other-file", evidenceCount: 1 }),
+    ]));
+    expect(item.sourceSummary.evidenceCount).toBe(3);
+    expect(item.candidates).toHaveLength(1);
+  });
+
+  it("uses an explicit node-type selector without inventing a driver compatible", async () => {
+    const evidenceId = await ingestFixture({ organizationId: ORG, sourceIdentity: `node-type:${randomUUID()}`,
+      catalogReleaseId: pin.id, matcherRevision: MATCHER, matcherOutput: { status: "unknown" },
+      evidence: { propertyKey: "node-property", nodeType: "charger" } });
+    const queue = await request("admin", "GET", `/api/v2/organizations/${ORG}/parameter-review-items`);
+    const item = await itemForEvidence(queue.body.items, evidenceId);
+    expect(item.candidates).toEqual([{ subjectId: "csub_charger", canonicalName: "charger", kind: "node-type", evidence: ["charger"] }]);
+    expect(item.sourceSummary).toMatchObject({ nodeType: "charger" });
+    expect(item.sourceSummary.compatible).toBeUndefined();
+    expect(item.allowedResolutions).toContain("register-subject");
   });
 
   it.each(["direct", "sourceRevision", "sourceProof", "linked", "paired"])("resolves %s evidence with an exact same-tenant source graph", async (shape) => {
@@ -299,8 +395,13 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
     const queue = await request("admin", "GET", path);
     expect(queue.status).toBe(200);
-    const item = queue.body.items.find((entry: { observation?: { id: string } }) => entry.observation?.id === evidenceId);
+    const item = await itemForEvidence(queue.body.items, evidenceId);
     expect(item?.status).toBe("open");
+    expect(item.observation.propertyKey).toBe("limit");
+    expect(item.observation.id).toBe(shape === "linked" ? "own-observation" : evidenceId);
+    expect(item.sourceSummary).toMatchObject({ status: "available", propertyKey: "limit", compatible: "vendor,device" });
+    expect(item.sourceSummary).toMatchObject({ projectId: "own-project", projectName: "own-project",
+      fileId: "own-file", fileName: "board.dts", nodeLocator: "/charger" });
     const result = await request("admin", "POST", `${path}/${item.id}/resolve`, {
       headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `valid:${randomUUID()}`, "If-Match": `"${item.etag}"` },
       body: { resolution: { type: "mark-out-of-scope" }, reason: "valid source reviewed" },
@@ -318,7 +419,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
     const queue = await request("admin", "GET", path);
     expect(queue.status).toBe(200);
-    const item = queue.body.items.find((entry: { observation?: { id: string } }) => entry.observation?.id === evidenceId);
+    const item = await itemForEvidence(queue.body.items, evidenceId);
     expect(item?.status).toBe("open");
     const detail = await request(actor, "GET", `${path}/${item.id}`);
     expect.soft(detail.status).toBe(status);

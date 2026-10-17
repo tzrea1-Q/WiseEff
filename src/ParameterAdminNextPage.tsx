@@ -3,6 +3,7 @@ import type { AppRuntime } from "@/app/appRuntime";
 import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import { catalogActorForSession } from "@/application/parameter-catalog";
+import "./components/parameter-admin-next/parameter-admin.css";
 import { CatalogOrganizationSurface } from "@/features/parameter-catalog-governance/CatalogOrganizationSurface";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
@@ -179,6 +180,8 @@ export function ParameterAdminNextPage({
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}
         currentPersonId={state?.currentUserId ?? ""}
+        projects={projects}
+        moduleRegistry={moduleRegistry}
         relatedKnowledge={definitionRelatedKnowledge}
       />
     ) : taskContent;
@@ -222,7 +225,10 @@ export function ParameterAdminNextPage({
         }
       >
         {!isConfigurationWorkbenchRoute ? (
-          <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
+          <div className="param-admin-navigation">
+            <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
+            {organizationView ? <ParameterAdminOrganizationSubNav active={organizationView} onNavigate={onNavigate} /> : null}
+          </div>
         ) : null}
         {area === "projects" ? (
           state && dispatch ? (
@@ -249,8 +255,7 @@ export function ParameterAdminNextPage({
           )
         ) : organizationView ? (
           <>
-            <ParameterAdminOrganizationSubNav active={organizationView} onNavigate={onNavigate} />
-            <OrganizationBulkImportPanel
+            {organizationView === "specs" ? <OrganizationBulkImportPanel
               projects={projects}
               parameters={parameters}
               activeProjectId={activeProjectId || projects[0]?.id || ""}
@@ -258,7 +263,7 @@ export function ParameterAdminNextPage({
               onNavigate={onNavigate}
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
-            />
+            /> : null}
             {organizationView === "specs" && runtimeMode === "api" ? (
               <OrganizationSpecsArea
                 pathname={pathname}
@@ -277,6 +282,7 @@ export function ParameterAdminNextPage({
             ) : null}
             {organizationView === "modules" ? (
               <OrganizationModuleGovernancePanel
+                projects={projects}
                 pathname={pathname}
                 search={search}
                 onNavigate={onNavigate}

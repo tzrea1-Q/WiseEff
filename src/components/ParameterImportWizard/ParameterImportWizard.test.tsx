@@ -35,6 +35,20 @@ function renderWizard(
 }
 
 describe("ParameterImportWizard", () => {
+  it("disables source changes and repeated Next while server parsing is pending", async () => {
+    let finishParse!: (value: { format: "dts-full"; rows: [] }) => void;
+    const parseDtsImport = vi.fn().mockReturnValue(new Promise((resolve) => { finishParse = resolve; }));
+    renderWizard({ parameterActions: { parseDtsImport } as ComponentProps<typeof ParameterImportWizard>["parameterActions"] });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fillPasteImportContent(dialog, "/dts-v1/; / { board_id = <0>; };");
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    expect(within(dialog).getByRole("button", { name: "正在解析…" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "关闭" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "正在解析…" }));
+    expect(parseDtsImport).toHaveBeenCalledTimes(1);
+    await act(async () => finishParse({ format: "dts-full", rows: [] }));
+    await within(dialog).findByRole("region", { name: "解析与校验" });
+  });
   afterEach(() => {
     vi.restoreAllMocks();
   });

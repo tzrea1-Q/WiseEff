@@ -441,21 +441,16 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(within(screen.getByLabelText("配置命令栏")).getByRole("button", { name: "上传候选", exact: true })).toBeDisabled();
   });
 
-  it("places config sets and files in the shared collapsible navigator", async () => {
-    const user = userEvent.setup();
+  it("keeps the single config-set selector available when the file navigator is collapsed", async () => {
     renderWorkbench({ syncSearch: true });
     await screen.findByRole("main", { name: "只读 DTS 源码" });
     const navigator = screen.getByRole("region", { name: "文件与配置集" });
-    expect(within(navigator).getByRole("button", { name: "alpha" })).toBeTruthy();
-    expect(within(navigator).getByRole("button", { name: "default" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getAllByRole("combobox", { name: "配置集" })).toHaveLength(1);
     fireEvent.click(within(navigator).getByRole("button", { name: "收起文件与配置集" }));
-    expect(within(navigator).queryByRole("button", { name: "default" })).toBeNull();
-    fireEvent.click(within(navigator).getByRole("button", { name: "展开文件与配置集" }));
-    within(navigator).getByRole("button", { name: "default" }).focus();
-    await user.keyboard("{ArrowLeft}");
-    expect(within(navigator).getByRole("button", { name: "alpha" })).toHaveFocus();
-    await user.keyboard("{Enter}");
+    await selectControlOption(screen.getByRole("combobox", { name: "配置集" }), "cs-alpha");
     await waitFor(() => expect(screen.getByRole("combobox", { name: "配置集" })).toHaveAttribute("data-value", "cs-alpha"));
+    fireEvent.click(within(navigator).getByRole("button", { name: "展开文件与配置集" }));
+    expect(await within(navigator).findByRole("button", { name: /alpha.dts 基础/ })).toBeVisible();
   });
 
   it("switches structure and conflicts as URL-backed content tabs without losing source focus", async () => {
@@ -475,7 +470,8 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("version=version-board-1");
     await user.click(within(tabs).getByRole("tab", { name: "冲突" }));
     const conflicts = await screen.findByRole("tabpanel", { name: "冲突" });
-    expect(within(conflicts).getByText("暂无同步或导出证据。手动同步与配置集导出结果会显示在这里。")).toBeTruthy();
+    expect(within(conflicts).getByText("当前没有待处理冲突。")).toBeTruthy();
+    expect(within(conflicts).queryByText("会话变更")).not.toBeInTheDocument();
     await user.click(within(tabs).getByRole("tab", { name: "源码" }));
     expect(await screen.findByRole("tabpanel", { name: "源码" })).toBeTruthy();
     expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("node=board&property=model&sourceMode=history&version=version-board-1");
@@ -1612,6 +1608,8 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(within(inspector).getByText("字符串列表")).toBeInTheDocument();
     expect(within(inspector).getAllByText('"Aurora"').length).toBeGreaterThanOrEqual(1);
     expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora");
+    expect(within(inspector).getByLabelText("字符串 1")).toBeVisible();
+    expect(within(inspector).getByText("配置与发布信息").closest("details")).not.toHaveAttribute("open");
     expect(within(inspector).getByText(/L2:3/)).toBeInTheDocument();
 
     const sourceHeading = screen.getByRole("heading", { name: "aurora-board.dts" });
@@ -2552,7 +2550,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     const ungrouped = screen.getByRole("group", { name: "未编组项目文件" });
     expect(ungrouped).toHaveTextContent("notes.json");
-    expect(ungrouped).toHaveTextContent("不参与当前工作配置");
+    expect(ungrouped).toHaveTextContent("尚未加入当前配置集");
 
     fireEvent.click(screen.getByRole("button", { name: "编入 notes.json" }));
     await waitFor(() =>
@@ -2867,6 +2865,65 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getAllByRole("button", { name: "上传候选" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "上传候选" })[0]).toBeEnabled();
     expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("编入");
+  });
+
+  it("assigns a verified ungrouped file to an empty config set", async () => {
+    const addConfigSetFile = vi.fn(async (_projectId: string, configSetId: string, input: Parameters<DtsStructuredRepository["addConfigSetFile"]>[2]) => ({ configSetId, ...input }));
+    renderWorkbench({ dtsRepository: createDtsRepository({
+      listConfigSetFiles: vi.fn(async () => []), addConfigSetFile
+    }) });
+    const assign = await screen.findByRole("button", { name: "编入 notes.json" });
+    await waitFor(() => expect(assign).toBeEnabled());
+    fireEvent.click(assign);
+    await waitFor(() => expect(addConfigSetFile).toHaveBeenCalledWith(PROJECT.id, "cs-default", {
+      fileId: "file-loose", role: "misc", sortOrder: 0
+    }));
+  });
+
+  it("reports a changed source proof without adding a member or losing the assignment action", async () => {
+    const legacy = createFileRepository();
+    let changed = false;
+    const addConfigSetFile = vi.fn();
+    renderWorkbench({ dtsRepository: createDtsRepository({
+      listConfigSetFiles: vi.fn(async () => []), addConfigSetFile
+    }), fileRepository: createFileRepository({ getSourceWorkflow: vi.fn(async (projectId, fileId) => {
+      if (changed && fileId === "file-loose") throw new Error("proof unavailable");
+      return legacy.getSourceWorkflow(projectId, fileId);
+    }) }) });
+    const assign = await screen.findByRole("button", { name: "编入 notes.json" });
+    await waitFor(() => expect(assign).toBeEnabled());
+    changed = true;
+    fireEvent.click(assign);
+    expect(await screen.findByText("操作未完成，请刷新来源状态后重试。")).toBeVisible();
+    expect(addConfigSetFile).not.toHaveBeenCalled();
+    expect(assign).toBeEnabled();
+  });
+
+  it.each(["canonical", "unknown"])("blocks %s ungrouped files even in an empty config set", async (kind) => {
+    const legacy = createFileRepository();
+    const addConfigSetFile = vi.fn();
+    renderWorkbench({ dtsRepository: createDtsRepository({
+      listConfigSetFiles: vi.fn(async () => []), addConfigSetFile
+    }), fileRepository: createFileRepository({ getSourceWorkflow: vi.fn(async (projectId, fileId) => {
+      if (fileId !== "file-loose") return legacy.getSourceWorkflow(projectId, fileId);
+      if (kind === "unknown") throw new Error("来源校验不可用");
+      return { ...(await legacy.getSourceWorkflow(projectId, fileId)), canonical: true };
+    }) }) });
+    const assign = await screen.findByRole("button", { name: "编入 notes.json" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "编入 aurora-board.dts" })).toBeEnabled());
+    expect(assign).toBeDisabled();
+    fireEvent.click(assign);
+    expect(addConfigSetFile).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes conflict request failure from an empty queue and retries", async () => {
+    const listConflicts = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue([]);
+    renderWorkbench({ search: "?configSet=cs-default&tab=conflicts", fileRepository: createFileRepository({ listConflicts }) });
+    expect(await screen.findByText("冲突加载失败，请重试。")).toBeVisible();
+    expect(screen.queryByText("当前没有待处理冲突。")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试", exact: true }));
+    expect(await screen.findByText("当前没有待处理冲突。")).toBeVisible();
+    expect(listConflicts).toHaveBeenCalledTimes(2);
   });
 
   it("loads open conflicts on mount so the task count stays current", async () => {

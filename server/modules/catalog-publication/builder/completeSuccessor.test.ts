@@ -17,6 +17,7 @@ import { buildCompleteSuccessor } from "./completeSuccessor";
 import type { BuildCompleteSuccessorInput } from "./types";
 import {
   allocationFor,
+  allocationForRevision,
   firstAcmePredecessor,
   frozenPageIdentity,
   integerContent,
@@ -294,6 +295,42 @@ describe("buildCompleteSuccessor", () => {
     if (!result.ok) {
       expect(result.error).toEqual({ kind: "subject-not-active", subjectId: "csub_acme_power" });
     }
+  });
+
+  it.each([
+    ["revise-definition", false],
+    ["revise-definition", true],
+    ["retire-definition", false],
+    ["restore-definition", false],
+  ] as const)("refuses %s under a retired owner, including unchanged content=%s", async (op, unchanged) => {
+    const vendor = compileVendorCatalogSuccessor();
+    const target = vendor.bundle.releases.find((release) => release.manifest.release.id === vendor.bundle.targetReleaseId)!;
+    const definition = target.documents.find((document) => document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max");
+    if (definition?.kind !== "definition") throw new Error("acme definition missing");
+    const revision = definition.content.revision;
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: {
+        digest: vendor.compiled.aggregateDigest,
+        bytes: new TextEncoder().encode(serializeContract(vendor.bundle as unknown as ContractJsonValue)),
+      },
+      productPath: "m2-core",
+      changeSet: [{
+        op,
+        definitionId: definition.content.id,
+        class: "documentation",
+        content: {
+          displayName: revision.displayName,
+          documentation: unchanged ? revision.documentation : `${revision.documentation} Updated.`,
+          valueSchema: revision.valueSchema as ReturnType<typeof integerContent>["valueSchema"],
+          ...(revision.unit !== undefined ? { unit: revision.unit } : {}),
+        },
+      }],
+      frozenIdentity: {
+        ...frozenPageIdentity([allocationForRevision("iin_max", revision.number + 1)], "retired-owner"),
+        releaseVersion: CatalogReleaseVersion("1.2.0"),
+      },
+    });
+    expect(result).toEqual({ ok: false, error: { kind: "subject-not-active", subjectId: "csub_acme_power" } });
   });
 
   it("rejects M2 ops on the default M1 product path", async () => {

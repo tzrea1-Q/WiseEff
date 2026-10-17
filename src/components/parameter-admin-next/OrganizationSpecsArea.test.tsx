@@ -102,25 +102,30 @@ describe("OrganizationSpecsArea identity-mapping entry", () => {
     expect(screen.queryByRole("button", { name: /新建/ })).not.toBeInTheDocument();
   });
 
-  it("redirects resolved history alone to the canonical Review Queue", async () => {
+  it("retains resolved history without requiring an open task", async () => {
     const { onNavigate } = renderIdentityEntry([historicalTask]);
 
-    await waitFor(() => {
-      expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs?projectId=project-1&review=open");
-    });
-    expect(screen.getByText("Canonical Catalog")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "节点对应确认" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", "ready"));
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "节点对应确认" })).toBeInTheDocument();
   });
 
   it.each([
-    { name: "no tasks", tasks: [] },
-    { name: "new-identity history", tasks: [{ ...historicalTask, status: "new_identity" as const }] }
+    { name: "no tasks", tasks: [] }
   ])("redirects $name without fabricating a review item identity", async ({ tasks }) => {
     const { onNavigate } = renderIdentityEntry(tasks);
     await waitFor(() => {
       expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs?projectId=project-1&review=open");
     });
     expect(screen.queryByRole("button", { name: "节点对应确认" })).not.toBeInTheDocument();
+  });
+
+  it("retains new-identity history as read-only evidence", async () => {
+    const { onNavigate } = renderIdentityEntry([{ ...historicalTask, status: "new_identity" }]);
+    await waitFor(() => expect(screen.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", "ready"));
+    expect(screen.getByRole("region", { name: "节点对应确认" })).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("keeps unresolved historical continuity evidence visible without redirecting", async () => {

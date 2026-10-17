@@ -54,6 +54,8 @@ import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
 import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
+import { resolveParamAdminProjectsReturnPath } from "@/hooks/useParamAdminProjectsSearch";
+import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
 import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
 import {
   formatWorkbenchPath,
@@ -288,7 +290,9 @@ export function ProjectConfigurationWorkbench({
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const {
     facade: conflictLocateFacade,
-    conflicts: syncConflicts
+    conflicts: syncConflicts,
+    loading: conflictsLoading,
+    error: conflictsError
   } = useConflictLocateFacade();
   const {
     session: configSetOpsSession,
@@ -606,13 +610,19 @@ export function ProjectConfigurationWorkbench({
   const sourceWorkflowSetReady =
     !membersListLoading &&
     !filesLoading &&
-    selectedMembers.length > 0 &&
+    !sourceWorkflowLoading &&
     selectedMembers.every(
       (member) =>
         Boolean(sourceWorkflowsByFileId[member.fileId]) ||
         Boolean(sourceWorkflowErrorsByFileId[member.fileId])
     ) &&
     !sourceWorkflowSetError;
+  const memberAddErrorsByFileId = Object.fromEntries(projectFiles.map((file) => [file.id,
+    sourceWorkflowErrorsByFileId[file.id] || (sourceWorkflowsByFileId[file.id]?.canonical === false
+      ? "" : sourceWorkflowsByFileId[file.id]?.canonical
+        ? "此文件的成员变更需要审核，不能直接编入配置集。"
+        : "正在校验文件来源，请稍候。")
+  ]));
   const sourceWorkflowSetLoading =
     sourceWorkflowLoading || filesLoading || membersListLoading;
   const canRequestReviewedMemberRemoval = apiMode && selectedMembers.length >= 2
@@ -851,10 +861,14 @@ export function ProjectConfigurationWorkbench({
   );
   const ungroupedFiles = projectFiles.filter((item) => !memberIds.has(item.id));
 
+  const [actionError, setActionError] = useState("");
   const runAction = useCallback(async (key: string, action: () => Promise<void>) => {
     setPendingAction(key);
+    setActionError("");
     try {
       await action();
+    } catch (error: unknown) {
+      setActionError(presentError(error, "操作未完成，请刷新来源状态后重试。"));
     } finally {
       setPendingAction(null);
     }
@@ -1405,14 +1419,14 @@ export function ProjectConfigurationWorkbench({
       setLeaveConfirmOpen(true);
       return;
     }
-    onNavigate("/parameter-admin/projects");
-  }, [onNavigate, sessionDraftsDirty]);
+    onNavigate(resolveParamAdminProjectsReturnPath(search));
+  }, [onNavigate, search, sessionDraftsDirty]);
 
   const handleDiscardAndLeave = useCallback(() => {
     structuredEditSession.discard();
     setLeaveConfirmOpen(false);
-    onNavigate("/parameter-admin/projects");
-  }, [onNavigate, structuredEditSession]);
+    onNavigate(resolveParamAdminProjectsReturnPath(search));
+  }, [onNavigate, search, structuredEditSession]);
 
   const handleStructuredValueChange = useCallback(
     (next: StructuredValueChange) => {
@@ -1497,16 +1511,16 @@ export function ProjectConfigurationWorkbench({
 
   const taskDock = (
       <WorkbenchTaskDock
-        tasksOpen={tasksOpen || contentTab === "conflicts"}
+        tasksOpen={tasksOpen}
         onTasksOpenChange={(open) => {
           setTasksOpen(open);
-          if (!open && contentTab === "conflicts") selectContentTab("source");
         }}
         sessionDraftRows={sessionDraftRows}
         syncEvidence={syncEvidence}
         canonicalSyncCheck={canonicalSyncCheck}
         exportEvidence={exportEvidence}
         syncConflicts={syncConflicts}
+        showConflictArbitration={contentTab !== "conflicts"}
         autoLocateConflicts={contentTab !== "conflicts"}
         releaseReadiness={releaseReadiness}
         draftRecoveryStatus={draftRecoveryStatus}
@@ -1611,7 +1625,7 @@ export function ProjectConfigurationWorkbench({
         </div>}
         context={<>
           <WorkbenchShellChrome
-        opsError={opsError}
+        opsError={actionError || opsError}
         opsMessage={opsMessage}
         canAdmin={canAdmin}
         narrowViewport={narrowViewport}
@@ -1631,12 +1645,6 @@ export function ProjectConfigurationWorkbench({
       />
         </>}
         navigator={<>
-          <div className="configuration-workbench__config-sets">
-            <span className="dts-topology-navigator__count">{configSets.length} 个配置集</span>
-            <ViewSwitch variant="section" ariaLabel="配置集列表" value={selectedConfigSet?.id ?? ""}
-              onValueChange={selectConfigSet}
-              items={configSets.map((configSet) => ({ value: configSet.id, label: configSet.name }))} />
-          </div>
           {selectedConfigSet ? <WorkbenchSourceTree
             showStructure={contentTab !== "structure"}
             treeRegionRef={treeRegionRef}
@@ -1654,6 +1662,7 @@ export function ProjectConfigurationWorkbench({
             onMembersRetry={() => workspaceLoadSession.retryMembers()}
             sourceWorkflowSetLoading={sourceWorkflowSetLoading}
             sourceWorkflowSetReady={sourceWorkflowSetReady}
+            memberAddErrorsByFileId={memberAddErrorsByFileId}
             sourceWorkflowSetCanonical={sourceWorkflowSetCanonical}
             sourceWorkflowSetError={sourceWorkflowSetError}
             selectedMembers={selectedMembers}
@@ -1785,6 +1794,7 @@ export function ProjectConfigurationWorkbench({
               sourceWorkflowError={sourceWorkflowError}
               sourceWorkflowSetLoading={sourceWorkflowSetLoading}
               sourceWorkflowSetReady={sourceWorkflowSetReady}
+            memberAddErrorsByFileId={memberAddErrorsByFileId}
               sourceWorkflowSetCanonical={sourceWorkflowSetCanonical}
               sourceWorkflowSetError={sourceWorkflowSetError}
               onRetrySourceWorkflow={() => setSourceWorkflowReloadToken((value) => value + 1)}
@@ -1892,7 +1902,25 @@ export function ProjectConfigurationWorkbench({
                 onSelectProperty={(nodePath, propertyName) => selectStructureTarget(selectedMember.fileId, nodePath, propertyName)} />
             </div>
         ) : null}
-        {contentTab === "conflicts" ? taskDock : null}
+        {contentTab === "conflicts" ? (
+          <div className="configuration-workbench__conflicts" aria-label="冲突处理">
+            <h2>冲突处理</h2>
+            <p>比较文件值与界面值，确认取值后提交裁决。</p>
+            {conflictsLoading ? <SectionSkeleton label="正在加载冲突…" />
+              : conflictsError ? <SectionError message="冲突加载失败，请重试。" onRetry={() => void conflictLocateFacade.load(project.id, fileRepository)} />
+              : syncConflicts.length === 0 ? <SectionEmpty message="当前没有待处理冲突。" /> : (
+              <WorkbenchConflictArbitrationDock projectId={project.id} repository={fileRepository}
+                conflicts={syncConflicts} autoLocate={false}
+                sourceWorkflowByFileId={sourceWorkflowByFileId}
+                sourceWorkflowLoading={sourceWorkflowLoading || filesLoading}
+                onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
+                onLocateConflict={(conflict) => {
+                  const target = conflictLocateFacade.locate(conflict);
+                  if (target) selectStructureTarget(target.fileId, target.nodePath, target.propertyName, true);
+                }} />
+            )}
+          </div>
+        ) : null}
       </NavigatorWorkbench>
 
       <WorkbenchCandidateActivateDialog
@@ -1975,7 +2003,7 @@ export function ProjectConfigurationWorkbench({
             canonical: sourceWorkflowsByFileId[manualSyncTarget.member.fileId]?.canonical ?? null
           }} onDismiss={() => setManualSyncTarget(null)} /> : null}
 
-      {contentTab !== "conflicts" ? taskDock : null}
+      {taskDock}
 
       {memberRemovalTarget && selectedConfigSet ? <CanonicalMemberRemovalSubmitDialog
         projectId={project.id}

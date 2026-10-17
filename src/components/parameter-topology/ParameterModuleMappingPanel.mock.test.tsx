@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { createTestModuleRegistryRepository } from "@/test/harness";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import { ParameterModuleMappingPanel } from "./ParameterModuleMappingPanel";
@@ -40,6 +41,10 @@ describe("mock module registry withdrawal", () => {
       };
       render(<ParameterModuleMappingPanel canAdmin repository={repository} pathname={pathname} />);
 
+      if (pathname.endsWith("/queue")) {
+        expect(screen.queryByRole("tree", { name: "模块归属树" })).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole("tab", { name: "模块", exact: true }));
+      }
       await screen.findByRole("tree", { name: "模块归属树" });
       expect(screen.queryAllByRole("button", { name: /全量重算|登记驱动|前往归类|归类|认领|忽略|恢复/ }))
         .toHaveLength(0);

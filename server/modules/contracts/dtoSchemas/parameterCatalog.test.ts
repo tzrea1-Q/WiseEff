@@ -369,6 +369,11 @@ describe("S8-CON threat matrix", () => {
   });
 
   it("keeps producer PlacementIntent, mapping targets, and registration/review unions on the wire", () => {
+    expect(catalogRegisterSubjectRequestSchema.safeParse({ subjectId: "subject", placement: { mode: "use-default" }, newDestination: { parentModuleId: "business", name: "新模块" } }).success).toBe(true);
+    expect(catalogRegisterSubjectRequestSchema.safeParse({ subjectId: "subject", placement: { mode: "use-default" }, destinationModuleId: "existing", newDestination: { parentModuleId: "business", name: "新模块" } }).success).toBe(false);
+    expect(catalogRegisterSubjectRequestSchema.safeParse({ subjectId: "subject", placement: { mode: "use-default" }, newDestination: { parentModuleId: "business", name: "\n" } }).success).toBe(false);
+    const reviewDestination = catalogResolveReviewItemRequestSchema.parse({ resolution: { type: "register-subject", subjectId: "subject", placement: { mode: "use-default" }, destinationModuleId: "exact-target" }, reason: "unknown" });
+    expect(reviewDestination.resolution).toHaveProperty("destinationModuleId", "exact-target");
     expect(catalogPlacementIntentSchema.safeParse({ mode: "use-default" }).success).toBe(true);
     expect(
       catalogPlacementIntentSchema.safeParse({

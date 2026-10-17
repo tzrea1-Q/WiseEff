@@ -47,7 +47,7 @@ test.describe("canonical parameter catalog governance interactions", () => {
       await expect(catalogPage(page)).toBeVisible();
       // Pending work is disclosed from the single count-bearing action, which
       // opens the review queue in a dialog.
-      const pending = page.getByRole("button", { name: /待处理工作/ });
+      const pending = page.getByRole("button", { name: /待审核事项/ });
       if (await pending.isVisible().catch(() => false)) {
         await pending.click();
       }
@@ -162,13 +162,13 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await expect(
       page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
     ).toBeVisible();
-    const reviewAction = page.getByRole("button", { name: /处理审核|待处理工作/ }).first();
+    const reviewAction = page.getByRole("button", { name: /处理审核|待审核事项/ }).first();
     if (!(await reviewAction.isVisible().catch(() => false))) {
       await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
       await page.reload();
       await expect(catalogPage(page)).toBeVisible();
     }
-    await expect(page.getByRole("button", { name: /处理审核|待处理工作/ }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /处理审核|待审核事项/ }).first()).toBeVisible();
 
     const { dialog: editor, authoringAllowed } = await openDefinitionEditor(page, page.request);
     if (authoringAllowed) {

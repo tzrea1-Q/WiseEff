@@ -176,6 +176,8 @@ export type CatalogListQuery = {
   limit?: number;
   type?: "driver" | "node-type";
   lifecycle?: string;
+  /** Owner membership lifecycle; omitted includes both active and retired owners. */
+  subjectLifecycle?: "active" | "retired";
   registration?: string;
   search?: string;
   subjectId?: string;

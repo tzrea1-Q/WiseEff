@@ -29,9 +29,12 @@ import {
 import {
   buildParamAdminProjectsPath,
   parseParamAdminProjectsSearch,
+  resolveParamAdminProjectsReturnPath,
   type ParamAdminProjectsSearch
 } from "@/hooks/useParamAdminProjectsSearch";
 import { useParameterAdmin } from "./ParameterAdminProvider";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 import {
   buildCanonicalConfigurationPath,
@@ -138,7 +141,15 @@ export function ProjectsOperationsPanel({
   const [formPending, setFormPending] = useState(false);
   const [formError, setFormError] = useState("");
   const [projectsLoaded, setProjectsLoaded] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string; archive: boolean } | null>(null);
+  const [archivePending, setArchivePending] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
   const listSearch = useMemo(() => parseParamAdminProjectsSearch(search), [search]);
+  const listReturnPath = resolveParamAdminProjectsReturnPath(search);
+  const enterProject = (id: string, nextView: "configuration" | "review-roles") => {
+    const listPath = buildParamAdminProjectsPath(listSearch);
+    onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/${nextView}${listPath === "/parameter-admin/projects" ? "" : `?returnTo=${encodeURIComponent(listPath)}`}`);
+  };
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
   const rows = isApiMode ? apiRows : mockRows;
@@ -154,11 +165,11 @@ export function ProjectsOperationsPanel({
     try {
       const items = await adminClient.listProjects();
       setApiRows(items.map(mapProjectAdminSummaryDto));
+      setProjectsLoaded(true);
     } catch (loadError) {
       setError(presentError(loadError, "项目列表加载失败，请稍后重试。"));
     } finally {
       setLoading(false);
-      setProjectsLoaded(true);
     }
   }, [adminClient, isApiMode]);
 
@@ -259,10 +270,25 @@ export function ProjectsOperationsPanel({
     }
   };
 
+  const archiveProject = async () => {
+    if (!archiveTarget || archivePending) return;
+    setArchivePending(true);
+    setArchiveError("");
+    try {
+      await adminClient.updateProject(archiveTarget.id, { status: archiveTarget.archive ? "archived" : "initialized" });
+      await parameterActions?.refresh();
+      await loadProjects();
+      await refreshRecentAudits();
+      setArchiveTarget(null);
+    } catch (failure) {
+      setArchiveError(presentError(failure, "更新项目归档状态失败，请重试。"));
+    } finally { setArchivePending(false); }
+  };
+
   const configurationOpen = Boolean(projectId && configurationRoute && !legacyView);
   const reviewRolesOpen = Boolean(projectId && routeView === "review-roles");
   const projectsReady = !isApiMode || projectsLoaded;
-  const projectMissing = Boolean(projectId) && (configurationOpen || Boolean(legacyView) || reviewRolesOpen) && projectsReady && !selectedProject;
+  const projectMissing = Boolean(projectId) && (configurationOpen || Boolean(legacyView) || reviewRolesOpen) && projectsReady && !error && !selectedProject;
 
   return (
     <section
@@ -274,9 +300,10 @@ export function ProjectsOperationsPanel({
       aria-label="项目运营"
     >
       {error ? (
-        <p className="project-admin-error" role="alert">
-          {error}
-        </p>
+        <div className="project-admin-error" role="alert">
+          <p>{error}</p>
+          <Button type="button" variant="outline" disabled={loading} onClick={() => void loadProjects()}>重试项目列表</Button>
+        </div>
       ) : null}
 
       {projectMissing ? (
@@ -295,7 +322,7 @@ export function ProjectsOperationsPanel({
         </section>
       ) : null}
 
-      {!projectMissing && !configurationOpen && !legacyView && !reviewRolesOpen ? (
+      {!projectMissing && !configurationOpen && !legacyView && !reviewRolesOpen && !error ? (
         <>
           {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
           <ProjectAdminTable
@@ -308,12 +335,12 @@ export function ProjectsOperationsPanel({
               setEditingProjectId(id);
             }}
             onDeleteProject={confirmDelete}
-            onConfigureReviewRoles={(id) =>
-              onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/review-roles`)
-            }
-            onManageFiles={(id) =>
-              onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/configuration`)
-            }
+            onArchiveProject={isApiMode ? (id, archive) => {
+              const row = rows.find((item) => item.id === id);
+              if (row) { setArchiveError(""); setArchiveTarget({ id, name: row.name, archive }); }
+            } : undefined}
+            onConfigureReviewRoles={(id) => enterProject(id, "review-roles")}
+            onManageFiles={(id) => enterProject(id, "configuration")}
             primaryActionLabel="配置工作台"
             detailDrawer={<ProjectAdminFormDialog
               open={editingProjectId !== null}
@@ -336,10 +363,11 @@ export function ProjectsOperationsPanel({
         </>
       ) : null}
 
-      {reviewRolesOpen && !projectMissing && projectId ? (
+      {reviewRolesOpen && !projectMissing && selectedProject && projectId ? (
         <ProjectReviewRolesPanel
           projectId={projectId}
-          onBack={() => onNavigate("/parameter-admin/projects")}
+          projectName={selectedProject.name}
+          onBack={() => onNavigate(listReturnPath)}
           state={state}
         />
       ) : null}
@@ -369,6 +397,13 @@ export function ProjectsOperationsPanel({
         />
       ) : null}
 
+      {archiveTarget ? <ConfirmDialog open tone="primary" pending={archivePending} error={archiveError}
+        title={`${archiveTarget.archive ? "归档项目" : "恢复项目"}「${archiveTarget.name}」`}
+        description={archiveTarget.archive
+          ? "归档后从默认清单收起，可在“已归档”筛选中查看或恢复。规范历史保留，归档不会锁定已有读写权限。"
+          : "恢复后项目重新出现在默认清单中，继续显示其原有初始化进度。规范历史和现有访问权限保持不变。"}
+        confirmLabel={archiveTarget.archive ? "确认归档" : "恢复项目"}
+        onConfirm={() => void archiveProject()} onCancel={() => setArchiveTarget(null)} /> : null}
     </section>
   );
 }

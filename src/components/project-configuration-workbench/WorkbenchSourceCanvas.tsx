@@ -119,15 +119,17 @@ export function WorkbenchSourceCanvas({
             {/* Working config shows the human version label; the raw id stays in the tooltip (FA-23). */}
             <strong
               className="mono"
-              title={canvasMode === "working" ? selectedMember.currentVersionId ?? undefined : undefined}
+              title={canvasMode === "working" ? selectedMember.currentVersionId ?? undefined : canvasMode === "candidate" ? candidateId ?? undefined : historyVersionId ?? undefined}
             >
               {canvasMode === "working"
                 ? selectedMember.currentVersionNumber
                   ? `v${selectedMember.currentVersionNumber}`
                   : "无活跃版本"
                 : canvasMode === "candidate"
-                  ? activeCandidate?.id ?? candidateId ?? "缺失"
-                  : historyVersionId ?? "缺失"}
+                  ? activeCandidate?.fileName ?? "候选版本"
+                  : fileVersions.find((version) => version.id === historyVersionId)?.versionNumber
+                    ? `v${fileVersions.find((version) => version.id === historyVersionId)?.versionNumber}`
+                    : "历史版本"}
             </strong>
           </div>
           {canvasMode !== "working" ? (
@@ -238,7 +240,7 @@ export function WorkbenchSourceCanvas({
       !selectedMember.currentVersionId ? (
         <div className="configuration-workbench__source-state" role="status">
           <strong>成员文件没有活跃版本</strong>
-          <p>文件身份仍保留在树中；请在旧项目运营入口检查版本历史。</p>
+          <p>文件身份仍保留在树中；请在文件详情检查版本历史。</p>
         </div>
       ) : null}
       {!sourceLoading &&
@@ -251,7 +253,7 @@ export function WorkbenchSourceCanvas({
       !source ? (
         <div className="configuration-workbench__source-state" role="status">
           <strong>源码内容为空</strong>
-          <p>当前活跃版本没有可显示的源码内容；可重试或回到旧项目运营入口检查版本历史。</p>
+          <p>当前活跃版本没有可显示的源码内容；可重试或回到文件详情检查版本历史。</p>
           <button
             className="button subtle configuration-workbench__retry"
             type="button"

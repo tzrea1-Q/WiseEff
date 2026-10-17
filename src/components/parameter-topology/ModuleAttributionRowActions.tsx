@@ -1,12 +1,11 @@
 import { Eye, Pencil } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import {
   addChildModuleDecision,
-  canEditModuleDetails,
   canViewUnclassifiedRoot,
   deleteActionLabel,
   deleteModuleDecision,
@@ -26,6 +25,7 @@ export type ModuleAttributionRowActionsProps = {
   onMove: () => void;
   onDelete: () => void;
   onReorder?: (direction: "up" | "down") => void;
+  tabIndex?: number;
 };
 
 type MenuPosition = {
@@ -70,16 +70,19 @@ export function ModuleAttributionRowActions({
   onAddChild,
   onMove,
   onDelete,
-  onReorder
+  onReorder,
+  tabIndex
 }: ModuleAttributionRowActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const focusLast = useRef(false);
 
   const showView = canViewUnclassifiedRoot(module) && Boolean(onView);
-  const editDecision = canEditModuleDetails(module);
-  const showEdit = canAdmin && editDecision;
+  const detailsReadOnly = !canAdmin || (canonicalModeEnabled && module.kind !== "business");
+  const showEdit = !showView && !detailsReadOnly;
+  const showDetails = !showView && detailsReadOnly;
   const addChildDecision = addChildModuleDecision(module);
   const moveDecision = moveModuleDecision(module);
   const deleteDecision = deleteModuleDecision(module);
@@ -93,7 +96,7 @@ export function ModuleAttributionRowActions({
   const hasMore =
     showReorder || showAddChild || showMove || showDelete;
 
-  const updateMenuPosition = () => {
+  const updateMenuPosition = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
@@ -109,7 +112,7 @@ export function ModuleAttributionRowActions({
         ? rect.bottom + 4
         : Math.max(gutter, rect.top - menuHeight - 4);
     setMenuPosition({ top, left });
-  };
+  }, [onReorder]);
 
   useLayoutEffect(() => {
     if (!menuOpen) {
@@ -117,7 +120,20 @@ export function ModuleAttributionRowActions({
       return;
     }
     updateMenuPosition();
-  }, [menuOpen]);
+  }, [menuOpen, updateMenuPosition]);
+
+  useEffect(() => {
+    if (busy && menuOpen) {
+      setMenuOpen(false);
+      triggerRef.current?.closest<HTMLElement>('[role="treeitem"]')?.focus({ preventScroll: true });
+    }
+  }, [busy, menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen || !menuPosition) return;
+    const items = menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)');
+    items?.[focusLast.current ? items.length - 1 : 0]?.focus({ preventScroll: true });
+  }, [menuOpen, menuPosition]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -131,7 +147,10 @@ export function ModuleAttributionRowActions({
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
     };
 
     const handleReposition = () => {
@@ -140,6 +159,7 @@ export function ModuleAttributionRowActions({
 
     const handleScroll = () => {
       setMenuOpen(false);
+      triggerRef.current?.focus({ preventScroll: true });
     };
 
     window.addEventListener("mousedown", handlePointerDown);
@@ -153,13 +173,15 @@ export function ModuleAttributionRowActions({
       window.removeEventListener("resize", handleReposition);
       window.removeEventListener("scroll", handleScroll, true);
     };
-  }, [menuOpen]);
+  }, [menuOpen, updateMenuPosition]);
 
-  if (!showView && !showEdit && !hasMore) {
+  if (!showView && !showEdit && !showDetails && !hasMore) {
     return <span className="module-attribution-tree__actions is-spacer" aria-hidden="true" />;
   }
 
   const runMenuAction = (action: () => void) => {
+    if (busy) return;
+    triggerRef.current?.focus();
     action();
     setMenuOpen(false);
   };
@@ -171,6 +193,23 @@ export function ModuleAttributionRowActions({
             ref={menuRef}
             className="dropdown-menu module-attribution-tree__more-menu"
             role="menu"
+            tabIndex={-1}
+            aria-label={`${module.name} 操作`}
+            onKeyDown={(event) => {
+              const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? [])];
+              const index = items.indexOf(document.activeElement as HTMLButtonElement);
+              if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                event.preventDefault();
+                const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+                  : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+                items[next]?.focus({ preventScroll: true });
+              } else if (event.key === "Escape" || event.key === "Tab") {
+                if (event.key === "Escape") event.preventDefault();
+                event.stopPropagation();
+                setMenuOpen(false);
+                triggerRef.current?.focus();
+              }
+            }}
             style={{ top: menuPosition.top, left: menuPosition.left }}
           >
             {showReorder ? (
@@ -240,13 +279,13 @@ export function ModuleAttributionRowActions({
                   type="button"
                   className="dropdown-item"
                   role="menuitem"
-                  aria-label={`移动模块 ${module.name}`}
+                  aria-label={`调整上级模块 ${module.name}`}
                   onClick={() => runMenuAction(onMove)}
                 >
-                  移动
+                  调整上级模块
                 </button>
               ) : (
-                disabledMenuItem("移动", moveDecision.reason, `移动模块 ${module.name}`)
+                disabledMenuItem("调整上级模块", moveDecision.reason, `调整上级模块 ${module.name}`)
               )
             ) : null}
             {showDelete ? (
@@ -281,6 +320,7 @@ export function ModuleAttributionRowActions({
           type="button"
           className="button ghost"
           disabled={busy}
+          tabIndex={tabIndex}
           aria-label={`查看 ${module.name}`}
           onClick={onView}
         >
@@ -289,11 +329,15 @@ export function ModuleAttributionRowActions({
         </button>
       ) : null}
 
+      {showDetails ? <button type="button" className="button ghost" disabled={busy} tabIndex={tabIndex}
+        aria-label={`查看模块 ${module.name}`} onClick={onEdit}><Eye size={14} aria-hidden="true" />查看</button> : null}
+
       {showEdit ? (
         <button
           type="button"
           className="button ghost"
           disabled={busy}
+          tabIndex={tabIndex}
           aria-label={`修改模块 ${module.name}`}
           onClick={onEdit}
         >
@@ -309,10 +353,18 @@ export function ModuleAttributionRowActions({
             type="button"
             className="button ghost"
             disabled={busy}
+            tabIndex={tabIndex}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             aria-label={`${module.name} 更多操作`}
-            onClick={() => setMenuOpen((current) => !current)}
+            onClick={() => { focusLast.current = false; setMenuOpen((current) => !current); }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                focusLast.current = event.key === "ArrowUp";
+                setMenuOpen(true);
+              }
+            }}
           >
             更多 <span aria-hidden="true">▾</span>
           </button>

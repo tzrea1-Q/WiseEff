@@ -84,6 +84,31 @@ export const refuseUnsupportedConsumerCapability = (
   }
 };
 
+export const refuseRetiredOwnerDefinitionChanges = (compiled: CompiledCatalogRelease): void => {
+  const base = compiled.model.releases.find((release) => release.release.id === compiled.predecessor?.id);
+  const target = compiled.model.releases.find((release) => release.release.id === compiled.release.id);
+  if (!base || !target) {
+    throw new PublicationActivationFailure({ kind: "predecessor-incomplete", detail: "publication base or target is missing" });
+  }
+  const baseDefinitions = new Map(base.documents.filter((document) => document.kind === "definition").map((document) => [document.content.id, document]));
+  const baseOwners = new Map(base.documents.filter((document) => document.kind === "subject").map((document) => [document.content.id, document.content.lifecycle]));
+  const targetOwners = new Map(target.documents.filter((document) => document.kind === "subject").map((document) => [document.content.id, document.content.lifecycle]));
+  for (const document of target.documents) {
+    if (document.kind !== "definition") continue;
+    const previous = baseDefinitions.get(document.content.id);
+    // Full normalized content includes revision identity: a new revision with
+    // identical semantics is still a write; unchanged historical carry is not.
+    if (previous?.normalizedDigest === document.normalizedDigest) continue;
+    if (baseOwners.get(previous?.content.subjectId ?? document.content.subjectId) === "retired" ||
+        targetOwners.get(document.content.subjectId) === "retired") {
+      throw new PublicationActivationFailure({
+        kind: "publication-not-authorized", reason: "subject-retired",
+        detail: "publication changes a definition owned by a retired subject",
+      });
+    }
+  }
+};
+
 export const asQueryable = (client: Pick<pg.Client, "query">): Queryable => ({
   query: async (text, values = []) => {
     const result = await client.query(text, values);
@@ -563,6 +588,7 @@ export const activateOnlinePublication = async (
     });
   }
 
+  refuseRetiredOwnerDefinitionChanges(compiled.value);
   await materializeCompiledRelease(client, compiled.value, options);
   if (options?.afterMaterialize) {
     await options.afterMaterialize(client);

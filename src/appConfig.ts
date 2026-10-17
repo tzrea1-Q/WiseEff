@@ -115,7 +115,7 @@ export const navigationItems: PageConfig[] = [
     label: "参数后台",
     group: "参数管理",
     icon: Database,
-    title: "项目参数管理后台",
+    title: "参数管理后台",
     subtitle: PARAMETER_ADMIN_UI.adminSubtitle
   },
   {

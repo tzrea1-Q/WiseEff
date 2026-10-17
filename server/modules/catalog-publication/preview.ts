@@ -60,6 +60,7 @@ export type PreviewPublicationError =
   | { readonly kind: "unsupported-change-op"; readonly op: string }
   | { readonly kind: "invalid-input"; readonly reason: string }
   | { readonly kind: "subject-not-found"; readonly subjectId: string }
+  | { readonly kind: "subject-not-active"; readonly subjectId: string }
   | { readonly kind: "persist-failed"; readonly detail: string };
 
 export type PreviewPublicationValue = {
@@ -418,6 +419,9 @@ export async function previewPublicationCandidate(input: {
     }
     if (built.error.kind === "subject-not-found") {
       return { ok: false, error: { kind: "subject-not-found", subjectId: built.error.subjectId } };
+    }
+    if (built.error.kind === "subject-not-active") {
+      return { ok: false, error: { kind: "subject-not-active", subjectId: built.error.subjectId } };
     }
     if (built.error.kind === "conflict") {
       return {

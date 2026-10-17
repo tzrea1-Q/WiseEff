@@ -286,7 +286,7 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(form.getByRole("group", { name: "未保存的更改" })).toHaveCount(0);
           await form.getByRole("heading").first().scrollIntoViewIfNeeded();
         }
-        const pendingWork = page.getByRole("dialog", { name: "待处理工作", exact: true });
+        const pendingWork = page.getByRole("dialog", { name: "待审核事项", exact: true });
         if (new URL(page.url()).searchParams.get("review") === "open" || await pendingWork.isVisible()) {
           await expect(pendingWork).toBeVisible();
           await expect(pendingWork.locator(".section-skeleton")).toHaveCount(0);

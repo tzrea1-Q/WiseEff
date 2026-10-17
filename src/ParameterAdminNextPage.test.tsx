@@ -234,7 +234,7 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     });
 
     expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: /待处理工作/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /待审核事项/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
     expect(listReviewItems).not.toHaveBeenCalled();
   });
@@ -256,7 +256,7 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
       });
     });
 
-    expect(await screen.findByRole("button", { name: /待处理工作/ })).toBeVisible();
+    expect(await screen.findByRole("button", { name: /待审核事项/ })).toBeVisible();
     expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "处理审核" })).toBeEnabled());
     expect(listReviewItems).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID);
@@ -368,7 +368,7 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
       catalogOrganizationId: CATALOG_ORGANIZATION_ID
     });
 
-    const dialog = await screen.findByRole("dialog", { name: "待处理工作" });
+    const dialog = await screen.findByRole("dialog", { name: "待审核事项" });
     const queue = await within(dialog).findByRole("region", { name: "待审核事项" });
     expect(await within(queue).findByText("识别不唯一")).toBeInTheDocument();
     expect(within(queue).getByText("gpio-int")).toBeInTheDocument();
@@ -395,8 +395,8 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
 
     expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeVisible();
     expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /待处理工作/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "待处理工作" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /待审核事项/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "待审核事项" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "处理审核" })).not.toBeInTheDocument();
     expect(listReviewItems).not.toHaveBeenCalled();
     expect(resolveReviewItem).not.toHaveBeenCalled();
@@ -505,7 +505,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     );
 
     fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 电源路径组" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "调整上级模块 电源路径组" }));
     const moveDialog = screen.getByRole("dialog", { name: "移动「电源路径组」" });
     fireEvent.click(within(moveDialog).getByRole("button", { name: /根级（无父模块）|目标业务分类/ }));
     fireEvent.click(within(moveDialog).getByRole("button", { name: "充电策略" }));
@@ -675,6 +675,9 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
         expect.objectContaining({ batchId: "api-import-batch" })
       )
     );
+    expect(await within(dialog).findByRole("region", { name: "导入处理回执" })).toHaveTextContent("api-import-batch");
+    expect(screen.getByRole("dialog", { name: "批量参数导入" })).toBeVisible();
+    fireEvent.click(within(dialog).getByRole("button", { name: "完成", exact: true }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "批量参数导入" })).not.toBeInTheDocument()
     );
@@ -841,7 +844,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     expect(await repository.listMappingTasks()).toEqual(before);
   });
 
-  it("redirects resolved-only history and opens the real canonical queue after router navigation", async () => {
+  it("retains resolved-only history and opens the canonical queue only after explicit navigation", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const repository = createRepository({
       listMappingTasks: vi.fn().mockResolvedValue([
@@ -861,10 +864,13 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       catalogOrganizationId: CATALOG_ORGANIZATION_ID
     });
     const destination = "/parameter-admin/specs?projectId=project-teaching&review=open";
-    await waitFor(() => expect(page.onNavigate).toHaveBeenCalledWith(destination));
+    expect(await screen.findByRole("region", { name: "节点对应确认" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", "ready"));
+    expect(page.onNavigate).not.toHaveBeenCalledWith(expect.stringContaining("review=open"));
+    expect(screen.getByRole("link", { name: "打开规范审核队列" })).toHaveAttribute("href", "/parameter-admin/specs?review=open");
     page.rerender(destination);
 
-    const dialog = await screen.findByRole("dialog", { name: "待处理工作" });
+    const dialog = await screen.findByRole("dialog", { name: "待审核事项" });
     const queue = await within(dialog).findByRole("region", { name: "待审核事项" });
     expect(await within(queue).findByText("gpio-int")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();

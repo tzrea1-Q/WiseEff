@@ -68,7 +68,18 @@ describe("catalog module navigator tree", () => {
     expect(leaf.subjectId).toBe("csub_charger");
     expect(leaf.displayName).toBe("charger");
     expect(leaf.meta).toBe("node-type · active");
+    expect(leaf.subjectType).toBe("node-type");
+    expect(leaf.retired).toBe(false);
     expect(leaf.children).toEqual([]);
+  });
+
+  it.each(["membership", "registration"])("marks a subject retired from its actual %s state", (source) => {
+    const item = subject({ id: "old", canonicalName: "vendor,old", registration: "unregistered" });
+    const retired: SubjectItem = source === "membership"
+      ? { ...item, membership: { ...item.membership, status: "retired" } }
+      : { ...item, registration: { status: "retired", id: "registration-old" } };
+    const roots = buildCatalogModuleTree([retired], describeSubject);
+    expect(roots[0].children[0]).toMatchObject({ subjectId: "old", retired: true });
   });
 
   it("keeps subjects without a placement reachable under one unregistered branch", () => {

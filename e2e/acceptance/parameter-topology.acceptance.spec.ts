@@ -697,7 +697,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(catalog).toHaveAttribute("data-catalog-page", "true");
     await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeVisible();
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("gpio_int");
-    await expect(page.getByRole("button", { name: "待处理工作" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "待审核事项" })).toBeVisible();
     await expect(page.getByRole("region", { name: "参数定义库" })).toHaveCount(0);
 
     await recordOperationEvidence({

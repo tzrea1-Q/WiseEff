@@ -403,7 +403,15 @@ export const catalogRegisterSubjectRequestSchema = catalogObject({
   subjectId: z.string(),
   placement: catalogPlacementIntentSchema,
   destinationModuleId: z.string().min(1).optional(),
+  newDestination: catalogObject({
+    parentModuleId: z.string().trim().min(1),
+    name: z.string().trim().min(1).max(120).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u)
+  }).optional(),
   reason: z.string().optional()
+}).superRefine((value, context) => {
+  if (value.newDestination && (value.destinationModuleId || value.placement.mode !== "use-default")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "A new destination requires an explicit business parent and no existing destination." });
+  }
 });
 
 export const catalogRetireRegistrationRequestSchema = catalogObject({
@@ -433,7 +441,24 @@ export const catalogObservationDtoSchema = catalogObject({
 
 export const catalogReviewCandidateDtoSchema = catalogObject({
   subjectId: z.string(),
+  canonicalName: z.string().optional(),
+  kind: catalogSubjectTypeSchema.optional(),
   evidence: z.array(z.string())
+});
+
+export const catalogReviewSourceDtoSchema = catalogObject({
+  status: z.enum(["available", "unavailable"]),
+  evidenceCount: z.number().int().nonnegative(),
+  observationId: z.string().optional(),
+  projectId: z.string().optional(),
+  projectName: z.string().optional(),
+  fileId: z.string().optional(),
+  fileName: z.string().optional(),
+  configRevisionId: z.string().optional(),
+  nodeLocator: z.string().optional(),
+  compatible: z.string().optional(),
+  nodeType: z.string().optional(),
+  propertyKey: z.string().optional()
 });
 
 export const catalogReviewItemDtoSchema = catalogObject({
@@ -452,6 +477,14 @@ export const catalogReviewItemDtoSchema = catalogObject({
     })
   }).optional(),
   candidates: z.array(catalogReviewCandidateDtoSchema),
+  sourceSummary: catalogReviewSourceDtoSchema.optional(),
+  sources: z.array(catalogReviewSourceDtoSchema).optional(),
+  restorableRegistrations: z.array(catalogObject({
+    id: z.string(),
+    subjectId: z.string(),
+    canonicalName: z.string(),
+    placementDisplayName: z.string()
+  })).optional(),
   allowedResolutions: z.array(catalogReviewResolutionTypeSchema),
   candidateState: z.union([
     catalogObject({
@@ -471,7 +504,8 @@ export const catalogResolveReviewItemRequestSchema = catalogObject({
     catalogObject({
       type: z.literal("register-subject"),
       subjectId: z.string(),
-      placement: catalogPlacementIntentSchema
+      placement: catalogPlacementIntentSchema,
+      destinationModuleId: z.string().min(1).optional()
     }),
     catalogObject({
       type: z.literal("restore-registration"),
@@ -2215,7 +2249,15 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     responseBody: "CatalogDefinitionListResponse",
     additionalResponses: catalogReadErrors,
-    requestParameters: pageQueryParameters,
+    requestParameters: [
+      {
+        name: "subjectLifecycle",
+        in: "query",
+        schema: { type: "string", enum: [...subjectLifecycles] },
+        description: "Optional owner membership lifecycle filter, applied before pagination. Omitted includes both active and retired owners."
+      },
+      ...pageQueryParameters
+    ],
     successHeaders: [catalogReleaseResponseHeader]
   },
   "catalog.listDefinitions": {
@@ -2226,6 +2268,12 @@ export const parameterCatalogSchemaRegistry = {
     requestParameters: [
       { name: "catalogReleaseId", in: "query" },
       { name: "subjectId", in: "query" },
+      {
+        name: "subjectLifecycle",
+        in: "query",
+        schema: { type: "string", enum: [...subjectLifecycles] },
+        description: "Optional owner membership lifecycle filter, applied before pagination. Omitted includes both active and retired owners."
+      },
       {
         name: "subjectIds",
         in: "query",

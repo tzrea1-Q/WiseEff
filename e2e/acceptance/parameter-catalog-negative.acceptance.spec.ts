@@ -64,7 +64,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
       await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
       await page.reload();
       await expect(catalogPage(page)).toBeVisible();
-      const pending = page.getByRole("button", { name: /待处理工作/ });
+      const pending = page.getByRole("button", { name: /待审核事项/ });
       if (await pending.isVisible().catch(() => false)) {
         await pending.click();
       }

@@ -2,6 +2,7 @@ import { CircleX } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import { toBusinessFlatNodes } from "./moduleAttributionTreeUtils";
@@ -28,7 +29,14 @@ export function ModuleMoveDialog({
   onCancel
 }: ModuleMoveDialogProps) {
   const targetLabelId = useId();
-  const [parentId, setParentId] = useState("");
+  const [parentId, setParentId] = useState(module.parentId ?? "");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const changed = parentId !== (module.parentId ?? "");
+  const requestClose = () => {
+    if (busy) return;
+    if (changed) setConfirmDiscard(true);
+    else onCancel();
+  };
 
   const businessTargets = useMemo(() => {
     const flat = toBusinessFlatNodes(modules);
@@ -38,13 +46,14 @@ export function ModuleMoveDialog({
   }, [module.id, modules]);
 
   useEffect(() => {
-    setParentId("");
-  }, [module.id]);
+    setParentId(module.parentId ?? "");
+    setConfirmDiscard(false);
+  }, [module.id, module.parentId]);
 
   return (
-    <ModalDialog
-      open
-      onDismiss={onCancel}
+    <><ModalDialog
+      open={!confirmDiscard}
+      onDismiss={busy ? undefined : requestClose}
       className="submission-dialog param-admin-module-edit-dialog module-move-dialog"
       backdropClassName="param-admin-modal-backdrop"
     >
@@ -59,7 +68,8 @@ export function ModuleMoveDialog({
             <button
               type="button"
               className="audit-dialog-close-icon"
-              onClick={onCancel}
+              onClick={requestClose}
+              disabled={busy}
               aria-label="关闭"
             >
               <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
@@ -73,6 +83,7 @@ export function ModuleMoveDialog({
               </span>
               <ModuleTreeSelect
                 mode="single"
+                includeRootOption
                 label="目标业务分类"
                 labelledBy={targetLabelId}
                 nodes={businessTargets}
@@ -90,14 +101,14 @@ export function ModuleMoveDialog({
             </p>
           ) : null}
           <div className="dialog-actions">
-            <button className="button subtle" type="button" disabled={busy} onClick={onCancel}>
+            <button className="button subtle" type="button" disabled={busy} onClick={requestClose}>
               取消
             </button>
             <button
               className="button primary"
               type="button"
-              disabled={busy}
-              onClick={() => onConfirm(parentId || null)}
+              disabled={busy || !changed}
+              onClick={() => { if (!busy && changed) onConfirm(parentId || null); }}
             >
               确认移动
             </button>
@@ -105,5 +116,8 @@ export function ModuleMoveDialog({
         </>
       )}
     </ModalDialog>
+    <ConfirmDialog open={confirmDiscard} title="放弃移动设置？" description="尚未提交的目标模块选择将丢失。"
+      confirmLabel="放弃修改" cancelLabel="继续编辑" onConfirm={onCancel} onCancel={() => setConfirmDiscard(false)} />
+    </>
   );
 }

@@ -324,6 +324,38 @@ describe("guarded Registration and Placement", () => {
     });
   });
 
+  it("atomically initializes a typed destination, replays it and rolls back rejected or duplicate initialization", async () => {
+    const org = `org-init-${randomUUID()}`;
+    const parent = `business-${randomUUID()}`;
+    const target = `driver-${randomUUID()}`;
+    await pool.query(`insert into public.organizations(id,name) values($1,'Initialization')`, [org]);
+    await pool.query(`insert into public.parameter_modules(id,organization_id,name,path,kind,origin) values($1,$2,'Business',$1,'business','curated')`, [parent, org]);
+    const command = registerCommand({ organizationId: org, destinationModuleId: target, newDestination: { parentModuleId: parent, name: "Canonical driver" }, idempotencyKey: "initialize-exact" });
+    const initialized = await Promise.all([service.execute(command), service.execute(command)]);
+    expect(initialized.every((result) => result.ok)).toBe(true);
+    expect(initialized.map((result) => result.ok ? result.value.outcome : "failed").sort()).toEqual(["committed", "replayed"]);
+    expect(await service.execute(command)).toMatchObject({ ok: true, value: { outcome: "replayed", moduleId: target } });
+    const created = await pool.query(`select module.kind,module.parent_id,module.path,subject.source_key from public.parameter_modules module join public.attribution_subjects subject on subject.id=module.attribution_subject_id where module.id=$1`, [target]);
+    expect(created.rows[0]).toEqual({ kind: "driver-group", parent_id: parent, path: `${parent}/${target}`, source_key: `catalog-subject:${SUBJECT_ID}` });
+    const before = await residue();
+    expect(await service.execute({ ...command, destinationModuleId: `${target}-foreign`, idempotencyKey: "wrong-parent", newDestination: { parentModuleId: MODULE_ID, name: "Foreign parent" } })).toMatchObject({ ok: false, error: { kind: "invalid-placement-parent" } });
+    expect(await residue()).toEqual(before);
+    const lateOrg = `${org}-late`;
+    const lateParent = `${parent}-late`;
+    const lateTarget = `${target}-late`;
+    await pool.query(`insert into public.organizations(id,name) values($1,'Late rollback')`, [lateOrg]);
+    await pool.query(`insert into public.parameter_modules(id,organization_id,name,path,kind,origin) values($1,$2,'Business',$1,'business','curated')`, [lateParent, lateOrg]);
+    expect(await service.execute({ ...command, organizationId: lateOrg, subjectKind: "node-type", destinationModuleId: lateTarget, newDestination: { parentModuleId: lateParent, name: "Wrong subject kind" } })).toMatchObject({ ok: false });
+    expect((await pool.query(`select id from public.parameter_modules where id=$1`, [lateTarget])).rows).toHaveLength(0);
+    expect((await pool.query(`select id from public.attribution_subjects where id=$1`, [`asub:canonical:${lateTarget}`])).rows).toHaveLength(0);
+    expect(await residue()).toEqual(before);
+    expect(await service.execute({ ...command, destinationModuleId: `${target}-duplicate`, idempotencyKey: "duplicate-init" })).toMatchObject({ ok: false });
+    expect(await residue()).toEqual(before);
+    expect((await pool.query(`select id from public.parameter_modules where id=$1`, [`${target}-duplicate`])).rows).toHaveLength(0);
+    expect(await service.execute({ ...command, destinationModuleId: `${target}-wrong-kind`, idempotencyKey: "wrong-kind-parent", newDestination: { parentModuleId: target, name: "Wrong kind" } })).toMatchObject({ ok: false, error: { kind: "invalid-placement-parent" } });
+    expect(await residue()).toEqual(before);
+  });
+
   it("does not automatically restore a retired Registration", async () => {
     const existing = await pool.query<{ id: string }>(
       `select id

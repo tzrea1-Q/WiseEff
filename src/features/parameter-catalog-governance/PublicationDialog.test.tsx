@@ -1,6 +1,7 @@
 import { selectControlOption } from "@/test/selectControlOption";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { cloneElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,7 +9,11 @@ import {
   CATALOG_ORGANIZATION_ID,
   CATALOG_RELEASE_ID,
   CATALOG_SUBJECT_ID,
-  readyCatalogDocument
+  readyCatalogDocument,
+  activeDefinition,
+  registeredSubject,
+  retiredSubject,
+  unregisteredSubject
 } from "@/application/parameter-catalog/fixtures";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
@@ -18,7 +23,7 @@ import { catalogApiFailure } from "@/application/parameter-catalog/errors";
 
 import { PublicationDialog } from "./PublicationDialog";
 import { PUBLICATION_JOB_STORAGE_KEY } from "./publicationJobStorage";
-import { publicationCopy } from "./publicationState";
+import { emptyPublicationDraft, publicationCopy } from "./publicationState";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 
@@ -28,6 +33,8 @@ function renderDialog(
     permissions?: readonly string[];
     publicationOutcome?: "queued" | "active" | "active-superseded" | "needs-rebase" | "policy-disabled" | "frozen";
     createIdempotencyKey?: () => string;
+    paginate?: boolean;
+    prepare?: (ports: ReturnType<typeof createMockCatalogPorts>) => void;
   } = {}
 ) {
   const ports = createMockCatalogPorts({
@@ -37,7 +44,18 @@ function renderDialog(
   const createCandidate = vi.spyOn(ports.catalog, "createPublicationCandidate");
   const publish = vi.spyOn(ports.catalog, "publishPublicationCandidate");
   const getPublication = vi.spyOn(ports.catalog, "getPublication");
-  const view = render(
+  const completed = vi.fn();
+  if (options.paginate) {
+    const subjects = ports.catalog.listSubjects.bind(ports.catalog);
+    vi.spyOn(ports.catalog, "listSubjects").mockImplementation(async (query) => {
+      const page = await subjects(query);
+      return { ...page, items: query?.cursor ? [{ ...page.items[0], id: "subject-last-page", canonicalName: "最后一页主体" }] : page.items,
+        hasMore: !query?.cursor, nextCursor: query?.cursor ? null : "subjects-page-2" };
+    });
+    vi.spyOn(ports.catalog, "listDefinitions");
+  }
+  options.prepare?.(ports);
+  const element = (
     <PublicationDialog
       open
       actor={options.actor ?? "user"}
@@ -62,9 +80,13 @@ function renderDialog(
       }}
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")}
       onOpenChange={vi.fn()}
+      onCompleted={completed}
+      onRefreshEvidence={vi.fn()}
     />
   );
-  return { ...view, ports, createProposal, createCandidate, publish, getPublication };
+  const view = render(element);
+  return { ...view, ports, createProposal, createCandidate, publish, getPublication, completed,
+    changeRelease: (catalogReleaseId: string) => view.rerender(cloneElement(element, { catalogReleaseId })) };
 }
 
 async function fillSupportedDefinition(user: ReturnType<typeof userEvent.setup>) {
@@ -91,6 +113,136 @@ async function confirm(label: string) {
 }
 
 describe("PublicationDialog", () => {
+  it("keeps creation separate from editing and has no permanent evidence refresh action", async () => {
+    renderDialog();
+    await screen.findByLabelText("已发布主体");
+    expect(screen.getAllByRole("radio").map((item) => item.getAttribute("value"))).toEqual(["create-definition", "create-subject"]);
+    expect(screen.queryByRole("button", { name: "刷新证据" })).not.toBeInTheDocument();
+  });
+
+  it("retries a failed subject load without discarding entered fields", async () => {
+    renderDialog({ prepare: (ports) => {
+      const read = ports.catalog.listSubjects.bind(ports.catalog);
+      vi.spyOn(ports.catalog, "listSubjects").mockRejectedValueOnce(new Error("offline")).mockImplementation(read);
+    } });
+    const user = userEvent.setup();
+    await screen.findByText("主体列表加载失败，请稍后重试。");
+    await user.type(screen.getByLabelText("显示名称"), "重试时保留");
+    await user.click(screen.getByRole("button", { name: "重试", exact: true }));
+    await waitFor(() => expect(screen.queryByText("主体列表加载失败，请稍后重试。")).not.toBeInTheDocument());
+    await selectControlOption(screen.getByLabelText("已发布主体"), CATALOG_SUBJECT_ID);
+    expect(screen.getByLabelText("显示名称")).toHaveValue("重试时保留");
+  });
+  it("only offers active owners with writable registration and does not fetch existing definitions", async () => {
+    const { ports } = renderDialog({ prepare: (ports) => {
+      const owner = { ...retiredSubject, id: "retired-owner", canonicalName: "退役主体" };
+      const registrationRetired = { ...registeredSubject, id: "retired-registration-owner", canonicalName: "退役登记主体", registration: { status: "retired" as const, id: "registration-retired" } };
+      vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({ items: [registeredSubject, owner, registrationRetired], totalCount: 3, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+      vi.spyOn(ports.catalog, "listDefinitions");
+    } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText("已发布主体"));
+    expect(screen.queryByRole("option", { name: "退役主体" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "退役登记主体" })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("radio", { name: "修订定义" })).not.toBeInTheDocument();
+    expect(ports.catalog.listDefinitions).not.toHaveBeenCalled();
+  });
+
+  it("allows creating a new subject when the current directory has no subjects", async () => {
+    const { createCandidate } = renderDialog({ prepare: (ports) => {
+      const page = { items: [], totalCount: 0, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID };
+      vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue(page);
+      vi.spyOn(ports.catalog, "listDefinitions").mockResolvedValue(page);
+    } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("radio", { name: "新增主体" }));
+    await user.type(screen.getByLabelText("选择器"), "vendor,new");
+    await user.type(screen.getByLabelText("属性键"), "new-value");
+    await user.type(screen.getByLabelText("显示名称"), "新参数");
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledOnce());
+  });
+
+  it("allows creating a definition under an active unregistered owner", async () => {
+    const { createCandidate } = renderDialog({ prepare: (ports) => {
+      vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({ items: [unregisteredSubject], totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+      vi.spyOn(ports.catalog, "listDefinitions").mockResolvedValue({ items: [{ ...activeDefinition, registration: { status: "unregistered" } }], totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    } });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledOnce());
+  });
+
+  it.each(["create-definition", "revise-definition"] as const)("blocks restored %s writes without converting the stored task", async (mode) => {
+    window.localStorage.setItem(PUBLICATION_JOB_STORAGE_KEY, JSON.stringify({
+      jobId: "job-restored", candidateId: "candidate-restored", catalogReleaseId: CATALOG_RELEASE_ID,
+      userId: CATALOG_AUTHOR_PERSON_ID, organizationId: CATALOG_ORGANIZATION_ID, idempotencyKey: "restored",
+      draft: { ...emptyPublicationDraft(), mode, subjectId: retiredSubject.id, definitionId: activeDefinition.id, propertyKey: "old-key", displayName: "保留的显示名", reason: "恢复的草稿" }
+    }));
+    const { createCandidate, publish } = renderDialog({ prepare: (ports) => {
+      vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({ items: [retiredSubject], totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+      vi.mocked(ports.catalog.getPublication).mockResolvedValue({ item: { id: "job-restored", candidateId: "candidate-restored", status: "cancelled", attemptCount: 0, effective: false, isCurrent: false, currentness: null, failure: null } });
+    } });
+    if (mode === "create-definition") {
+      expect(await screen.findByDisplayValue("保留的显示名")).toBeVisible();
+      expect(await screen.findByText(/请重新选择有效/)).toBeVisible();
+      expect(screen.getByLabelText("已发布主体")).toHaveAttribute("data-value", retiredSubject.id);
+      expect(screen.getByRole("button", { name: "重新预览" })).toBeDisabled();
+      await waitFor(() => expect(screen.getByRole("button", { name: "发布到目录" })).toBeDisabled());
+    } else {
+      await screen.findByRole("dialog", { name: "历史发布任务" });
+      expect(screen.getByText(/此处仅跟踪已有发布任务/)).toBeVisible();
+      expect(screen.queryByLabelText("属性键")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "预览发布" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
+      expect(screen.queryByText(publicationCopy.authorRequired)).not.toBeInTheDocument();
+    }
+    expect(createCandidate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("发布预览")).not.toBeInTheDocument();
+    if (mode === "revise-definition") {
+      await userEvent.click(await screen.findByRole("button", { name: "结束跟踪并开始新增" }));
+      expect(await screen.findByRole("dialog", { name: "向已发布主体新增定义" })).toBeVisible();
+      expect(screen.getByLabelText("属性键")).toHaveValue("");
+      expect(window.localStorage.getItem(PUBLICATION_JOB_STORAGE_KEY)).toBeNull();
+      expect(createCandidate).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
+    }
+  });
+
+  it("includes subjects beyond the first API page", async () => {
+    const { ports } = renderDialog({ paginate: true });
+    await selectControlOption(await screen.findByLabelText("已发布主体"), "subject-last-page");
+    expect(screen.getByLabelText("已发布主体")).toHaveAttribute("data-value", "subject-last-page");
+    expect(ports.catalog.listSubjects).toHaveBeenCalledWith(expect.objectContaining({ cursor: "subjects-page-2" }));
+    expect(ports.catalog.listDefinitions).not.toHaveBeenCalled();
+  });
+  it("completes a new publication after finishing a successful legacy revision task", async () => {
+    window.localStorage.setItem(PUBLICATION_JOB_STORAGE_KEY, JSON.stringify({
+      jobId: "job-old", candidateId: "candidate-old", catalogReleaseId: CATALOG_RELEASE_ID,
+      userId: CATALOG_AUTHOR_PERSON_ID, organizationId: CATALOG_ORGANIZATION_ID, idempotencyKey: "old",
+      draft: { ...emptyPublicationDraft(), mode: "revise-definition", definitionId: activeDefinition.id }
+    }));
+    const { completed } = renderDialog({ publicationOutcome: "active", prepare: (ports) => {
+      vi.mocked(ports.catalog.getPublication).mockResolvedValue({ item: {
+        id: "job-old", candidateId: "candidate-old", status: "active", attemptCount: 1,
+        effective: true, isCurrent: true, currentness: "active", failure: null
+      } });
+    } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "结束跟踪并开始新增" }));
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await waitFor(() => expect(completed).toHaveBeenCalledTimes(2));
+    expect(window.localStorage.getItem(PUBLICATION_JOB_STORAGE_KEY)).toBeNull();
+  });
   afterEach(() => {
     cleanup();
     window.localStorage.removeItem(PUBLICATION_JOB_STORAGE_KEY);
@@ -284,13 +436,24 @@ describe("PublicationDialog", () => {
     expect(register).toHaveBeenCalledTimes(1);
   });
 
-  it("shows catalog-new-version is not project-adopted for semantic revise", async () => {
-    renderDialog({ actor: "org-admin", permissions: ["catalog:author", "catalog:publish"] });
+  it("preserves fields and invalidates the previous preview when the directory version changes", async () => {
+    const { changeRelease, createCandidate } = renderDialog({ prepare: (ports) => {
+      vi.spyOn(ports.catalog, "listSubjects").mockImplementation(async (query) => ({
+        items: [{ ...registeredSubject, membership: { ...registeredSubject.membership, catalogReleaseId: query?.catalogReleaseId ?? CATALOG_RELEASE_ID } }],
+        totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: query?.catalogReleaseId ?? CATALOG_RELEASE_ID
+      }));
+    } });
     const user = userEvent.setup();
-    await user.click(await screen.findByLabelText("修订定义"));
-    expect(await screen.findByRole("dialog", { name: "修订已有定义" })).toBeVisible();
-    await selectControlOption(screen.getByLabelText("修订类别"), "semantic");
-    expect(screen.getByText(/目录有新版本并不等于项目已采用/)).toBeVisible();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await screen.findByLabelText("发布预览");
+    changeRelease("crel_newer");
+    await waitFor(() => expect(screen.getByRole("button", { name: "发布到目录" })).toBeDisabled());
+    expect(screen.getByLabelText("显示名称")).toHaveValue("保持电流");
+    expect(screen.getByLabelText("属性键")).toHaveValue("iin_hold");
+    expect(screen.getByRole("button", { name: "重新预览" })).toBeVisible();
+    expect(createCandidate).toHaveBeenCalledTimes(1);
   });
 
   it("does not use unpublished-empty copy for a permission miss when published subjects exist", async () => {
