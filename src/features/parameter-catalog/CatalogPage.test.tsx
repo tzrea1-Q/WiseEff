@@ -378,7 +378,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       items: [activeDefinition], totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID
     });
     const { onHref } = renderCatalog({ repository, definitionAuthoringAllowed: true,
-      search: `?moduleNodeId=${CATALOG_MODULE_ID}&q=GPIO&lifecycle=active&pageSize=20&cursor=opaque-next`,
+      search: `?catalogReleaseId=${CATALOG_RELEASE_ID}&moduleNodeId=${CATALOG_MODULE_ID}&q=GPIO&lifecycle=active&pageSize=20&cursor=opaque-next`,
       renderDefinitionEditor: () => <p>完整详情</p> });
     const user = userEvent.setup();
     const rowAction = await screen.findByRole("button", { name: `编辑 ${activeDefinition.propertyKey}` });
