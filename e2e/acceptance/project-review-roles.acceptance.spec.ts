@@ -57,11 +57,12 @@ test.describe("project review role configuration", () => {
     // @operation PROJ-REVIEW-ROLES-001
     const suffix = randomUUID().slice(0, 8);
     const projectId = `proj-review-${suffix}`;
+    const projectName = `Review ${suffix}`;
     const created = await request.post(apiRoute("/api/v1/parameters/admin/projects"), {
       headers: adminHeaders(),
       data: {
         id: projectId,
-        name: `Review ${suffix}`,
+        name: projectName,
         code: `R${suffix.slice(0, 6).toUpperCase()}`
       }
     });
@@ -75,7 +76,7 @@ test.describe("project review role configuration", () => {
     );
     await dismissXiaozeHint(page);
 
-    await expect(page.getByRole("heading", { name: `${projectId} 项目审核角色配置` })).toBeVisible({
+    await expect(page.getByRole("heading", { name: `${projectName} 项目审核角色配置`, exact: true })).toBeVisible({
       timeout: 30_000
     });
     await expect(page.getByRole("alert")).toContainText("审核职责未就绪");
@@ -175,11 +176,12 @@ test.describe("project review role readiness on a canonical Catalog fixture", ()
 
     const suffix = randomUUID().slice(0, 8);
     const projectId = `t32ready-${suffix}`;
+    const projectName = `Ready ${suffix}`;
     const created = await request.post(apiRoute("/api/v1/parameters/admin/projects"), {
       headers: adminHeaders(),
       data: {
         id: projectId,
-        name: `Ready ${suffix}`,
+        name: projectName,
         code: `Y${suffix.slice(0, 6).toUpperCase()}`
       }
     });
@@ -270,7 +272,7 @@ test.describe("project review role readiness on a canonical Catalog fixture", ()
     await expect(adminTray.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
     await adminTray.getByRole("button", { name: "配置项目审核角色" }).click();
     await expect(page).toHaveURL(new RegExp(`/parameter-admin/projects/${projectId}/review-roles`));
-    await expect(page.getByRole("heading", { name: `${projectId} 项目审核角色配置` })).toBeVisible();
+    await expect(page.getByRole("heading", { name: `${projectName} 项目审核角色配置`, exact: true })).toBeVisible();
 
     await page.goto(disposablePageUrl(runtime, `/parameters?project=${encodeURIComponent(projectId)}`));
     await dismissXiaozeHint(page);

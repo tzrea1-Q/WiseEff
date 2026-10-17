@@ -53,8 +53,12 @@ test("B1 preserves canonical admin and read-only Definition pages at PC 1440x900
   await page.goto(`/parameter-admin/specs?${query}`);
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: `查看 ${definition.propertyKey}`, exact: true })).toBeVisible();
+  await expect(dialog.getByText(definition.currentRevision.displayName, { exact: true })).toBeVisible();
+  await dialog.getByText("技术标识", { exact: true }).click();
   await expect(dialog.getByText(definition.id, { exact: true }).first()).toBeVisible();
-  await expect(dialog.getByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).toBeVisible();
+  await expect(dialog.getByText(definition.subject.id, { exact: true })).toBeVisible();
+  await expect(dialog.getByText(definition.currentRevision.publishedInCatalogReleaseId, { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "保存内容修订" })).toHaveCount(0);
   await expect(dialog.getByRole("textbox", { name: "属性键" })).toHaveCount(0);
   await dialog.getByRole("button", { name: /查看历史/ }).click();
@@ -89,9 +93,10 @@ test.describe("parameter-admin project list", () => {
     await row.getByRole("button", { name: `${project.name}操作：更多`, exact: true }).click();
     const deleteAction = page.getByRole("menuitem", { name: `删除 ${project.name}`, exact: true });
     await expect(deleteAction).toBeDisabled();
-    const explanation = "项目需保留规范历史，不能删除；归档或处置功能尚未开放。";
+    const explanation = "项目需保留规范历史，不能删除；可归档后从默认清单收起。";
     await expect(deleteAction).toHaveAccessibleDescription(explanation);
     await expect(page.getByText(explanation, { exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: `${project.status === "archived" ? "恢复项目" : "归档"} ${project.name}`, exact: true })).toBeEnabled();
     expect(project.canonicalOwned).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     const screenshot = testInfo.outputPath("canonical-project-delete-1440.png");
@@ -104,7 +109,7 @@ test.describe("parameter-admin project list", () => {
         responseSummary: `project=${project.id}; canonicalOwned=true` })],
       db: [{ table: "parameter_catalog.project_parameter_bindings", predicate: `project_id=${project.id}`,
         observed: "Canonical Bindings retained", rowCount: bindings.rows[0].count }],
-      notes: "At 1440x900 the canonical project's Delete is disabled with an accessible, visible retention explanation; no archive or disposal action is offered."
+      notes: "At 1440x900 the canonical project's Delete is disabled with an accessible, visible retention explanation; archive or restore remains available without deleting retained bindings."
     });
   });
 

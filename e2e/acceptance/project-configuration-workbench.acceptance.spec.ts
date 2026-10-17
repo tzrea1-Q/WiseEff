@@ -1570,7 +1570,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
       const ungrouped = page.getByRole("group", { name: "未编组项目文件" });
       await expect(ungrouped).toContainText(looseFileName);
-      await expect(ungrouped).toContainText("不参与当前工作配置");
+      await expect(ungrouped.locator(".configuration-workbench__ungrouped-file").filter({ hasText: looseFileName }))
+        .toContainText("尚未加入当前配置集");
 
       await page.getByRole("button", { name: `编入 ${looseFileName}` }).click();
       await expect(page.getByRole("treeitem", { name: new RegExp(looseFileName) })).toBeVisible({ timeout: 15_000 });
