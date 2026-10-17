@@ -216,6 +216,7 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
     const queue = await reviewQueue();
     const created = queue.items.filter((item) => !before.items.some((existing) => existing.id === item.id));
     expect(created).toContainEqual(expect.objectContaining({ reason: "ambiguous", status: "open" }));
+    const evidenceState = await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId: seeded.projectId });
     const provenCandidates: string[] = [];
     for (const item of created) {
       const detail = await requestJson(harness.server,
@@ -223,12 +224,18 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
       expect(detail.status, detail.bodyText).toBe(200);
       const canonical = detail.body as { item: typeof item };
       expect(canonical.item).toEqual(item);
-      expect(canonical.item.observation?.sourceRef.kind).toBe("review-evidence");
+      expect(canonical.item.observation).toMatchObject({ propertyKey: "reg", sourceRef: { kind: "observation" } });
+      const observation = canonical.item.observation;
+      if (!observation) throw new Error("Source-bound continuity observation missing");
+      expect(observation.sourceRef.id).toBe(observation.id);
+      expect(evidenceState.observations).toContainEqual({ id: observation.id });
+      const linkedEvidence = evidenceState.evidence.filter((entry) => entry.observationId === observation.id);
+      expect(linkedEvidence).toHaveLength(1);
       const persisted = await loadDtsReviewEvidenceSourceFixture(api, {
         organizationId, projectId: seeded.projectId,
-        reviewEvidenceId: canonical.item.observation!.sourceRef.id,
+        reviewEvidenceId: linkedEvidence[0]!.id,
       });
-      expect(persisted).toMatchObject({ configRevisionId: revision.id, fileId: seeded.fileId,
+      expect(persisted).toMatchObject({ observationId: observation.id, configRevisionId: revision.id, fileId: seeded.fileId,
         configSetId: seeded.configSetId, logicalNodeId: expect.any(String), sourceOccurrenceId: expect.any(String) });
       const evidence = persisted.evidence;
       expect(evidence).toMatchObject({ reason: "ambiguous", payload: {
@@ -261,8 +268,19 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
     const created = queue.items.filter((item) => !before.items.some((existing) => existing.id === item.id));
     expect(created).toContainEqual(expect.objectContaining({
       reason: "ambiguous", status: "open", candidateState: expect.objectContaining({ status: "current" }),
-      observation: expect.objectContaining({ sourceRef: expect.objectContaining({ kind: "review-evidence" }) }),
+      observation: expect.objectContaining({ propertyKey: "compatible", sourceRef: expect.objectContaining({ kind: "observation" }) }),
     }));
+    const evidenceState = await captureDtsReviewEvidenceStateFixture(api, { organizationId, projectId: seeded.projectId });
+    for (const item of created) {
+      const observation = item.observation;
+      if (!observation) throw new Error("Published compatible observation missing");
+      expect(observation.sourceRef).toEqual({ kind: "observation", id: observation.id });
+      expect(evidenceState.observations).toContainEqual({ id: observation.id });
+      const sourceCompatible = item.sourceSummary?.compatible;
+      expect(["arm,amba-bus", "arm,gic-v3"]).toContain(sourceCompatible);
+      expect(evidenceState.evidence.filter((entry) => entry.observationId === observation.id
+        && entry.evidence?.payload.compatible === sourceCompatible)).toHaveLength(1);
+    }
   });
 
   it("propertyless ambiguous continuity enters canonical review as revision evidence without inventing a property locator or resolving identity", async () => {
@@ -294,7 +312,20 @@ describe("#1068 assembled seeded PostgreSQL identity task production retirement"
         `/api/v2/organizations/${organizationId}/parameter-review-items/${item.id}`, { headers });
       expect(detail.status, detail.bodyText).toBe(200);
       expect(detail.body).toMatchObject({ item });
-      const persisted = state.evidence.find((entry) => entry.id === item.observation!.sourceRef.id)!;
+      expect(item.observation).toBeUndefined();
+      expect(item.sourceSummary).toMatchObject({ status: "available", evidenceCount: 1,
+        projectId: seeded.projectId, configRevisionId: revision.id,
+        nodeLocator: expect.stringMatching(/^\/bus@0\/(left|right)@10$/),
+      });
+      expect(item.sourceSummary).not.toHaveProperty("propertyKey");
+      expect(item.sourceSummary).not.toHaveProperty("observationId");
+      expect(item.candidates).toEqual([]);
+      const linkedEvidence = state.evidence.filter((entry) => {
+        const source = entry.evidence?.payload.sourceRevision as { configRevisionId?: string; nodeLocator?: string } | undefined;
+        return source?.configRevisionId === revision.id && source.nodeLocator === item.sourceSummary?.nodeLocator;
+      });
+      expect(linkedEvidence).toHaveLength(1);
+      const persisted = linkedEvidence[0]!;
       expect(persisted.observationId).toBeNull();
       expect(persisted.evidence!.payload).toMatchObject({ kind: "logical-continuity-decision-needed",
         priorNodeEquivalent: false, relations: [relation], sourceRevision: {
