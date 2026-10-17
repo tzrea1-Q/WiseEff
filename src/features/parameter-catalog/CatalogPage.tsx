@@ -931,6 +931,21 @@ export function CatalogPage({
           </label>
           {actions.length > 0 || onOpenPendingWork ? (
             <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
+              {onOpenPendingWork ? (
+                <button
+                  type="button"
+                  className="button subtle sm"
+                  data-catalog-action="open-pending-work"
+                  onClick={onOpenPendingWork}
+                >
+                  {catalogPendingWorkLabel}
+                  {reviewItemCount !== null && reviewItemCount > 0 ? (
+                    <span className="parameter-catalog__badge" data-tone="warning">
+                      {reviewItemCount}
+                    </span>
+                  ) : null}
+                </button>
+              ) : null}
               {actions.map((action) => (
                 <button
                   key={action.action}
@@ -953,21 +968,6 @@ export function CatalogPage({
                   {action.label}
                 </button>
               ))}
-              {onOpenPendingWork ? (
-                <button
-                  type="button"
-                  className="button subtle sm"
-                  data-catalog-action="open-pending-work"
-                  onClick={onOpenPendingWork}
-                >
-                  {catalogPendingWorkLabel}
-                  {reviewItemCount !== null && reviewItemCount > 0 ? (
-                    <span className="parameter-catalog__badge" data-tone="warning">
-                      {reviewItemCount}
-                    </span>
-                  ) : null}
-                </button>
-              ) : null}
             </div>
           ) : null}
         </>}

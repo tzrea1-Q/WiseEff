@@ -388,6 +388,21 @@ describe("unified review inbox structure", () => {
 
 describe("view-switch collection", () => {
   it.each([
+    ['<div class="parameter-catalog__actions"><button data-test-top="40">待审核事项</button><button class="button primary" data-test-top="72">新增定义</button></div>', "catalog-definitions"],
+    ['<div class="navigator-workbench__primary"><button data-test-top="40">刷新</button><button data-slot="button" data-variant="default" data-test-top="72">新建模块</button></div>', "module-governance"],
+    ['<div class="navigator-workbench__primary"><button data-primary-action="true" data-test-top="72">主操作</button><button data-test-top="40">次要操作</button></div>', "explicit-primary"]
+  ])("measures the marked primary in the actual toolbar action group: %s", (actions, pageKey) => {
+    const measurements = collectMarkup(`<div class="navigator-workbench" data-workbench-page="${pageKey}">
+      <div class="navigator-workbench__toolbar">${actions}</div>
+      <section class="navigator-workbench__task"><table><tbody><tr><td>当前记录</td></tr></tbody></table></section>
+    </div>`);
+    expect(measurements.navigatorWorkbenches[0].primaryAction?.top).toBe(72);
+    expect(measurements.navigatorWorkbenches[0].firstRow).not.toBeNull();
+    expect(collectMarkup(`<div class="navigator-workbench"><section class="navigator-workbench__task">${actions}</section></div>`)
+      .navigatorWorkbenches[0].primaryAction).toBeNull();
+  });
+
+  it.each([
     ['<li class="canonical-driver-discovery__item">发现记录</li>', 100],
     ['<p role="status">当前范围没有来源观察记录。</p>', 100],
     ["", null]

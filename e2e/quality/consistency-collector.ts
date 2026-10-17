@@ -230,6 +230,11 @@ export function collectConsistencyMeasurements() {
       : 'tbody tr, [role="row"]:has([role="cell"]), .identity-mapping-review__item, .logs-conclusion-card, .log-error-alert, [data-canonical-subject-id], .canonical-driver-discovery__item')].find(visible)
       ?? (workbench.getAttribute("data-workbench-page") === "module-governance"
         ? [...rowScope.querySelectorAll('[role="status"], [role="alert"]')].find(visible) : undefined);
+    const toolbarActions = workbench.querySelector(":scope > .navigator-workbench__toolbar")
+      ?.querySelectorAll(".navigator-workbench__primary > button, .navigator-workbench__primary > a, .parameter-catalog__actions > button, .parameter-catalog__actions > a");
+    const visibleToolbarActions = [...(toolbarActions ?? [])].filter(visible);
+    const primaryAction = visibleToolbarActions.find((action) => action.matches('[data-primary-action="true"], [data-slot="button"][data-variant="default"], .button.primary'))
+      ?? visibleToolbarActions.at(-1);
     return {
       pageKey: workbench.getAttribute("data-workbench-page"),
       collapsed: workbench.getAttribute("data-navigator-collapsed") === "true",
@@ -239,7 +244,7 @@ export function collectConsistencyMeasurements() {
       inspector: measure(":scope > .navigator-workbench__body > .navigator-workbench__inspector"),
       inspectorOverlay: workbench.querySelector(".navigator-workbench__inspector")?.getAttribute("data-overlay") === "true",
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
-      primaryAction: measure(".navigator-workbench__primary > button, .navigator-workbench__primary > a"),
+      primaryAction: primaryAction ? bounds(primaryAction) : null,
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
       navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .logs-history-status, .navigator-workbench__navigation .module-attribution-tree__count")].filter(visible).map((count) => {
         const navigation = count.closest(".navigator-workbench__navigation")!;

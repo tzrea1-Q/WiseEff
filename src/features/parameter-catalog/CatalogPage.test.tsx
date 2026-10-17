@@ -492,7 +492,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
   });
 
   it("orders workbench actions, navigation and definitions without a redundant release context", async () => {
-    renderCatalog();
+    renderCatalog({ sessionPermissions: ["catalog:author"] });
     await screen.findByRole("table", { name: "参数定义列表" });
     const toolbar = screen.getByRole("group", { name: "工作台操作" });
     expect(screen.queryByRole("region", { name: "目录发布" })).not.toBeInTheDocument();
@@ -500,6 +500,8 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const task = screen.getByRole("region", { name: "目录列表" });
     expect(within(toolbar).getByRole("searchbox", { name: "搜索参数定义" })).toBeVisible();
     expect(within(toolbar).queryByRole("button", { name: "搜索" })).not.toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "待审核事项" }).compareDocumentPosition(
+      within(toolbar).getByRole("button", { name: "新增定义" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(toolbar.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(navigator.compareDocumentPosition(task) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(navigator).getByRole("button", { name: "收起模块导航" })).toBeVisible();
