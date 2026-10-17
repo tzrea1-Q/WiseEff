@@ -946,7 +946,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     expect(await screen.findByRole("region", { name: "项目配置工作台" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "参数后台范围" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /\.dts$/ })).toBeInTheDocument();
-    expect(screen.getByRole("tree", { name: /成员文件/ })).toBeInTheDocument();
+    expect(screen.getByRole("tree", { name: /配置文件$/ })).toBeInTheDocument();
   });
 
   it("redirects legacy /files deep links to the canonical workbench with file inspector context", async () => {

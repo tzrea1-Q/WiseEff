@@ -181,7 +181,8 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
       const approved = await submitFromPage(approvedFixture, "DTS 浏览器批准");
       const detail = await reviewFromQueue("DTS 浏览器批准");
       await detail.getByText("溯源信息", { exact: true }).click();
-      await expect(detail.locator("details").getByText(approved.batchProofDigest, { exact: true }).first()).toBeVisible();
+      await expect(detail.getByLabel("完整溯源数据")).toBeVisible();
+      await expect.poll(async () => JSON.parse((await detail.getByLabel("完整溯源数据").textContent())!)["批量证明摘要"]).toBe(approved.batchProofDigest);
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
       await page.screenshot({ path: testInfo.outputPath("b906-dts-review-1440x900.png") });
       const approvalResponse = page.waitForResponse((response) => response.request().method() === "POST"

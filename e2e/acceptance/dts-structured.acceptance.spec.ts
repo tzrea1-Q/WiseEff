@@ -494,8 +494,8 @@ test.describe("DTS structured product browser acceptance", () => {
       expect((changedMember?.structuralDiff?.length ?? 0) > 0).toBe(true);
 
       await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible();
-      await openWorkbenchPanel(page, "release");
-      await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible({ timeout: 20_000 });
+      const configurationVersions = await openWorkbenchPanel(page, "release");
+      await expect(configurationVersions).toBeVisible({ timeout: 20_000 });
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-DIFF-001",

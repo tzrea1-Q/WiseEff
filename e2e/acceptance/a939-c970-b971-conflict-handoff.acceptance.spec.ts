@@ -312,8 +312,11 @@ for (const format of ["json", "dts"] as const) {
         expect(ready.ineligible).toEqual([]);
         expect(ready.items.map((item) => item.selectedDraftId).sort()).toEqual([unprepared.id, pending.id].sort());
         if (workflow === "manual") {
-          for (const row of await dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem").all()) {
-            await row.getByRole("radio", { name: /采用文件值/ }).check();
+          const fileChoices = dialog.getByRole("radio", { name: "采用文件值", exact: true });
+          await expect(fileChoices).toHaveCount(2);
+          for (const choice of await fileChoices.all()) {
+            await choice.check();
+            await expect(choice).toBeChecked();
           }
           await dialog.getByRole("textbox", { name: "修改原因" }).fill("A joint proof recovery");
           await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);

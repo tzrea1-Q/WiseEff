@@ -167,7 +167,8 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       await queue.locator(`[data-review-row-id="${approved.id}"]`).getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
       const detail = page.getByRole("article", { name: "批量源文件请求详情" });
       await detail.getByText("溯源信息", { exact: true }).click();
-      await expect(detail.locator("details").getByText(approved.batchProofDigest, { exact: true }).first()).toBeVisible();
+      await expect(detail.getByLabel("完整溯源数据")).toBeVisible();
+      await expect.poll(async () => JSON.parse((await detail.getByLabel("完整溯源数据").textContent())!)["批量证明摘要"]).toBe(approved.batchProofDigest);
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
       await expect(detail.getByRole("button", { name: "批准全部 2 项" })).toBeEnabled();
       const approvalResponse = page.waitForResponse((response) => response.request().method() === "POST"

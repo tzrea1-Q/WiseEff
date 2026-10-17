@@ -462,10 +462,12 @@ describe("CanonicalProjectValueReviewPanel", () => {
     const provenanceSummary = screen.getByText("溯源信息");
     fireEvent.click(provenanceSummary);
     const provenance = within(provenanceSummary.closest("details")!);
-    expect(await provenance.findByText("project-2-request")).toBeVisible();
-    finishWithdrawal({ item: { ...request, status: "withdrawn" } });
+    const sourceData = await provenance.findByLabelText("完整溯源数据");
+    expect(sourceData).toBeVisible();
+    expect(JSON.parse(sourceData.textContent!)).toMatchObject({ "请求 ID": "project-2-request", projectId: "project-2" });
+    await act(async () => { finishWithdrawal({ item: { ...request, status: "withdrawn" } }); });
     await waitFor(() => expect(screen.getByRole("button", { name: "撤回我的提交" })).toBeEnabled());
-    expect(provenance.getByText("project-2-request")).toBeInTheDocument();
+    expect(JSON.parse(screen.getByLabelText("完整溯源数据").textContent!)).toMatchObject({ "请求 ID": "project-2-request", projectId: "project-2" });
     expect(onSelectRequest).not.toHaveBeenCalled();
   });
 

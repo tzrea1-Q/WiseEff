@@ -332,6 +332,16 @@ for (const route of consistencyReadOnlyRoutes) {
         if (/^\/parameter-admin\/projects\/[^/]+\/(?:configuration|files|config-sets|structure|conflicts)$/.test(routePath)) {
           const workbench = page.getByRole("region", { name: "项目配置工作台", exact: true });
           const files = page.getByRole("dialog", { name: "文件管理", exact: true });
+          const requestedInspector = new URLSearchParams(route.path.split("?")[1]).get("inspector")
+            ?? (routePath.endsWith("/config-sets") ? "config-set" : routePath.endsWith("/files") ? "file" : null);
+          if (requestedInspector === "config-set") {
+            await expect(files).toBeVisible();
+            await expect(files).toBeInViewport({ ratio: 1 });
+          } else if (requestedInspector === "file") {
+            await expect(page.getByRole("complementary", { name: "配置检查器", exact: true })).toBeVisible();
+            const initialMeasurements = await page.evaluate(collectConsistencyMeasurements);
+            requireNavigatorWorkbenchGeometry(initialMeasurements.navigatorWorkbenches, route.path);
+          }
           if (await files.isVisible()) {
             await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
             await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
@@ -370,6 +380,8 @@ for (const route of consistencyReadOnlyRoutes) {
           legacyConflictsUrl.searchParams.set("tab", "conflicts");
           await page.goto(legacyConflictsUrl.toString());
           await settleQualityRoute(page, legacyConflictsUrl.pathname, { readOnly: true });
+          await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+          await waitForFontsAndNextPaint(page);
           const contentTabs = workbench.getByRole("tablist", { name: "项目配置内容", exact: true });
           await expect(contentTabs.getByRole("tab")).toHaveCount(2);
           await expect(contentTabs.getByRole("tab", { name: "结构", exact: true })).toHaveCount(0);
@@ -417,7 +429,14 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(files).toBeInViewport({ ratio: 1 });
           await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
           await expect(page.getByRole("navigation", { name: "参数管理后台配置范围", exact: true })).toHaveCount(0);
-          required = required.filter((category) => category !== "viewSwitches" && category !== "viewSwitchSignatures");
+          if (new URLSearchParams(route.path.split("?")[1]).get("tab") === "conflicts") {
+            await page.goto(legacyConflictsUrl.toString());
+            await settleQualityRoute(page, legacyConflictsUrl.pathname, { readOnly: true });
+            await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+            await expect(contentTabs.getByRole("tab", { name: /^冲突/ })).toHaveAttribute("aria-selected", "true");
+            await waitForFontsAndNextPaint(page);
+          }
+          expect(await page.locator("html").evaluate((element) => element.classList.contains("dark"))).toBe(theme === "dark");
         }
         if (routePath === "/audit") {
           await test.step("audit kind filter inventory", async () => {
@@ -653,6 +672,9 @@ for (const route of consistencyReadOnlyRoutes) {
         required = hasHistoricalIdentity
           ? route.required.filter((category) => category !== "rowActions" && category !== "paginationControls")
           : route.required;
+        const measuredUrl = new URL(page.url());
+        const geometryPath = routePath.startsWith("/parameter-admin/projects/aurora/")
+          ? `${measuredUrl.pathname}${measuredUrl.search}` : route.path;
         if (theme === "light" && requiresHint) {
           await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
         }
@@ -706,10 +728,9 @@ for (const route of consistencyReadOnlyRoutes) {
           if (route.required.includes("rowActions")) {
             requireRowActionVisibility(measurements.rowActions, route.path);
           }
-          requireViewSwitchStyles(measurements, route.path.endsWith("?tab=conflicts")
-            ? "/parameter-admin/projects/aurora/configuration" : route.path);
+          requireViewSwitchStyles(measurements, route.path);
           if (route.required.includes("navigatorWorkbenches")) {
-            requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, route.path);
+            requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, geometryPath);
           }
           if (theme === "light") {
             if (requiresHint) {
@@ -750,7 +771,7 @@ for (const route of consistencyReadOnlyRoutes) {
           await page.getByRole("button", { name: `收起${navigatorLabel}`, exact: true }).click();
           await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
           const collapsed = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));
-          requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, route.path);
+          requireNavigatorWorkbenchGeometry(collapsed.navigatorWorkbenches, geometryPath);
           if (routePath.startsWith("/parameter-admin/projects/aurora")) {
             expect(collapsed.rowActions, "file navigation must not duplicate toolbar actions").toHaveLength(0);
             await expect(page.locator(".navigator-workbench__navigation .row-action-menu")).toHaveCount(0);

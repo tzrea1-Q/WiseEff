@@ -16,16 +16,14 @@ function measurement(style = signatures[0], selected = true) {
 }
 
 describe("view-switch consistency", () => {
-  it("enforces styles on all 31 switch routes, including the retired account redirect", () => {
+  it("enforces styles on every live switch route, including explicit project conflicts and the retired account redirect", () => {
     const auditPaths = [
       "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/knowledge-admin",
       "/log-admin", "/log-admin?tab=domains", "/log-admin?tab=quality", "/logs", "/node-debugging",
       "/organization", "/organization/members", "/parameter-admin", "/parameter-admin/identity-mapping",
       "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
-      "/parameter-admin/projects", "/parameter-admin/projects/aurora/config-sets",
-      "/parameter-admin/projects/aurora/configuration", "/parameter-admin/projects/aurora/conflicts",
-      "/parameter-admin/projects/aurora/files", "/parameter-admin/projects/aurora/review-roles",
-      "/parameter-admin/projects/aurora/structure", "/parameter-admin/spec-review",
+      "/parameter-admin/projects", "/parameter-admin/projects/aurora/configuration?tab=conflicts",
+      "/parameter-admin/projects/aurora/review-roles", "/parameter-admin/spec-review",
       "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
       "/parameter-submissions", "/parameters", "/user-permissions"
     ];
@@ -38,7 +36,7 @@ describe("view-switch consistency", () => {
       expect(() => requireViewSwitchStyles({ viewSwitches: controls, viewSwitchSignatures: signatures }, path)).not.toThrow();
       expect(() => requireViewSwitchStyles({
         viewSwitches: [...controls, { ...controls[0], height: 43 }], viewSwitchSignatures: signatures
-      }, `${path}?foo=1`)).toThrow("matched 0");
+      }, path.includes("?") ? path : `${path}?foo=1`)).toThrow("matched 0");
     }
   });
 
@@ -68,7 +66,7 @@ describe("view-switch consistency", () => {
   it.each([
     ...["/parameter-home"].map((path) => [path, "toggle"]),
     ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions",
-      ...["configuration", "files", "config-sets", "structure", "conflicts"].map((view) => `/parameter-admin/projects/aurora/${view}`)]
+      "/parameter-admin/projects/aurora/configuration?tab=conflicts"]
       .map((path) => [path, "tabs"]),
     ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
       "/parameter-admin/specs/identity-mapping", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
@@ -83,6 +81,18 @@ describe("view-switch consistency", () => {
       else expect(assertStyles).toThrow("matched 0");
     }
   });
+
+  it.each(["configuration", "files", "config-sets", "structure", "conflicts"])(
+    "keeps the source-only project workbench without redundant content tabs on %s", (view) => {
+      const path = `/parameter-admin/projects/aurora/${view}`;
+      const required = consistencyRoutes.find((route) => route.path === path)!.required;
+      expect(required).toContain("navigatorWorkbenches");
+      expect(required).not.toContain("viewSwitches");
+      expect(required).not.toContain("viewSwitchSignatures");
+      expect(viewSwitchStyleExpectations[path]).toBeUndefined();
+      expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: [] }, path)).not.toThrow();
+    }
+  );
 
   it.each([
     "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
