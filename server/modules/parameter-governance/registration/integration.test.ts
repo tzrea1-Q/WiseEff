@@ -81,15 +81,16 @@ const retiringSuccessorBundle = (): CatalogReleaseBundle => {
   const subject = current.documents.find((document) => document.kind === "subject");
   const alias = current.documents.find((document) => document.kind === "alias");
   if (subject?.kind !== "subject" || alias?.kind !== "alias") throw new Error("successor subject/alias missing");
-  const successorSubject = { ...subject, content: { ...subject.content,
+  // Shared object references would serialize as aliases, which Catalog sources forbid.
+  const successorSubject = structuredClone({ ...subject, content: { ...subject.content,
     id: "csub_acme_power_next", canonicalKey: "driver:acme,power-next",
     selector: { ...subject.content.selector, value: "acme,power-next" },
     lifecycle: "active" as const, tombstone: null,
-  } };
-  const successorAlias = { ...alias, content: { ...alias.content,
+  } });
+  const successorAlias = structuredClone({ ...alias, content: { ...alias.content,
     id: "cali_acme_power_next", subjectId: successorSubject.content.id,
     normalizedSelector: "acme,power-next-v1", lifecycle: "active" as const, tombstone: null,
-  } };
+  } });
   const releaseId = "crel_acme_3";
   const target = refreshSuccessorSource({ ...current,
     manifest: { ...current.manifest, release: { ...current.manifest.release,
