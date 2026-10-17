@@ -109,5 +109,9 @@ export function isCatalogActionEnabled(
   ) {
     return true;
   }
+  // Review items are independent of the filtered definition collection.
+  if (action === "resolve-review-item" && state.kind === "empty") {
+    return Boolean(state.catalogReleaseId);
+  }
   return state.kind === "ready";
 }

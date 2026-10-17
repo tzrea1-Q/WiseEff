@@ -18,7 +18,10 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
         onAnchorChange={(href) => setSearch(new URL(href, "http://localhost").search)} />;
     }
     render(<Host />);
-    await userEvent.click(await screen.findByRole("button", { name: "处理审核" }));
+    const queue = await screen.findByRole("dialog", { name: "待审核事项" });
+    await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" }))
+      .toHaveAttribute("data-catalog-state", "ready"));
+    await userEvent.click(await within(queue).findByRole("button", { name: "处理审核" }));
     const editor = await screen.findByRole("dialog", { name: "处理审核" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     await userEvent.type(within(editor).getByRole("textbox", { name: "原因" }), "保留审核草稿");

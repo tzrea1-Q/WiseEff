@@ -56,19 +56,10 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     // @operation PCAT-CONFLICT-RECONFIRM-001
     const before = await countProposals(fixture.pool);
     await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
-    await openCatalogAt(page, "org-admin");
+    await openCatalogAt(page, "org-admin", `?catalogReleaseId=${fixture.chain.pinF.id}&review=open`);
     await waitForCatalogState(page, /ready|empty|unregistered/);
+    await expect(catalogPage(page)).toHaveAttribute("data-catalog-state", "empty");
     const queue = page.getByRole("region", { name: "待审核事项" });
-    const resolveButton = queue.getByRole("button", { name: "处理审核" });
-    if ((await resolveButton.count()) === 0) {
-      await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
-      await page.reload();
-      await expect(catalogPage(page)).toBeVisible();
-      const pending = page.getByRole("button", { name: /待审核事项/ });
-      if (await pending.isVisible().catch(() => false)) {
-        await pending.click();
-      }
-    }
     await queue.getByRole("button", { name: "处理审核" }).first().click();
     const dialog = page.getByRole("dialog", { name: "处理审核" });
     await expect(dialog).toBeVisible();
@@ -292,10 +283,11 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
       return digest;
     };
 
-    await openCatalogAt(page, "org-admin");
+    await openCatalogAt(page, "org-admin", `?catalogReleaseId=${fixture.chain.pinC.id}`);
     const apiDigest = await collectDigest(page, "api-org-admin");
     expect(apiDigest.actions.some((action) => action.action === "accept-proposal")).toBe(false);
-    expect(apiDigest.actions.some((action) => action.action === "register-subject")).toBe(true);
+    // Registration is scoped to an explicitly selected unregistered subject.
+    expect(apiDigest.actions.some((action) => action.action === "register-subject")).toBe(false);
 
     const mock = await startCatalogScenarioRuntime("mock");
     const mockPage = await browser.newPage();
@@ -344,6 +336,9 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
       await mock.pool.end();
       await mock.runtime.dispose(outcome);
     }
+    await openCatalogAt(page, "org-admin", `?catalogReleaseId=${fixture.chain.pinC.id}&subjectId=${fixture.powerSubjectId}`);
+    await waitForCatalogState(page, "unregistered");
+    await expect(page.locator('[data-catalog-action="register-subject"]')).toBeVisible();
     await catalogScreenshot(page, testInfo, "pcat-ui-13-api");
   });
 });
