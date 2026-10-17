@@ -133,7 +133,42 @@ test.describe("parameter-admin project list", () => {
       }
 
       await page.setViewportSize({ width: 1440, height: 900 });
-      await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
+      let releaseBindings!: () => void;
+      let bindingsHeld!: () => void;
+      const bindingsGate = new Promise<void>((resolve) => { releaseBindings = resolve; });
+      const bindingsRequestHeld = new Promise<void>((resolve) => { bindingsHeld = resolve; });
+      const routeTaskSettlements: Promise<PromiseSettledResult<void>[]>[] = [];
+      const requiredBindings = (url: URL) => url.pathname === "/api/v2/projects/aurora/parameter-bindings";
+      await page.route(requiredBindings, (route) => {
+        const task = (async () => {
+          bindingsHeld();
+          await bindingsGate;
+          if (!route.request().failure()) await route.continue();
+        })();
+        const settlement = Promise.allSettled([task]);
+        routeTaskSettlements.push(settlement);
+        return settlement;
+      });
+      let signInSettled = false;
+      const signIn = signInBrowserAsRole(page, "admin", "/parameter-admin/projects")
+        .finally(() => { signInSettled = true; });
+      let failure: PromiseRejectedResult | undefined;
+      try {
+        await Promise.race([bindingsRequestHeld, signIn.then(() => bindingsRequestHeld)]);
+        await page.waitForLoadState("domcontentloaded");
+        await expect(page.locator("#main-content")).toHaveAttribute("data-runtime-state", "loading");
+        await expect(page.locator("#main-content > .page-content")).toHaveAttribute("inert", "");
+        expect(signInSettled).toBe(false);
+      } catch (reason) {
+        failure = { status: "rejected", reason };
+      } finally {
+        releaseBindings();
+        await Promise.all(routeTaskSettlements);
+        const settled = await Promise.allSettled([signIn, page.unroute(requiredBindings)]);
+        const settledRoutes = (await Promise.all(routeTaskSettlements)).flat();
+        failure ??= [...settled, ...settledRoutes].find((result) => result.status === "rejected");
+      }
+      if (failure) throw failure.reason;
       await dismissXiaozeHint(page);
       await expect(page.getByRole("region", { name: "项目清单", exact: true })).toBeVisible({ timeout: 30_000 });
 

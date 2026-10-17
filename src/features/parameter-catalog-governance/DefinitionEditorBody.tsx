@@ -547,7 +547,6 @@ export function DefinitionEditorBody({
                     ariaLabel="主体"
                     disabled={pending || phase !== "compose"}
                     onValueChange={(value) => setSubjectId(value)}
-                    withinModal
                     options={[
                       ...(!targetSubjectAllowed ? [{ value: subjectId, label: `${subjects.find((subject) => subject.id === subjectId)?.canonicalName || subjectId}（当前不可用）`, disabled: true }] : []),
                       ...selectableSubjects.map((subject) => ({ value: subject.id, label: subject.canonicalName }))
@@ -591,7 +590,6 @@ export function DefinitionEditorBody({
                     onValueChange={(value) =>
                       setContent({ ...content, valueType: value as PublicationValueType })
                     }
-                    withinModal
                     options={schemaValueTypes.map((type) => ({ value: type, label: schemaValueTypeLabels[type] }))}
                   />
                 </label>

@@ -77,6 +77,7 @@ describe.skipIf(!databaseAvailable)("resolveReloadConfiguration", () => {
   it("returns organisation defaults when a stored row exists", async () => {
     await upsertOrganisationDefault(db, {
       organizationId: "org-1",
+      expectedUpdatedAt: null,
       contract: orgContract({
         destinationDirectory: "/oem/firmware/",
         kernelLogCommand: "cat /proc/kmsg"
@@ -98,6 +99,7 @@ describe.skipIf(!databaseAvailable)("resolveReloadConfiguration", () => {
   it("never consults request-body fields when resolving the effective contract", async () => {
     await upsertOrganisationDefault(db, {
       organizationId: "org-1",
+      expectedUpdatedAt: null,
       contract: orgContract(),
       updatedByUserId: "user-1"
     });

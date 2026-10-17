@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { selectControlOption } from "@/test/selectControlOption";
 import { ImportReviewCard } from "./ImportReviewCard";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import type { ReviewedImportRow } from "@/application/parameters/import/types";
 import type { ParameterRecord, Project } from "@/domain/prototype/types";
 import type { PowerManagementParameterTemplate } from "@/powerManagementConfig";
@@ -62,7 +63,10 @@ function renderCard(overrides: Partial<Parameters<typeof ImportReviewCard>[0]> =
       onUpdate={onUpdate}
       onConfirmNew={onConfirmNew}
       {...overrides}
-    />
+    />,
+    { wrapper: ({ children }) => <ModalDialog open className="confirm-dialog" onDismiss={() => undefined}>
+      {({ titleId }) => <><h2 id={titleId}>批量参数导入</h2>{children}</>}
+    </ModalDialog> }
   );
   return { ...utils, onApprove, onSkip, onUpdate, onConfirmNew };
 }

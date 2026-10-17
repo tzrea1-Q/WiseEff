@@ -323,7 +323,6 @@ export function RegistrationDialog({
                                 setDisplayName(option.displayName);
                               }
                             }}
-                            withinModal
                             options={placementOptions.map((option) => ({ value: option.id, label: option.displayName }))}
                           />
                         </label>
@@ -345,7 +344,6 @@ export function RegistrationDialog({
                           disabled={inputDisabled}
                           value={destinationModuleId}
                           onValueChange={(value) => setDestinationModuleId(value)}
-                          withinModal
                           options={[{ value: "", label: "请选择目标模块" }, ...moduleOptions.map((option) => ({
                             value: option.id,
                             label: option.impactSummary ? `${option.displayName} · ${option.impactSummary}` : option.displayName
@@ -355,7 +353,7 @@ export function RegistrationDialog({
                     ) : null}
                     {initializing ? <>
                       <p>当前没有同类型目标模块。选择业务分类并命名，确认后将创建模块并完成登记。</p>
-                      <label>业务分类<SelectControl ariaLabel="新模块业务分类" value={newParentId} disabled={inputDisabled} withinModal
+                      <label>业务分类<SelectControl ariaLabel="新模块业务分类" value={newParentId} disabled={inputDisabled}
                         onValueChange={setNewParentId} options={[{ value: "", label: "请选择业务分类" }, ...newDestinationParents.map((option) => ({ value: option.id, label: option.displayName }))]} /></label>
                       <label>模块名称<input aria-label="新模块名称" value={newModuleName} maxLength={120} onChange={(event) => setNewModuleName(event.target.value)} /></label>
                     </> : null}

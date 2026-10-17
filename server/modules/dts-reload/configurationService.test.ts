@@ -175,8 +175,9 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
   });
 
   it("updates organisation defaults, validates the log command, and writes audit evidence", async () => {
-    await upsertOrganisationDefault(db, {
+    const previousRow = await upsertOrganisationDefault(db, {
       organizationId: "org-1",
+      expectedUpdatedAt: null,
       contract: { ...SEEDED_RELOAD_CONFIGURATION },
       updatedByUserId: "user-1"
     });
@@ -189,7 +190,8 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
         destinationFilename: "power_dts_overlay.dtbo",
         triggerNodePath: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
         triggerPayload: "1",
-        kernelLogCommand: "hilog"
+        kernelLogCommand: "hilog",
+        expectedUpdatedAt: previousRow.updated_at
       },
       userContext(auth(), "req-1")
     );
@@ -232,6 +234,21 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
     ).rejects.toBeInstanceOf(ApiError);
     expect(createAuditEvent).not.toHaveBeenCalled();
     expect(await storedRowCount()).toBe(0);
+  });
+
+  it("refuses legacy writes without a read version and never audits or stores them", async () => {
+    await expect(updateOrganisationReloadConfiguration(db, auth(), { ...SEEDED_RELOAD_CONFIGURATION })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(await storedRowCount()).toBe(0);
+    expect(createAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale configuration and leaves the newer settings intact", async () => {
+    const first = await updateOrganisationReloadConfiguration(db, auth(), { ...SEEDED_RELOAD_CONFIGURATION, expectedUpdatedAt: null });
+    const newer = await updateOrganisationReloadConfiguration(db, auth(), { ...SEEDED_RELOAD_CONFIGURATION, kernelLogCommand: "hilog", expectedUpdatedAt: first.updatedAt });
+    vi.mocked(createAuditEvent).mockClear();
+    await expect(updateOrganisationReloadConfiguration(db, auth(), { ...SEEDED_RELOAD_CONFIGURATION, destinationDirectory: "/stale/", expectedUpdatedAt: first.updatedAt })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "stale-configuration" } });
+    expect((await getReloadConfigurationAdminView(db, auth())).organisation).toEqual(newer);
+    expect(createAuditEvent).not.toHaveBeenCalled();
   });
 });
 

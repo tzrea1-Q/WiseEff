@@ -79,7 +79,6 @@ export function WorkbenchCandidateActivateDialog({
               disabled={activating}
               onValueChange={(value) => onActivateRoleChange(value as ConfigSetRole)}
               ariaLabel="新文件成员角色"
-              withinModal
               options={(Object.keys(ROLE_LABELS) as ConfigSetRole[]).map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
             />
             <small>将加入配置集 {configSetName ?? "（未选择）"}，不会隐式创建其他成员关系。</small>

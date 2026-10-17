@@ -81,7 +81,7 @@ function createDebuggingAdminApiMock() {
 
 function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), apiAuthPermissions = ["debugging:admin"], parameterRepository?: Pick<ParameterRepository, "listProjects">, parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">) {
   render(
-    <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
+    <TopBarActionsContext.Provider value={{ setActions: vi.fn(), setLeadingActions: vi.fn() }}>
       <DebuggingAdminPage
         state={adminState}
         dispatch={vi.fn()}
@@ -112,6 +112,22 @@ afterEach(() => {
 });
 
 describe("/debugging-admin API mode", () => {
+  it("keeps the catalog-load retry after a business dialog is opened and cancelled", async () => {
+    const api = createDebuggingAdminApiMock();
+    api.get.mockRejectedValueOnce(new Error("catalog unavailable"));
+    renderDebuggingAdminPage(api, ["debugging:admin"], { listProjects: vi.fn().mockResolvedValue([]) });
+    await screen.findByRole("alert");
+    await userEvent.click(within(screen.getByRole("group", { name: /^可调节点目录操作$/ }))
+      .getByRole("button", { name: /^新增节点$/ }));
+    const editor = await screen.findByRole("dialog", { name: /^创建节点$/ });
+    await userEvent.click(within(editor).getByRole("button", { name: /^取消$/ }));
+    const failure = screen.getByRole("alert");
+    expect(failure).toHaveTextContent("无法加载可调节点目录");
+    await userEvent.click(within(failure).getByRole("button", { name: /^重试$/ }));
+    await screen.findByText("Fast charge current");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it.each(["create", "edit"])("sends protected Binding pins through the %s node API writer", async (mode) => {
     // Observed canonical-only JSON shape; public client/port/UI codec proof, not backend acceptance.
     const projects = [
@@ -164,7 +180,7 @@ describe("/debugging-admin API mode", () => {
   it("switches scope peers between parameter reload config and node catalog", async () => {
     const onNavigate = vi.fn();
     render(
-      <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
+      <TopBarActionsContext.Provider value={{ setActions: vi.fn(), setLeadingActions: vi.fn() }}>
         <DebuggingAdminPage
           state={adminState}
           dispatch={vi.fn()}
@@ -339,9 +355,9 @@ describe("/debugging-admin API mode", () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /^编辑$/ }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current-edited" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^保存$/ }));
 
     await waitFor(() =>
       expect(apiClient.patch).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1", expect.objectContaining({
@@ -357,16 +373,16 @@ describe("/debugging-admin API mode", () => {
     renderDebuggingAdminPage(apiClient);
 
     await screen.findByText("Fast charge current");
-    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /^编辑$/ }));
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Edited node" } });
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current-edited" } });
     fireEvent.change(screen.getByLabelText("ADB 节点路径"), { target: { value: "/sys/adb/current-edited" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^保存$/ }));
     await screen.findByText("保存节点配置失败，当前输入已保留。");
     expect(screen.getByLabelText("名称")).toHaveValue("Edited node");
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue("/sys/hdc/current-edited");
     expect(screen.getByLabelText("ADB 节点路径")).toHaveValue("/sys/adb/current-edited");
-    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^保存$/ }));
     await waitFor(() =>
       expect(apiClient.patch).toHaveBeenNthCalledWith(2, "/api/v1/debugging/admin/nodes/node-1", expect.objectContaining({
         name: "Edited node",
@@ -383,11 +399,11 @@ describe("/debugging-admin API mode", () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /^编辑$/ }));
     const hdcPathInput = screen.getByLabelText("HDC 节点路径");
     fireEvent.change(hdcPathInput, { target: { value: "relative/path" } });
     fireEvent.blur(hdcPathInput);
-    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^保存$/ }));
 
     expect(screen.getByText("节点路径必须以 / 开头。")).toBeInTheDocument();
     expect(apiClient.put).not.toHaveBeenCalled();
@@ -773,22 +789,22 @@ describe("/debugging-admin API mode", () => {
     };
     function MockPage() {
       const [state, dispatch] = useReducer(reducer, { ...adminState, configDraft: { ...adminState.configDraft, debugParameters: [seed] } });
-      return <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
+      return <TopBarActionsContext.Provider value={{ setActions: vi.fn(), setLeadingActions: vi.fn() }}>
         <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={vi.fn()} search="" area="nodes" runtimeMode="mock" />
       </TopBarActionsContext.Provider>;
     }
     render(<MockPage />);
-    await userEvent.click(within(screen.getByRole("row", { name: new RegExp(seed.name) })).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(screen.getByRole("row", { name: new RegExp(seed.name) })).getByRole("button", { name: /^编辑$/ }));
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Unified mock node" } });
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/updated" } });
     fireEvent.click(screen.getByLabelText("启用 ADB 协议"));
-    fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^保存$/ }));
     const row = await screen.findByRole("row", { name: /Unified mock node/ });
-    await userEvent.click(within(row).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(row).getByRole("button", { name: /^编辑$/ }));
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue("/sys/hdc/updated");
     expect(screen.getByLabelText("ADB 节点路径")).toHaveValue("/sys/adb/original");
     expect(screen.getByLabelText("启用 ADB 协议")).not.toBeChecked();
-    await userEvent.click(screen.getByRole("button", { name: "ADB 更多配置", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: /^ADB 更多配置$/ }));
     expect(screen.getByLabelText("ADB 备注")).toHaveValue("fallback");
   });
 
@@ -796,7 +812,7 @@ describe("/debugging-admin API mode", () => {
     const dispatch = vi.fn();
     const node = adminState.configDraft.debugParameters[0]!;
     render(
-      <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
+      <TopBarActionsContext.Provider value={{ setActions: vi.fn(), setLeadingActions: vi.fn() }}>
         <DebuggingAdminPage
           state={adminState}
           dispatch={dispatch}

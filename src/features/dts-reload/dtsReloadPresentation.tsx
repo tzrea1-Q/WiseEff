@@ -9,8 +9,7 @@ import {
   dtsReloadPurposeLabels,
   dtsReloadStatusLabels,
   dtsReloadVerificationOutcomeLabels,
-  isStreamingKernelLogCommand,
-  SENSITIVE_RELOAD_CONFIRMATION_TOKEN
+  isStreamingKernelLogCommand
 } from "@/domain/dtsReload/types";
 import type {
   DtsReloadCandidate,
@@ -26,6 +25,10 @@ import type { DeviceBridgeRecord, LocalBridgeHealthState } from "@/infrastructur
 import type { LocalBridgeProbeResult } from "@/infrastructure/http/bridgeConnectLauncher";
 import { BookPlus, FilePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ParameterValueDiff } from "@/components/ParameterValueDiff";
+import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
+
+import "./dts-reload-presentation.css";
 
 export const BRIDGE_UPGRADE_ENTRY_PATH = "/node-debugging";
 
@@ -109,13 +112,11 @@ export const dtsReloadStepOutcomeLabels: Record<string, string> = {
 export function sensitiveBadgeLabel(candidate: DtsReloadCandidate): string | null {
   const match = candidate.sensitiveMatch;
   if (!match) return null;
-  return match.riskTier === "critical" ? "敏感 · critical" : "敏感 · high";
+  return match.riskTier === "critical" ? "敏感 · 关键风险" : "敏感 · 高风险";
 }
 
 export function formatAttemptedAt(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return formatAuditAbsoluteTime(value);
 }
 
 export function integrityCheckLabel(check: DtsReloadIntegrityCheck): string {
@@ -416,7 +417,8 @@ export function RunResultSection({
   onDistil,
   distilPending = false,
   onPromote,
-  promotePending = false
+  promotePending = false,
+  candidates = []
 }: {
   run: DtsReloadRun;
   deviceId: string;
@@ -433,7 +435,18 @@ export function RunResultSection({
   /** Promote stored debug values into parameter drafts; stops before submit/CR. */
   onPromote?: () => void;
   promotePending?: boolean;
+  candidates?: readonly DtsReloadCandidate[];
 }) {
+  const nextStep: Record<DtsReloadRun["status"], string> = {
+    pending: "正在检查参数与编译产物，请等待预检完成。",
+    blocked: "预检已阻断。请根据诊断修正参数或配置，再重新预检。",
+    validated: deployReady ? "预检已通过。核对下方参数差异后，点击部署到设备并人工确认。" : "预检已通过。请先连接 Bridge 并选择目标设备，再确认部署。",
+    deploying: "正在部署到设备，请等待部署与验证结果。",
+    unverifiable: "部署已完成，但行为尚未验证。请查看重载证据，在设备上核对实际效果。",
+    verified: "设备读回与调试值一致。可结合实际设备表现继续调试，或将结果沉淀为知识。",
+    contradicted: "设备读回与调试值不一致。请查看重载证据与日志，核对节点和实际设备状态。",
+    failed: "部署失败。请查看诊断与执行详情，排除原因后重试。"
+  };
   return (
     <section className="debug-table dts-reload-run-result" aria-live="polite">
       <div className="panel-header">
@@ -443,14 +456,27 @@ export function RunResultSection({
         </span>
       </div>
       <div className="dts-reload-run-result__body">
+        <p className="dts-reload-result-next" role="status">{nextStep[run.status]}</p>
+        {run.targets.length > 0 ? <section className="dts-reload-run-slice" aria-label="本次参数变更">
+          <h3 className="dts-reload-run-slice__title">{run.purpose === "restore-baseline" ? "本次恢复值" : "本次参数变更"} · {run.targets.length} 项</h3>
+          <ul className="dts-reload-result-changes">
+            {run.targets.map((target) => {
+              const candidate = candidates.find((item) => item.bindingId === target.bindingId);
+              return <li key={target.bindingId}>
+                <strong>{candidate?.displayName || target.propertyKey}</strong>
+                <small>{target.propertyKey} · {target.nodePath}</small>
+                <ParameterValueDiff baseValue={target.baselineValue ?? ""} targetValue={target.debugValue} />
+              </li>;
+            })}
+          </ul>
+        </section> : null}
         {run.failureCode ||
         run.purpose === "restore-baseline" ||
         run.bridgeMachineLabel ||
         run.targetRef ||
-        run.targets.length > 0 ||
         run.integrityCheck ? (
           <section className="dts-reload-run-slice" aria-label="运行摘要">
-            <h3 className="dts-reload-run-slice__title">摘要</h3>
+            <h3 className="dts-reload-run-slice__title">运行信息</h3>
             <dl className="dts-reload-run-summary">
               {run.failureCode ? (
                 <div className="dts-reload-run-summary__row">
@@ -479,12 +505,6 @@ export function RunResultSection({
                   </dd>
                 </div>
               ) : null}
-              {run.targets.length > 0 ? (
-                <div className="dts-reload-run-summary__row">
-                  <dt>参数目标</dt>
-                  <dd>本运行包含 {run.targets.length} 个参数目标。</dd>
-                </div>
-              ) : null}
               {run.integrityCheck ? (
                 <div className="dts-reload-run-summary__row">
                   <dt>完整性校验</dt>
@@ -507,26 +527,26 @@ export function RunResultSection({
         ) : null}
 
         {run.steps.length > 0 ? (
-          <section className="dts-reload-run-slice" aria-label="预检步骤">
-            <h3 className="dts-reload-run-slice__title">预检步骤</h3>
+          <details className="dts-reload-run-slice dts-reload-result-details" aria-label="预检步骤">
+            <summary>执行详情 · {run.steps.length} 个步骤</summary>
             <RunStepsList steps={run.steps} />
-          </section>
+          </details>
         ) : null}
 
         {run.reloadSnapshot ? (
-          <section className="dts-reload-run-slice" aria-label="重载证据">
-            <h3 className="dts-reload-run-slice__title">重载证据</h3>
+          <details className="dts-reload-run-slice dts-reload-result-details" aria-label="重载证据">
+            <summary>重载证据 · 设备读回与日志</summary>
             <ReloadSnapshotSummary snapshot={run.reloadSnapshot} />
-          </section>
+          </details>
         ) : null}
 
         {run.overlaySource ? (
-          <section className="dts-reload-run-slice">
-            <h3 className="dts-reload-run-slice__title">Overlay 源码</h3>
+          <details className="dts-reload-run-slice dts-reload-result-details">
+            <summary>Overlay 源码</summary>
             <div className="dts-reload-overlay-source">
               <textarea aria-label="Overlay 源码" readOnly value={run.overlaySource} />
             </div>
-          </section>
+          </details>
         ) : null}
 
         {run.artifact || (canRetryDeploy && canStartRun) || onDistil || onPromote ? (
@@ -538,13 +558,14 @@ export function RunResultSection({
                   type="button"
                   className="button subtle dts-reload-artifact__download"
                   disabled={run.artifactRetentionExpired === true}
+                  title={run.artifact.fileName}
                   onClick={onDownload}
                 >
                   {run.artifactRetentionExpired
                     ? "产物已过期（不可下载）"
-                    : `下载编译产物 (${run.artifact.fileName})`}
+                    : "下载编译产物"}
                 </button>
-                <p className="font-mono">sha256 {run.artifact.sha256}</p>
+                <details className="dts-reload-result-details"><summary>产物信息与校验摘要</summary><p className="font-mono">{run.artifact.fileName}</p><p className="font-mono">SHA256 {run.artifact.sha256}</p></details>
               </div>
             ) : null}
             {onDistil ? (
@@ -593,6 +614,7 @@ export function RunHistorySection({
   historyItems,
   historyLoading,
   historyLoadingMore,
+  historyRunLoading = false,
   historyError,
   historyNextCursor,
   historyFilterDevice,
@@ -600,11 +622,14 @@ export function RunHistorySection({
   activeRunId,
   onFilterDeviceChange,
   onOpenRun,
-  onLoadMore
+  onLoadMore,
+  onRetry,
+  candidates = []
 }: {
   historyItems: DtsReloadRunListItem[];
   historyLoading: boolean;
   historyLoadingMore: boolean;
+  historyRunLoading?: boolean;
   historyError: string;
   historyNextCursor: string | null;
   historyFilterDevice: boolean;
@@ -613,6 +638,8 @@ export function RunHistorySection({
   onFilterDeviceChange: (value: boolean) => void;
   onOpenRun: (runId: string) => void;
   onLoadMore: () => void;
+  onRetry: () => void;
+  candidates?: readonly DtsReloadCandidate[];
 }) {
   return (
     <details className="operation-history-panel dts-reload-history" aria-label="运行历史">
@@ -626,7 +653,8 @@ export function RunHistorySection({
               : "暂无记录"}
         </span>
       </summary>
-      <div className="dts-reload-history__body">
+      <div className="dts-reload-history__body" aria-busy={historyRunLoading || historyLoading}>
+        {historyRunLoading ? <p role="status">正在加载运行详情…</p> : null}
         <p className="dts-reload-history__hint">
           按项目列出（可选设备过滤），含已阻断与失败运行；恢复基线运行单独标注。
         </p>
@@ -639,11 +667,12 @@ export function RunHistorySection({
             aria-label="仅显示当前设备的运行"
           />
           仅当前设备
-          {deviceId.trim() ? `（${deviceId.trim()}）` : "（先填写设备 ID）"}
+          {deviceId.trim() ? `（${deviceId.trim()}）` : "（先连接并选择设备）"}
         </label>
         {historyError ? (
           <p role="alert" className="dts-reload-history__error">
             {historyError}
+            <button type="button" className="button subtle" disabled={historyLoading} onClick={onRetry}>重新加载历史</button>
           </p>
         ) : null}
         {historyLoading ? (
@@ -657,6 +686,7 @@ export function RunHistorySection({
                 <button
                   type="button"
                   className={cn(activeRunId === item.id && "is-active")}
+                  aria-current={activeRunId === item.id ? "true" : undefined}
                   onClick={() => onOpenRun(item.id)}
                 >
                   <div className="dts-reload-history__row-head">
@@ -672,7 +702,7 @@ export function RunHistorySection({
                   </div>
                   <div className="dts-reload-history__row-meta">
                     {item.deviceId ?? "未绑定设备"} · {item.targetCount} 个参数
-                    {item.propertyKeys.length > 0 ? ` · ${item.propertyKeys.slice(0, 3).join(", ")}` : ""}
+                    {item.propertyKeys.length > 0 ? <span title={item.propertyKeys.join("、")}> · {item.propertyKeys.slice(0, 3).map((key) => candidates.find((candidate) => candidate.propertyKey === key)?.displayName || key).join("、")}{item.propertyKeys.length > 3 ? " 等" : ""}</span> : null}
                     {item.failureCode ? ` · ${item.failureCode}` : ""}
                   </div>
                 </button>
@@ -715,16 +745,17 @@ export function RestoreConfirmBody({
   return (
     <div className="flex flex-col gap-3 text-sm">
       <p className="text-xs leading-relaxed">
-        将启动一次<strong>新的重载运行</strong>，调试值取自残留产生运行的同一参数集的<strong>库基线值</strong>。
-        这是<strong>补偿性重载</strong>，不是撤销——已应用的 overlay 无法卸载。
+        将使用产生残留的那次运行记录中的<strong>库基线值</strong>，启动一次<strong>新的重载运行</strong>。
+        这是<strong>补偿性重载</strong>，不是撤销；已应用的 Overlay 无法卸载。
       </p>
       <ResidueIndicator residue={residue} deviceId={deviceId} />
       <p className="text-xs text-muted-foreground">
-        预检、敏感确认与部署确认路径与普通运行完全相同，不会走捷径。
+        恢复基线会先预检；预检通过后，请核对设备并单独确认部署。
       </p>
       {restoreHasSensitive ? (
-        <p className="text-xs text-amber-950">
-          残留参数含敏感节点匹配；恢复基线仍须具备{" "}
+        <div className="text-xs text-amber-950">
+          残留包含敏感参数，恢复基线仍需相应授权。
+          <details><summary>权限说明</summary>
           {Array.from(
             new Set(
               residueSensitiveCandidates
@@ -732,8 +763,8 @@ export function RestoreConfirmBody({
                 .filter((value): value is string => Boolean(value))
             )
           ).join(" / ") || "parameter:edit-critical"}
-          。
-        </p>
+          </details>
+        </div>
       ) : null}
       {restoreHasCriticalSensitive ? (
         <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
@@ -742,11 +773,10 @@ export function RestoreConfirmBody({
             className="mt-1"
             checked={restoreCriticalConfirmed}
             onChange={(event) => onRestoreCriticalConfirmedChange(event.target.checked)}
-            aria-label="确认 critical 敏感节点补偿性恢复"
+            aria-label="确认关键风险参数恢复基线"
           />
           <span>
-            我确认要以库基线值对 critical 敏感参数启动补偿性恢复（confirmationToken=
-            {SENSITIVE_RELOAD_CONFIRMATION_TOKEN}）。这不是撤销。
+            我确认要以库基线值对关键风险参数启动补偿性恢复；设备部署仍需单独确认。
           </span>
         </label>
       ) : null}

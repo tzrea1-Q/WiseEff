@@ -218,7 +218,6 @@ export function DtsNodeEnablementDialog({
                     ariaLabel="status 拼写"
                     value={spellingOverride}
                     disabled={busy}
-                    withinModal
                     onValueChange={setSpellingOverride}
                     options={[{ value: "ok", label: "ok" }, { value: "okay", label: "okay" }]}
                   />

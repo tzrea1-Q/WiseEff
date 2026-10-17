@@ -1,0 +1,214 @@
+.dts-reload-page .navigator-workbench__toolbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-content-sticky);
+  align-items: center;
+  padding: var(--space-3);
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-1);
+}
+
+.dts-reload-page .navigator-workbench__toolbar::before {
+  content: "";
+  position: absolute;
+  z-index: var(--z-content-base);
+  inset: calc(-1 * var(--page-gutter)) 0 calc(-1 * var(--space-4));
+  background: var(--surface);
+  pointer-events: none;
+}
+
+.dts-reload-page .navigator-workbench__controls {
+  position: relative;
+  z-index: var(--z-content);
+}
+
+.dts-reload-taskbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.dts-reload-selection-count {
+  margin-inline-start: auto;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.dts-reload-taskbar .navigator-workbench__primary {
+  margin-left: 0;
+}
+
+.dts-reload-page .navigator-workbench__context {
+  max-height: none;
+  overflow: visible;
+}
+
+.dts-reload-page .navigator-workbench__navigator {
+  position: sticky;
+  top: calc(var(--space-16) + var(--space-3));
+}
+
+.dts-reload-page .navigator-workbench__task.dts-reload-task {
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+}
+
+.dts-reload-section-nav {
+  position: sticky;
+  top: calc(var(--space-16) + var(--space-2));
+  z-index: var(--z-content-sticky);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.dts-reload-section-nav :is(a, button) {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  text-decoration: none;
+}
+
+.dts-reload-section-nav button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dts-reload-section-nav :is(a, button):hover {
+  color: var(--accent);
+}
+
+.dts-reload-section-nav :is(a, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: var(--space-1);
+}
+
+.dts-reload-page :is(#reload-batch, #reload-candidates, #reload-result, .dts-reload-history-anchor) {
+  scroll-margin-top: calc(2 * var(--space-16));
+}
+
+.dts-reload-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--surface);
+  font-size: var(--text-base);
+}
+
+.dts-reload-info--error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.dts-reload-page .dts-reload-candidate-table > .data-table-scroll {
+  overflow: visible;
+}
+
+.dts-reload-page .dts-reload-run-slice {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.dts-reload-page .navigator-workbench__task > .dts-reload-candidates {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.dts-reload-page .dts-reload-run-tray-slot {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface-sunken);
+}
+
+.dts-reload-run-tray__summary {
+  cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text);
+}
+
+.dts-reload-run-tray__summary > span {
+  margin-inline-start: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.dts-reload-run-tray__summary:focus-visible,
+.dts-reload-candidate-edit__details > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.dts-reload-page .dts-reload-run-tray-slot > .dts-reload-run-tray {
+  max-height: none;
+  overflow: visible;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.dts-reload-page .dts-reload-run-tray > header h3 {
+  display: none;
+}
+
+.dts-reload-page .dts-reload-run-tray__items {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dts-reload-page .dts-binding-draft-tray__item {
+  padding: var(--space-3);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.dts-reload-candidate-edit__value {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.dts-reload-candidate-edit__value textarea {
+  min-height: 76px;
+  font-family: var(--font-mono);
+}
+
+.dts-reload-candidate-edit__details {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.dts-reload-candidate-edit__details > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.dts-reload-candidate-edit__details .debug-detail-card {
+  border: 0;
+  padding-inline: 0;
+  background: transparent;
+}

@@ -8,6 +8,8 @@ import { collectionPaths, consistencyReadOnlyRoutes } from "./consistency-routes
 import { compactQualityRoutes } from "./compact-routes";
 import { parseQualityLane, shouldRegisterConsistencyFixture } from "./quality-partition";
 import { installConsistencyReadGuard } from "./consistency";
+import { AUDIT_KIND_LABELS } from "../../src/domain/audit/auditSlugLabels";
+import { detectBrowserBridgeTarget } from "../../src/infrastructure/http/bridgeReleaseSelection";
 import {
   closeXiaozePopupIfOpen,
   expectBoundedMainScroll,
@@ -62,9 +64,10 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
     test(fixtureId, async ({ context, page }, testInfo) => {
       testInfo.annotations.push({ type: "setup", description: "Read-only UI fixtures replace Bridge listing, local health and target detection; the workbench and identity use the real API. This does not prove hardware pairing or device writes." });
       const blockedRequests = await installConsistencyReadGuard(context);
+      const hostTarget = detectBrowserBridgeTarget(await page.evaluate(() => navigator.userAgent));
       await context.route("**/api/v1/device-bridges/mine", async (request) => request.fulfill({ json: {
         items: readiness === "first-time" ? [] : [{
-          id: "quality-readiness-bridge", machineLabel: "质量检查工作站", platform: "linux", arch: "amd64",
+          id: "quality-readiness-bridge", machineLabel: "质量检查工作站", platform: hostTarget.platform, arch: hostTarget.arch,
           clientVersion: "999.0.0", capabilities: {}, createdAt: "2026-10-11T00:00:00Z", lastSeenAt: null, revokedAt: null
         }]
       } }));
@@ -94,7 +97,7 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
         await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(0);
         await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
       } else {
-        await expect(panel.getByText("本地 Bridge 未运行", { exact: true })).toBeVisible();
+        await expect(panel.getByText(readiness === "returning" ? "本地 Bridge 未运行" : "未检测到本地 Bridge", { exact: true })).toBeVisible();
         await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(1);
         if (readiness === "returning") {
           await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
@@ -129,15 +132,24 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
       await testInfo.attach(`bridge-${readiness}-${theme}${path.replaceAll("/", "-")}`, {
         contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
       });
-      if (readiness !== "connected") {
+      {
         const trigger = panel.getByRole("button", { name: "安装指南", exact: true });
         await trigger.click();
         const drawer = page.getByRole("dialog", { name: "安装与连接本地 Bridge" });
         await expect(drawer).toBeVisible();
         await expect(drawer.getByRole("list", { name: "Bridge 连接步骤" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(1);
+        await expect(page.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(readiness === "connected" ? 0 : 1);
+        if (readiness !== "connected") {
+          await drawer.getByRole("button", { name: "查看插入 USB 设备步骤", exact: true }).click();
+          await expect(drawer.getByRole("region", { name: "USB 设备连接指引", exact: true })).toBeVisible();
+          await expect(drawer.getByText("请先完成「连接本机」，再检测 USB 设备。", { exact: true })).toBeVisible();
+        }
+        await drawer.getByRole("button", { name: "查看连接本机步骤", exact: true }).click();
+        await expect(drawer.getByRole("region", { name: "本机连接指引", exact: true })).toBeVisible();
+        if (readiness !== "connected") await expect(drawer.getByText("使用终端手动连接", { exact: true })).toBeVisible();
+        await drawer.focus();
         await page.keyboard.press("Shift+Tab");
-        await expect(drawer.getByRole("button", { name: "连接本机", exact: true })).toBeFocused();
+        await expect(drawer.getByRole("button", { name: readiness === "connected" ? "继续连接 USB 设备" : "连接本机", exact: true })).toBeFocused();
         await page.keyboard.press("Tab");
         await expect(drawer.getByRole("button", { name: "关闭安装指南" })).toBeFocused();
         await page.keyboard.press("Escape");
@@ -178,6 +190,26 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         if (routePath === "/audit") {
+          await test.step("audit kind filter inventory", async () => {
+            const originalUrl = page.url();
+            const more = page.getByRole("button", { name: /^更多筛选/ });
+            await more.click();
+            const kind = page.getByRole("combobox", { name: "事件类型筛选" });
+            await kind.click();
+            const menu = page.getByRole("listbox");
+            const expected = [{ value: "", label: "全部类型" },
+              ...Object.entries(AUDIT_KIND_LABELS).map(([value, label]) => ({ value, label }))];
+            await expect(menu.getByRole("option")).toHaveCount(expected.length);
+            expect(await menu.getByRole("option").evaluateAll((options) => options.map((option) => ({
+              value: option.getAttribute("data-value"), label: option.textContent?.trim()
+            })))).toEqual(expected);
+            await page.keyboard.press("Escape");
+            await expect(menu).toBeHidden();
+            await expect(kind).toBeFocused();
+            await more.click();
+            await expect(more).toHaveAttribute("aria-expanded", "false");
+            await expect(page).toHaveURL(originalUrl);
+          });
           await test.step("audit severity column filter", async () => {
             const trigger = page.getByRole("columnheader", { name: /严重度/ }).getByRole("button", { name: "筛选严重度", exact: true });
             await expect(trigger).toBeVisible();
@@ -248,18 +280,84 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(trigger).toBeFocused();
         }
         if (routePath === "/debugging-admin/nodes") {
+          const longProjectLabel = "多项目联合验证与电池安全治理平台 ".repeat(8).trim();
+          testInfo.annotations.push({ type: "setup", description: "A read-only project-list response supplies one controlled long label for geometry; other API data stays real. This does not prove a persisted project rename." });
+          await context.route("**/api/v1/projects", async (intercepted) => {
+            if (intercepted.request().method() !== "GET") return intercepted.fallback();
+            const response = await intercepted.fetch();
+            expect(response.ok()).toBe(true);
+            const body = await response.json() as { items: Array<{ id: string; name: string }> };
+            expect(body.items.length).toBeGreaterThan(0);
+            body.items[0]!.name = longProjectLabel;
+            await intercepted.fulfill({ response, json: body });
+          });
           await page.getByRole("table", { name: "可调节点目录", exact: true }).getByRole("button", { name: "编辑", exact: true }).first().click();
           const editor = page.getByRole("dialog", { name: "编辑节点", exact: true });
           await expect(editor.getByLabel("HDC 节点路径", { exact: true })).toBeVisible();
           await expect(editor.getByLabel("ADB 节点路径", { exact: true })).toBeVisible();
           await expect(editor.getByRole("button", { name: "保存", exact: true })).toHaveCount(1);
           expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+          const access = editor.getByRole("combobox", { name: "HDC 访问模式", exact: true });
+          const initialAccess = await access.getAttribute("data-value");
+          await access.click();
+          await page.getByRole("option", { name: new RegExp(`^${initialAccess} ·`) }).click();
+          await expect(access).toHaveAttribute("data-value", initialAccess!);
+          await expect(access).toBeFocused();
+          await access.press("ArrowDown");
+          await expect(page.getByRole("listbox")).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(page.getByRole("listbox")).toBeHidden();
+          await expect(editor).toBeVisible();
+          await expect(access).toBeFocused();
+          const association = editor.locator("summary").filter({ hasText: "项目参数关联" });
+          await association.click();
+          const project = editor.getByRole("combobox", { name: "关联项目", exact: true });
+          await expect(project).toBeEnabled();
+          await project.click();
+          await page.getByRole("option", { name: longProjectLabel, exact: true }).click();
+          await expect(project).toBeFocused();
+          const longLabelGeometry = await project.evaluate((element) => {
+            const text = element.querySelector('[data-slot="select-value"]')!;
+            const chevron = element.querySelector(".select-control__chevron")!.getBoundingClientRect();
+            const label = text.getBoundingClientRect();
+            return { truncated: text.scrollWidth > text.clientWidth, gap: chevron.left - label.right,
+              centerDelta: Math.abs(label.top + label.height / 2 - chevron.top - chevron.height / 2) };
+          });
+          expect(longLabelGeometry.truncated, "long form labels must truncate within their field").toBe(true);
+          expect(longLabelGeometry.gap, "long labels must leave the dropdown arrow visible").toBeGreaterThanOrEqual(0);
+          expect(longLabelGeometry.centerDelta).toBeLessThanOrEqual(2);
+          await project.click();
+          await page.getByRole("option", { name: "不关联项目参数", exact: true }).click();
+          await association.click();
           await assertAccessibilitySemantics(page, testInfo, `unified-node-editor-${theme}`);
           await testInfo.attach(`unified-node-editor-${theme}`, {
             contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
           });
+          const name = editor.getByRole("textbox", { name: "名称", exact: true });
+          await name.fill(`${await name.inputValue()}未保存`);
           await editor.getByRole("button", { name: "取消", exact: true }).click();
+          const discard = page.getByRole("dialog", { name: "放弃未保存的更改？", exact: true });
+          await expect(discard).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(discard).toBeHidden();
+          await expect(editor).toBeVisible();
+          await expect(editor.getByRole("button", { name: "取消", exact: true })).toBeFocused();
+          await editor.getByRole("button", { name: "取消", exact: true }).click();
+          await discard.getByRole("button", { name: "放弃并关闭", exact: true }).click();
           await expect(editor).toBeHidden();
+          await page.getByRole("button", { name: "模块管理", exact: true }).click();
+          const modules = page.getByRole("dialog", { name: "模块管理", exact: true });
+          const more = modules.getByRole("button", { name: "Battery Charging 更多操作", exact: true });
+          await more.click();
+          await page.getByRole("menuitem", { name: "查看节点", exact: true }).click();
+          await expect(modules.getByLabel("Battery Charging 节点列表")).toBeVisible();
+          await more.press("ArrowDown");
+          await expect(page.getByRole("menu")).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(page.getByRole("menu")).toBeHidden();
+          await expect(modules).toBeVisible();
+          await expect(more).toBeFocused();
+          await modules.getByRole("button", { name: "完成", exact: true }).click();
         }
         if (route.required.includes("settingsForms")) {
           const form = page.locator(".settings-form-page");

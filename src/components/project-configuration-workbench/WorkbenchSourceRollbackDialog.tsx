@@ -277,7 +277,6 @@ export function WorkbenchSourceRollbackDialog({
             disabled={loading || submitting || submittedOnce}
             onValueChange={(value) => { resetSubmit(); setReviewerId(value); }}
             ariaLabel="指定软件审核人"
-            withinModal
             options={reviewers.length ? reviewers.map((reviewer) => ({ value: reviewer.userId, label: `${reviewer.name}（${reviewer.userId}）` })) : [{ value: "", label: "没有可用的另一名软件审核人" }]}
           />
         </label> : null}</>

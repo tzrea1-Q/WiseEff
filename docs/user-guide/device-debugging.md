@@ -18,8 +18,8 @@ The old Parameter debugging (`/debugging`) workspace is offline; use `/dts-reloa
 ## Connect your computer and select a device
 
 1. Open Node debugging (`/node-debugging`) or Parameter debugging (`/dts-reload`) and choose **HDC** or **ADB** for your device.
-2. In the local Device Bridge panel, follow **Install Bridge** and download the installer recommended for your computer. Follow the panel's installation guidance; on Windows it asks you to run the installer as administrator so the browser can launch Bridge.
-3. Choose **Connect this computer** and allow the browser to open the installed Bridge. The panel supplies a temporary pairing code. If pairing has expired or the connection is lost, reconnect using the current panel rather than an old code.
+2. Open **Installation guide**, check the platform, architecture and package version, and download the appropriate installer. A Mac browser cannot reliably identify the chip: choose Apple Silicon or Intel after checking About This Mac. When the graphical installer is older than the current portable package, the guide labels the versions separately. Follow the installation guidance; Windows requires running the installer as administrator so the browser can launch Bridge.
+3. Choose **Connect this computer** and allow the browser to open the installed Bridge. The guide stays open and provides retry/manual terminal recovery. Temporary pairing codes refresh on expiry; use the regenerate action to request a fresh code if needed, rather than reusing an old code.
 4. Connect the target device to the computer running Bridge and complete the device's debugging authorization. Detect devices in the page. If multiple targets are offered, select the intended one before any write or deployment.
 5. Check the Bridge connection and HDC/ADB device detection separately. If detection fails, check the cable, device authorization, selected protocol, and the panel's tool status, then detect again.
 
@@ -42,7 +42,7 @@ The displayed current value reflects a single observation; the device state may 
 
 ## Write a node and interpret the result
 
-1. Open a writable node's editor and enter the target value. For a complex value, follow the displayed format and normalization guidance. Numeric bounds, when configured, are enforced by the server; complex values are checked against their value metadata.
+1. Open a writable node's editor, check the device, node path, units and risk, then enter the target value. Edits stay local until you stage or write them; closing modified content offers continuing or discarding it. For a complex value, expand the format and normalization guidance. Numeric bounds, when configured, are enforced by the server; complex values are checked against their value metadata.
 2. Choose the write-and-readback action, or stage values and use the batch-send bar. Only pending writable nodes are sent; selecting rows limits the batch to those selected pending nodes. A batch containing high-risk nodes asks for confirmation before it sends anything.
 3. Before a physical write, the server checks authorization and the device lease, reads the previous value, and records a pre-write snapshot. If the pre-write read fails, it does not issue the write. High-risk writes require explicit human confirmation.
 4. Inspect write outcome and readback outcome separately. An executed write tells you that the command ran; the device may still return a different value. Node debugging displays the actual return value without judging equality, including when the device uses a different representation.
@@ -55,7 +55,7 @@ To restore a node, use **Rollback snapshot** in Node debugging (`/node-debugging
 
 In Parameter debugging (`/dts-reload`):
 
-1. Select the project and candidates, compare each library baseline with its debug value, and edit the values you intend to test. The platform generates the overlay, so you do not need to write it manually. Debug values apply only to this run and do not update the parameter library, drafts, or release baseline.
+1. Select the project and candidates, compare each library baseline with its debug value, and explicitly add edits to the reload batch. Expand the batch summary above the candidates to review or edit selected values. Closing an unsaved editor offers continuing or discarding it. The platform generates the overlay, so you do not need to write it manually. Debug values apply only to this run and do not update the parameter library, drafts, or release baseline.
 2. Start pre-flight. The platform compiles the base and overlay, performs a dry-run merge, and checks the resulting properties and values. Review each step and diagnostic. A validated pre-flight means those checks passed; the values have not yet been deployed to the device. Resolve blocked or failed checks before proceeding. Ask the operator or project Admin for help with toolchain or project-source problems.
 3. Complete Bridge connection and device detection, then choose deployment and review the target, parameter changes, and generated overlay in the confirmation. Sensitive values and device deployment require separate confirmation. You can prepare pre-flight before connecting a device; deployment requires a connected device.
 4. After confirmation, the platform mounts and transfers the compiled artifact, checks its on-device digest, triggers reload, and gathers available kernel-log and debug-node evidence. Use the run's terminal state and snapshot to determine whether driver behavior was verified; the transfer result alone is insufficient.
@@ -84,7 +84,7 @@ Restoration deploys another overlay with baseline values. The existing overlay r
 
 ## Find history and share evidence
 
-- In Node debugging (`/node-debugging`), expand **Node operation records** for the current session's detection, read, write/readback, and rollback events. Check the status, return code, output/error summary, and timestamp alongside the node detail's write and readback outcomes.
+- In Node debugging (`/node-debugging`), expand **Node operation records** for the current session's detection, read, write/readback, and rollback events. Expand **Full result** for the complete output, errors, node path, return code and timestamp; check these alongside the node detail's write and readback outcomes.
 - In Parameter debugging (`/dts-reload`), expand **Run history**. It lists runs by project, including blocked and failed runs, with baseline-restoration runs marked separately. You can also filter to the current device. Open a run to view its pre-flight steps, baseline and debug values, terminal state, and reload snapshot. The snapshot includes recorded baselines, artifact digest/integrity results, available kernel-log evidence, and verification outcomes for each parameter. Download the compiled artifact while it is available; expired artifacts are marked unavailable.
 - Keep the run ID and project/device context with your report. A reload run can be reopened through Parameter debugging (`/dts-reload?runId=<run-id>`). Report missing bindings, failed reads, truncation, and unverifiable states rather than presenting them as successful verification.
 - Admins can cross-check retained actions in Audit center (`/audit`). The [operation coverage matrix](../developer/user-operation-coverage-matrix.md) distinguishes automated/simulated checks from conditional real HDC/ADB evidence. Use real-device evidence to assess target-hardware acceptance; history records alone are insufficient.

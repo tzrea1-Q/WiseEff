@@ -42,6 +42,10 @@ WISEEFF_QUALITY_VIEWPORT_PROFILE=extended npm run acceptance:responsive
 
 ## 质量阶段计时与可选 UI 就绪状态
 
+已认证内容区域依据所属初始 API 域（参数、日志或调试）暴露 `data-runtime-state="loading|ready|error"` 与 `aria-busy`。加载期间页面内容使用原生 `inert`，导航、状态及重试区域仍可用。各域独立完成，无关设备发现、可选轮询及其他页面请求不能阻塞当前区域。错误保留无演示数据警告和重试；重试成功恢复 `ready`。初始外壳契约之后，业务页面已有加载/错误状态继续适用。
+
+验收 `prepareInteractionSurface` 在导航/刷新后要求所有已挂载就绪 owner 均为 `ready`，不再以横幅消失推断。Bearer 登录导航等待同一组就绪标记；初始化/失败场景继续直接导航。节点目录拥有必需 nodes/modules 加载、取消与重试，其标记和外壳标记组合；可选设备发现不能阻塞目录，节点调试路由仍保留设备要求。有意验证初始化/失败的测试绕过该辅助：持有真实必需 API 响应，在释放前对已渲染控件按下指针，完成响应后抬起指针，验证没有意外菜单/确认。复用现有 API 场景及运行时，不使用统一 sleep、`networkidle`、增加重试或额外浏览器环境。
+
 每次质量测试尝试都会在现有 Playwright JSON/HTML 结果中附带 `quality-phase-timings` JSON。具名步骤 `quality:navigation`、`quality:readiness`、`quality:axe` 和 `quality:capture` 记录毫秒耗时、各阶段总耗时、失败状态、重试编号和测试耗时。采集阶段包含截图与一致性测量。嵌套阶段只计一次，未执行的阶段总耗时为零。这些操作计时不等于质量分片的墙钟耗时；优化前后的 CI 作业耗时须单独比较。
 
 隐藏的 `xiaoze-popup-readiness` 标记仅在弹窗层卸载后报告 `closed`，测试工具仍断言弹窗层已隐藏。`xiaoze-toggle-hint-readiness` 标记报告 `pending`、`revealed` 或 `suppressed`。首次提示仍等待真实的 1.4 秒延迟；已关闭或本次页面加载已展示过的提示立即就绪，不再通过超时证明不存在。`revealed` 表示已渲染，不保证 CSS 可见（对话框可以隐藏提示）；测试工具关闭可见提示，并保留隐藏状态断言。几何、axe 规则、截图断言、遮罩和基线均不变。

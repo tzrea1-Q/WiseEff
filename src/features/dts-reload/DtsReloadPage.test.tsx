@@ -16,6 +16,7 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { DEVICE_UNAVAILABLE_MESSAGE } from "@/infrastructure/http/userErrorMessage";
 import * as bridgeClient from "@/infrastructure/http/deviceBridgeClient";
 import * as bridgeLauncher from "@/infrastructure/http/bridgeConnectLauncher";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 
 vi.mock("@/infrastructure/http/bridgeConnectLauncher", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/infrastructure/http/bridgeConnectLauncher")>();
@@ -292,18 +293,21 @@ async function setDebugValueInTray(
   label: string,
   value: string
 ) {
-  const input = await screen.findByLabelText(label);
+  const name = label.replace(/ 调试值$/, "");
+  const edit = screen.queryByRole("button", { name: `编辑本轮 ${name}` })
+    ?? await screen.findByRole("button", { name: `编辑 ${name}` });
+  await user.click(edit);
+  const dialog = await screen.findByRole("dialog", { name });
+  const input = within(dialog).getByLabelText(label);
   await user.clear(input);
   await user.paste(value);
+  await user.click(within(dialog).getByRole("button", { name: /更新本轮|加入本轮重载/ }));
 }
 
 async function setWatchdogDebugValue(
   user: ReturnType<typeof userEvent.setup>,
   value = "<7000>"
 ) {
-  if (!screen.queryByLabelText("Watchdog 调试值")) {
-    await user.click(await screen.findByRole("checkbox", { name: "选择 Watchdog" }));
-  }
   await setDebugValueInTray(user, "Watchdog 调试值", value);
 }
 
@@ -311,6 +315,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   const url = new URL(window.location.href);
   url.searchParams.delete("run");
+  url.searchParams.delete("runId");
   url.searchParams.delete("uiPreview");
   url.searchParams.delete("bindingIds");
   url.searchParams.delete("project");
@@ -319,6 +324,157 @@ afterEach(() => {
 });
 
 describe("DtsReloadPage", () => {
+  it("protects staged values across project changes, navigation and reload until discard is confirmed", async () => {
+    const user = userEvent.setup({ delay: null });
+    const repository = createRepository({ listCandidates: vi.fn(async (projectId) => ({ items: [candidate({ projectId })] })) });
+    renderPage(repository, { projects: [{ id: "project-1", name: "Demo" }, { id: "project-2", name: "Other" }] });
+    await setWatchdogDebugValue(user);
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    let decision: boolean | Promise<boolean> = true;
+    act(() => { decision = requestSettingsLeave(); });
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(await decision).toBe(false);
+    expect(screen.getByLabelText("Watchdog 值变更")).toHaveTextContent("<7000>");
+    await user.click(screen.getByRole("combobox", { name: "选择项目" }));
+    await user.click(screen.getByRole("option", { name: "Other" }));
+    expect(repository.listCandidates).not.toHaveBeenCalledWith("project-2");
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByRole("combobox", { name: "选择项目" })).toHaveTextContent("Demo");
+    await user.click(screen.getByRole("combobox", { name: "选择项目" }));
+    await user.click(screen.getByRole("option", { name: "Other" }));
+    await user.click(screen.getByRole("button", { name: "放弃修改" }));
+    await waitFor(() => expect(repository.listCandidates).toHaveBeenCalledWith("project-2"));
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+    const cleanUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
+  });
+
+  it("keeps an authoritative run deep link intact while initial device discovery is pending", async () => {
+    let complete!: (value: DtsReloadRun) => void;
+    const pending = new Promise<DtsReloadRun>((resolve) => { complete = resolve; });
+    const repository = createRepository({ getRun: vi.fn(() => pending) });
+    const detectTargets = vi.fn(async () => [{ bridgeId: "bridge-1", targetRef: "device-serial-1" }]);
+    renderPage(repository, { initialRunId: "run-history", detectTargets });
+    await screen.findAllByText("正在加载运行详情…");
+    expect(detectTargets).not.toHaveBeenCalled();
+    await act(async () => { complete(run({ id: "run-history", bridgeId: "bridge-1", targetRef: "device-serial-1", protocol: "hdc" })); await pending; });
+    expect(await screen.findByRole("region", { name: "本次参数变更" })).toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.get("runId")).toBe("run-history");
+    await waitFor(() => expect(detectTargets).toHaveBeenCalled());
+  });
+
+  it.each(["沉淀为知识", "晋升为草稿"])("asks only once before %s navigates with an unchanged batch", async (actionLabel) => {
+    const user = userEvent.setup({ delay: null });
+    let leaveDecision: boolean | Promise<boolean> = false;
+    const onNavigate = vi.fn(() => { leaveDecision = requestSettingsLeave(); });
+    const repository = createRepository({ getRun: vi.fn(async () => run({ id: "run-verified", status: "verified" })) });
+    const knowledgeRepository = { distillFromReloadRun: vi.fn(async () => ({ id: "kb-draft" })) } as unknown as KnowledgeRepository;
+    renderPage(repository, {
+      initialRunId: "run-verified", canPromoteToDrafts: true, onNavigate,
+      knowledgeRepository,
+      knowledgeCapability: { userId: "u-1", canView: true, canEdit: true, canManage: false }
+    });
+    await screen.findByRole("button", { name: actionLabel });
+    await setWatchdogDebugValue(user);
+    await user.click(screen.getByRole("button", { name: actionLabel }));
+    await user.click(screen.getByRole("button", { name: "放弃修改" }));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalled());
+    expect(leaveDecision).toBe(true);
+    expect(screen.queryByRole("dialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["沉淀为知识", "edit"], ["晋升为草稿", "edit"],
+    ["沉淀为知识", "project"], ["晋升为草稿", "project"]
+  ] as const)("preserves a newer batch after pending %s when the user changes %s", async (actionLabel, change) => {
+    const user = userEvent.setup({ delay: null });
+    let complete!: () => void;
+    const pending = new Promise<void>((resolve) => { complete = resolve; });
+    const repository = createRepository({
+      getRun: vi.fn(async () => run({ id: "run-verified", status: "verified" })),
+      listCandidates: vi.fn(async (projectId) => ({ items: [candidate({ projectId })] })),
+      promoteToDrafts: vi.fn(async () => {
+        await pending;
+        return { runId: "run-verified", status: "verified" as const, drafts: [], workbenchHref: "/parameters?project=project-1" };
+      })
+    });
+    const knowledgeRepository = {
+      distillFromReloadRun: vi.fn(async () => { await pending; return { id: "kb-draft" }; })
+    } as unknown as KnowledgeRepository;
+    let leaveDecision: boolean | Promise<boolean> = false;
+    const onNavigate = vi.fn(() => { leaveDecision = requestSettingsLeave(); });
+    renderPage(repository, {
+      projects: [{ id: "project-1", name: "Demo" }, { id: "project-2", name: "Other" }],
+      initialRunId: "run-verified", canPromoteToDrafts: true, onNavigate,
+      knowledgeRepository,
+      knowledgeCapability: { userId: "u-1", canView: true, canEdit: true, canManage: false }
+    });
+    await screen.findByRole("button", { name: actionLabel });
+    await setWatchdogDebugValue(user);
+    await user.click(screen.getByRole("button", { name: actionLabel }));
+    await user.click(screen.getByRole("button", { name: "放弃修改" }));
+    await waitFor(() => expect(actionLabel === "沉淀为知识" ? knowledgeRepository.distillFromReloadRun : repository.promoteToDrafts).toHaveBeenCalledTimes(1));
+    if (change === "project") {
+      await user.click(screen.getByRole("combobox", { name: "选择项目" }));
+      await user.click(screen.getByRole("option", { name: "Other" }));
+      await user.click(screen.getByRole("button", { name: "放弃修改" }));
+      await waitFor(() => expect(repository.listCandidates).toHaveBeenCalledWith("project-2"));
+    }
+    const nextValue = change === "project" ? "<7000>" : "<7500>";
+    await setWatchdogDebugValue(user, nextValue);
+    await act(async () => { complete(); await pending; });
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledTimes(1));
+    expect(leaveDecision).toBeInstanceOf(Promise);
+    expect(screen.getByLabelText("Watchdog 值变更")).toHaveTextContent(nextValue);
+    await user.click(within(await screen.findByRole("dialog", { name: "放弃未保存的修改？" })).getByRole("button", { name: "继续编辑" }));
+    expect(await leaveDecision).toBe(false);
+    expect(screen.getByLabelText("Watchdog 值变更")).toHaveTextContent(nextValue);
+    expect(screen.getByRole("combobox", { name: "选择项目" })).toHaveTextContent(change === "project" ? "Other" : "Demo");
+  });
+
+  it.each(["success", "failure"])("discards an in-flight device detection %s when opening history", async (outcome) => {
+    const user = userEvent.setup({ delay: null });
+    let completeRun!: (value: DtsReloadRun) => void;
+    const runPending = new Promise<DtsReloadRun>((resolve) => { completeRun = resolve; });
+    let finishDetection!: (value: DtsReloadReachableTarget[]) => void;
+    let failDetection!: (reason: Error) => void;
+    const detectionPending = new Promise<DtsReloadReachableTarget[]>((resolve, reject) => { finishDetection = resolve; failDetection = reject; });
+    const detectTargets = vi.fn().mockImplementationOnce(() => detectionPending).mockResolvedValue([{ bridgeId: "bridge-1", targetRef: "device-serial-1" }]);
+    const repository = createRepository({
+      listRuns: vi.fn(async () => ({ items: [{ ...run({ id: "history-late" }), deviceId: null, targetCount: 1, propertyKeys: ["watchdog_time"], integrityCheck: null }], nextCursor: null })),
+      getRun: vi.fn(() => runPending)
+    });
+    renderPage(repository, { detectTargets });
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByText("运行历史", { exact: true }));
+    await user.click(within(screen.getByLabelText("运行历史")).getByRole("button", { name: /预检通过/ }));
+    await waitFor(() => expect(repository.getRun).toHaveBeenCalledWith("history-late"));
+    await act(async () => {
+      if (outcome === "success") finishDetection([{ bridgeId: "bridge-1", targetRef: "late-device" }]);
+      else failDetection(new Error("过期检测失败"));
+      await detectionPending.catch(() => undefined);
+    });
+    expect(screen.getAllByText("正在加载运行详情…").length).toBeGreaterThan(0);
+    await act(async () => { completeRun(run({ id: "history-late", bridgeId: "bridge-1", targetRef: "device-serial-1", protocol: "hdc" })); await runPending; });
+    expect(await screen.findByRole("region", { name: "本次参数变更" })).toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.get("runId")).toBe("history-late");
+    expect(screen.queryByText("过期检测失败")).not.toBeInTheDocument();
+  });
+
+  it("shows unknown residue with a retry instead of enabling restoration on stale data", async () => {
+    const user = userEvent.setup({ delay: null });
+    const getResidue = vi.fn().mockRejectedValue(new Error("查询失败"));
+    renderPage(createRepository({ getResidue }));
+    expect(await screen.findByText(/残留状态未知/)).toHaveTextContent("查询失败");
+    expect(screen.queryByRole("button", { name: /恢复基线（补偿性重载）/ })).not.toBeInTheDocument();
+    getResidue.mockResolvedValue(null);
+    await user.click(screen.getByRole("button", { name: "重试查询残留" }));
+    await waitFor(() => expect(screen.queryByText(/残留状态未知/)).not.toBeInTheDocument());
+  });
+
   it("restores a selected module after candidates reload and clears it on reselect", async () => {
     const user = userEvent.setup({ delay: null });
     const repository = createRepository();
@@ -347,7 +503,7 @@ describe("DtsReloadPage", () => {
       .mockResolvedValue({ health: null, reachability: "ok" });
     renderPage(createRepository(), { bridges: undefined, probeBridgeHealth: undefined });
 
-    const connect = await screen.findByRole("button", { name: "连接本机", exact: true });
+    const connect = await screen.findByRole("button", { name: "连接本机" });
     await waitFor(() => expect(connect).toBeEnabled());
     await user.click(connect);
 
@@ -433,7 +589,7 @@ describe("DtsReloadPage", () => {
     await screen.findByText(revokeFails ? "撤销失败" : "已撤销");
     if (revokeOther || revokeFails) {
       expect(screen.queryByRole("button", { name: "连接本机" })).not.toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "重新检测", exact: true }));
+      await user.click(screen.getByRole("button", { name: "重新检测" }));
       expect(detectTargets).toHaveBeenLastCalledWith("hdc", "bridge-old");
       expect(connect).not.toHaveBeenCalled();
       return;
@@ -553,7 +709,7 @@ describe("DtsReloadPage", () => {
     expect(screen.getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /编辑 Watchdog/ })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /下发参数/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /启动预检/ })).toBeDisabled();
     expect(screen.queryByLabelText("DTS 重载启动操作栏")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "已选调试值" })).not.toBeInTheDocument();
     const history = screen.getByLabelText("运行历史");
@@ -561,7 +717,7 @@ describe("DtsReloadPage", () => {
     expect(history).not.toHaveAttribute("open");
   });
 
-  it("keeps reload candidates before the tray and remembers module navigation collapse", async () => {
+  it("puts the collapsible reload tray before candidates and remembers module navigation collapse", async () => {
     const repository = createRepository();
     const first = renderPage(repository);
     await screen.findByRole("button", { name: /编辑 Watchdog/ });
@@ -570,12 +726,12 @@ describe("DtsReloadPage", () => {
     expect(task).not.toContainElement(screen.getByRole("region", { name: "本地设备连接" }));
     const toolbar = screen.getByRole("group", { name: "工作台操作" });
     expect(within(toolbar).getByRole("combobox", { name: "选择项目" })).toBeInTheDocument();
-    expect(within(toolbar).getByRole("button", { name: "选择参数后下发" })).toBeDisabled();
+    expect(within(toolbar).getByRole("button", { name: "启动预检（0）" })).toBeDisabled();
     fireEvent.click(within(table).getByRole("checkbox", { name: "选择 Watchdog" }));
     const tray = await screen.findByRole("region", { name: "本轮重载" });
     expect(task).toContainElement(tray);
-    expect(table.compareDocumentPosition(tray) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(toolbar).getByRole("button", { name: /下发参数/ })).toBeDisabled();
+    expect(tray.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(toolbar).getByRole("button", { name: /启动预检/ })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
     expect(screen.queryByRole("tree", { name: "业务模块树" })).not.toBeInTheDocument();
     expect(table).toBeVisible();
@@ -696,8 +852,8 @@ describe("DtsReloadPage", () => {
     expect(panel).not.toHaveAttribute("tabindex");
     adb.focus();
     await user.tab();
-    expect(screen.getByRole("combobox", { name: "选择项目" })).toHaveFocus();
-    await user.tab();
+    expect(screen.getByRole("button", { name: "安装指南" })).toHaveFocus();
+    for (let index = 0; index < 8 && !panel.contains(document.activeElement); index += 1) await user.tab();
     expect(panel).toContainElement(document.activeElement as HTMLElement);
     expect(panel).not.toHaveFocus();
     expect(within(panel).getByRole("region", { name: "模块导航" })).toBeInTheDocument();
@@ -819,9 +975,10 @@ describe("DtsReloadPage", () => {
 
     await user.click(await screen.findByRole("button", { name: /编辑 Watchdog/ }));
     const sheet = await screen.findByRole("dialog", { name: "Watchdog" });
+    await user.click(within(sheet).getByText("技术信息"));
     expect(within(sheet).getByRole("heading", { name: "参数含义" })).toBeInTheDocument();
     expect(within(sheet).getByText("Watchdog timeout for charger safety.")).toBeInTheDocument();
-    expect(within(sheet).getByRole("heading", { name: "上次重载" })).toBeInTheDocument();
+    expect(within(sheet).queryByText("暂无上次重载记录。")).not.toBeInTheDocument();
     expect(within(sheet).getByLabelText("Watchdog 调试值")).toHaveValue("<6000>");
     expect(within(sheet).getByRole("button", { name: "加入本轮重载" })).toBeDisabled();
 
@@ -834,14 +991,72 @@ describe("DtsReloadPage", () => {
 
     expect(screen.queryByRole("dialog", { name: "Watchdog" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("<7000>")).toBeInTheDocument();
+    expect(screen.getByLabelText("Watchdog 值变更")).toHaveTextContent("<7000>");
   });
 
   it("keeps the reload batch empty until the user selects a candidate", async () => {
     renderPage(createRepository());
     expect(await screen.findByRole("button", { name: /编辑 Watchdog/ })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /下发参数/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /启动预检/ })).toBeDisabled();
+  });
+
+  it("asks before discarding an editor draft and only adds confirmed values to the batch", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPage(createRepository());
+    await user.click(await screen.findByRole("button", { name: "编辑 Watchdog" }));
+    const sheet = await screen.findByRole("dialog", { name: "Watchdog" });
+    const input = within(sheet).getByLabelText("Watchdog 调试值");
+    await user.clear(input);
+    await user.paste("<7100>");
+    await user.keyboard("{Escape}");
+    expect(await screen.findByRole("dialog", { name: "放弃未保存的修改？" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "放弃未保存的修改？" })).not.toBeInTheDocument();
+    expect(sheet).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "关闭参数编辑" }));
+    const confirm = await screen.findByRole("dialog", { name: "放弃未保存的修改？" });
+    await user.click(within(confirm).getByRole("button", { name: "继续编辑" }));
+    expect(input).toHaveValue("<7100>");
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "取消" }));
+    await user.click(within(screen.getByRole("dialog", { name: "放弃未保存的修改？" })).getByRole("button", { name: "放弃修改" }));
+    expect(screen.queryByRole("dialog", { name: "Watchdog" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "编辑 Watchdog" }));
+    expect(within(screen.getByRole("dialog", { name: "Watchdog" })).getByLabelText("Watchdog 调试值")).toHaveValue("<6000>");
+  });
+
+  it("protects unsaved values when switching candidates or projects from behind the sheet", async () => {
+    const user = userEvent.setup({ delay: null });
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({ items: [candidate(), candidate({ bindingId: "binding-2", displayName: "Second parameter" })] }))
+    });
+    renderPage(repository, { projects: [{ id: "project-1", name: "Demo" }, { id: "project-2", name: "Second project" }] });
+    await user.click(await screen.findByRole("button", { name: "编辑 Watchdog" }));
+    const input = within(screen.getByRole("dialog", { name: "Watchdog" })).getByLabelText("Watchdog 调试值");
+    await user.clear(input);
+    await user.paste("<7200>");
+    await user.click(screen.getByRole("button", { name: "编辑 Second parameter" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "放弃未保存的修改？" })).getByRole("button", { name: "继续编辑" }));
+    expect(input).toHaveValue("<7200>");
+    expect(screen.queryByRole("dialog", { name: "Second parameter" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "编辑 Second parameter" }));
+    await user.click(within(screen.getByRole("dialog", { name: "放弃未保存的修改？" })).getByRole("button", { name: "放弃修改" }));
+    const secondInput = within(await screen.findByRole("dialog", { name: "Second parameter" })).getByLabelText("Second parameter 调试值");
+    await user.clear(secondInput);
+    await user.paste("<7300>");
+    await user.click(screen.getByRole("combobox", { name: "选择项目" }));
+    await user.click(await screen.findByRole("option", { name: "Second project" }));
+    const confirm = await screen.findByRole("dialog", { name: "放弃未保存的修改？" });
+    expect(repository.listCandidates).not.toHaveBeenCalledWith("project-2");
+    await user.click(within(confirm).getByRole("button", { name: "继续编辑" }));
+    expect(secondInput).toHaveValue("<7300>");
+    expect(screen.getByRole("combobox", { name: "选择项目" })).toHaveAttribute("data-value", "project-1");
+    await user.click(screen.getByRole("combobox", { name: "选择项目" }));
+    await user.click(await screen.findByRole("option", { name: "Second project" }));
+    await user.click(within(screen.getByRole("dialog", { name: "放弃未保存的修改？" })).getByRole("button", { name: "放弃修改" }));
+    await waitFor(() => expect(repository.listCandidates).toHaveBeenCalledWith("project-2"));
+    expect(screen.queryByRole("dialog", { name: "Second parameter" })).not.toBeInTheDocument();
   });
 
   it("edits the reload batch in a workbench-style tray with remove and reset actions", async () => {
@@ -868,36 +1083,63 @@ describe("DtsReloadPage", () => {
 
     await user.click(await screen.findByRole("checkbox", { name: "选择 Watchdog" }));
     expect(await screen.findByRole("region", { name: "本轮重载" })).toBeInTheDocument();
-    expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
+    expect(screen.getByText("本轮重载 · 1 项")).toBeInTheDocument();
+    expect(screen.getByText("本轮重载 · 1 项").closest("summary")).toHaveTextContent("修改调试值后启动预检");
     const watchdogDiff = screen.getByLabelText("Watchdog 值变更");
-    expect(watchdogDiff.querySelector(".submission-preview-diff--scalar")).toHaveAttribute("data-kind", "equal");
-    expect(watchdogDiff.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("<6000>");
-    expect(watchdogDiff.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("<6000>");
+    expect(watchdogDiff).toHaveTextContent("<6000>");
+    expect(watchdogDiff.querySelector("[data-kind='remove']")).toBeNull();
+    expect(watchdogDiff.querySelector("[data-kind='add']")).toBeNull();
 
     await user.click(screen.getByRole("checkbox", { name: "选择 Compatible" }));
-    expect(screen.getByText(/本轮 2 项/)).toBeInTheDocument();
+    expect(screen.getByText("本轮重载 · 2 项")).toBeInTheDocument();
 
-    const compatibleInput = screen.getByLabelText("Compatible 调试值");
-    await user.clear(compatibleInput);
-    await user.paste('"debug"');
-    expect(compatibleInput).toHaveValue('"debug"');
+    await setDebugValueInTray(user, "Compatible 调试值", '"debug"');
+    expect(screen.getByText("本轮重载 · 2 项").closest("summary")).toHaveTextContent("核对调试值后启动预检");
     const compatibleDiff = screen.getByLabelText("Compatible 值变更");
     expect(compatibleDiff.querySelector(".submission-preview-diff--scalar")).toHaveAttribute("data-kind", "changed");
     expect(compatibleDiff.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent('"sc8562"');
     expect(compatibleDiff.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"debug"');
 
     await user.click(screen.getByRole("button", { name: "重置为基线" }));
-    expect(compatibleInput).toHaveValue('"sc8562"');
+    await user.click(screen.getByRole("button", { name: "放弃修改" }));
+    expect(screen.getByLabelText("Compatible 值变更")).toHaveTextContent('"sc8562"');
 
     await user.click(screen.getByRole("button", { name: "移出本轮重载 Compatible" }));
-    expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
+    expect(screen.getByText("本轮重载 · 1 项")).toBeInTheDocument();
     expect(screen.queryByLabelText("Compatible 调试值")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "清空本轮" }));
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
   });
 
-  it("keeps block reasons in the operations column and disables edits for not-debuggable rows", async () => {
+  it("restores focus after removing the last batch item and clearing the tray", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPage(createRepository());
+    const checkbox = await screen.findByRole("checkbox", { name: "选择 Watchdog" });
+    await user.click(checkbox);
+    await user.click(await screen.findByRole("button", { name: "移出本轮重载 Watchdog" }));
+    await waitFor(() => expect(checkbox).toHaveFocus());
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+    await user.click(checkbox);
+    await user.click(await screen.findByRole("button", { name: "清空本轮" }));
+    await waitFor(() => expect(screen.getByRole("searchbox", { name: "按名称搜索参数" })).toHaveFocus());
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+  });
+
+  it("restores focus to the latest candidate trigger after switching sheets", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPage(createRepository({
+      listCandidates: vi.fn(async () => ({ items: [candidate(), candidate({ bindingId: "binding-2", displayName: "Second parameter" })] }))
+    }));
+    await user.click(await screen.findByRole("button", { name: "编辑 Watchdog" }));
+    const nextTrigger = screen.getByRole("button", { name: "编辑 Second parameter" });
+    await user.click(nextTrigger);
+    const sheet = await screen.findByRole("dialog", { name: "Second parameter" });
+    await user.click(within(sheet).getByRole("button", { name: "关闭参数编辑" }));
+    await waitFor(() => expect(nextTrigger).toHaveFocus());
+  });
+
+  it("keeps blocked candidates read-only while allowing their full details to be inspected", async () => {
     const user = userEvent.setup({ delay: null });
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
@@ -915,13 +1157,15 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
 
     expect(await screen.findByText("Blocked")).toBeInTheDocument();
-    const edit = screen.getByRole("button", { name: /编辑 Blocked/ });
-    expect(edit).toBeDisabled();
+    const edit = screen.getByRole("button", { name: /查看 Blocked/ });
+    expect(edit).toBeEnabled();
     const operations = edit.closest("td")!;
-    expect(within(operations).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
-    expect(within(operations).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
+    expect(within(operations).getByText("仅查看")).toHaveAttribute("title", expect.stringContaining("u32/u8/u16 cell 数组"));
     await user.click(edit);
-    await user.click(screen.getByText("Blocked"));
+    const details = screen.getByRole("dialog", { name: "Blocked" });
+    expect(within(details).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
+    expect(within(details).getByRole("textbox")).toHaveAttribute("readonly");
+    expect(within(details).queryByRole("button", { name: "加入本轮重载" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
   });
 
@@ -1083,7 +1327,7 @@ describe("DtsReloadPage", () => {
 
     await user.click(within(row).getByRole("checkbox", { name: "选择 参数 11" }));
     expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
-    expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
+    expect(screen.getByText("本轮重载 · 1 项")).toBeInTheDocument();
   });
 
   it("lists candidates, starts a batch run, shows overlay source, and downloads the artifact", async () => {
@@ -1130,7 +1374,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
 
     expect((await screen.findAllByText("Watchdog")).length).toBeGreaterThan(0);
-    expect(screen.getByText(/缺少库基线值/)).toBeInTheDocument();
+    expect(screen.getByText("仅查看")).toHaveAttribute("title", expect.stringContaining("缺少库基线值"));
 
     const moduleTree = screen.getByRole("tree", { name: "业务模块树" });
     const uartModule = within(moduleTree).getByRole("treeitem", {
@@ -1152,22 +1396,23 @@ describe("DtsReloadPage", () => {
 
     await user.click(screen.getByLabelText("选择 Watchdog"));
     await user.click(screen.getByLabelText("选择 Compatible"));
-    expect(screen.getByText(/本轮 2 项/)).toBeInTheDocument();
+    expect(screen.getByText("本轮重载 · 2 项")).toBeInTheDocument();
 
-    const watchdogInput = screen.getByLabelText("Watchdog 调试值");
+    await user.click(screen.getByRole("button", { name: "编辑本轮 Watchdog" }));
+    const editor = screen.getByRole("dialog", { name: "Watchdog" });
+    const watchdogInput = within(editor).getByLabelText("Watchdog 调试值");
     await user.clear(watchdogInput);
     await user.paste("<99999>");
-    await fillDeployFields(user);
-    await user.click(screen.getByRole("button", { name: /下发参数/ }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/最大值/);
+    expect(within(editor).getByRole("alert")).toHaveTextContent(/最大值/);
+    await user.click(within(editor).getByRole("button", { name: "更新本轮" }));
+    expect(within(editor).getByRole("alert")).toHaveTextContent(/最大值/);
     expect(repository.startRun).not.toHaveBeenCalled();
 
     await user.clear(watchdogInput);
     await user.paste("<7000>");
-    const compatibleInput = screen.getByLabelText("Compatible 调试值");
-    await user.clear(compatibleInput);
-    await user.paste('"sc8562", "sc8562-v2"');
-    await user.click(screen.getByRole("button", { name: /下发参数/ }));
+    await user.click(within(editor).getByRole("button", { name: "更新本轮" }));
+    await setDebugValueInTray(user, "Compatible 调试值", '"sc8562", "sc8562-v2"');
+    await user.click(screen.getByRole("button", { name: /启动预检/ }));
 
     expect(repository.startRun).toHaveBeenCalledWith({
       projectId: "project-1",
@@ -1193,7 +1438,7 @@ describe("DtsReloadPage", () => {
 
     const overlay = screen.getByLabelText("Overlay 源码");
     expect((overlay as HTMLTextAreaElement).value).toContain("target-path");
-    expect(screen.getByText(/本运行包含 1 个参数目标/)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "本次参数变更" })).toHaveTextContent("Watchdog");
     await user.click(screen.getByRole("button", { name: /下载编译产物/ }));
     expect(repository.downloadArtifact).toHaveBeenCalledWith("run-1");
     expect(createObjectURL).not.toHaveBeenCalled();
@@ -1227,8 +1472,10 @@ describe("DtsReloadPage", () => {
     expect(checkbox).toBeDisabled();
     await user.click(screen.getByText("Blocked"));
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看 Blocked" }));
+    const details = screen.getByRole("dialog", { name: "Blocked" });
+    expect(within(details).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
+    expect(within(details).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
   });
 
   it("marks sensitive candidates before start and requires critical confirmation token", async () => {
@@ -1272,19 +1519,19 @@ describe("DtsReloadPage", () => {
     const safetyCheckbox = await screen.findByRole("checkbox", { name: "选择 Safety Watchdog" });
     expect(safetyCheckbox).not.toBeChecked();
     await user.click(safetyCheckbox);
-    expect(screen.getAllByText("敏感 · critical").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("敏感 · 关键风险").length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("checkbox", { name: "选择 High Param" }));
-    expect(screen.getAllByText("敏感 · high").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("敏感 · 高风险").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/parameter:edit-critical/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("checkbox", { name: "选择 High Param" }));
 
-    const startButton = screen.getByRole("button", { name: /下发参数/ });
+    const startButton = screen.getByRole("button", { name: /启动预检/ });
     expect(startButton).toBeDisabled();
 
     await fillDeployFields(user);
     await setDebugValueInTray(user, "Safety Watchdog 调试值", "<7000>");
-    await user.click(screen.getByLabelText("确认 critical 敏感节点重载"));
+    await user.click(screen.getByLabelText("确认关键风险参数重载"));
     expect(startButton).toBeEnabled();
     await user.click(startButton);
 
@@ -1306,7 +1553,7 @@ describe("DtsReloadPage", () => {
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
     await setWatchdogDebugValue(user);
-    await user.click(screen.getByRole("button", { name: /下发参数/ }));
+    await user.click(screen.getByRole("button", { name: /启动预检/ }));
 
     await waitFor(() => expect(repository.startRun).toHaveBeenCalled());
     expect(repository.deployRun).not.toHaveBeenCalled();
@@ -1405,7 +1652,7 @@ describe("DtsReloadPage", () => {
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
     await setWatchdogDebugValue(user);
-    await user.click(screen.getByRole("button", { name: /下发参数/ }));
+    await user.click(screen.getByRole("button", { name: /启动预检/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
 
@@ -1462,7 +1709,7 @@ describe("DtsReloadPage", () => {
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
     await setWatchdogDebugValue(user);
-    await user.click(screen.getByRole("button", { name: /下发参数/ }));
+    await user.click(screen.getByRole("button", { name: /启动预检/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
     await waitFor(() => expect(screen.getByText(/未获得内核日志信号/)).toBeInTheDocument());
@@ -1597,15 +1844,16 @@ describe("DtsReloadPage", () => {
     renderPage(repository, { canStartRun: false });
     await screen.findByText("运行历史");
     expect(screen.getByText(/仅有调试查看权限/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /下发参数/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /启动预检/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "上次重载" })).not.toBeInTheDocument();
 
     await user.click(await screen.findByRole("button", { name: /编辑 Watchdog/ }));
     const sheet = await screen.findByRole("dialog", { name: "Watchdog" });
+    await user.click(within(sheet).getByText(/^上次重载 ·/));
     expect(within(sheet).getByRole("heading", { name: "上次重载" })).toBeInTheDocument();
-    expect(within(sheet).getByText("<7000>")).toBeInTheDocument();
+    expect(within(sheet).getByRole("region", { name: "上次重载" })).toHaveTextContent("<7000>");
     expect(within(sheet).getByRole("button", { name: "查看该次运行详情" })).toBeInTheDocument();
-    await user.click(within(sheet).getByRole("button", { name: "取消" }));
+    await user.click(within(sheet).getByRole("button", { name: "关闭" }));
 
     expect(screen.getAllByText(/恢复基线/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/已阻断|部署失败/).length).toBeGreaterThan(0);
@@ -1638,7 +1886,7 @@ describe("DtsReloadPage", () => {
     await screen.findByText("运行历史");
     const historyRegion = screen.getByLabelText("运行历史");
     expect(within(historyRegion).getByRole("checkbox", { name: /仅显示当前设备的运行/ })).toBeDisabled();
-    expect(within(historyRegion).getByText(/先填写设备 ID/)).toBeInTheDocument();
+    expect(within(historyRegion).getByText(/先连接并选择设备/)).toBeInTheDocument();
   });
 
   it("reuses LocalDeviceBridgePanel readiness states for unpaired, paired-offline, and connected", async () => {
@@ -1649,7 +1897,7 @@ describe("DtsReloadPage", () => {
       initialTargetRef: ""
     });
     expect(await screen.findByRole("region", { name: "本地设备连接" })).toBeInTheDocument();
-    expect(await screen.findByText("本地 Bridge 未运行")).toHaveAttribute("title", expect.stringMatching(/未检测到本地 Bridge/));
+    expect(await screen.findByText("未检测到本地 Bridge")).toHaveAttribute("title", expect.stringMatching(/未检测到本地 Bridge/));
 
     rerender(
       <DtsReloadPage
@@ -1662,7 +1910,7 @@ describe("DtsReloadPage", () => {
         moduleRegistryRepository={null}
       />
     );
-    expect(await screen.findByText("本地 Bridge 未运行")).toHaveAttribute("title", "Bridge 已配对，但尚未连接到服务器。");
+    expect(await screen.findByText("Bridge 尚未连接服务器")).toHaveAttribute("title", "Bridge 已配对，但尚未连接到服务器。");
 
     rerender(
       <DtsReloadPage
@@ -1685,7 +1933,7 @@ describe("DtsReloadPage", () => {
       probeBridgeHealth: async () => ({ connected: false, bridgeId: undefined }),
       initialTargetRef: ""
     });
-    expect(await screen.findByText("本地 Bridge 未运行")).toHaveAttribute("title", "Bridge 已配对，但尚未连接到服务器。");
+    expect(await screen.findByText("Bridge 尚未连接服务器")).toHaveAttribute("title", "Bridge 已配对，但尚未连接到服务器。");
     expect(screen.queryByText(/已连接 ·/)).not.toBeInTheDocument();
   });
 
@@ -1721,6 +1969,36 @@ describe("DtsReloadPage", () => {
       "aria-pressed",
       "true"
     );
+  });
+
+  it.each(["沉淀为知识", "晋升为草稿"])("protects unsaved editing before %s creates a draft and navigates", async (actionLabel) => {
+    const user = userEvent.setup({ delay: null });
+    const repository = createRepository({ getRun: vi.fn(async () => run({ id: "run-terminal", status: "verified" })) });
+    const knowledgeRepository = { distillFromReloadRun: vi.fn(async () => ({ id: "kb-draft" })) } as unknown as KnowledgeRepository;
+    const onNavigate = vi.fn();
+    renderPage(repository, {
+      knowledgeRepository,
+      knowledgeCapability: { userId: "u-1", canView: true, canEdit: true, canManage: false },
+      canPromoteToDrafts: true,
+      onNavigate,
+      initialRunId: "run-terminal"
+    });
+    const actionButton = await screen.findByRole("button", { name: actionLabel });
+    await user.click(await screen.findByRole("button", { name: "编辑 Watchdog" }));
+    const input = within(screen.getByRole("dialog", { name: "Watchdog" })).getByLabelText("Watchdog 调试值");
+    await user.clear(input);
+    await user.paste("<7400>");
+    await user.click(actionButton);
+    await user.click(within(await screen.findByRole("dialog", { name: "放弃未保存的修改？" })).getByRole("button", { name: "继续编辑" }));
+    expect(input).toHaveValue("<7400>");
+    expect(repository.promoteToDrafts).not.toHaveBeenCalled();
+    expect(knowledgeRepository.distillFromReloadRun).not.toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
+    await user.click(actionButton);
+    await user.click(within(screen.getByRole("dialog", { name: "放弃未保存的修改？" })).getByRole("button", { name: "放弃修改" }));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledTimes(1));
+    if (actionLabel === "沉淀为知识") expect(knowledgeRepository.distillFromReloadRun).toHaveBeenCalledWith("run-terminal");
+    else expect(repository.promoteToDrafts).toHaveBeenCalledWith({ runId: "run-terminal", bindingIds: ["binding-1"] });
   });
 
   it("offers 沉淀为知识 on a terminal history run for knowledge editors and hands off to /knowledge", async () => {
@@ -1773,7 +2051,7 @@ describe("DtsReloadPage", () => {
     });
     await screen.findAllByText("Watchdog");
     await setWatchdogDebugValue(user);
-    await user.click(screen.getByRole("button", { name: /下发参数/ }));
+    await user.click(screen.getByRole("button", { name: /启动预检/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await screen.findByLabelText("产物与操作");
@@ -1882,7 +2160,7 @@ describe("DtsReloadPage", () => {
       }),
       { canPromoteToDrafts: true, onNavigate, initialRunId: "run-contradicted" }
     );
-    await waitFor(() => expect(screen.getByLabelText("运行摘要")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("region", { name: "本次参数变更" })).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "晋升为草稿" })).not.toBeInTheDocument();
     unmount();
 
@@ -1985,7 +2263,7 @@ describe("DtsReloadPage", () => {
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
     await setWatchdogDebugValue(user);
-    await user.click(screen.getByRole("button", { name: /下发参数/ }));
+    await user.click(screen.getByRole("button", { name: /启动预检/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
     const upgradeLink = await screen.findByRole("link", { name: /下载或升级 Bridge/ });

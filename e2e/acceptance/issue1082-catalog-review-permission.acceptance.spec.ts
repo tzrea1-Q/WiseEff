@@ -20,8 +20,9 @@ test("Platform-only identity redirect explains Organization permission without l
   });
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await signInBrowserAsRole(page, "platform-admin", "/parameter-admin/specs/identity-mapping");
-  await expect(page).toHaveURL(/\/parameter-admin\/specs\?review=open$/);
   await expect(page.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "ready");
+  await expect(page).toHaveURL((url) => url.pathname === "/parameter-admin/specs"
+    && url.searchParams.get("review") === "open" && Boolean(url.searchParams.get("catalogReleaseId")?.trim()));
   await expect(page.getByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。"))
     .toBeVisible();
   await expect(page.getByRole("button", { name: /待审核事项/ })).toHaveCount(0);
@@ -43,7 +44,9 @@ test("Organization admin keeps the Review Queue after the identity redirect", as
     && response.request().method() === "GET" && response.status() === 200);
   const admin = acceptanceCast.acceptanceAdmin;
   await signInBrowserAsUser(page, admin.userId, admin.email, admin.name, "/parameter-admin/specs/identity-mapping");
-  await expect(page).toHaveURL(/\/parameter-admin\/specs\?review=open$/);
+  await expect(page.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "ready");
+  await expect(page).toHaveURL((url) => url.pathname === "/parameter-admin/specs"
+    && url.searchParams.get("review") === "open" && Boolean(url.searchParams.get("catalogReleaseId")?.trim()));
   const dialog = page.getByRole("dialog", { name: "待审核事项" });
   await expect(dialog.getByRole("region", { name: "待审核事项" })).toBeVisible();
   await loaded;

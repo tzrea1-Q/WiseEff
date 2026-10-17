@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { selectControlOption } from "@/test/selectControlOption";
+import type { PropsWithChildren } from "react";
+import { ModalDialog } from "@/components/common/ModalDialog";
 
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import {
@@ -18,6 +20,12 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { DefinitionEditorBody } from "./DefinitionEditorBody";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
+
+function EditorDialog({ children }: PropsWithChildren) {
+  return <ModalDialog open className="confirm-dialog" onDismiss={() => undefined}>
+    {({ titleId }) => <><h2 id={titleId}>编辑定义</h2>{children}</>}
+  </ModalDialog>;
+}
 
 /**
  * Issue #847 decisions 12-17: identity correction publishes a replacement
@@ -90,11 +98,11 @@ describe("DefinitionEditorBody", () => {
       subjects: [retiredSubject], history: <div />
     };
     rerender(<DefinitionEditorBody {...props} />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "确认执行身份纠错迁移" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "定义详情" })).toHaveTextContent(activeDefinition.subject.canonicalName);
     rerender(<DefinitionEditorBody {...props} subjects={[registeredSubject]} />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "确认执行身份纠错迁移" })).not.toBeInTheDocument();
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -293,7 +301,8 @@ describe("DefinitionEditorBody", () => {
         projects={[{ id: "proj-a", name: "项目 A" }, { id: "proj-b", name: "项目 B" }]}
         createIdempotencyKey={createIdempotencyKey}
         {...overrides}
-      />
+      />,
+      { wrapper: EditorDialog }
     );
     return { ...view, catalog: ports.catalog, preview, execute, continueReplacement };
   }
@@ -638,7 +647,8 @@ describe("DefinitionEditorBody", () => {
         subjects={[registeredSubject]}
         projects={[{ id: "proj-a", name: "项目 A" }]}
         createIdempotencyKey={() => "idem-847-activation"}
-      />
+      />,
+      { wrapper: EditorDialog }
     );
 
     await user.type(screen.getByLabelText("属性键"), "gpio-int-v3");
@@ -690,7 +700,8 @@ describe("DefinitionEditorBody", () => {
         catalogReleaseId={CATALOG_RELEASE_ID}
         definition={{ ...activeDefinition, usageSummary: { ...activeDefinition.usageSummary, policyCount } }}
         subjects={[registeredSubject]}
-      />
+      />,
+      { wrapper: EditorDialog }
     );
 
     const detail = screen.getByRole("region", { name: "定义详情" });

@@ -113,11 +113,12 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       const editor = page.getByRole("dialog");
       await editor.getByRole("textbox", { name: `${targetName} 调试值`, exact: true }).fill("<6>");
       await editor.getByRole("button", { name: "加入本轮重载" }).click();
-      await expect(page.getByRole("textbox", { name: `${targetName} 调试值` })).toBeVisible();
+      await expect(page.getByRole("button", { name: `编辑本轮 ${targetName}`, exact: true })).toBeVisible();
+      await expect(page.getByLabel("本轮重载", { exact: true }).getByText("<6>", { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("canonical-handoff-1440x900.png") });
       const started = page.waitForResponse((response) => response.request().method() === "POST" &&
         new URL(response.url()).pathname === `/api/v1/dts-reload/projects/${fixture.projectId}/runs`);
-      await page.getByRole("button", { name: "下发参数（1）", exact: true }).click();
+      await page.getByRole("button", { name: "启动预检（1）", exact: true }).click();
       const startResponse = await started;
       expect(startResponse.status()).toBe(201);
       const { item: run } = await startResponse.json();
@@ -130,6 +131,8 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
         protocol: "hdc", confirmationTokens: ["confirm-dts-reload"]
       }, token);
       expect(deployed.item.status).toBe("unverifiable");
+      await page.getByRole("button", { name: "清空本轮", exact: true }).click();
+      await page.getByRole("dialog", { name: "放弃未保存的修改？" }).getByRole("button", { name: "放弃修改", exact: true }).click();
       await page.goto(`${frontendUrl}/dts-reload?runId=${run.id}`);
       await page.reload();
       await page.getByRole("button", { name: "晋升为草稿", exact: true }).click();
@@ -174,7 +177,8 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       }, reviewerToken);
       await page.goto(`${frontendUrl}/node-debugging`);
       await expect(page.getByTestId(`node-canonical-reference-${linked.item.id}`)).toHaveText("参数关联：已关联");
-      await expect(page.getByTestId(`node-canonical-reference-${standalone.item.id}`)).toHaveText("参数关联：未关联");
+      await expect(page.getByRole("row").filter({ has: page.getByText("Standalone device node", { exact: true }) })).toBeVisible();
+      await expect(page.getByTestId(`node-canonical-reference-${standalone.item.id}`)).toHaveCount(0);
       await page.reload();
       await expect(page.getByTestId(`node-canonical-reference-${linked.item.id}`)).toHaveText("参数关联：已关联");
       await page.screenshot({ path: testInfo.outputPath("canonical-node-associations-1440x900.png") });

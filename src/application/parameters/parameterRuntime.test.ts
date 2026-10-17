@@ -47,6 +47,7 @@ const apiPreviewBatch = {
 function createRepository(overrides: Partial<ParameterRepository> = {}): ParameterRepository {
   return {
     listProjects: vi.fn().mockResolvedValue(apiProjects),
+    listParameterModules: vi.fn().mockResolvedValue([]),
     listParameters: vi.fn().mockResolvedValue([apiParameter]),
     getParameter: vi.fn().mockResolvedValue(apiParameter),
     listParameterHistory: vi.fn().mockResolvedValue([]),
@@ -55,6 +56,7 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
     deleteDraft: vi.fn().mockResolvedValue(undefined),
     listChangeRequests: vi.fn().mockResolvedValue([apiChangeRequest]),
     listSubmissionRounds: vi.fn().mockResolvedValue([apiRound]),
+    listWorkflowAssignees: vi.fn().mockResolvedValue({ hardwareCommitters: [], softwareCommitters: [], softwareUsers: [] }),
     submitParameterChanges: vi.fn().mockResolvedValue(apiRound),
     withdrawSubmissionRound: vi.fn().mockResolvedValue({ ...apiRound, status: "已撤回" }),
     reviewChange: vi.fn().mockResolvedValue(apiChangeRequest),
@@ -75,6 +77,23 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
 }
 
 describe("createParameterRuntimeActions", () => {
+  it.each([false, true])("lets only the latest refresh publish when an older request fails=%s", async (fails) => {
+    let complete!: (projects: typeof apiProjects) => void;
+    let reject!: (error: Error) => void;
+    const old = new Promise<typeof apiProjects>((resolve, fail) => { complete = resolve; reject = fail; });
+    const newer = apiProjects.map((project) => ({ ...project, name: "newer project" }));
+    const dispatch = vi.fn();
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", dispatch,
+      repository: createRepository({ listProjects: vi.fn().mockReturnValueOnce(old).mockResolvedValue(newer) }) });
+    const first = actions.refresh();
+    await actions.refresh();
+    if (fails) reject(new Error("older request failed"));
+    else complete(apiProjects);
+    await expect(first).resolves.toBeUndefined();
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME", projects: newer }));
+  });
+
   it.each(["mock", "api"] as const)("withdraws the detail action port in %s mode without calling the shared API read adapter", (runtimeMode) => {
     const dispatch = vi.fn();
     const repository = createRepository();

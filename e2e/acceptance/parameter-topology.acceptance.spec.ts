@@ -2,10 +2,11 @@ import { readSelectControlOptions, selectControlOption } from "./helpers/selectC
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { expect, test, type APIRequestContext, type APIResponse, type Dialog, type Locator, type Page } from "playwright/test";
+import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page, type Response } from "playwright/test";
 import { seedSemanticBindingCatalog } from "../../server/testing/parameterCatalog/semanticBinding";
 
 import {
+  pickReviewCandidate,
   requireMappingCandidate,
   requireMappingTask,
   requireReviewTask
@@ -436,7 +437,7 @@ async function canonicalIdentityEvidence(request: APIRequestContext, revisionId:
     compatibles: Array<{ compatible: string; candidate: { kind: string; reason?: string; reviewItemIds?: string[] | null } }> }> = [];
   const discoveryResponses = [];
   let cursor: string | null = null;
-  let catalogReleaseId: string | null = null;
+  let catalogReleaseId = "";
   do {
     const query = new URLSearchParams({ projectId, limit: "50" });
     if (cursor) query.set("cursor", cursor);
@@ -452,6 +453,7 @@ async function canonicalIdentityEvidence(request: APIRequestContext, revisionId:
     discoveryResponses.push(discovery);
     cursor = body.nextCursor;
   } while (cursor);
+  expect(catalogReleaseId).toBeTruthy();
   expect(sourceItems.length, "canonical discovery must retain the exact source revision").toBeGreaterThan(0);
   const reviewItemIds = new Set<string>();
   const linkedLogicalNodeIds = new Set<string>();
@@ -479,7 +481,7 @@ async function canonicalIdentityEvidence(request: APIRequestContext, revisionId:
     expect(body.item).toMatchObject({ id, status: "open", reason: "unknown" });
     rows.push({ id: body.item.id, status: body.item.status, reason: body.item.reason });
   }
-  return { response, rows, discoveryResponses, logicalNodeIds: [...linkedLogicalNodeIds].sort() };
+  return { response, rows, discoveryResponses, catalogReleaseId, logicalNodeIds: [...linkedLogicalNodeIds].sort() };
 }
 
 async function refuseLegacyTaskWrite(request: APIRequestContext, taskId: string, action: "resolve" | "reopen", family: "identity" | "spec" = "identity") {
@@ -1479,7 +1481,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(await legacyIdentityRows(), "validation and retired resolution must leave legacy rows unchanged").toEqual(legacyRowsBefore);
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin/specs/identity-mapping`);
     await dismissXiaozeHint(page);
-    await expect(page).toHaveURL(/\/parameter-admin\/specs\?review=open$/);
+    await expect(page).toHaveURL((url) => url.pathname === "/parameter-admin/specs"
+      && url.searchParams.get("review") === "open"
+      && url.searchParams.get("catalogReleaseId") === canonical.catalogReleaseId);
+    await expect(page.getByRole("region", { name: "参数定义目录" }))
+      .toHaveAttribute("data-catalog-release", canonical.catalogReleaseId);
     await expect(page.getByRole("region", { name: "待审核事项" })).toBeVisible();
     await recordOperationEvidence({
       operationId: "PARAM-IDENTITY-MAP-001",
@@ -1818,7 +1824,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const canonical = await canonicalIdentityEvidence(request, seeded.ambiguousRevisionId);
       await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin/specs/identity-mapping`);
       await dismissXiaozeHint(page);
-      await expect(page).toHaveURL(/\/parameter-admin\/specs\?review=open$/);
+      await expect(page).toHaveURL((url) => url.pathname === "/parameter-admin/specs"
+        && url.searchParams.get("review") === "open"
+        && url.searchParams.get("catalogReleaseId") === canonical.catalogReleaseId);
+      await expect(page.getByRole("region", { name: "参数定义目录" }))
+        .toHaveAttribute("data-catalog-release", canonical.catalogReleaseId);
       await expect(page.getByRole("region", { name: "待审核事项" })).toBeVisible();
 
       const historicalTaskId = `acceptance-map-history-${runSuffix}`;
@@ -1924,7 +1934,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await queueLink.focus();
       await expect(queueLink).toBeFocused();
       await queueLink.press("Enter");
-      await expect(page).toHaveURL(/\/parameter-admin\/specs\?review=open$/);
+      await expect(page).toHaveURL((url) => url.pathname === "/parameter-admin/specs"
+        && url.searchParams.get("review") === "open"
+        && url.searchParams.get("catalogReleaseId") === canonical.catalogReleaseId);
+      await expect(page.getByRole("region", { name: "参数定义目录" }))
+        .toHaveAttribute("data-catalog-release", canonical.catalogReleaseId);
       await expect(page.getByRole("region", { name: "待审核事项" })).toBeVisible();
     } finally {
       await cleanupSemanticAcceptanceArtifacts({ organizationId, projectId,
@@ -2259,6 +2273,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           logicalNodeId?: string | null;
           parameterSpecId?: string;
           rawValue: string;
+          currentValueId: string;
         }>;
       };
       const scBinding = bindingsBody.items.find(
@@ -2364,8 +2379,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           error: { code: "INTERNAL_ERROR", message: "节点启用草稿读取暂时不可用（验收注入）" }
         }) });
       }, { times: 1 });
-      let failedDraftRead: APIResponse;
-      let healthyValueDraftRead: APIResponse;
+      let failedDraftRead: Response;
+      let healthyValueDraftRead: Response;
       expectedApiFailures.push(injectedFailure);
       try {
         [, failedDraftRead, healthyValueDraftRead] = await Promise.all([

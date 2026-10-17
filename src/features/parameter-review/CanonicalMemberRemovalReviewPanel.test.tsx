@@ -132,19 +132,25 @@ describe("canonical JSON member removal review", () => {
   });
 
   it("requires a rejection reason and notifies only after the result proof is confirmed", async () => {
+    const user = userEvent.setup();
     const repo = repository();
     const onRequestsChanged = vi.fn();
-    vi.mocked(repo.getMemberRemovalRequest!).mockResolvedValueOnce({ item: pending })
-      .mockResolvedValue({ item: { ...pending, status: "rejected", reviewerNote: "保留此成员" } });
+    let reviewed = false;
+    const rejected = { ...pending, status: "rejected" as const, reviewerNote: "保留此成员" };
+    vi.mocked(repo.getMemberRemovalRequest!).mockImplementation(async () => ({ item: reviewed ? rejected : pending }));
+    vi.mocked(repo.reviewMemberRemovalRequest!).mockImplementation(async () => {
+      reviewed = true;
+      return { item: rejected };
+    });
     render(<CanonicalMemberRemovalReviewPanel projectId="project-1" repository={repo}
       currentUserId="reviewer" canReview onRequestsChanged={onRequestsChanged} />);
-    fireEvent.click(await screen.findByRole("button", { name: "驳回成员删除" }));
-    const dialog = screen.getByRole("dialog", { name: "驳回成员删除" });
+    await user.click(await screen.findByRole("button", { name: "驳回成员删除" }));
+    const dialog = await screen.findByRole("dialog", { name: "驳回成员删除" });
     const confirm = within(dialog).getByRole("button", { name: "确认驳回" });
     expect(confirm).toBeDisabled();
     expect(repo.reviewMemberRemovalRequest).not.toHaveBeenCalled();
-    fireEvent.change(within(dialog).getByLabelText("驳回原因"), { target: { value: "  保留此成员  " } });
-    fireEvent.click(confirm);
+    await user.type(within(dialog).getByLabelText("驳回原因"), "  保留此成员  ");
+    await user.click(confirm);
     await waitFor(() => expect(repo.reviewMemberRemovalRequest).toHaveBeenCalledWith(
       "project-1", pending.id, { decision: "reject", note: "保留此成员", memberProofDigest: digest }, expect.any(Object)));
     await waitFor(() => expect(onRequestsChanged).toHaveBeenCalledTimes(1));

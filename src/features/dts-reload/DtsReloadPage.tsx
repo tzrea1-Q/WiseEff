@@ -11,12 +11,11 @@ import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { isReloadRunDistillable } from "@/domain/knowledge/distillReload";
 import { isReloadRunPromotable } from "@/domain/dtsReload/promote";
 import type { DtsReloadCandidate } from "@/domain/dtsReload/types";
-import { describeReloadValueShapeAuthoring } from "@/domain/dtsReload/valueShape";
+import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { useDtsReloadRunSession } from "@/application/dts-reload/useDtsReloadRunSession";
 import type { DtsReloadDeployProtocol } from "@/application/dts-reload/dtsReloadRunSession";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
-import { inferBridgeOnline } from "@/components/bridgeOnline";
 import {
   LocalDeviceBridgePanel,
   type LocalDeviceBridgePanelState
@@ -62,6 +61,7 @@ import type {
 } from "@/infrastructure/http/deviceBridgeClient";
 import { DEVICE_UNAVAILABLE_MESSAGE, toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 import { cn } from "@/lib/utils";
+import "./dts-reload-refinement.css";
 
 function dtsReloadModuleFilterId(candidate: Pick<DtsReloadCandidate, "bindingId" | "moduleId">): string {
   const moduleId = candidate.moduleId?.trim();
@@ -142,6 +142,10 @@ export function DtsReloadPage({
     candidates,
     loading,
     errorMessage,
+    statusMessage,
+    hasUnsavedBatch,
+    historyRunLoading,
+    residueError,
     selectedBindingIds,
     debugValues,
     criticalConfirmed,
@@ -203,7 +207,61 @@ export function DtsReloadPage({
   );
   const [nameQuery, setNameQuery] = useState("");
   const [moduleColumnFilter, setModuleColumnFilter] = useState<string[]>([]);
+  const [trayOpen, setTrayOpen] = useState(false);
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
+  const editorDirtyRef = useRef(false);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [discardBatch, setDiscardBatch] = useState(false);
+  const leaveDecisionRef = useRef<((allowed: boolean) => void) | null>(null);
+  const [pendingEditorAction, setPendingEditorAction] = useState<(() => void) | null>(null);
+  const handleEditorDirtyChange = useCallback((dirty: boolean) => {
+    editorDirtyRef.current = dirty;
+    setEditorDirty(dirty);
+  }, []);
+  const guardEditorChange = (action: () => void) => {
+    if (editingBindingId && editorDirtyRef.current) setPendingEditorAction(() => action);
+    else action();
+  };
+  const guardBatchChange = (action: () => void) => {
+    if (editorDirtyRef.current || hasUnsavedBatch) {
+      setDiscardBatch(true);
+      setPendingEditorAction(() => action);
+    } else action();
+  };
+  useEffect(() => {
+    if (!editorDirty && !hasUnsavedBatch) return;
+    const guardLeave = (event: Event) => {
+      if (event.defaultPrevented || (!editorDirtyRef.current && !session.getSnapshot().hasUnsavedBatch)) return;
+      event.preventDefault();
+      const request = event as CustomEvent<SettingsLeaveRequest>;
+      if (starting || deploying || restoring) {
+        request.detail.decision = Promise.resolve(false);
+        return;
+      }
+      if (leaveDecisionRef.current) {
+        request.detail.decision = Promise.resolve(false);
+        return;
+      }
+      request.detail.decision = new Promise<boolean>((resolve) => {
+        leaveDecisionRef.current = resolve;
+        setDiscardBatch(true);
+        setPendingEditorAction(() => () => {
+          leaveDecisionRef.current = null;
+          resolve(true);
+        });
+      });
+    };
+    const guardUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("wiseeff:settings-before-leave", guardLeave);
+    window.addEventListener("beforeunload", guardUnload);
+    return () => {
+      window.removeEventListener("wiseeff:settings-before-leave", guardLeave);
+      window.removeEventListener("beforeunload", guardUnload);
+    };
+  }, [editorDirty, hasUnsavedBatch, starting, deploying, restoring, session]);
+  useEffect(() => () => leaveDecisionRef.current?.(false), []);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
   const [reachableTargets, setReachableTargets] = useState<DtsReloadReachableTarget[]>([]);
   const [detectingTargets, setDetectingTargets] = useState(false);
   const [targetDetectionError, setTargetDetectionError] = useState("");
@@ -216,6 +274,19 @@ export function DtsReloadPage({
   const detectRequestSeqRef = useRef(0);
   const previousConnectedBridgeIdRef = useRef("");
   const lastDetectedProtocolRef = useRef<DtsReloadDeployProtocol | null>(null);
+  const candidateTableRef = useRef<HTMLElement>(null);
+  const pendingBatchFocusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const bindingId = pendingBatchFocusRef.current;
+    if (bindingId === null) return;
+    pendingBatchFocusRef.current = null;
+    queueMicrotask(() => {
+      const checkbox = Array.from(candidateTableRef.current?.querySelectorAll<HTMLInputElement>("input[data-binding-id]") ?? [])
+        .find((input) => input.dataset.bindingId === bindingId);
+      (checkbox ?? candidateTableRef.current?.querySelector<HTMLInputElement>('input[type="search"]'))?.focus();
+    });
+  }, [selectedBindingIds]);
 
   const selectedBridge = useMemo(
     () => bridges.find((bridge) => bridge.id === bridgeId) ?? null,
@@ -343,7 +414,7 @@ export function DtsReloadPage({
     () =>
       editingBindingId
         ? candidates.find(
-            (candidate) => candidate.bindingId === editingBindingId && candidate.debuggable
+            (candidate) => candidate.bindingId === editingBindingId
           ) ?? null
         : null,
     [candidates, editingBindingId]
@@ -410,6 +481,7 @@ export function DtsReloadPage({
   }, [connectedBridgeId, session]);
 
   const runDetectTargets = useCallback(async (options: { manual?: boolean } = {}) => {
+    if (historyRunLoading) return;
     const requestSeq = detectRequestSeqRef.current + 1;
     detectRequestSeqRef.current = requestSeq;
     const requestProtocol = protocol;
@@ -444,7 +516,7 @@ export function DtsReloadPage({
     setDetectingTargets(true);
     try {
       const targets = await detectTargets(requestProtocol, requestBridgeId);
-      if (detectRequestSeqRef.current !== requestSeq) return;
+      if (detectRequestSeqRef.current !== requestSeq || session.getSnapshot().historyRunLoading) return;
 
       const scopedTargets = targets.filter(
         (target) => !target.bridgeId || target.bridgeId === requestBridgeId
@@ -474,7 +546,7 @@ export function DtsReloadPage({
         }
       }
     } catch (error) {
-      if (detectRequestSeqRef.current !== requestSeq) return;
+      if (detectRequestSeqRef.current !== requestSeq || session.getSnapshot().historyRunLoading) return;
       setReachableTargets([]);
       if (session.getSnapshot().targetRef.trim()) {
         session.setTargetRef("");
@@ -486,9 +558,14 @@ export function DtsReloadPage({
         setDetectingTargets(false);
       }
     }
-  }, [connectedBridgeId, detectTargets, protocol, session]);
+  }, [connectedBridgeId, detectTargets, historyRunLoading, protocol, session]);
 
   useEffect(() => {
+    if (historyRunLoading) {
+      detectRequestSeqRef.current += 1;
+      setDetectingTargets(false);
+      return;
+    }
     if (!detectTargets || !connectedBridgeId) {
       setReachableTargets([]);
       if (detectTargets && session.getSnapshot().targetRef.trim()) {
@@ -497,7 +574,7 @@ export function DtsReloadPage({
       return;
     }
     void runDetectTargets();
-  }, [connectedBridgeId, detectTargets, protocol, runDetectTargets]);
+  }, [connectedBridgeId, detectTargets, historyRunLoading, protocol, runDetectTargets]);
 
   const handleProtocolChange = useCallback(
     (nextProtocol: DtsReloadDeployProtocol) => {
@@ -531,35 +608,38 @@ export function DtsReloadPage({
       <button
         className="link-button"
         type="button"
-        disabled={!detectTargets}
+        disabled={!detectTargets || historyRunLoading || deploying || restoring}
         onClick={() => void runDetectTargets({ manual: true })}
       >
         重新检测
       </button>
     </div>,
-    [connectedTargetLabel, connectedTargetRef, detectTargets, detectingTargets, protocol, runDetectTargets]
+    [connectedTargetLabel, connectedTargetRef, detectTargets, detectingTargets, protocol, runDetectTargets, historyRunLoading, deploying, restoring]
   );
 
   useEffect(() => {
     void session.loadResidue(repository);
-  }, [repository, session, deviceId]);
+  }, [repository, session, projectId, protocol, targetRef, deviceId, run?.id]);
 
   useEffect(() => {
     void session.refreshHistory(repository);
-  }, [repository, session, projectId, historyFilterDevice, historyFilterDevice ? deviceId : ""]);
+  }, [repository, session, projectId, protocol, targetRef, historyFilterDevice, historyFilterDevice ? deviceId : ""]);
 
   useEffect(() => {
     void session.loadCandidates(repository);
   }, [repository, session, projectId]);
 
   const openCandidateEditor = (candidate: DtsReloadCandidate) => {
-    if (!candidate.debuggable) return;
-    setEditingBindingId(candidate.bindingId);
+    if (candidate.bindingId === editingBindingId) return;
+    guardEditorChange(() => setEditingBindingId(candidate.bindingId));
   };
 
   const onStart = () => {
     if (!canStartRun) return;
-    void session.start(repository);
+    guardEditorChange(() => {
+      setEditingBindingId(null);
+      void session.start(repository).then(() => resultRef.current?.scrollIntoView?.({ block: "start" }));
+    });
   };
 
   const onDownload = async () => {
@@ -574,7 +654,11 @@ export function DtsReloadPage({
   };
 
   const onOpenHistoryRun = (runId: string) => {
-    void session.openHistoryRun(repository, runId);
+    guardBatchChange(() => {
+      setEditingBindingId(null);
+      session.clearBatch();
+      void session.openHistoryRun(repository, runId).then(() => resultRef.current?.scrollIntoView?.({ block: "start" }));
+    });
   };
 
   // Deep link (`/dts-reload?runId=…`): open the referenced history run once,
@@ -599,8 +683,14 @@ export function DtsReloadPage({
     }
     setDistilPending(true);
     setDistilError("");
+    const batch = session.getSnapshot();
+    const batchSnapshot = JSON.stringify([batch.projectId, batch.selectedBindingIds, batch.debugValues]);
     try {
       const draft = await knowledgeRepository.distillFromReloadRun(run.id);
+      const currentBatch = session.getSnapshot();
+      if (batchSnapshot === JSON.stringify([currentBatch.projectId, currentBatch.selectedBindingIds, currentBatch.debugValues])) {
+        session.clearBatch();
+      }
       onNavigate(`/knowledge?entryId=${encodeURIComponent(draft.id)}`);
     } catch (error) {
       setDistilError(
@@ -609,7 +699,7 @@ export function DtsReloadPage({
     } finally {
       setDistilPending(false);
     }
-  }, [distilPending, knowledgeRepository, onNavigate, run]);
+  }, [distilPending, knowledgeRepository, onNavigate, run, session]);
 
   const canPromoteRun = Boolean(canPromoteToDrafts && onNavigate && run && isReloadRunPromotable(run));
   const executePromote = useCallback(
@@ -619,6 +709,8 @@ export function DtsReloadPage({
       }
       setPromotePending(true);
       setPromoteError("");
+      const batch = session.getSnapshot();
+      const batchSnapshot = JSON.stringify([batch.projectId, batch.selectedBindingIds, batch.debugValues]);
       try {
         const result = await repository.promoteToDrafts({
           runId: run.id,
@@ -626,6 +718,10 @@ export function DtsReloadPage({
           ...(unverifiableAcknowledged ? { unverifiableAcknowledged: true } : {})
         });
         setPromoteConfirmOpen(false);
+        const currentBatch = session.getSnapshot();
+        if (batchSnapshot === JSON.stringify([currentBatch.projectId, currentBatch.selectedBindingIds, currentBatch.debugValues])) {
+          session.clearBatch();
+        }
         onNavigate(result.workbenchHref);
       } catch (error) {
         setPromoteError(
@@ -635,7 +731,7 @@ export function DtsReloadPage({
         setPromotePending(false);
       }
     },
-    [onNavigate, promotePending, repository, run]
+    [onNavigate, promotePending, repository, run, session]
   );
   const onPromote = useCallback(() => {
     if (!run || !canPromoteRun) {
@@ -658,30 +754,23 @@ export function DtsReloadPage({
   const visiblePageError = errorMessage.startsWith(DEVICE_UNAVAILABLE_MESSAGE) ? "" : errorMessage;
 
   const projectName = projects.find((project) => project.id === projectId)?.name ?? projectId;
-  const bridgeStatusPill =
-    bridges.length === 0
-      ? "等待 Bridge"
-      : selectedBridge && inferBridgeOnline(selectedBridge, bridgeHealth, { healthExclusive: true })
-        ? `${selectedBridge.machineLabel} · 已连接`
-        : selectedBridge
-          ? `${selectedBridge.machineLabel} · 未连接`
-          : "等待 Bridge";
 
   return (
     <div className="workbench-page dts-reload-page">
       <div className="debugging-workbench-content">
         {!canStartRun ? (
           <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            当前账号仅有调试查看权限：可浏览运行历史与参数上次重载状态，但无法启动、部署或恢复基线。需要{" "}
-            <code className="rounded bg-amber-100 px-1">debugging:dts-reload</code> 才能执行变更。
+            当前账号仅有调试查看权限：可浏览参数详情、运行历史与上次重载状态。启动、部署或恢复基线前，请联系管理员开通调试操作权限。
           </p>
         ) : null}
 
         {visiblePageError ? (
           <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
             {visiblePageError}
+            {candidates.length === 0 ? <button type="button" className="button subtle" disabled={loading} onClick={() => void session.loadCandidates(repository)}>重新加载参数</button> : null}
           </p>
         ) : null}
+        {statusMessage ? <p role="status" className="dts-reload-info">{statusMessage}</p> : null}
 
         {handoffSummary ? (
           <div
@@ -705,35 +794,47 @@ export function DtsReloadPage({
           </div>
         ) : null}
 
-        <div className="node-debugging-controls dts-reload-controls">
-          <ViewSwitch variant="tabs" ariaLabel="连接协议" value={protocol}
-            onValueChange={(value) => handleProtocolChange(value as DtsReloadDeployProtocol)}
-            items={(["hdc", "adb"] as const).map((value) => ({ value, label: value.toUpperCase(), disabled: !canStartRun,
-              id: `dts-reload-${value}-tab`, panelId: `dts-reload-${value}-panel` }))} />
-        </div>
-
-        <div role="tabpanel" id={`dts-reload-${protocol}-panel`}
-          aria-labelledby={`dts-reload-${protocol}-tab`}>
         <NavigatorWorkbench pageKey="dts-reload"
-          toolbar={<label className="dts-reload-project-select">
-            <span>项目</span>
-            <SelectControl
-              size="filter"
-              ariaLabel="选择项目"
-              value={projectId}
-              onValueChange={(value) => session.selectProject(value)}
-              options={projects.map((project) => ({ value: project.id, label: project.name }))}
-            />
-          </label>}
-          primaryAction={<Button
+          panelId={`dts-reload-${protocol}-panel`} tabId={`dts-reload-${protocol}-tab`}
+          toolbar={(primaryAction) => <div className="dts-reload-taskbar">
+            <label className="dts-reload-project-select">
+              <span>项目</span>
+              <SelectControl size="filter" ariaLabel="选择项目" value={projectId}
+                disabled={starting || deploying || restoring || historyRunLoading}
+                onValueChange={(value) => {
+                  if (value === projectId) return;
+                  guardBatchChange(() => {
+                    setEditingBindingId(null);
+                    setNameQuery("");
+                    setModuleColumnFilter([]);
+                    setSelectedModuleNodeId(null);
+                    session.selectProject(value);
+                  });
+                }}
+                options={projects.map((project) => ({ value: project.id, label: project.name }))} />
+            </label>
+          <ViewSwitch variant="tabs" ariaLabel="连接协议" value={protocol}
+            onValueChange={(value) => {
+              if (value === protocol) return;
+              guardEditorChange(() => {
+                setEditingBindingId(null);
+                handleProtocolChange(value as DtsReloadDeployProtocol);
+              });
+            }}
+            items={(["hdc", "adb"] as const).map((value) => ({ value, label: value.toUpperCase(), disabled: !canStartRun || starting || deploying || restoring || historyRunLoading,
+              id: `dts-reload-${value}-tab`, panelId: `dts-reload-${value}-panel` }))} />
+            <span className="dts-reload-selection-count">已选 {selectedCandidates.length} 项</span>
+            {primaryAction}
+          </div>}
+          primaryAction={canStartRun ? <Button
                   data-primary-action="true"
                   aria-label={
-                    starting ? "下发中" : selectedCandidates.length ? `下发参数（${selectedCandidates.length}）` : "选择参数后下发"
+                    starting ? "预检中" : `启动预检（${selectedCandidates.length}）`
                   }
                   onClick={onStart}
                   disabled={
                     !canStartRun || selectedCandidates.length === 0 ||
-                    starting ||
+                    starting || loading || historyRunLoading || deploying || restoring ||
                     !selectedHasMeaningfulDebugChange ||
                     (selectedHasCriticalSensitive && !criticalConfirmed)
                   }
@@ -743,8 +844,8 @@ export function DtsReloadPage({
                       : undefined
                   }
                 >
-                  {starting ? "下发中…" : selectedCandidates.length ? `下发参数（${selectedCandidates.length}）` : "选择参数后下发"}
-                </Button>}
+                  {starting ? "预检中…" : `启动预检（${selectedCandidates.length}）`}
+                </Button> : undefined}
           context={<>
         <LocalDeviceBridgePanel
           compact
@@ -789,7 +890,11 @@ export function DtsReloadPage({
           </section>
         ) : null}
 
-        {residue && !residueLoading ? (
+        {residueError ? <p role="alert" className="dts-reload-info dts-reload-info--error">
+          残留状态未知：{residueError}
+          <button type="button" className="button subtle" onClick={() => void session.loadResidue(repository)}>重试查询残留</button>
+        </p> : null}
+        {residue && !residueLoading && !residueError ? (
           <div className="dts-reload-residue-banner" role="region" aria-label="重载残留">
             <ResidueIndicator residue={residue} deviceId={deviceId.trim()} />
             <button
@@ -804,7 +909,7 @@ export function DtsReloadPage({
         ) : null}
 
           </>}
-          navigatorLabel="模块导航" taskLabel="DTS 重载任务"
+          navigatorLabel="模块导航" taskLabel="DTS 重载任务" taskClassName="dts-reload-task"
           navigator={<DtsTopologyNavigator
                 view="effective"
                 nodes={moduleTree}
@@ -818,43 +923,25 @@ export function DtsReloadPage({
                 }
               />}
         >
-        <section className="debug-table dts-reload-candidates">
-          <div className="panel-header">
-            <strong>可调试参数</strong>
-            <span>
-              {projectName} · {bridgeStatusPill}
-            </span>
-          </div>
-
-              <DtsReloadCandidateTable
-                rows={filtered}
-                selectedBindingIds={selectedBindingIds}
-                loading={loading}
-                nameQuery={nameQuery}
-                onNameQueryChange={setNameQuery}
-                listedCount={filtered.length}
-                totalCount={handoffFilteredCandidates.length}
-                moduleFilterNodes={moduleFilterNodes}
-                selectedModuleFilterIds={activeModuleColumnFilter}
-                onChangeModuleFilter={setModuleColumnFilter}
-                onToggleModuleFilter={(value) =>
-                  setModuleColumnFilter((current) =>
-                    current.includes(value)
-                      ? current.filter((item) => item !== value)
-                      : [...current, value]
-                  )
-                }
-                onClearModuleFilter={() => setModuleColumnFilter([])}
-                onToggle={(bindingId) => session.toggleCandidate(bindingId)}
-                onEdit={openCandidateEditor}
-              />
-        </section>
-
+        <nav className="dts-reload-section-nav" aria-label="调试区段">
+          <a href="#reload-candidates">参数目录</a>
+          {selectedCandidates.length > 0 ? <a href="#reload-batch">本轮变更 · {selectedCandidates.length}</a> : null}
+          {run ? <a href="#reload-result">运行结果</a> : null}
+          <button type="button" onClick={() => {
+            const details = historyRef.current?.querySelector("details");
+            if (details) details.open = true;
+            historyRef.current?.scrollIntoView?.({ block: "start" });
+          }}>运行历史 · {historyItems.length}</button>
+        </nav>
         {selectedCandidates.length > 0 ? (
-          <div className="dts-parameter-workbench__current-edits dts-draft-tray dts-reload-run-tray-slot">
+          <details id="reload-batch" className="dts-parameter-workbench__current-edits dts-draft-tray dts-reload-run-tray-slot" open={trayOpen} onToggle={(event) => setTrayOpen(event.currentTarget.open)}>
+            <summary className="dts-reload-run-tray__summary"><strong>本轮重载 · {selectedCandidates.length} 项</strong><span>{selectedHasMeaningfulDebugChange ? "核对调试值后启动预检" : "修改调试值后启动预检"}</span></summary>
             {selectedHasSensitive ? (
-              <p role="status" className="dts-reload-sensitive-banner">
-                已选参数命中敏感节点规则：除 debugging:dts-reload 外还需要{" "}
+              <div role="status" className="dts-reload-sensitive-banner">
+                本轮包含敏感参数，请核对目标设备和参数范围。
+                {selectedHasCriticalSensitive ? "关键风险参数还需额外授权，并在本轮明确确认。" : "这些参数需要额外授权。"}
+                部署到设备前仍需人工确认。
+                <details><summary>权限说明</summary>
                 {Array.from(
                   new Set(
                     selectedCandidates
@@ -862,9 +949,8 @@ export function DtsReloadPage({
                       .filter((value): value is string => Boolean(value))
                   )
                 ).join(" / ") || "parameter:edit-critical"}
-                。
-                {selectedHasCriticalSensitive ? " critical 层级还需在本轮托盘中明确确认。" : ""}
-              </p>
+                </details>
+              </div>
             ) : null}
 
             <section
@@ -880,7 +966,6 @@ export function DtsReloadPage({
                       : "可先编辑调试值并启动预检；部署需先完成 Bridge 连接与目标检测。"}
                   </p>
                 </div>
-                <span>{`本轮 ${selectedCandidates.length} 项`}</span>
               </header>
 
               <div className="dts-binding-draft-tray__items dts-reload-run-tray__items">
@@ -910,7 +995,17 @@ export function DtsReloadPage({
                           className="button subtle"
                           aria-label={`移出本轮重载 ${candidate.displayName || candidate.propertyKey}`}
                           disabled={starting || !canStartRun}
-                          onClick={() => session.removeFromBatch(candidate.bindingId)}
+                          onClick={() => {
+                            const remove = () => {
+                              pendingBatchFocusRef.current = candidate.bindingId;
+                              session.removeFromBatch(candidate.bindingId);
+                            };
+                            if (candidate.bindingId === editingBindingId) guardEditorChange(() => {
+                              setEditingBindingId(null);
+                              remove();
+                            });
+                            else remove();
+                          }}
                         >
                           <X size={15} strokeWidth={1.9} aria-hidden="true" />
                           移除
@@ -927,23 +1022,12 @@ export function DtsReloadPage({
                       </p>
                       {candidate.sensitiveMatch ? (
                         <p className="dts-reload-run-tray__meta">
-                          需要 {candidate.sensitiveMatch.requiredCapability}
-                          {candidate.sensitiveMatch.requiresConfirmation ? "，并需明确确认" : ""}
+                          此参数需要额外授权{candidate.sensitiveMatch.requiresConfirmation ? "，并需明确确认" : ""}。
                         </p>
                       ) : null}
-                      <label className="dts-reload-run-tray__value">
-                        <span>调试值</span>
-                        <input
-                          aria-label={`${candidate.displayName || candidate.propertyKey} 调试值`}
-                          className="font-mono"
-                          value={debugValue}
-                          onChange={(event) =>
-                            session.setDebugValue(candidate.bindingId, event.target.value)
-                          }
-                          disabled={!canStartRun || starting}
-                          placeholder={describeReloadValueShapeAuthoring(candidate.resolvedValueShape).placeholder}
-                        />
-                      </label>
+                      <button type="button" className="button subtle" disabled={starting || !canStartRun}
+                        aria-label={`编辑本轮 ${candidate.displayName || candidate.propertyKey}`}
+                        onClick={() => openCandidateEditor(candidate)}>编辑调试值</button>
                     </article>
                   );
                 })}
@@ -955,10 +1039,10 @@ export function DtsReloadPage({
                     type="checkbox"
                     checked={criticalConfirmed}
                     onChange={(event) => session.setCriticalConfirmed(event.target.checked)}
-                    aria-label="确认 critical 敏感节点重载"
+                    aria-label="确认关键风险参数重载"
                   />
                   <span>
-                    我确认要为 critical 敏感参数下发调试值。调试值不会写回参数库；设备部署需另行确认。
+                    我确认本轮包含关键风险参数。调试值不会写回参数库；设备部署仍需单独确认。
                   </span>
                 </label>
               ) : null}
@@ -968,7 +1052,10 @@ export function DtsReloadPage({
                   type="button"
                   className="button subtle"
                   disabled={starting}
-                  onClick={() => session.resetBatchToBaseline()}
+                  onClick={() => guardBatchChange(() => {
+                    setEditingBindingId(null);
+                    session.resetBatchToBaseline();
+                  })}
                 >
                   重置为基线
                 </button>
@@ -976,18 +1063,75 @@ export function DtsReloadPage({
                   type="button"
                   className="button subtle"
                   disabled={starting}
-                  onClick={() => session.clearBatch()}
+                  onClick={() => guardBatchChange(() => {
+                    setEditingBindingId(null);
+                    pendingBatchFocusRef.current = "";
+                    session.clearBatch();
+                  })}
                 >
                   清空本轮
                 </button>
               </div>
             </section>
-          </div>
+          </details>
         ) : null}
 
+        <section id="reload-candidates" ref={candidateTableRef} className="debug-table dts-reload-candidates">
+          <div className="panel-header">
+            <strong>可调试参数</strong>
+            <span>
+              {projectName}
+            </span>
+          </div>
 
+              <DtsReloadCandidateTable
+                rows={filtered}
+                selectedBindingIds={selectedBindingIds}
+                canSelect={canStartRun && !starting && !deploying && !restoring && !historyRunLoading}
+                debugValues={debugValues}
+                hasActiveFilters={Boolean(nameQuery.trim() || selectedModuleNode || activeModuleColumnFilter.length || handoffBindingIds?.length)}
+                filterSummary={[
+                  selectedModuleNode ? `模块范围：${selectedModuleNode.label}` : "",
+                  activeModuleColumnFilter.length ? `模块筛选：${activeModuleColumnFilter.length} 项` : "",
+                  nameQuery.trim() ? `搜索：${nameQuery.trim()}` : "",
+                  handoffBindingIds?.length ? `工作台带入：${handoffBindingIds.length} 项` : ""
+                ].filter(Boolean).join(" · ")}
+                onClearFilters={() => {
+                  setNameQuery(""); setModuleColumnFilter([]); setSelectedModuleNodeId(null); clearHandoffFilter();
+                }}
+                loading={loading}
+                nameQuery={nameQuery}
+                onNameQueryChange={setNameQuery}
+                listedCount={filtered.length}
+                totalCount={handoffFilteredCandidates.length}
+                moduleFilterNodes={moduleFilterNodes}
+                selectedModuleFilterIds={activeModuleColumnFilter}
+                onChangeModuleFilter={setModuleColumnFilter}
+                onToggleModuleFilter={(value) =>
+                  setModuleColumnFilter((current) =>
+                    current.includes(value)
+                      ? current.filter((item) => item !== value)
+                      : [...current, value]
+                  )
+                }
+                onClearModuleFilter={() => setModuleColumnFilter([])}
+                onToggle={(bindingId) => {
+                  const toggle = () => {
+                    session.toggleCandidate(bindingId);
+                    setTrayOpen(true);
+                  };
+                  if (bindingId === editingBindingId) guardEditorChange(() => {
+                    setEditingBindingId(null);
+                    toggle();
+                  });
+                  else toggle();
+                }}
+                onEdit={openCandidateEditor}
+              />
+        </section>
+        {historyRunLoading ? <p role="status" className="dts-reload-info">正在加载运行详情…</p> : null}
         {run ? (
-          <>
+          <div id="reload-result" ref={resultRef} className="dts-reload-result-anchor" aria-busy={historyRunLoading}>
             {distilError ? (
               <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
                 {distilError}
@@ -1000,6 +1144,7 @@ export function DtsReloadPage({
             ) : null}
             <RunResultSection
               run={run}
+              candidates={candidates}
               deviceId={deviceId}
               targetRef={targetRef}
               canStartRun={canStartRun}
@@ -1008,15 +1153,24 @@ export function DtsReloadPage({
               deploying={deploying}
               onDownload={() => void onDownload()}
               onDeploy={() => session.openDeployConfirm(run)}
-              onDistil={canDistilRun ? () => void onDistil() : undefined}
+              onDistil={canDistilRun ? () => guardBatchChange(() => {
+                setEditingBindingId(null);
+                void onDistil();
+              }) : undefined}
               distilPending={distilPending}
-              onPromote={canPromoteRun ? onPromote : undefined}
+              onPromote={canPromoteRun ? () => guardBatchChange(() => {
+                setEditingBindingId(null);
+                onPromote();
+              }) : undefined}
               promotePending={promotePending}
             />
-          </>
+          </div>
         ) : null}
 
+        <div ref={historyRef} className="dts-reload-history-anchor">
         <RunHistorySection
+          candidates={candidates}
+          historyRunLoading={historyRunLoading}
           historyItems={historyItems}
           historyLoading={historyLoading}
           historyLoadingMore={historyLoadingMore}
@@ -1028,27 +1182,59 @@ export function DtsReloadPage({
           onFilterDeviceChange={(value) => session.setHistoryFilterDevice(value)}
           onOpenRun={onOpenHistoryRun}
           onLoadMore={() => void session.loadMoreHistory(repository)}
+          onRetry={() => void session.refreshHistory(repository)}
         />
+        </div>
 
         </NavigatorWorkbench>
-        </div>
         <div role="tabpanel" id={`dts-reload-${protocol === "hdc" ? "adb" : "hdc"}-panel`}
           aria-labelledby={`dts-reload-${protocol === "hdc" ? "adb" : "hdc"}-tab`} hidden />
 
         {editingCandidate ? (
           <DtsReloadCandidateEditDialog
+            key={editingCandidate.bindingId}
             candidate={editingCandidate}
+            canEdit={canStartRun && !starting && !deploying && !restoring && !historyRunLoading}
             initialDebugValue={
               debugValues[editingCandidate.bindingId] ?? editingCandidate.baselineValue ?? ""
             }
             alreadyInBatch={selectedBindingIds.includes(editingCandidate.bindingId)}
-            onClose={() => setEditingBindingId(null)}
-            onConfirm={(debugValue) =>
-              session.confirmCandidateDebugValue(editingCandidate.bindingId, debugValue)
-            }
+            onClose={() => guardEditorChange(() => setEditingBindingId(null))}
+            onDirtyChange={handleEditorDirtyChange}
+            onConfirm={(debugValue) => {
+              const error = session.confirmCandidateDebugValue(editingCandidate.bindingId, debugValue);
+              if (!error) {
+                editorDirtyRef.current = false;
+                setEditorDirty(false);
+                setTrayOpen(true);
+              }
+              return error;
+            }}
             onOpenHistoryRun={onOpenHistoryRun}
           />
         ) : null}
+
+        <ConfirmDialog
+          open={pendingEditorAction !== null}
+          title="放弃未保存的修改？"
+          description={discardBatch
+            ? "本轮仍有未完成的调试值。继续将放弃这些修改；已保存的运行记录不会受到影响。"
+            : "此次编辑尚未加入本轮重载。放弃后将恢复打开编辑器时的值。"}
+          confirmLabel="放弃修改"
+          cancelLabel="继续编辑"
+          tone="danger"
+          onCancel={() => {
+            leaveDecisionRef.current?.(false); leaveDecisionRef.current = null;
+            setPendingEditorAction(null); setDiscardBatch(false);
+          }}
+          onConfirm={() => {
+            editorDirtyRef.current = false;
+            setEditorDirty(false);
+            setPendingEditorAction(null);
+            setDiscardBatch(false);
+            pendingEditorAction?.();
+          }}
+        />
 
         <ConfirmDialog
           open={deployConfirmOpen}

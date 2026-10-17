@@ -2,6 +2,7 @@ import type { Page } from "playwright/test";
 
 import { createBearerTokenForUser, smokeHeaders } from "./runtime";
 import { ACCEPTANCE_ORGANIZATION, castByRole, roleLabels, type AcceptanceRoleId } from "./cast";
+import { waitForInteractionSurfaceReady } from "./interactionSurface";
 
 export type { AcceptanceRoleId } from "./cast";
 export { createBearerTokenForUser } from "./runtime";
@@ -25,6 +26,7 @@ async function writeBrowserTokenBeforeRoute(page: Page, token: string, route: st
     [LOCAL_AUTH_TOKEN_STORAGE_KEY, token] as const,
   );
   await page.goto(route, { waitUntil: "domcontentloaded" });
+  await waitForInteractionSurfaceReady(page);
 }
 
 export function acceptanceRoleLabel(roleId: AcceptanceRoleId) {
@@ -35,7 +37,7 @@ export function acceptanceUserIdForRole(roleId: AcceptanceRoleId) {
   return acceptanceUsersByRole[roleId].userId;
 }
 
-export function authHeadersForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId) {
+export function authHeadersForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId): Record<string, string> {
   const authorization = createBearerTokenForUser(userId, email, name, scopedOrganizationId);
   // Always include x-wiseeff-user so AUTH_MODE=development resolvers (which ignore Bearer)
   // still load the intended user from the database.
@@ -53,7 +55,7 @@ export function authHeadersForUser(userId: string, email: string, name: string, 
   };
 }
 
-export function authHeadersForRole(roleId: AcceptanceRoleId) {
+export function authHeadersForRole(roleId: AcceptanceRoleId): Record<string, string> {
   const user = acceptanceUsersByRole[roleId];
   const authorization = createBearerTokenForUser(user.userId, user.email, user.name);
   // Always include x-wiseeff-user so AUTH_MODE=development resolvers (which ignore Bearer)

@@ -7,6 +7,7 @@ import {
   collectUiStandardsViolations,
   compareWithBaseline,
   countByRule,
+  formatComparisonReport,
   scanCssContent,
   scanTsContent,
   uiRuleIds,
@@ -229,6 +230,69 @@ describe("scanCssContent ease-keyword", () => {
 });
 
 describe("scanTsContent", () => {
+  it("rejects actual native JSX selects at zero baseline and gives the shared-control fix", () => {
+    const source = [
+      "export const Filters = () => (<>",
+      "  <select",
+      '    aria-label="协议"',
+      "  ><option>全部</option></select>",
+      "  <select />",
+      "</>);"
+    ].join("\n");
+    const violations = scanTsContent("src/pages/Filters.tsx", source);
+
+    expect(violations).toEqual([
+      { rule: "native-select", file: "src/pages/Filters.tsx", line: 2, detail: "Native <select>" },
+      { rule: "native-select", file: "src/pages/Filters.tsx", line: 5, detail: "Native <select>" }
+    ]);
+    const report = formatComparisonReport(compareWithBaseline(violations, { rules: {} }));
+    expect(report.failed).toBe(true);
+    expect(report.text).toContain("src/pages/Filters.tsx:2");
+    expect(report.text).toContain("SelectControl");
+    expect(report.text).toContain("ColumnFilter");
+    expect(report.text).toContain("ModuleTreeSelect");
+    for (const tag of [
+      "< select />", "<\nselect />", "<select {...props} />",
+      "< /* separator */ select />", "< // separator\nselect />",
+      "<\\u0073elect />", "<se\\u006cect />",
+    ]) {
+      expect(scanTsContent("src/pages/Filters.tsx", `const Filters = () => ${tag};`).filter((violation) => violation.rule === "native-select"), tag).toHaveLength(1);
+    }
+  });
+
+  it("allows shared controls, native buttons and select examples in non-JSX syntax", () => {
+    const source = [
+      'const example = "<select>";',
+      "const template = `<select />`;",
+      "// <select />",
+      "/* <select /> */",
+      "const matches = /<select/;",
+      "export const Filters = () => (",
+      '  <div title="<select>">',
+      "    {/* <select /> */}",
+      "    <SelectControl />",
+      "    <ColumnFilter />",
+      "    <ModuleTreeSelect />",
+      "    <UI.select />",
+      "    <selectable />",
+      "    <button>编辑</button>",
+      "  </div>",
+      ");"
+    ].join("\n");
+
+    expect(scanTsContent("src/pages/Filters.tsx", source)).toEqual([]);
+    expect(scanTsContent("scripts/check-ui-standards.test.ts", source)).toEqual([]);
+  });
+
+  it("exempts only the reviewed native fixture path, keeping other UI rules active", () => {
+    const source = 'const NativeFixture = () => <select style={{ zIndex: 60 }} />;';
+
+    expect(rules(scanTsContent("src/test/compactControls.test.tsx", source))).toEqual(["raw-z-index"]);
+    expect(rules(scanTsContent("src/pages/compactControls.test.tsx", source))).toEqual([
+      "native-select", "raw-z-index"
+    ]);
+  });
+
   it("flags window.confirm and window.alert calls but not comments or strings", () => {
     const source = [
       "export function remove() {",
@@ -300,12 +364,15 @@ describe("collectUiStandardsViolations", () => {
     const root = await createTempRoot();
     await write(root, "src/styles.css", ":root { --accent: #0052cc; }\n.a { color: #111827; }\n");
     await write(root, "src/components/Foo.tsx", "const s = { zIndex: 50 };\n");
+    await write(root, "src/pages/Filters.tsx", "export const Filters = () => <select />;\n");
+    await write(root, "scripts/fixture.tsx", "export const Fixture = () => <select />;\n");
     await write(root, "src/util.ts", "window.confirm(\"x\");\n");
 
     const violations = await collectUiStandardsViolations(root);
 
     expect(violations).toEqual([
       { rule: "raw-z-index", file: "src/components/Foo.tsx", line: 1, detail: "zIndex: 50" },
+      { rule: "native-select", file: "src/pages/Filters.tsx", line: 1, detail: "Native <select>" },
       { rule: "raw-color", file: "src/styles.css", line: 2, detail: "color: … #111827 …" },
       { rule: "window-confirm", file: "src/util.ts", line: 1, detail: "window.confirm(…)" }
     ]);

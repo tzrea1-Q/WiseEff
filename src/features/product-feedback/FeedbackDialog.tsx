@@ -244,7 +244,7 @@ export function FeedbackDialog({ open, pagePath, pageTitle, productFeedbackRepos
             <fieldset disabled={busy} className="feedback-compose-fields">
               <div className="feedback-compose-context"><span>问题来源</span><strong>{source.pageTitle}</strong><code>{source.pagePath}</code></div>
               <div className="feedback-compose-type"><Label htmlFor={`${tabId}-type`}>反馈类型</Label>
-                <SelectControl id={`${tabId}-type`} withinModal ariaLabel="反馈类型" value={feedbackType} disabled={busy}
+                <SelectControl id={`${tabId}-type`} ariaLabel="反馈类型" value={feedbackType} disabled={busy}
                   onValueChange={(value) => { setFeedbackType(value as ProductFeedbackType); clearMessages(); }} options={feedbackTypeOptions} /></div>
               <div className="feedback-compose-description">
                 <div className="feedback-field-heading"><Label htmlFor={`${tabId}-description`}>问题描述</Label><span>{description.length} / 4000</span></div>

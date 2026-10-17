@@ -1285,7 +1285,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       ]),
       createSession: vi.fn().mockResolvedValue({
         id: "api-node-session",
-        projectId: initialState.activeProjectId,
         deviceId: apiDebugDevice.id,
         targetId: "api-target",
         status: "active",
@@ -1656,39 +1655,113 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(debuggingCleared.configDraft.debugParameters).toEqual([]);
   });
 
+  it("waits for the catalog owner while optional device discovery remains pending", async () => {
+    let completeModules!: (value: { items: { name: string; scope: string; description: string }[] }) => void;
+    let releaseDevices!: () => void;
+    const modules = new Promise<{ items: { name: string; scope: string; description: string }[] }>((resolve) => { completeModules = resolve; });
+    const devices = new Promise<never[]>((resolve) => { releaseDevices = () => resolve([]); });
+    const api = createAppDebuggingAdminApiMock();
+    api.get.mockImplementation((path: string) => path === "/api/v1/debugging/admin/modules" ? modules : Promise.resolve({ items: [api.seedNode] }));
+    const { container } = renderApp({ path: "/debugging-admin/nodes", runtimeMode: "api", ports: {
+      authClient: createTestAuthClient("admin"), debuggingAdminClient: createDebuggingAdminClient(api as never),
+      debuggingGateway: createAppDebuggingGateway({ listDevices: vi.fn(() => devices) })
+    } });
+    try {
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/debugging/admin/modules"));
+      const shell = container.querySelector("#main-content");
+      const catalog = container.querySelector('main[aria-label="节点调试"]');
+      expect(shell).toHaveAttribute("data-runtime-state", "ready");
+      expect(catalog).toHaveAttribute("data-runtime-state", "loading");
+      expect(catalog).toHaveAttribute("inert");
+      await act(async () => { completeModules({ items: [{ name: "Battery Charging", description: "", scope: "" }] }); });
+      await waitFor(() => expect(catalog).toHaveAttribute("data-runtime-state", "ready"));
+      expect(catalog).not.toHaveAttribute("inert");
+      expect(screen.getByRole("button", { name: /^新增节点$/ })).toBeEnabled();
+    } finally {
+      await act(async () => { completeModules({ items: [] }); releaseDevices(); });
+    }
+  });
+
+  it("keeps initial interaction unavailable until its domain settles without waiting for unrelated devices", async () => {
+    let completeProjects!: (projects: typeof initialState.configDraft.projects) => void;
+    let failDevices!: (error: Error) => void;
+    const projects = new Promise<typeof initialState.configDraft.projects>((resolve) => { completeProjects = resolve; });
+    const devices = new Promise<never>((_, reject) => { failDevices = reject; });
+    const parameterRepository = createTestParameterRepository({ listProjects: vi.fn(() => projects) });
+    const { container } = renderApp({
+      path: "/parameter-home",
+      runtimeMode: "api",
+      ports: {
+        authClient: createTestAuthClient("admin"),
+        parameterRepository,
+        debuggingGateway: createAppDebuggingGateway({ listDevices: vi.fn(() => devices) })
+      }
+    });
+    try {
+      await waitFor(() => expect(parameterRepository.listProjects).toHaveBeenCalled());
+      const main = screen.getByRole("main");
+      expect(main).toHaveAttribute("data-runtime-state", "loading");
+      expect(main).toHaveAttribute("aria-busy", "true");
+      expect(container.querySelector(".page-content")).toHaveAttribute("inert");
+      await act(async () => { completeProjects([apiProject]); });
+      await waitFor(() => expect(main).toHaveAttribute("data-runtime-state", "ready"));
+      expect(main).toHaveAttribute("aria-busy", "false");
+      expect(container.querySelector(".page-content")).not.toHaveAttribute("inert");
+      await act(async () => { failDevices(new Error("optional devices unavailable")); });
+      expect(main).toHaveAttribute("data-runtime-state", "ready");
+      expect(container.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
+    } finally {
+      await act(async () => { completeProjects([apiProject]); failDevices(new Error("test settled")); });
+    }
+  });
+
   it("shows a persistent no-data banner when API refresh fails and recovers via retry", async () => {
     window.history.replaceState(null, "", "/parameter-home");
+    let releaseDevices!: () => void;
+    const devices = new Promise<never[]>((resolve) => { releaseDevices = () => resolve([]); });
     const listProjects = vi.fn()
       .mockRejectedValueOnce(new Error("api down"))
+      .mockRejectedValueOnce(new Error("api still down"))
       .mockResolvedValue([apiProject]);
     const parameterRepository = createTestParameterRepository({ listProjects });
 
     render(
       <App
-        authClient={createTestAuthClient()}
+        authClient={createTestAuthClient("admin")}
         initialAppState={initialState}
         parameterRepository={parameterRepository}
         parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
         logAnalysisRepository={createTestLogAnalysisRepository([])}
-        debuggingGateway={createAppDebuggingGateway()}
+        debuggingGateway={createAppDebuggingGateway({ listDevices: vi.fn(() => devices) })}
         runtimeMode="api"
       />
     );
 
-    await waitFor(() => {
-      expect(document.querySelector(".api-runtime-error-banner")).toBeInTheDocument();
-    });
-    const banner = document.querySelector(".api-runtime-error-banner") as HTMLElement;
-    expect(banner).toHaveAttribute("role", "alert");
-    expect(banner).toHaveTextContent("无法连接雷泽参数 API，当前无数据");
-    expect(banner).toHaveTextContent("不展示演示数据");
+    try {
+      await waitFor(() => {
+        expect(document.querySelector(".api-runtime-error-banner")).toBeInTheDocument();
+      });
+      const banner = document.querySelector(".api-runtime-error-banner") as HTMLElement;
+      expect(banner).toHaveAttribute("role", "alert");
+      expect(banner).toHaveTextContent("无法连接雷泽参数 API，当前无数据");
+      expect(banner).toHaveTextContent("不展示演示数据");
+      expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "error");
 
-    fireEvent.click(within(banner).getByRole("button", { name: "重试" }));
+      fireEvent.click(within(banner).getByRole("button", { name: "重试" }));
 
-    await waitFor(() => {
-      expect(document.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
-    });
-    expect(listProjects.mock.calls.length).toBeGreaterThanOrEqual(2);
+      await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "error"));
+      const retry = within(document.querySelector(".api-runtime-error-banner") as HTMLElement).getByRole("button");
+      expect(retry).toBeEnabled();
+      fireEvent.click(retry);
+      await waitFor(() => {
+        expect(document.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
+      });
+      expect(listProjects).toHaveBeenCalledTimes(3);
+      expect(screen.getByRole("main")).toHaveAttribute("data-runtime-state", "ready");
+    } finally {
+      await act(async () => { releaseDevices(); });
+    }
   });
 
   it("dismisses the newest notification and leaves the rest of the queue", () => {
@@ -1808,7 +1881,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       type: "SET_DEBUG_ACTIVE_SESSION",
       session: {
         id: "session-1",
-        projectId: initialState.activeProjectId,
         deviceId: apiDebugDevice.id,
         targetId: "target-1",
         status: "active",
@@ -3766,7 +3838,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       })
     ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单" })).toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument();
     expect(document.querySelector(".project-admin-detail")).not.toBeInTheDocument();
@@ -3798,7 +3870,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     window.history.replaceState(null, "", "/parameter-admin/projects");
     renderApp({ initialAppState: adminState });
-    expect(screen.getByRole("region", { name: "项目清单", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目清单" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
   });
 
@@ -3904,13 +3976,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const catalog = screen.getByRole("table", { name: "可调节点目录" });
     const chargerRow = within(catalog).getByRole("row", { name: /充电输入限流/ });
-    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑" }));
     const editedPath = "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited";
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: editedPath }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑", exact: true }));
+    await userEvent.click(within(chargerRow).getByRole("button", { name: "编辑" }));
 
     expect(screen.getByLabelText("HDC 节点路径")).toHaveValue(editedPath);
   });
@@ -3923,8 +3995,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: nextName } });
-    await userEvent.click(within(screen.getByRole("dialog", { name: "创建节点" })).getByRole("button", { name: "模块", exact: true }));
-    await userEvent.click(screen.getByRole("button", { name: "Charging Policy", exact: true }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "创建节点" })).getByRole("button", { name: "模块" }));
+    await userEvent.click(screen.getByRole("button", { name: "Charging Policy" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     const createdRow = screen.getByRole("row", { name: new RegExp(nextName) });

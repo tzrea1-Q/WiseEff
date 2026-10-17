@@ -37,6 +37,8 @@ export async function pollBridgeToolInstall(options: {
   protocol: DebugConnectionProtocol | "all";
   intervalMs?: number;
   timeoutMs?: number;
+  onProgress?: (health: LocalBridgeHealthState) => void;
+  previousInstallUpdatedAt?: string;
 }): Promise<LocalBridgeHealthState | null> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const intervalMs = options.intervalMs ?? 2000;
@@ -44,24 +46,21 @@ export async function pollBridgeToolInstall(options: {
   const started = Date.now();
 
   while (Date.now() - started < timeoutMs) {
+    let body: LocalBridgeHealthState | null = null;
     try {
-      const response = await fetchImpl(resolveLocalBridgeHealthUrl());
+      const response = await fetchImpl(resolveLocalBridgeHealthUrl(), { signal: AbortSignal.timeout(3000) });
       if (response.ok) {
-        const body = (await response.json()) as LocalBridgeHealthState & { toolsInstall?: LocalBridgeHealthState["toolsInstall"] };
-        if (body.toolsInstall?.status === "failed") {
-          throw new Error(body.toolsInstall.error ?? "Tool install failed.");
-        }
-        if (isProtocolToolReady(body, options.protocol)) {
-          return body;
-        }
-        if (body.toolsInstall?.status === "succeeded" && isProtocolToolReady(body, options.protocol)) {
-          return body;
-        }
+        body = (await response.json()) as LocalBridgeHealthState;
       }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("Tool install failed")) {
-        throw error;
+    } catch {
+      // The local service may restart during installation; retry only transport failures.
+    }
+    if (body) {
+      options.onProgress?.(body);
+      if (body.toolsInstall?.status === "failed" && (!options.previousInstallUpdatedAt || body.toolsInstall.updatedAt !== options.previousInstallUpdatedAt)) {
+        throw new Error(body.toolsInstall.error ?? "调试工具安装失败。");
       }
+      if (isProtocolToolReady(body, options.protocol)) return body;
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }

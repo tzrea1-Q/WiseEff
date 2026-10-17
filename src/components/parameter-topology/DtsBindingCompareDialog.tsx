@@ -103,7 +103,6 @@ export function DtsBindingCompareDialog({
                     ref={targetSelectRef}
                     ariaLabel="对比目标配置实例"
                     value={targetBindingId ?? ""}
-                    withinModal
                     onValueChange={(value) => setTargetBindingId(value || null)}
                     options={[
                       ...(targetBindingId === null ? [{ value: "", label: "请选择配置实例" }] : []),
