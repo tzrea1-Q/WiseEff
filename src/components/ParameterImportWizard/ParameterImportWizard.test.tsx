@@ -38,7 +38,11 @@ describe("ParameterImportWizard", () => {
   it("disables source changes and repeated Next while server parsing is pending", async () => {
     let finishParse!: (value: { format: "dts-full"; rows: [] }) => void;
     const parseDtsImport = vi.fn().mockReturnValue(new Promise((resolve) => { finishParse = resolve; }));
-    renderWizard({ parameterActions: { parseDtsImport } as ComponentProps<typeof ParameterImportWizard>["parameterActions"] });
+    renderWizard({ parameterActions: {
+      submitChanges: vi.fn(), stashChanges: vi.fn(), discardDrafts: vi.fn(),
+      withdrawSubmissionRound: vi.fn(), reviewChange: vi.fn(), createImportPreview: vi.fn(),
+      applyImportBatch: vi.fn(), refresh: vi.fn(), parseDtsImport
+    } });
     const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(dialog, "/dts-v1/; / { board_id = <0>; };");
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));

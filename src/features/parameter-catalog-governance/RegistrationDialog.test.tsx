@@ -10,6 +10,7 @@ import {
   CATALOG_RELEASE_ID,
   CATALOG_REVIEW_ITEM_ID,
   CATALOG_SUBJECT_ID,
+  catalogRegistration,
   readyCatalogDocument,
   unregisteredSubject
 } from "@/application/parameter-catalog/fixtures";
@@ -262,7 +263,7 @@ describe("RegistrationDialog", () => {
 
   it("does not start a second Registration command while the first confirmation is pending", async () => {
     const repository = createMockParameterCatalogGovernanceRepository({ scenario: "unregistered" });
-    let release!: (value: unknown) => void;
+    let release!: (value: Awaited<ReturnType<ParameterCatalogGovernanceRepository["createRegistration"]>>) => void;
     const createRegistration = vi.spyOn(repository, "createRegistration").mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -278,7 +279,7 @@ describe("RegistrationDialog", () => {
     await user.click(within(confirm).getByRole("button", { name: "确认登记" }));
     expect(await screen.findByRole("button", { name: "处理中…" })).toBeDisabled();
     expect(createRegistration).toHaveBeenCalledTimes(1);
-    release({ item: { id: CATALOG_REGISTRATION_ID } });
+    release({ item: { ...catalogRegistration, id: CATALOG_REGISTRATION_ID } });
   });
 
   it("updates Placement with If-Match and does not infer a parent", async () => {

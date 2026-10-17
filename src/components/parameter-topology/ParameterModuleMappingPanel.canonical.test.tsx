@@ -32,7 +32,7 @@ describe("canonical module page request boundary", () => {
     await userEvent.click(screen.getByRole("tab", { name: "来源识别" }));
     expect(onNavigate).toHaveBeenLastCalledWith("/parameter-admin/modules?q=vendor&moduleId=power&tab=queue");
     expect(screen.queryByRole("button", { name: "全部模块" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("tab", { name: "模块", exact: true }));
+    await userEvent.click(screen.getByRole("tab", { name: "模块" }));
     fireEvent.keyDown(screen.getByRole("button", { name: "查看模块：电源" }).closest('[role="treeitem"]')!, { key: "Enter" });
     expect(onNavigate).toHaveBeenLastCalledWith("/parameter-admin/modules?q=vendor");
   });

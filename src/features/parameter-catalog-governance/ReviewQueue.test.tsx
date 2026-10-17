@@ -42,6 +42,8 @@ function renderQueue(options: {
         }
       ],
       nextCursor: null,
+      totalCount: 1,
+      hasMore: false,
       catalogReleaseId: CATALOG_RELEASE_ID
     });
   }
@@ -62,7 +64,7 @@ describe("ReviewQueue", () => {
   it.each(["not-found", "release-drift"])("keeps prior review evidence blocked after refresh %s", async (failure) => {
     const repository = createMockParameterCatalogGovernanceRepository();
     vi.spyOn(repository, "listReviewItems").mockResolvedValue({ items: [{ ...catalogReviewItem,
-      allowedResolutions: ["mark-out-of-scope"] }], nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+      allowedResolutions: ["mark-out-of-scope"] }], nextCursor: null, totalCount: 1, hasMore: false, catalogReleaseId: CATALOG_RELEASE_ID });
     const resolve = vi.spyOn(repository, "resolveReviewItem").mockRejectedValue(
       catalogApiFailure("revision-conflict", { catalogReleaseId: CATALOG_RELEASE_ID }));
     const get = vi.spyOn(repository, "getReviewItem");
@@ -74,7 +76,7 @@ describe("ReviewQueue", () => {
     await user.click(await screen.findByRole("button", { name: "处理审核" }));
     expect(await screen.findByText(/暂时无法核对最新审核依据/)).toBeVisible();
     await user.type(screen.getByLabelText("原因"), "保留审核证据");
-    await user.click(screen.getByRole("button", { name: "重试", exact: true }));
+    await user.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByText(/暂时无法核对最新审核依据/)).toBeVisible();
     expect(screen.queryByRole("dialog", { name: "确认处理审核" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("原因")).toHaveValue("保留审核证据");
@@ -164,7 +166,7 @@ describe("ReviewQueue", () => {
     const repository = createMockParameterCatalogGovernanceRepository();
     const id = `prit_${"a".repeat(64)}`;
     vi.spyOn(repository, "listReviewItems").mockResolvedValue({ items: [{ ...catalogReviewItem, id }],
-      nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+      nextCursor: null, totalCount: 1, hasMore: false, catalogReleaseId: CATALOG_RELEASE_ID });
     render(<ReviewQueue actor="org-admin" domainState={ready} repository={repository}
       organizationId={CATALOG_ORGANIZATION_ID} catalogReleaseId={CATALOG_RELEASE_ID} />);
     const identifier = await screen.findByTitle(id);
@@ -180,7 +182,7 @@ describe("ReviewQueue", () => {
     vi.spyOn(repository, "listReviewItems").mockResolvedValue({ items: [{ ...catalogReviewItem,
       sourceSummary: { status: "available", evidenceCount: 1, compatible: "vendor,charger", projectId: "project-a",
         projectName: "电源预览项目", fileName: "board.dts", nodeLocator: "/charger", propertyKey: "compatible" }
-    }], nextCursor: null, totalCount: 1, catalogReleaseId: CATALOG_RELEASE_ID });
+    }], nextCursor: null, totalCount: 1, hasMore: false, catalogReleaseId: CATALOG_RELEASE_ID });
     const onCountChange = vi.fn();
     render(<ReviewQueue actor="org-admin" domainState={ready} repository={repository}
       organizationId={CATALOG_ORGANIZATION_ID} catalogReleaseId={CATALOG_RELEASE_ID} onCountChange={onCountChange} />);
@@ -190,7 +192,7 @@ describe("ReviewQueue", () => {
     expect(onCountChange).toHaveBeenLastCalledWith(1);
     await userEvent.type(screen.getByRole("searchbox", { name: "搜索待审核事项" }), "not-a-source");
     expect(await screen.findByText("没有匹配的审核项。")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "清除筛选", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByText("vendor,charger")).toBeVisible();
   });
 
@@ -201,10 +203,10 @@ describe("ReviewQueue", () => {
     const props = { actor: "org-admin" as const, domainState: ready, repository, organizationId: CATALOG_ORGANIZATION_ID,
       catalogReleaseId: CATALOG_RELEASE_ID, onSelectReviewItem };
     const view = render(<ReviewQueue {...props} />);
-    await userEvent.click(await screen.findByRole("button", { name: "处理审核", exact: true }));
-    await userEvent.type(screen.getByRole("textbox", { name: "原因", exact: true }), "保留已填写内容");
+    await userEvent.click(await screen.findByRole("button", { name: "处理审核" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "原因" }), "保留已填写内容");
     view.rerender(<ReviewQueue {...props} selectedReviewItemId={CATALOG_REVIEW_ITEM_ID} />);
-    expect(screen.getByRole("textbox", { name: "原因", exact: true })).toHaveValue("保留已填写内容");
+    expect(screen.getByRole("textbox", { name: "原因" })).toHaveValue("保留已填写内容");
     expect(getReviewItem).toHaveBeenCalledTimes(1);
   });
 
@@ -213,14 +215,14 @@ describe("ReviewQueue", () => {
     const first = { status: "available" as const, evidenceCount: 1, projectId: "first-project", projectName: "首个项目", fileName: "first.dts", compatible: "vendor,first" };
     const second = { ...first, projectId: "second-project", projectName: "后续项目", fileName: "second.dts", compatible: "vendor,second" };
     vi.spyOn(repository, "listReviewItems").mockResolvedValue({ items: [{ ...catalogReviewItem,
-      sourceSummary: first, sources: [first, second] }], nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+      sourceSummary: first, sources: [first, second] }], nextCursor: null, totalCount: 1, hasMore: false, catalogReleaseId: CATALOG_RELEASE_ID });
     render(<ReviewQueue actor="org-admin" domainState={ready} repository={repository}
       organizationId={CATALOG_ORGANIZATION_ID} catalogReleaseId={CATALOG_RELEASE_ID} />);
     await screen.findByText("涉及 2 处来源");
     await selectControlOption(screen.getByRole("combobox", { name: "筛选来源项目" }), "second-project");
-    expect(screen.getByRole("button", { name: "处理审核", exact: true })).toBeVisible();
+    expect(screen.getByRole("button", { name: "处理审核" })).toBeVisible();
     await userEvent.type(screen.getByRole("searchbox", { name: "搜索待审核事项" }), "vendor,second");
-    expect(screen.getByRole("button", { name: "处理审核", exact: true })).toBeVisible();
+    expect(screen.getByRole("button", { name: "处理审核" })).toBeVisible();
     expect(screen.queryByText("没有匹配的审核项。")).not.toBeInTheDocument();
   });
 

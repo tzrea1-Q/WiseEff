@@ -486,7 +486,7 @@ describe("ReviewResolutionDialog", () => {
     act(() => { rejectRefresh(new Error("offline")); });
     expect(await screen.findByText(/暂时无法核对最新审核依据/)).toBeVisible();
     expect(screen.getByLabelText("原因")).toHaveValue("按证据处理");
-    await user.click(screen.getByRole("button", { name: "重试", exact: true }));
+    await user.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByText(/审核依据或可用目标已变化/)).toBeVisible();
     expect(screen.queryByText(/暂时无法核对最新审核依据/)).not.toBeInTheDocument();
     expect(proceed).toBeEnabled();

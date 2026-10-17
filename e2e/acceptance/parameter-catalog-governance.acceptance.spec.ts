@@ -67,16 +67,7 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await dialog.getByRole("textbox", { name: "原因" }).fill("op08 mark out of scope");
     await dialog.getByRole("button", { name: "继续确认" }).click();
     await confirmGovernanceDialog(page, "确认处理");
-    if (await dialog.getByText(/审核版本已变化|刷新后重新确认/).count()) {
-      await dialog.getByRole("button", { name: "刷新证据" }).click();
-      await expect(dialog).toHaveCount(0);
-      await queue.getByRole("button", { name: "处理审核" }).first().click();
-      await expect(page.getByRole("dialog", { name: "处理审核" })).toBeVisible();
-      await page.getByRole("dialog", { name: "处理审核" }).getByText("标为范围外").click();
-      await page.getByRole("dialog", { name: "处理审核" }).getByRole("textbox", { name: "原因" }).fill("op08 mark out of scope retry");
-      await page.getByRole("dialog", { name: "处理审核" }).getByRole("button", { name: "继续确认" }).click();
-      await confirmGovernanceDialog(page, "确认处理");
-    }
+    await expect(dialog.getByRole("status").filter({ hasText: "已标为范围外" })).toBeVisible();
     await expect(page.getByRole("button", { name: "确认处理" })).toHaveCount(0);
     const listed = await catalogJson(
       page.request,
@@ -87,22 +78,7 @@ test.describe("canonical parameter catalog governance interactions", () => {
     const openItems = ((listed.body as { items: Array<{ id: string; status: string; etag?: string }> }).items ?? []).filter(
       (item) => item.status === "open"
     );
-    for (const item of openItems.slice(0, 1)) {
-      const resolved = await catalogJson(
-        page.request,
-        "POST",
-        `/api/v2/organizations/${fixture.organizationId}/parameter-review-items/${item.id}/resolve`,
-        {
-          headers: {
-            "X-WiseEff-Catalog-Release": fixture.chain.pinF.id,
-            "Idempotency-Key": `pcat-ui-04:${item.id}`,
-            "If-Match": item.etag ?? "1"
-          },
-          data: { resolution: { type: "mark-out-of-scope" }, reason: "op08 api follow-up resolve" }
-        }
-      );
-      expect([200, 409]).toContain(resolved.status);
-    }
+    expect(openItems).toHaveLength(openBefore - 1);
     await catalogScreenshot(page, testInfo, "pcat-ui-04-review");
   });
 
@@ -158,7 +134,7 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
     await openCatalogViaNav(page, "org-admin");
     await waitForCatalogState(page, /ready|unregistered/);
-    await expect(page.getByLabel("目录发布")).toContainText(fixture.chain.pinF.id);
+    await expect(catalogPage(page)).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
     await expect(
       page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
     ).toBeVisible();

@@ -128,7 +128,7 @@ describe("PublicationDialog", () => {
     const user = userEvent.setup();
     await screen.findByText("主体列表加载失败，请稍后重试。");
     await user.type(screen.getByLabelText("显示名称"), "重试时保留");
-    await user.click(screen.getByRole("button", { name: "重试", exact: true }));
+    await user.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(screen.queryByText("主体列表加载失败，请稍后重试。")).not.toBeInTheDocument());
     await selectControlOption(screen.getByLabelText("已发布主体"), CATALOG_SUBJECT_ID);
     expect(screen.getByLabelText("显示名称")).toHaveValue("重试时保留");
@@ -509,7 +509,7 @@ describe("PublicationDialog", () => {
       })
     );
     const ports = createMockCatalogPorts({ publicationOutcome: "queued" });
-    ports.catalog.getPublication = vi.fn(async () => ({
+    vi.spyOn(ports.catalog, "getPublication").mockResolvedValue({
       item: {
         id: "cjob_01KPAGE_1",
         candidateId: "ccand_01KPAGE_1",
@@ -520,7 +520,7 @@ describe("PublicationDialog", () => {
         currentness: null,
         failure: null
       }
-    }));
+    });
     render(
       <PublicationDialog
         open

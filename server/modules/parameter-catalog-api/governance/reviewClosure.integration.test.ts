@@ -10,7 +10,8 @@ import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase
 import { insertDtsObservationSourceFixture } from "../../../testing/parameterCatalog/dtsObservationSource";
 import type { AuthContext } from "../../auth/types";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
-import { refreshAuthoritativeSource, validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { refreshSuccessorSource } from "../../catalog-publication/builder/bundleCodec";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../catalog-publication/runtime/provisionRuntimeLogins";
@@ -70,16 +71,15 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     database = await createDisposableParameterCatalogDatabase("reviewclosure");
     root = createPostgresDatabase(database.url);
     pool = getRootPostgresPool(root)!;
-    const bundle = validCatalogReleaseBundle();
-    const target = bundle.releases[1]!;
+    const baseBundle = validCatalogReleaseBundle();
+    const target = baseBundle.releases[1]!;
     const driver = target.documents.find((document) => document.kind === "subject");
     if (!driver || driver.kind !== "subject") throw new Error("Catalog driver fixture missing");
-    const nodeType = structuredClone(driver);
-    nodeType.content = { ...nodeType.content, id: "csub_charger", kind: "node-type",
-      canonicalKey: "node-type:charger", selector: { kind: "node-type-name", value: "charger",
-        provenance: structuredClone(driver.content.selector.provenance) }, subtype: {} };
-    target.documents.push(nodeType);
-    refreshAuthoritativeSource(target);
+    const nodeType = { ...driver, content: { ...driver.content, id: "csub_charger", kind: "node-type" as const,
+      canonicalKey: "node-type:charger", selector: { kind: "node-type-name" as const, value: "charger",
+        provenance: structuredClone(driver.content.selector.provenance) }, subtype: {} } };
+    const enrichedTarget = refreshSuccessorSource({ ...target, documents: [...target.documents, nodeType] }, target.manifest.files[0]!.path);
+    const bundle = { ...baseBundle, releases: baseBundle.releases.map((release) => release === target ? enrichedTarget : release) };
     historicalReleaseId = bundle.releases[0]!.manifest.release.id;
     const firstBundle = { schemaVersion: bundle.schemaVersion, targetReleaseId: historicalReleaseId, releases: [structuredClone(bundle.releases[0]!)] };
     const firstCompiled = compileCatalogRelease(firstBundle);
@@ -148,7 +148,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     expect((await api.query(`select current_user,rolsuper from pg_roles where rolname=current_user`)).rows)
       .toEqual([{ current_user: runtime.apiRole, rolsuper: false }]);
     server = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async (authorization): Promise<AuthContext> => {
-      const actor = authorization?.replace("Bearer review-closure-", "");
+      const actor = typeof authorization === "string" ? authorization.replace("Bearer review-closure-", "") : undefined;
       if (actor !== "admin" && actor !== "member" && actor !== "other" && actor !== "dual" && actor !== "platform" && actor !== "project" && actor !== "foreign-role") throw new Error("invalid fixture token");
       const organizationId = actor === "other" ? OTHER_ORG : ORG;
       const roles: AuthContext["roles"] = actor === "dual" || actor === "foreign-role"
@@ -176,7 +176,7 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     if (status === 200) expect(result.body.items).toEqual(expect.any(Array));
   });
 
-  it.each<[string, Record<string, ContractJsonValue>, string?, "dual"?]>([
+  it.each<[string, Record<string, ContractJsonValue>, string?, ("admin" | "dual")?]>([
     ["foreign project", { projectId: "foreign-project" }],
     ["dual-role foreign project", { projectId: "foreign-project" }, undefined, "dual"],
     ["foreign revision", { configRevisionId: "foreign-revision" }],

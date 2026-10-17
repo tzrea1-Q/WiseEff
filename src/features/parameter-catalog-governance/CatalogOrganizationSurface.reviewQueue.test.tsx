@@ -18,19 +18,19 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
         onAnchorChange={(href) => setSearch(new URL(href, "http://localhost").search)} />;
     }
     render(<Host />);
-    await userEvent.click(await screen.findByRole("button", { name: "处理审核", exact: true }));
-    const editor = await screen.findByRole("dialog", { name: "处理审核", exact: true });
+    await userEvent.click(await screen.findByRole("button", { name: "处理审核" }));
+    const editor = await screen.findByRole("dialog", { name: "处理审核" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    await userEvent.type(within(editor).getByRole("textbox", { name: "原因", exact: true }), "保留审核草稿");
+    await userEvent.type(within(editor).getByRole("textbox", { name: "原因" }), "保留审核草稿");
     await userEvent.keyboard("{Escape}");
     const discard = await screen.findByRole("dialog", { name: "放弃未保存的审核处理？" });
     await userEvent.click(within(discard).getByRole("button", { name: "继续编辑" }));
-    expect(screen.getByRole("textbox", { name: "原因", exact: true })).toHaveValue("保留审核草稿");
+    expect(screen.getByRole("textbox", { name: "原因" })).toHaveValue("保留审核草稿");
     await userEvent.keyboard("{Escape}");
     await userEvent.click(within(await screen.findByRole("dialog", { name: "放弃未保存的审核处理？" })).getByRole("button", { name: "放弃修改" }));
-    const list = await screen.findByRole("dialog", { name: "待审核事项", exact: true });
-    expect(within(list).getByRole("heading", { name: "待审核事项", exact: true })).toHaveFocus();
-    expect(within(list).getByRole("button", { name: "处理审核", exact: true })).toBeVisible();
+    const list = await screen.findByRole("dialog", { name: "待审核事项" });
+    expect(within(list).getByRole("heading", { name: "待审核事项" })).toHaveFocus();
+    expect(within(list).getByRole("button", { name: "处理审核" })).toBeVisible();
   });
 
   it("releases queue count overrides on close so a later catalog read can show newly arrived work", async () => {
@@ -39,11 +39,11 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     const props = { ...ports, actor: "org-admin" as const, organizationId: CATALOG_ORGANIZATION_ID,
       currentPersonId: "admin", onAnchorChange: vi.fn() };
     const view = render(<CatalogOrganizationSurface {...props} search="?review=open" />);
-    const dialog = await screen.findByRole("dialog", { name: "待审核事项", exact: true });
+    const dialog = await screen.findByRole("dialog", { name: "待审核事项" });
     await within(dialog).findByRole("table");
     await waitFor(() => expect(screen.getByRole("button", { name: /待审核事项/ })).toHaveTextContent("1"));
-    await userEvent.click(within(dialog).getByRole("button", { name: "关闭", exact: true }));
-    list.mockResolvedValue({ items: [catalogReviewItem], nextCursor: "next", totalCount: 4,
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    list.mockResolvedValue({ items: [catalogReviewItem], nextCursor: "next", totalCount: 4, hasMore: true,
       catalogReleaseId: catalogReviewItem.catalogReleaseId });
     view.rerender(<CatalogOrganizationSurface {...props} search="?q=gpio" />);
     await waitFor(() => expect(screen.getByRole("button", { name: /待审核事项/ })).toHaveTextContent("4"));

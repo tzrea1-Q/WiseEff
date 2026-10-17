@@ -67,7 +67,7 @@ describe("historical registry isolation", () => {
     for (const subject of subjects) {
       expect(within(subjectsList).getByText(subject.canonicalName, { exact: true })).toBeVisible();
     }
-    expect(screen.getByRole("button", { name: "调整归属：acme,power", exact: true })).toBeVisible();
+    expect(screen.getByRole("button", { name: "调整归属：acme,power" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "来源识别结果" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "模块" })).toHaveAttribute("aria-selected", "true");
   });
@@ -89,7 +89,6 @@ describe("historical registry isolation", () => {
       const pendingHistory = new Promise<never>((_resolve, reject) => { rejectHistory = reject; });
       const repository = createTestModuleRegistryRepository({
         getRegistry: vi.fn().mockResolvedValue(registry),
-        getDiscoveryHints: vi.fn(),
         listDriverRegistry: vi.fn().mockReturnValue(
           scenario === "failed history" ? pendingHistory : Promise.resolve({ items: [] })
         )
@@ -131,7 +130,7 @@ describe("historical registry isolation", () => {
       expect(screen.getByRole("treeitem", { name: /规范驱动组/ })).toBeInTheDocument();
       expect(screen.queryByText("没有匹配的模块。")).not.toBeInTheDocument();
       expect(screen.queryByText("正在加载模块注册表…")).not.toBeInTheDocument();
-      expect(repository.getDiscoveryHints).not.toHaveBeenCalled();
+      expect(repository).not.toHaveProperty("getDiscoveryHints");
       await userEvent.click(screen.getByRole("tab", { name: "来源识别" }));
       expect(await screen.findByText("vendor,device")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "编写覆盖解析" })).not.toBeInTheDocument();
@@ -163,9 +162,8 @@ describe("historical registry isolation", () => {
       .mockReturnValueOnce(pendingHistory)
       .mockResolvedValue({ items: [] });
     const getRegistry = vi.fn().mockResolvedValue(EMPTY_PARAMETER_MODULE_REGISTRY);
-    const getDiscoveryHints = vi.fn();
     const repository = createTestModuleRegistryRepository({
-      getRegistry, getDiscoveryHints, listDriverRegistry
+      getRegistry, listDriverRegistry
     });
     const listSubjects = vi.fn().mockResolvedValue({
       items: [unregisteredSubject], totalCount: 1, hasMore: false, nextCursor: null,
@@ -207,7 +205,7 @@ describe("historical registry isolation", () => {
     expect(listDriverRegistry).toHaveBeenCalledTimes(3);
     expect(getRegistry).toHaveBeenCalledTimes(1);
     expect(listSubjects).toHaveBeenCalledTimes(1);
-    expect(getDiscoveryHints).not.toHaveBeenCalled();
+    expect(repository).not.toHaveProperty("getDiscoveryHints");
     await userEvent.click(screen.getByRole("tab", { name: "模块" }));
     const restored = await screen.findByRole("region", { name: "规范主体归属" });
     expect(await within(restored).findByText(unregisteredSubject.canonicalName)).toBeVisible();

@@ -25,7 +25,7 @@ import {
   type CatalogMockScenario
 } from "@/application/parameter-catalog/mockAdapter";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
-import { buildCatalogHref, parseCatalogUrlAnchor } from "@/application/parameter-catalog/urlAnchor";
+import { buildCatalogHref, EMPTY_CATALOG_URL_ANCHOR, parseCatalogUrlAnchor } from "@/application/parameter-catalog/urlAnchor";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogListQuery, CatalogSubjectListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { CatalogPage } from "./CatalogPage";
@@ -47,6 +47,7 @@ function deferred<T>() {
 
 function wrapAfterGate(repository: ParameterCatalogRepository, gate: Promise<void>): ParameterCatalogRepository {
   return {
+    ...repository,
     getCatalog: async (query) => {
       await gate;
       return repository.getCatalog(query);
@@ -178,7 +179,7 @@ function renderCatalog(
 ) {
   const ports = createMockCatalogPorts({ scenario: options.scenario ?? "ready" });
   const repository = options.repository ?? ports.catalog;
-  const onHref = options.onHref ?? vi.fn();
+  const onHref = vi.fn(options.onHref ?? (() => undefined));
   const view = render(
     <CatalogHarness
       repository={repository}
@@ -295,7 +296,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
         { ...activeDefinition, id: "deprecated", propertyKey: "deprecated-key", lifecycle: "deprecated" },
         { ...activeDefinition, id: "retired", propertyKey: "retired-key", lifecycle: "retired" },
         { ...activeDefinition, id: "registration-retired", propertyKey: "registration-key",
-          registration: { ...registeredSubject.registration, status: "retired" } }
+          registration: { ...registeredSubject.registration, status: "retired", id: "registration-retired" } }
       ], totalCount: 3, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID
     });
     renderCatalog({ repository, definitionAuthoringAllowed: true, definitionPublishingAllowed: true,
@@ -367,7 +368,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     renderCatalog({ repository, onHref, search: `?subjectId=${subjectId}&definitionId=${definition.id}` });
     await screen.findByRole("dialog", { name: `查看 ${definition.propertyKey}` });
     expect(onHref.mock.calls.some(([href]) => parseCatalogUrlAnchor(href.slice(href.indexOf("?"))).subjectId !== subjectId)).toBe(false);
-    expect(within(screen.getByRole("navigation", { name: "参数定义模块树" })).getByRole("button", { name: `选择主体 ${retiredAnchor ? historicalSubject.canonicalName : registeredSubject.canonicalName}`, exact: true })).toHaveAttribute("aria-pressed", "true");
+    expect(within(screen.getByRole("navigation", { name: "参数定义模块树" })).getByRole("button", { name: `选择主体 ${retiredAnchor ? historicalSubject.canonicalName : registeredSubject.canonicalName}` })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", retiredAnchor ? "ready" : "retired"));
   });
 
@@ -381,12 +382,12 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
       renderDefinitionEditor: () => <p>完整详情</p> });
     const user = userEvent.setup();
     const rowAction = await screen.findByRole("button", { name: `编辑 ${activeDefinition.propertyKey}` });
-    await user.click(screen.getByRole("button", { name: "收起 Root", exact: true }));
+    await user.click(screen.getByRole("button", { name: "收起 Root" }));
     const before = list.mock.calls.at(-1);
     await user.click(rowAction);
     await screen.findByRole("dialog", { name: `编辑 ${activeDefinition.propertyKey}` });
     expect(screen.getByRole("button", { name: /^Root\s*1$/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "展开 Root", exact: true })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "展开 Root" })).toHaveAttribute("aria-expanded", "false");
     const href = onHref.mock.calls.at(-1)![0] as string;
     expect(parseCatalogUrlAnchor(href.slice(href.indexOf("?")))).toMatchObject({
       moduleNodeId: CATALOG_MODULE_ID, subjectId: null, q: "GPIO", lifecycle: "active", pageSize: 20, cursor: "opaque-next"
@@ -395,10 +396,10 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(repository.listSubjectDefinitions).not.toHaveBeenCalled();
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "展开 Root", exact: true })).toHaveAttribute("aria-expanded", "false");
-    await user.click(screen.getByRole("button", { name: "后退", exact: true }));
+    expect(screen.getByRole("button", { name: "展开 Root" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: "后退" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "前进", exact: true }));
+    await user.click(screen.getByRole("button", { name: "前进" }));
     expect(screen.getByRole("button", { name: /^Root\s*1$/ })).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -455,10 +456,11 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const base = await ports.catalog.getDefinition(CATALOG_DEFINITION_ID);
     const previous = { ...base.item.currentRevision, id: "revision-old", revisionNumber: 1, displayName: "原显示名称" };
     const revisions = vi.spyOn(ports.catalog, "listDefinitionRevisions").mockImplementation(async (_id, query) => ({
+      catalogReleaseId: CATALOG_RELEASE_ID, totalCount: 2,
       items: [query?.cursor ? previous : base.item.currentRevision],
       hasMore: !query?.cursor, nextCursor: query?.cursor ? null : "revision-page-2"
     }));
-    const timeline = vi.spyOn(ports.catalog, "listDefinitionTimeline").mockResolvedValue({ items: [], hasMore: false, nextCursor: null });
+    const timeline = vi.spyOn(ports.catalog, "listDefinitionTimeline").mockResolvedValue({ catalogReleaseId: CATALOG_RELEASE_ID, totalCount: 0, items: [], hasMore: false, nextCursor: null });
     renderCatalog({ repository: ports.catalog, search: `?definitionId=${CATALOG_DEFINITION_ID}` });
     await user.click(await screen.findByRole("button", { name: /查看历史/ }));
     await user.click(await screen.findByRole("button", { name: "加载更多历史" }));
@@ -480,7 +482,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(within(task).getByRole("region", { name: "节点对应确认" })).toHaveTextContent("只读历史证据");
     expect(within(task).queryByRole("table", { name: "参数定义列表" })).not.toBeInTheDocument();
     const navigator = screen.getByRole("region", { name: "模块导航" });
-    await user.click(await within(navigator).findByRole("button", { name: "展开 Root", exact: true }));
+    await user.click(await within(navigator).findByRole("button", { name: "展开 Root" }));
     const module = await within(navigator).findByRole("button", { name: /southchip,sc8562/ });
     await user.click(within(navigator).getByRole("button", { name: "收起模块导航" }));
     expect(module).not.toBeVisible();
@@ -497,7 +499,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const navigator = screen.getByRole("region", { name: "模块导航" });
     const task = screen.getByRole("region", { name: "目录列表" });
     expect(within(toolbar).getByRole("searchbox", { name: "搜索参数定义" })).toBeVisible();
-    expect(within(toolbar).queryByRole("button", { name: "搜索", exact: true })).not.toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "搜索" })).not.toBeInTheDocument();
     expect(toolbar.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(navigator.compareDocumentPosition(task) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(navigator).getByRole("button", { name: "收起模块导航" })).toBeVisible();
@@ -532,7 +534,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(mode).toBe("replace");
     fireEvent.click(within(input.closest("form")!).getByRole("button", { name: "清空输入" }));
     await waitFor(() => expect(new URL(onHref.mock.calls.at(-1)![0], "http://localhost").searchParams.has("q")).toBe(false));
-    expect(screen.queryByRole("button", { name: "搜索", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "搜索" })).not.toBeInTheDocument();
   });
 
   it("waits for Chinese composition to finish before searching", async () => {
@@ -677,7 +679,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(inventory.listDefinitions).toHaveBeenCalledWith(expect.objectContaining({
       placementModuleId: "module_inventory_0", catalogReleaseId: CATALOG_RELEASE_ID
     }));
-    expect(screen.queryByRole("button", { name: "全部定义", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "全部定义" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Inventory module 0\s*101$/ }));
     await waitFor(() => expect(screen.queryByText("已选模块子树 · 101 个主体")).not.toBeInTheDocument());
     expect(within(screen.getByRole("table", { name: "参数定义列表" })).getByText("gpio-int")).toBeVisible();
@@ -775,7 +777,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const inventory = pagedInventory();
     renderCatalog({ repository: inventory.repository, search: `?catalogReleaseId=${CATALOG_RELEASE_ID}` });
     expect(await screen.findByRole("button", { name: /^Inventory module 0\s*101$/ })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "展开 Inventory module 0", exact: true }));
+    await user.click(screen.getByRole("button", { name: "展开 Inventory module 0" }));
     inventory.listSubjects.mockImplementation(async (query) => {
       if (query?.cursor) throw new Error("refresh second page failed");
       return inventory.first;
@@ -832,8 +834,8 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     await screen.findByRole("region", { name: "参数定义目录" });
     await waitFor(() => expect(hrefs.some((href) => href.includes(`catalogReleaseId=${CATALOG_RELEASE_ID}`))).toBe(true));
 
-    await user.click(await screen.findByRole("button", { name: "展开 Root", exact: true }));
-    await user.click(screen.getByRole("button", { name: "选择主体 southchip,sc8562", exact: true }));
+    await user.click(await screen.findByRole("button", { name: "展开 Root" }));
+    await user.click(screen.getByRole("button", { name: "选择主体 southchip,sc8562" }));
     const table = await screen.findByRole("table", { name: "参数定义列表" });
     await user.click(within(table).getByText("gpio-int"));
 
@@ -862,6 +864,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     renderCatalog({
       search: buildCatalogHref({
+        ...EMPTY_CATALOG_URL_ANCHOR,
         subjectId: CATALOG_SUBJECT_ID,
         definitionId: CATALOG_DEFINITION_ID,
         catalogReleaseId: CATALOG_RELEASE_ID,
@@ -982,7 +985,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
 
   it("lets an administrator select the first published, unregistered subject from the list", async () => {
     renderCatalog({ actor: "org-admin", scenario: "unregistered" });
-    await userEvent.click(await screen.findByRole("button", { name: "展开 未登记主体", exact: true }));
+    await userEvent.click(await screen.findByRole("button", { name: "展开 未登记主体" }));
     const subjectLeaves = await screen.findAllByRole("button", { name: /^选择主体 / });
     await userEvent.click(subjectLeaves[0]!);
     await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "unregistered"));
@@ -999,8 +1002,8 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(screen.getByRole("status", { name: "正在加载目录" })).toBeInTheDocument();
     expect(loadingPage).toHaveAttribute("data-writes-enabled", "false");
     gate.resolve();
-    await userEvent.click(await screen.findByRole("button", { name: "展开 Root", exact: true }));
-    await screen.findByRole("button", { name: "选择主体 southchip,sc8562", exact: true });
+    await userEvent.click(await screen.findByRole("button", { name: "展开 Root" }));
+    await screen.findByRole("button", { name: "选择主体 southchip,sc8562" });
     unmount();
 
     const { unmount: unmountError } = renderCatalog({ scenario: "error" });
@@ -1036,6 +1039,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     renderCatalog({
       scenario: "retired",
       search: buildCatalogHref({
+        ...EMPTY_CATALOG_URL_ANCHOR,
         subjectId: CATALOG_SUBJECT_ID,
         definitionId: CATALOG_DEFINITION_ID,
         catalogReleaseId: CATALOG_RELEASE_ID,
@@ -1074,8 +1078,8 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     };
     const user = userEvent.setup();
     renderCatalog({ repository });
-    await user.click(await screen.findByRole("button", { name: "展开 Root", exact: true }));
-    await screen.findByRole("button", { name: "选择主体 southchip,sc8562", exact: true });
+    await user.click(await screen.findByRole("button", { name: "展开 Root" }));
+    await screen.findByRole("button", { name: "选择主体 southchip,sc8562" });
     blocked = true;
     // A scope change reloads the collection; there is no refresh button.
     await selectControlOption(screen.getByLabelText("每页条数"), "20");
@@ -1096,8 +1100,8 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const { unmount } = renderCatalog({ layoutMode: "tablet" });
     const page = await screen.findByRole("region", { name: "参数定义目录" });
     expect(page).toHaveAttribute("data-catalog-layout", "tablet");
-    await user.click(await screen.findByRole("button", { name: "展开 Root", exact: true }));
-    await user.click(screen.getByRole("button", { name: "选择主体 southchip,sc8562", exact: true }));
+    await user.click(await screen.findByRole("button", { name: "展开 Root" }));
+    await user.click(screen.getByRole("button", { name: "选择主体 southchip,sc8562" }));
     const table = await screen.findByRole("table", { name: "参数定义列表" });
     await user.click(within(table).getByText("gpio-int"));
     const sheet = await screen.findByRole("dialog", { name: /gpio-int/ });
@@ -1111,6 +1115,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     renderCatalog({
       layoutMode: "mobile",
       search: buildCatalogHref({
+        ...EMPTY_CATALOG_URL_ANCHOR,
         subjectId: CATALOG_SUBJECT_ID,
         definitionId: CATALOG_DEFINITION_ID,
         catalogReleaseId: CATALOG_RELEASE_ID,

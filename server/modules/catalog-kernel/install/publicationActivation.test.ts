@@ -6,7 +6,8 @@ import * as authorization from "../../catalog-publication/authorization/authoriz
 import type { VerifiedPublicationAuthorization } from "../../catalog-publication/authorization/types";
 import { encodeBundleBytes, refreshSuccessorSource } from "../../catalog-publication/builder/bundleCodec";
 import * as store from "../../catalog-publication/persistence/store";
-import type { CatalogActivationReceiptRecord, PublicationCandidateRecord, PublicationJobRecord, ReleaseArtifactRecord } from "../../catalog-publication/persistence/types";
+import type { CatalogActivationReceiptRecord, PublicationJobRecord } from "../../catalog-publication/persistence/types";
+import { CatalogArtifactId } from "../../parameter-catalog-contract/index";
 import * as freeze from "../../catalog-publication/runtime/freeze";
 import { compileCatalogRelease } from "../compiler/index";
 import type { CatalogReleaseDocument } from "../compiler/types";
@@ -127,13 +128,19 @@ describe("stored publication candidate retired owner boundary", () => {
     vi.spyOn(freeze, "isPublicationFrozen").mockResolvedValue(false);
     vi.spyOn(authorization, "verifyAuthorizationForActivation").mockResolvedValue({ ok: true, value: {} as VerifiedPublicationAuthorization });
     vi.spyOn(store, "getCandidate").mockResolvedValue({ ok: true, value: {
+      id: command.candidateId, artifactId: CatalogArtifactId("cart_old"),
       artifactDigest: prepared.compiled.aggregateDigest,
       expectedBaseReleaseId: command.expectedCurrent.id, expectedBaseReleaseDigest: command.expectedCurrent.digest,
-    } as PublicationCandidateRecord });
+      proposalId: null, proposalRevisionId: null, identityAllocation: {},
+      impactReportDigest: "sha256:fixture-impact", capabilityContract: {}, createdAt: "2026-10-16T00:00:00Z",
+    } });
     vi.spyOn(store, "getArtifactByDigest").mockResolvedValue({ ok: true, value: {
+      id: CatalogArtifactId("cart_old"), bytesChecksum: "sha256:fixture-bytes", sourceKind: "typed-changeset",
       artifactDigest: prepared.compiled.aggregateDigest, artifactBytes: encodeBundleBytes(prepared.bundle),
       targetReleaseId: prepared.compiled.release.id, targetReleaseDigest: prepared.compiled.release.digest,
-    } as ReleaseArtifactRecord });
+      predecessorReleaseId: command.expectedCurrent.id, predecessorReleaseDigest: command.expectedCurrent.digest,
+      toolchain: {}, createdAt: "2026-10-16T00:00:00Z",
+    } });
     await expect(activateOnlinePublication(client, command)).rejects.toMatchObject({ activationError: {
       kind: "publication-not-authorized", reason: "subject-retired",
     } });

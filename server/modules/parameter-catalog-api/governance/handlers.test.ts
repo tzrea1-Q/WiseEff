@@ -179,7 +179,7 @@ function createHarness(
     listReviewQueue: async (query) => {
       calls.push("listReviewQueue");
       commands.push(query);
-      return { ok: true, value: { items: [reviewItem], catalogRelease: pin } };
+      return { ok: true, value: { items: [reviewItem], catalogRelease: pin, ignoredReviewItemCount: 0 } };
     },
     getReviewItem: async (query) => {
       calls.push("getReviewItem");

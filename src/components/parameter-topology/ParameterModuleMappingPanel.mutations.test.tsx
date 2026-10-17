@@ -17,7 +17,7 @@ describe("module mutation failure through the real page callbacks", () => {
     await userEvent.click(await screen.findByRole("button", { name: "新建模块" }));
     const dialog = screen.getByRole("dialog", { name: "新增根模块" });
     fireEvent.change(within(dialog).getByLabelText("模块名称"), { target: { value: "保留输入" } });
-    await userEvent.click(within(dialog).getByRole("button", { name: "创建", exact: true }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "创建" }));
     expect(await within(dialog).findByRole("alert")).toBeVisible();
     expect(within(dialog).getByLabelText("模块名称")).toHaveValue("保留输入");
     expect(repository.createModule).toHaveBeenCalledTimes(1);

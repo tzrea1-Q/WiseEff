@@ -43,7 +43,7 @@ describe("mock module registry withdrawal", () => {
 
       if (pathname.endsWith("/queue")) {
         expect(screen.queryByRole("tree", { name: "模块归属树" })).not.toBeInTheDocument();
-        await userEvent.click(screen.getByRole("tab", { name: "模块", exact: true }));
+        await userEvent.click(screen.getByRole("tab", { name: "模块" }));
       }
       await screen.findByRole("tree", { name: "模块归属树" });
       expect(screen.queryAllByRole("button", { name: /全量重算|登记驱动|前往归类|归类|认领|忽略|恢复/ }))

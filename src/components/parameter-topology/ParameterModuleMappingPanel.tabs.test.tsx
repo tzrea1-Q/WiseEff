@@ -84,7 +84,7 @@ describe("module governance workbench tabs", () => {
     expect(detail).toHaveTextContent("未记录");
     expect(within(detail).queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
     await userEvent.click(within(detail).getByRole("button", { name: "关闭" }));
-    await userEvent.click(screen.getByRole("tab", { name: "模块", exact: true }));
+    await userEvent.click(screen.getByRole("tab", { name: "模块" }));
     expect(screen.queryByRole("table", { name: "历史驱动注册表" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
     expect(await screen.findByRole("table", { name: "历史驱动注册表" })).toBeVisible();

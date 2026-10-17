@@ -19,6 +19,7 @@ describe("catalog URL and release anchors", () => {
   });
   it("round-trips opaque subject, definition, review, and catalog release ids", () => {
     const search = serializeCatalogUrlAnchor({
+      ...parseCatalogUrlAnchor(""),
       subjectId: CATALOG_SUBJECT_ID,
       definitionId: CATALOG_DEFINITION_ID,
       catalogReleaseId: CATALOG_RELEASE_ID,

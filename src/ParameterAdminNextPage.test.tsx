@@ -677,7 +677,7 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
     );
     expect(await within(dialog).findByRole("region", { name: "导入处理回执" })).toHaveTextContent("api-import-batch");
     expect(screen.getByRole("dialog", { name: "批量参数导入" })).toBeVisible();
-    fireEvent.click(within(dialog).getByRole("button", { name: "完成", exact: true }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "完成" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "批量参数导入" })).not.toBeInTheDocument()
     );

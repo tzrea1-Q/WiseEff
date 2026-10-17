@@ -45,7 +45,7 @@ test.describe("canonical parameter catalog page", () => {
     await openCatalogViaNav(page, "org-admin");
     const region = catalogPage(page);
     await expect(region).toHaveAttribute("data-catalog-page", "true");
-    await expect(page.getByLabel("目录发布")).toContainText(fixture.chain.pinF.id);
+    await expect(region).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
     const document = await catalogJson(page.request, "GET", "/api/v2/catalog");
     expect(document.status).toBe(200);
     expect((document.body as { item: { catalogReleaseId: string } }).item.catalogReleaseId).toBe(
@@ -196,13 +196,13 @@ test.describe("canonical parameter catalog page", () => {
     await catalogScreenshot(page, testInfo, "pcat-ui-05-timeline");
   });
 
-  test("exposes only role-authorized ready actions while keeping the Catalog Release visible", async ({
+  test("exposes only role-authorized ready actions while keeping the Catalog Release pinned", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-06
     // @operation PCAT-READY-ACTIONS-001
     const assertReleaseVisible = async () => {
-      await expect(page.getByLabel("目录发布")).toContainText(fixture.chain.pinF.id);
+      await expect(catalogPage(page)).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
     };
 
     await signInCatalogActor(page, "user", CATALOG_PAGE_PATH);

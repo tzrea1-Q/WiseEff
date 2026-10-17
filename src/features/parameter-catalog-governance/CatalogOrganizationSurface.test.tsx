@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
-import { activeDefinition, CATALOG_ORGANIZATION_ID, readyCatalogDocument, registeredSubject } from "@/application/parameter-catalog/fixtures";
+import { activeDefinition, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID, readyCatalogDocument, registeredSubject } from "@/application/parameter-catalog/fixtures";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import type { CatalogPageProps } from "@/features/parameter-catalog/CatalogPage";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -38,8 +38,8 @@ const firstSubjects = Array.from({ length: 100 }, (_, index) => ({
   canonicalName: `主体 ${index + 1}`
 }));
 const laterSubject = { ...registeredSubject, id: "subject-101", canonicalName: "最后一页主体" };
-const firstPage: SubjectPage = { items: firstSubjects, hasMore: true, nextCursor: "page-2" };
-const lastPage: SubjectPage = { items: [laterSubject], hasMore: false, nextCursor: null };
+const firstPage: SubjectPage = { items: firstSubjects, hasMore: true, nextCursor: "page-2", totalCount: 101, catalogReleaseId: CATALOG_RELEASE_ID };
+const lastPage: SubjectPage = { items: [laterSubject], hasMore: false, nextCursor: null, totalCount: 101, catalogReleaseId: CATALOG_RELEASE_ID };
 
 function deferredPage() {
   let resolve!: (page: SubjectPage) => void;
@@ -75,13 +75,13 @@ describe("CatalogOrganizationSurface editor subject collection", () => {
       search: "?review=open", onAnchorChange: vi.fn(), currentPersonId: "person-admin" };
     const view = render(<CatalogOrganizationSurface {...props} organizationId={CATALOG_ORGANIZATION_ID}
       catalog={oldPorts.catalog} governance={oldPorts.governance} />);
-    await userEvent.click(await screen.findByRole("button", { name: "处理审核", exact: true }));
+    await userEvent.click(await screen.findByRole("button", { name: "处理审核" }));
     await waitFor(() => expect(oldRead).toHaveBeenCalledTimes(1));
     const newPorts = createMockCatalogPorts({ scenario: "ready" });
     vi.spyOn(newPorts.catalog, "listSubjects").mockResolvedValue({ ...lastPage, items: [registeredSubject, laterSubject] });
     view.rerender(<CatalogOrganizationSurface {...props} organizationId="new-org"
       catalog={newPorts.catalog} governance={newPorts.governance} />);
-    await userEvent.click(await screen.findByRole("button", { name: "关闭", exact: true }));
+    await userEvent.click(await screen.findByRole("button", { name: "关闭" }));
     await userEvent.click(screen.getByRole("button", { name: "打开定义编辑器" }));
     await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取主体列表" })).not.toBeInTheDocument());
     expect((await readSubjectOptions()).find((option) => option.textContent === laterSubject.canonicalName)).toBeDefined();

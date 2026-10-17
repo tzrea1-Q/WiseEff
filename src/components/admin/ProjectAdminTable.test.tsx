@@ -57,7 +57,7 @@ function renderTable(overrides: {
   const onUpdateSearch = overrides.onUpdateSearch ?? vi.fn();
   const onEditProject = overrides.onEditProject ?? vi.fn();
   const onDeleteProject = overrides.onDeleteProject ?? vi.fn();
-  const onManageFiles = overrides.onManageFiles ?? vi.fn();
+  const onManageFiles = vi.fn(overrides.onManageFiles);
   const view = render(
     <ProjectAdminTable
       rows={overrides.rows ?? rows}
@@ -97,7 +97,7 @@ describe("ProjectAdminTable", () => {
     expect(measurements.sortControls).toHaveLength(3);
     expect(() => requireCompactControlHeights(measurements, "/parameter-admin/projects")).not.toThrow();
     for (const name of ["筛选状态", "项目名称", "参数", "最近更新"]) {
-      expect(screen.getByRole("button", { name, exact: true })).toHaveClass("compact-filter-control");
+      expect(screen.getByRole("button", { name })).toHaveClass("compact-filter-control");
     }
   });
 

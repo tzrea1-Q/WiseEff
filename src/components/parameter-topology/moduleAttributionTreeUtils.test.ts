@@ -212,6 +212,8 @@ describe("moduleAttributionTreeUtils", () => {
         parameterCount: 1,
         observed: true,
         notYetObserved: false,
+        driverNature: null,
+        instanceCardinality: null,
         parseCoverages: [
           {
             compatible: "a",
@@ -254,6 +256,8 @@ describe("moduleAttributionTreeUtils", () => {
         parameterCount: 1,
         observed: true,
         notYetObserved: false,
+        driverNature: null,
+        instanceCardinality: null,
         parseCoverages: [
           {
             compatible: "a",
@@ -292,6 +296,8 @@ describe("moduleAttributionTreeUtils", () => {
         parameterCount: 1,
         observed: true,
         notYetObserved: false,
+        driverNature: null,
+        instanceCardinality: null,
         parseCoverages: [
           {
             compatible: "a",
@@ -337,6 +343,8 @@ describe("moduleAttributionTreeUtils", () => {
         parameterCount: 1,
         observed: true,
         notYetObserved: false,
+        driverNature: null,
+        instanceCardinality: null,
         parseCoverages: [{ compatible: "a", coverage: { covered: false } }]
       }
     ]);

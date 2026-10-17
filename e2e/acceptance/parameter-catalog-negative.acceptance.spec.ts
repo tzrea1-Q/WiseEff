@@ -75,11 +75,13 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await dialog.getByText("标为范围外").click();
     const reason = dialog.getByRole("textbox", { name: "原因" });
     await reason.fill("op08 conflict keep this reason");
+    let resolveRequests = 0;
     await page.route("**/parameter-review-items/**/resolve", async (route) => {
       if (route.request().method() !== "POST") {
         await route.continue();
         return;
       }
+      resolveRequests += 1;
       await route.fulfill({
         status: 409,
         contentType: "application/json",
@@ -96,11 +98,18 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await confirmGovernanceDialog(page, "确认处理");
     await expect(page.locator("[data-preserve-input='true']")).toBeVisible();
     await expect(reason).toHaveValue("op08 conflict keep this reason");
-    await expect(page.getByRole("alert")).toContainText("目录发布已变化");
-    const refresh = page.getByRole("button", { name: "刷新证据" });
-    if (await refresh.isVisible().catch(() => false)) {
-      await refresh.click();
-    }
+    await expect(page.getByRole("alert")).toContainText("审核状态已变化");
+    await expect(dialog.getByRole("button", { name: "刷新证据" })).toHaveCount(0);
+    const refreshed = page.waitForResponse((response) => response.request().method() === "GET"
+      && /\/parameter-review-items\/[^/?]+$/.test(new URL(response.url()).pathname));
+    await dialog.getByRole("button", { name: "继续确认" }).click();
+    expect((await refreshed).status()).toBe(200);
+    const confirmation = page.getByRole("dialog", { name: "确认处理审核" });
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation.getByRole("checkbox")).not.toBeChecked();
+    await expect(reason).toHaveValue("op08 conflict keep this reason");
+    expect(resolveRequests).toBe(1);
+    await confirmation.getByRole("button", { name: "返回修改" }).click();
     const after = await countProposals(fixture.pool);
     expect(after).toBe(before);
     await page.unroute("**/parameter-review-items/**/resolve");

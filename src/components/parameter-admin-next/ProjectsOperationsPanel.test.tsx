@@ -41,7 +41,7 @@ describe("project operations recovery and navigation", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: `${label} ${item.name}` }));
     expect(updateProject).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toHaveTextContent("规范历史");
-    fireEvent.click(screen.getByRole("button", { name: confirmLabel, exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: confirmLabel }));
     await waitFor(() => expect(updateProject).toHaveBeenCalledWith(item.id, { status: nextStatus }));
   });
   it("offers a retry on API failure without falsely reporting a missing project", async () => {

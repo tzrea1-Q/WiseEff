@@ -13,6 +13,7 @@ import {
 } from "./states";
 import {
   CATALOG_RELEASE_ID,
+  CATALOG_REGISTRATION_ID,
   CATALOG_SUBJECT_ID,
   activeDefinition,
   catalogReviewItem,
@@ -144,7 +145,7 @@ describe("catalog domain states", () => {
 
   it("treats retired registration evidence on the definition as read-only even before the subject read catches up", () => {
     expect(deriveCatalogDomainState({ document: readyCatalogDocument, subject: registeredSubject,
-      definition: { ...activeDefinition, registration: { ...registeredSubject.registration, status: "retired" } }
+      definition: { ...activeDefinition, registration: { ...registeredSubject.registration, id: CATALOG_REGISTRATION_ID, status: "retired" } }
     })).toMatchObject({ kind: "retired", target: "registration", writesEnabled: false, catalogReleaseId: CATALOG_RELEASE_ID });
   });
 

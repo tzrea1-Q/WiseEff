@@ -3,7 +3,7 @@ import { ACCEPTANCE_ORGANIZATION } from "./cast";
 
 export type AcceptanceRuntimeEnv = Record<string, string | undefined>;
 
-export function createBearerTokenForUser(userId: string, email: string, name: string, scopedOrganizationId = ACCEPTANCE_ORGANIZATION.id, env: AcceptanceRuntimeEnv = process.env) {
+export function createBearerTokenForUser(userId: string, email: string, name: string, scopedOrganizationId: string = ACCEPTANCE_ORGANIZATION.id, env: AcceptanceRuntimeEnv = process.env) {
   const issuer = env.AUTH_TOKEN_ISSUER?.trim();
   const secret = env.AUTH_TOKEN_HMAC_SECRET?.trim();
   if (!issuer || !secret) return null;

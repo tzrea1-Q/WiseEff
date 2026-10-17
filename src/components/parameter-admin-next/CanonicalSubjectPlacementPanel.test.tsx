@@ -29,7 +29,7 @@ function subject(
   return {
     ...unregisteredSubject,
     ...overrides,
-    membership: { status: "active" as const, catalogReleaseId: CATALOG_RELEASE_ID },
+    membership: { ...unregisteredSubject.membership, status: "active" as const, catalogReleaseId: CATALOG_RELEASE_ID },
     registration: { status: "unregistered" as const },
     definitionCounts: { active: 1, deprecated: 0, retired: 0 }
   };
@@ -62,7 +62,7 @@ function createPorts() {
       ...registeredSubject.registration,
       id: "registration-driver",
       placement: {
-        ...registeredSubject.registration.placement,
+        ...(registeredSubject.registration.status === "unregistered" ? undefined : registeredSubject.registration.placement),
         moduleId: "issue897-driver-a"
       }
     }
@@ -150,7 +150,7 @@ function createPorts() {
     listSubjects,
     listDefinitions
   } as unknown as ParameterCatalogRepository;
-  const listRegistrations = vi.fn(async () => ({
+  const listRegistrations = vi.fn<ParameterCatalogGovernanceRepository["listRegistrations"]>(async () => ({
     items: [
       {
         id: "registration-driver",
@@ -172,7 +172,7 @@ function createPorts() {
     nextCursor: null,
     catalogReleaseId: CATALOG_RELEASE_ID
   }));
-  const createRegistration = vi.fn(async () => ({
+  const createRegistration = vi.fn<ParameterCatalogGovernanceRepository["createRegistration"]>(async () => ({
     item: {
       id: "registration-node",
       organizationId: CATALOG_ORGANIZATION_ID,
@@ -188,7 +188,7 @@ function createPorts() {
       catalogReleaseId: CATALOG_RELEASE_ID
     }
   }));
-  const getRegistration = vi.fn(async () => ({
+  const getRegistration = vi.fn<ParameterCatalogGovernanceRepository["getRegistration"]>(async () => ({
     item: {
       id: "registration-driver",
       organizationId: CATALOG_ORGANIZATION_ID,
@@ -205,7 +205,7 @@ function createPorts() {
       impact: { bindingCount: 1, projectCount: 1 }
     }
   }));
-  const getPlacement = vi.fn(async () => ({
+  const getPlacement = vi.fn<(...args: Parameters<ParameterCatalogGovernanceRepository["getPlacement"]>) => Promise<Awaited<ReturnType<ParameterCatalogGovernanceRepository["getPlacement"]>> & { etag: string }>>(async () => ({
     item: {
       id: "placement-driver",
       displayName: "Driver A",
@@ -214,7 +214,7 @@ function createPorts() {
     },
     etag: "etag-driver"
   }));
-  const updatePlacement = vi.fn(async () => ({
+  const updatePlacement = vi.fn<ParameterCatalogGovernanceRepository["updatePlacement"]>(async () => ({
     item: {
       id: "placement-driver",
       displayName: "Driver B",
@@ -287,7 +287,8 @@ describe("CanonicalSubjectPlacementPanel", () => {
 
   it("shows the first batch while later pages load, blocks writes and stops cancelled pagination", async () => {
     const ports = createPorts();
-    const secondPage = Promise.withResolvers<Awaited<ReturnType<typeof ports.listSubjects>>>();
+    let resolveSecondPage!: (value: Awaited<ReturnType<typeof ports.listSubjects>>) => void;
+    const secondPage = { promise: new Promise<Awaited<ReturnType<typeof ports.listSubjects>>>((resolve) => { resolveSecondPage = resolve; }) };
     const original = ports.listSubjects.getMockImplementation()!;
     ports.listSubjects.mockImplementation(async (query) => {
       if (query?.cursor === "subjects-2") return secondPage.promise;
@@ -301,7 +302,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     expect(screen.getByRole("button", { name: "登记主体：vendor,node" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "调整归属：vendor,driver" })).toBeDisabled();
     view.unmount();
-    secondPage.resolve({ items: [], totalCount: 3, hasMore: true, nextCursor: "subjects-3", catalogReleaseId: CATALOG_RELEASE_ID });
+    resolveSecondPage({ items: [], totalCount: 3, hasMore: true, nextCursor: "subjects-3", catalogReleaseId: CATALOG_RELEASE_ID });
     await secondPage.promise;
     await Promise.resolve();
     expect(ports.listSubjects).toHaveBeenCalledTimes(2);

@@ -14,7 +14,6 @@ import {
   compileVendorCatalogSuccessor,
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { buildCompleteSuccessor } from "./completeSuccessor";
-import type { BuildCompleteSuccessorInput } from "./types";
 import {
   allocationFor,
   allocationForRevision,
@@ -51,8 +50,9 @@ describe("buildCompleteSuccessor", () => {
       digest: predecessor.digest,
     });
 
-    const target = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    const { artifact } = result.value;
+    const target = artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === artifact.targetReleaseId,
     );
     expect(target).toBeDefined();
     if (!target) return;
@@ -222,9 +222,10 @@ describe("buildCompleteSuccessor", () => {
         .find((release) => release.manifest.release.id === vendor.bundle.targetReleaseId)
         ?.documents.map((document) => `${document.kind}:${document.content.id}`) ?? [],
     );
+    const { artifact } = result.value;
     const successorIds = new Set(
-      result.value.artifact.bundle.releases
-        .find((release) => release.manifest.release.id === result.value.artifact.targetReleaseId)
+      artifact.bundle.releases
+        .find((release) => release.manifest.release.id === artifact.targetReleaseId)
         ?.documents.map((document) => `${document.kind}:${document.content.id}`) ?? [],
     );
     for (const id of predecessorIds) {
@@ -259,8 +260,9 @@ describe("buildCompleteSuccessor", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
-    const successorTarget = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    const { artifact } = result.value;
+    const successorTarget = artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === artifact.targetReleaseId,
     );
     if (!successorTarget) throw new Error("built successor target missing");
     const carriedSubject = successorTarget.documents.find(
@@ -392,8 +394,9 @@ describe("buildCompleteSuccessor", () => {
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
       frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], "path"),
+      // @ts-expect-error Deliberately invalid input exercises runtime validation.
       productPath: "m2",
-    } as BuildCompleteSuccessorInput);
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toEqual({
@@ -484,8 +487,9 @@ describe("buildCompleteSuccessor", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
-    const target = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    const { artifact } = result.value;
+    const target = artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === artifact.targetReleaseId,
     );
     expect(target).toBeDefined();
     if (!target) return;
@@ -943,8 +947,9 @@ describe("buildCompleteSuccessor", () => {
     });
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
-    const target = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    const { artifact } = result.value;
+    const target = artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === artifact.targetReleaseId,
     );
     expect(target).toBeDefined();
     if (!target) return;

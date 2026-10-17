@@ -4,7 +4,7 @@ import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
+import type { DtsStructuredRepository, DtsStructureResult } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
@@ -85,7 +85,7 @@ function createDtsRepository(
         updatedAt: "2026-08-06T08:00:00.000Z"
       }
     ]),
-    listConfigSetFiles: vi.fn(async (_projectId, configSetId) =>
+    listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async (_projectId, configSetId) =>
       configSetId === "cs-alpha"
         ? [
             {
@@ -122,7 +122,7 @@ function createDtsRepository(
             }
           ]
     ),
-    listBaselines: vi.fn(async (_projectId, configSetId) =>
+    listBaselines: vi.fn<DtsStructuredRepository["listBaselines"]>(async (_projectId, configSetId) =>
       configSetId === "cs-default"
         ? [
             {
@@ -156,7 +156,7 @@ function createFileRepository(
   overrides: Partial<ParameterFileRepository> = {}
 ): ParameterFileRepository {
   return createTestParameterFileRepository({
-    listFiles: vi.fn(async () => [
+    listFiles: vi.fn<ParameterFileRepository["listFiles"]>(async () => [
       {
         id: "file-board",
         projectId: PROJECT.id,
@@ -208,7 +208,7 @@ function createFileRepository(
       )
     })),
     listVersions: vi.fn(async () => []),
-    listConflicts: vi.fn(async () => []),
+    listConflicts: vi.fn<ParameterFileRepository["listConflicts"]>(async () => []),
     listCandidates: vi.fn(async () => []),
     ...overrides
   });
@@ -216,7 +216,7 @@ function createFileRepository(
 
 function createTopologyRepository(
   overrides: Partial<Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision">> = {}
-): Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision"> {
+): ParameterTopologyRepository {
   return createTestParameterTopologyRepository({
     listConfigRevisions: vi.fn(async () => [
       {
@@ -268,7 +268,7 @@ function ensureInspectorOpen() {
 
 function renderWorkbench(options: {
   search?: string;
-  onNavigate?: ReturnType<typeof vi.fn>;
+  onNavigate?: (path: string) => void;
   dtsRepository?: DtsStructuredRepository;
   fileRepository?: ParameterFileRepository;
   listAuditEvents?: ProjectConfigurationWorkbenchProps["listAuditEvents"];
@@ -281,7 +281,7 @@ function renderWorkbench(options: {
   draftStorage?: ProjectConfigurationWorkbenchProps["draftStorage"];
   topologyRepository?: ProjectConfigurationWorkbenchProps["topologyRepository"];
 } = {}) {
-  const onNavigate = options.onNavigate ?? vi.fn();
+  const onNavigate = vi.fn(options.onNavigate ?? (() => undefined));
   const sharedProps = {
     project: PROJECT,
     dtsRepository: options.dtsRepository ?? createDtsRepository(),
@@ -331,7 +331,7 @@ function renderWorkbench(options: {
   return { onNavigate };
 }
 
-const BOARD_STRUCTURE = {
+const BOARD_STRUCTURE: DtsStructureResult = {
   nodes: [
     {
       nodePath: "board",
@@ -423,7 +423,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getAllByRole("button", { name: /更多/ })).toHaveLength(1);
     fileItem.focus();
     await user.tab();
-    expect(within(fileActions).getByRole("button", { name: "详情", exact: true })).toHaveFocus();
+    expect(within(fileActions).getByRole("button", { name: "详情" })).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "关闭检查器" }));
@@ -431,14 +431,14 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(fileActions).not.toBeVisible();
     const actions = screen.getByRole("group", { name: "当前配置项操作" });
     for (const tab of ["结构", "冲突", "源码"]) {
-      await user.click(screen.getByRole("tab", { name: tab, exact: true }));
-      expect(within(actions).getByRole("button", { name: "详情", exact: true })).toBeVisible();
+      await user.click(screen.getByRole("tab", { name: tab }));
+      expect(within(actions).getByRole("button", { name: "详情" })).toBeVisible();
     }
     await user.click(within(actions).getByRole("button", { name: "配置项操作：aurora-board.dts" }));
     await user.click(screen.getByRole("menuitem", { name: "配置集详情" }));
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveTextContent("成员管理");
-    expect(screen.getByRole("button", { name: "上传候选", exact: true })).toBeDisabled();
-    expect(within(screen.getByLabelText("配置命令栏")).getByRole("button", { name: "上传候选", exact: true })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "上传候选" })).toBeDisabled();
+    expect(within(screen.getByLabelText("配置命令栏")).getByRole("button", { name: "上传候选" })).toBeDisabled();
   });
 
   it("keeps the single config-set selector available when the file navigator is collapsed", async () => {
@@ -463,7 +463,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const structure = await screen.findByRole("tabpanel", { name: "结构" });
     expect(within(structure).getByRole("tree", { name: "DTS 结构树" })).toBeTruthy();
     const task = within(structure).getByRole("region", { name: "配置内容" });
-    const details = within(task).getByRole("button", { name: "详情", exact: true });
+    const details = within(task).getByRole("button", { name: "详情" });
     details.focus();
     expect(details).toHaveFocus();
     expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("tab=structure");
@@ -572,7 +572,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const ready = await createDtsRepository().getReleaseReadiness(PROJECT.id, "cs-default");
     const href = "/parameter-review?project=project-1&request=request-pending";
     const { onNavigate } = renderWorkbench({ dtsRepository: createDtsRepository({
-      getReleaseReadiness: vi.fn(async () => ({ ...ready, level: "blocked", canRelease: false,
+      getReleaseReadiness: vi.fn<DtsStructuredRepository["getReleaseReadiness"]>(async () => ({ ...ready, level: "blocked", canRelease: false,
         canCreateBaseline: false, blockers: [{ id: "pending", severity: "blocker", code: "pending-change",
           message: "1 canonical request awaits review", target: { changeRequestId: "request-pending" },
           remediation: { kind: "complete-pending-change", label: "Review pending requests", href } }] }))
@@ -648,7 +648,7 @@ describe("ProjectConfigurationWorkbench", () => {
         updatedAt: "2026-08-06T08:00:00.000Z"
       }
     ]);
-    const listConfigSetFiles = vi.fn(async (projectId: string, configSetId: string) => [
+    const listConfigSetFiles = vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async (projectId: string, configSetId: string) => [
       {
         configSetId,
         fileId: "file-metadata",
@@ -710,7 +710,7 @@ describe("ProjectConfigurationWorkbench", () => {
   });
 
   it("joins membership ids with file metadata so mock-added members load active source", async () => {
-    const listConfigSetFiles = vi.fn(async () => [
+    const listConfigSetFiles = vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => [
       {
         configSetId: "cs-default",
         fileId: "file-uploaded",
@@ -729,7 +729,7 @@ describe("ProjectConfigurationWorkbench", () => {
     renderWorkbench({
       dtsRepository: createDtsRepository({ listConfigSetFiles }),
       fileRepository: createFileRepository({
-        listFiles: vi.fn(async () => [
+        listFiles: vi.fn<ParameterFileRepository["listFiles"]>(async () => [
           {
             id: "file-uploaded",
             projectId: PROJECT.id,
@@ -1078,7 +1078,7 @@ describe("ProjectConfigurationWorkbench", () => {
       topologyRepository: createTestParameterTopologyRepository({
         listConfigRevisions: createTopologyRepository().listConfigRevisions,
         listBindings: vi.fn(async () => [{ id: "pbind_board", definitionId: "pdef_model",
-          parameterSpecId: "pdef_model", parameterSpecVersionId: "pdrev_model", currentValueId,
+          parameterSpecId: "pdef_model", parameterSpecVersionId: "pdrev_model", ...(currentValueId ? { currentValueId } : {}),
           sourceFileId: "file-board", sourceNodePath: "board", sourceOccurrenceId: "occ_board", propertyKey: "model",
           logicalNodeId: "node_board", instanceName: "board", locator: "board", driverModule: null, moduleId: "module",
           effectiveValue: { kind: "strings" as const, values: ["Aurora"] }, rawValue: '"Aurora"',
@@ -1146,7 +1146,7 @@ describe("ProjectConfigurationWorkbench", () => {
   it("locks the typed editor while recovered drafts are stale-base until reconfirm", async () => {
     const draftStorage = createMemoryStorage();
     let boardVersionId = "version-board-12";
-    const listConfigSetFiles = vi.fn(async (_projectId: string, configSetId: string) => [
+    const listConfigSetFiles = vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async (_projectId: string, configSetId: string) => [
       {
         configSetId,
         fileId: "file-board",
@@ -1212,7 +1212,7 @@ describe("ProjectConfigurationWorkbench", () => {
   it("reconfirm against current base re-enables the dirty validate/submit path", async () => {
     const draftStorage = createMemoryStorage();
     let boardVersionId = "version-board-12";
-    const listConfigSetFiles = vi.fn(async (_projectId: string, configSetId: string) => [
+    const listConfigSetFiles = vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async (_projectId: string, configSetId: string) => [
       {
         configSetId,
         fileId: "file-board",
@@ -2055,7 +2055,7 @@ describe("ProjectConfigurationWorkbench", () => {
       createdAt: "2026-08-07T00:00:00.000Z",
       updatedAt: "2026-08-07T00:00:00.000Z"
     };
-    const activateCandidate = vi.fn(async () => ({
+    const activateCandidate = vi.fn<ParameterFileRepository["activateCandidate"]>(async () => ({
       item: { ...candidate, status: "active" as const, activatedVersionId: "version-board-13" },
       file: {
         id: "file-board",
@@ -2073,6 +2073,7 @@ describe("ProjectConfigurationWorkbench", () => {
         versionNumber: 13,
         checksum: "act",
         sizeBytes: 32,
+        parsedIndex: {},
         origin: "upload" as const,
         createdAt: "2026-08-07T01:00:00.000Z"
       }
@@ -2220,7 +2221,7 @@ describe("ProjectConfigurationWorkbench", () => {
       search: "?configSet=cs-default&inspector=config-set&baseline=baseline-draft-v2",
       topologyRepository,
       dtsRepository: createDtsRepository({
-        listBaselines: vi.fn(async (_projectId, configSetId) =>
+        listBaselines: vi.fn<DtsStructuredRepository["listBaselines"]>(async (_projectId, configSetId) =>
           configSetId === "cs-default"
             ? [
                 {
@@ -2278,7 +2279,7 @@ describe("ProjectConfigurationWorkbench", () => {
   });
 
   it("opens Activity from the command bar without a permanent audit banner above source", async () => {
-    const listAuditEvents = vi.fn(async () => ({
+    const listAuditEvents = vi.fn<NonNullable<ProjectConfigurationWorkbenchProps["listAuditEvents"]>>(async () => ({
       items: [
         {
           id: "evt-activity-1",
@@ -2478,7 +2479,7 @@ describe("ProjectConfigurationWorkbench", () => {
       dtsRepository: createDtsRepository({
         listConfigSets,
         createConfigSet,
-        listConfigSetFiles: vi.fn(async () => [])
+        listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => [])
       })
     });
 
@@ -2506,7 +2507,7 @@ describe("ProjectConfigurationWorkbench", () => {
   });
 
   it("adds and removes Config set members with role, sortOrder, and blast-radius confirmation", async () => {
-    const members = [
+    const members: Awaited<ReturnType<DtsStructuredRepository["listConfigSetFiles"]>> = [
       {
         configSetId: "cs-default",
         fileId: "file-board",
@@ -2536,7 +2537,7 @@ describe("ProjectConfigurationWorkbench", () => {
       const index = members.findIndex((item) => item.fileId === fileId);
       if (index >= 0) members.splice(index, 1);
     });
-    const listConfigSetFiles = vi.fn(async () => [...members]);
+    const listConfigSetFiles = vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => [...members]);
 
     renderWorkbench({
       syncSearch: true,
@@ -2588,7 +2589,7 @@ describe("ProjectConfigurationWorkbench", () => {
 
   it.each(["source", "conflicts"])("keeps conflict locate on a non-member file and shows its source from %s", async (tab) => {
     const onNavigate = vi.fn();
-    const listConflicts = vi.fn(async () => [
+    const listConflicts = vi.fn<ParameterFileRepository["listConflicts"]>(async () => [
       {
         id: "conflict-loose",
         organizationId: "org-1",
@@ -2607,8 +2608,6 @@ describe("ProjectConfigurationWorkbench", () => {
         fileVersionLabel: "v1",
         fileId: "file-loose",
         fileName: "notes.json",
-        nodePath: null,
-        propertyName: null,
         source: {
           startOffset: 0,
           endOffset: 8,
@@ -2668,7 +2667,7 @@ describe("ProjectConfigurationWorkbench", () => {
       unmatched: 0,
       skipped: false
     }));
-    const listConflicts = vi.fn(async () => [
+    const listConflicts = vi.fn<ParameterFileRepository["listConflicts"]>(async () => [
       {
         id: "conflict-1",
         organizationId: "org-1",
@@ -2832,7 +2831,7 @@ describe("ProjectConfigurationWorkbench", () => {
   it("disables download DTS when the Config set has no members", async () => {
     renderWorkbench({
       dtsRepository: createDtsRepository({
-        listConfigSetFiles: vi.fn(async () => [])
+        listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => [])
       })
     });
     await screen.findByText("当前配置集没有成员文件");
@@ -2856,7 +2855,7 @@ describe("ProjectConfigurationWorkbench", () => {
   it("shows a focused upload and assignment path for an empty Config set", async () => {
     renderWorkbench({
       dtsRepository: createDtsRepository({
-        listConfigSetFiles: vi.fn(async () => [])
+        listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => [])
       })
     });
 
@@ -2868,9 +2867,9 @@ describe("ProjectConfigurationWorkbench", () => {
   });
 
   it("assigns a verified ungrouped file to an empty config set", async () => {
-    const addConfigSetFile = vi.fn(async (_projectId: string, configSetId: string, input: Parameters<DtsStructuredRepository["addConfigSetFile"]>[2]) => ({ configSetId, ...input }));
+    const addConfigSetFile = vi.fn<DtsStructuredRepository["addConfigSetFile"]>(async (_projectId, configSetId, input) => ({ configSetId, ...input, sortOrder: input.sortOrder ?? 0 }));
     renderWorkbench({ dtsRepository: createDtsRepository({
-      listConfigSetFiles: vi.fn(async () => []), addConfigSetFile
+      listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => []), addConfigSetFile
     }) });
     const assign = await screen.findByRole("button", { name: "编入 notes.json" });
     await waitFor(() => expect(assign).toBeEnabled());
@@ -2885,7 +2884,7 @@ describe("ProjectConfigurationWorkbench", () => {
     let changed = false;
     const addConfigSetFile = vi.fn();
     renderWorkbench({ dtsRepository: createDtsRepository({
-      listConfigSetFiles: vi.fn(async () => []), addConfigSetFile
+      listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => []), addConfigSetFile
     }), fileRepository: createFileRepository({ getSourceWorkflow: vi.fn(async (projectId, fileId) => {
       if (changed && fileId === "file-loose") throw new Error("proof unavailable");
       return legacy.getSourceWorkflow(projectId, fileId);
@@ -2903,7 +2902,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const legacy = createFileRepository();
     const addConfigSetFile = vi.fn();
     renderWorkbench({ dtsRepository: createDtsRepository({
-      listConfigSetFiles: vi.fn(async () => []), addConfigSetFile
+      listConfigSetFiles: vi.fn<DtsStructuredRepository["listConfigSetFiles"]>(async () => []), addConfigSetFile
     }), fileRepository: createFileRepository({ getSourceWorkflow: vi.fn(async (projectId, fileId) => {
       if (fileId !== "file-loose") return legacy.getSourceWorkflow(projectId, fileId);
       if (kind === "unknown") throw new Error("来源校验不可用");
@@ -2917,17 +2916,17 @@ describe("ProjectConfigurationWorkbench", () => {
   });
 
   it("distinguishes conflict request failure from an empty queue and retries", async () => {
-    const listConflicts = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue([]);
+    const listConflicts = vi.fn<ParameterFileRepository["listConflicts"]>().mockRejectedValueOnce(new Error("offline")).mockResolvedValue([]);
     renderWorkbench({ search: "?configSet=cs-default&tab=conflicts", fileRepository: createFileRepository({ listConflicts }) });
     expect(await screen.findByText("冲突加载失败，请重试。")).toBeVisible();
     expect(screen.queryByText("当前没有待处理冲突。")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "重试", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByText("当前没有待处理冲突。")).toBeVisible();
     expect(listConflicts).toHaveBeenCalledTimes(2);
   });
 
   it("loads open conflicts on mount so the task count stays current", async () => {
-    const listConflicts = vi.fn(async () => [
+    const listConflicts = vi.fn<ParameterFileRepository["listConflicts"]>(async () => [
       {
         id: "conflict-mount",
         organizationId: "org-1",
@@ -2962,7 +2961,7 @@ describe("ProjectConfigurationWorkbench", () => {
   });
 
   it("opens the Conflicts task dock from a conflict activity event", async () => {
-    const listConflicts = vi.fn(async () => [
+    const listConflicts = vi.fn<ParameterFileRepository["listConflicts"]>(async () => [
       {
         id: "conflict-activity",
         organizationId: "org-1",
