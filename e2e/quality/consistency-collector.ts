@@ -231,7 +231,7 @@ export function collectConsistencyMeasurements() {
       ?? (workbench.getAttribute("data-workbench-page") === "module-governance"
         ? [...rowScope.querySelectorAll('[role="status"], [role="alert"]')].find(visible) : undefined);
     const toolbarActions = workbench.querySelector(":scope > .navigator-workbench__toolbar")
-      ?.querySelectorAll(".navigator-workbench__primary > button, .navigator-workbench__primary > a, .parameter-catalog__actions > button, .parameter-catalog__actions > a");
+      ?.querySelectorAll(".navigator-workbench__primary > button, .navigator-workbench__primary > a, .navigator-workbench__primary .configuration-workbench__readiness > button, .parameter-catalog__actions > button, .parameter-catalog__actions > a");
     const visibleToolbarActions = [...(toolbarActions ?? [])].filter(visible);
     const primaryAction = visibleToolbarActions.find((action) => action.matches('[data-primary-action="true"], [data-slot="button"][data-variant="default"], .button.primary'))
       ?? visibleToolbarActions.at(-1);
@@ -246,7 +246,7 @@ export function collectConsistencyMeasurements() {
       toolbar: measure(":scope > .navigator-workbench__toolbar"),
       primaryAction: primaryAction ? bounds(primaryAction) : null,
       noticeCount: [...workbench.querySelectorAll(":scope > .navigator-workbench__notice")].filter(visible).length,
-      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .logs-history-status, .navigator-workbench__navigation .module-attribution-tree__count, .navigator-workbench__navigation .configuration-workbench__tree > .configuration-workbench__region-head strong")].filter(visible).map((count) => {
+      navigatorCounts: [...workbench.querySelectorAll(".navigator-workbench__navigation .dts-topology-navigator__count, .navigator-workbench__navigation .parameter-catalog__module-count, .navigator-workbench__navigation .logs-history-status, .navigator-workbench__navigation .module-attribution-tree__count, .navigator-workbench__navigation .configuration-workbench__member small, .navigator-workbench__navigation .configuration-workbench__member-meta")].filter(visible).map((count) => {
         const navigation = count.closest(".navigator-workbench__navigation")!;
         const navigationRect = bounds(navigation);
         const countRect = bounds(count);

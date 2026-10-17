@@ -8,7 +8,9 @@ import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
 import {
   aggregateSessionDraftSubset,
   clearSubmittedDrafts,
+  isUnchangedSessionDraft,
   listSessionDraftRows,
+  propertyIdentity,
   sessionDraftKey,
   type SessionDraftRow,
   type SessionPropertyDraft
@@ -90,7 +92,7 @@ export type StructuredEditSession = StructuredEditSessionSnapshot & {
   validate(): { ok: boolean; message: string };
   submit(input: StructuredEditSubmitInput): Promise<DtsStructuredSubmissionRound>;
   recover(): void;
-  discard(): void;
+  discard(key?: string): void;
   copyText(): string | null;
 };
 
@@ -116,7 +118,7 @@ function pruneSelectedKeys(
   rows: SessionDraftRow[],
   drafts: Record<string, SessionPropertyDraft>
 ): Set<string> {
-  if (rows.length === 0) return new Set(selected);
+  if (rows.length === 0) return new Set([...selected].filter((key) => key in drafts));
   const valid = new Set(rows.map((row) => row.key));
   if (selected.size === 0 && Object.keys(drafts).length > 0) {
     return valid;
@@ -163,6 +165,18 @@ export function createStructuredEditSession(
   let cachedSnapshot = emptySnapshot();
 
   function rebuildSnapshot(): StructuredEditSessionSnapshot {
+    if (structureFileId && recoveryStatus !== "stale-base") {
+      const unchangedKeys: string[] = [];
+      for (const node of structureNodes) {
+        for (const property of node.properties) {
+          for (const key of [sessionDraftKey({ fileId: structureFileId, nodePath: node.nodePath, propertyName: property.name }),
+            propertyIdentity(node.nodePath, property.name)]) {
+            if (drafts[key] && isUnchangedSessionDraft(drafts[key], property)) unchangedKeys.push(key);
+          }
+        }
+      }
+      if (unchangedKeys.length) drafts = clearSubmittedDrafts(drafts, unchangedKeys);
+    }
     const rows = computeRows(structureFileId, structureNodes, drafts);
     selectedKeys = pruneSelectedKeys(selectedKeys, rows, drafts);
     const isDirty = Object.keys(drafts).length > 0 || rows.length > 0;
@@ -279,6 +293,7 @@ export function createStructuredEditSession(
       structureNodes = nodes;
       structureFileId = fileId;
       emit();
+      if (currentScope?.fileId === fileId) persist();
     },
 
     async hydrate(scope) {
@@ -314,7 +329,7 @@ export function createStructuredEditSession(
         recoveryStatus = recovered.classification;
         persistScope = recovered.bucket.scope;
         emit();
-        if (draftKeys.length > 0) {
+        if (Object.keys(drafts).length > 0) {
           options.onDraftsRecovered?.();
         }
       } else {
@@ -329,12 +344,13 @@ export function createStructuredEditSession(
       await Promise.resolve();
       if (generation !== hydrateGeneration) return;
       persistEnabled = true;
+      persist();
     },
 
     change(identity, next) {
       const key = sessionDraftKey(identity);
       drafts = {
-        ...drafts,
+        ...clearSubmittedDrafts(drafts, [propertyIdentity(identity.nodePath, identity.propertyName)]),
         [key]: {
           rawText: next.rawText,
           normalizedValue: next.normalizedValue,
@@ -366,7 +382,7 @@ export function createStructuredEditSession(
     validate() {
       if (recoveryStatus === "stale-base") {
         const message =
-          "基线版本已变更：会话草稿仅可检查或复制，请先基于当前基线继续编辑后再校验。";
+          "基线版本已变更：请先基于当前基线继续编辑，保存时会自动校验。会话草稿仍可检查或复制。";
         validateStatus = message;
         submitError = "";
         emit();
@@ -539,11 +555,20 @@ export function createStructuredEditSession(
       recoveryStatus = "none";
       submitError = "";
       validateStatus = "";
-      submitStatus = "已基于当前基线继续编辑；请重新校验后再提交。";
+      submitStatus = "已基于当前基线继续编辑；保存时会自动校验。";
       emit();
+      persist();
     },
 
-    discard() {
+    discard(key) {
+      if (key) {
+        const row = cachedSnapshot.rows.find((item) => item.key === key || item.identity === key);
+        drafts = clearSubmittedDrafts(drafts, row ? [row.key, row.identity] : [key]);
+        clearStatuses();
+        emit();
+        persist();
+        return;
+      }
       const scope = persistScope ?? currentScope;
       if (scope) {
         removeSessionDraftBucket(scope, storage);

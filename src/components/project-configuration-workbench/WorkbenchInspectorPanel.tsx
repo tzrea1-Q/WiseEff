@@ -1,12 +1,14 @@
-import { SelectControl } from "@/components/common/SelectControl";
-import { type ReactNode } from "react";
-import { Lock, TriangleAlert } from "lucide-react";
+import { RowActionMenu } from "@/components/common/RowActionMenu";
+import { Button } from "@/components/ui/button";
+import { useRef, type ReactNode } from "react";
+import { ModalDialog } from "@/components/common/ModalDialog";
+import { candidateStatusLabels } from "./WorkbenchCandidateList";
+import { Lock, TriangleAlert, X } from "lucide-react";
+import "./workbench-configuration-versions-dialog.css";
 
 import type {
-  ConfigSetRole,
   DtsBaselineMemberComparison,
   DtsCompareBaselineResult,
-  DtsConfigSet,
   DtsConfigSetMemberFile,
   DtsReleaseBaseline,
   DtsReleaseReadiness,
@@ -18,7 +20,6 @@ import type {
   ParameterFileSourcePreview,
   ParameterFileSourceReviewResult,
   ParameterFileSourceWorkflow,
-  ProjectParameterFile,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionPropertyDraft } from "@/application/project-configuration/sessionDrafts";
@@ -32,25 +33,14 @@ import {
 } from "@/components/parameters/StructuredValueEditor";
 import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
 import { WorkbenchBaselineDock } from "./WorkbenchBaselineDock";
-import { WorkbenchCanonicalConflictDecision } from "./WorkbenchCanonicalConflictDecision";
-import { workbenchReadinessAllowsRelease } from "./WorkbenchReleaseReadiness";
+import { ReviewProvenance } from "@/features/parameter-review/ReviewProvenance";
+import { workbenchReadinessAllowsCreate, workbenchReadinessAllowsRelease } from "./WorkbenchReleaseReadiness";
 import type { WorkbenchActivityRow } from "./workbenchActivityModel";
 import {
-  classifyNodeRisk,
   formatSourceSpan,
   type InspectorLevel,
   type WorkbenchCanvasMode
 } from "./workbenchInspectorModel";
-
-const CONFIG_SET_ROLES: ConfigSetRole[] = ["base", "overlay", "charging", "thermal", "misc"];
-
-const ROLE_LABELS: Record<ConfigSetRole, string> = {
-  base: "基础",
-  overlay: "覆盖层",
-  charging: "充电",
-  thermal: "温控",
-  misc: "其他"
-};
 
 const ORIGIN_LABELS: Record<ProjectParameterFileVersion["origin"], string> = {
   upload: "手动上传",
@@ -62,8 +52,8 @@ export type WorkbenchInspectorPanelProps = {
   inspectorPersistent: boolean;
   narrowViewport: boolean;
   inspectorLevel: InspectorLevel;
+  configSetName: string;
   onClose: () => void;
-  selectedConfigSet: DtsConfigSet;
   selectedMember: DtsConfigSetMemberFile | null;
   selectedPropertyName: string | null;
   selectedNodePath: string | null;
@@ -76,30 +66,28 @@ export type WorkbenchInspectorPanelProps = {
   baselineCompare: DtsCompareBaselineResult | null;
   baselineCompareAgainst: "working" | "released";
   baselinePinnedMembers: Array<{ fileId: string; fileVersionId: string; versionNumber: number }>;
+  baselinePinnedMembersLoading: boolean;
+  baselinePinnedMembersError: string;
+  onRetryBaselineMembers: () => void;
   canAdmin: boolean;
   releaseReadiness: DtsReleaseReadiness | null;
   sessionDraftsDirty: boolean;
+  readinessLoading: boolean;
+  onOpenCreateBaseline: () => void;
+  releaseIssues: ReactNode;
   canvasMode: WorkbenchCanvasMode;
   onSelectBaseline: (baselineId: string) => void;
   onBaselinesRetry: () => void;
   onCompareBaseline: (against: "working" | "released") => void;
   onOpenRelease: () => void;
   onOpenRestoreBaseline: () => void;
-  onExitBaselineCompare: () => void;
   onSelectBaselineCompareMember: (member: DtsBaselineMemberComparison) => void;
   activeCandidate: ParameterFileCandidate | null;
-  projectId: string;
-  currentUserId: string;
-  onConflictSubmitted: (requestId: string) => void;
   sourcePreview: ParameterFileSourcePreview | null;
   sourcePreviewLoading: boolean;
   sourcePreviewError: string;
-  canSubmitSourceReview: boolean;
-  canSubmitBatchReview: boolean;
-  submittingSourceReview: boolean;
-  sourceReviewError: string;
+  onRetrySourceUpdate?: () => void;
   sourceReviewResult: ParameterFileSourceReviewResult | null;
-  onSubmitSourceReview: () => void;
   onOpenReview: () => void;
   canRecompute: boolean;
   canActivate: boolean;
@@ -115,26 +103,11 @@ export type WorkbenchInspectorPanelProps = {
   onActivityEventSelect: (eventId: string) => void;
   selectedMembers: DtsConfigSetMemberFile[];
   pendingAction: string | null;
-  ungroupedFiles: ProjectParameterFile[];
-  memberFileId: string;
-  memberRole: ConfigSetRole;
-  memberSortOrder: number;
-  onMemberFileIdChange: (fileId: string) => void;
-  onMemberRoleChange: (role: ConfigSetRole) => void;
-  onMemberSortOrderChange: (sortOrder: number) => void;
-  onAddMember: () => void;
-  onRequestRemoveMember: (member: DtsConfigSetMemberFile) => void;
-  canRequestReviewedMemberRemoval?: boolean;
-  onSyncFile: () => void;
-  onOpenManualSync?: () => void;
   sourceWorkflow: ParameterFileSourceWorkflow | null;
   sourceWorkflowLoading: boolean;
   sourceWorkflowError: string;
-  sourceWorkflowSetLoading: boolean;
   sourceWorkflowSetReady: boolean;
-  memberAddErrorsByFileId: Readonly<Record<string, string>>;
   sourceWorkflowSetCanonical: boolean;
-  sourceWorkflowSetError: string;
   onRetrySourceWorkflow: () => void;
   fileVersions: ProjectParameterFileVersion[];
   versionsLoading: boolean;
@@ -151,16 +124,21 @@ export type WorkbenchInspectorPanelProps = {
   criticalLocked: boolean;
   staleDraftLocked: boolean;
   onStructuredValueChange: (change: StructuredValueChange) => void;
-  canEdit: boolean;
   revisionGate?: ReactNode;
+  propertyDefinition?: ReactNode;
+  candidateList?: ReactNode;
+  sourceUpdateUpload?: ReactNode;
+  sourceUpdateReview?: ReactNode;
+  batchReviewInline?: boolean;
+  onRetryVersions?: () => void;
 };
 
 export function WorkbenchInspectorPanel({
   inspectorPersistent,
   narrowViewport,
   inspectorLevel,
+  configSetName,
   onClose,
-  selectedConfigSet,
   selectedMember,
   selectedPropertyName,
   selectedNodePath,
@@ -173,29 +151,28 @@ export function WorkbenchInspectorPanel({
   baselineCompare,
   baselineCompareAgainst,
   baselinePinnedMembers,
+  baselinePinnedMembersLoading,
+  baselinePinnedMembersError,
+  onRetryBaselineMembers,
   canAdmin,
   releaseReadiness,
   sessionDraftsDirty,
+  readinessLoading,
+  onOpenCreateBaseline,
+  releaseIssues,
   canvasMode,
   onSelectBaseline,
   onBaselinesRetry,
   onCompareBaseline,
   onOpenRelease,
   onOpenRestoreBaseline,
-  onExitBaselineCompare,
   onSelectBaselineCompareMember,
   activeCandidate,
-  projectId,
-  currentUserId,
-  onConflictSubmitted,
   sourcePreview,
   sourcePreviewLoading,
   sourcePreviewError,
-  canSubmitSourceReview,
-  canSubmitBatchReview,
-  submittingSourceReview,
+  onRetrySourceUpdate,
   sourceReviewResult,
-  onSubmitSourceReview,
   onOpenReview,
   canRecompute,
   canActivate,
@@ -211,26 +188,11 @@ export function WorkbenchInspectorPanel({
   onActivityEventSelect,
   selectedMembers,
   pendingAction,
-  ungroupedFiles,
-  memberFileId,
-  memberRole,
-  memberSortOrder,
-  onMemberFileIdChange,
-  onMemberRoleChange,
-  onMemberSortOrderChange,
-  onAddMember,
-  onRequestRemoveMember,
-  canRequestReviewedMemberRemoval = false,
-  onSyncFile,
-  onOpenManualSync,
   sourceWorkflow,
   sourceWorkflowLoading,
   sourceWorkflowError,
-  sourceWorkflowSetLoading,
   sourceWorkflowSetReady,
-  memberAddErrorsByFileId,
   sourceWorkflowSetCanonical,
-  sourceWorkflowSetError,
   onRetrySourceWorkflow,
   fileVersions,
   versionsLoading,
@@ -247,33 +209,51 @@ export function WorkbenchInspectorPanel({
   criticalLocked,
   staleDraftLocked,
   onStructuredValueChange,
-  canEdit,
-  revisionGate
+  revisionGate,
+  propertyDefinition,
+  candidateList,
+  sourceUpdateUpload,
+  sourceUpdateReview,
+  batchReviewInline = false,
+  onRetryVersions
 }: WorkbenchInspectorPanelProps) {
-  const sourceWorkflowUnknown = Boolean(selectedMember) && !sourceWorkflow && !sourceWorkflowError;
-  const sourceMutationBlocked = sourceWorkflowLoading || Boolean(sourceWorkflowError) || sourceWorkflowUnknown;
-  const selectedSourceCanonical = sourceWorkflow?.canonical === true;
-  const canonicalAddReason = "此配置集的成员变更需要审核，当前不能直接编入文件。";
-  const dtsRemovalReason = "DTS 成员删除尚无受审入口，当前不能移除。";
-  const selectedDtsRemovalBlocked = sourceWorkflowSetCanonical && selectedMember?.format === "dts";
-  const sourceSetMutationBlocked =
-    sourceWorkflowSetLoading ||
-    !sourceWorkflowSetReady ||
-    Boolean(sourceWorkflowSetError) ||
-    sourceWorkflowSetCanonical;
-  const reviewedRemovalReady = (member: DtsConfigSetMemberFile) =>
-    canRequestReviewedMemberRemoval && member.format === "json" && sourceWorkflowSetReady
-    && !sourceWorkflowSetLoading && !sourceWorkflowSetError;
-  const sourceMutationReason = sourceWorkflowError
-    ? sourceWorkflowError
-    : sourceWorkflow?.reason ?? "canonical 来源成员必须通过来源审核流程。";
-  const sourceSetMutationReason = sourceWorkflowSetError
-    ? sourceWorkflowSetError
-    : sourceWorkflowSetCanonical
-      ? canonicalAddReason
-      : selectedMembers.length === 0
-        ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
-      : "配置集来源一致性尚未完成校验，成员变更已禁用。";
+  const closeVersionsRef = useRef<HTMLButtonElement>(null);
+  if (inspectorLevel === "release") {
+    const busy = Boolean(pendingAction && ["create-baseline", "release-baseline", "restore-baseline"].includes(pendingAction));
+    const issues = releaseReadiness ? [...releaseReadiness.blockers, ...releaseReadiness.warnings] : [];
+    const checkStatus = readinessLoading ? "检查中…" : !releaseReadiness?.available ? "检查不可用"
+      : issues.length ? `${issues.length} 项需关注` : "检查通过";
+    return <ModalDialog open onDismiss={busy ? undefined : onClose}
+      className="configuration-versions-dialog" backdropClassName="param-admin-modal-backdrop" describedBy initialFocusRef={closeVersionsRef}>
+      {({ titleId, descriptionId }) => <>
+        <header className="configuration-versions-dialog__header">
+          <div><h2 id={titleId}>配置版本</h2><p id={descriptionId}>{configSetName} · 保存整套文件的版本组合，供验收与追溯。</p></div>
+          {canAdmin ? <Button size="sm" disabled={pendingAction !== null || readinessLoading || !workbenchReadinessAllowsCreate(releaseReadiness, sessionDraftsDirty)}
+            title={sessionDraftsDirty ? "请先保存或撤销本地变更" : !releaseReadiness?.canCreateBaseline ? "请先处理定版检查问题" : undefined}
+            onClick={onOpenCreateBaseline}>保存版本快照</Button> : null}
+          <Button ref={closeVersionsRef} size="icon-sm" variant="ghost" aria-label="关闭配置版本" disabled={busy} onClick={onClose}><X aria-hidden="true" /></Button>
+        </header>
+        <div className="configuration-versions-dialog__body">
+          <WorkbenchBaselineDock baselines={baselines} fileNames={Object.fromEntries(selectedMembers.map((member) => [member.fileId, member.fileName]))}
+            restoreReadOnly={sourceWorkflowSetCanonical} releasedTipId={releasedBaseline?.id} selectedBaselineId={selectedBaselineId}
+            loading={baselinesLoading} error={baselinesError} actionError={baselineActionError}
+            compareMembers={baselineCompare?.members ?? null} compareAgainst={baselineCompareAgainst}
+            pinnedMembers={baselinePinnedMembers} pinnedMembersLoading={baselinePinnedMembersLoading} pinnedMembersError={baselinePinnedMembersError}
+            onRetryMembers={onRetryBaselineMembers} canAdmin={canAdmin}
+            canRelease={pendingAction === null && !readinessLoading && workbenchReadinessAllowsRelease(releaseReadiness, sessionDraftsDirty)}
+            canPreviewRestore={canAdmin && pendingAction === null && Boolean(selectedBaselineId) && sourceWorkflowSetReady}
+            releaseBlockedReason={sessionDraftsDirty ? "请先保存或撤销本地变更" : !releaseReadiness?.canRelease ? "请先处理定版检查问题" : undefined}
+            comparing={pendingAction === "compare-baseline" || Boolean(baselineCompare) || canvasMode === "unified-diff"}
+            onSelectBaseline={onSelectBaseline} onRetry={onBaselinesRetry} onCompare={onCompareBaseline}
+            onOpenRelease={onOpenRelease} onOpenRestore={onOpenRestoreBaseline} onSelectCompareMember={onSelectBaselineCompareMember} />
+          {canAdmin ? <details className="configuration-versions-dialog__checks" open={!readinessLoading && (!releaseReadiness?.available || issues.length > 0)}>
+            <summary>定版检查<span>{checkStatus}</span></summary>{releaseIssues}
+          </details> : null}
+          {revisionGate ? <details className="configuration-versions-dialog__checks"><summary>高级校验</summary>{revisionGate}</details> : null}
+        </div>
+      </>}
+    </ModalDialog>;
+  }
   const batchPreview = sourcePreview?.kind === "canonical"
     && ["json", "dts"].includes(sourcePreview.format.toLowerCase()) && (sourcePreview.bindings?.length ?? 0) > 1;
 
@@ -289,17 +269,13 @@ export function WorkbenchInspectorPanel({
     >
       <div className="configuration-workbench__region-head">
         <div>
-          <span>检查器</span>
           <strong>
-            {inspectorLevel === "activity"
-              ? "项目活动"
-              : inspectorLevel === "property"
-                ? selectedPropertyName
-                : inspectorLevel === "node"
-                  ? selectedNodePath
-                  : inspectorLevel === "file"
-                    ? selectedMember?.fileName
-                    : selectedConfigSet.name}
+            {inspectorLevel === "activity" ? "项目活动"
+              : inspectorLevel === "versions" ? "版本历史"
+              : inspectorLevel === "candidates" ? "来源更新"
+              : inspectorLevel === "property" ? selectedPropertyName
+              : inspectorLevel === "node" ? selectedNodePath
+              : "配置文件"}
           </strong>
         </div>
         <div className="configuration-workbench__inspector-actions">
@@ -314,9 +290,11 @@ export function WorkbenchInspectorPanel({
         </div>
       </div>
       <div className="configuration-workbench__inspector-body">
+        {inspectorLevel === "candidates" ? <>{sourceUpdateUpload}{candidateList}</> : null}
         {inspectorLevel === "property" && selectedStructureProperty && selectedStructureNode ? (
           <section className="configuration-workbench__property-editor" aria-label="当前属性">
-            <p>{dtsValueTypeLabel(selectedStructureProperty.valueType)} · 当前值 <code>{selectedStructureProperty.rawText || "空值"}</code></p>
+            {propertyDefinition}
+            <p className="configuration-workbench__property-current">当前值 <code>{selectedStructureProperty.rawText || "空值"}</code></p>
               {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? (
                 <p className="configuration-workbench__risk-note" role="note">
                   <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
@@ -348,88 +326,21 @@ export function WorkbenchInspectorPanel({
               </div>
           </section>
         ) : null}
-        <details className="configuration-workbench__context-details" open={inspectorLevel !== "property"}>
-          <summary>配置与发布信息</summary>
-        <WorkbenchBaselineDock
-          baselines={baselines}
-          releasedTipId={releasedBaseline?.id}
-          selectedBaselineId={selectedBaselineId}
-          loading={baselinesLoading}
-          error={baselinesError}
-          actionError={baselineActionError}
-          compareMembers={baselineCompare?.members ?? null}
-          compareAgainst={baselineCompareAgainst}
-          pinnedMembers={baselinePinnedMembers}
-          canAdmin={canAdmin}
-          canRelease={workbenchReadinessAllowsRelease(releaseReadiness, sessionDraftsDirty)}
-          canPreviewRestore={canAdmin && Boolean(selectedBaselineId)}
-          releaseBlockedReason={
-            sessionDraftsDirty
-              ? "还有未保存的本机会话变更，不能发布"
-              : !releaseReadiness?.canRelease
-                ? "发布就绪门禁阻止发布"
-                : undefined
-          }
-          comparing={Boolean(baselineCompare) || canvasMode === "unified-diff" || canvasMode === "side-by-side"}
-          onSelectBaseline={onSelectBaseline}
-          onRetry={onBaselinesRetry}
-          onCompare={onCompareBaseline}
-          onOpenRelease={onOpenRelease}
-          onOpenRestore={onOpenRestoreBaseline}
-          onExitCompare={onExitBaselineCompare}
-          onSelectCompareMember={onSelectBaselineCompareMember}
-        />
-        {revisionGate}
-        {canAdmin && canEdit && activeCandidate?.status === "ready" && canvasMode === "candidate"
-          && sourcePreview?.kind === "canonical" && !sourcePreview.request ? (
-            <WorkbenchCanonicalConflictDecision key={activeCandidate.id}
-              projectId={projectId} currentUserId={currentUserId} candidate={activeCandidate}
-              preview={sourcePreview} allowed
-              onSubmitted={onConflictSubmitted} />
-          ) : null}
+        <div className="configuration-workbench__context-details">
         <div className="configuration-workbench__inspector-details">
-          <dl>
-          <div>
-            <dt>检查层级</dt>
-            <dd>
-              {inspectorLevel === "config-set"
-                ? "配置集"
-                : inspectorLevel === "file"
-                  ? "文件"
-                  : inspectorLevel === "node"
-                    ? "节点"
-                    : inspectorLevel === "activity"
-                      ? "活动"
-                      : "属性"}
-            </dd>
-          </div>
-          <div>
-            <dt>工作配置</dt>
-            <dd>工作配置</dd>
-          </div>
-          <div>
-            <dt>发布基线</dt>
-            <dd>{releasedBaseline?.name ?? "尚未发布"}</dd>
-          </div>
-          <div>
-            <dt>候选文件版本</dt>
-            <dd>
-              {activeCandidate && activeCandidate.status !== "abandoned"
-                ? `${activeCandidate.fileName} · ${activeCandidate.status}`
-                : "尚未上传"}
-            </dd>
-          </div>
-          </dl>
-          {activeCandidate && canvasMode === "candidate" ? (
+          {inspectorLevel === "candidates" && activeCandidate && canvasMode === "candidate" ? (
             <>
               <dl>
               <div>
-                <dt>候选身份</dt>
-                <dd className="mono">{activeCandidate.id}</dd>
+                <dt>更新状态</dt>
+                <dd>{sourcePreview?.request?.status === "pending" ? "待审核"
+                  : sourcePreview?.request?.status === "approved" ? activeCandidate.status === "active" ? "已生效" : "审核通过"
+                  : candidateStatusLabels[activeCandidate.status]}</dd>
               </div>
               <div>
-                <dt>对照活跃版本</dt>
-                <dd className="mono">{activeCandidate.baseVersionId ?? "新文件候选"}</dd>
+                <dt>对照版本</dt>
+                <dd>{fileVersions.find((version) => version.id === activeCandidate.baseVersionId)?.versionNumber
+                  ? `v${fileVersions.find((version) => version.id === activeCandidate.baseVersionId)?.versionNumber}` : "新文件或版本未加载"}</dd>
               </div>
               {sourcePreviewLoading ? (
                 <div>
@@ -443,6 +354,7 @@ export function WorkbenchInspectorPanel({
                   <dd>
                     <p role="alert">{sourcePreviewError}</p>
                     <p>来源状态未知，激活与来源审核均已禁用。</p>
+                    {onRetrySourceUpdate ? <button type="button" className="button subtle" onClick={onRetrySourceUpdate}>重试核对</button> : null}
                   </dd>
                 </div>
               ) : null}
@@ -451,32 +363,15 @@ export function WorkbenchInspectorPanel({
                   <div>
                     <dt>来源工作流</dt>
                     <dd>
-                      {sourcePreview.request ? "已关联来源审核" : sourcePreview.kind === "canonical" ? "canonical 来源审核" : "legacy 候选激活"}
+                      {sourcePreview.request ? "已提交审核" : sourcePreview.kind === "canonical" ? "需要人工审核" : canActivate ? "确认后可应用" : sourceWorkflowSetCanonical ? "当前配置受审核保护，暂不支持直接应用新文件候选。" : !canAdmin ? "需要项目管理员确认。" : "来源校验尚未满足应用条件。"}
                       {sourcePreview.reason && !(batchPreview && sourcePreview.reason === "canonical-batch-review-required")
                         ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
                     </dd>
                   </div>
-                  {sourcePreview.kind === "canonical" ? (
+                  {sourcePreview.kind === "canonical" && !batchReviewInline ? (
                     <>
                       <div>
-                        <dt>来源精确身份</dt>
-                        <dd className="mono">
-                          {[
-                            sourcePreview.bindingId && `binding ${sourcePreview.bindingId}`,
-                            sourcePreview.definitionId && `definition ${sourcePreview.definitionId}`,
-                            sourcePreview.configRevisionId && `revision ${sourcePreview.configRevisionId}`,
-                            sourcePreview.baseCurrentValueId && `value ${sourcePreview.baseCurrentValueId}`,
-                            sourcePreview.sourcePinId && `pin ${sourcePreview.sourcePinId}`,
-                            sourcePreview.locator && `locator ${sourcePreview.locator}`
-                          ]
-                            .filter(Boolean)
-                            .join(" · ") || (sourcePreview.bindings?.length
-                              ? `${sourcePreview.bindings.length} 个绑定的身份见下方目标列表`
-                              : "缺少服务端来源身份")}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>字节证明</dt>
+                        <dt>变更内容</dt>
                         <dd>
                           <div>{sourcePreview.bindings && sourcePreview.bindings.length > 1
                             ? `${sourcePreview.bindings.length} 个参数绑定的只读差异证明`
@@ -492,16 +387,6 @@ export function WorkbenchInspectorPanel({
                               ))}
                             </ol>
                           ) : null}
-                          <details>
-                            <summary>完整字节摘要与来源身份</summary>
-                            <div className="mono">基准摘要：{sourcePreview.baseDigest ?? "缺失"}</div>
-                            <div className="mono">提议摘要：{sourcePreview.proposedDigest ?? "缺失"}</div>
-                            {sourcePreview.bindings && sourcePreview.bindings.length > 1 ? sourcePreview.bindings.map((binding) => (
-                              <div className="mono" key={binding.bindingId}>binding {binding.bindingId} · pin {binding.sourcePinId}</div>
-                            )) : null}
-                          </details>
-                          {sourcePreview.before != null ? <pre className="configuration-workbench__diff-view mono">{sourcePreview.before}</pre> : null}
-                          {sourcePreview.after != null ? <pre className="configuration-workbench__diff-view mono">{sourcePreview.after}</pre> : null}
                         </dd>
                       </div>
                     </>
@@ -511,7 +396,7 @@ export function WorkbenchInspectorPanel({
                       <dt>来源审核</dt>
                       <dd>
                         <span>
-                          请求 {sourcePreview.request?.id ?? sourceReviewResult?.requestId} · 状态 {sourcePreview.request?.status ?? sourceReviewResult?.status}
+                          审核状态：{({ pending: "待审核", approved: "已通过", rejected: "已驳回", withdrawn: "已撤回" } as Record<string, string>)[sourcePreview.request?.status ?? sourceReviewResult?.status ?? ""] ?? "请查看审核详情"}
                           {sourcePreview.request ? ` · ${sourcePreview.request.kind === "batch" ? "批量" : "单目标"}` : ""}
                         </span>
                         <button className="button subtle" type="button" onClick={onOpenReview}>
@@ -522,74 +407,53 @@ export function WorkbenchInspectorPanel({
                   ) : null}
                 </>
               ) : null}
-              <div>
+              {(activeCandidate.diagnostics?.length ?? 0) > 0 ? <div>
                 <dt>诊断</dt>
                 <dd>
-                  {(activeCandidate.diagnostics?.length ?? 0) === 0
-                    ? "无"
-                    : activeCandidate.diagnostics.map((item) => (
+                  {activeCandidate.diagnostics.map((item) => (
                         <div key={`${item.code}-${item.message}`}>
-                          [{item.severity}] {item.code}: {item.message}
+                          {item.message}
                         </div>
                       ))}
                 </dd>
-              </div>
-              <div>
+              </div> : null}
+              {(activeCandidate.blockers?.length ?? 0) > 0 ? <div>
                 <dt>阻断</dt>
                 <dd>
-                  {(activeCandidate.blockers?.length ?? 0) === 0
-                    ? "无"
-                    : activeCandidate.blockers.map((item) => (
+                  {activeCandidate.blockers.map((item) => (
                         <div key={`${item.code}-${item.message}`}>
-                          {item.code}: {item.message}
+                          {item.message}
                         </div>
                       ))}
                 </dd>
-              </div>
-              <div>
+              </div> : null}
+              {(activeCandidate.impact.structuralDiff?.length ?? 0) > 0 ? <div>
                 <dt>结构差异</dt>
-                <dd>
-                  {(activeCandidate.impact.structuralDiff?.length ?? 0) === 0
-                    ? "无"
-                    : `${activeCandidate.impact.structuralDiff?.length} 项`}
-                </dd>
-              </div>
-              <div>
+                <dd>{activeCandidate.impact.structuralDiff?.length} 项</dd>
+              </div> : null}
+              {activeCandidate.impact.coverage ? <div>
                 <dt>覆盖/映射</dt>
                 <dd>
-                  {activeCandidate.impact.coverage
-                    ? `已注册 ${activeCandidate.impact.coverage.matchedRegisteredCount} · 未注册 ${activeCandidate.impact.coverage.newUnregisteredCount}`
-                    : "不适用"}
+                  已注册 {activeCandidate.impact.coverage.matchedRegisteredCount} · 未注册 {activeCandidate.impact.coverage.newUnregisteredCount}
                 </dd>
-              </div>
-              <div>
+              </div> : null}
+              {(activeCandidate.impact.conflicts?.length ?? 0) > 0 ? <div>
                 <dt>冲突证据</dt>
                 <dd>
-                  {(activeCandidate.impact.conflicts?.length ?? 0) === 0
-                    ? "无开放冲突"
-                    : activeCandidate.impact.conflicts?.map((item) => (
-                        <div key={item.id} className="mono">
-                          {item.id}
-                          {item.parameterName ? ` · ${item.parameterName}` : ""}
+                  {activeCandidate.impact.conflicts?.map((item, index) => (
+                        <div key={item.id}>
+                          {item.parameterName || `冲突 ${index + 1}`}
                         </div>
                       ))}
                 </dd>
-              </div>
-              {activeCandidate.impact.textDiff ? (
-                <div>
-                  <dt>文本差异</dt>
-                  <dd>
-                    <pre className="configuration-workbench__diff mono" aria-label="候选文本差异" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing diff scrollport must support keyboard scrolling. */}>
-                      {activeCandidate.impact.textDiff}
-                    </pre>
-                  </dd>
-                </div>
-              ) : null}
+              </div> : null}
               </dl>
+              {!batchReviewInline ? <ReviewProvenance entries={[{ label: "候选版本", value: activeCandidate },
+                { label: "完整来源预览", value: sourcePreview }, { label: "审核回执", value: sourceReviewResult }]} /> : null}
               <div className="configuration-workbench__inspector-actions">
                 {canRecompute ? (
                   <button className="button subtle" type="button" onClick={onRecomputeCandidate}>
-                    重算影响
+                    重新核对
                   </button>
                 ) : null}
                 {canActivate ? (
@@ -599,28 +463,12 @@ export function WorkbenchInspectorPanel({
                     data-testid="activate-candidate"
                     onClick={onActivateCandidate}
                   >
-                    激活候选
-                  </button>
-                ) : null}
-                {sourcePreview?.kind === "canonical" ? (
-                  <button
-                    className="button primary"
-                    type="button"
-                    disabled={!(canSubmitSourceReview || canSubmitBatchReview) || submittingSourceReview}
-                    title={!(canSubmitSourceReview || canSubmitBatchReview)
-                      ? sourcePreview.request
-                        ? candidateReceiptMessage(sourcePreview.request)
-                        : batchPreview
-                        ? "候选状态、完整来源证明或当前权限不满足批量提交条件。"
-                        : sourceReviewReason(sourcePreview.reason) : undefined}
-                    onClick={onSubmitSourceReview}
-                  >
-                    {submittingSourceReview ? "提交中…" : batchPreview ? `提交 ${sourcePreview.format.toUpperCase()} 批量审核` : "提交来源变更审核"}
+                    确认应用
                   </button>
                 ) : null}
                 {canAbandon ? (
                   <button className="button subtle" type="button" onClick={onAbandonCandidate}>
-                    放弃候选
+                    放弃更新
                   </button>
                 ) : null}
                 {sourcePreview?.request?.status === "pending" || sourcePreview?.request?.status === "approved" ? (
@@ -634,271 +482,32 @@ export function WorkbenchInspectorPanel({
                   <p className="configuration-workbench__locked" role="note">{candidateReceiptMessage(sourcePreview.request)}</p>
                 ) : null}
               </div>
+              {sourceUpdateReview}
             </>
           ) : null}
           {inspectorLevel === "activity" ? (
-            <dl>
-              <div>
-                <dt>活动时间线</dt>
-                <dd>当前组织与项目范围内的服务器审计投影</dd>
-              </div>
-              {activityMissingNotice ? (
-                <div>
-                  <dt>目标状态</dt>
-                  <dd>
-                    <p role="status" aria-label="活动目标不可用">
-                      {activityMissingNotice}
-                    </p>
-                  </dd>
-                </div>
-              ) : null}
-              {activityLoading ? (
-                <div>
-                  <dt>加载</dt>
-                  <dd role="status">正在加载项目活动…</dd>
-                </div>
-              ) : null}
-              {activityError ? (
-                <div>
-                  <dt>失败</dt>
-                  <dd>
-                    <p role="alert">{activityError}</p>
-                    <button className="button subtle" type="button" onClick={onActivityRetry}>
-                      重试活动
-                    </button>
-                  </dd>
-                </div>
-              ) : null}
-              {!activityLoading && !activityError && activityRows.length === 0 ? (
-                <div>
-                  <dt>空态</dt>
-                  <dd role="status">暂无项目活动记录</dd>
-                </div>
-              ) : null}
+            <section className="configuration-workbench__activity" aria-label="项目活动">
+              {activityMissingNotice ? <p role="status" aria-label="活动目标不可用">{activityMissingNotice}</p> : null}
+              {activityLoading ? <p role="status">正在加载项目活动…</p> : null}
+              {activityError ? <div role="alert"><p>{activityError}</p>
+                <button className="button subtle" type="button" onClick={onActivityRetry}>重试活动</button>
+              </div> : null}
+              {!activityLoading && !activityError && activityRows.length === 0 ? <p role="status">暂无项目活动记录</p> : null}
               {!activityLoading && activityRows.length > 0 ? (
-                <div>
-                  <dt>事件</dt>
-                  <dd>
-                    <ul className="configuration-workbench__activity-list" aria-label="项目活动事件">
-                      {activityRows.map((row) => (
-                        <li key={row.id}>
-                          <button
-                            type="button"
-                            className="button subtle configuration-workbench__activity-item"
-                            aria-label={`${row.action} · ${row.targetLabel}`}
-                            onClick={() => onActivityEventSelect(row.id)}
-                          >
-                            <span className="configuration-workbench__activity-action">
-                              {row.action}
-                            </span>
-                            <span className="configuration-workbench__activity-meta">
-                              {row.actor} · {row.targetLabel} · {row.outcome} · {row.timeLabel}
-                            </span>
-                            <time dateTime={row.createdAtIso || undefined}>{row.absoluteTime}</time>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </dd>
-                </div>
+                <ul className="configuration-workbench__activity-list" aria-label="项目活动事件">
+                  {activityRows.map((row) => (
+                    <li key={row.id}>
+                      <button type="button" className="button subtle configuration-workbench__activity-item"
+                        aria-label={`${row.action} · ${row.targetLabel}`} onClick={() => onActivityEventSelect(row.id)}>
+                        <span className="configuration-workbench__activity-action">{row.action}</span>
+                        <span className="configuration-workbench__activity-meta">{row.actor} · {row.targetLabel} · {row.outcome}</span>
+                        <time dateTime={row.createdAtIso || undefined} title={row.absoluteTime}>{row.timeLabel}</time>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
-            </dl>
-          ) : null}
-          {inspectorLevel === "config-set" ? (
-            <>
-              <dl>
-              <div>
-                <dt>配置集</dt>
-                <dd>{selectedConfigSet.name}</dd>
-              </div>
-              <div>
-                <dt>描述</dt>
-                <dd>{selectedConfigSet.description || "无描述"}</dd>
-              </div>
-              <div>
-                <dt>成员数</dt>
-                <dd>{selectedMembers.length}</dd>
-              </div>
-              </dl>
-              <section className="configuration-workbench__member-ops" aria-label="成员管理">
-                <strong>成员管理</strong>
-                {sourceWorkflowSetLoading ? <p role="status">正在校验配置集来源成员…</p> : null}
-                {sourceWorkflowSetError ? (
-                  <div role="alert">
-                    <p>{sourceSetMutationReason} 成员变更已禁用。</p>
-                    <button className="button subtle" type="button" onClick={onRetrySourceWorkflow}>
-                      重试来源校验
-                    </button>
-                  </div>
-                ) : null}
-                {sourceWorkflowSetCanonical ? (
-                  <p role="note">当前配置集包含 canonical 来源成员。仅符合条件的 JSON 成员删除可提交人工审核；其他操作请查看按钮旁的限制说明。</p>
-                ) : null}
-                {!sourceWorkflowSetReady && !sourceWorkflowSetLoading && !sourceWorkflowSetError ? (
-                  <p role="note">{sourceSetMutationReason}</p>
-                ) : null}
-                {selectedMembers.length === 0 ? (
-                  <p>尚无成员。从下方未编组文件编入，或使用表单添加。</p>
-                ) : (
-                  <ul>
-                    {selectedMembers.map((member) => (
-                      <li key={member.fileId}>
-                        <span>
-                          {member.fileName} · {ROLE_LABELS[member.role]} · 顺序 {member.sortOrder}
-                        </span>
-                        {canAdmin ? (
-                          <button
-                            className="button subtle"
-                            type="button"
-                            aria-label={`移除 ${member.fileName}`}
-                            disabled={
-                              pendingAction !== null ||
-                              (sourceSetMutationBlocked && !reviewedRemovalReady(member))
-                            }
-                            aria-describedby={sourceWorkflowSetCanonical && member.format === "dts"
-                              ? `member-removal-reason-${member.fileId}` : undefined}
-                            onClick={() => onRequestRemoveMember(member)}
-                          >
-                            移除
-                          </button>
-                        ) : null}
-                        {sourceWorkflowSetCanonical && member.format === "dts" ? (
-                          <small id={`member-removal-reason-${member.fileId}`}>{dtsRemovalReason}</small>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {canAdmin ? (
-                  <div className="configuration-workbench__member-form">
-                    <label>
-                      文件
-                      <SelectControl
-                        ariaLabel="待编入文件"
-                        value={memberFileId}
-                        onValueChange={(value) => onMemberFileIdChange(value)}
-                        options={ungroupedFiles.length === 0 ? [{ value: "", label: "无未编组文件" }] : ungroupedFiles.map((file) => ({ value: file.id, label: file.fileName }))}
-                      />
-                    </label>
-                    <label>
-                      角色
-                      <SelectControl
-                        ariaLabel="成员角色"
-                        value={memberRole}
-                        onValueChange={(value) => onMemberRoleChange(value as ConfigSetRole)}
-                        options={CONFIG_SET_ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
-                      />
-                    </label>
-                    <label>
-                      顺序
-                      <input
-                        type="number"
-                        aria-label="成员顺序"
-                        value={memberSortOrder}
-                        onChange={(event) => onMemberSortOrderChange(Number(event.target.value) || 0)}
-                      />
-                    </label>
-                    <button
-                      className="button subtle"
-                      type="button"
-                      disabled={!memberFileId || pendingAction !== null || sourceSetMutationBlocked || Boolean(memberAddErrorsByFileId[memberFileId])}
-                      title={sourceSetMutationBlocked ? sourceSetMutationReason : memberAddErrorsByFileId[memberFileId] || undefined}
-                      aria-describedby={sourceWorkflowSetCanonical ? "canonical-member-add-reason" : undefined}
-                      onClick={onAddMember}
-                    >
-                      添加成员
-                    </button>
-                    {memberAddErrorsByFileId[memberFileId] ? <p role="note">{memberAddErrorsByFileId[memberFileId]}</p> : null}
-                    {sourceWorkflowSetCanonical ? <p id="canonical-member-add-reason" role="note">{canonicalAddReason}</p> : null}
-                  </div>
-                ) : null}
-              </section>
-            </>
-          ) : null}
-          {inspectorLevel === "file" && selectedMember ? (
-            <>
-              <dl>
-              <div>
-                <dt>文件格式</dt>
-                <dd>{selectedMember.format}</dd>
-              </div>
-              <div>
-                <dt>来源一致性</dt>
-                <dd>
-                  {sourceWorkflowLoading
-                    ? "正在加载来源工作流…"
-                    : sourceWorkflowError
-                      ? `${sourceWorkflowError} 受保护操作已禁用。`
-                      : sourceWorkflow?.canonical
-                        ? `canonical 来源审核 · ${sourceWorkflow.bindingCount} 个绑定${sourceWorkflow.reason ? ` · ${sourceReviewReason(sourceWorkflow.reason)}` : ""}`
-                        : "legacy 文件工作流"}
-                  {sourceWorkflowError ? (
-                    <button className="button subtle" type="button" onClick={onRetrySourceWorkflow}>
-                      重试来源校验
-                    </button>
-                  ) : null}
-                </dd>
-              </div>
-              <div>
-                <dt>成员角色</dt>
-                <dd>{ROLE_LABELS[selectedMember.role]}</dd>
-              </div>
-              <div>
-                <dt>活跃文件版本</dt>
-                <dd>
-                  {selectedMember.currentVersionNumber
-                    ? `版本 v${selectedMember.currentVersionNumber}`
-                    : "无活跃版本"}
-                  {selectedMember.currentVersionId ? (
-                    <code className="configuration-workbench__version-id">{selectedMember.currentVersionId}</code>
-                  ) : null}
-                </dd>
-              </div>
-              </dl>
-              {canAdmin ? (
-                <>
-                  <div className="configuration-workbench__inspector-actions">
-                  <button
-                    className="button subtle"
-                    type="button"
-                    disabled={pendingAction !== null || sourceMutationBlocked}
-                    title={sourceMutationBlocked ? sourceMutationReason : undefined}
-                    onClick={onSyncFile}
-                  >
-                    {pendingAction === "sync-file"
-                      ? "同步中…"
-                      : sourceWorkflow?.canonical
-                        ? "来源一致性校验"
-                        : "手动同步"}
-                  </button>
-                  {sourceWorkflow?.canonical && sourceWorkflow.bindingCount >= 2 && onOpenManualSync ? <button
-                    className="button subtle" type="button"
-                    disabled={pendingAction !== null || sourceWorkflowLoading || Boolean(sourceWorkflowError)
-                      || !sourceWorkflow.proofToken || !selectedMember.currentVersionId}
-                    onClick={onOpenManualSync}
-                  >上传来源并预览批量候选</button> : null}
-                  <button
-                    className="button subtle"
-                    type="button"
-                    disabled={pendingAction !== null || (!reviewedRemovalReady(selectedMember)
-                      && (sourceSetMutationBlocked || selectedSourceCanonical))}
-                    title={reviewedRemovalReady(selectedMember) ? "提交成员删除审核"
-                      : selectedDtsRemovalBlocked ? dtsRemovalReason
-                      : sourceSetMutationBlocked ? sourceSetMutationReason
-                      : selectedSourceCanonical ? sourceMutationReason : undefined}
-                    aria-describedby={selectedDtsRemovalBlocked
-                      ? "canonical-dts-member-removal-reason" : undefined}
-                    onClick={() => onRequestRemoveMember(selectedMember)}
-                  >
-                    从配置集移除
-                  </button>
-                  </div>
-                  {selectedDtsRemovalBlocked ? (
-                    <p id="canonical-dts-member-removal-reason" role="note">{dtsRemovalReason}</p>
-                  ) : null}
-                </>
-              ) : null}
-            </>
+            </section>
           ) : null}
           {inspectorLevel === "node" && selectedStructureNode ? (
             <dl>
@@ -912,116 +521,58 @@ export function WorkbenchInspectorPanel({
                 <dt>源码位置</dt>
                 <dd>{formatSourceSpan(selectedStructureNode.source)}</dd>
               </div>
-              <div>
-                <dt>labels</dt>
-                <dd>
-                  {selectedStructureNode.labels.length
-                    ? selectedStructureNode.labels.join(", ")
-                    : "无"}
-                </dd>
-              </div>
-              <div>
+              {selectedStructureNode.labels.length > 0 ? <div>
+                <dt>节点标签</dt>
+                <dd>{selectedStructureNode.labels.join(", ")}</dd>
+              </div> : null}
+              {selectedStructureNode.compatible?.trim() ? <div>
                 <dt>compatible</dt>
-                <dd>{selectedStructureNode.compatible ?? "无"}</dd>
-              </div>
-              <div>
-                <dt>风险</dt>
-                <dd>{classifyNodeRisk(selectedStructureNode.status)}</dd>
-              </div>
+                <dd>{selectedStructureNode.compatible}</dd>
+              </div> : null}
+              {selectedStructureNode.status?.trim() ? <div>
+                <dt>节点状态</dt>
+                <dd>{({ok:"已启用",okay:"已启用",disabled:"已禁用",reserved:"已保留"} as Record<string,string>)[selectedStructureNode.status] ?? selectedStructureNode.status}</dd>
+              </div> : null}
               <div>
                 <dt>来源</dt>
                 <dd title={selectedMember?.currentVersionId ?? undefined}>
                   工作配置 · 文件版本 {selectedMember?.currentVersionNumber ? `v${selectedMember.currentVersionNumber}` : "未知"}
                 </dd>
-              </div>
-              <div>
-                <dt>读权限</dt>
-                <dd>只读</dd>
               </div>
             </dl>
           ) : null}
           {inspectorLevel === "property" && selectedStructureProperty && selectedStructureNode ? (
-            <>
+            <details className="configuration-workbench__property-technical">
+              <summary>属性与来源详情</summary>
               <dl>
-              <div>
-                <dt>属性名</dt>
-                <dd>{selectedStructureProperty.name}</dd>
-              </div>
-              <div>
-                <dt>节点路径</dt>
-                <dd>
-                  <code>{selectedStructureNode.nodePath}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>源码位置</dt>
-                <dd>
-                  {formatSourceSpan(
-                    selectedStructureProperty.source ?? selectedStructureNode.source
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>类型</dt>
-                <dd>{dtsValueTypeLabel(selectedStructureProperty.valueType)}</dd>
-              </div>
-              <div>
-                <dt>类型约束</dt>
-                <dd>
-                  须符合「{dtsValueTypeLabel(selectedStructureProperty.valueType)}」语法；提交前可在任务坞校验。
-                </dd>
-              </div>
-              <div>
-                <dt>原始值</dt>
-                <dd>
-                  <code>{activePropertyDraft?.rawText ?? selectedStructureProperty.rawText}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>规范化值</dt>
-                <dd>{activePropertyDraft?.normalizedValue ?? selectedStructureProperty.normalizedValue}</dd>
-              </div>
-              <div>
-                <dt>风险</dt>
-                <dd>
-                  {isCriticalDtsNodePath(selectedStructureNode.nodePath)
-                    ? "安全关键"
-                    : classifyNodeRisk(selectedStructureNode.status)}
-                </dd>
-              </div>
-              <div>
-                <dt>变更原因</dt>
-                <dd>提交变更请求时必须填写原因；原因会进入既有审核流程。</dd>
-              </div>
-              <div>
-                <dt>来源</dt>
-                <dd title={selectedMember?.currentVersionId ?? undefined}>
-                  工作配置 · 文件版本 {selectedMember?.currentVersionNumber ? `v${selectedMember.currentVersionNumber}` : "未知"}
-                </dd>
-              </div>
-              <div>
-                <dt>写权限</dt>
-                <dd>
-                  {editorLocked
-                    ? criticalLocked
-                      ? "只读（无安全关键修改权限）"
-                      : "只读（无参数修改权限）"
-                    : "可编辑"}
-                </dd>
-              </div>
+                <div><dt>节点路径</dt><dd><code>{selectedStructureNode.nodePath}</code></dd></div>
+                <div><dt>属性类型</dt><dd>{dtsValueTypeLabel(selectedStructureProperty.valueType)}</dd></div>
+                <div><dt>源码位置</dt><dd>{formatSourceSpan(selectedStructureProperty.source ?? selectedStructureNode.source)}</dd></div>
+                <div><dt>源版本</dt><dd>{selectedMember?.currentVersionNumber ? `v${selectedMember.currentVersionNumber}` : "未提供"}</dd></div>
               </dl>
-
-            </>
+            </details>
           ) : null}
         </div>
-        </details>
-        {inspectorLevel === "file" && selectedMember ? (
-          <section className="configuration-workbench__version-history" aria-label="不可变版本历史">
-            <strong>不可变版本历史</strong>
+        </div>
+        {inspectorLevel === "versions" && selectedMember ? (
+          <section className="configuration-workbench__version-history" aria-label="版本历史">
+            <strong>{selectedMember.fileName}</strong>
+            <dl aria-label="文件信息">
+              <div><dt>文件格式</dt><dd>{selectedMember.format.toUpperCase()}</dd></div>
+              <div><dt>来源一致性</dt><dd>
+                {sourceWorkflowLoading || !sourceWorkflow && !sourceWorkflowError ? "正在核对来源状态…"
+                  : sourceWorkflowError ? `${sourceWorkflowError} 受保护操作已禁用。`
+                  : sourceWorkflow?.canonical
+                    ? `需人工审核 · ${sourceWorkflow.bindingCount} 个关联参数${sourceWorkflow.reason ? ` · ${sourceReviewReason(sourceWorkflow.reason)}` : ""}`
+                    : "确认后可更新来源"}
+                {sourceWorkflowError ? <button className="button subtle" type="button" onClick={onRetrySourceWorkflow}>重试来源校验</button> : null}
+              </dd></div>
+            </dl>
             {versionsLoading ? <p role="status">正在加载版本历史…</p> : null}
             {versionsError ? (
               <div role="alert">
                 <p>{versionsError}</p>
+                {onRetryVersions ? <button className="button subtle" type="button" onClick={onRetryVersions}>重试版本历史</button> : null}
               </div>
             ) : null}
             {!versionsLoading && !versionsError && fileVersions.length === 0 ? (
@@ -1032,70 +583,36 @@ export function WorkbenchInspectorPanel({
                 const active = version.id === selectedMember.currentVersionId;
                 return (
                   <li key={version.id}>
-                    <div>
+                    <button type="button" className="button subtle configuration-workbench__version-record"
+                      aria-label={`查看版本 ${version.versionNumber} 历史源码`}
+                      onClick={() => onEnterCanvasMode("history", version.id)}>
                       <strong>
                         版本 {version.versionNumber}
                         {active ? " · 活跃" : ""}
                       </strong>
-                      <details><summary>版本详情</summary><code>{version.id}</code></details>
                       <span>来源：{ORIGIN_LABELS[version.origin]}</span>
                       <span title={formatAbsolute(version.createdAt)}>创建时间：{formatRelativeOrAbsolute(version.createdAt)}</span>
                       <span>
                         操作人：{version.createdByDisplayName === null ? "用户已注销或未记录" : version.createdByDisplayName ?? "未记录"}
                       </span>
-                    </div>
+                    </button>
                     <div className="configuration-workbench__version-actions">
-                      <button
-                        className="button subtle"
-                        type="button"
-                        aria-label={`查看版本 ${version.versionNumber} 历史源码`}
-                        onClick={() => onEnterCanvasMode("history", version.id)}
-                      >
-                        查看历史
-                      </button>
-                      <button
-                        className="button subtle"
-                        type="button"
-                        aria-label={`统一差异版本 ${version.versionNumber}`}
-                        onClick={() => onEnterCanvasMode("unified-diff", version.id)}
-                      >
-                        统一差异
-                      </button>
-                      <button
-                        className="button subtle"
-                        type="button"
-                        aria-label={`下载版本 ${version.versionNumber}`}
-                        onClick={() => onDownloadVersion(version)}
-                      >
-                        下载
-                      </button>
-                      {canAdmin && !active ? (
-                        <button
-                          className="button subtle"
-                          type="button"
-                          aria-label={`将版本 ${version.versionNumber} 恢复为当前`}
-                          onClick={() => onRequestRollbackVersion(version)}
-                        >
-                          恢复为当前
-                        </button>
-                      ) : null}
+                      <RowActionMenu label={`版本 ${version.versionNumber} 操作`} items={[
+                        { id: "download", label: "下载", ariaLabel: `下载版本 ${version.versionNumber}`, onSelect: () => onDownloadVersion(version) },
+                        ...(canAdmin && !active ? [{ id: "rollback", label: sourceWorkflow?.canonical ? "申请回滚" : "恢复为当前",
+                          ariaLabel: sourceWorkflow?.canonical ? `申请回滚至版本 ${version.versionNumber}` : `将版本 ${version.versionNumber} 恢复为当前`,
+                          onSelect: () => onRequestRollbackVersion(version) }] : [])
+                      ]} />
                     </div>
                   </li>
                 );
               })}
             </ul>
+            <ReviewProvenance entries={[{ label: "文件", value: selectedMember }, { label: "版本记录", value: fileVersions }]} />
             {downloadMessage ? <p role="status">{downloadMessage}</p> : null}
           </section>
         ) : null}
-        <p className="configuration-workbench__read-only-note">
-          {canEdit
-            ? sourceWorkflow?.canonical
-              ? "源码画布保持只读；此文件的来源变更与回滚必须提交来源审核，审核通过前不会激活。当前文件属性仍可在类型化检查器中编辑，并进入会话变更坞提交。"
-              : `源码画布保持只读；整文件替换请走候选文件版本。${selectedMember?.format === "json" ? "JSON" : "DTS"} 属性改动在类型化检查器中编辑，并进入会话变更坞提交。候选激活需确认影响范围；配置集创建/成员管理、手动同步与导出同样可用。`
-            : "当前检查器为只读上下文。画布模式：" +
-              ({ working: "工作配置", history: "历史源码", "unified-diff": "统一差异", "side-by-side": "并排对比", candidate: "候选源码" }[canvasMode]) +
-              "。缺少参数修改权限时仍可浏览结构与源码。"}
-        </p>
+
       </div>
     </aside>
   );

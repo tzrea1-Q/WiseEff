@@ -81,7 +81,8 @@ export type CandidateVersionFlow = CandidateVersionFlowSnapshot & {
   submitSourceReview(
     projectId: string,
     reason: string,
-    repo: Pick<ParameterFileRepository, "submitCandidateSourceReview">
+    repo: Pick<ParameterFileRepository, "submitCandidateSourceReview">,
+    assignedToUserId?: string
   ): Promise<ParameterFileSourceReviewResult>;
 };
 
@@ -298,6 +299,7 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
           sourcePreviewLoading = false;
           sourcePreviewError = "";
           sourceReviewResult = null;
+          submittingSourceReview = false;
           loading = false;
           emit();
         }
@@ -310,6 +312,7 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
       sourcePreviewError = "";
       sourceReviewError = "";
       sourceReviewResult = null;
+      submittingSourceReview = false;
       emit();
       try {
         const [item, downloaded, previewResult] = await Promise.all([
@@ -387,6 +390,9 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
       error = "";
       emit();
       try {
+        if (input.file.size === 0 || input.file.size > 2 * 1024 * 1024) {
+          throw new Error("源文件必须非空且不超过 2 MiB；请重新选择文件。");
+        }
         const contentBase64 = await fileToContentBase64(input.file);
         const created = await repo.createCandidate(projectId, {
           fileName: input.file.name,
@@ -492,7 +498,7 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         throw new Error("只有 ready 状态的候选可以激活。");
       }
       if (!candidate.fileId && !input.configSetId) {
-        const message = "激活新文件需要已选择的配置集。";
+        const message = "激活新文件需要已选择的配置。";
         activateError = message;
         error = message;
         emit();
@@ -531,7 +537,7 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
       }
     },
 
-    async submitSourceReview(projectId, reason, repo) {
+    async submitSourceReview(projectId, reason, repo, assignedToUserId) {
       if (!candidate || candidate.status !== "ready") {
         throw new Error("只有 ready 状态的候选可以提交来源审核。");
       }
@@ -562,6 +568,9 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         throw new Error(message);
       }
       submittingSourceReview = true;
+      const submittedCandidateId = candidate.id;
+      const submittedGeneration = loadGeneration;
+      const stillSelected = () => candidate?.id === submittedCandidateId && loadGeneration === submittedGeneration;
       sourceReviewError = "";
       error = "";
       emit();
@@ -569,24 +578,33 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         const result = await repo.submitCandidateSourceReview(projectId, candidate.id, {
           expectedCurrentVersionId,
           expectedProofToken: sourcePreview.proofToken,
+          ...(assignedToUserId ? { assignedToUserId } : {}),
+          ...(sourcePreview.cohortProofToken ? { expectedWorkflowProofToken: sourcePreview.cohortProofToken } : {}),
           reason: reason.trim()
         });
-        sourceReviewResult = result;
-        sourcePreview = {
-          ...sourcePreview,
-          canSubmit: false,
-          request: { id: result.requestId, status: result.status, kind: "single" }
-        };
-        emit();
+        if (stillSelected()) {
+          sourceReviewResult = result;
+          sourcePreview = {
+            ...sourcePreview,
+            canSubmit: false,
+            request: { id: result.requestId, status: result.status, kind: "single" }
+          };
+          emit();
+        }
         return result;
       } catch (err: unknown) {
-        sourceReviewError = err instanceof Error ? err.message : "提交来源审核失败。";
-        error = sourceReviewError;
-        emit();
-        throw err instanceof Error ? err : new Error(sourceReviewError);
+        const message = err instanceof Error ? err.message : "提交来源审核失败。";
+        if (stillSelected()) {
+          sourceReviewError = message;
+          error = message;
+          emit();
+        }
+        throw err instanceof Error ? err : new Error(message);
       } finally {
-        submittingSourceReview = false;
-        emit();
+        if (stillSelected()) {
+          submittingSourceReview = false;
+          emit();
+        }
       }
     }
   };

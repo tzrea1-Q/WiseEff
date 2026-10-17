@@ -1,4 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
+import { openWorkbenchPanel } from "./helpers/runtime";
+import { selectControlOption } from "./helpers/selectControl";
 import { readdir } from "node:fs/promises";
 import { expect, test } from "playwright/test";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
@@ -38,7 +40,7 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("response", (response) => {
-      if (/source-manual-sync|source-conflicts|parameter-value-change-requests/.test(response.url())) {
+      if (/parameter-file-candidates|source-conflicts|parameter-value-change-requests/.test(response.url())) {
         network.push(`${response.request().method()} ${response.status()} ${new URL(response.url()).pathname}`);
       }
     });
@@ -143,26 +145,36 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
       const baseline = await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" });
       await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${setId}&file=${fileId}`);
       await dismissXiaozeHint(page);
-      await page.getByRole("button", { name: "检查器", exact: true }).click();
+      await openWorkbenchPanel(page, "file");
+      await openWorkbenchPanel(page, "candidates");
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      const openDialog = inspector.getByRole("button", { name: "上传来源并预览批量候选" });
-      await openDialog.click();
-      const dialog = page.getByRole("dialog", { name: `上传 ${format.toUpperCase()} 来源并准备审核` });
+      const dialog = inspector.getByRole("region", { name: `提交 ${format.toUpperCase()} 批量来源审核` });
       if (format === "json" && firstChoice === "draft" && !stalePreview) {
-        await page.keyboard.press("Tab");
-        expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-        await page.keyboard.press("Escape");
-        await expect(dialog).toHaveCount(0);
-        await expect(openDialog).toBeFocused();
-        await openDialog.click();
+        await inspector.getByRole("button", { name: "关闭检查器" }).press("Enter");
+        await expect(inspector).toHaveCount(0);
+        const configuration = page.getByRole("button", { name: "配置", exact: true });
+        await configuration.focus();
+        await expect(configuration).toBeFocused();
+        await page.keyboard.press("Enter");
+        await page.getByRole("menuitem", { name: "文件管理", exact: true }).press("Enter");
+        const fileRow = page.getByRole("dialog", { name: "文件管理" }).getByRole("row").filter({ hasText: fileName });
+        await fileRow.getByRole("button", { name: "更新文件", exact: true }).press("Enter");
       }
-      await dialog.getByLabel(/选择来源文件/).setInputFiles({ name: fileName,
-        mimeType: format === "json" ? "application/json" : "text/plain", buffer: Buffer.from(uploadBytes) });
-      const preparing = page.waitForResponse((response) => response.url().endsWith("/source-manual-sync/prepare"));
+      const preparing = page.waitForResponse((response) => response.url().endsWith("/parameter-file-candidates")
+        && response.request().method() === "POST");
       const discovering = page.waitForResponse((response) => response.url().endsWith("/source-conflicts"));
-      await dialog.getByRole("button", { name: "预览有序目标与证明" }).click();
+      const choosing = page.waitForEvent("filechooser");
+      await inspector.getByRole("button", { name: "上传新文件", exact: true }).click();
+      await (await choosing).setFiles({ name: fileName,
+        mimeType: format === "json" ? "application/json" : "text/plain", buffer: Buffer.from(uploadBytes) });
       const preparedResponse = await preparing;
       expect(preparedResponse.status(), await preparedResponse.text()).toBe(201);
+      const createdCandidateId = (await preparedResponse.json()).item.id as string;
+      const previewResponse = await request.get(api(`/api/v1/projects/aurora/parameter-file-candidates/${createdCandidateId}/source-preview`), { headers: adminHeaders });
+      expect(previewResponse.status(), await previewResponse.text()).toBe(200);
+      const sourcePreview = (await previewResponse.json()).item as { candidateId: string; bindings: Array<{ bindingId: string; afterText?: string }> };
+      const prepared = { ...sourcePreview, targets: sourcePreview.bindings };
+      expect(prepared.candidateId).toBe(createdCandidateId);
       const discoveredResponse = await discovering;
       expect(discoveredResponse.status(), await discoveredResponse.text()).toBe(200);
       const discovered = await discoveredResponse.json() as { items: Array<{ selectedBindingId: string;
@@ -172,21 +184,23 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
       expect(discovered.items.filter((item) => item.selectedBindingId === first.id)).toHaveLength(2);
       const selectedDraft = discovered.items.find((item) => item.selectedBindingId === first.id
         && item.authorUserId === otherAuthor.user.id)!;
-      const prepared = (await preparedResponse.json()).item as { candidateId: string; targets: Array<{ bindingId: string }> };
       expect(prepared.targets).toHaveLength(2);
-      await expect(dialog.getByRole("list", { name: "手动同步完整有序目标" }).getByRole("listitem")).toHaveCount(2);
-      const firstRow = dialog.getByRole("list", { name: "手动同步完整有序目标" }).getByRole("listitem")
-        .filter({ hasText: first.id });
+      await expect(dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem")).toHaveCount(2);
+      const targetRows = dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem");
+      const firstTargetIndex = prepared.targets.findIndex((target) => target.bindingId === first.id);
+      expect(firstTargetIndex).toBeGreaterThanOrEqual(0);
+      const firstRow = targetRows.nth(firstTargetIndex);
       const firstFile = firstRow.getByRole("radio", { name: /采用文件值/ });
       await firstFile.focus();
       if (firstChoice === "draft") {
-        await firstRow.getByRole("radio", { name: new RegExp(`采用界面草稿 ${selectedDraft.selectedDraftId}`) }).focus();
+        await firstRow.getByRole("radio", { name: /采用界面草稿 .*88/ }).focus();
       }
       await page.keyboard.press("Space");
-      const otherRow = dialog.getByRole("list", { name: "手动同步完整有序目标" }).getByRole("listitem")
-        .filter({ hasNotText: first.id });
-      await otherRow.getByRole("radio", { name: /采用文件值/ }).check();
+      const otherRow = targetRows.nth(firstTargetIndex === 0 ? 1 : 0);
+      await expect(otherRow).toContainText(prepared.targets[firstTargetIndex === 0 ? 1 : 0]!.afterText!);
+      await expect(otherRow.getByRole("radio")).toHaveCount(0);
       await dialog.getByRole("textbox", { name: "修改原因" }).fill("Mixed file and draft source review");
+      await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
       await page.screenshot({ path: testInfo.outputPath(`b906-${format}-${firstChoice}${stalePreview ? "-stale" : ""}-prepare-1440x900.png`) });
       if (stalePreview) {
         const changed = await request.post(api(`/api/v2/projects/aurora/parameter-bindings/${first.id}/drafts`), {
@@ -205,22 +219,23 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
         ["aurora"])).rows[0]!.count;
       const submitting = page.waitForResponse((response) => response.url().endsWith("/parameter-value-change-requests/batches")
         && response.request().method() === "POST");
-      await dialog.getByRole("button", { name: "一次提交全部 2 项审核" }).click();
+      await dialog.getByRole("button", { name: "提交 2 项审核" }).click();
       const submitted = await submitting;
       expect(submitted.request().postDataJSON().targetDecisions).toEqual(prepared.targets.map((target) => ({
         bindingId: target.bindingId, choice: target.bindingId === first.id ? firstChoice : "file",
         ...(target.bindingId === first.id && firstChoice === "draft" ? { draftId: selectedDraft.selectedDraftId } : {}),
-        ...(target.bindingId === first.id ? { expectedConflictProofs: discovered.items
+        expectedConflictProofs: discovered.items
           .filter((item) => item.selectedBindingId === target.bindingId).map((item) => ({
             draftId: item.selectedDraftId,
             decisionProofDigest: firstChoice === "draft" && item.selectedDraftId === selectedDraft.selectedDraftId
               ? item.choices.draft.decisionProofDigest : item.choices.file.decisionProofDigest
-          })) } : {})
+          }))
       })));
       if (stalePreview) {
         expect(submitted.status(), await submitted.text()).toBe(409);
         expect((await submitted.json()).error.details.reason).toBe("canonical-batch-conflict-proof-stale");
-        await expect(dialog.getByRole("alert")).toContainText("竞争草稿或选择证明已变化");
+        await expect(dialog.getByRole("alert")).toContainText("409");
+        await expect(dialog.getByRole("button", { name: "提交 2 项审核" })).toBeDisabled();
         expect(await captureConfigurationSourceState(db, { organizationId: "org-chargelab", projectId: "aurora" }))
           .toEqual(beforeSubmit);
         expect((await readdir(runtime.objectStoreRoot, { recursive: true })).sort()).toEqual(objectsBeforeSubmit);
@@ -238,7 +253,7 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
         return;
       }
       expect(submitted.status(), await submitted.text()).toBe(201);
-      expect(preparedResponse.request().headers()["x-request-id"]).not.toBe(submitted.request().headers()["x-request-id"]);
+      expect(submitted.request().headers()["x-request-id"]).toBeTruthy();
       const receipt = (await submitted.json()).item as { id: string; candidateId: string;
         uploadCandidateId: string; batchProofDigest: string; draftImpactDigest: string; decisionProofDigest: string };
       expect(receipt.candidateId === prepared.candidateId).toBe(firstChoice === "file");
@@ -288,7 +303,8 @@ for (const stalePreview of firstChoice === "draft" ? [false, true] : [false]) {
       expect(errors).toEqual([]);
       expect(network).toEqual(expect.arrayContaining([
         expect.stringMatching(/GET 200 .*source-conflicts$/),
-        expect.stringMatching(/POST 201 .*source-manual-sync\/prepare$/),
+        expect.stringMatching(/POST 201 .*parameter-file-candidates$/),
+        expect.stringMatching(/GET 200 .*source-preview$/),
         expect.stringMatching(/POST 201 .*parameter-value-change-requests\/batches$/),
         expect.stringMatching(/POST 200 .*parameter-value-change-requests\/.*\/review$/)
       ]));

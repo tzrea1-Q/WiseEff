@@ -3,7 +3,7 @@ import {
   type AggregateLocalStructuredEditsResult,
   type ParameterSourceLookup
 } from "@/application/parameters/structuredChangeSet";
-import type { DtsStructuralNode } from "@/application/ports/DtsStructuredRepository";
+import type { DtsStructuralNode, DtsStructuralProperty } from "@/application/ports/DtsStructuredRepository";
 
 export type SessionPropertyDraft = {
   rawText: string;
@@ -12,6 +12,10 @@ export type SessionPropertyDraft = {
   valid?: boolean;
   error?: string;
 };
+
+export function isUnchangedSessionDraft(draft: SessionPropertyDraft, property: DtsStructuralProperty): boolean {
+  return draft.valid !== false && draft.present !== false && draft.rawText === property.rawText;
+}
 
 export type SessionDraftIdentity = {
   fileId: string;
@@ -64,7 +68,7 @@ export function listSessionDraftRows(input: {
       });
       const draft = input.drafts[key] ?? input.drafts[identity];
       if (!draft) continue;
-      if (draft.rawText === property.rawText && draft.present === undefined) continue;
+      if (isUnchangedSessionDraft(draft, property)) continue;
       rows.push({
         fileId: input.fileId,
         nodePath: node.nodePath,

@@ -1,5 +1,6 @@
 import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
+import { openWorkbenchPanel } from "./helpers/runtime";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "playwright/test";
 import { createPostgresDatabase } from "../../server/shared/database/client";
@@ -86,20 +87,21 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       const submitFromPage = async (fixture: Awaited<ReturnType<typeof setup>>, reason: string) => {
         await signInBrowserAsRole(page, "admin", `${runtime!.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${fixture.setId}&file=${fixture.fileId}&sourceMode=candidate&candidate=${fixture.candidateId}`);
         await dismissXiaozeHint(page);
-        const toggle = page.getByRole("button", { name: "检查器", exact: true });
-        if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+        await openWorkbenchPanel(page, "candidates");
         const inspector = page.getByRole("complementary", { name: "配置检查器" });
-        await expect(inspector.getByRole("list", { name: "来源变更目标" }).getByRole("listitem")).toHaveCount(2);
-        await inspector.getByRole("button", { name: "提交 JSON 批量审核" }).click();
-        const dialog = page.getByRole("dialog", { name: "提交 JSON 批量来源审核" });
+        const dialog = inspector.getByRole("region", { name: "提交 JSON 批量来源审核" });
         if (reason === "浏览器批量批准") {
-          await page.keyboard.press("Tab");
-          expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
-          await page.keyboard.press("Escape");
-          await expect(dialog).toBeHidden();
-          await inspector.getByRole("button", { name: "提交 JSON 批量审核" }).click();
+          await dialog.getByRole("textbox", { name: "修改原因" }).focus();
+          await expect(dialog.getByRole("textbox", { name: "修改原因" })).toBeFocused();
+          await inspector.getByRole("button", { name: "关闭检查器" }).press("Enter");
+          await expect(inspector).toHaveCount(0);
+          await openWorkbenchPanel(page, "candidates");
+          await expect(dialog).toBeVisible();
         }
-        await expect(dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem")).toHaveCount(2);
+        const targetRows = dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem");
+        await expect(targetRows).toHaveCount(2);
+        await expect(targetRows.filter({ hasText: /36\.5\s*→\s*50/ })).toHaveCount(1);
+        await expect(targetRows.filter({ hasText: /48\s*→\s*60/ })).toHaveCount(1);
         await dialog.getByRole("textbox", { name: "修改原因" }).fill(reason);
         await expect(dialog.getByRole("combobox", { name: "指定软件审核人" })).toContainText("选择软件审核人");
         await expect(dialog.getByRole("combobox", { name: "指定软件审核人" })).toHaveAttribute("data-value", "");
@@ -128,14 +130,19 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${approvedFixture.setId}&file=${approvedFixture.fileId}&sourceMode=candidate&candidate=${approvedFixture.candidateId}`);
       await dismissXiaozeHint(page);
       const pendingInspector = page.getByRole("complementary", { name: "配置检查器" });
-      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
-      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") await inspectorToggle.click();
-      await expect(pendingInspector).toContainText(`请求 ${approved.id} · 状态 pending · 批量`);
-      await expect(pendingInspector.getByRole("button", { name: "提交 JSON 批量审核" })).toBeDisabled();
+      const expectCandidateReceipt = async (status: "pending" | "approved") => {
+        await expect(pendingInspector).toContainText(`审核状态：${status === "pending" ? "待审核" : "已通过"} · 批量`);
+        await pendingInspector.getByText("溯源信息", { exact: true }).click();
+        await expect.poll(async () => JSON.parse((await pendingInspector.getByLabel("完整溯源数据").textContent())!)["完整来源预览"]?.request)
+          .toMatchObject({ id: approved.id, status, kind: "batch" });
+      };
+      await openWorkbenchPanel(page, "candidates");
+      await expectCandidateReceipt("pending");
+      await expect(pendingInspector.getByRole("button", { name: "提交 2 项审核" })).toHaveCount(0);
       await page.reload();
-      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") await inspectorToggle.click();
-      await expect(pendingInspector).toContainText(`请求 ${approved.id} · 状态 pending · 批量`);
-      await expect(pendingInspector.getByRole("button", { name: "提交 JSON 批量审核" })).toBeDisabled();
+      await openWorkbenchPanel(page, "candidates");
+      await expectCandidateReceipt("pending");
+      await expect(pendingInspector.getByRole("button", { name: "提交 2 项审核" })).toHaveCount(0);
       const otherReviewerHeaders = authHeadersForUser(
         acceptanceCast.chenNa.userId, acceptanceCast.chenNa.email, acceptanceCast.chenNa.name
       );
@@ -174,9 +181,9 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
       await page.screenshot({ path: testInfo.outputPath("b906-batch-approved-1440x900.png") });
       await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${approvedFixture.setId}&file=${approvedFixture.fileId}&sourceMode=candidate&candidate=${approvedFixture.candidateId}`);
       await dismissXiaozeHint(page);
-      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") await inspectorToggle.click();
-      await expect(pendingInspector).toContainText(`请求 ${approved.id} · 状态 approved · 批量`);
-      await expect(pendingInspector.getByRole("button", { name: "提交 JSON 批量审核" })).toHaveCount(0);
+      await openWorkbenchPanel(page, "candidates");
+      await expectCandidateReceipt("approved");
+      await expect(pendingInspector.getByRole("button", { name: "提交 2 项审核" })).toHaveCount(0);
 
       const rejectedFixture = await setup("rejected");
       const rejected = await submitFromPage(rejectedFixture, "浏览器批量驳回");

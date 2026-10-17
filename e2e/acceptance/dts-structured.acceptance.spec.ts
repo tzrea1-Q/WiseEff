@@ -14,7 +14,7 @@ import {
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
-import { apiRoute } from "./helpers/runtime";
+import { apiRoute, openWorkbenchPanel } from "./helpers/runtime";
 import { acceptanceCast } from "./helpers/cast";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { createPostgresDatabase } from "../../server/shared/database/client";
@@ -335,7 +335,7 @@ test.describe("DTS structured product browser acceptance", () => {
         );
         await dismissXiaozeHint(page);
         await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
-        await expect(page.getByRole("combobox", { name: "配置集" })).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole("button", { name: "配置", exact: true })).toBeVisible({ timeout: 20_000 });
         await recordOperationEvidence({
           operationId: "PARAM-DTS-SEARCH-001",
           title: "dts-search API and configuration workbench search",
@@ -407,15 +407,15 @@ test.describe("DTS structured product browser acceptance", () => {
       await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({
         timeout: 30_000
       });
-      await expect(page.getByRole("combobox", { name: "配置集" })).toBeVisible({ timeout: 20_000 });
-      const expandTree = page.getByRole("button", { name: "展开文件与配置集" });
+      await expect(page.getByRole("button", { name: "配置", exact: true })).toBeVisible({ timeout: 20_000 });
+      const expandTree = page.getByRole("button", { name: "展开配置导航" });
       if (await expandTree.isVisible().catch(() => false)) {
         await expandTree.click();
       }
       const searchForm = page.getByRole("form", { name: "统一结构搜索" });
       await expect(searchForm).toBeVisible({ timeout: 20_000 });
       await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).fill("chip@6E");
-      await searchForm.getByRole("button", { name: "搜索", exact: true }).click();
+      await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).press("Enter");
       await expect(page.getByLabel("搜索结果")).toContainText(/chip@6E/, { timeout: 20_000 });
 
       await recordOperationEvidence({
@@ -435,10 +435,7 @@ test.describe("DTS structured product browser acceptance", () => {
         notes: "dts-search returned chip@6E hits; configuration workbench search surface is visible."
       });
 
-      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
-      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
-        await inspectorToggle.click();
-      }
+      await openWorkbenchPanel(page, "file");
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible({ timeout: 20_000 });
 
       await recordOperationEvidence({
@@ -497,7 +494,7 @@ test.describe("DTS structured product browser acceptance", () => {
       expect((changedMember?.structuralDiff?.length ?? 0) > 0).toBe(true);
 
       await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible();
-      await page.getByRole("button", { name: "检查器" }).click().catch(() => undefined);
+      await openWorkbenchPanel(page, "release");
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible({ timeout: 20_000 });
 
       await recordOperationEvidence({

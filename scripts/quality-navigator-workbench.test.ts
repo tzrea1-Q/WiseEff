@@ -25,13 +25,22 @@ const measurement = () => ({
 
 describe("navigator-workbench geometry", () => {
   it.each(["configuration", "files", "config-sets", "structure", "conflicts"])(
-    "retains project workbench geometry and content tabs for %s", (view) => {
+    "retains project workbench geometry without requiring a single content tab for %s", (view) => {
       const path = `/parameter-admin/projects/aurora/${view}`;
       expect(consistencyRoutes.find((route) => route.path === path)?.required)
-        .toEqual(expect.arrayContaining(["navigatorWorkbenches", "rowActions", "viewSwitches", "viewSwitchSignatures"]));
-      expect(viewSwitchStyleExpectations[path]).toEqual(["tabs"]);
+        .toEqual(expect.arrayContaining(["navigatorWorkbenches"]));
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).not.toContain("rowActions");
+      expect(viewSwitchStyleExpectations[path]).toBeUndefined();
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).not.toContain("viewSwitches");
+      expect(consistencyRoutes.find((route) => route.path === path)?.required).not.toContain("viewSwitchSignatures");
     }
   );
+  it("requires linked content tabs for the explicit conflict view", () => {
+    const path = "/parameter-admin/projects/aurora/configuration?tab=conflicts";
+    expect(viewSwitchStyleExpectations[path]).toEqual(["tabs"]);
+    expect(consistencyRoutes.find((route) => route.path === path)?.required)
+      .toEqual(expect.arrayContaining(["navigatorWorkbenches", "viewSwitches", "viewSwitchSignatures"]));
+  });
   it("gates module tree geometry and content tabs", () => {
     const path = "/parameter-admin/modules";
     expect(consistencyRoutes.find((route) => route.path === path)?.required)

@@ -39,6 +39,23 @@ function renderDialogs(overrides: Partial<Parameters<typeof WorkbenchBaselineDia
 }
 
 describe("WorkbenchBaselineDialogs", () => {
+  it("requires a nonblank version name before saving a snapshot", () => {
+    renderDialogs({ createOpen: true, newBaselineName: "   " });
+    const dialog = screen.getByRole("dialog", { name: "保存版本快照" });
+    expect(within(dialog).getByRole("button", { name: "保存版本快照" })).toBeDisabled();
+  });
+
+  it("names a whole-configuration snapshot clearly and preserves the entered version name", () => {
+    const onNewBaselineNameChange = vi.fn();
+    renderDialogs({ createOpen: true, newBaselineName: "量产 1.0", onNewBaselineNameChange });
+    const dialog = screen.getByRole("dialog", { name: "保存版本快照" });
+    expect(dialog).toHaveTextContent("保存当前整套配置的文件及版本组合");
+    const input = within(dialog).getByRole("textbox", { name: "版本名称" });
+    expect(input).toHaveValue("量产 1.0");
+    fireEvent.change(input, { target: { value: "量产 1.1" } });
+    expect(onNewBaselineNameChange).toHaveBeenCalledWith("量产 1.1");
+  });
+
   it("keeps canonical drift visible but replaces restore confirmation with a source-transaction explanation", () => {
     renderDialogs({
       restoreOpen: true,
@@ -75,21 +92,21 @@ describe("WorkbenchBaselineDialogs", () => {
   it("renders the action error inside the open restore confirmation dialog", () => {
     renderDialogs({
       restoreOpen: true,
-      baselineActionError: "恢复基线失败：请求超时"
+      baselineActionError: "恢复版本失败：请求超时"
     });
 
-    const dialog = screen.getByRole("dialog", { name: "恢复基线预览" });
-    expect(within(dialog).getByRole("alert")).toHaveTextContent("恢复基线失败：请求超时");
+    const dialog = screen.getByRole("dialog", { name: "恢复版本预览" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("恢复版本失败：请求超时");
   });
 
   it("renders the action error inside the open release confirmation dialog", () => {
     renderDialogs({
       releaseOpen: true,
-      baselineActionError: "就绪状态已变化，请重新查看就绪问题后再操作。"
+      baselineActionError: "检查结果已变化，请重新查看版本检查问题后再操作。"
     });
 
-    const dialog = screen.getByRole("dialog", { name: "发布基线确认" });
-    expect(within(dialog).getByRole("alert")).toHaveTextContent("就绪状态已变化");
+    const dialog = screen.getByRole("dialog", { name: "设为正式版本确认" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("检查结果已变化");
   });
 
   it("blocks release confirm until the revision-gate acknowledgement is ticked", () => {
@@ -98,10 +115,10 @@ describe("WorkbenchBaselineDialogs", () => {
       releaseRequiresConfirmation: true
     });
 
-    const dialog = screen.getByRole("dialog", { name: "发布基线确认" });
-    const confirm = within(dialog).getByRole("button", { name: "确认发布" });
+    const dialog = screen.getByRole("dialog", { name: "设为正式版本确认" });
+    const confirm = within(dialog).getByRole("button", { name: "确认设为正式版本" });
     const acknowledgement = within(dialog).getByRole("checkbox", {
-      name: "我已了解修订校验未硬性通过的风险，确认继续发布。"
+      name: "我已了解修订校验未硬性通过的风险，确认继续设为正式版本。"
     });
     expect(confirm).toBeDisabled();
     fireEvent.click(acknowledgement);

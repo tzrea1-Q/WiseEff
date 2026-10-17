@@ -95,6 +95,15 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
   const [canonicalSyncCheck, setCanonicalSyncCheck] = useState(false);
   const [exportEvidence, setExportEvidence] = useState("");
 
+  const onDismissOperationResults = useCallback(() => {
+    const message = configSetOpsSession.lastMessage;
+    if (message && (message === syncEvidence || message === exportEvidence)) {
+      configSetOpsSession.clearSuccessMessage();
+    }
+    setSyncEvidence("");
+    setExportEvidence("");
+  }, [configSetOpsSession, exportEvidence, syncEvidence]);
+
   useEffect(() => {
     const available = ungroupedFiles[0]?.id ?? "";
     setMemberFileId((current) =>
@@ -132,7 +141,9 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
           property: null,
           sourceMode: null,
           version: null,
-          candidate: null
+          candidate: null,
+          baseline: null,
+          inspector: "config-set"
         })
       );
       return null;
@@ -167,13 +178,16 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
       if (!canAdmin || !selectedConfigSet) return;
       const file = projectFiles.find((item) => item.id === fileId);
       if (!file || !ungroupedFiles.some((item) => item.id === fileId)) {
-        throw new Error("文件已不在未编组列表，请刷新后重试。");
+        throw new Error("此文件已不在可加入列表，请刷新后重试。");
       }
       // Recheck both entry points against current source proofs before changing membership.
       for (const targetId of new Set([...selectedMembers.map((item) => item.fileId), fileId])) {
         const workflow = await fileRepository.getSourceWorkflow(projectId, targetId);
+        if (workflow.configSetId && workflow.configSetId !== selectedConfigSet.id) {
+          throw new Error("此文件已属于其他配置，不能重复添加。请刷新文件列表。");
+        }
         if (workflow.canonical !== false) {
-          throw new Error("此来源的成员变更需要审核，当前不能直接编入文件。");
+          throw new Error("此来源的配置文件变更需要审核，当前不能直接添加文件。");
         }
       }
       const result = await configSetOpsSession.addMember(
@@ -266,11 +280,11 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
       if (!canAdmin || !selectedConfigSet) return;
       setConfirmation({
         key: `remove-member-${member.fileId}`,
-        title: "移除配置集成员",
+        title: "从配置移除文件",
         description: (
           <p>
             将把 <code>{member.fileName}</code>（角色：
-            {ROLE_LABELS[member.role] ?? member.role}）从配置集「{selectedConfigSet.name}」中移除。该文件本身不会被删除，但基于此配置集的后续基线与导出将不再包含它。
+            {ROLE_LABELS[member.role] ?? member.role}）从配置「{selectedConfigSet.name === "default" ? "默认配置" : selectedConfigSet.name}」中移除。该文件本身不会被删除，但此配置的后续基线与导出将不再包含它。
           </p>
         ),
         confirmLabel: "确认移除",
@@ -314,25 +328,25 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
 
   const exportSelectedConfigSet = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet) return;
+    setExportEvidence("");
+    const name = selectedConfigSet.name === "default" ? "默认配置" : selectedConfigSet.name;
     const result = await configSetOpsSession.exportConfigSet(
       projectId,
       selectedConfigSet.id,
-      selectedConfigSet.name,
+      name,
       dtsRepository
     );
     if (!result.ok) return;
-    downloadExportBundle(selectedConfigSet.name, result.export);
+    await downloadExportBundle(name, result.export);
     setExportEvidence(result.evidence);
     setTasksOpen(true);
   }, [canAdmin, configSetOpsSession, dtsRepository, projectId, selectedConfigSet, setTasksOpen]);
 
   const selectConfigSet = useCallback(
     (configSetId: string) => {
-      setInspectorLevelOverride("config-set");
-      setInspectorOpen(true);
       onNavigate(navigationSession.selectConfigSet(projectId, search, configSetId));
     },
-    [navigationSession, onNavigate, projectId, search, setInspectorLevelOverride, setInspectorOpen]
+    [navigationSession, onNavigate, projectId, search]
   );
 
   const selectMember = useCallback(
@@ -370,6 +384,7 @@ export function useWorkbenchConfigSetOrchestration(params: UseWorkbenchConfigSet
     syncEvidence,
     canonicalSyncCheck,
     exportEvidence,
+    onDismissOperationResults,
     setMemberFileId,
     setMemberRole,
     setMemberSortOrder,

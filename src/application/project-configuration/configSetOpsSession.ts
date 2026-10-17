@@ -65,6 +65,7 @@ export type ConfigSetOpsSession = ConfigSetOpsSnapshot & {
   subscribe(listener: () => void): () => void;
   getSnapshot(): ConfigSetOpsSnapshot;
   clearFeedback(): void;
+  clearSuccessMessage(): void;
   create(
     projectId: string,
     input: { name: string; existingNames: string[] },
@@ -104,15 +105,15 @@ const ROLE_LABELS: Record<ConfigSetRole, string> = {
 };
 
 const CANONICAL_SYNC_CONFLICT_COPY = new Map([
-  ["source-membership-drift", "配置集成员、文件版本或参数绑定的来源记录与固定修订不一致，校验已停止。请刷新并核对成员、版本和来源记录；可从页面顶部「上传候选」查看差异，仅在来源证明完整且基版本有效时提交人工审核。"],
-  ["mixed-source-revisions", "同一配置集的参数绑定指向不同的来源修订，无法证明统一来源，校验已停止。请刷新并让配置管理员核对各绑定的当前值与来源固定记录，通过受审来源修复统一修订后再校验；上传候选不能直接解除此冲突。"],
-  ["source-pin-missing", "当前配置集缺少可验证的活动来源固定记录，校验已停止。请刷新并核对参数绑定、当前值和来源固定记录；仍缺失时请配置管理员先修复来源，再重新校验，不要直接提交候选审核。"],
+  ["source-membership-drift", "配置文件、文件版本或参数绑定的来源记录与固定修订不一致，校验已停止。请刷新并核对文件、版本和来源记录；可从「文件管理 → 更新文件」查看差异，仅在来源证明完整且基版本有效时提交人工审核。"],
+  ["mixed-source-revisions", "同一配置的参数绑定指向不同的来源修订，无法证明统一来源，校验已停止。请刷新并让配置管理员核对各绑定的当前值与来源固定记录，通过受审来源修复统一修订后再校验；上传候选不能直接解除此冲突。"],
+  ["source-pin-missing", "当前配置缺少可验证的活动来源固定记录，校验已停止。请刷新并核对参数绑定、当前值和来源固定记录；仍缺失时请配置管理员先修复来源，再重新校验，不要直接提交候选审核。"],
   ["source-proof-busy", "校验期间来源记录正在变化，暂时无法取得稳定证明。请等待相关操作完成后刷新重试；若持续出现，请配置管理员检查并发来源事务。"]
 ]);
 
 export function formatSyncSummary(result: FileSyncSummary): string {
   if (result.sourceWorkflow === "canonical") {
-    return "来源一致性校验：已检查当前文件版本；存在可用固定来源时，已与其中一份来源修订核对配置集成员及文件版本。未逐项证明全部参数绑定一致，也未同步参数、创建草稿或审核请求。";
+    return "来源一致性校验：已检查当前文件版本；存在可用固定来源时，已与其中一份来源修订核对配置文件及文件版本。未逐项证明全部参数绑定一致，也未同步参数、创建草稿或审核请求。";
   }
   if (result.skipped) return "已跳过（无活跃版本）";
   if (typeof result.draftsCreated === "number") {
@@ -173,17 +174,23 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
       emit();
     },
 
+    clearSuccessMessage() {
+      if (!lastMessage) return;
+      lastMessage = "";
+      emit();
+    },
+
     async create(projectId, input, repo) {
       const trimmed = input.name.trim();
       if (!trimmed) {
-        const message = "请先填写配置集名称。";
+        const message = "请先填写配置名称。";
         lastError = "";
         lastMessage = "";
         emit();
         return { ok: false, kind: "validation", message };
       }
       if (input.existingNames.some((name) => name.toLowerCase() === trimmed.toLowerCase())) {
-        const message = `已存在名为「${trimmed}」的配置集。`;
+        const message = `已存在名为「${trimmed}」的配置。`;
         lastError = "";
         lastMessage = "";
         emit();
@@ -193,12 +200,12 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
       emit();
       try {
         const item = await repo.createConfigSet(projectId, { name: trimmed });
-        const message = `已创建配置集「${item.name}」。`;
+        const message = `已创建配置「${item.name}」。`;
         lastMessage = message;
         emit();
         return { ok: true, item, message };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "创建配置集失败。";
+        const message = err instanceof Error ? err.message : "创建配置失败。";
         lastError = message;
         lastMessage = "";
         emit();
@@ -216,7 +223,7 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
           sortOrder: input.sortOrder
         });
         const fileName = input.file?.fileName ?? membership.fileId;
-        const message = `已将「${fileName}」编入配置集（${ROLE_LABELS[input.role]} · 顺序 ${input.sortOrder ?? 0}）。`;
+        const message = `已将「${fileName}」加入配置（${ROLE_LABELS[input.role]} · 顺序 ${input.sortOrder ?? 0}）。`;
         lastMessage = message;
         emit();
         return {
@@ -229,7 +236,7 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
           message
         };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "添加成员失败。";
+        const message = err instanceof Error ? err.message : "添加文件失败。";
         lastError = message;
         lastMessage = "";
         emit();
@@ -242,12 +249,12 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
       emit();
       try {
         await repo.removeConfigSetFile(projectId, configSetId, fileId);
-        const message = "已从配置集移除成员文件。";
+        const message = "已从当前配置移除文件。";
         lastMessage = message;
         emit();
         return { ok: true, message };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "移除成员失败。";
+        const message = err instanceof Error ? err.message : "移除文件失败。";
         lastError = message;
         lastMessage = "";
         emit();
@@ -284,6 +291,7 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
 
     async exportConfigSet(projectId, configSetId, configSetName, repo) {
       lastError = "";
+      lastMessage = "";
       emit();
       try {
         const exported = await repo.exportConfigSet(projectId, configSetId);
@@ -291,12 +299,10 @@ export function createConfigSetOpsSession(): ConfigSetOpsSession {
         const validation = exported.manifest.validation
           ? `校验 ${exported.manifest.validation.ok ? "通过" : "未通过"}（${exported.manifest.validation.mode}）`
           : "无校验元数据";
-        const evidence = `已导出配置集「${configSetName}」：${memberCount} 个成员，含角色/顺序；${validation}。`;
-        lastMessage = evidence;
-        emit();
+        const evidence = `已导出配置「${configSetName === "default" ? "默认配置" : configSetName}」：${memberCount} 个文件，含用途与顺序；${validation}。`;
         return { ok: true, export: exported, evidence };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "导出配置集失败。";
+        const message = err instanceof Error ? err.message : "导出配置失败。";
         lastError = message;
         lastMessage = "";
         emit();

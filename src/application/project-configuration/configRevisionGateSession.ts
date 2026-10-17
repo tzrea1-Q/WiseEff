@@ -82,6 +82,9 @@ export function createConfigRevisionGateSession(): ConfigRevisionGateSession {
   let lastRun: ValidationRun | null = null;
   let actionError = "";
   let loadGeneration = 0;
+  let validationGeneration = 0;
+  let scopeProjectId: string | null = null;
+  let scopeConfigSetId: string | null = null;
   let emitScheduled = false;
   let cached = emptySnapshot();
 
@@ -145,6 +148,15 @@ export function createConfigRevisionGateSession(): ConfigRevisionGateSession {
     },
     async load(projectId, configSetId, repo) {
       const generation = ++loadGeneration;
+      if (scopeProjectId !== projectId || scopeConfigSetId !== configSetId) {
+        scopeProjectId = projectId;
+        scopeConfigSetId = configSetId;
+        revisions = [];
+        selectedRevisionId = null;
+        lastRun = null;
+        validating = false;
+        validationGeneration += 1;
+      }
       if (!configSetId) {
         revisions = [];
         selectedRevisionId = null;
@@ -169,8 +181,10 @@ export function createConfigRevisionGateSession(): ConfigRevisionGateSession {
             ? previousSelected
             : latestRevisionId(revisions);
         selectedRevisionId = nextSelected;
-        if (lastRun && previousSelected !== nextSelected) {
+        if (previousSelected !== nextSelected) {
           lastRun = null;
+          validating = false;
+          validationGeneration += 1;
         }
         loading = false;
         emit();
@@ -179,6 +193,8 @@ export function createConfigRevisionGateSession(): ConfigRevisionGateSession {
         revisions = [];
         selectedRevisionId = null;
         lastRun = null;
+        validating = false;
+        validationGeneration += 1;
         loading = false;
         error = presentError(caught, "加载配置修订失败，请重试。");
         emit();
@@ -191,6 +207,8 @@ export function createConfigRevisionGateSession(): ConfigRevisionGateSession {
       if (selectedRevisionId === revisionId) return;
       selectedRevisionId = revisionId;
       lastRun = null;
+      validating = false;
+      validationGeneration += 1;
       actionError = "";
       emit();
     },
@@ -201,11 +219,13 @@ export function createConfigRevisionGateSession(): ConfigRevisionGateSession {
         return null;
       }
       const revisionId = selectedRevisionId;
+      const generation = ++validationGeneration;
       validating = true;
       actionError = "";
       emit();
       try {
         const run = await repo.validateRevision(projectId, revisionId);
+        if (generation !== validationGeneration) return null;
         lastRun = {
           ...run,
           diagnostics: run.diagnostics ? run.diagnostics.map((item) => ({ ...item })) : undefined
@@ -214,6 +234,7 @@ export function createConfigRevisionGateSession(): ConfigRevisionGateSession {
         emit();
         return lastRun;
       } catch (caught) {
+        if (generation !== validationGeneration) return null;
         lastRun = null;
         validating = false;
         actionError = presentError(caught, "修订校验失败，请重试。");

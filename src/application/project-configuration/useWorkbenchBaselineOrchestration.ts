@@ -123,7 +123,10 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
       if (selectedBaselineId && baselines.some((item) => item.id === selectedBaselineId)) {
         return;
       }
-      releaseBaselineSession.selectBaseline(null);
+      const releasedId = releaseBaselineSession.getSnapshot().releasedTip?.id;
+      releaseBaselineSession.selectBaseline(
+        baselines.find((item) => item.id === releasedId)?.id ?? baselines[0]?.id ?? null
+      );
     }
   }, [baselines, releaseBaselineSession, search, selectedBaselineId]);
 
@@ -147,9 +150,12 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
       );
       setNewBaselineName("");
       setCreateBaselineOpen(false);
+      onNavigate(formatWorkbenchPath(projectId, search, {
+        configSet: selectedConfigSet.id, baseline: created.id, inspector: "release"
+      }));
       setReadinessRetry((value) => value + 1);
       setBaselinesRetry((value) => value + 1);
-      notifyMutation(`已创建基线「${created.name}」。`);
+      notifyMutation(`已保存版本快照「${created.name}」。`);
     } catch {
       // ReleaseBaselineSession writes actionError for every failure path
       // (gates and repo throws); the create dialog stays open and renders it.
@@ -159,8 +165,10 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
     dtsRepository,
     newBaselineName,
     notifyMutation,
+    onNavigate,
     projectId,
     releaseBaselineSession,
+    search,
     selectedConfigSet,
     sessionDraftsDirty
   ]);
@@ -177,7 +185,8 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
           baseline: baselineId,
           sourceMode: canvasModeQueryValue(canvasMode),
           version: historyVersionId,
-          candidate: candidateId
+          candidate: candidateId,
+          inspector: "release"
         })
       );
     },
@@ -208,7 +217,8 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
           sourceMode: null,
           version: null,
           candidate: null,
-          baseline: selectedBaselineId
+          baseline: selectedBaselineId,
+          inspector: "release"
         })
       );
       let result;
@@ -222,6 +232,7 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
         (member) => member.status === "version_changed" && member.baselineVersionId
       );
       if (firstDrift?.baselineVersionId && firstDrift.fileId) {
+        setInspectorOpen(false);
         onNavigate(
           formatWorkbenchPath(projectId, search, {
             configSet: selectedConfigSet.id,
@@ -231,12 +242,13 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
             baseline: selectedBaselineId,
             node: null,
             property: null,
-            candidate: null
+            candidate: null,
+            inspector: null
           })
         );
       }
       notifyMutation(
-        against === "released" ? "已对比基线与已发布 tip。" : "已对比基线与 Working 配置。"
+        against === "released" ? "已对比所选快照与正式版本。" : "已对比所选快照与工作配置。"
       );
     },
     [
@@ -250,7 +262,8 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
       selectedConfigSet,
       selectedMemberFileId,
       selectedNodePath,
-      selectedPropertyName
+      selectedPropertyName,
+      setInspectorOpen
     ]
   );
 
@@ -269,7 +282,8 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
         sourceMode: null,
         version: null,
         baseline: selectedBaselineId,
-        candidate: null
+        candidate: null,
+        inspector: "release"
       })
     );
   }, [
@@ -286,20 +300,22 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
   const selectBaselineCompareMember = useCallback(
     (member: DtsBaselineMemberComparison) => {
       if (!selectedConfigSet || !member.baselineVersionId) return;
+      setInspectorOpen(false);
       onNavigate(
         formatWorkbenchPath(projectId, search, {
           configSet: selectedConfigSet.id,
           file: member.fileId,
-          sourceMode: canvasMode === "side-by-side" ? "side-by-side" : "unified-diff",
+          sourceMode: "unified-diff",
           version: member.baselineVersionId,
           baseline: selectedBaselineId,
           node: null,
           property: null,
-          candidate: null
+          candidate: null,
+          inspector: null
         })
       );
     },
-    [canvasMode, onNavigate, projectId, search, selectedBaselineId, selectedConfigSet]
+    [onNavigate, projectId, search, selectedBaselineId, selectedConfigSet, setInspectorOpen]
   );
 
   const releaseWorkbenchBaseline = useCallback(async () => {
@@ -314,7 +330,7 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
       setReleaseBaselineOpen(false);
       setReadinessRetry((value) => value + 1);
       setBaselinesRetry((value) => value + 1);
-      notifyMutation(`已发布基线「${result.item.name}」。`);
+      notifyMutation(`已将「${result.item.name}」设为正式版本。`);
     } catch (error: unknown) {
       // Session actionError renders inside the still-open release dialog;
       // unacknowledged-warning failures additionally open the Issues dock.
@@ -379,8 +395,8 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
     );
     notifyMutation(
       tipUnchanged
-        ? `已恢复基线成员（${result.restored} 项）；已发布 tip 未变。`
-        : `已恢复基线成员（${result.restored} 项）。`
+        ? `已恢复 ${result.restored} 项快照文件；正式版本保持不变。`
+        : `已恢复快照文件（${result.restored} 项）。`
     );
   }, [
     canAdmin,

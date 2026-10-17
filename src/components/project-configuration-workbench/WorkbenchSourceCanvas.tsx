@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { CheckCircle2, Info } from "lucide-react";
 import { SectionEmpty } from "@/components/common/SectionState";
 
@@ -12,7 +12,8 @@ import {
   type DtsViewerFocusSpan,
   type DtsViewerSessionChangeMarker
 } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
-import { formatSourceCanvasEmpty, type WorkbenchCanvasMode } from "./workbenchInspectorModel";
+import { buildUnifiedDiff, formatSourceCanvasEmpty, type WorkbenchCanvasMode } from "./workbenchInspectorModel";
+import { candidateStatusLabels } from "./WorkbenchCandidateList";
 
 export type WorkbenchSourceCanvasProps = {
   sourceRegionRef: RefObject<HTMLElement | null>;
@@ -24,7 +25,6 @@ export type WorkbenchSourceCanvasProps = {
   activeCandidate: ParameterFileCandidate | null;
   fileVersions: ProjectParameterFileVersion[];
   onSelectVersion?: () => void;
-  onUploadCandidate?: () => void;
   onEnterCanvasMode: (mode: WorkbenchCanvasMode, versionId: string | null) => void;
   onExitSpecialCanvasMode: () => void;
   candidateError: string;
@@ -38,6 +38,7 @@ export type WorkbenchSourceCanvasProps = {
   historySource: string;
   historySourceAvailable?: boolean;
   candidateSource: string;
+  candidateBaseSource?: string;
   candidateLoading: boolean;
   compareSource: string;
   unifiedDiffText: string;
@@ -60,13 +61,12 @@ export function WorkbenchSourceCanvas({
   activeCandidate,
   fileVersions,
   onSelectVersion,
-  onUploadCandidate,
   onEnterCanvasMode,
   onExitSpecialCanvasMode,
   candidateError,
-  sourceLoading,
+  sourceLoading: workingSourceLoading,
   modeSourceLoading,
-  sourceError,
+  sourceError: workingSourceError,
   modeSourceError,
   onSourceRetry,
   onClearModeSourceError,
@@ -74,6 +74,7 @@ export function WorkbenchSourceCanvas({
   historySource,
   historySourceAvailable = Boolean(historySource),
   candidateSource,
+  candidateBaseSource,
   candidateLoading,
   compareSource,
   unifiedDiffText,
@@ -85,71 +86,68 @@ export function WorkbenchSourceCanvas({
   onVisibleLineChange,
   sessionChangeMarkers
 }: WorkbenchSourceCanvasProps) {
+  const sourceLoading = canvasMode !== "candidate" && workingSourceLoading;
+  const sourceError = canvasMode === "candidate" ? "" : workingSourceError;
   const sourceFormatLabel =
-    (selectedMember?.format ?? activeCandidate?.format) === "json" ? "JSON" : "DTS";
+    (canvasMode === "candidate" ? activeCandidate?.format ?? selectedMember?.format : selectedMember?.format) === "json" ? "JSON" : "DTS";
   const sourceBodyAriaLabel = `${sourceFormatLabel} 源码`;
   const workingSource = historySourceAvailable ? compareSource : source;
   const emptyState = formatSourceCanvasEmpty(canvasMode, historyVersionId, historySource, workingSource, candidateId ? candidateSource : "", historySourceAvailable);
   const identical = Boolean(historyVersionId && historySourceAvailable && historySource === workingSource);
+  const versionNumber = canvasMode === "working"
+    ? selectedMember?.currentVersionNumber
+    : fileVersions.find((version) => version.id === historyVersionId)?.versionNumber;
+  const displayedFileName = canvasMode === "candidate"
+    ? activeCandidate?.fileName ?? selectedMember?.fileName ?? "候选文件"
+    : selectedMember?.fileName;
+  const candidateDiff = activeCandidate?.id === candidateId
+    ? candidateBaseSource !== undefined
+      ? buildUnifiedDiff(candidateBaseSource, candidateSource, "更新前来源", "本次来源更新")
+      : activeCandidate?.impact.textDiff ?? (!activeCandidate.fileId ? buildUnifiedDiff("", candidateSource, "新增文件", "本次来源更新") : "")
+    : "";
+  const displayedDiff = canvasMode === "candidate" ? candidateDiff : unifiedDiffText;
+  const diffLines = displayedDiff.split("\n");
+  const diffHeaderCount = diffLines[0]?.startsWith("# ") ? 3 : 2;
+  const isChangedLine = (line: string, index: number) => index >= diffHeaderCount && /^[+-]/.test(line);
+  const changeStarts = diffLines.flatMap((line, index) =>
+    isChangedLine(line, index) && !isChangedLine(diffLines[index - 1] ?? "", index - 1) ? [index] : []);
+  const changeStartSet = new Set(changeStarts);
+  const diffLineRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
+  const [activeChange, setActiveChange] = useState(-1);
+  useEffect(() => setActiveChange(-1), [displayedDiff]);
+  function focusChange(index: number) {
+    const line = diffLineRefs.current.get(changeStarts[index]);
+    if (!line) return;
+    setActiveChange(index);
+    line.focus({ preventScroll: true });
+    line.scrollIntoView({ block: "center", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
   return (
-    <main className="configuration-workbench__source" aria-label={`只读 ${sourceFormatLabel} 源码`} ref={sourceRegionRef}>
-      {selectedMember ? (
+    <main className="configuration-workbench__source" aria-label={`${selectedConfigSetName} · 只读 ${sourceFormatLabel} 源码`} ref={sourceRegionRef} tabIndex={-1}>
+      {selectedMember || (canvasMode === "candidate" && candidateId) ? (
         <header className="configuration-workbench__source-head">
           <div>
-            <span>
-              {selectedConfigSetName} /{" "}
+            <h2>{displayedFileName}</h2>
+            <span title={canvasMode === "candidate" ? candidateId ?? undefined : canvasMode === "working" ? selectedMember?.currentVersionId ?? undefined : historyVersionId ?? undefined}>
               {canvasMode === "working"
                 ? "工作配置"
                 : canvasMode === "history"
-                  ? "历史只读源码"
+                  ? "历史版本 · 只读"
                   : canvasMode === "candidate"
-                    ? "候选只读源码"
+                    ? `${activeCandidate ? candidateStatusLabels[activeCandidate.status] : "候选"} · 只读`
                     : "只读对比"}
+              {canvasMode !== "candidate" && versionNumber ? ` · v${versionNumber}` : ""}
             </span>
-            <h2>{selectedMember.fileName}</h2>
-          </div>
-          <div className="configuration-workbench__version-identity">
-            <span>
-              {canvasMode === "working"
-                ? "活跃文件版本"
-                : canvasMode === "candidate"
-                  ? "候选文件版本"
-                  : "对照文件版本"}
-            </span>
-            {/* Working config shows the human version label; the raw id stays in the tooltip (FA-23). */}
-            <strong
-              className="mono"
-              title={canvasMode === "working" ? selectedMember.currentVersionId ?? undefined : canvasMode === "candidate" ? candidateId ?? undefined : historyVersionId ?? undefined}
-            >
-              {canvasMode === "working"
-                ? selectedMember.currentVersionNumber
-                  ? `v${selectedMember.currentVersionNumber}`
-                  : "无活跃版本"
-                : canvasMode === "candidate"
-                  ? activeCandidate?.fileName ?? "候选版本"
-                  : fileVersions.find((version) => version.id === historyVersionId)?.versionNumber
-                    ? `v${fileVersions.find((version) => version.id === historyVersionId)?.versionNumber}`
-                    : "历史版本"}
-            </strong>
           </div>
           {canvasMode !== "working" ? (
             <div className="configuration-workbench__mode-actions">
-              {canvasMode !== "candidate" && canvasMode !== "side-by-side" ? (
-                <button
-                  className="button subtle"
-                  type="button"
-                  onClick={() => onEnterCanvasMode("side-by-side", historyVersionId)}
-                >
-                  并排对比
-                </button>
-              ) : null}
               {canvasMode !== "candidate" && canvasMode !== "unified-diff" ? (
                 <button
                   className="button subtle"
                   type="button"
                   onClick={() => onEnterCanvasMode("unified-diff", historyVersionId)}
                 >
-                  统一差异
+                  对比
                 </button>
               ) : null}
               <button
@@ -160,40 +158,19 @@ export function WorkbenchSourceCanvas({
                   canvasMode === "history"
                     ? "退出历史源码"
                     : canvasMode === "candidate"
-                      ? "退出候选源码"
+                      ? "返回工作配置"
                       : "退出对比"
                 }
               >
                 {canvasMode === "history"
                   ? "退出历史源码"
                   : canvasMode === "candidate"
-                    ? "退出候选源码"
+                    ? "返回工作配置"
                     : "退出对比"}
               </button>
             </div>
           ) : null}
         </header>
-      ) : null}
-      {canvasMode !== "working" ? (
-        <p
-          className="configuration-workbench__mode-banner"
-          role="status"
-          aria-label={
-            canvasMode === "history"
-              ? "历史只读源码模式"
-              : canvasMode === "candidate"
-                ? "候选只读源码模式"
-                : "只读对比模式"
-          }
-        >
-          当前为
-          {canvasMode === "history"
-            ? "历史只读源码"
-            : canvasMode === "candidate"
-              ? "候选只读源码"
-              : "只读对比"}
-          模式，不能编辑，也不会改变工作配置。
-        </p>
       ) : null}
       {candidateError ? (
         <div className="configuration-workbench__setup-state" role="alert">
@@ -203,7 +180,7 @@ export function WorkbenchSourceCanvas({
       {!sourceLoading && !modeSourceLoading && !candidateLoading && !sourceError && !modeSourceError && !candidateError && selectedMember && emptyState ? (
         <div className="configuration-workbench__source-state" role="status">
           {identical ? <CheckCircle2 className="configuration-workbench__source-success" size={20} aria-hidden="true" /> : <Info size={20} aria-hidden="true" />}
-          <SectionEmpty {...emptyState} onAction={canvasMode === "candidate" ? onUploadCandidate : historyVersionId ? onExitSpecialCanvasMode : fileVersions.length ? onSelectVersion : undefined} />
+          <SectionEmpty {...emptyState} onAction={historyVersionId ? onExitSpecialCanvasMode : fileVersions.length ? onSelectVersion : undefined} />
         </div>
       ) : null}
       {sourceLoading || modeSourceLoading ? (
@@ -219,16 +196,16 @@ export function WorkbenchSourceCanvas({
           <button
             className="button subtle configuration-workbench__retry"
             type="button"
-            onClick={() => (canvasMode === "working" ? onSourceRetry() : onClearModeSourceError())}
+            onClick={() => (sourceError ? onSourceRetry() : onClearModeSourceError())}
           >
             重试源码
           </button>
         </div>
       ) : null}
-      {!sourceLoading && !modeSourceLoading && !sourceError && !modeSourceError && !selectedMember ? (
+      {!sourceLoading && !modeSourceLoading && !sourceError && !modeSourceError && !selectedMember && canvasMode !== "candidate" ? (
         <div className="configuration-workbench__source-state" role="status">
-          <strong>没有可读取的成员源码</strong>
-          <p>选择含成员文件的配置集后，活跃源码会显示在这里。</p>
+          <strong>没有可读取的文件源码</strong>
+          <p>选择包含文件的配置后，活跃源码会显示在这里。</p>
         </div>
       ) : null}
       {!sourceLoading &&
@@ -239,8 +216,8 @@ export function WorkbenchSourceCanvas({
       canvasMode === "working" &&
       !selectedMember.currentVersionId ? (
         <div className="configuration-workbench__source-state" role="status">
-          <strong>成员文件没有活跃版本</strong>
-          <p>文件身份仍保留在树中；请在文件详情检查版本历史。</p>
+          <strong>配置文件没有活跃版本</strong>
+          <p>文件身份仍保留在树中；请在「文件管理」中打开该文件的「版本历史与下载」检查。</p>
         </div>
       ) : null}
       {!sourceLoading &&
@@ -253,7 +230,7 @@ export function WorkbenchSourceCanvas({
       !source ? (
         <div className="configuration-workbench__source-state" role="status">
           <strong>源码内容为空</strong>
-          <p>当前活跃版本没有可显示的源码内容；可重试或回到文件详情检查版本历史。</p>
+          <p>当前活跃版本没有可显示的源码内容；可重试或在「文件管理」中查看该文件的版本历史。</p>
           <button
             className="button subtle configuration-workbench__retry"
             type="button"
@@ -273,7 +250,8 @@ export function WorkbenchSourceCanvas({
         <ProjectPrimaryDtsViewer
           className="configuration-workbench__code"
           fileName={selectedMember.fileName}
-          versionNumber={selectedMember.currentVersionNumber ?? 0}
+          hideHeader
+          versionNumber={selectedMember.currentVersionNumber ?? undefined}
           text={source}
           focusSpan={restoredScrollLine != null ? null : focusSpan}
           focusLine={focusLineOverride ?? restoredScrollLine}
@@ -292,62 +270,44 @@ export function WorkbenchSourceCanvas({
         <ProjectPrimaryDtsViewer
           className="configuration-workbench__code"
           fileName={selectedMember.fileName}
-          versionNumber={fileVersions.find((item) => item.id === historyVersionId)?.versionNumber ?? 0}
+          hideHeader
+          versionNumber={fileVersions.find((item) => item.id === historyVersionId)?.versionNumber}
           text={historySource}
           focusLine={focusLineOverride}
           onVisibleLineChange={onVisibleLineChange}
           bodyAriaLabel={sourceBodyAriaLabel}
         />
       ) : null}
-      {!candidateLoading && canvasMode === "candidate" && candidateId && candidateSource ? (
-        <ProjectPrimaryDtsViewer
-          className="configuration-workbench__code"
-          fileName={activeCandidate?.fileName ?? selectedMember?.fileName ?? "candidate.dts"}
-          versionNumber={0}
-          text={candidateSource}
-          focusLine={focusLineOverride}
-          onVisibleLineChange={onVisibleLineChange}
-          bodyAriaLabel={sourceBodyAriaLabel}
-        />
-      ) : null}
-      {canvasMode === "candidate" && candidateLoading ? (
+      {canvasMode === "candidate" && (candidateLoading || candidateId && activeCandidate?.id !== candidateId) ? (
         <div className="configuration-workbench__source-state" role="status">
-          正在加载候选源码…
+          正在加载更新差异…
         </div>
+      ) : null}
+      {!candidateLoading && canvasMode === "candidate" && candidateId && activeCandidate?.id === candidateId && candidateSource && !candidateDiff ? (
+        <ProjectPrimaryDtsViewer className="configuration-workbench__code" fileName={displayedFileName ?? "来源更新"}
+          hideHeader text={candidateSource} bodyAriaLabel={sourceBodyAriaLabel} />
       ) : null}
       {!modeSourceLoading &&
       !modeSourceError &&
-      selectedMember &&
-      canvasMode === "unified-diff" &&
+      (canvasMode === "candidate" ? !candidateLoading && candidateId && activeCandidate?.id === candidateId && candidateSource : selectedMember && canvasMode === "unified-diff") &&
       !emptyState &&
-      unifiedDiffText ? (
-        <pre className="configuration-workbench__diff" aria-label="统一差异对比">
-          {unifiedDiffText}
-        </pre>
-      ) : null}
-      {!modeSourceLoading &&
-      !modeSourceError &&
-      selectedMember &&
-      canvasMode === "side-by-side" &&
-      !emptyState &&
-      historySourceAvailable ? (
-        <div className="configuration-workbench__side-by-side" aria-label="并排差异对比">
-          <ProjectPrimaryDtsViewer
-            className="configuration-workbench__code"
-            fileName={`${selectedMember.fileName} · 工作配置`}
-            versionNumber={selectedMember.currentVersionNumber ?? 0}
-            text={workingSource}
-            onVisibleLineChange={onVisibleLineChange}
-            bodyAriaLabel={sourceBodyAriaLabel}
-          />
-          <ProjectPrimaryDtsViewer
-            className="configuration-workbench__code"
-            fileName={`${selectedMember.fileName} · 历史`}
-            versionNumber={fileVersions.find((item) => item.id === historyVersionId)?.versionNumber ?? 0}
-            text={historySource}
-            bodyAriaLabel={sourceBodyAriaLabel}
-          />
-        </div>
+      displayedDiff ? (
+        <section className="configuration-workbench__diff-panel" aria-label={canvasMode === "candidate" ? "来源更新差异" : "统一差异对比"}>
+          {changeStarts.length > 0 ? <nav className="configuration-workbench__diff-nav" aria-label="差异导航">
+            <span>{changeStarts.length} 处变更</span>
+            <button className="button subtle" type="button" disabled={activeChange <= 0} onClick={() => focusChange(activeChange - 1)}>上一处变更</button>
+            <button className="button subtle" type="button" disabled={activeChange >= changeStarts.length - 1} onClick={() => focusChange(activeChange + 1)}>下一处变更</button>
+            {activeChange >= 0 ? <span role="status">第 {activeChange + 1} / {changeStarts.length} 处</span> : null}
+          </nav> : null}
+          <pre className="configuration-workbench__diff">
+            {diffLines.map((line, index) => <span
+              key={index}
+              className={`configuration-workbench__diff-line ${index < diffHeaderCount ? "is-header" : line.startsWith("+") ? "is-added" : line.startsWith("-") ? "is-removed" : "is-context"}`}
+              tabIndex={changeStartSet.has(index) ? -1 : undefined}
+              ref={(element) => { if (element) diffLineRefs.current.set(index, element); else diffLineRefs.current.delete(index); }}
+            >{line}{"\n"}</span>)}
+          </pre>
+        </section>
       ) : null}
     </main>
   );

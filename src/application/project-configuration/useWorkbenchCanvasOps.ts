@@ -41,7 +41,6 @@ export type UseWorkbenchCanvasOpsParams = {
     propertyName: string | null;
     scrollLine: number | null;
   } | null;
-  fileVersions: ProjectParameterFileVersion[];
   setFocusLineOverride: (line: number | null) => void;
   setRestoredScrollLine: (line: number | null) => void;
 };
@@ -61,13 +60,11 @@ export function useWorkbenchCanvasOps(params: UseWorkbenchCanvasOpsParams) {
     selectedPropertyName,
     lastVisibleLine,
     workingSnapshot,
-    fileVersions,
     setFocusLineOverride,
     setRestoredScrollLine
   } = params;
 
   const [downloadMessage, setDownloadMessage] = useState("");
-  const [downloadingDts, setDownloadingDts] = useState(false);
 
   const rememberWorkingSnapshot = useCallback(() => {
     canvasHistorySession.rememberWorkingSnapshot({
@@ -174,35 +171,11 @@ export function useWorkbenchCanvasOps(params: UseWorkbenchCanvasOpsParams) {
     [fileRepository, projectId, selectedMember]
   );
 
-  const downloadActiveDts = useCallback(async () => {
-    if (!selectedMember?.currentVersionId || downloadingDts) return;
-    const activeVersion =
-      fileVersions.find((item) => item.id === selectedMember.currentVersionId) ??
-      ({
-        id: selectedMember.currentVersionId,
-        fileId: selectedMember.fileId,
-        versionNumber: 0,
-        checksum: "",
-        sizeBytes: 0,
-        parsedIndex: {},
-        origin: "upload",
-        createdAt: ""
-      } satisfies ProjectParameterFileVersion);
-    setDownloadingDts(true);
-    try {
-      await handleDownloadVersion(activeVersion);
-    } finally {
-      setDownloadingDts(false);
-    }
-  }, [downloadingDts, fileVersions, handleDownloadVersion, selectedMember]);
-
   return {
     downloadMessage,
-    downloadingDts,
     rememberWorkingSnapshot,
     enterCanvasMode,
     exitSpecialCanvasMode,
-    handleDownloadVersion,
-    downloadActiveDts
+    handleDownloadVersion
   };
 }

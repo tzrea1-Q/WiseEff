@@ -1,23 +1,29 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import type { ManualSyncPreparation } from "@/infrastructure/http/canonicalManualSyncClient";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
 import { WorkbenchCanonicalManualSyncDialog, manualSyncProofReady } from "./WorkbenchCanonicalManualSyncDialog";
 
 const digest = "a".repeat(64);
-const proof = {
-  kind: "canonical-source-batch", projectId: "project", fileId: "file", format: "json",
+const proof: Extract<ManualSyncPreparation, { kind: "canonical-source-batch" }> = {
+  kind: "canonical-source-batch", organizationId: "org", projectId: "project", fileId: "file", format: "json",
   baseVersionId: "current", cohortProofToken: "workflow", candidateId: "candidate",
   configSetId: "set",
   proofToken: "candidate-proof", batchProofDigest: digest, baseDigest: digest,
-  proposedDigest: "b".repeat(64), members: [{ memberId: "member", fileId: "file", isCandidateFile: true }],
+  proposedDigest: "b".repeat(64), replayed: false,
+  members: [{ memberId: "member", fileId: "file", fileVersionId: "current", sourceName: "source.json",
+    format: "json", checksum: digest, sizeBytes: 10, role: "base", sortOrder: 0, configSetId: "set", isCandidateFile: true }],
   cohort: ["a", "b"].map((bindingId) => ({ bindingId, sourcePinId: `pin-${bindingId}`,
-    oldValueId: `old-${bindingId}`, definitionId: "definition" })),
+    oldValueId: `old-${bindingId}`, definitionId: "definition", sourceOccurrenceId: `occurrence-${bindingId}`,
+    effectiveRevisionId: "revision", catalogReleaseId: "release", locator: { pointer: `/${bindingId}` },
+    valueKind: "number", valueDigest: digest, configSetId: "set" })),
   targets: ["a", "b"].map((bindingId) => ({ bindingId, sourcePinId: `pin-${bindingId}`,
     baseCurrentValueId: `old-${bindingId}`, definitionId: "definition", configRevisionId: "revision",
-    action: "set", beforeText: "1", afterText: "2" }))
-} as ManualSyncPreparation;
+    action: "set", beforeText: "1", afterText: "2", locator: { pointer: `/${bindingId}` },
+    baseDigest: digest, proposedDigest: "b".repeat(64) }))
+};
 const context = { projectId: "project", fileId: "file", fileName: "source.json",
   format: "json" as const, currentVersionId: "current", workflowProofToken: "workflow" };
 
@@ -59,17 +65,56 @@ function show(prepared: ManualSyncPreparation = proof, prepareFailure: Error = n
 }
 
 describe("canonical manual sync dialog", () => {
+  it("retries reviewer loading in place without replacing the prepared file, reason, choices or selected reviewer", async () => {
+    const user = userEvent.setup();
+    const roles = { bindings: [
+      { isActive: true, userId: "reviewer-1", name: "第一审核人", roles: ["software-committer"] },
+      { isActive: true, userId: "reviewer-2", name: "第二审核人", roles: ["software-committer"] }
+    ] };
+    const prepare = vi.fn().mockResolvedValue(proof);
+    const listConflicts = vi.fn().mockResolvedValue({ items: [], ineligible: [] });
+    const dialogContext = { ...context, currentUserId: "author", client: { prepare, submit: vi.fn() } as never,
+      conflictClient: { listCandidateSourceConflicts: listConflicts } as never,
+      governanceClient: { getProjectWorkflowRoleBindings: vi.fn().mockResolvedValue(roles) } as never,
+      onSubmitted: vi.fn() };
+    const onDismiss = vi.fn();
+    const { rerender } = render(<WorkbenchCanonicalManualSyncDialog context={dialogContext} onDismiss={onDismiss} />);
+    const dialog = screen.getByRole("dialog");
+    uploadFile(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
+    await within(dialog).findByRole("list", { name: "手动同步完整有序目标" });
+    within(dialog).getAllByRole("radio", { name: /采用文件值/ }).forEach((choice) => fireEvent.click(choice));
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "保留原因" } });
+    await user.click(within(dialog).getByRole("combobox", { name: "指定软件审核人" }));
+    await user.click(screen.getByRole("option", { name: "第二审核人" }));
+
+    const loadReviewers = vi.fn().mockRejectedValueOnce(new Error("directory unavailable")).mockResolvedValue(roles);
+    rerender(<WorkbenchCanonicalManualSyncDialog context={{ ...dialogContext,
+      governanceClient: { getProjectWorkflowRoleBindings: loadReviewers } as never }} onDismiss={onDismiss} />);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("加载软件审核人失败");
+    expect(within(dialog).getByRole("button", { name: "提交 2 项变更审核" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新加载审核人" }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "提交 2 项变更审核" })).toBeEnabled());
+    expect(loadReviewers).toHaveBeenCalledTimes(2);
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(listConflicts).toHaveBeenCalledOnce();
+    expect(within(dialog).getByText(/source.json（8 字节）/)).toBeVisible();
+    expect(within(dialog).getByRole("textbox", { name: "修改原因" })).toHaveValue("保留原因");
+    within(dialog).getAllByRole("radio", { name: /采用文件值/ }).forEach((choice) => expect(choice).toBeChecked());
+    expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" })).toHaveAttribute("data-value", "reviewer-2");
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it.each([["json", "file", "valid"], ["dts", "file", "valid"], ["json", "draft", "valid"], ["dts", "draft", "valid"],
     ["json", "file", "author"], ["json", "file", "reviewer"], ["json", "file", "digest"], ["dts", "draft", "digest"]] as const)(
     "validates %s single %s %s receipt and keeps retry body, decision and request ID frozen", async (format, choice, receiptCase) => {
-      const single = { ...proof, kind: "canonical-source-single", format, configRevisionId: "revision",
+      const single: Extract<ManualSyncPreparation, { kind: "canonical-source-single" }> = { ...proof, kind: "canonical-source-single", format, configRevisionId: "revision",
         before: "full before", after: "full uploaded after", targets: [{ ...proof.targets[0]!,
           afterText: format === "json" ? "2.0" : "<2>", locator: { pointer: "/a" } }],
-        members: [{ memberId: "member", fileId: "file", fileVersionId: "current", format,
-          configSetId: "set", isCandidateFile: true }],
-        cohort: ["a", "b", "c"].map((bindingId) => ({ bindingId, sourcePinId: `pin-${bindingId}`,
+        members: proof.members.map((member) => ({ ...member, format })),
+        cohort: ["a", "b", "c"].map((bindingId) => ({ ...proof.cohort[0]!, bindingId, sourcePinId: `pin-${bindingId}`,
           oldValueId: `old-${bindingId}`, definitionId: "definition", configSetId: "set", locator: { pointer: `/${bindingId}` } }))
-      } as ManualSyncPreparation;
+      };
       const common = { candidateId: "candidate", selectedBindingId: "a", selectedDraftId: "draft-88",
         fileId: "file", baseVersionId: "current", configSetId: "set", sourceProofToken: "candidate-proof",
         cohortProofToken: "workflow", sourceCandidateDigest: single.proposedDigest,
@@ -105,13 +150,13 @@ describe("canonical manual sync dialog", () => {
           { isActive: true, userId: "reviewer", name: "Reviewer", roles: ["software-committer"] }
         ] }) } as never, onSubmitted }} onDismiss={vi.fn()} />);
       const dialog = screen.getByRole("dialog"); uploadFile(dialog);
-      fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
-      fireEvent.click(await within(dialog).findByText("完整来源变更与关联 Binding"));
+      fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
+      fireEvent.click(await within(dialog).findByText("完整来源变更"));
       expect(within(dialog).getByText("full before")).toBeVisible();
       expect(within(dialog).getByText("full uploaded after")).toBeVisible();
       fireEvent.click(within(dialog).getByRole("radio", { name: choice === "draft" ? /采用界面草稿/ : /采用文件值/ }));
       fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "single reason" } });
-      const send = within(dialog).getByRole("button", { name: "一次提交全部 1 项审核" });
+      const send = within(dialog).getByRole("button", { name: "提交 1 项变更审核" });
       fireEvent.click(send);
       await within(dialog).findByText(/可用同一请求重试/);
       expect(within(dialog).getByRole("textbox", { name: "修改原因" })).toBeDisabled();
@@ -132,16 +177,15 @@ describe("canonical manual sync dialog", () => {
     }
   );
   it("requires a closed single target with its exact revision, members and complete cohort", () => {
-    const single = { ...proof, kind: "canonical-source-single", configRevisionId: "revision",
+    const single: Extract<ManualSyncPreparation, { kind: "canonical-source-single" }> = { ...proof, kind: "canonical-source-single", configRevisionId: "revision",
       before: "before", after: "after", targets: [{ ...proof.targets[0]!, locator: { pointer: "/a" } }],
-      members: [{ memberId: "member", fileId: "file", fileVersionId: "current", format: "json",
-        configSetId: "set", isCandidateFile: true }],
-      cohort: ["a", "b", "c"].map((bindingId) => ({ bindingId, sourcePinId: `pin-${bindingId}`,
+      members: proof.members,
+      cohort: ["a", "b", "c"].map((bindingId) => ({ ...proof.cohort[0]!, bindingId, sourcePinId: `pin-${bindingId}`,
         oldValueId: `old-${bindingId}`, definitionId: "definition", configSetId: "set", locator: { pointer: `/${bindingId}` } }))
-    } as ManualSyncPreparation;
+    };
     expect(manualSyncProofReady(single, context)).toBe(true);
     expect(manualSyncProofReady({ ...single, targets: proof.targets }, context)).toBe(false);
-    expect(manualSyncProofReady({ ...single, configRevisionId: "stale" } as ManualSyncPreparation, context)).toBe(false);
+    expect(manualSyncProofReady({ ...single, configRevisionId: "stale" }, context)).toBe(false);
     expect(manualSyncProofReady({ ...single, cohort: [...single.cohort, single.cohort[0]!] }, context)).toBe(false);
     expect(manualSyncProofReady({ ...single, members: [...single.members, single.members[0]!] }, context)).toBe(false);
   });
@@ -151,11 +195,11 @@ describe("canonical manual sync dialog", () => {
         { id: "single-request", status, kind: "single" });
       const dialog = screen.getByRole("dialog");
       uploadFile(dialog);
-      fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
       await within(dialog).findByText(/可用同一请求重试/);
       fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
       expect(await within(dialog).findByText(/单目标审核请求|单目标请求/)).toBeVisible();
-      expect(within(dialog).getByRole("button", { name: /一次提交全部/ })).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: /提交/ })).toBeDisabled();
       expect(submit).not.toHaveBeenCalled();
     }
   );
@@ -165,24 +209,24 @@ describe("canonical manual sync dialog", () => {
       { id: "old-batch", status: "rejected", kind: "batch" });
     const dialog = screen.getByRole("dialog");
     uploadFile(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
     await within(dialog).findByText(/可用同一请求重试/);
     fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
     expect(await within(dialog).findByText(/须重新获取来源和冲突证明/)).toBeVisible();
     within(dialog).getAllByRole("radio", { name: /采用文件值/ }).forEach((choice) => fireEvent.click(choice));
     fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "retry" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: /一次提交全部/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /提交/ }));
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
   });
 
   it.each([ ["json", "set", false], ["dts", "set", false], ["json", "delete", false],
     ["dts", "delete", false], ["json", "set", true] ] as const)(
     "checks ordered mixed %s decision with draft %s, stale preview %s", async (format, draftAction, stalePreview) => {
-    const upload = { ...proof, format, cohort: [...proof.cohort, {
+    const upload: Extract<ManualSyncPreparation, { kind: "canonical-source-batch" }> = { ...proof, format, cohort: [...proof.cohort, {
       ...proof.cohort[0]!, bindingId: "sibling", sourcePinId: "pin-sibling"
     }], targets: proof.targets.map((target, index) => ({ ...target,
       beforeText: String(10 + index * 10), afterText: String(50 + index * 10)
-    })) } as ManualSyncPreparation;
+    })) };
     const conflict = { selectedBindingId: "a", selectedDraftId: "draft-88", authorUserId: "other-author",
       choices: {
         file: { candidateId: "candidate", sourceProofToken: "candidate-proof",
@@ -255,12 +299,14 @@ describe("canonical manual sync dialog", () => {
       ] }) } as never, onSubmitted }} onDismiss={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
     uploadFile(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
-    expect(await within(dialog).findByText("other-author")).toBeVisible();
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
+    await within(dialog).findByRole("list", { name: "手动同步完整有序目标" });
+    fireEvent.click(within(dialog).getByText("溯源信息"));
+    expect(await within(dialog).findByLabelText("完整溯源数据")).toHaveTextContent("other-author");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "sync" } });
-    const send = within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" });
+    const send = within(dialog).getByRole("button", { name: "提交 2 项变更审核" });
     expect(send).toBeDisabled();
-    fireEvent.click(within(dialog).getByRole("radio", { name: /采用界面草稿.*draft-88/ }));
+    fireEvent.click(within(dialog).getByRole("radio", { name: /采用界面草稿 1/ }));
     fireEvent.click(within(dialog).getAllByRole("radio", { name: /采用文件值/ })[1]!);
     expect(send).toBeEnabled();
     fireEvent.click(send);
@@ -283,15 +329,15 @@ describe("canonical manual sync dialog", () => {
     const { prepare, submit, onSubmitted } = show();
     const dialog = screen.getByRole("dialog", { name: "上传 JSON 来源并准备审核" });
     uploadFile(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
     await within(dialog).findByText(/可用同一请求重试/);
     fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
-    expect(await within(dialog).findByRole("list", { name: "手动同步完整有序目标" })).toHaveTextContent("Binding");
+    expect(await within(dialog).findByRole("list", { name: "手动同步完整有序目标" })).toHaveTextContent("/a");
     within(dialog).getAllByRole("radio", { name: /采用文件值/ }).forEach((choice) => fireEvent.click(choice));
     fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "sync" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交 2 项变更审核" }));
     await within(dialog).findByText(/可用同一请求重试/);
-    fireEvent.click(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交 2 项变更审核" }));
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith("request"));
     expect(prepare.mock.calls[1]).toEqual(prepare.mock.calls[0]);
     expect(submit.mock.calls[1]).toEqual(submit.mock.calls[0]);
@@ -304,7 +350,7 @@ describe("canonical manual sync dialog", () => {
     const { prepare, submit, rerender } = show(proof, new Error("connection lost"), stable);
     const dialog = screen.getByRole("dialog");
     uploadFile(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
     await within(dialog).findByText(/可用同一请求重试/);
     fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
     await within(dialog).findByRole("list", { name: "手动同步完整有序目标" });
@@ -319,19 +365,19 @@ describe("canonical manual sync dialog", () => {
     // Rerender the same dialog instance as the workbench refreshes its workflow proof.
     rerender(<WorkbenchCanonicalManualSyncDialog context={currentContext}
       sourceState={{ ...stable, loading: true, workflowProofToken: null }} onDismiss={vi.fn()} />);
-    expect(within(dialog).getByText(/已选择：source.json/)).toBeVisible();
+    expect(within(dialog).getByText(/source.json（8 字节）/)).toBeVisible();
     expect(within(dialog).getAllByRole("radio", { name: /采用文件值/ })[0]).toBeChecked();
-    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "提交 2 项变更审核" })).toBeDisabled();
     rerender(<WorkbenchCanonicalManualSyncDialog context={currentContext}
       sourceState={stable} onDismiss={vi.fn()} />);
-    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeEnabled();
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "提交 2 项变更审核" })).toBeEnabled());
     rerender(<WorkbenchCanonicalManualSyncDialog context={currentContext}
       sourceState={{ ...stable, currentVersionId: "new-version" }} onDismiss={vi.fn()} />);
     expect(within(dialog).getByRole("alert")).toHaveTextContent("旧候选不能继续提交");
-    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "提交 2 项变更审核" })).toBeDisabled();
     rerender(<WorkbenchCanonicalManualSyncDialog context={currentContext}
       sourceState={stable} onDismiss={vi.fn()} />);
-    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "提交 2 项变更审核" })).toBeEnabled();
     expect(submit).not.toHaveBeenCalled();
   });
 
@@ -339,14 +385,14 @@ describe("canonical manual sync dialog", () => {
     const { submit } = show(proof, new Error("connection lost"), undefined, true);
     const dialog = screen.getByRole("dialog");
     uploadFile(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
     await within(dialog).findByText(/可用同一请求重试/);
     fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
     await within(dialog).findByRole("list", { name: "手动同步完整有序目标" });
     for (const radio of within(dialog).getAllByRole("radio", { name: /采用文件值/ })) fireEvent.click(radio);
     fireEvent.change(within(dialog).getByRole("textbox", { name: "修改原因" }), { target: { value: "sync" } });
     expect(within(dialog).getByRole("alert")).toHaveTextContent("未取得可验证的选择证明");
-    expect(within(dialog).getByRole("button", { name: "一次提交全部 2 项审核" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "提交 2 项变更审核" })).toBeDisabled();
     expect(submit).not.toHaveBeenCalled();
   });
 
@@ -360,7 +406,7 @@ describe("canonical manual sync dialog", () => {
     const { prepare, submit } = show();
     const dialog = screen.getByRole("dialog", { name: "上传 JSON 来源并准备审核" });
     uploadFile(dialog, 2 * 1024 * 1024 + 1);
-    expect(within(dialog).getByRole("button", { name: "预览有序目标与证明" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "预览变更" })).toBeDisabled();
     expect(prepare).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
   });
@@ -369,7 +415,7 @@ describe("canonical manual sync dialog", () => {
     const { submit } = show(proof, new WiseEffApiError("FORBIDDEN", "Forbidden", {}, "request"));
     const dialog = screen.getByRole("dialog", { name: "上传 JSON 来源并准备审核" });
     uploadFile(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("没有权限执行该操作");
     expect(submit).not.toHaveBeenCalled();
   });
@@ -379,7 +425,7 @@ describe("canonical manual sync dialog", () => {
       { reason: "canonical-batch-targets-required" }, "request"));
     const dialog = screen.getByRole("dialog", { name: "上传 JSON 来源并准备审核" });
     uploadFile(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "预览有序目标与证明" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("当前文件未形成至少两个可验证的变更目标");
     expect(submit).not.toHaveBeenCalled();
   });

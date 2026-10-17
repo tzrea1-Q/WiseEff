@@ -20,9 +20,9 @@ describe("canonical review and submission tabs", () => {
       <CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} currentUserId="reviewer" mineOnly={mineOnly} />
       <CanonicalMemberRemovalReviewPanel projectId="project-1" repository={repository} currentUserId="reviewer" mineOnly={mineOnly} />
     </>);
-    await screen.findByText("当前没有成员删除请求。");
+    await screen.findByText("当前没有配置文件移除请求。");
     const panelIds = new Set<string>();
-    for (const name of [mineOnly ? "我的参数提交视角" : "软件配置审核视角", "成员删除视角"]) {
+    for (const name of [mineOnly ? "我的参数提交视角" : "软件配置审核视角", "配置文件移除视角"]) {
       const tabs = screen.getByRole("tablist", { name });
       const pending = within(tabs).getByRole("tab", { name: "待审核" });
       const history = within(tabs).getByRole("tab", { name: "历史" });
@@ -46,9 +46,9 @@ describe("canonical review and submission tabs", () => {
           expect(panel).toBeVisible();
           history.focus();
           await user.tab();
-          if (name === "成员删除视角") {
+          if (name === "配置文件移除视角") {
             expect(panel).not.toHaveAttribute("tabindex");
-            expect(within(panel!).getByRole("button", { name: "刷新成员删除结果" })).toHaveFocus();
+            expect(within(panel!).getByRole("button", { name: "刷新配置文件移除结果" })).toHaveFocus();
           } else {
             expect(panel).toHaveAttribute("tabindex", "0");
             expect(panel).toHaveFocus();

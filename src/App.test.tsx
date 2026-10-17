@@ -2169,12 +2169,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(screen.getByRole("dialog", { name: "用户菜单" })).getByLabelText("版本信息")).toHaveTextContent("版本 v0.1.0");
   });
 
-  it("keeps the submissions navigation available without exposing review to a hardware user", () => {
+  it.each(["hardware-user", "admin"])("hides submissions from the sidebar while retaining its direct route for %s", (activeRoleId) => {
     window.history.replaceState(null, "", "/parameter-submissions");
-    renderApp({ initialAppState: { ...initialState, activeRoleId: "hardware-user" } });
+    renderApp({ initialAppState: { ...initialState, activeRoleId } });
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    expect(within(nav).getByRole("button", { name: "我的提交" })).toHaveAttribute("aria-current", "page");
-    expect(within(nav).queryByRole("button", { name: "变更审阅" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "我的提交" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
+    if (activeRoleId === "hardware-user") expect(within(nav).queryByRole("button", { name: "变更审阅" })).not.toBeInTheDocument();
   });
 
   it.each(["project", "projectId"])("preserves an explicit %s scope across parameter sidebar tasks", (key) => {
@@ -2182,9 +2183,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", `/parameter-review?${key}=${encodeURIComponent(project.id)}`);
     renderApp({ initialAppState: adminState });
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    fireEvent.click(within(nav).getByRole("button", { name: "我的提交" }));
-    expect(new URLSearchParams(window.location.search).get("project")).toBe(project.id);
-    expect(screen.getByRole("combobox", { name: "项目" })).toHaveAttribute("data-value", project.id);
     fireEvent.click(within(nav).getByRole("button", { name: "项目参数" }));
     expect(new URLSearchParams(window.location.search).get("project")).toBe(project.id);
   });
@@ -2412,12 +2410,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("button", { name: /提交本轮|鎻愴氦鏈疆/ })).not.toBeInTheDocument();
   });
 
-  it("keeps personal submissions discoverable and marks the sidebar location", () => {
-    window.history.replaceState(null, "", "/parameters");
+  it("keeps personal submissions available through their route without a sidebar entry", () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
 
     renderApp({ initialAppState: userState });
-
-    fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: "我的提交" }));
 
     expect(window.location.pathname).toBe("/parameter-submissions");
     expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
@@ -2430,7 +2426,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(topbar).queryByRole("button", { name: "返回参数修改" })).not.toBeInTheDocument();
     expect(topbar).toHaveTextContent("我的提交");
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: "我的提交" })).toHaveAttribute("aria-current", "page");
+    expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("button", { name: "我的提交" })).not.toBeInTheDocument();
   });
 
   it("submits a round with multiple parameter changes and shows it in personal history", () => {
@@ -2454,7 +2450,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(dialog).getByText(/4310/)).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
-    fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: "我的提交" }));
+    act(() => {
+      window.history.pushState(null, "", "/parameter-submissions");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
 
     expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
@@ -2671,7 +2670,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const dialog = screen.getByRole("dialog", { name: "参数提交预览" });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
-    fireEvent.click(within(screen.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: "我的提交" }));
+    act(() => {
+      window.history.pushState(null, "", "/parameter-submissions");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
 
     const detail = screen.getByRole("region", { name: "提交轮次详情" });
     expect(within(detail).getAllByText(/本轮提交包含\s*\d+\s*项变更/)).toHaveLength(1);

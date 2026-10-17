@@ -168,7 +168,7 @@ describe.each(["light", "dark"])("%s theme contrast pairs", (theme) => {
     expectReadable(gutter.color, composite(resolveColor(gutter.background, tokens), resolveColor(body.background, tokens)), tokens);
   });
 
-  it.each(["default", "focused", "hovered"])("keeps %s dark source line numbers readable", (state) => {
+  it.each(["default", "focused", "hovered"])("keeps %s source line numbers readable", (state) => {
     const canvas = declarationsFor(styles, ".configuration-workbench__source");
     const sourceTokens = { ...tokens, ...canvas };
     const gutter = declarationsFor(styles, ".configuration-workbench__source .project-primary-dts-viewer__line-number");

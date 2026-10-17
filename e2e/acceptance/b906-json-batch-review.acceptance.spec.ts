@@ -148,7 +148,6 @@ test("B #906 reviewer reads and approves a real canonical JSON batch by exact re
       await expect(detail).toBeVisible();
       await expect(detail.getByText("同批次审核两项设置")).toBeVisible();
       await detail.getByText("溯源信息", { exact: true }).click();
-      await detail.getByText("完整技术数据", { exact: true }).click();
       expect(JSON.parse((await detail.getByLabel("完整溯源数据").textContent())!).assignedToUserId).toBe(acceptanceCast.sunMei.userId);
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
       await expect.poll(async () => Promise.all([1, 2].map(async (ordinal) =>

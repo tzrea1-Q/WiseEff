@@ -259,7 +259,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
       } catch (error: unknown) {
         if (generation !== configGeneration) return;
         configSets = [];
-        configSetsError = error instanceof Error ? error.message : "配置集加载失败。";
+        configSetsError = error instanceof Error ? error.message : "配置加载失败。";
       } finally {
         if (generation === configGeneration) {
           configSetsLoading = false;
@@ -311,7 +311,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
         if (generation !== membersGeneration) return;
         members = [];
         membersBoundConfigSetId = configSetId;
-        membersError = error instanceof Error ? error.message : "配置集成员加载失败。";
+        membersError = error instanceof Error ? error.message : "配置文件加载失败。";
       } finally {
         if (generation === membersGeneration) {
           membersLoading = false;

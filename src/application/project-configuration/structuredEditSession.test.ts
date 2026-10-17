@@ -104,6 +104,61 @@ async function editedCanonicalSession(paths = ["board", "sibling"], storage = cr
 }
 
 describe("canonical structured staging", () => {
+  it("removes reverted drafts and their persisted bucket, including explicit present=true", async () => {
+    const storage = createMemoryStorage();
+    const session = await editedCanonicalSession(["board"], storage);
+    expect(session.isDirty).toBe(true);
+    session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+      { rawText: '"Aurora"', normalizedValue: "Aurora", valid: true, present: true });
+    expect(session.rows).toEqual([]);
+    expect(session.drafts).toEqual({});
+    expect(session.selectedKeys.size).toBe(0);
+    expect(session.isDirty).toBe(false);
+    expect(session.copyText()).toBeNull();
+    const restored = createStructuredEditSession({ storage });
+    restored.setStructure(NODES, SCOPE.fileId);
+    await restored.hydrate(SCOPE);
+    expect(restored.isDirty).toBe(false);
+    expect(restored.recoveryStatus).toBe("none");
+  });
+
+  it("discards one draft without dropping other changes, then discards the whole session", async () => {
+    const session = await editedCanonicalSession();
+    session.discard("file-board::board::model");
+    expect(session.rows.map((row) => row.nodePath)).toEqual(["sibling"]);
+    expect(session.isDirty).toBe(true);
+    session.discard();
+    expect(session.drafts).toEqual({});
+    expect(session.selectedKeys.size).toBe(0);
+    expect(session.isDirty).toBe(false);
+  });
+
+  it("cleans a recovered legacy property key when its value is restored", async () => {
+    const storage = createMemoryStorage({ [SESSION_DRAFT_STORAGE_KEY]: JSON.stringify({ version: 1, buckets: [{
+      scope: SCOPE, drafts: { "board::model": { rawText: '"Updated"', normalizedValue: "Updated" } },
+      selectedKeys: ["board::model"], reason: "Recovered edit", updatedAt: "2026-10-17T00:00:00.000Z"
+    }] }) });
+    const session = createStructuredEditSession({ storage });
+    session.setStructure(NODES, SCOPE.fileId);
+    await session.hydrate(SCOPE);
+    expect(session.isDirty).toBe(true);
+    session.change({ fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" },
+      { rawText: '"Aurora"', normalizedValue: "Aurora", valid: true });
+    expect(session.drafts).toEqual({});
+    expect(session.isDirty).toBe(false);
+  });
+
+  it("retains invalid input and explicit deletion even when the raw text matches the original", async () => {
+    const session = await editedCanonicalSession(["board"]);
+    const identity = { fileId: SCOPE.fileId, nodePath: "board", propertyName: "model" };
+    session.change(identity, { rawText: '"Aurora"', normalizedValue: "Aurora", valid: false, error: "invalid" });
+    expect(session.isDirty).toBe(true);
+    expect(session.rows[0]?.valid).toBe(false);
+    session.change(identity, { rawText: '"Aurora"', normalizedValue: "Aurora", valid: true, present: false });
+    expect(session.isDirty).toBe(true);
+    expect(session.rows[0]?.present).toBe(false);
+  });
+
   it("preserves confirmed receipts and local edits when hydrating the same scope", async () => {
     const session = await editedCanonicalSession(["board"]);
     await session.submit({ projectId: SCOPE.projectId, fileId: SCOPE.fileId, fileName: "board.dts",
@@ -533,6 +588,7 @@ describe("createStructuredEditSession", () => {
 
     session.recover();
     expect(session.isStaleBase).toBe(false);
+    expect(session.submitStatus).toBe("已基于当前基线继续编辑；保存时会自动校验。");
     expect(session.validate().ok).toBe(true);
   });
 

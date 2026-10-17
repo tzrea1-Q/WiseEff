@@ -534,7 +534,9 @@ describe("parameter catalog client contract", () => {
     }, { catalogReleaseId: "release-1", idempotencyKey: "submit-1" })).resolves.toEqual(batch);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v2/projects/project-1/parameter-value-change-requests/batches",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({
+      expect.objectContaining({ method: "POST", headers: expect.objectContaining({
+        "Idempotency-Key": "submit-1", "X-Request-Id": "submit-1"
+      }), body: JSON.stringify({
         candidateId: "candidate-1", expectedProofToken: "preview-proof", reason: "calibrate", assignedToUserId: "reviewer"
       }) })
     );

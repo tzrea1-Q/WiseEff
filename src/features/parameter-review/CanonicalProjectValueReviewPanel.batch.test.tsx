@@ -156,9 +156,8 @@ describe("canonical batch reviewer", () => {
     expect(detail.querySelector("footer")).toBeNull();
     expect(within(detail).getByRole("region", { name: "影响范围" }).compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(detail).getByText("溯源信息"));
-    expect(await within(detail).findByRole("button", { name: "复制 批量证明摘要" })).toBeVisible();
-    fireEvent.click(within(detail).getByText("完整技术数据", { exact: true }));
-    expect(within(detail).getByLabelText("完整溯源数据")).toHaveTextContent(diff.bindings[0].sourcePinId);
+    expect(await within(detail).findByRole("button", { name: "复制完整技术数据" })).toBeVisible();
+    expect(await within(detail).findByLabelText("完整溯源数据")).toHaveTextContent(diff.bindings[0].sourcePinId);
     expect(within(detail).getByRole("button", { name: "复制完整技术数据" })).toBeVisible();
   });
 
@@ -250,8 +249,7 @@ describe("canonical batch reviewer", () => {
       currentUserId="reviewer-1" initialRequestId={batch.id} />);
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
     fireEvent.click(within(detail).getByText("溯源信息"));
-    fireEvent.click(await within(detail).findByText("完整技术数据", { exact: true }));
-    expect(within(detail).getByLabelText("完整溯源数据")).toHaveTextContent('"format": "dts"');
+    expect(await within(detail).findByLabelText("完整溯源数据")).toHaveTextContent('"format": "dts"');
     expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
     const approve = within(detail).getByRole("button", { name: "批准全部 2 项" });
     expect(approve).toBeEnabled();
@@ -323,9 +321,8 @@ describe("canonical batch reviewer", () => {
     ));
     await waitFor(() => expect(screen.getByRole("article")).toHaveTextContent("已批准"));
     fireEvent.click(screen.getByText("溯源信息"));
-    fireEvent.click(await screen.findByText("完整技术数据", { exact: true }));
-    expect(screen.getByLabelText("完整溯源数据")).toHaveTextContent("value-0");
-    expect(screen.getByLabelText("完整溯源数据")).toHaveTextContent("value-1");
+    expect(await screen.findByLabelText("完整溯源数据")).toHaveTextContent("value-0");
+    expect(await screen.findByLabelText("完整溯源数据")).toHaveTextContent("value-1");
     expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
     expect(within(screen.getByRole("article", { name: "批量源文件请求详情" }))
       .queryByRole("button", { name: /批准全部/ })).not.toBeInTheDocument();
@@ -380,8 +377,7 @@ describe("canonical batch reviewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认批准并应用" }));
     await waitFor(() => expect(screen.getByRole("article")).toHaveTextContent("已批准"));
     fireEvent.click(screen.getByText("溯源信息"));
-    fireEvent.click(await screen.findByText("完整技术数据", { exact: true }));
-    expect(screen.getByLabelText("完整溯源数据")).toHaveTextContent("value-0");
+    expect(await screen.findByLabelText("完整溯源数据")).toHaveTextContent("value-0");
     expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /批准全部/ })).not.toBeInTheDocument();
   });
@@ -445,10 +441,11 @@ describe("canonical batch reviewer", () => {
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
       currentUserId="author-1" mineOnly />);
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
-    expect(within(detail).queryByRole("button", { name: "复制 批量证明摘要" })).not.toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: "复制完整技术数据" })).not.toBeInTheDocument();
     fireEvent.click(within(detail).getByText("溯源信息"));
-    expect(await within(detail).findByRole("button", { name: "复制 批量证明摘要" })).toBeVisible();
-    expect(within(detail).getAllByText(proof).every((element) => element.closest("details")?.open)).toBe(true);
+    expect(await within(detail).findByRole("button", { name: "复制完整技术数据" })).toBeVisible();
+    expect(within(detail).getByLabelText("完整溯源数据")).toHaveTextContent(proof);
+    expect(within(detail).getByLabelText("完整溯源数据").closest("details")).toHaveAttribute("open");
     fireEvent.click(within(detail).getByRole("button", { name: "撤回我的批量提交" }));
     expect(repo.withdrawProjectValueChangeRequest).not.toHaveBeenCalled();
     fireEvent.click(within(screen.getByRole("dialog", { name: "确认撤回提交" })).getByRole("button", { name: "撤回提交" }));

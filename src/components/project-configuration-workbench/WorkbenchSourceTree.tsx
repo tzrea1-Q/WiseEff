@@ -1,7 +1,6 @@
 import type { RefObject } from "react";
 import { FileCode2 } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
-import { RowActionMenu } from "@/components/common/RowActionMenu";
 
 import type {
   ConfigSetRole,
@@ -47,6 +46,7 @@ export type WorkbenchSourceTreeProps = {
   selectedConfigSet: DtsConfigSet;
   searchInputRef: RefObject<HTMLInputElement | null>;
   searchDraft: string;
+  searchQuery?: string | null;
   onSearchDraftChange: (value: string) => void;
   onSearchSubmit: () => void;
   searchLoading: boolean;
@@ -64,7 +64,6 @@ export type WorkbenchSourceTreeProps = {
   selectedMembers: DtsConfigSetMemberFile[];
   selectedMember: DtsConfigSetMemberFile | null;
   onSelectMember: (fileId: string) => void;
-  onInspectMember: (fileId: string) => void;
   structureLoading: boolean;
   structureError: string;
   onStructureRetry: () => void;
@@ -74,8 +73,6 @@ export type WorkbenchSourceTreeProps = {
   sessionDrafts: Record<string, SessionPropertyDraft>;
   onSelectStructureTarget: (fileId: string, nodePath: string, propertyName: string | null) => void;
   canAdmin: boolean;
-  uploadingCandidate: boolean;
-  onUploadCandidate: () => void;
   filesLoading: boolean;
   filesError: string;
   onFilesRetry: () => void;
@@ -90,6 +87,7 @@ export function WorkbenchSourceTree({
   selectedConfigSet,
   searchInputRef,
   searchDraft,
+  searchQuery = null,
   onSearchDraftChange,
   onSearchSubmit,
   searchLoading,
@@ -107,7 +105,6 @@ export function WorkbenchSourceTree({
   selectedMembers,
   selectedMember,
   onSelectMember,
-  onInspectMember,
   structureLoading,
   structureError,
   onStructureRetry,
@@ -117,8 +114,6 @@ export function WorkbenchSourceTree({
   sessionDrafts,
   onSelectStructureTarget,
   canAdmin,
-  uploadingCandidate,
-  onUploadCandidate,
   filesLoading,
   filesError,
   onFilesRetry,
@@ -134,19 +129,13 @@ export function WorkbenchSourceTree({
   const sourceSetMutationReason = sourceWorkflowSetError
     ? sourceWorkflowSetError
     : sourceWorkflowSetCanonical
-      ? "此配置集的成员变更需要审核，当前不能直接编入文件。"
+      ? "此配置的文件变更需要审核，当前不能直接加入文件。"
       : selectedMembers.length === 0
-        ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
-      : "配置集来源一致性尚未完成校验，成员变更已禁用。";
+        ? "当前配置尚无已验证的来源文件，不能确认目标来源。"
+      : "配置来源一致性尚未完成校验，文件变更已禁用。";
 
   return (
     <aside className="configuration-workbench__tree" aria-label="源结构" tabIndex={-1} ref={treeRegionRef}>
-      <div className="configuration-workbench__region-head">
-        <div>
-          <span>源结构</span>
-          <strong>{selectedMembers.length} 个文件</strong>
-        </div>
-      </div>
       <form
         className="configuration-workbench__search"
         aria-label="统一结构搜索"
@@ -159,20 +148,21 @@ export function WorkbenchSourceTree({
           ref={searchInputRef}
           value={searchDraft}
           onValueChange={onSearchDraftChange}
-          placeholder="文件名 / 路径 / 属性…"
+          placeholder="搜索配置，按回车确认"
           ariaLabel="统一搜索查询"
           loading={searchLoading}
         />
-        <div className="configuration-workbench__search-actions">
-          <button className="button subtle" type="submit" disabled={searchLoading}>
-            {searchLoading ? "搜索中…" : "搜索"}
-          </button>
-        </div>
       </form>
       {searchError ? (
         <div role="alert" className="configuration-workbench__scoped-error">
           <p>{searchError}</p>
         </div>
+      ) : null}
+      {searchQuery !== null && !searchLoading && !searchError ? (
+        <p className="configuration-workbench__search-summary" role="status">
+          {searchHits.length ? `找到 ${searchHits.length} 个结果` : `未找到“${searchQuery}”`}
+          <button className="button ghost" type="button" onClick={() => onSearchDraftChange("")}>清除搜索</button>
+        </p>
       ) : null}
       {searchHits.length > 0 ? (
         <div className="configuration-workbench__search-results" aria-label="搜索结果">
@@ -194,36 +184,26 @@ export function WorkbenchSourceTree({
           ))}
         </div>
       ) : null}
-      {membersLoading ? <p role="status">正在加载成员文件…</p> : null}
+      {membersLoading ? <p role="status">正在加载配置文件…</p> : null}
       {membersError ? (
         <div role="alert" className="configuration-workbench__scoped-error">
           <p>{membersError}</p>
           <button className="button subtle" type="button" onClick={onMembersRetry}>
-            重试成员
+            重试文件
           </button>
         </div>
       ) : null}
       {!membersLoading && !membersError && selectedMembers.length === 0 ? (
         <div className="configuration-workbench__empty">
-          <strong>当前配置集没有成员文件</strong>
+          <strong>当前配置还没有文件</strong>
           <p>
-            从下方未编组文件编入成员，或上传候选后再明确分配。上传候选不会自动激活工作配置。
+            {canAdmin ? "从「配置 → 文件管理」添加文件。" : "请项目管理员添加来源文件。"}
           </p>
-          {canAdmin ? (
-            <button
-              className="button subtle"
-              type="button"
-              disabled={uploadingCandidate}
-              onClick={onUploadCandidate}
-            >
-              {uploadingCandidate ? "上传中…" : "上传候选"}
-            </button>
-          ) : null}
         </div>
       ) : null}
       <div
         role="tree"
-        aria-label={`${selectedConfigSet.name} 成员文件`}
+        aria-label={`${selectedConfigSet.name === "default" ? "默认配置" : selectedConfigSet.name} 配置文件`}
         className="configuration-workbench__member-tree"
       >
         {selectedMembers.map((item) => {
@@ -234,15 +214,13 @@ export function WorkbenchSourceTree({
             // role="group": a tree may only own treeitem/group children, and this
             // block wraps the member treeitem together with its expanded subtree.
             <div key={item.fileId} role="group" className="configuration-workbench__member-block">
-              <div className="configuration-workbench__member-row" data-row-action-row
+              <div className="configuration-workbench__member-row"
                 role="treeitem"
                 aria-selected={selected}
                 aria-expanded={selected ? true : undefined}
                 aria-label={`${item.fileName} ${roleLabel} ${versionLabel}`}
                 tabIndex={0}
-                onClick={(event) => {
-                  if (!(event.target as HTMLElement).closest(".row-action-menu")) onSelectMember(item.fileId);
-                }}
+                onClick={() => onSelectMember(item.fileId)}
                 onKeyDown={(event) => {
                   if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
                     event.preventDefault();
@@ -263,12 +241,10 @@ export function WorkbenchSourceTree({
                     {item.currentVersionNumber ? `版本 v${item.currentVersionNumber}` : "无活跃版本"}
                   </small>
                 </span>
-                <span className="configuration-workbench__member-meta" data-row-action-status aria-hidden="true">
+                <span className="configuration-workbench__member-meta" aria-hidden="true">
                   <span>{roleLabel}</span>
                 </span>
               </button>
-                <RowActionMenu label={`${item.fileName} 操作`} items={[]}
-                  primaryAction={{ id: "details", label: "详情", onSelect: () => onInspectMember(item.fileId) }} />
               </div>
               {selected && showStructure ? (
                 <div className="configuration-workbench__node-tree-wrap">
@@ -301,9 +277,9 @@ export function WorkbenchSourceTree({
           );
         })}
       </div>
-      <div role="group" aria-label="未编组项目文件" className="configuration-workbench__ungrouped">
+      {filesLoading || filesError || ungroupedFiles.length > 0 ? <div role="group" aria-label="待分配项目文件" className="configuration-workbench__ungrouped">
         <div className="configuration-workbench__ungrouped-title">
-          <span>未编组项目文件</span>
+          <span>待分配</span>
           <small>{filesLoading ? "…" : ungroupedFiles.length}</small>
         </div>
         {filesError ? (
@@ -314,31 +290,30 @@ export function WorkbenchSourceTree({
             </button>
           </div>
         ) : null}
-        {!filesError && !filesLoading && ungroupedFiles.length === 0 ? <p>没有未编组文件。</p> : null}
         {ungroupedFiles.map((item) => (
           <div key={item.id} className="configuration-workbench__ungrouped-file">
             <span>{item.fileName}</span>
-            <small>{memberAddErrorsByFileId[item.id] || "尚未加入当前配置集"}</small>
+            <small>{memberAddErrorsByFileId[item.id] || "待分配"}</small>
             {canAdmin ? (
               <button
                 className="button subtle"
                 type="button"
-                aria-label={`编入 ${item.fileName}`}
+                aria-label={`加入 ${item.fileName}`}
                 title={sourceSetMutationBlocked ? sourceSetMutationReason : memberAddErrorsByFileId[item.id] || undefined}
                 aria-describedby={sourceSetMutationBlocked ? "source-tree-member-add-reason" : undefined}
                 disabled={pendingAction !== null || sourceSetMutationBlocked || Boolean(memberAddErrorsByFileId[item.id])}
                 onClick={() => onAssignUngroupedFile(item)}
               >
-                编入当前配置集
+                加入当前配置
               </button>
             ) : null}
           </div>
         ))}
         {ungroupedFiles.length > 0 && sourceSetMutationBlocked ? (
           <p id="source-tree-member-add-reason" role="note">{sourceSetMutationReason}
-            {sourceWorkflowSetCanonical ? "" : " 未完成校验前不能编入当前配置集。"}</p>
+            {sourceWorkflowSetCanonical ? "" : " 未完成校验前不能加入当前配置。"}</p>
         ) : null}
-      </div>
+      </div> : null}
     </aside>
   );
 }

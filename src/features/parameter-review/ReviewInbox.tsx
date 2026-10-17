@@ -65,7 +65,7 @@ type Props = {
   busy?: boolean;
 };
 
-const typeLabels = { all: "全部类型", value: "软件配置", member: "配置集成员移除", legacy: "参数与节点" };
+const typeLabels = { all: "全部类型", value: "软件配置", member: "配置文件移除", legacy: "参数与节点" };
 const searchProfile: SearchProfile<ReviewInboxRow> = { fields: [
   { name: "request", weight: 5, getValues: (row) => [row.id, row.title, row.objectLabel, row.changeSummary] },
   { name: "context", weight: 2, getValues: (row) => [row.project, row.module, row.submitter, row.assignedTo, row.status] }
@@ -146,9 +146,9 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
             status: canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" };
         }),
         ...members.map((request): ReviewInboxRow => ({ id: request.id, kind: "member", projectId, project,
-          module: "配置集成员", title: request.reason, submitter: request.submitterName ?? userName(request.submitterUserId),
+          module: "配置文件", title: request.reason, submitter: request.submitterName ?? userName(request.submitterUserId),
           objectLabel: request.frozenProof?.members.find((member) => member.fileId === request.fileId)?.sourceName,
-          changeSummary: request.frozenProof ? `移除 1 个文件 · 保留 ${request.frozenProof.members.length - 1} 个文件` : "移除配置集成员",
+          changeSummary: request.frozenProof ? `移除 1 个文件 · 保留 ${request.frozenProof.members.length - 1} 个文件` : "从配置移除文件",
           assignedToId: request.assignedToUserId,
           assignedTo: request.assignedToName ?? (request.assignedToUserId ? userName(request.assignedToUserId) : "项目审核人"),
           handledAt: request.status === "pending" ? undefined : request.updatedAt,

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProjectParameterFileVersion } from "@/application/ports/ParameterFileRepository";
 import type { BatchRollbackPreparation } from "@/infrastructure/http/canonicalBatchRollbackClient";
 import type { CanonicalSourceConflictList } from "@/infrastructure/http/canonicalConflictClient";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { WorkbenchSourceRollbackDialog } from "./WorkbenchSourceRollbackDialog";
 
 const digest = "a".repeat(64);
@@ -21,29 +22,58 @@ const proof = {
     action: "set", beforeText: "1", afterText: "2" }))
 } as BatchRollbackPreparation;
 
-function show(prepared: BatchRollbackPreparation = proof, failFirstPrepare = false,
-  conflicts: CanonicalSourceConflictList = { items: [], ineligible: [] }) {
+function show(prepared: BatchRollbackPreparation = proof, failFirstPrepare: boolean | Error = false,
+  conflicts: CanonicalSourceConflictList = { items: [], ineligible: [] }, failReviewers = false) {
   const prepare = failFirstPrepare
-    ? vi.fn().mockRejectedValueOnce(new Error("connection lost")).mockResolvedValue(prepared)
+    ? vi.fn().mockRejectedValueOnce(failFirstPrepare instanceof Error ? failFirstPrepare : new Error("connection lost")).mockResolvedValue(prepared)
     : vi.fn().mockResolvedValue(prepared);
   const submit = vi.fn().mockRejectedValueOnce(new Error("connection lost"))
     .mockResolvedValue({ candidateId: "candidate", requestId: "review-request",
       batchProofDigest: digest, status: "pending", replayed: true });
   const onSubmitted = vi.fn();
   const listConflicts = vi.fn().mockResolvedValue(conflicts);
+  const loadReviewers = vi.fn().mockResolvedValue({ bindings: [
+    { isActive: true, userId: "author", name: "Author", roles: ["software-committer"] },
+    { isActive: true, userId: "reviewer", name: "Reviewer", roles: ["software-committer"] }
+  ] });
+  if (failReviewers) loadReviewers.mockRejectedValueOnce(new Error("network unavailable"));
   render(<WorkbenchSourceRollbackDialog open version={version} currentVersionId="current"
     pending={false} error="" onCancel={vi.fn()} onConfirm={vi.fn()}
     batch={{ projectId: "project", fileId: "file", currentUserId: "author",
       workflowProofToken: "workflow", client: { prepare, submit } as never,
       conflictClient: { listCandidateSourceConflicts: listConflicts } as never,
-      governanceClient: { getProjectWorkflowRoleBindings: vi.fn().mockResolvedValue({ bindings: [
-        { isActive: true, userId: "author", name: "Author", roles: ["software-committer"] },
-        { isActive: true, userId: "reviewer", name: "Reviewer", roles: ["software-committer"] }
-      ] }) } as never, onSubmitted }} />);
+      governanceClient: { getProjectWorkflowRoleBindings: loadReviewers } as never, onSubmitted }} />);
   return { prepare, submit, onSubmitted, listConflicts };
 }
 
 describe("historical multi-target rollback dialog", () => {
+  it("distinguishes reviewer loading failure from an empty reviewer pool and preserves the reason on retry", async () => {
+    show(proof, false, { items: [], ineligible: [] }, true);
+    const dialog = screen.getByRole("dialog");
+    await within(dialog).findByText("加载审核人失败，请重试。");
+    await within(dialog).findByRole("list", { name: "历史回滚完整有序目标" });
+    expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" })).toHaveTextContent("审核人加载失败");
+    expect(within(dialog).queryByRole("link", { name: "配置审核角色" })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "来源回滚原因" }), { target: { value: "preserve reason" } });
+    expect(within(dialog).getByRole("button", { name: "提交审核" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新核对回滚内容" }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "提交审核" })).toBeEnabled());
+    expect(within(dialog).getByRole("textbox", { name: "来源回滚原因" })).toHaveValue("preserve reason");
+  });
+  it("keeps reviewer availability and entered reason after a failed preparation and a fresh conflict check", async () => {
+    const { prepare } = show(proof, new WiseEffApiError("CONFLICT", "Changed", {}, "request"));
+    const dialog = screen.getByRole("dialog", { name: "申请回滚审核" });
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "来源回滚原因" }), { target: { value: "keep my reason" } });
+    await within(dialog).findByText(/来源或历史版本已变化/);
+    expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" })).toHaveAttribute("data-value", "reviewer");
+    expect(within(dialog).queryByText("没有可用的另一名软件审核人")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新核对回滚内容" }));
+    await within(dialog).findByRole("list", { name: "历史回滚完整有序目标" });
+    expect(within(dialog).getByRole("textbox", { name: "来源回滚原因" })).toHaveValue("keep my reason");
+    expect(prepare.mock.calls[1]![3]).not.toBe(prepare.mock.calls[0]![3]);
+    expect(within(dialog).getByRole("button", { name: "提交审核" })).toBeEnabled();
+  });
   it.each(["pending", "approved", "rejected", "withdrawn"] as const)(
     "honors a %s single receipt even when rollback has two targets", async (status) => {
       const { submit } = show(proof, false, { request: { id: "single-review", status, kind: "single" },
@@ -72,9 +102,10 @@ describe("historical multi-target rollback dialog", () => {
 
   it("shows the ordered DTS proof and reuses exact step keys on retry", async () => {
     const { prepare, submit, onSubmitted } = show();
-    const dialog = screen.getByRole("dialog", { name: "提交多目标历史回滚审核" });
-    expect(await within(dialog).findByRole("list", { name: "历史回滚完整有序目标" })).toHaveTextContent("Binding");
-    expect(within(dialog).getByText(digest)).toBeVisible();
+    const dialog = screen.getByRole("dialog", { name: "申请回滚审核" });
+    expect(await within(dialog).findByRole("list", { name: "历史回滚完整有序目标" })).toHaveTextContent("变更 1");
+    fireEvent.click(within(dialog).getByText("溯源信息"));
+    expect(await within(dialog).findByLabelText("完整溯源数据")).toHaveTextContent(digest);
     expect(within(dialog).getByRole("combobox", { name: "指定软件审核人" })).toHaveAttribute("data-value", "reviewer");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "来源回滚原因" }), {
       target: { value: "restore history" }
@@ -100,7 +131,7 @@ describe("historical multi-target rollback dialog", () => {
     ["wrong cohort pin", { ...proof, cohort: [{ bindingId: "a", sourcePinId: "wrong" }, proof.cohort[1]!] }]
   ])("blocks %s preparation before submit", async (_case, prepared) => {
     const { submit } = show(prepared as BatchRollbackPreparation);
-    const dialog = screen.getByRole("dialog", { name: "提交多目标历史回滚审核" });
+    const dialog = screen.getByRole("dialog", { name: "申请回滚审核" });
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("不一致");
     expect(within(dialog).getByRole("button", { name: "提交审核" })).toBeDisabled();
     expect(submit).not.toHaveBeenCalled();
@@ -108,7 +139,7 @@ describe("historical multi-target rollback dialog", () => {
 
   it("retries preparation with the same request ID and frozen selection", async () => {
     const { prepare, submit } = show(proof, true);
-    const dialog = screen.getByRole("dialog", { name: "提交多目标历史回滚审核" });
+    const dialog = screen.getByRole("dialog", { name: "申请回滚审核" });
     await within(dialog).findByText("准备历史回滚候选或竞争草稿证明失败。");
     expect(within(dialog).getByRole("button", { name: "提交审核" })).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("button", { name: "重试准备" }));
@@ -133,8 +164,10 @@ describe("historical multi-target rollback dialog", () => {
             targetText: index ? "99" : "88", decisionProofDigest: String(index + 3).repeat(64) } } };
     });
     const { submit, listConflicts } = show(proof, false, { items, ineligible: [] });
-    const dialog = screen.getByRole("dialog", { name: "提交多目标历史回滚审核" });
-    expect(await within(dialog).findByText("author-0")).toBeVisible();
+    const dialog = screen.getByRole("dialog", { name: "申请回滚审核" });
+    await within(dialog).findByRole("list", { name: "历史回滚完整有序目标" });
+    fireEvent.click(within(dialog).getByText("溯源信息"));
+    expect(await within(dialog).findByLabelText("完整溯源数据")).toHaveTextContent("author-0");
     expect(listConflicts).toHaveBeenCalledWith("project", "candidate");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "来源回滚原因" }), {
       target: { value: "restore with drafts" }
@@ -159,11 +192,11 @@ describe("historical multi-target rollback dialog", () => {
     const { prepare, submit } = show(proof, false, { items: [], ineligible: [
       { selectedBindingId: "a", selectedDraftId: "future-draft", reason: "future-reason" }
     ] });
-    const dialog = screen.getByRole("dialog", { name: "提交多目标历史回滚审核" });
+    const dialog = screen.getByRole("dialog", { name: "申请回滚审核" });
     await within(dialog).findByRole("list", { name: "历史回滚完整有序目标" });
     expect(within(dialog).getByText(/存在不可处理的竞争草稿/)).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "提交审核" })).toBeDisabled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "重新预览历史目标与证明" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新核对回滚内容" }));
     await waitFor(() => expect(prepare).toHaveBeenCalledTimes(2));
     expect(prepare.mock.calls[1]![3]).not.toBe(prepare.mock.calls[0]![3]);
     expect(submit).not.toHaveBeenCalled();

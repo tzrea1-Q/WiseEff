@@ -4,6 +4,7 @@ export type WorkbenchSetupGateProps = {
   onConfigSetsRetry: () => void;
   selectedConfigSet: { id: string } | null;
   canAdmin: boolean;
+  onCreateConfigSet?: () => void;
 };
 
 export function WorkbenchSetupGate({
@@ -11,12 +12,13 @@ export function WorkbenchSetupGate({
   configSetsError,
   onConfigSetsRetry,
   selectedConfigSet,
-  canAdmin
+  canAdmin,
+  onCreateConfigSet
 }: WorkbenchSetupGateProps) {
   if (configSetsLoading) {
     return (
       <div className="configuration-workbench__setup-state" role="status">
-        正在加载配置集…
+        正在加载配置…
       </div>
     );
   }
@@ -24,10 +26,10 @@ export function WorkbenchSetupGate({
   if (configSetsError) {
     return (
       <div className="configuration-workbench__setup-state" role="alert">
-        <strong>配置集加载失败</strong>
+        <strong>配置加载失败</strong>
         <p>{configSetsError}</p>
         <button className="button subtle" type="button" onClick={onConfigSetsRetry}>
-          重试配置集
+          重试配置
         </button>
       </div>
     );
@@ -36,16 +38,14 @@ export function WorkbenchSetupGate({
   if (!selectedConfigSet) {
     return (
       <div className="configuration-workbench__setup-state" role="status">
-        <strong>项目还没有配置集</strong>
+        <strong>项目还没有配置</strong>
         {canAdmin ? (
           <>
-            <p>
-              从配置集下拉框选择「+ 新建配置集…」即可创建。上传文件或候选不会自动激活工作配置；创建后需明确把文件编入成员。
-            </p>
-            <p className="configuration-workbench__empty-hint">上传不会自动激活工作配置。</p>
+            <p>先创建配置，再添加需要管理的文件。</p>
+            {onCreateConfigSet ? <button className="button primary" type="button" onClick={onCreateConfigSet}>新建配置</button> : <p>在「配置」菜单中选择「新建配置…」。</p>}
           </>
         ) : (
-          <p>当前账号无法创建配置集。只读上下文仍可查看；请联系管理员完成初始化。</p>
+          <p>请联系项目管理员创建配置并添加文件。</p>
         )}
       </div>
     );

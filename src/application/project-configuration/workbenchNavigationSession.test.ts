@@ -22,6 +22,44 @@ const configSets = [
 ] as const;
 
 describe("WorkbenchNavigationSession", () => {
+  it("distinguishes a completed empty search from the initial state and clears it with the input", async () => {
+    const session = createWorkbenchNavigationSession();
+    expect(session.searchQuery).toBeNull();
+    session.setSearchDraft("missing");
+    await session.runSearch("proj", { search: vi.fn().mockResolvedValue({ hits: [] }) });
+    expect(session.searchQuery).toBe("missing");
+    expect(session.searchHits).toEqual([]);
+    expect(session.searchLoading).toBe(false);
+    session.setSearchDraft("");
+    expect(session.searchQuery).toBeNull();
+    expect(session.findQuery).toBe("");
+    expect(session.searchError).toBe("");
+  });
+
+  it("ignores an older search after a newer search completes or input is cleared", async () => {
+    const session = createWorkbenchNavigationSession();
+    let finishOld!: (result: { hits: [] }) => void;
+    const oldResult = new Promise<{ hits: [] }>((resolve) => { finishOld = resolve; });
+    session.setSearchDraft("old");
+    const oldSearch = session.runSearch("proj", { search: vi.fn().mockReturnValue(oldResult) });
+    session.setSearchDraft("new");
+    await session.runSearch("proj", { search: vi.fn().mockResolvedValue({ hits: [] }) });
+    finishOld({ hits: [] });
+    await oldSearch;
+    expect(session.searchQuery).toBe("new");
+    expect(session.findQuery).toBe("new");
+    session.setSearchDraft("pending");
+    let failPending!: (error: Error) => void;
+    const pending = new Promise((_, reject) => { failPending = reject; });
+    const pendingSearch = session.runSearch("proj", { search: vi.fn().mockReturnValue(pending) });
+    session.setSearchDraft("");
+    failPending(new Error("late failure"));
+    await pendingSearch;
+    expect(session.searchQuery).toBeNull();
+    expect(session.searchError).toBe("");
+    expect(session.searchLoading).toBe(false);
+  });
+
   it("resolves named default config set and write-backs missing configSet query", () => {
     const session = createWorkbenchNavigationSession();
     const selected = session.resolveSelectedConfigSet({
@@ -54,7 +92,7 @@ describe("WorkbenchNavigationSession", () => {
             format: "dts",
             currentVersionId: "v1",
             currentVersionNumber: 1,
-            createdAt: "2026-01-01T00:00:00.000Z",
+            enabled: true,
             updatedAt: "2026-01-01T00:00:00.000Z"
           }
         ],
@@ -81,7 +119,7 @@ describe("WorkbenchNavigationSession", () => {
             format: "dts",
             currentVersionId: "v1",
             currentVersionNumber: 1,
-            createdAt: "2026-01-01T00:00:00.000Z",
+            enabled: true,
             updatedAt: "2026-01-01T00:00:00.000Z"
           }
         ]
@@ -112,7 +150,7 @@ describe("WorkbenchNavigationSession", () => {
           versionId: "v1",
           nodePath: "/soc",
           propertyName: "status",
-          source: { startLine: 12, endLine: 12, startColumn: 1, endColumn: 2 }
+          source: { startOffset: 10, endOffset: 11, startLine: 12, endLine: 12, startColumn: 1, endColumn: 2 }
         }
       ]
     }));
@@ -135,6 +173,12 @@ describe("WorkbenchNavigationSession", () => {
     expect(session.selectConfigSet("proj", "?configSet=cs-a&file=f1&sourceMode=history", "cs-b")).toBe(
       "/parameter-admin/projects/proj/configuration?configSet=cs-b"
     );
+    const switched = new URL(session.selectConfigSet("proj", "?configSet=cs-a&file=f1&node=board&property=model&sourceMode=candidate&candidate=candidate-a&baseline=baseline-a&version=v9&inspector=release", "cs-b"), "https://wiseeff.test");
+    expect(switched.searchParams.get("configSet")).toBe("cs-b");
+    expect(switched.searchParams.get("inspector")).toBe("release");
+    for (const key of ["file", "node", "property", "sourceMode", "candidate", "baseline", "version"]) {
+      expect(switched.searchParams.has(key)).toBe(false);
+    }
     expect(
       session.selectMember("proj", "?configSet=cs-a&file=f1&sourceMode=history&version=v9", {
         configSetId: "cs-a",

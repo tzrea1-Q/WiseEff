@@ -31,27 +31,54 @@ export type PendingConfirmation = {
   run: () => Promise<void>;
 };
 
-export function downloadExportBundle(
+export async function downloadExportBundle(
   configSetName: string,
   result: Pick<DtsExportConfigSetResult, "manifest" | "files">
-) {
-  const filesPayload = result.files.map((file) => `// ${file.name}\n${file.content}`).join("\n\n");
-  const payload = [
-    "// wiseeff-config-set-export-manifest.json",
-    JSON.stringify(result.manifest, null, 2),
-    "",
-    "// wiseeff-config-set-export-files",
-    filesPayload
-  ].join("\n");
-  const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
+): Promise<void> {
+  const manifestName = "wiseeff-config-set-export-manifest.json";
+  if (!result?.manifest || typeof result.manifest !== "object" || Array.isArray(result.manifest)
+    || !Array.isArray(result.files) || result.files.length >= 0xffff) {
+    throw new Error("导出内容无效，无法生成 ZIP 文件。");
+  }
+  const names = new Set([manifestName]);
+  const directories = new Set<string>();
+  for (const file of result.files) {
+    const parts = typeof file?.name === "string" ? file.name.split("/") : [];
+    if (!parts.length || typeof file.content !== "string" || /^[a-z]:/i.test(file.name)
+      || new TextEncoder().encode(file.name).length > 0xffff
+      || parts.some((part) => !part || part === "." || part === ".." || /[\\\u0000\uD800-\uDFFF]/u.test(part))) {
+      throw new Error(`导出文件路径或内容无效：${JSON.stringify(file?.name)}`);
+    }
+    const normalized = parts.map((part) => part.normalize("NFC").toLowerCase());
+    const name = normalized.join("/");
+    if (names.has(name) || directories.has(name)) {
+      throw new Error(`导出文件路径重复或与清单冲突：${JSON.stringify(file.name)}`);
+    }
+    for (let index = 1; index < normalized.length; index += 1) {
+      const parent = normalized.slice(0, index).join("/");
+      if (names.has(parent)) throw new Error(`导出文件与目录路径冲突：${JSON.stringify(file.name)}`);
+      directories.add(parent);
+    }
+    names.add(name);
+  }
+  const manifest = JSON.stringify(result.manifest, null, 2);
+  if (typeof manifest !== "string") throw new Error("导出清单无效，无法生成 ZIP 文件。");
+  const { default: JSZip } = await import("jszip");
+  const zip = new JSZip();
+  zip.file(manifestName, manifest);
+  for (const file of result.files) zip.file(file.name, file.content, { createFolders: false });
+  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/zip" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${configSetName || "config-set"}-export.txt`;
+  link.download = `${configSetName.replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_").trim() || "config-set"}-export.zip`;
   document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
 }
 
 export function defaultRoleForFile(file: ProjectParameterFile, hasMembers: boolean): ConfigSetRole {

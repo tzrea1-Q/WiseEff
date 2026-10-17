@@ -50,9 +50,19 @@ export type ResolvedWorkbenchActivityTarget = {
 const TARGET_TYPE_LABELS: Record<string, string> = {
   "project-parameter-file": "参数文件",
   "project-parameter-file-candidate": "候选文件版本",
-  "dts-config-set": "配置集",
+  "dts-config-set": "配置",
   "dts-release-baseline": "发布基线",
   "parameter-file-conflict": "文件冲突",
+  "parameter-file-sync-conflict": "来源同步冲突",
+  "project-parameter-value-change-request": "参数变更审核",
+  "parameter-change-request": "参数变更审核",
+  "project-parameter-binding": "参数绑定",
+  "parameter-source-occurrence": "文件来源",
+  "dts-config-revision": "配置修订",
+  "project-parameter-initialization-review": "项目初始化审核",
+  "parameter-import-batch": "参数导入",
+  "sensitive-node": "安全关键节点",
+  "project": "项目",
   "dts-node": "DTS 节点",
   "dts-property": "DTS 属性"
 };
@@ -90,33 +100,35 @@ function outcomeFromEvent(event: AuditEventView): WorkbenchActivityOutcome {
   return "已记录";
 }
 
-function targetLabelFromEvent(event: AuditEventView, presentationAction: string): string {
+function targetLabelFromEvent(event: AuditEventView, targetNames?: ReadonlyMap<string, string>): string {
   const metadata = event.metadata ?? {};
-  const fileName = asString(metadata.fileName);
+  const targetName = event.targetId ? asString(targetNames?.get(event.targetId)) : undefined;
+  const fileName = asString(metadata.fileName) ?? asString(targetNames?.get(asString(metadata.fileId) ?? ""));
   const nodePath = asString(metadata.nodePath);
   const propertyName = asString(metadata.propertyName);
-  const configSetName = asString(metadata.configSetName) ?? asString(metadata.name);
-  const typeLabel = event.targetType ? TARGET_TYPE_LABELS[event.targetType] ?? event.targetType : "目标";
+  const baselineName = asString(metadata.baselineName) ?? asString(targetNames?.get(asString(metadata.baselineId) ?? ""));
+  const configSetName = asString(metadata.configSetName)
+    ?? asString(targetNames?.get(asString(metadata.configSetId) ?? "")) ?? asString(metadata.name);
+  const typeLabel = event.targetType ? TARGET_TYPE_LABELS[event.targetType] ?? "配置对象" : "配置对象";
 
   if (propertyName && nodePath) {
-    return `${typeLabel} · ${nodePath}.${propertyName}`;
+    return `${typeLabel} · ${fileName ? `${fileName} · ` : ""}${nodePath}.${propertyName}`;
   }
   if (nodePath) {
-    return `${typeLabel} · ${nodePath}`;
+    return `${typeLabel} · ${fileName ? `${fileName} · ` : ""}${nodePath}`;
   }
+  if (targetName) return `${typeLabel} · ${targetName}`;
   if (fileName) {
     return `${typeLabel} · ${fileName}`;
   }
+  if (baselineName) return `${typeLabel} · ${baselineName}`;
   if (configSetName) {
     return `${typeLabel} · ${configSetName}`;
   }
-  if (event.targetId) {
-    return `${typeLabel} · ${event.targetId}`;
-  }
-  return `${typeLabel} · ${presentationAction}`;
+  return typeLabel;
 }
 
-export function presentWorkbenchActivity(event: AuditEventView): WorkbenchActivityRow {
+export function presentWorkbenchActivity(event: AuditEventView, targetNames?: ReadonlyMap<string, string>): WorkbenchActivityRow {
   const presentation = presentAuditEvent(event);
   const action =
     ACTION_PRODUCT_LABELS[event.action] ??
@@ -127,7 +139,7 @@ export function presentWorkbenchActivity(event: AuditEventView): WorkbenchActivi
     id: event.id,
     actor: presentation.actor.name,
     action,
-    targetLabel: targetLabelFromEvent(event, action),
+    targetLabel: targetLabelFromEvent(event, targetNames),
     outcome: outcomeFromEvent(event),
     timeLabel: presentation.timestamp.relative,
     absoluteTime: presentation.timestamp.absolute,
@@ -165,7 +177,7 @@ export function resolveWorkbenchActivityTarget(
       kind: "config-set",
       configSetId: event.targetId,
       missing,
-      ...(missing ? { missingReason: "配置集已不存在或当前项目不可见。" } : {})
+      ...(missing ? { missingReason: "配置已不存在或当前项目不可见。" } : {})
     };
   }
 
@@ -235,7 +247,7 @@ export function resolveWorkbenchActivityTarget(
       kind: "file",
       fileId,
       missing,
-      ...(missing ? { missingReason: "文件已不在当前项目或配置集成员中。" } : {})
+      ...(missing ? { missingReason: "文件已不在当前项目或配置文件中。" } : {})
     };
   }
 

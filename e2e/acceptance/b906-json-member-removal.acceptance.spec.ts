@@ -19,6 +19,7 @@ import { ingestConfigRevision } from "../../server/modules/parameter-topology/in
 import type { ConfigRevisionManifest } from "../../server/modules/parameter-topology/types";
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
+import { openWorkbenchFileActions } from "./helpers/runtime";
 import { dismissXiaozeHint } from "./helpers/catalogBrowser";
 import { startSwappedDisposablePostCutoverRuntime, type RestoreDisposablePostCutoverRuntime } from "./helpers/semanticBindingFixture";
 import type { DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
@@ -88,10 +89,11 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       const stale = await setup("stale");
       const large = await setup("large-members", 22);
       await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${large.id}&inspector=config-set`);
-      await page.getByRole("complementary", { name: "配置检查器" }).getByRole("button", { name: `移除 ${large.removed.name}` }).click();
-      const largeDialog = page.getByRole("dialog", { name: "申请从配置集移除文件" });
+      const largeActions = await openWorkbenchFileActions(page, large.removed.name);
+      await largeActions.getByRole("menuitem", { name: "申请从配置移除", exact: true }).click();
+      const largeDialog = page.getByRole("dialog", { name: "申请从配置移除文件" });
       await largeDialog.getByText("查看 22 个配置文件", { exact: true }).click();
-      await expect(largeDialog.getByRole("list", { name: "提交前成员概览" }).getByRole("listitem")).toHaveCount(22);
+      await expect(largeDialog.getByRole("list", { name: "提交前文件概览" }).getByRole("listitem")).toHaveCount(22);
       await page.setViewportSize({ width: 1280, height: 800 });
       await expect(largeDialog.getByRole("button", { name: "提交移除审核", exact: true })).toBeVisible();
       await expect(largeDialog.getByRole("button", { name: "提交移除审核", exact: true })).toBeInViewport();
@@ -109,13 +111,12 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       const submitFromPage = async (set: Awaited<ReturnType<typeof setup>>, reason: string) => {
         await signInBrowserAsRole(page, "admin", `${runtime!.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${set.id}&inspector=config-set`);
         await dismissXiaozeHint(page);
-        const inspector = page.getByRole("complementary", { name: "配置检查器" });
-        await expect(inspector.getByRole("button", { name: `移除 ${set.removed.name}` })).toBeVisible();
-        await expect(inspector.getByRole("button", { name: `移除 ${set.removed.name}` })).toBeEnabled();
-        await inspector.getByRole("button", { name: `移除 ${set.removed.name}` }).click();
-        const dialog = page.getByRole("dialog", { name: "申请从配置集移除文件" });
+        const actions = await openWorkbenchFileActions(page, set.removed.name);
+        await expect(actions.getByRole("menuitem", { name: "申请从配置移除", exact: true })).toBeEnabled();
+        await actions.getByRole("menuitem", { name: "申请从配置移除", exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: "申请从配置移除文件" });
         await dialog.getByText("查看 2 个配置文件", { exact: true }).click();
-        await expect(dialog.getByRole("list", { name: "提交前成员概览" }).getByRole("listitem")).toHaveCount(2);
+        await expect(dialog.getByRole("list", { name: "提交前文件概览" }).getByRole("listitem")).toHaveCount(2);
         await dialog.getByRole("textbox", { name: "移除原因" }).fill(reason);
         await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
         const submitted = page.waitForResponse((response) => response.request().method() === "POST"
@@ -128,7 +129,7 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
         expect(item.frozenProof.members).toHaveLength(2);
         expect(item.frozenProof.cohort).toHaveLength(2);
         await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=aurora&memberRequest=${item.id}`));
-        await expect(page.getByRole("article", { name: "JSON 成员删除请求详情" })).toContainText(reason);
+        await expect(page.getByRole("article", { name: "JSON 配置文件移除请求详情" })).toContainText(reason);
         return item;
       };
 
@@ -167,8 +168,8 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
         .getByRole("button", { name: /查看 .+ 提交详情$/ });
       await expect(row).toBeVisible();
       await row.click();
-      const detail = page.getByRole("article", { name: "JSON 成员删除请求详情" });
-      await expect(detail.getByRole("list", { name: "冻结成员列表" }).getByRole("listitem")).toHaveCount(2);
+      const detail = page.getByRole("article", { name: "JSON 配置文件移除请求详情" });
+      await expect(detail.getByRole("list", { name: "冻结文件列表" }).getByRole("listitem")).toHaveCount(2);
       await detail.getByText("查看全部 2 项关联参数", { exact: true }).click();
       await expect(detail.getByRole("list", { name: "冻结关联参数" }).getByRole("listitem")).toHaveCount(2);
       await expect(detail).toContainText(reviewed.survivor.name);
@@ -182,7 +183,7 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       expect((await rejectedResponse).status()).toBe(200);
       await expect(detail).toContainText("已驳回");
       await page.reload();
-      await expect(page.getByRole("article", { name: "JSON 成员删除请求详情" })).toContainText("已驳回");
+      await expect(page.getByRole("article", { name: "JSON 配置文件移除请求详情" })).toContainText("已驳回");
 
       const withdrawn = await submitFromPage(reviewed, "浏览器撤回路径");
       const withdrawResponse = page.waitForResponse((response) => response.request().method() === "POST"
@@ -190,7 +191,7 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       await page.getByRole("button", { name: "撤回申请", exact: true }).click();
       await page.getByRole("dialog", { name: "确认撤回移除申请", exact: true }).getByRole("button", { name: "撤回申请", exact: true }).click();
       expect((await withdrawResponse).status()).toBe(200);
-      await expect(page.getByRole("article", { name: "JSON 成员删除请求详情" })).toContainText("已撤回");
+      await expect(page.getByRole("article", { name: "JSON 配置文件移除请求详情" })).toContainText("已撤回");
 
       const staleRequest = await submitFromPage(stale, "浏览器来源漂移路径");
       const oldVersion = (await db.query<{ version_number: number; storage_key: string; checksum: string; size_bytes: number; parsed_index: ParsedIndex }>(
@@ -204,12 +205,12 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
         createdByUserId: acceptanceCast.xuYun.userId });
       await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [stale.removed.id, driftVersionId]);
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora&memberRequest=${staleRequest.id}`);
-      const staleDetail = page.getByRole("article", { name: "JSON 成员删除请求详情" });
+      const staleDetail = page.getByRole("article", { name: "JSON 配置文件移除请求详情" });
       await expect(staleDetail.getByRole("button", { name: "批准移除" })).toBeVisible();
       const conflictResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${staleRequest.id}/review`));
       await staleDetail.getByRole("button", { name: "批准移除" }).click();
-      await page.getByRole("dialog", { name: "确认从配置集移除文件", exact: true }).getByRole("button", { name: "批准移除", exact: true }).click();
+      await page.getByRole("dialog", { name: "确认从配置移除文件", exact: true }).getByRole("button", { name: "批准移除", exact: true }).click();
       expect((await conflictResponse).status()).toBe(409);
       await expect(page.getByText(/来源过期或请求冲突（409）/)).toBeVisible();
       await expect(staleDetail).toContainText("待审核");
@@ -224,17 +225,16 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
 
       const approved = await submitFromPage(reviewed, "浏览器批准路径");
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora&memberRequest=${approved.id}`);
-      const approveDetail = page.getByRole("article", { name: "JSON 成员删除请求详情" });
+      const approveDetail = page.getByRole("article", { name: "JSON 配置文件移除请求详情" });
       const approvalResponse = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${approved.id}/review`));
       await approveDetail.getByRole("button", { name: "批准移除" }).click();
-      await page.getByRole("dialog", { name: "确认从配置集移除文件", exact: true }).getByRole("button", { name: "批准移除", exact: true }).click();
+      await page.getByRole("dialog", { name: "确认从配置移除文件", exact: true }).getByRole("button", { name: "批准移除", exact: true }).click();
       expect((await approvalResponse).status()).toBe(200);
       await approveDetail.getByText("溯源信息", { exact: true }).click();
-      await approveDetail.getByText("完整技术数据", { exact: true }).click();
       expect(JSON.parse((await approveDetail.getByLabel("完整溯源数据").textContent())!)["事务结果"].successorConfigRevisionId).toBeTruthy();
       await page.reload();
-      await expect(page.getByRole("article", { name: "JSON 成员删除请求详情" })).toContainText("已批准");
+      await expect(page.getByRole("article", { name: "JSON 配置文件移除请求详情" })).toContainText("已批准");
       await page.screenshot({ path: testInfo.outputPath("b906-member-approved-1440x900.png") });
       const approvedRead = await request.get(api(`/api/v2/projects/aurora/parameter-value-change-requests/${approved.id}/member-removal`), {
         headers: reviewerHeaders
@@ -244,7 +244,6 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       expect(approvedItem.appliedSourceResult.tombstoneId).toBeTruthy();
       expect(approvedItem.appliedSourceResult.successorConfigRevisionId).toBeTruthy();
       await approveDetail.getByText("溯源信息", { exact: true }).click();
-      await approveDetail.getByText("完整技术数据", { exact: true }).click();
       await expect(approveDetail.locator("details").filter({ has: page.getByText("溯源信息", { exact: true }) }))
         .toContainText(approvedItem.appliedSourceResult.successorConfigRevisionId);
       expect(browserErrors).toEqual([]);
@@ -360,70 +359,60 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
       await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${setId}&inspector=config-set`);
       await dismissXiaozeHint(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      const add = inspector.getByRole("button", { name: "添加成员" });
-      await expect(add).toBeDisabled();
-      await expect(add).toHaveAttribute("aria-describedby", /\S+/);
-      const addReasonId = await add.getAttribute("aria-describedby");
-      expect(addReasonId).toBeTruthy();
-      const addReason = inspector.locator(`#${addReasonId}`);
-      await expect(addReason).toHaveAttribute("role", "note");
-      await expect(addReason).toBeVisible();
-      await expect(addReason).toHaveText("此配置集的成员变更需要审核，当前不能直接编入文件。");
-      const treeAssign = page.getByRole("button", { name: `编入 ${ungrouped.name}` });
+      const filePanel = page.getByRole("dialog", { name: "文件管理", exact: true });
+      await expect(filePanel.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
+      await expect(filePanel.getByRole("button", { name: "添加文件", exact: true })).toHaveCount(0);
+      await expect(filePanel.getByRole("combobox", { name: "待加入文件", exact: true })).toHaveCount(0);
+      await expect(filePanel.getByRole("combobox", { name: "文件用途", exact: true })).toHaveCount(0);
+      await expect(filePanel.getByRole("spinbutton", { name: "文件顺序", exact: true })).toHaveCount(0);
+      const restriction = filePanel.getByText("此配置已登记来源，暂不支持添加文件或移除 DTS 文件；更新及 JSON 移除需审核。", { exact: true });
+      await expect(restriction).toBeVisible();
+      const initialActions = await openWorkbenchFileActions(page, members[0]!.name);
+      const memberRemove = initialActions.getByRole("menuitem", { name: "申请从配置移除", exact: true });
+      if (format === "json") {
+        await expect(memberRemove).toBeEnabled();
+        await memberRemove.click();
+        await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toBeVisible();
+        await page.keyboard.press("Escape");
+      } else {
+        await expect(initialActions.getByRole("menuitem", { name: /从配置移除/ })).toHaveCount(0);
+        await page.keyboard.press("Escape");
+      }
+      await filePanel.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+      const treeAssign = page.getByRole("button", { name: `加入 ${ungrouped.name}` });
       await expect(treeAssign).toBeDisabled();
       const treeReasonId = await treeAssign.getAttribute("aria-describedby");
       expect(treeReasonId).toBeTruthy();
-      await expect(page.locator(`#${treeReasonId}`)).toHaveText("此配置集的成员变更需要审核，当前不能直接编入文件。");
-      const memberRemove = inspector.getByRole("button", { name: `移除 ${members[0]!.name}` });
-      if (format === "json") await expect(memberRemove).toBeEnabled();
-      else await expect(memberRemove).toBeDisabled();
-      const addBox = await add.boundingBox();
-      if (!addBox) throw new Error("Add button not visible");
-      await page.mouse.click(addBox.x + addBox.width / 2, addBox.y + addBox.height / 2);
-      await inspector.getByRole("combobox", { name: "待编入文件" }).focus();
-      await page.keyboard.press("Tab");
-      expect(await add.evaluate((node) => node === document.activeElement)).toBe(false);
-      const memberRole = inspector.getByRole("combobox", { name: "成员角色", exact: true });
-      await expect(memberRole).toBeFocused();
+      await expect(page.locator(`#${treeReasonId}`)).toHaveText("此配置的文件变更需要审核，当前不能直接加入文件。");
+      const assignBox = await treeAssign.boundingBox();
+      if (!assignBox) throw new Error("Restricted file assignment is not visible");
+      await page.mouse.click(assignBox.x + assignBox.width / 2, assignBox.y + assignBox.height / 2);
+      const scheme = page.getByRole("button", { name: "配置", exact: true });
+      await scheme.focus();
       await page.keyboard.press("Enter");
-      const roleOptions = page.getByRole("listbox");
-      await expect(roleOptions).toBeVisible();
+      const schemeMenu = page.getByRole("menu");
+      await expect(schemeMenu.getByRole("menuitem", { name: "文件管理", exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
-      await expect(roleOptions).toBeHidden();
-      await expect(memberRole).toBeFocused();
-      if (format === "dts") {
-        const removeReasonId = await memberRemove.getAttribute("aria-describedby");
-        expect(removeReasonId).toBeTruthy();
-        await expect(inspector.locator(`#${removeReasonId}`)).toContainText("DTS 成员删除尚无受审入口");
-        const removeBox = await memberRemove.boundingBox();
-        if (!removeBox) throw new Error("DTS removal button not visible");
-        await page.mouse.click(removeBox.x + removeBox.width / 2, removeBox.y + removeBox.height / 2);
-        await inspector.getByRole("combobox", { name: "待编入文件" }).focus();
-        for (let step = 0; step < 6; step += 1) {
-          await page.keyboard.press("Tab");
-          expect(await memberRemove.evaluate((node) => node === document.activeElement)).toBe(false);
-        }
-        await page.getByRole("treeitem", { name: `${members[0]!.name} 基础 v1` }).click();
-        const fileRemove = inspector.getByRole("button", { name: "从配置集移除" });
-        await expect(fileRemove).toBeDisabled();
-        const fileReasonId = await fileRemove.getAttribute("aria-describedby");
-        expect(fileReasonId).toBeTruthy();
-        await expect(inspector.locator(`#${fileReasonId}`)).toContainText("DTS 成员删除尚无受审入口");
-      } else {
-        await memberRemove.click();
-        await expect(page.getByRole("dialog", { name: "申请从配置集移除文件" })).toBeVisible();
+      await expect(schemeMenu).toBeHidden();
+      await expect(scheme).toBeFocused();
+      const versionActions = await openWorkbenchFileActions(page, members[0]!.name);
+      await versionActions.getByRole("menuitem", { name: "版本历史与下载", exact: true }).click();
+      await expect(filePanel).toBeHidden();
+      await expect(inspector.getByRole("region", { name: "版本历史" })).toBeVisible();
+      await expect(inspector).toContainText(members[0]!.name);
+      await expect(inspector.getByRole("button", { name: /从配置移除/ })).toHaveCount(0);
+      const restoredActions = await openWorkbenchFileActions(page, members[0]!.name);
+      if (format === "json") {
+        await expect(restoredActions.getByRole("menuitem", { name: "申请从配置移除", exact: true })).toBeEnabled();
+        await restoredActions.getByRole("menuitem", { name: "申请从配置移除", exact: true }).click();
+        await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toBeVisible();
         await page.keyboard.press("Escape");
-        await expect(page.getByRole("dialog", { name: "申请从配置集移除文件" })).toBeHidden();
-        await add.scrollIntoViewIfNeeded();
-        await page.screenshot({ path: testInfo.outputPath("b906-json-member-add-limit-1440x900.png") });
-        await page.getByRole("treeitem", { name: `${members[0]!.name} 基础 v1` }).click();
-        const fileRemove = inspector.getByRole("button", { name: "从配置集移除" });
-        await expect(fileRemove).toBeEnabled();
-        await fileRemove.click();
-        await expect(page.getByRole("dialog", { name: "申请从配置集移除文件" })).toBeVisible();
+      } else {
+        await expect(restoredActions.getByRole("menuitem", { name: /从配置移除/ })).toHaveCount(0);
         await page.keyboard.press("Escape");
       }
-      await expect(page.getByRole("dialog", { name: "申请从配置集移除文件" })).toHaveCount(0);
+      await expect(restriction).toBeVisible();
+      await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toHaveCount(0);
       expect(mutationRequests).toEqual([]);
       expect(network.some((entry) => entry.startsWith("GET 200") && entry.endsWith(`/${members[0]!.id}/source-workflow`))).toBe(true);
       const after = (await db.query<{ count: number }>(
@@ -431,7 +420,7 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
       )).rows[0]!.count;
       expect(after).toBe(before);
       expect(pageErrors).toEqual([]);
-      await inspector.getByRole("button", { name: "从配置集移除" }).scrollIntoViewIfNeeded();
+      await filePanel.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath(`b906-${format}-member-limits-1440x900.png`) });
       await testInfo.attach(`${format}-member-limits-network.txt`, {
         body: Buffer.from(network.join("\n")), contentType: "text/plain"

@@ -1,5 +1,6 @@
 import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
+import { openWorkbenchPanel } from "./helpers/runtime";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "playwright/test";
@@ -116,11 +117,9 @@ test("#939 blocks a pending sibling JSON request, then allows refreshed batch su
       await signInBrowserAsRole(page, "admin", url);
       await dismissXiaozeHint(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      const toggle = page.getByRole("button", { name: "检查器", exact: true });
-      if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
-      await expect(inspector.getByRole("list", { name: "来源变更目标" }).getByRole("listitem")).toHaveCount(2);
-      await inspector.getByRole("button", { name: "提交 JSON 批量审核" }).click();
-      const dialog = page.getByRole("dialog", { name: "提交 JSON 批量来源审核" });
+      await openWorkbenchPanel(page, "candidates");
+      const dialog = inspector.getByRole("region", { name: "提交 JSON 批量来源审核" });
+      await expect(dialog.getByRole("list", { name: "提交前批量目标" }).getByRole("listitem")).toHaveCount(2);
       await dialog.getByRole("textbox", { name: "修改原因" }).fill("Pending sibling browser proof");
       await selectControlOption(dialog.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
       return dialog;

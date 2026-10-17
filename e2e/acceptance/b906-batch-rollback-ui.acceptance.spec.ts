@@ -1,4 +1,5 @@
 import "./helpers/loadAcceptanceEnvironment";
+import { openWorkbenchPanel, openWorkbenchVersionMenu } from "./helpers/runtime";
 import { readdir } from "node:fs/promises";
 import { expect, test } from "playwright/test";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
@@ -173,13 +174,14 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind}${withDraft
         && response.url().endsWith(`/config-sets/${setId}/release-readiness`));
       await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${setId}&file=${fileId}`);
       await dismissXiaozeHint(page);
-      await page.getByRole("button", { name: "检查器", exact: true }).click();
+      await openWorkbenchPanel(page, "versions");
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      await expect(inspector.getByLabel("不可变版本历史")).toBeVisible();
+      await expect(inspector.getByLabel("版本历史")).toBeVisible();
       const preparing = page.waitForResponse((response) => response.url().endsWith("/source-batch-rollback/prepare"));
       const discovering = page.waitForResponse((response) => response.url().endsWith("/source-conflicts"));
-      await inspector.getByRole("button", { name: `将版本 ${uploaded.version.versionNumber} 恢复为当前` }).click();
-      const dialog = page.getByRole("dialog", { name: "提交多目标历史回滚审核" });
+      const rollbackMenuTrigger = await openWorkbenchVersionMenu(page, uploaded.version.versionNumber);
+      await page.getByRole("menuitem", { name: `申请回滚至版本 ${uploaded.version.versionNumber}`, exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "申请回滚审核" });
       const preparation = await preparing;
       expect(preparation.status(), await preparation.text()).toBe(201);
       const prepared = (await preparation.json()).item as { candidateId: string; targets: Array<{ bindingId: string }> };
@@ -191,10 +193,12 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind}${withDraft
       expect(discovered.items.filter((item) => item.selectedBindingId === competingBindingId))
         .toHaveLength(withDraft ? 2 : 0);
       await expect(dialog.getByRole("list", { name: "历史回滚完整有序目标" }).locator(":scope > li")).toHaveCount(2);
-      await expect(dialog).toContainText(format.toUpperCase());
-      await expect(dialog).toContainText("审核通过前不会改变当前 Value、来源 pin 和活跃文件版本");
+      await expect(dialog).toContainText("审核通过后才更新配置值与文件版本");
+      await dialog.getByText("溯源信息", { exact: true }).click();
+      const rollbackProvenance = dialog.getByLabel("完整溯源数据");
+      expect(JSON.parse((await rollbackProvenance.textContent())!)["完整回滚预览"].format).toBe(format);
       if (withDraft) {
-        for (const draftId of draftIds) await expect(dialog).toContainText(draftId);
+        for (const draftId of draftIds) await expect(rollbackProvenance).toContainText(draftId);
         await expect(dialog.getByRole("button", { name: "提交审核" })).toBeDisabled();
         const confirm = dialog.getByRole("checkbox", { name: /确认此目标采用历史文件值/ });
         await confirm.focus();
@@ -256,7 +260,7 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind}${withDraft
           contentType: "application/json" });
         await page.keyboard.press("Escape");
         await expect(dialog).toHaveCount(0);
-        await expect(inspector.getByRole("button", { name: `将版本 ${uploaded.version.versionNumber} 恢复为当前` })).toBeFocused();
+        await expect(rollbackMenuTrigger).toBeFocused();
         expect(pageErrors).toEqual([]);
         outcome = "success";
         return;
@@ -326,7 +330,6 @@ test(`#906 B ${format} historical two-Binding rollback ${outcomeKind}${withDraft
       await expect(detail.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);
       await detail.getByText("溯源信息", { exact: true }).click();
       await expect(detail).toContainText(receipt.batchProofDigest);
-      await detail.getByText("完整技术数据", { exact: true }).click();
       await expect.poll(async () => JSON.parse((await detail.getByLabel("完整溯源数据").textContent())!)["来源元数据"]?.format).toBe(format);
       await detail.getByText("查看源文件差异", { exact: true }).click();
       await expect(detail.getByRole("region", { name: "批量固定源差异" })).toBeVisible();

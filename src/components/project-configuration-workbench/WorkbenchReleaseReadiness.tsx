@@ -4,12 +4,13 @@ import {
   releaseReadinessAllowsRelease
 } from "@/application/project-configuration/releaseReadinessGates";
 import { presentErrorMessage } from "@/infrastructure/http/presentError";
+import { Button } from "@/components/ui/button";
 
 const LEVEL_LABEL: Record<DtsReleaseReadiness["level"], string> = {
   blocked: "已阻断",
   warning: "需确认",
-  ready: "可发布",
-  "in-sync": "已同步"
+  ready: "检查通过",
+  "in-sync": "与正式版本一致"
 };
 
 export type WorkbenchReleaseReadinessSummaryProps = {
@@ -19,6 +20,9 @@ export type WorkbenchReleaseReadinessSummaryProps = {
   localSessionDirty: boolean;
   onRetry: () => void;
   onOpenIssues: () => void;
+  pressed?: boolean;
+  disabled?: boolean;
+  readOnly?: boolean;
 };
 
 /** @deprecated Prefer releaseReadinessAllowsCreate — kept as workbench alias. */
@@ -32,52 +36,28 @@ export function WorkbenchReleaseReadinessSummary({
   loading,
   error,
   localSessionDirty,
-  onRetry,
-  onOpenIssues
+  onOpenIssues,
+  pressed,
+  disabled,
+  readOnly = false
 }: WorkbenchReleaseReadinessSummaryProps) {
-  if (loading) {
-    return (
-      <div className="configuration-workbench__readiness" role="status" aria-label="发布就绪">
-        发布就绪：加载中…
-      </div>
-    );
-  }
-
-  if (error || !readiness || !readiness.available) {
-    return (
-      <div className="configuration-workbench__readiness is-unavailable" role="status" aria-label="发布就绪">
-        <button className="button subtle configuration-workbench__readiness-summary" type="button" onClick={onOpenIssues}>
-          <strong>不可用</strong>
-          <span>
-            {presentErrorMessage(error || readiness?.unavailableReason, "门禁结果不可用，不能假定可发布。")}
-          </span>
-        </button>
-        <button className="button subtle" type="button" onClick={onRetry}>
-          重试就绪评估
-        </button>
-      </div>
-    );
-  }
-
-  const blockerCount = readiness.blockers.length;
-  const warningCount = readiness.warnings.length;
+  const unavailable = Boolean(error || !readiness?.available);
+  const status = readOnly ? "只读" : localSessionDirty ? "有未提交变更" : loading ? "检查中…"
+    : unavailable ? "检查不可用" : LEVEL_LABEL[readiness!.level];
 
   return (
     <div
-      className={`configuration-workbench__readiness is-${readiness.level}`}
+      className={`configuration-workbench__readiness is-${readOnly ? "readonly" : unavailable ? "unavailable" : readiness!.level}`}
       role="status"
-      aria-label="发布就绪"
-      data-level={readiness.level}
-      data-can-create={String(workbenchReadinessAllowsCreate(readiness, localSessionDirty))}
-      data-can-release={String(workbenchReadinessAllowsRelease(readiness, localSessionDirty))}
+      aria-label="配置版本状态"
+      data-level={readiness?.level}
+      data-can-create={String(!readOnly && !loading && !error && workbenchReadinessAllowsCreate(readiness, localSessionDirty))}
+      data-can-release={String(!readOnly && !loading && !error && workbenchReadinessAllowsRelease(readiness, localSessionDirty))}
     >
-      <button className="button subtle configuration-workbench__readiness-summary" type="button" onClick={onOpenIssues}>
-        <strong>{LEVEL_LABEL[readiness.level]}</strong>
-        <span>
-          {blockerCount} 阻断 · {warningCount} 警告
-        </span>
-        {localSessionDirty ? <span className="configuration-workbench__local-session">本机会话未保存</span> : null}
-      </button>
+      <Button variant="outline" size="sm" type="button" aria-pressed={pressed} disabled={disabled}
+        onClick={onOpenIssues} title={error ? presentErrorMessage(error, "版本检查不可用。") : undefined}>
+        配置版本<span aria-hidden="true">·</span><span>{status}</span>
+      </Button>
     </div>
   );
 }
@@ -99,10 +79,10 @@ export function WorkbenchReleaseReadinessIssues({
 }: WorkbenchReleaseReadinessIssuesProps) {
   if (!readiness) {
     return (
-      <div className="configuration-workbench__readiness-issues" role="region" aria-label="发布就绪问题">
-        <p>尚未加载发布就绪结果。</p>
+      <div className="configuration-workbench__readiness-issues" role="region" aria-label="版本检查问题">
+        <p>尚未取得版本检查结果。</p>
         <button className="button subtle" type="button" onClick={onRetry}>
-          重试就绪评估
+          重新检查
         </button>
       </div>
     );
@@ -110,10 +90,10 @@ export function WorkbenchReleaseReadinessIssues({
 
   if (!readiness.available) {
     return (
-      <div className="configuration-workbench__readiness-issues" role="region" aria-label="发布就绪问题">
-        <p role="alert">{presentErrorMessage(readiness.unavailableReason, "发布就绪不可用。")}</p>
+      <div className="configuration-workbench__readiness-issues" role="region" aria-label="版本检查问题">
+        <p role="alert">{presentErrorMessage(readiness.unavailableReason, "版本检查不可用。")}</p>
         <button className="button subtle" type="button" onClick={onRetry}>
-          重试就绪评估
+          重新检查
         </button>
       </div>
     );
@@ -122,29 +102,33 @@ export function WorkbenchReleaseReadinessIssues({
   const issues = [...readiness.blockers, ...readiness.warnings];
   if (issues.length === 0) {
     return (
-      <div className="configuration-workbench__readiness-issues" role="region" aria-label="发布就绪问题">
-        <p>当前没有阻断项或需确认警告。创建/发布仍以服务端门禁令牌为准。</p>
+      <div className="configuration-workbench__readiness-issues" role="region" aria-label="版本检查问题">
+        <p>版本检查通过。</p>
       </div>
     );
   }
 
   return (
-    <div className="configuration-workbench__readiness-issues" role="region" aria-label="发布就绪问题">
-      <strong>发布就绪问题</strong>
+    <div className="configuration-workbench__readiness-issues" role="region" aria-label="版本检查问题">
+      <strong>版本检查问题</strong>
       <ul className="configuration-workbench__readiness-issue-list">
         {issues.map((issue) => {
           const acknowledged = acknowledgedWarningIds.has(issue.id) || Boolean(issue.acknowledged);
+          const actionable = Boolean(issue.target?.fileId || issue.remediation.kind === "complete-pending-change" && issue.remediation.href);
+          const description = <>
+            <span>{issue.severity === "blocker" ? "阻断" : "警告"}</span>
+            <strong>{issue.message}</strong>
+            <small>{issue.remediation.label}</small>
+          </>;
           return (
             <li key={issue.id} data-severity={issue.severity} data-code={issue.code}>
-              <button
+              {actionable ? <button
                 className="button subtle configuration-workbench__readiness-issue"
                 type="button"
                 onClick={() => onSelectIssue(issue)}
               >
-                <span>{issue.severity === "blocker" ? "阻断" : "警告"}</span>
-                <strong>{issue.message}</strong>
-                <small>{issue.remediation.label}</small>
-              </button>
+                {description}
+              </button> : <div className="configuration-workbench__readiness-issue">{description}</div>}
               {issue.acknowledgementRequired ? (
                 <label>
                   <input

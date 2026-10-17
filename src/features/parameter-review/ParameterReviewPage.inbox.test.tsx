@@ -104,7 +104,7 @@ it("leads legacy details with the change and full comparison before collapsed pr
   expect(comparison.compareDocumentPosition(within(detail).getByLabelText("影响面")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(provenance).not.toHaveAttribute("open");
   fireEvent.click(within(provenance).getByText("溯源信息"));
-  expect(await within(provenance).findByRole("button", { name: "复制 请求 ID" })).toBeInTheDocument();
+  expect(await within(provenance).findByRole("button", { name: "复制完整技术数据" })).toBeInTheDocument();
 });
 
 it.each(["second", "missing"])("retains an open rejection and its original target when browser navigation selects %s", async (requestId) => {

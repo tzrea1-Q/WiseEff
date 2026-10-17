@@ -1,5 +1,6 @@
 import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
+import { openWorkbenchPanel } from "./helpers/runtime";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "playwright/test";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
@@ -212,14 +213,28 @@ for (const [format, choice, decision] of [
         await dismissXiaozeHint(page);
         await expect(page.getByRole("heading", { name: fileName })).toBeVisible();
         const inspector = page.getByRole("complementary", { name: "配置检查器" });
-        const toggle = page.getByRole("button", { name: "检查器", exact: true });
-        if (!(await inspector.isVisible())) await toggle.click();
-        const conflict = page.getByRole("region", { name: "canonical 来源冲突单项决策" });
+        await openWorkbenchPanel(page, "candidates");
+        const conflictsRead = page.waitForResponse((response) => response.request().method() === "GET"
+          && response.url().endsWith(`/parameter-file-candidates/${candidateId}/source-conflicts`));
+        await inspector.getByRole("button", { name: "单独处理一项冲突", exact: true }).click();
+        const conflictsResponse = await conflictsRead;
+        expect(conflictsResponse.status(), await conflictsResponse.text()).toBe(200);
+        const loadedConflicts = (await conflictsResponse.json()).items as Array<{ selectedBindingId: string; selectedDraftId: string;
+          choices: Record<"file" | "draft", { decisionProofDigest: string }> }>;
+        const selectedProof = loadedConflicts.find((item) => item.selectedBindingId === selectedBindingId && item.selectedDraftId === draft.id);
+        expect(selectedProof).toBeDefined();
+        const conflict = inspector.getByRole("region", { name: "来源变更审核" });
         await expect(conflict).toBeVisible();
-        await expect(conflict).toContainText(draft.id, { timeout: 30_000 });
-        await expect(conflict).toContainText(acceptanceCast.liuMin.userId);
-        await expect(conflict).toContainText(otherDraft.id);
-        const selectedGroup = conflict.getByRole("group", { name: new RegExp(selectedBindingId!) });
+        await expect(inspector.getByRole("region", { name: `提交 ${format.toUpperCase()} 批量来源审核` })).toHaveCount(0);
+        const selectedGroup = conflict.locator("fieldset").filter({ hasText: draft.id });
+        await expect(selectedGroup).toHaveCount(1, { timeout: 30_000 });
+        await selectedGroup.getByText("草稿来源", { exact: true }).click();
+        await expect(selectedGroup).toContainText(draft.id);
+        await expect(selectedGroup).toContainText(selectedBindingId!);
+        await expect(selectedGroup).toContainText(acceptanceCast.liuMin.userId);
+        const otherGroup = conflict.locator("fieldset").filter({ hasText: otherDraft.id });
+        await otherGroup.getByText("草稿来源", { exact: true }).click();
+        await expect(otherGroup).toContainText(otherDraft.id);
         await expect(selectedGroup.getByRole("radio", { name: /使用文件值/ })).toBeEnabled();
         await expect(selectedGroup.getByRole("radio", { name: /保留界面草稿值/ })).toBeEnabled();
         await conflict.getByRole("heading", { name: "来源冲突：一次选择一项" }).scrollIntoViewIfNeeded();
@@ -228,8 +243,12 @@ for (const [format, choice, decision] of [
         await page.keyboard.press("Space");
         await expect(selectedGroup.getByRole("radio", { name: choice === "file" ? /使用文件值/ : /保留界面草稿值/ })).toBeChecked();
         await page.screenshot({ path: testInfo.outputPath(`b906-${format}-${choice}-selection-1440x900.png`) });
-        const selectedDigest = await conflict.getByText("选中证明", { exact: false }).locator("code").textContent();
-        await conflict.getByRole("textbox", { name: "决策理由" }).fill(`${format} ${choice} 页面决策`);
+        const proofDetails = conflict.locator("details").filter({ has: page.getByText("所选变更的核对信息", { exact: true }) });
+        await proofDetails.locator("summary").click();
+        await expect(proofDetails.locator("code")).toBeVisible();
+        const selectedDigest = await proofDetails.locator("code").textContent();
+        expect(selectedDigest).toBe(selectedProof!.choices[choice].decisionProofDigest);
+        await conflict.getByRole("textbox", { name: "修改原因" }).fill(`${format} ${choice} 页面决策`);
         await selectControlOption(conflict.getByRole("combobox", { name: "指定软件审核人" }), acceptanceCast.sunMei.userId);
         if (decision === "stale-submit") {
           const old = (await db.query<{ version_number: number; storage_key: string; checksum: string; size_bytes: number; parsed_index: ParsedIndex }>(
@@ -243,7 +262,7 @@ for (const [format, choice, decision] of [
         }
         const submitted = page.waitForResponse((response) => response.request().method() === "POST"
           && response.url().endsWith(`/parameter-file-candidates/${candidateId}/source-conflict-submit`));
-        await conflict.getByRole("button", { name: "提交所选一项人工审核" }).click();
+        await conflict.getByRole("button", { name: "提交审核", exact: true }).click();
         const submitResponse = await submitted;
         const recordEvidence = async () => {
           const finalState = await state();

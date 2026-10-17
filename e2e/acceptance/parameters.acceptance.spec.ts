@@ -313,7 +313,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page.locator(`[id="${panelId}"]`)).toBeVisible();
     await page.getByRole("button", { name: "筛选", exact: true }).click();
     const changeType = page.getByRole("combobox", { name: "变更类型", exact: true });
-    expect((await readSelectControlOptions(changeType)).map((option) => option.label)).toEqual(["全部类型", "软件配置", "配置集成员移除", "参数与节点"]);
+    expect((await readSelectControlOptions(changeType)).map((option) => option.label)).toEqual(["全部类型", "软件配置", "配置文件移除", "参数与节点"]);
     await selectControlOption(changeType, "value");
     const queue = page.getByRole("table", { name: "审阅队列", exact: true });
     await expect(queue).toHaveCount(1);
@@ -329,7 +329,6 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     const provenance = reviewDetail.locator("details").filter({ has: page.getByText("溯源信息", { exact: true }) });
     await expect(provenance).not.toHaveAttribute("open");
     await reviewDetail.getByText("溯源信息", { exact: true }).click();
-    await provenance.getByText("完整技术数据", { exact: true }).click();
     expect(JSON.parse((await provenance.getByLabel("完整溯源数据").textContent())!).sourceFormat).toBe("dts");
     await expect(reviewDetail).toContainText(binding.bindingId);
     await expect(reviewDetail.getByRole("region", { name: "固定源修改片段" })).toContainText(rejectTargetValue);
@@ -345,7 +344,6 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await reloadedRow.getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
     await expect(provenance).not.toHaveAttribute("open");
     await reviewDetail.getByText("溯源信息", { exact: true }).click();
-    await provenance.getByText("完整技术数据", { exact: true }).click();
     expect(JSON.parse((await provenance.getByLabel("完整溯源数据").textContent())!).bindingId).toBe(binding.bindingId);
     await expect(reviewDetail).toContainText(binding.bindingId);
     await expect(reviewDetail).toContainText(rejectionReason);

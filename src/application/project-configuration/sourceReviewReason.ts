@@ -13,7 +13,7 @@ export function sourceReviewReason(reason?: string): string {
     case "dts-render-not-byte-exact":
       return "候选还修改了目标参数以外的内容；请拆分或重新准备候选。";
     case "source-membership-drift":
-      return "配置集成员或文件版本已变化，请刷新后重新准备来源变更。";
+      return "配置文件或文件版本已变化，请刷新后重新准备来源变更。";
     case "candidate-base-is-stale":
     case "candidate-base-is-not-a-pinned-source":
       return "候选基版本已不是当前固定来源，请刷新并重新上传候选。";

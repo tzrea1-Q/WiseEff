@@ -161,8 +161,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
     expect(comparison.compareDocumentPosition(provenance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(detail).queryByText("frozen-binding")).not.toBeInTheDocument();
     fireEvent.click(within(detail).getByText("溯源信息"));
-    fireEvent.click(await within(provenance).findByText("完整技术数据", { selector: "summary" }));
-    const raw = within(provenance).getByLabelText("完整溯源数据");
+    const raw = await within(provenance).findByLabelText("完整溯源数据");
     expect(raw).toBeVisible();
     expect(JSON.parse(raw.textContent!)).toEqual(expect.objectContaining({
       "请求 ID": ["frozen-request"], "绑定 ID": ["frozen-binding"], "参数定义 ID": ["frozen-spec"]

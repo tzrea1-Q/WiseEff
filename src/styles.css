@@ -73,17 +73,17 @@
   --danger-soft: #ffdad6;
   --info: #036b9f;
   --info-soft: color-mix(in srgb, var(--info) 12%, white);
-  --configuration-source-surface: #131c2b;
-  --configuration-source-surface-raised: #192537;
-  --configuration-source-outline: #2a3a51;
-  --configuration-source-text: #dce7f7;
-  --configuration-source-text-strong: #f2f6fc;
-  --configuration-source-text-muted: #91a3bd;
-  --configuration-source-text-secondary: #b9cae2;
+  --configuration-source-surface: var(--surface);
+  --configuration-source-surface-raised: var(--surface-sunken);
+  --configuration-source-outline: var(--border);
+  --configuration-source-text: var(--text);
+  --configuration-source-text-strong: var(--text);
+  --configuration-source-text-muted: var(--text-muted);
+  --configuration-source-text-secondary: var(--text-secondary);
   --configuration-source-line-number: var(--configuration-source-text-muted);
-  --configuration-source-highlight: #7da4d8;
-  --configuration-source-find: #facc15;
-  --configuration-source-find-active: #f59e0b;
+  --configuration-source-highlight: var(--accent);
+  --configuration-source-find: var(--warning-soft);
+  --configuration-source-find-active: var(--accent-soft);
   --ring: color-mix(in srgb, var(--accent) 45%, transparent);
   /* The one dialog dimming value (ui-design-system §Dialogs); ink-based in
      light, black-based in dark (text flips light so it cannot derive dim). */
@@ -15185,16 +15185,6 @@ body.xiaoze-popup-drag-active {
   font-size: 0.8125rem;
 }
 
-.structured-value-normalized-preview {
-  padding: 6px 10px;
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-sm);
-  background: var(--surface-low);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  overflow-wrap: anywhere;
-}
-
 .structured-value-editor .field-error {
   color: #b42318;
   font-size: 0.75rem;
@@ -25852,14 +25842,14 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .project-primary-dts-viewer__find-match {
-  color: var(--configuration-source-surface);
+  color: var(--configuration-source-text);
   background: var(--configuration-source-find);
   border-radius: calc(var(--radius-sm) / 2);
 }
 
 .project-primary-dts-viewer__find-match.is-active {
   background: var(--configuration-source-find-active);
-  outline: var(--stroke-hairline) solid color-mix(in srgb, var(--warning) 55%, transparent);
+  outline: var(--stroke-hairline) solid var(--accent);
 }
 
 /* Knowledge base (Phase 1) */

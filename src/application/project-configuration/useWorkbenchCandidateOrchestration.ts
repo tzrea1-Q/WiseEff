@@ -109,7 +109,7 @@ export function useWorkbenchCandidateOrchestration(params: UseWorkbenchCandidate
     void (async () => {
       try {
         await candidateFlow.abandon(projectId, fileRepository);
-        notifyMutation("候选已放弃；工作配置与配置集成员未改动。");
+        notifyMutation("候选已放弃；工作配置与配置文件未改动。");
         if (selectedConfigSet) {
           onNavigate(
             formatWorkbenchPath(projectId, search, {
@@ -145,7 +145,7 @@ export function useWorkbenchCandidateOrchestration(params: UseWorkbenchCandidate
           { configSetId: selectedConfigSet?.id },
           fileRepository
         );
-        notifyMutation("候选已激活；工作源码、成员与历史已刷新。");
+        notifyMutation("候选已激活；工作源码、文件与历史已刷新。");
         setActivateConfirmOpen(false);
         workspaceLoadSession.retryFiles();
         workspaceLoadSession.retryMembers();
