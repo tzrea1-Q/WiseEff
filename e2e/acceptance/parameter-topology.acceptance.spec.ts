@@ -1263,8 +1263,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     await dismissXiaozeHint(page);
     await page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${changeRequestId}"]`)
-      .getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
+      .getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
     const softwareReview = page.getByRole("region", { name: "软件配置审核" });
+    await softwareReview.getByText("查看完整源文件", { exact: true }).click();
     await expect(softwareReview.getByLabel("固定源变更后")).toContainText("30");
     const approvedResponse = page.waitForResponse(
       (response) =>
@@ -1272,6 +1273,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         response.url().endsWith(`/parameter-value-change-requests/${changeRequestId}/review`)
     );
     await softwareReview.getByRole("button", { name: "批准软件配置" }).click();
+    await page.getByRole("dialog", { name: "确认应用软件配置", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
     const semanticMerge = await approvedResponse;
     expect(semanticMerge.ok(), await semanticMerge.text()).toBe(true);
     const semanticMergeBody = (await semanticMerge.json()) as { item: { status: string; action: string } };
@@ -2571,10 +2573,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const nodeRound = ((await nodeSubmit.json()) as { item: { id: string; items: Array<{ requestId: string }> } }).item;
       const nodeRequestId = nodeRound.items[0]!.requestId;
       await page.goto(`${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
+      await page.getByRole("button", { name: "筛选", exact: true }).click();
       await selectControlOption(page.getByRole("combobox", { name: "变更类型", exact: true }), "legacy");
       const nodeSubmissionRow = page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${nodeRound.id}"]`);
-      await expect(nodeSubmissionRow).toContainText("旧版");
-      await nodeSubmissionRow.getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
+      await expect(nodeSubmissionRow).toContainText("节点状态");
+      await nodeSubmissionRow.getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
       const nodeTracking = page.getByRole("region", { name: "提交轮次详情" });
       await expect(nodeTracking).toContainText("1 项");
       await expect(nodeTracking).toContainText(disableReason);
@@ -2588,12 +2591,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const nodeDetail = nodeReview.getByRole("button", { name: `查看 ${toggleNode!.name} 提交详情` });
       await expect(nodeDetail).toBeVisible();
       await nodeDetail.click();
-      await expect(page.getByRole("dialog", { name: "提交详情" })).toContainText(disableReason);
+      await expect(page.getByRole("complementary", { name: "审阅详情" })).toContainText(disableReason);
+      await expect(page.getByRole("complementary", { name: "审阅详情" })).toContainText('"disabled"');
       await page.screenshot({ path: testInfo.outputPath("node-enablement-assigned-reviewer.png"), fullPage: true, animations: "disabled" });
-      await page.getByRole("dialog", { name: "提交详情" }).getByRole("button", { name: "关闭" }).click();
       const nodeAdvancePromise = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-change-requests/${nodeRequestId}/review`));
-      await page.getByRole("button", { name: "推进流程" }).click();
+      await page.getByRole("button", { name: "通过检视" }).click();
+      await page.getByRole("dialog", { name: "确认通过检视", exact: true }).getByRole("button", { name: "确认通过", exact: true }).click();
       const nodeAdvance = await nodeAdvancePromise;
       expect(nodeAdvance.status(), await nodeAdvance.text()).toBe(200);
       expect((await nodeAdvance.json()).item.status).toBe("software_review");
@@ -2601,21 +2605,23 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await signInBrowserAsRole(page, "software-committer", `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}`);
       await dismissXiaozeHint(page);
       await page.getByRole("table", { name: "审阅队列" }).getByRole("button", { name: `查看 ${toggleNode!.name} 提交详情` }).click();
-      await page.getByRole("dialog", { name: "提交详情" }).getByRole("button", { name: "关闭" }).click();
+      await expect(page.getByRole("complementary", { name: "审阅详情" })).toContainText(disableReason);
       const nodeSoftwarePromise = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-change-requests/${nodeRequestId}/review`));
-      await page.getByRole("button", { name: "推进流程" }).click();
+      await page.getByRole("button", { name: "通过检视" }).click();
+      await page.getByRole("dialog", { name: "确认通过检视", exact: true }).getByRole("button", { name: "确认通过", exact: true }).click();
       const nodeSoftware = await nodeSoftwarePromise;
       expect(nodeSoftware.status(), await nodeSoftware.text()).toBe(200);
       expect((await nodeSoftware.json()).item.status).toBe("software_merge");
       await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}`);
       await dismissXiaozeHint(page);
       await page.getByRole("table", { name: "审阅队列" }).getByRole("button", { name: `查看 ${toggleNode!.name} 提交详情` }).click();
-      await page.getByRole("dialog", { name: "提交详情" }).getByRole("button", { name: "关闭" }).click();
+      await expect(page.getByRole("complementary", { name: "审阅详情" })).toContainText(disableReason);
       await page.getByLabel("合入链接", { exact: true }).fill("https://example.test/review/1078");
       const nodeMergePromise = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-change-requests/${nodeRequestId}/review`));
       await page.getByRole("button", { name: "确认合入" }).click();
+      await page.getByRole("dialog", { name: "确认合入", exact: true }).getByRole("button", { name: "确认合入", exact: true }).click();
       const nodeMerge = await nodeMergePromise;
       expect(nodeMerge.status(), await nodeMerge.text()).toBe(200);
       expect((await nodeMerge.json()).item.status).toBe("merged");
@@ -2671,10 +2677,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
       await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
       await page.getByRole("tablist", { name: "审阅视角" }).getByRole("tab", { name: "已处理", exact: true }).click();
+      await page.getByRole("button", { name: "筛选", exact: true }).click();
       await selectControlOption(page.getByRole("combobox", { name: "变更类型", exact: true }), "legacy");
-      await nodeSubmissionRow.getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
+      await nodeSubmissionRow.getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
       await expect(nodeTracking).toContainText(disableReason);
-      await expect(nodeTracking.getByRole("button", { name: "撤回本轮提交" })).toBeDisabled();
+      await expect(nodeTracking.getByRole("button", { name: "撤回本轮提交" })).toHaveCount(0);
       await nodeTracking.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath("node-enablement-merged-submission.png"), fullPage: true, animations: "disabled" });
       await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);

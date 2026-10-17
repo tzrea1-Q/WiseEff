@@ -86,6 +86,9 @@ export type CanonicalValueChangeRequestDto = {
   submitterUserId: string | null;
   assignedToUserId: string | null;
   reviewerUserId: string | null;
+  submitterName?: string | null;
+  assignedToName?: string | null;
+  reviewerName?: string | null;
   reviewerNote: string | null;
   appliedValueId: string | null;
   applyOutcome: CanonicalChangeApplyOutcome | null;
@@ -155,6 +158,9 @@ export function toCanonicalValueChangeRequestDto(
     submitterUserId: row.submitter_user_id,
     assignedToUserId: row.assigned_to_user_id,
     reviewerUserId: row.reviewer_user_id,
+    submitterName: row.submitter_name,
+    assignedToName: row.assigned_to_name,
+    reviewerName: row.reviewer_name,
     reviewerNote: row.reviewer_note,
     appliedValueId: row.applied_value_id,
     applyOutcome: row.apply_outcome,

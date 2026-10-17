@@ -1,7 +1,6 @@
-import { Check } from "lucide-react";
-
 import type { SubmissionWorkflowStageDetail } from "@/domain/parameters/submissionWorkflowTrail";
-import { SUBMISSION_TIMELINE_STEPS } from "@/parameterSubmissionTimeline";
+import type { ParameterSubmissionRound } from "@/domain/parameters/types";
+import { isActiveSubmissionRound } from "@/domain/parameters/submissionRound";
 
 function formatWorkflowDisplayText(text: string) {
   return String(text ?? "")
@@ -10,17 +9,17 @@ function formatWorkflowDisplayText(text: string) {
 }
 
 type SubmissionWorkflowTimelineProps = {
-  activeIndex: number;
+  status: ParameterSubmissionRound["status"];
   workflowStages: SubmissionWorkflowStageDetail[];
   className?: string;
 };
 
-function renderExecutorLine(stage: SubmissionWorkflowStageDetail) {
+function renderExecutorLine(stage: SubmissionWorkflowStageDetail, terminal: boolean) {
   if (stage.state === "skipped") {
-    return <span className="submission-workflow-executor submission-workflow-executor--skipped">低风险跳过</span>;
+    return <span className="submission-workflow-executor submission-workflow-executor--skipped">已跳过</span>;
   }
 
-  if (stage.executorName) {
+  if (stage.executorName && (!terminal || stage.executorLabel === "执行人")) {
     return (
       <span className="submission-workflow-executor">
         {stage.executorLabel}：{stage.executorName}
@@ -28,7 +27,7 @@ function renderExecutorLine(stage: SubmissionWorkflowStageDetail) {
     );
   }
 
-  if (stage.state === "active") {
+  if (stage.state === "active" && !terminal) {
     return <span className="submission-workflow-executor submission-workflow-executor--pending">待处理</span>;
   }
 
@@ -36,47 +35,29 @@ function renderExecutorLine(stage: SubmissionWorkflowStageDetail) {
     return <span className="submission-workflow-executor submission-workflow-executor--missing">执行人未记录</span>;
   }
 
-  return <span className="submission-workflow-executor submission-workflow-executor--pending">—</span>;
+  return <span className="submission-workflow-executor submission-workflow-executor--pending">{terminal ? "执行结果未记录" : "尚未处理"}</span>;
 }
 
 export function SubmissionWorkflowTimeline({
-  activeIndex,
+  status,
   workflowStages,
   className
 }: SubmissionWorkflowTimelineProps) {
+  const terminal = !isActiveSubmissionRound(status);
   return (
-    <div className={["submission-workflow-panel", className].filter(Boolean).join(" ")}>
-      <div className="timeline submission-timeline">
-        {SUBMISSION_TIMELINE_STEPS.map((step, index) => (
-          <div className={index <= activeIndex ? "done" : ""} key={step}>
-            <span>{index < activeIndex ? <Check size={14} /> : index + 1}</span>
-            <small>{formatWorkflowDisplayText(step)}</small>
-          </div>
-        ))}
-      </div>
-
+    <details className={["review-workflow-records", className].filter(Boolean).join(" ")}>
+      <summary>处理记录</summary>
       {workflowStages.length > 0 ? (
-        <div className="submission-workflow-executors" aria-label="流程执行人">
+        <ol aria-label="流程执行人">
           {workflowStages.map((stage) => (
-            <article
-              className={[
-                "submission-workflow-executor-card",
-                stage.state === "active" ? "is-active" : "",
-                stage.state === "completed" ? "is-completed" : "",
-                stage.state === "pending" ? "is-pending" : "",
-                stage.state === "skipped" ? "is-skipped" : ""
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              key={stage.key}
-            >
+            <li key={stage.key} data-state={terminal && stage.state === "active" ? "ended" : stage.state}>
               <strong>{formatWorkflowDisplayText(stage.label)}</strong>
-              <p className="submission-workflow-assignee">指定：{stage.assigneeName}</p>
-              <p className="submission-workflow-executor-line">{renderExecutorLine(stage)}</p>
-            </article>
+              {stage.assigneeName && stage.assigneeName !== "未指派" ? <span>{terminal ? "当时指派" : "指定"}：{stage.assigneeName}</span> : null}
+              {renderExecutorLine(stage, terminal)}
+            </li>
           ))}
-        </div>
-      ) : null}
-    </div>
+        </ol>
+      ) : <p>未记录流程执行人。</p>}
+    </details>
   );
 }

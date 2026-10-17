@@ -92,6 +92,7 @@ import {
   type User
 } from "@/domain/prototype/types";
 import { Button } from "@/components/ui/button";
+import { Popover } from "radix-ui";
 import { SelectControl } from "@/components/common/SelectControl";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -315,7 +316,8 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
-  const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path);
+  const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path)
+    && page.key !== "parameter-review" && page.key !== "parameter-submissions";
   const usesProjectScope = pageUsesProjectScope(page.key);
   const xiaozePageContext = useMemo(
     () => ({
@@ -718,7 +720,7 @@ function AppShell({
       return;
     }
     const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
-      ? new URLSearchParams(search).get("project") : null;
+      ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null;
     const projectId = urlProjectId || state.activeProjectId;
     if (!projectId) {
       return;
@@ -930,7 +932,11 @@ function AppShell({
   const navigateFromSidebar = useCallback(
     (nextPath: string) => {
       setMobileNavOpen(false);
-      navigate(nextPath);
+      const projectRoutes = ["/parameters", "/parameter-review", "/parameter-submissions"];
+      const params = new URLSearchParams(window.location.search);
+      const projectId = projectRoutes.includes(window.location.pathname)
+        ? params.get("project") || params.get("projectId") : null;
+      navigate(projectId && projectRoutes.includes(nextPath) ? `${nextPath}?project=${encodeURIComponent(projectId)}` : nextPath);
     },
     [navigate]
   );
@@ -1323,7 +1329,6 @@ function Sidebar({
         </div>
         <div className="brand-copy">
           <div className="brand-title">雷泽</div>
-          <div className="brand-subtitle">Driven by AI</div>
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1452,26 +1457,22 @@ function TopBar({
   mobileNavOpen?: boolean;
   onToggleMobileNav?: () => void;
 }) {
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const userMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [pendingProjectSwitch, setPendingProjectSwitch] = useState<{
     projectId: string;
     unsavedCount: number;
   } | null>(null);
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canCreateProject = canPerform(currentRoleId, "parameter.edit");
-  const showProjectInitAction =
-    page.key.startsWith("parameter") &&
-    canCreateProject &&
-    page.key !== "parameter-admin" &&
-    page.key !== "parameter-review" &&
-    page.key !== "parameter-home";
+  const showProjectInitAction = page.key === "parameters" && canCreateProject;
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  const visibleUserName = currentUser?.name ?? "账户信息暂不可用";
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
     page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
-      ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
+      ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") || state.activeProjectId : state.activeProjectId;
   const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });
 
@@ -1537,54 +1538,63 @@ function TopBar({
           />
         ) : null}
         <TopBarNotifications mockNotificationsClient={mockNotificationsClient} onNavigate={onNavigate} />
-        <div className="topbar-user-switcher">
+        <Popover.Root key={`${page.path}${search}`}>
+        <Popover.Trigger asChild>
           <button
-            aria-expanded={userMenuOpen}
-            aria-haspopup="dialog"
-            aria-label="打开用户菜单"
+            ref={userMenuTriggerRef}
+            aria-label={`${visibleUserName}，打开用户菜单`}
             className="topbar-user-trigger"
             type="button"
-            onClick={() => setUserMenuOpen((open) => !open)}
           >
             <span className="avatar topbar-user-avatar" aria-hidden="true">
               <UserRound size={17} />
             </span>
             <span className="topbar-user-summary">
-              <strong>{currentUser?.name ?? "演示用户"}</strong>
-              <small>{getRequiredRoleLabel(currentRoleId)}</small>
+              <strong>{visibleUserName}</strong>
             </span>
             <ChevronDown size={14} />
           </button>
-          {userMenuOpen ? (
-            <div className="topbar-user-menu" aria-label="用户菜单">
+        </Popover.Trigger>
+        <Popover.Portal>
+            <Popover.Content className="topbar-user-menu" aria-label="用户菜单" align="end" sideOffset={8}
+              onCloseAutoFocus={(event) => { if (profileOpen) event.preventDefault(); }}>
               <div className="topbar-user-menu__identity">
-                <strong>{currentUser?.name ?? "演示用户"}</strong>
-                <span>{currentUser ? userAccountIdentifier(currentUser) : "未选择用户"}</span>
+                <strong>{visibleUserName}</strong>
+                <span>{currentUser ? userAccountIdentifier(currentUser) : "账号标识未记录"}</span>
+              </div>
+              <div className="topbar-user-menu__identity" aria-label="版本信息">
+                <span>© {new Date().getFullYear()} {appFooterConfig.copyrightOwner}</span>
+                <span>版本 {appFooterConfig.version}</span>
               </div>
               <div className="topbar-user-menu__field topbar-user-menu__role" aria-label="当前用户角色">
                 <span>角色</span>
                 <strong>{getRequiredRoleLabel(currentRoleId)}</strong>
               </div>
               <div className="topbar-user-menu__actions">
+                <Popover.Close asChild>
                 <button
                   type="button"
                   className="button"
+                  disabled={!currentUser || !onUpdateCurrentUserProfile}
                   onClick={() => {
-                    setUserMenuOpen(false);
+                    userMenuTriggerRef.current?.focus();
                     setProfileOpen(true);
                   }}
                 >
                   个人资料
                 </button>
+                </Popover.Close>
                 {onLogout ? (
+                  <Popover.Close asChild>
                   <button type="button" className="button ghost" onClick={() => void onLogout()}>
                     退出登录
                   </button>
+                  </Popover.Close>
                 ) : null}
               </div>
-            </div>
-          ) : null}
-        </div>
+            </Popover.Content>
+        </Popover.Portal>
+        </Popover.Root>
       </div>
       {profileOpen && currentUser && onUpdateCurrentUserProfile ? (
         <ProfileDialog

@@ -918,7 +918,7 @@ export function ParametersPage({
           type="button"
           onClick={() => onNavigate(resolvedProjectId ? `/parameter-submissions?project=${encodeURIComponent(resolvedProjectId)}` : "/parameter-submissions")}
         >
-          历史提交
+          我的提交
         </button>
       ) : null}
     </>,

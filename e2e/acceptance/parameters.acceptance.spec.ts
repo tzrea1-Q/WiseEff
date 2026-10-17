@@ -311,8 +311,9 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     expect(panelId).toBeTruthy();
     await expect(page.locator(`[id="${panelId}"]`)).toHaveAttribute("role", "tabpanel");
     await expect(page.locator(`[id="${panelId}"]`)).toBeVisible();
+    await page.getByRole("button", { name: "筛选", exact: true }).click();
     const changeType = page.getByRole("combobox", { name: "变更类型", exact: true });
-    expect((await readSelectControlOptions(changeType)).map((option) => option.label)).toEqual(["全部类型", "软件配置", "JSON 成员删除", "旧版请求"]);
+    expect((await readSelectControlOptions(changeType)).map((option) => option.label)).toEqual(["全部类型", "软件配置", "配置集成员移除", "参数与节点"]);
     await selectControlOption(changeType, "value");
     const queue = page.getByRole("table", { name: "审阅队列", exact: true });
     await expect(queue).toHaveCount(1);
@@ -320,26 +321,32 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     const requestRow = queue.locator(`[data-review-row-id="${requestId}"]`);
     await expect(requestRow).toBeVisible();
     await expect(requestRow).toContainText(`${rejectReasonPrefix} submitted request`);
-    await requestRow.getByRole("button", { name: `查看 ${rejectReasonPrefix} submitted request 提交详情`, exact: true }).click();
+    await requestRow.getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
 
     const reviewDetail = page.getByRole("article", { name: "源文件请求详情" });
-    await expect(reviewDetail).toContainText("DTS");
-    await expect(reviewDetail.getByRole("heading", { level: 4 })).toHaveText(["变更摘要", "前后对比", "影响范围"]);
-    await expect(reviewDetail.locator("details")).not.toHaveAttribute("open");
+    await expect(reviewDetail).toContainText(binding.fileName);
+    await expect(reviewDetail.getByRole("heading", { level: 4, includeHidden: true })).toHaveText(["变更摘要", "前后对比", "影响范围"]);
+    const provenance = reviewDetail.locator("details").filter({ has: page.getByText("溯源信息", { exact: true }) });
+    await expect(provenance).not.toHaveAttribute("open");
     await reviewDetail.getByText("溯源信息", { exact: true }).click();
+    await provenance.getByText("完整技术数据", { exact: true }).click();
+    expect(JSON.parse((await provenance.getByLabel("完整溯源数据").textContent())!).sourceFormat).toBe("dts");
     await expect(reviewDetail).toContainText(binding.bindingId);
-    await expect(reviewDetail.getByLabel("固定源目标内容")).toContainText(rejectTargetValue);
+    await expect(reviewDetail.getByRole("region", { name: "固定源修改片段" })).toContainText(rejectTargetValue);
     await expect(reviewDetail).toContainText(rejectionReason);
 
     await page.reload();
     await expect(processedTab).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("button", { name: "筛选", exact: true }).click();
     await expect(changeType).toHaveAttribute("data-value", "value");
     const reloadedRow = queue.locator(`[data-review-row-id="${requestId}"]`);
     await expect(reloadedRow).toBeVisible();
     await expect(reloadedRow.locator("td").last()).toContainText(/./);
-    await reloadedRow.getByRole("button", { name: `查看 ${rejectReasonPrefix} submitted request 提交详情`, exact: true }).click();
-    await expect(reviewDetail.locator("details")).not.toHaveAttribute("open");
+    await reloadedRow.getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
+    await expect(provenance).not.toHaveAttribute("open");
     await reviewDetail.getByText("溯源信息", { exact: true }).click();
+    await provenance.getByText("完整技术数据", { exact: true }).click();
+    expect(JSON.parse((await provenance.getByLabel("完整溯源数据").textContent())!).bindingId).toBe(binding.bindingId);
     await expect(reviewDetail).toContainText(binding.bindingId);
     await expect(reviewDetail).toContainText(rejectionReason);
 

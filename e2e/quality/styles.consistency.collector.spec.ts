@@ -530,10 +530,10 @@ styleTest("history and review diff surfaces bound long code without moving inspe
   await renderFixture(page, baseURL, `<main class="parameter-review-page"><div class="submission-history-summary"><div class="metric-card">Summary<div class="metric-bar">Count</div></div></div>
     <div class="submission-history-layout"><section class="history-panel">History</section><section class="submission-round-detail"><div class="timeline submission-timeline">${Array.from({ length: 5 }, (_, index) => `<div><span>${index + 1}</span><small>Step</small></div>`).join("")}</div>
     <div class="history-diff-list"><article class="submission-diff-card submission-diff-card--history">${diff}</article></div></section></div>
-    <div class="review-inbox"><section class="review-queue"><div class="review-table-wrap"><table><colgroup><col class="review-inbox__summary-column">${["type", "project", "module", "submitter", "time", "status"].map((name) => `<col class="review-inbox__${name}-column">`).join("")}</colgroup>
-    <thead><tr><th><span class="review-column-filter-head">Name<button>Filter</button></span></th>${"<th>Metadata</th>".repeat(6)}</tr></thead>
-    <tbody><tr><td><span class="review-inbox__summary">${code}</span></td>${`<td><span class="review-inbox__chip">${code}</span></td>`.repeat(6)}</tr></tbody></table></div></section>
-    <section class="review-detail"><div class="canonical-project-value-review"><article><header class="review-inspector__header"><div class="review-inspector__actions"><button class="button">Approve</button><button class="button">Reject</button></div></header>
+    <div class="review-inbox"><section class="review-queue"><div class="review-table-wrap"><table><colgroup><col class="review-inbox__summary-column">${["time", "status"].map((name) => `<col class="review-inbox__${name}-column">`).join("")}</colgroup>
+    <thead><tr><th>Change</th><th>Submitted</th><th>Status</th></tr></thead>
+    <tbody><tr><td class="change-cell"><span class="review-inbox__summary"><strong>Parameter name</strong>${code}</span></td>${`<td><span class="review-inbox__chip">${code}</span></td>`.repeat(2)}</tr></tbody></table></div></section>
+    <section class="review-detail"><div class="canonical-project-value-review"><article class="review-inspector__detail"><header class="review-inspector__header"><h3>Parameter name</h3></header><div class="review-inspector__actions"><button class="button">Approve</button><button class="button">Reject</button></div>
     <section aria-label="Before and after"><div class="canonical-project-value-review__diff"><div><p>Before</p><pre class="canonical-project-value-review__diff-text" tabindex="0">${`${code}\n`.repeat(40)}</pre></div></div></section></article></div></section></div>
     <div class="action-panel"><label class="review-merge-link">Merge link<input></label><button class="button">Confirm merge</button></div></main>`, ["src/features/parameter-review/parameter-review.css"]);
   expect((await bounds(page.locator(".metric-card"))).height).toBeGreaterThanOrEqual(96);
@@ -557,16 +557,16 @@ styleTest("history and review diff surfaces bound long code without moving inspe
   await expectFits(page.locator(".submission-round-detail"));
   await expectFits(page.locator(".submission-diff-card"));
   await expectFits(page.locator(".review-table-wrap"));
-  await expect(page.locator(".review-inbox__summary")).toHaveCSS("text-overflow", "ellipsis");
-  const table = await bounds(page.locator(".review-inbox table"));
-  for (const [index, percentage] of [13, 16, 12, 15, 12, 11].entries()) {
-    expect((await bounds(page.locator(".review-inbox th").nth(index + 1))).width).toBeCloseTo(table.width * percentage / 100, 0);
+  await expect(page.locator(".review-inbox__summary")).toHaveCSS("white-space", "normal");
+  await expectFits(page.locator(".review-inbox__summary"));
+  for (const index of [1, 2]) {
+    expect((await bounds(page.locator(".review-inbox th").nth(index))).width).toBeCloseTo(72, 0);
   }
   const actionPanel = page.locator("main > .action-panel");
   expect((await bounds(actionPanel.getByRole("button"))).y).toBeGreaterThanOrEqual((await bounds(actionPanel.locator("label"))).bottom);
   const actions = page.locator(".review-inspector__actions");
   const inspectorCode = page.locator(".canonical-project-value-review__diff-text");
-  await expect(actions).toHaveCSS("position", "static");
+  await expect(actions).toHaveCSS("position", "sticky");
   expect((await bounds(actions)).bottom).toBeLessThanOrEqual((await bounds(inspectorCode)).y + 2);
   const documentScroll = await page.evaluate(() => {
     window.scrollBy(0, 200);
@@ -751,7 +751,7 @@ styleTest("sidebar feedback stays bottom-aligned and the existing compact drawer
   await expect(page.locator(".utility-nav")).toHaveCSS("display", "block");
   await expect(feedback).toBeVisible();
   await page.setViewportSize({ width: 900, height: 900 });
-  expect((await bounds(page.getByRole("button", { name: "打开用户菜单" }))).width).toBe(38);
+  expect((await bounds(page.getByRole("button", { name: /打开用户菜单$/ }))).width).toBe(38);
   await page.setViewportSize({ width: 768, height: 900 });
   await expect(sidebar).toBeHidden();
   const openDrawer = page.getByRole("button", { name: "打开导航菜单" });

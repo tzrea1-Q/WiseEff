@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +20,7 @@ import { createConfigSet, addConfigSetFile } from "./configSetService";
 import { createCandidate } from "./candidateService";
 import { freezeCanonicalCandidateBatchSnapshotInTransaction, previewCanonicalCandidate } from "./canonicalFileWorkflow";
 import { commitCanonicalSourceBatchRevision } from "./canonicalSourceBatchCommit";
+import { readCanonicalBatchSourceDiff } from "./canonicalSourceDiff";
 import { uploadProjectParameterFile } from "./service";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 
@@ -167,9 +168,30 @@ describe("#906 D canonical DTS batch source writer", () => {
   it("approves two DTS sets in one full-cohort source revision and replays the receipt", async () => {
     const { requestId, proof } = await freezeRequest(candidateBytes("<77>"));
     expect(proof.targets).toHaveLength(2);
+    // Display-only fields must not change the pre-existing frozen target shape or its digest.
+    const { batchProofDigest, ...payload } = proof;
+    const legacyTargets = proof.targets.map((target) => ({
+      bindingId: target.bindingId, definitionId: target.definitionId, baseCurrentValueId: target.baseCurrentValueId,
+      configRevisionId: target.configRevisionId, sourcePinId: target.sourcePinId, locator: target.locator,
+      baseDigest: target.baseDigest, proposedDigest: target.proposedDigest, action: target.action,
+      beforeText: target.beforeText,
+      ...(target.afterText === undefined ? {} : { afterText: target.afterText }),
+      ...(target.targetText === undefined ? {} : { targetText: target.targetText })
+    }));
+    const legacyBytes = JSON.stringify({ ...payload, targets: legacyTargets }, (_key, value: unknown) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right))) : value);
+    expect(batchProofDigest).toBe(createHash("sha256").update(legacyBytes).digest("hex"));
+    expect(proof.targets.every((target) => !("displayPath" in target))).toBe(true);
+    const frozenDiff = await readCanonicalBatchSourceDiff(db, storage, reviewer, { projectId: PROJECT, requestId });
+    const identities = frozenDiff.targets.map((target) => ({ path: target.path, beforeText: target.beforeText }));
+    expect(new Set(identities.map((identity) => identity.path)).size).toBe(2);
+    expect(identities.every((identity) => identity.path.endsWith(" · iin_max") && identity.beforeText === "<36>")).toBe(true);
     const before = await state(requestId);
     const approved = await commit(requestId);
     expect(approved).toMatchObject({ requestId, status: "approved", batchProofDigest: proof.batchProofDigest });
+    const historical = await readCanonicalBatchSourceDiff(db, storage, reviewer, { projectId: PROJECT, requestId });
+    expect(historical.targets.map((target) => ({ path: target.path, beforeText: target.beforeText }))).toEqual(identities);
     const after = await state(requestId);
     expect(after.request).toMatchObject({ status: "approved", applied_source_result: { bindings: expect.any(Array) } });
     expect(after.file.current_version_id).not.toBe(baseVersionId);

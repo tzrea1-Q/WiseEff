@@ -73,6 +73,9 @@ export type CanonicalBatchChangeRequestDto = {
   submitterUserId: string | null;
   assignedToUserId: string | null;
   reviewerUserId: string | null;
+  submitterName?: string | null;
+  assignedToName?: string | null;
+  reviewerName?: string | null;
   reviewerNote: string | null;
   sourceProofToken: string;
   cohortProofToken: string;
@@ -259,6 +262,7 @@ type BatchRow = {
   status: CanonicalBatchChangeRequestDto["status"]; reason: string;
   submitter_user_id: string | null; assigned_to_user_id: string | null;
   reviewer_user_id: string | null; reviewer_note: string | null;
+  submitter_name?: string | null; assigned_to_name?: string | null; reviewer_name?: string | null;
   batch_source_proof_token: string; batch_cohort_proof_token: string;
   batch_file_id: string; batch_base_version_id: string; batch_config_set_id: string;
   applied_at: string | null; applied_audit_ref: string | null;
@@ -267,8 +271,12 @@ type BatchRow = {
 
 async function loadBatchRequest(db: Database, organizationId: string, projectId: string, requestId: string): Promise<CanonicalBatchChangeRequestDto | null> {
   const request = (await db.query<BatchRow>(`
-    select * from public.project_parameter_value_change_requests
-     where id=$1 and organization_id=$2 and project_id=$3 and request_kind='batch'`,
+    select request.*, submitter.name as submitter_name, assignee.name as assigned_to_name, reviewer.name as reviewer_name
+      from public.project_parameter_value_change_requests request
+      left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
+      left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
+      left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
+     where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.request_kind='batch'`,
     [requestId, organizationId, projectId])).rows[0];
   if (!request) return null;
   const targets = await db.query<{
@@ -347,6 +355,9 @@ async function loadBatchRequest(db: Database, organizationId: string, projectId:
     submitterUserId: request.submitter_user_id,
     assignedToUserId: request.assigned_to_user_id,
     reviewerUserId: request.reviewer_user_id,
+    submitterName: request.submitter_name,
+    assignedToName: request.assigned_to_name,
+    reviewerName: request.reviewer_name,
     reviewerNote: request.reviewer_note,
     sourceProofToken: request.batch_source_proof_token,
     cohortProofToken: request.batch_cohort_proof_token,

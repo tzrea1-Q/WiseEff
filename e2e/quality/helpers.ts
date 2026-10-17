@@ -237,18 +237,7 @@ export async function stableMasks(page: Page, routePath = ""): Promise<Locator[]
   }
 
   if (routePath === "/parameter-review") {
-    const details = page.getByRole("article", { name: "源文件请求详情" });
-    for (const label of ["参数记录", "请求 ID", "来源快照", "候选文件", "提交时间", "状态更新时间"]) {
-      masks.push(
-        details
-          .locator(":scope > header, :scope > dl")
-          .getByRole("term")
-          .filter({ hasText: new RegExp(`^${label}$`) })
-          .locator("..")
-          .getByRole("definition")
-          .locator("code, time")
-      );
-    }
+    masks.push(page.getByRole("table", { name: "审阅队列" }).getByRole("row", { selected: true }).locator("time"));
   }
 
   if (routePath === "/dts-reload" || routePath === "/node-debugging") {

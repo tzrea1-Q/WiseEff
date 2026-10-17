@@ -560,7 +560,9 @@ for (const route of consistencyReadOnlyRoutes) {
           hasDialog: document.body.matches(':has([role="dialog"])'),
           viewportWidth: window.innerWidth
         }));
-        const requiresHint = shouldRequireXiaozeHint(pageState);
+        const reviewRoute = ["/parameter-review", "/parameter-submissions"].includes(routePath);
+        const requiresHint = !reviewRoute && shouldRequireXiaozeHint(pageState);
+        if (reviewRoute) await expect(page.getByTestId("xiaoze-toggle-hint")).toHaveCount(0);
         const historicalIdentity = page.getByRole("region", { name: "节点对应确认", exact: true });
         const hasHistoricalIdentity = await historicalIdentity.isVisible();
         if (hasHistoricalIdentity) {

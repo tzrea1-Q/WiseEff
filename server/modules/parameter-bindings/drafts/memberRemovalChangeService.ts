@@ -26,6 +26,7 @@ type Row = {
   member_file_version_id: string; member_proof_digest: string;
   member_frozen_proof: CanonicalMemberRemovalProof; status: Status; reason: string;
   submitter_user_id: string; assigned_to_user_id: string; reviewer_user_id: string | null;
+  submitter_name?: string | null; assigned_to_name?: string | null; reviewer_name?: string | null;
   reviewer_note: string | null; applied_source_result: { tombstoneId: string; successorConfigRevisionId: string } | null;
   created_at: string | Date; updated_at: string | Date;
 };
@@ -33,6 +34,7 @@ export type CanonicalMemberRemovalRequestDto = {
   id: string; projectId: string; configSetId: string; fileId: string; fileVersionId: string;
   proofDigest: string; frozenProof: CanonicalMemberRemovalProof; status: Status; reason: string;
   submitterUserId: string; assignedToUserId: string; reviewerUserId: string | null;
+  submitterName?: string | null; assignedToName?: string | null; reviewerName?: string | null;
   reviewerNote: string | null; appliedSourceResult: Row["applied_source_result"];
   createdAt: string; updatedAt: string;
 };
@@ -47,6 +49,7 @@ const dto = (row: Row): CanonicalMemberRemovalRequestDto => ({
   proofDigest: row.member_proof_digest, frozenProof: row.member_frozen_proof,
   status: row.status, reason: row.reason, submitterUserId: row.submitter_user_id,
   assignedToUserId: row.assigned_to_user_id, reviewerUserId: row.reviewer_user_id,
+  submitterName: row.submitter_name, assignedToName: row.assigned_to_name, reviewerName: row.reviewer_name,
   reviewerNote: row.reviewer_note, appliedSourceResult: row.applied_source_result,
   createdAt: iso(row.created_at), updatedAt: iso(row.updated_at)
 });
@@ -143,7 +146,14 @@ export async function getCanonicalMemberRemovalForAuth(db: Database, auth: AuthC
   input: { projectId: string; requestId: string }): Promise<CanonicalMemberRemovalRequestDto | null> {
   await ownedProject(db, auth, input.projectId);
   if (!auth.user.isActive || !canViewParameters(auth)) throw new ApiError("FORBIDDEN", "Parameter view access is required.");
-  const row = await load(db, auth, input.projectId, input.requestId);
+  const row = (await db.query<Row>(`select request.*, submitter.name as submitter_name,
+    assignee.name as assigned_to_name, reviewer.name as reviewer_name
+    from public.project_parameter_value_change_requests request
+    left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
+    left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
+    left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
+    where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.request_kind='member-removal'`,
+    [input.requestId, auth.organization.id, input.projectId])).rows[0];
   if (!row) return null;
   if (row.submitter_user_id === auth.user.id) return dto(row);
   if (row.assigned_to_user_id === auth.user.id && canReviewParameters(auth)
@@ -163,11 +173,16 @@ export async function listCanonicalMemberRemovalsForAuth(db: Database, auth: Aut
     && await hasCurrentCanonicalReviewRole(db, {
       organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
     });
-  const rows = await db.query<Row>(`select * from public.project_parameter_value_change_requests
-    where organization_id=$1 and project_id=$2 and request_kind='member-removal'
-      and ($3::text is null or status=$3)
-      and (submitter_user_id=$4 or ($5::boolean and assigned_to_user_id=$4))
-    order by updated_at desc,id`, [auth.organization.id, input.projectId,
+  const rows = await db.query<Row>(`select request.*, submitter.name as submitter_name,
+    assignee.name as assigned_to_name, reviewer.name as reviewer_name
+    from public.project_parameter_value_change_requests request
+    left join public.users submitter on submitter.id=request.submitter_user_id and submitter.organization_id=request.organization_id
+    left join public.users assignee on assignee.id=request.assigned_to_user_id and assignee.organization_id=request.organization_id
+    left join public.users reviewer on reviewer.id=request.reviewer_user_id and reviewer.organization_id=request.organization_id
+    where request.organization_id=$1 and request.project_id=$2 and request.request_kind='member-removal'
+      and ($3::text is null or request.status=$3)
+      and (request.submitter_user_id=$4 or ($5::boolean and request.assigned_to_user_id=$4))
+    order by request.updated_at desc,request.id`, [auth.organization.id, input.projectId,
     input.status ?? null, auth.user.id, reviewer]);
   return rows.rows.map(dto);
 }

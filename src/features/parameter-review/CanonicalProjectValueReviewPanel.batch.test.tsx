@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { CatalogValueChangeSourceDiffResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
 
@@ -46,7 +47,17 @@ const diff = {
   }))
 };
 
-function repository(source = diff) {
+type BatchSourceDiff = Extract<CatalogValueChangeSourceDiffResponse["item"], { kind: "batch" }>;
+type SourceFixture = Omit<typeof diff, "format" | "targets"> & {
+  format: BatchSourceDiff["format"];
+  targets: Array<Omit<(typeof diff.targets)[number], "action" | "afterText" | "decision" | "draftId"> & {
+    action: BatchSourceDiff["targets"][number]["action"]; afterText?: string;
+    decision: BatchSourceDiff["targets"][number]["decision"];
+    draftId: BatchSourceDiff["targets"][number]["draftId"];
+  }>;
+};
+
+function repository(source: SourceFixture = diff) {
   const reviewProjectValueChangeRequest = vi.fn().mockResolvedValue({ item: batch });
   const getProjectValueBatchChangeRequest = vi.fn().mockResolvedValue({ item: batch });
   const getProjectValueChangeSourceDiff = vi.fn().mockResolvedValue({ item: source });
@@ -61,7 +72,23 @@ function repository(source = diff) {
 }
 
 describe("canonical batch reviewer", () => {
-  it("retains the selected batch when an uncertain result read returns another request", async () => {
+  it("refreshes the same batch without losing a cancelled rejection or submitting a decision", async () => {
+    const repo = repository();
+    const panel = (refreshVersion: number) => <CanonicalProjectValueReviewPanel projectId="project-1"
+      repository={repo} currentUserId="reviewer-1" detailOnly initialRequestId={batch.id} refreshVersion={refreshVersion} />;
+    const { rerender } = render(panel(0));
+    fireEvent.click(await screen.findByRole("button", { name: "驳回全部 2 项" }));
+    fireEvent.change(screen.getByLabelText("驳回原因"), { target: { value: "整批需补充说明" } });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    rerender(panel(1));
+    await waitFor(() => expect(repo.getProjectValueBatchChangeRequest).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole("button", { name: "驳回全部 2 项" }));
+    expect(screen.getByLabelText("驳回原因")).toHaveValue("整批需补充说明");
+    expect(repo.getProjectValueBatchChangeRequest).toHaveBeenLastCalledWith("project-1", batch.id);
+    expect(repo.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
+  });
+
+  it.each(["approve", "reject"] as const)("blocks both decisions after an uncertain %s returns another request", async (decision) => {
     const repo = repository();
     const onRequestsChanged = vi.fn();
     vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValueOnce({ item: batch } as never)
@@ -71,12 +98,43 @@ describe("canonical batch reviewer", () => {
       currentUserId="reviewer-1" initialRequestId={batch.id} onRequestsChanged={onRequestsChanged} />);
     const approve = await screen.findByRole("button", { name: "批准全部 2 项" });
     await waitFor(() => expect(approve).toBeEnabled());
-    fireEvent.click(approve);
-    await screen.findByText(/审核结果尚未确认/);
+    fireEvent.click(decision === "approve" ? approve : screen.getByRole("button", { name: "驳回全部 2 项" }));
+    if (decision === "reject") fireEvent.change(screen.getByLabelText("驳回原因"), { target: { value: "需要补充依据" } });
+    expect(repo.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: decision === "approve" ? "确认批准并应用" : "确认驳回" }));
+    await screen.findByText(/审核结果尚未确认|批量软件审核失败/);
     await waitFor(() => expect(repo.getProjectValueBatchChangeRequest).toHaveBeenCalledTimes(2));
     expect(screen.getByRole("article").querySelector("header")).toHaveTextContent("两项校准");
     expect(screen.getByRole("button", { name: "批准全部 2 项" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "驳回全部 2 项" })).toBeDisabled();
+    if (decision === "reject") expect(screen.getByRole("button", { name: "确认驳回" })).toBeDisabled();
+    expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
     expect(onRequestsChanged).not.toHaveBeenCalled();
+  });
+
+  it("preserves a blocked rejection until the same batch is freshly read, retaining its reason", async () => {
+    const repo = repository();
+    vi.mocked(repo.getProjectValueBatchChangeRequest!).mockResolvedValueOnce({ item: batch } as never)
+      .mockRejectedValueOnce(new Error("status unavailable"))
+      .mockResolvedValueOnce({ item: { ...batch, id: "other-batch" } } as never)
+      .mockResolvedValue({ item: batch } as never);
+    vi.mocked(repo.reviewProjectValueChangeRequest!).mockRejectedValue(new Error("connection interrupted"));
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo} detailOnly
+      currentUserId="reviewer-1" initialRequestId={batch.id} />);
+    fireEvent.click(await screen.findByRole("button", { name: "驳回全部 2 项" }));
+    fireEvent.change(screen.getByLabelText("驳回原因"), { target: { value: "需要补充依据" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认驳回" }));
+    await waitFor(() => expect(repo.getProjectValueBatchChangeRequest).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "确认驳回" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新核对状态" }));
+    await screen.findByText(/请求详情与当前请求不一致/);
+    expect(screen.queryByRole("button", { name: "驳回全部 2 项" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新加载请求" }));
+    fireEvent.click(await screen.findByRole("button", { name: "驳回全部 2 项" }));
+    expect(screen.getByLabelText("驳回原因")).toHaveValue("需要补充依据");
+    expect(screen.getByRole("button", { name: "确认驳回" })).toBeEnabled();
+    expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
   });
 
   it("shows full batch sources before target impact and keeps every proof copyable behind disclosure", async () => {
@@ -90,17 +148,18 @@ describe("canonical batch reviewer", () => {
       .toEqual(["变更摘要", "前后对比", "影响范围"]);
     expect(await within(detail).findByLabelText("批量固定源变更前")).toHaveTextContent(diff.before);
     expect(within(detail).getByLabelText("批量固定源变更后")).toHaveTextContent(diff.after);
-    const disclosure = detail.querySelector("details")!;
+    const disclosure = within(detail).getByText("溯源信息").closest("details")!;
     expect(disclosure.open).toBe(false);
-    const header = detail.querySelector("header")!;
-    const approve = within(header).getByRole("button", { name: "批准全部 2 项" });
+    const approve = within(detail).getByRole("button", { name: "批准全部 2 项" });
     expect(approve.compareDocumentPosition(within(detail).getByLabelText("批量固定源变更前")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(header).getByRole("button", { name: "驳回全部 2 项" })).toBeInTheDocument();
+    expect(within(detail).getByRole("button", { name: "驳回全部 2 项" })).toBeInTheDocument();
     expect(detail.querySelector("footer")).toBeNull();
     expect(within(detail).getByRole("region", { name: "影响范围" }).compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(detail).getByText("溯源信息"));
     expect(await within(detail).findByRole("button", { name: "复制 批量证明摘要" })).toBeVisible();
-    expect(within(detail).getByRole("button", { name: "复制 来源元数据 · bindings · 1 · sourcePinId" })).toBeVisible();
+    fireEvent.click(within(detail).getByText("完整技术数据", { exact: true }));
+    expect(within(detail).getByLabelText("完整溯源数据")).toHaveTextContent(diff.bindings[0].sourcePinId);
+    expect(within(detail).getByRole("button", { name: "复制完整技术数据" })).toBeVisible();
   });
 
   it.each(["json", "dts"] as const)("reviews a composed %s upload, draft choice, and sibling re-pin with all digests", async (format) => {
@@ -150,11 +209,14 @@ describe("canonical batch reviewer", () => {
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
     expect(await within(detail).findByLabelText("批量原上传来源")).toHaveTextContent("50 / 60 / 30");
     expect(within(detail).getByLabelText("批量固定源变更后")).toHaveTextContent("88 / 60 / 30");
-    expect(within(within(detail).getByRole("region", { name: "影响范围" })).getAllByText("other-author")).toHaveLength(2);
-    expect(within(detail).getByText(/兄弟 Binding · 结构性 re-pin/)).toBeVisible();
+    fireEvent.click(within(detail).getByText(/查看全部 3 项参数与草稿影响/));
+    expect(within(within(detail).getByRole("region", { name: "影响范围" })).getAllByText("项目成员（姓名暂不可用）")).toHaveLength(2);
+    expect(within(detail).getByRole("list", { name: "批量审核目标" })).toHaveTextContent("项目成员（姓名暂不可用）");
+    expect(within(detail).getByText("/binding-sibling").parentElement).toHaveTextContent("保留数值，更新来源关联");
     const approve = within(detail).getByRole("button", { name: "批准全部 2 项" });
     expect(approve).toBeEnabled();
     fireEvent.click(approve);
+    fireEvent.click(screen.getByRole("button", { name: "确认批准并应用" }));
     await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
       "project-1", request.id, { decision: "approve", batchProofDigest: mixedDigest,
         draftImpactDigest: impactDigest, decisionProofDigest: decisionDigest }, expect.any(Object)
@@ -187,11 +249,14 @@ describe("canonical batch reviewer", () => {
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
       currentUserId="reviewer-1" initialRequestId={batch.id} />);
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
-    expect(await within(detail).findByText("DTS")).toBeVisible();
+    fireEvent.click(within(detail).getByText("溯源信息"));
+    fireEvent.click(await within(detail).findByText("完整技术数据", { exact: true }));
+    expect(within(detail).getByLabelText("完整溯源数据")).toHaveTextContent('"format": "dts"');
     expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
     const approve = within(detail).getByRole("button", { name: "批准全部 2 项" });
     expect(approve).toBeEnabled();
     fireEvent.click(approve);
+    fireEvent.click(screen.getByRole("button", { name: "确认批准并应用" }));
     await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
       "project-1", batch.id, { decision: "approve", batchProofDigest: proof,
         draftImpactDigest: "d".repeat(64) }, expect.any(Object)
@@ -243,13 +308,14 @@ describe("canonical batch reviewer", () => {
 
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
     expect(within(detail).getByText("两项校准")).toBeVisible();
-    expect(within(detail.querySelector("header")!).getByText("reviewer-1")).toBeVisible();
+    expect(within(detail.querySelector("header")!).getAllByText("项目成员（姓名暂不可用）")).toHaveLength(2);
     expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
     expect(await within(detail).findByLabelText("目标 1 来源变更前")).toHaveTextContent("36.5");
     expect(within(detail).getByLabelText("目标 2 来源变更后")).toHaveTextContent("60");
     const approve = within(detail).getByRole("button", { name: "批准全部 2 项" });
     expect(approve).toBeEnabled();
     fireEvent.click(approve);
+    fireEvent.click(screen.getByRole("button", { name: "确认批准并应用" }));
     await waitFor(() => expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledWith(
       "project-1", batch.id, { decision: "approve", batchProofDigest: proof,
         draftImpactDigest: "d".repeat(64) },
@@ -257,8 +323,9 @@ describe("canonical batch reviewer", () => {
     ));
     await waitFor(() => expect(screen.getByRole("article")).toHaveTextContent("已批准"));
     fireEvent.click(screen.getByText("溯源信息"));
-    expect(await screen.findByText("value-0")).toBeVisible();
-    expect(screen.getByText("value-1")).toBeVisible();
+    fireEvent.click(await screen.findByText("完整技术数据", { exact: true }));
+    expect(screen.getByLabelText("完整溯源数据")).toHaveTextContent("value-0");
+    expect(screen.getByLabelText("完整溯源数据")).toHaveTextContent("value-1");
     expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
     expect(within(screen.getByRole("article", { name: "批量源文件请求详情" }))
       .queryByRole("button", { name: /批准全部/ })).not.toBeInTheDocument();
@@ -289,6 +356,7 @@ describe("canonical batch reviewer", () => {
     const approve = await screen.findByRole("button", { name: "批准全部 2 项" });
     await waitFor(() => expect(approve).toBeEnabled());
     fireEvent.click(approve);
+    fireEvent.click(screen.getByRole("button", { name: "确认批准并应用" }));
     expect(await screen.findByText(/来源或审核证明已变化/)).toBeVisible();
     expect(screen.getByRole("button", { name: "批准全部 2 项" })).toBeDisabled();
     expect(screen.getByRole("article", { name: "批量源文件请求详情" })).toHaveTextContent("待审核");
@@ -309,9 +377,11 @@ describe("canonical batch reviewer", () => {
     const approve = await screen.findByRole("button", { name: "批准全部 2 项" });
     await waitFor(() => expect(approve).toBeEnabled());
     fireEvent.click(approve);
+    fireEvent.click(screen.getByRole("button", { name: "确认批准并应用" }));
     await waitFor(() => expect(screen.getByRole("article")).toHaveTextContent("已批准"));
     fireEvent.click(screen.getByText("溯源信息"));
-    expect(await screen.findByText("value-0")).toBeVisible();
+    fireEvent.click(await screen.findByText("完整技术数据", { exact: true }));
+    expect(screen.getByLabelText("完整溯源数据")).toHaveTextContent("value-0");
     expect(repo.reviewProjectValueChangeRequest).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /批准全部/ })).not.toBeInTheDocument();
   });
@@ -327,7 +397,7 @@ describe("canonical batch reviewer", () => {
     render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repo}
       currentUserId="reviewer-1" initialRequestId={batch.id} />);
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
-    expect(await within(detail).findByText("删除（无替换值）")).toBeVisible();
+    expect(await within(detail).findByText("删除属性")).toBeVisible();
     await waitFor(() => expect(within(detail).getByRole("button", { name: "批准全部 2 项" })).toBeEnabled());
   });
 
@@ -352,7 +422,7 @@ describe("canonical batch reviewer", () => {
     expect(await within(detail).findByLabelText("批量固定源变更前")).toHaveTextContent(diff.before);
     expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
     fireEvent.click(within(detail).getByRole("button", { name: "驳回全部 2 项" }));
-    const dialog = screen.getByRole("dialog", { name: "驳回请求" });
+    const dialog = screen.getByRole("dialog", { name: /驳回「/ });
     const confirm = within(dialog).getByRole("button", { name: "确认驳回" });
     expect(confirm).toBeDisabled();
     expect(repo.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
@@ -380,6 +450,8 @@ describe("canonical batch reviewer", () => {
     expect(await within(detail).findByRole("button", { name: "复制 批量证明摘要" })).toBeVisible();
     expect(within(detail).getAllByText(proof).every((element) => element.closest("details")?.open)).toBe(true);
     fireEvent.click(within(detail).getByRole("button", { name: "撤回我的批量提交" }));
+    expect(repo.withdrawProjectValueChangeRequest).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认撤回提交" })).getByRole("button", { name: "撤回提交" }));
     await waitFor(() => expect(repo.withdrawProjectValueChangeRequest).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(detail).toHaveTextContent("已撤回"));
   });

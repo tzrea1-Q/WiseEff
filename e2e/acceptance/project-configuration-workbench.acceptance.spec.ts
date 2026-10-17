@@ -2092,10 +2092,12 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await dismissXiaozeHint(reviewerPage);
       await reviewerPage.bringToFront();
       const review = reviewerPage.getByRole("region", { name: "软件配置审核" });
+      await review.getByText("查看完整源文件", { exact: true }).click();
       await expect(review.getByLabel("固定源变更后")).toContainText("4510");
       const reviewed = reviewerPage.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-value-change-requests/${requestId}/review`));
       await review.getByRole("button", { name: "批准软件配置" }).click();
+      await reviewerPage.getByRole("dialog", { name: "确认应用软件配置", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
       const approval = await reviewed;
       expect(approval.ok(), await approval.text()).toBe(true);
       const approvedRequest = (await approval.json()).item as { id: string; status: string; appliedValueId: string };

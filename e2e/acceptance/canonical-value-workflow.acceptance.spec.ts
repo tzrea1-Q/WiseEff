@@ -259,7 +259,7 @@ test.describe("canonical value workflow on real sources", () => {
       await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
       if (requestId) {
         await page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${requestId}"]`)
-          .getByRole("button", { name: "查看 Local canonical source review 提交详情", exact: true }).click();
+          .getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
       }
       return page.getByRole("region", { name: "软件配置审核" });
     };
@@ -283,6 +283,7 @@ test.describe("canonical value workflow on real sources", () => {
     await expect(review.getByRole("button", { name: "批准软件配置" })).toHaveCount(0);
     const withdrawn = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/withdraw"));
     await review.getByRole("button", { name: "撤回我的提交" }).click();
+    await page.getByRole("dialog", { name: "确认撤回提交", exact: true }).getByRole("button", { name: "撤回提交", exact: true }).click();
     expect((await withdrawn).ok()).toBe(true);
     const assertTracking = async (requestId: string, status: string) => {
       const listed = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests?mine=true`), {
@@ -294,10 +295,12 @@ test.describe("canonical value workflow on real sources", () => {
       await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
       await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
       await expect(page.getByText(requestId, { exact: true }).first()).toBeVisible();
+      await page.getByRole("article", { name: "源文件请求详情" }).getByText("查看完整源文件", { exact: true }).click();
       await expect(page.getByLabel("固定源变更前")).toBeVisible();
       await page.reload();
       await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
       await expect(page.getByText(requestId, { exact: true }).first()).toBeVisible();
+      await page.getByRole("article", { name: "源文件请求详情" }).getByText("查看完整源文件", { exact: true }).click();
       await expect(page.getByLabel("固定源变更前")).toBeVisible();
       await page.screenshot({ path: info.outputPath(`tracking-${status}.png`), animations: "disabled" });
     };
@@ -307,7 +310,7 @@ test.describe("canonical value workflow on real sources", () => {
     review = await openReview("software-committer", rejectedId);
     const rejected = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/review"));
     await review.getByRole("button", { name: "驳回", exact: true }).click();
-    const rejectDialog = page.getByRole("dialog", { name: "驳回请求", exact: true });
+    const rejectDialog = page.getByRole("dialog", { name: /^驳回「/ });
     await expect(rejectDialog.getByRole("button", { name: "确认驳回" })).toBeDisabled();
     await rejectDialog.getByLabel("驳回原因", { exact: true }).fill("Local canonical source review needs supplemental evidence");
     await rejectDialog.getByRole("button", { name: "确认驳回" }).click();
@@ -330,29 +333,34 @@ test.describe("canonical value workflow on real sources", () => {
     });
     expect(outsideScope.status()).toBe(403);
     review = await openReview("software-committer", approvedId);
+    await review.getByText("查看完整源文件", { exact: true }).click();
     await expect(review.getByLabel("固定源变更后")).toContainText("1200");
     await page.screenshot({ path: info.outputPath("canonical-software-review.png"), animations: "disabled" });
     const approved = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/review"));
     await review.getByRole("button", { name: "批准软件配置" }).click();
+    await page.getByRole("dialog", { name: "确认应用软件配置", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
     const response = await approved;
     expect(response.ok(), await response.text()).toBe(true);
     expect((await response.json()).item.status).toBe("approved");
     await assertTracking(approvedId, "approved");
     const rejectedRow = page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${rejectedId}"]`);
     await expect(rejectedRow).toContainText("已驳回");
-    const selectRejected = rejectedRow.getByRole("button", { name: "查看 Local canonical source review 提交详情", exact: true });
+    const selectRejected = rejectedRow.getByRole("button", { name: /查看 .+ 提交详情$/ });
     await selectRejected.focus();
     await selectRejected.press("Enter");
     await expect(page).toHaveURL(new RegExp(`request=${rejectedId}(?:&|$)`));
-    await expect(selectRejected).toBeFocused();
+    await expect(page.getByRole("complementary", { name: "审阅详情", exact: true })).toBeFocused();
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
     await expect(page.getByRole("article", { name: "源文件请求详情" }).locator("details").getByText(rejectedId, { exact: true }).first()).toBeVisible();
+    await page.getByRole("article", { name: "源文件请求详情" }).getByText("查看完整源文件", { exact: true }).click();
     await expect(page.getByLabel("固定源变更前")).toBeVisible();
     await page.reload();
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
     await expect(page.getByRole("article", { name: "源文件请求详情" }).locator("details").getByText(rejectedId, { exact: true }).first()).toBeVisible();
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=missing-request`);
-    await expect(page.getByRole("alert").filter({ hasText: /失效|不存在|不可用|无权/ })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "无法打开该请求，它可能已移出当前项目队列。" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "返回当前项目队列", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/request=missing-request(?:&|$)/);
     await expect(page.getByLabel("固定源变更前")).toHaveCount(0);
     await page.getByRole("combobox", { name: "项目", exact: true }).click();
     await page.getByRole("option", { name: /Aurora disposable/ }).click();
@@ -407,10 +415,12 @@ test.describe("canonical value workflow on real sources", () => {
     await createDraft("delete");
     const deletionRequestId = await submit(approvedBinding.currentValueId);
     review = await openReview("software-committer", deletionRequestId);
+    await review.getByText("查看完整源文件", { exact: true }).click();
     await expect(review.getByLabel("固定源变更后")).toContainText("/delete-property/ iin_max");
     await page.screenshot({ path: info.outputPath("canonical-delete-review.png"), animations: "disabled" });
     const deletionApproved = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/${deletionRequestId}/review`));
-    await review.getByRole("button", { name: "批准软件配置" }).click();
+    await review.getByRole("button", { name: "批准删除属性" }).click();
+    await page.getByRole("dialog", { name: "确认删除属性", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
     const deletionResponse = await deletionApproved;
     expect(deletionResponse.ok(), await deletionResponse.text()).toBe(true);
     expect((await deletionResponse.json()).item).toMatchObject({ status: "approved", action: "delete" });
@@ -579,13 +589,15 @@ test.describe("canonical JSON deletion on a real source", () => {
     ]);
     await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=${jsonProjectId}`);
     const review = page.getByRole("region", { name: "软件配置审核" });
+    await review.getByText("查看完整源文件", { exact: true }).click();
     await expect(review.getByLabel("固定源变更前")).toContainText('"": 36.5');
     const after = review.getByLabel("固定源变更后");
     await expect(after).not.toContainText('"":');
     await expect(after).toContainText('"keep": true');
     await page.screenshot({ path: info.outputPath("canonical-json-delete-review.png"), animations: "disabled" });
     const approved = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/${requestId}/review`));
-    await review.getByRole("button", { name: "批准软件配置" }).click();
+    await review.getByRole("button", { name: "批准删除属性" }).click();
+    await page.getByRole("dialog", { name: "确认删除属性", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
     const approvedResponse = await approved;
     expect(approvedResponse.ok(), await approvedResponse.text()).toBe(true);
     expect((await approvedResponse.json()).item).toMatchObject({ status: "approved", action: "delete", sourceFormat: "json" });

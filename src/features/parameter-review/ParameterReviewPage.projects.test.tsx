@@ -2,7 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppRuntime } from "@/app/appRuntime";
 import { TopBarActionsContext } from "@/components/layout";
-import { initialState, type PrototypeState } from "@/mockData";
+import { initialState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 
 afterEach(() => {
@@ -47,7 +48,7 @@ function archiveState(): PrototypeState {
 
 function renderArchive(state: PrototypeState, runtime?: AppRuntime) {
   render(
-    <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage state={state} dispatch={vi.fn()} onNavigate={() => {}}
         search="?project=historical-project&legacyRequest=historical-request"
         runtime={runtime} runtimeMode={runtime ? "api" : "mock"} />
@@ -56,6 +57,17 @@ function renderArchive(state: PrototypeState, runtime?: AppRuntime) {
 }
 
 describe("ParameterReviewPage archive project identity", () => {
+  it("names actionable mock parameter requests without calling them archives", () => {
+    const state = archiveState();
+    renderArchive({ ...state, changeRequests: [{ ...historicalRequest, editSubjectKind: undefined,
+      status: "硬件Committer检视", assignedTo: state.currentUserId }] });
+    const queue = screen.getByRole("table", { name: "审阅队列" });
+    expect(within(queue).getByText("参数变更")).toBeInTheDocument();
+    expect(within(queue).queryByText("历史参数")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "审阅详情" })).getByRole("heading", { name: "历史修改" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "通过检视" })).toBeEnabled();
+  });
+
   it("discards late legacy projection responses after the authenticated user changes", async () => {
     let finishOldRead!: (rows: typeof initialState.changeRequests) => void;
     const oldRequest = { ...initialState.changeRequests[0], id: "old-user-request", title: "旧用户的历史记录", status: "已合入" as const };
@@ -79,7 +91,7 @@ describe("ParameterReviewPage archive project identity", () => {
       listChangeRequests: vi.fn().mockRejectedValueOnce(new Error("Read unavailable")).mockResolvedValue([]),
       listSubmissionRounds: vi.fn().mockResolvedValue([])
     } } as unknown as AppRuntime;
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage state={archiveState()} dispatch={dispatch} search="?project=historical-project"
         onNavigate={() => {}} runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
@@ -105,16 +117,20 @@ describe("ParameterReviewPage archive project identity", () => {
     const runtime = { parameterRepository: { listChangeRequests, listSubmissionRounds: vi.fn().mockResolvedValue([]) } } as unknown as AppRuntime;
     const user = { ...initialState.users[0], id: "assigned-reviewer", isActive: true,
       roles: [{ projectId: "aurora", roleId: "hardware-committer" as const }] };
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage state={{ ...initialState, currentUserId: user.id, users: [user], activeRoleId: "hardware-committer",
         changeRequests: [], parameterSubmissionRounds: [], parameterInitializationReviews: [] }} dispatch={vi.fn()}
         onNavigate={() => {}} search="?project=aurora" runtime={runtime} runtimeMode="api" parameterActions={{ reviewChange } as never} />
     </TopBarActionsContext.Provider>);
-    const queue = screen.getByRole("table", { name: "审阅队列" });
+    const queue = await screen.findByRole("table", { name: "审阅队列" });
     fireEvent.click(await within(queue).findByRole("button", { name: "查看 charger 提交详情" }));
     expect(queue).not.toHaveTextContent("other node");
     expect(queue).not.toHaveTextContent("retired binding");
-    if (decision === "advance") fireEvent.click(screen.getByRole("button", { name: "推进流程" }));
+    expect(within(screen.getByRole("complementary", { name: "审阅详情" })).getByRole("heading", { name: "charger" })).toBeInTheDocument();
+    if (decision === "advance") {
+      fireEvent.click(screen.getByRole("button", { name: "通过检视" }));
+      fireEvent.click(screen.getByRole("button", { name: "确认通过" }));
+    }
     else {
       fireEvent.click(screen.getByRole("button", { name: "打回修改" }));
       fireEvent.change(screen.getByLabelText("打回原因"), { target: { value: "Keep this node enabled" } });
@@ -125,7 +141,7 @@ describe("ParameterReviewPage archive project identity", () => {
     expect(screen.getByRole("tab", { name: "待处理" })).toHaveTextContent("0");
   });
 
-  it("keeps the archive DTO project filter when the shell has only canonical Bindings", async () => {
+  it("keeps the archive DTO project scope when the shell has only canonical Bindings", async () => {
     const runtime = {
       parameterRepository: {
         listChangeRequests: vi.fn().mockResolvedValue([historicalRequest]),
@@ -134,12 +150,11 @@ describe("ParameterReviewPage archive project identity", () => {
     } as unknown as AppRuntime;
     renderArchive(archiveState(), runtime);
 
-    const table = screen.getByRole("table", { name: "审阅队列" });
+    const table = await screen.findByRole("table", { name: "审阅队列" });
     await within(table).findByRole("button", { name: "查看 历史修改 提交详情" });
-    expect(table).toHaveTextContent("历史项目");
-    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
-    const filter = screen.getByRole("group", { name: "项目筛选" });
-    fireEvent.click(within(filter).getByRole("checkbox", { name: "历史项目" }));
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("历史项目");
+    expect(runtime.parameterRepository.listChangeRequests).toHaveBeenCalledWith({ projectId: "historical-project" });
+    expect(screen.queryByRole("button", { name: "筛选项目" })).not.toBeInTheDocument();
     expect(table).toHaveTextContent("历史修改");
     expect(table).not.toHaveTextContent("新版项目");
   });
@@ -153,10 +168,11 @@ describe("ParameterReviewPage archive project identity", () => {
     expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent(
       "历史参数引用缺少精确的显示元数据，仅展示归档记录，不推测当前参数。"
     );
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     expect(within(screen.getByRole("group", { name: "项目筛选" })).queryByRole("checkbox")).not.toBeInTheDocument();
     fireEvent.click(within(table).getByRole("button", { name: "查看 历史修改 提交详情" }));
-    expect(screen.getByRole("dialog", { name: "提交详情" })).toHaveTextContent(
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent(
       "历史参数引用缺少精确的显示元数据，仅展示归档记录，不推测当前参数。"
     );
   });
@@ -179,15 +195,16 @@ describe("ParameterReviewPage archive project identity", () => {
     } as unknown as AppRuntime;
     renderArchive(archiveState(), runtime);
 
-    const table = screen.getByRole("table", { name: "审阅队列" });
+    const table = await screen.findByRole("table", { name: "审阅队列" });
     await within(table).findByRole("button", { name: "查看 历史修改 提交详情" });
     expect(table).toHaveTextContent("归档项目");
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     fireEvent.click(within(screen.getByRole("group", { name: "项目筛选" })).getByRole("checkbox", { name: "归档项目" }));
     expect(table).toHaveTextContent("历史修改");
     expect(screen.getByRole("complementary", { name: "审阅详情" })).not.toHaveTextContent("历史参数引用缺少精确的显示元数据");
     fireEvent.click(within(table).getByRole("button", { name: "查看 历史修改 提交详情" }));
-    expect(screen.getByRole("dialog", { name: "提交详情" })).toHaveTextContent("归档参数");
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("归档参数");
   });
 
   it("keeps same-named historical and canonical projects distinct by ID", () => {
@@ -203,6 +220,7 @@ describe("ParameterReviewPage archive project identity", () => {
       })) }
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     const filter = screen.getByRole("group", { name: "项目筛选" });
     const historicalOption = within(filter).getByRole("checkbox", { name: "同名项目（historical-project）" });
@@ -220,13 +238,14 @@ describe("ParameterReviewPage archive project identity", () => {
   it("keeps a request's exact project ID filterable without current project metadata", () => {
     renderArchive({ ...archiveState(), changeRequests: [{ ...historicalRequest, projectId: "retained-project" }] });
 
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     fireEvent.click(within(screen.getByRole("group", { name: "项目筛选" })).getByRole("checkbox", { name: "retained-project" }));
     const table = screen.getByRole("table", { name: "审阅队列" });
     expect(table).toHaveTextContent("retained-project");
     expect(table).toHaveTextContent("历史修改");
     fireEvent.click(within(table).getByRole("button", { name: "查看 历史修改 提交详情" }));
-    expect(screen.getByRole("dialog", { name: "提交详情" })).toHaveTextContent("retained-project");
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("retained-project");
   });
 
   it.each([
@@ -244,10 +263,10 @@ describe("ParameterReviewPage archive project identity", () => {
       }]
     });
 
-    expect(screen.getByRole("table", { name: "审阅队列" })).toHaveTextContent("历史项目");
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("历史项目");
     expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("历史参数引用缺少精确的显示元数据");
     fireEvent.click(screen.getByRole("button", { name: "查看 历史修改 提交详情" }));
-    const dialog = screen.getByRole("dialog", { name: "提交详情" });
+    const dialog = screen.getByRole("complementary", { name: "审阅详情" });
     expect(dialog).not.toHaveTextContent("错误归档项目");
     expect(dialog).not.toHaveTextContent("错误归档参数");
   });

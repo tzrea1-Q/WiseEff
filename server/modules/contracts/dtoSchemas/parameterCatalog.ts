@@ -1092,6 +1092,9 @@ export const catalogValueChangeRequestDtoSchema = catalogObject({
   submitterUserId: z.string().nullable(),
   assignedToUserId: z.string().nullable(),
   reviewerUserId: z.string().nullable(),
+  submitterName: z.string().nullable().optional(),
+  assignedToName: z.string().nullable().optional(),
+  reviewerName: z.string().nullable().optional(),
   reviewerNote: z.string().nullable(),
   appliedValueId: z.string().nullable(),
   applyOutcome: closedEnum(["committed", "replayed"]).nullable(),
@@ -1162,6 +1165,8 @@ export const catalogBatchValueChangeRequestDtoSchema = catalogObject({
   status: closedEnum(["pending", "approved", "rejected", "withdrawn"]), reason: z.string(),
   submitterUserId: z.string().nullable(), assignedToUserId: z.string().nullable(),
   reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
+  submitterName: z.string().nullable().optional(), assignedToName: z.string().nullable().optional(),
+  reviewerName: z.string().nullable().optional(),
   sourceProofToken: z.string(), cohortProofToken: z.string(),
   fileId: z.string(), baseVersionId: z.string(), configSetId: z.string(),
   appliedAt: z.string().nullable(), appliedAuditRef: z.string().nullable(),
@@ -1205,6 +1210,8 @@ export const catalogMemberRemovalRequestDtoSchema = catalogObject({
   status: closedEnum(["pending", "approved", "rejected", "withdrawn"]),
   reason: z.string(), submitterUserId: z.string(), assignedToUserId: z.string(),
   reviewerUserId: z.string().nullable(), reviewerNote: z.string().nullable(),
+  submitterName: z.string().nullable().optional(), assignedToName: z.string().nullable().optional(),
+  reviewerName: z.string().nullable().optional(),
   appliedSourceResult: catalogObject({
     tombstoneId: z.string(), successorConfigRevisionId: z.string()
   }).nullable(),
@@ -1231,6 +1238,7 @@ const catalogSingleValueChangeSourceDiffSchema = catalogObject({
   requestId: z.string(),bindingId: z.string(),format: closedEnum(["dts", "json"]),sourceName: z.string(),
   sourcePinId: z.string(),candidateId: z.string(),baseDigest: z.string(),proposedDigest: z.string(),diffDigest: z.string(),
   before: z.string(),after: z.string(),
+  targetIdentity: catalogObject({ path: z.string(), beforeText: z.string() }).optional(),
   bindings: z.array(catalogValueChangeSourceBindingSchema)
 });
 const catalogBatchValueChangeSourceDiffSchema = catalogObject({
@@ -1244,6 +1252,7 @@ const catalogBatchValueChangeSourceDiffSchema = catalogObject({
   targets: z.array(catalogObject({
     ordinal: z.number().int().nonnegative(), bindingId: z.string(), sourcePinId: z.string(),
     action: closedEnum(["set", "delete"]), beforeText: z.string(), afterText: z.string().optional(),
+    path: z.string().optional(),
     decision: closedEnum(["file", "draft"]), draftId: z.string().nullable()
   })).min(2)
 });

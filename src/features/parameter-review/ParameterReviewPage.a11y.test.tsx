@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 
 afterEach(() => {
   cleanup();
@@ -17,7 +17,7 @@ function hardwareCommitterState(): PrototypeState {
 
 function renderReview(state: PrototypeState = hardwareCommitterState()) {
   render(
-    <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterReviewPage state={state} dispatch={vi.fn()} onNavigate={() => {}} search="" />
     </TopBarActionsContext.Provider>
   );
@@ -49,7 +49,7 @@ describe("ParameterReviewPage landmarks and keyboard", () => {
     const detail = screen.getByRole("complementary", { name: "审阅详情" });
     expect(within(detail).getByRole("heading", { level: 2, name: "审阅详情" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "审阅队列" })).toBeInTheDocument();
-    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("未记录冻结的单位与风险信息");
     expect(screen.queryByText(/快捷键/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Committer/)).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "审阅队列" })).not.toHaveTextContent("User");
@@ -63,29 +63,52 @@ describe("ParameterReviewPage landmarks and keyboard", () => {
     expect(rows.length).toBeGreaterThan(1);
     expect(rows[0]).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.keyDown(window, { key: "j" });
+    rows[0].focus();
+    fireEvent.keyDown(rows[0], { key: "j" });
     expect(rows[1]).toHaveAttribute("aria-selected", "true");
     expect(rows[0]).toHaveAttribute("aria-selected", "false");
 
-    fireEvent.keyDown(window, { key: "k" });
+    fireEvent.keyDown(rows[1], { key: "k" });
     expect(rows[0]).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.keyDown(window, { key: "j", metaKey: true });
-    fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+    fireEvent.keyDown(rows[0], { key: "j", metaKey: true });
+    fireEvent.keyDown(rows[0], { key: "j", ctrlKey: true });
     expect(rows[0]).toHaveAttribute("aria-selected", "true");
   });
 
-  it("opens submission detail with Enter from the selected change row", () => {
+  it("focuses review detail with Enter and reads a scalar comparison without a redundant modal", () => {
     renderReview();
 
-    fireEvent.click(screen.getByRole("button", { name: /查看 快充输入电流调整 提交详情/ }).closest("tr")!);
-    fireEvent.keyDown(window, { key: "Enter" });
-    expect(screen.getByRole("dialog", { name: "提交详情" })).toBeInTheDocument();
+    const row = screen.getByRole("button", { name: /查看 快充输入电流调整 提交详情/ }).closest("tr")!;
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveFocus();
+    expect(screen.queryByRole("dialog", { name: "提交详情" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /查看提交详情（/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "审阅详情" })).getByRole("region", { name: "本条变更" })).toBeInTheDocument();
+  });
+
+  it("opens complex evidence explicitly and returns focus to its trigger on Escape", async () => {
+    const user = userEvent.setup();
+    renderReview({ ...hardwareCommitterState(), activeRoleId: "admin", parameterSubmissionRounds: [], parameterInitializationReviews: [],
+      changeRequests: [{ ...initialState.changeRequests[0], valueKind: "complex", currentValue: "mode = 1;\nlimit = 3850;", targetValue: "mode = 1;\nlimit = 3200;" }] });
+    const trigger = screen.getByRole("button", { name: "展开完整对比" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "完整对比" });
+    expect(dialog).toHaveFocus();
+    expect(dialog).toHaveTextContent("limit = 3850;");
+    expect(dialog).toHaveTextContent("limit = 3200;");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it("exposes the module filter as a collapsed hierarchy with ancestor selection", () => {
-    renderReview();
+    const state = hardwareCommitterState();
+    renderReview({ ...state, changeRequests: [...state.changeRequests, { ...state.changeRequests[0], id: "module-a11y-other",
+      module: "Battery Safety", status: "硬件Committer检视" }] });
 
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选模块" }));
     const menu = screen.getByRole("group", { name: "模块筛选" });
     const tree = within(menu).getByRole("tree");
@@ -133,6 +156,6 @@ describe("ParameterReviewPage landmarks and keyboard", () => {
       }]
     });
 
-    expect(screen.getAllByText("已注销用户").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/已注销用户/).length).toBeGreaterThan(0);
   });
 });

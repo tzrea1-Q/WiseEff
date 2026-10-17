@@ -59,13 +59,26 @@ async function expectLocalizedVisualReviewFixture(page: Page) {
   const queue = page.getByRole("table", { name: "审阅队列" });
   const request = queue.getByRole("row").filter({ hasText: title });
   await expect(request).toHaveCount(1);
-  await request.getByRole("button", { name: `查看 ${title} 提交详情`, exact: true }).click();
+  await request.getByRole("button", { name: `cccv_0，查看 ${title} 提交详情`, exact: true }).click();
   await expect(request).toHaveAttribute("aria-selected", "true");
   const review = page.getByRole("complementary", { name: "审阅详情" });
-  await expect(review.getByRole("heading", { name: title, exact: true })).toBeVisible();
-  await expect(review.getByLabel("固定源目标内容")).toContainText("<4600 0>");
+  await expect(review.getByRole("heading", { name: "cccv_0", exact: true })).toBeVisible();
+  await expect(review.getByText(`修改原因：${title}`, { exact: true })).toBeVisible();
+  await expect(review.getByRole("region", { name: "固定源修改片段" }).locator('[data-kind="add"] code')).toContainText("<4600 0>");
+  await review.getByText("查看完整源文件", { exact: true }).click();
   await expect(review.getByLabel("固定源变更前")).toContainText("<4500 0>");
   await expect(review.getByLabel("固定源变更后")).toContainText("<4600 0>");
+  await review.getByText("查看完整源文件", { exact: true }).click();
+  await review.getByRole("heading", { name: "cccv_0", exact: true }).scrollIntoViewIfNeeded();
+  const provenance = review.locator("details").filter({ has: page.getByText("溯源信息", { exact: true }) });
+  await expect(provenance).toHaveCount(1);
+  await expect(provenance).toHaveJSProperty("open", false);
+  for (const label of ["请求 ID", "bindingId", "sourcePinId", "candidateId"]) {
+    await expect(review.getByRole("term").filter({ hasText: new RegExp(`^${label}$`) })).toHaveCount(0);
+  }
+  const requestId = new URL(page.url()).searchParams.get("request") ?? "";
+  expect(requestId).not.toBe("");
+  await expect(review).not.toContainText(requestId);
 }
 
 test.describe("M5.11 visual quality gate", () => {
@@ -134,8 +147,9 @@ test.describe("M5.11 visual quality gate", () => {
         }
       }
       if (route.path === "/parameter-review") {
-        expect(masks.slice(-6)).toHaveLength(6);
-        for (const mask of masks.slice(-6)) {
+        // Processing timestamps are inside the closed record disclosure.
+        expect(masks.slice(-1)).toHaveLength(1);
+        for (const mask of masks.slice(-1)) {
           await expect(mask).toHaveCount(1);
           await expect(mask).toBeVisible();
         }

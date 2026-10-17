@@ -907,17 +907,18 @@ test.describe("DTS structured canonical typed edits", () => {
       `${disposableRuntime.frontendUrl}/parameter-review?project=${projectId}&request=${requestId}`);
     const detail = page.getByRole("article", { name: "源文件请求详情" });
     await expect(detail).toContainText("待审核");
-    await expect(detail.getByLabel("固定源目标内容")).toHaveText(rawValue);
+    await expect(detail.getByRole("region", { name: "固定源修改片段" }).locator('[data-kind="add"] code')).toContainText(rawValue);
     const reviewed = page.waitForResponse((response) => response.request().method() === "POST"
       && response.url().endsWith(`/parameter-value-change-requests/${requestId}/review`));
     await detail.getByRole("button", { name: "批准软件配置" }).click();
+    await page.getByRole("dialog", { name: "确认应用软件配置", exact: true }).getByRole("button", { name: "确认批准并应用", exact: true }).click();
     const reviewResponse = await reviewed;
     expect(reviewResponse.status(), await reviewResponse.text()).toBe(200);
     expect(((await reviewResponse.json()) as { item: { status: string } }).item.status).toBe("approved");
     await signInBrowserAsRole(page, "software-user",
       `${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}&request=${requestId}`);
     await expect(detail).toContainText("已批准");
-    await expect(detail.getByLabel("固定源目标内容")).toHaveText(rawValue);
+    await expect(detail.getByRole("region", { name: "固定源修改片段" }).locator('[data-kind="add"] code')).toContainText(rawValue);
 
     const approvedRequestRow = await withPgClient(async (client) => {
       const result = await client.query<{ target_value: unknown; status: string }>(
