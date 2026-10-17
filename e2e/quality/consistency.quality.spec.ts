@@ -189,6 +189,16 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+        if (/^\/parameter-admin\/projects\/[^/]+\/(?:configuration|files|config-sets|structure|conflicts)$/.test(routePath)) {
+          const workbench = page.getByRole("region", { name: "项目配置工作台", exact: true });
+          await expect(workbench.getByRole("button", { name: "项目清单", exact: true })).toBeVisible();
+          const contentTabs = workbench.getByRole("tablist", { name: "项目配置内容", exact: true });
+          await expect(contentTabs.getByRole("tab")).toHaveCount(3);
+          for (const name of ["源码", "结构", "冲突"]) {
+            await expect(contentTabs.getByRole("tab", { name, exact: true })).toBeVisible();
+          }
+          await expect(page.getByRole("navigation", { name: "参数管理后台配置范围", exact: true })).toHaveCount(0);
+        }
         if (routePath === "/audit") {
           await test.step("audit kind filter inventory", async () => {
             const originalUrl = page.url();

@@ -1,8 +1,12 @@
+/// <reference lib="dom" />
+
+import { createRequire } from "node:module";
 import type { BrowserContext, Route } from "playwright/test";
 import { requireOverviewGeometry, requireRetiredNotice } from "../e2e/quality/consistency-assertions";
-import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
 import { assertXiaozePlacement, requireMeasuredCategories, requireCompactControlHeights, requireReviewInboxStructure, shouldRequireXiaozeHint, requireTypographyScale, requirePageGutter, requireWorkbenchPresentation, requireNavigatorWorkbenchGeometry, requireAdminListGeometry, requireRowActionVisibility, requireSettingsFormPresentation } from "../e2e/quality/consistency-assertions";
+
+const { JSDOM }: { JSDOM: new (markup: string) => { window: Window & typeof globalThis } } = createRequire(import.meta.url)("jsdom");
 
 describe("admin list template contract", () => {
   it("measures an outline header action without marking it as a filled primary action", () => {
@@ -222,8 +226,8 @@ describe("project configuration workbench coverage", () => {
   });
   const paths = ["/configuration", "/files", "/config-sets", "/structure", "/conflicts"]
     .map((suffix) => `/parameter-admin/projects/aurora${suffix}`);
-  it.each(paths)("requires shared config-set sections and content tabs on %s", (path) => {
-    expect(viewSwitchStyleExpectations[path]).toEqual(["section", "tabs"]);
+  it.each(paths)("requires project content tabs without redundant administration sections on %s", (path) => {
+    expect(viewSwitchStyleExpectations[path]).toEqual(["tabs"]);
   });
   it.each(paths)("requires template geometry on %s in every source mode", (path) => {
     for (const mode of ["working", "history", "candidate", "unified-diff", "side-by-side"]) {
@@ -606,7 +610,7 @@ describe("compact filter, sort and pagination height contract", () => {
     expect(() => requireCompactControlHeights({}, "/audit"))
       .toThrow("missing consistency measurements: filterControls");
   });
-  const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: null, height, compactControl });
+  const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: "button", height, compactControl });
 
   it("does not invent pagination for read-only identity evidence but still validates rendered controls", () => {
     expect(() => requireCompactControlHeights({}, "/parameter-admin/specs/identity-mapping", ["navigatorWorkbenches"]))

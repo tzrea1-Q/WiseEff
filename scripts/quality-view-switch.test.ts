@@ -67,7 +67,8 @@ describe("view-switch consistency", () => {
   });
   it.each([
     ...["/parameter-home"].map((path) => [path, "toggle"]),
-    ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions"]
+    ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions",
+      ...["configuration", "files", "config-sets", "structure", "conflicts"].map((view) => `/parameter-admin/projects/aurora/${view}`)]
       .map((path) => [path, "tabs"]),
     ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
       "/parameter-admin/specs/identity-mapping", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",

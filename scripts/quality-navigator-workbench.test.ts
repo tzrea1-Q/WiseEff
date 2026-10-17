@@ -10,6 +10,8 @@ const measurement = () => ({
   root: rect(280, 88, 1136, 700),
   navigator: rect(280, 168, 240, 600),
   task: rect(532, 168, 884, 600),
+  inspector: null,
+  inspectorOverlay: false,
   toolbar: rect(280, 88, 1136, 68),
   primaryAction: rect(1283, 108, 120, 36),
   noticeCount: 1,
@@ -18,10 +20,18 @@ const measurement = () => ({
   firstRowClip: rect(533, 210, 882, 40),
   viewport: { width: 1440, height: 900 },
   pageOverflow: 0,
-  contract: { navigatorWidth: 240, collapsedWidth: 40, gap: 12, toolbarPadding: 12 }
+  contract: { navigatorWidth: 240, collapsedWidth: 40, gap: 12, toolbarPadding: 12, inspectorWidth: 320 }
 });
 
 describe("navigator-workbench geometry", () => {
+  it.each(["configuration", "files", "config-sets", "structure", "conflicts"])(
+    "retains project workbench geometry and content tabs for %s", (view) => {
+      const path = `/parameter-admin/projects/aurora/${view}`;
+      expect(consistencyRoutes.find((route) => route.path === path)?.required)
+        .toEqual(expect.arrayContaining(["navigatorWorkbenches", "rowActions", "viewSwitches", "viewSwitchSignatures"]));
+      expect(viewSwitchStyleExpectations[path]).toEqual(["tabs"]);
+    }
+  );
   it.each([
     "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
     "/parameter-admin/modules?tab=queue", "/parameter-admin/modules?tab=registry"

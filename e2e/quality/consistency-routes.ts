@@ -15,7 +15,7 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/log-admin": ["tabs", "toggle"],
   "/log-admin?tab=domains": ["tabs"],
   "/log-admin?tab=quality": ["tabs"],
-  ...Object.fromEntries(projectConfigurationPaths.map((path) => [path, ["section", "tabs"] as const])),
+  ...Object.fromEntries(projectConfigurationPaths.map((path) => [path, ["tabs"] as const])),
   "/organization": ["section"],
   "/organization/members": ["section", "tabs"],
   "/parameter-home": ["toggle"],
@@ -40,7 +40,7 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/user-permissions": ["section", "tabs"]
 };
 export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
-const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges"> = {
+const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges" | "workbenchTables"> = {
   viewSwitches: viewSwitchStylePaths,
   viewSwitchSignatures: viewSwitchStylePaths,
   primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
