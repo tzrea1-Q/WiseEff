@@ -2185,7 +2185,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(within(nav).getByRole("button", { name: "我的提交" }));
     expect(new URLSearchParams(window.location.search).get("project")).toBe(project.id);
     expect(screen.getByRole("combobox", { name: "项目" })).toHaveAttribute("data-value", project.id);
-    fireEvent.click(within(nav).getByRole("button", { name: "参数修改" }));
+    fireEvent.click(within(nav).getByRole("button", { name: "项目参数" }));
     expect(new URLSearchParams(window.location.search).get("project")).toBe(project.id);
   });
 
