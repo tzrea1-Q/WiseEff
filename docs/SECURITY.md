@@ -43,8 +43,8 @@ Current frontend permissions include:
 - `parameter:review`
 - `admin:access`
 - `users:manage`
-- `platform:access` (platform console; `platform-admin` only)
-- `platform:schema-promote` (cross-org overlay promotion; `platform-admin` only)
+- `platform:access` (retained Platform Admin role metadata; the dedicated console is removed)
+- `platform:schema-promote` (retained legacy role metadata; promotion and history-query surfaces are retired)
 - `catalog:author` (create Catalog drafts / ChangeSets / Candidate preview; granted on Org Admin `admin`, not on `platform-admin` / Agent defaults)
 - `catalog:publish` (approve within policy or request execution of an authorized Candidate; granted on Org Admin `admin`; not on `platform-admin` / Agent defaults)
 - `catalog:review-high-risk` (independent high-risk Candidate approval; granted on Org Admin `admin`. Non-admin authors still cannot satisfy this with a second synthetic identity)

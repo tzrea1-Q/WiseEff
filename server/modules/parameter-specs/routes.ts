@@ -5,10 +5,6 @@ import type { AuthContext } from "../auth/types";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { catalogLegacyGoneResult, legacyRouteSuccessor, LEGACY_WRITE_GONE_MESSAGE } from "../parameter-catalog-api/legacy/gone";
 import { legacyWriteRouteManifest } from "../parameter-catalog-api/legacy/routes";
-import {
-  driverSchemaPromotionHistoryListResponseSchema,
-} from "./promotionHistory";
-import { listDriverSchemaPromotions } from "./driverSchemaOverlayRepository";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -74,29 +70,6 @@ export function registerParameterSpecRoutes(
     const result = await listSpecReviewTasks(db, auth, query);
     const window = await readSpecTaskWindow(db, auth, result.items);
     return { status: 200, headers: window.headers, body: { ...window.body, nextCursor: result.nextCursor } };
-  });
-
-  router.get("/api/v2/platform/driver-schema-promotion-history", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    if (!auth.user.isActive || !auth.permissions.includes("platform:schema-promote")) {
-      throw new ApiError("FORBIDDEN", "Platform schema promotion history permission is required.");
-    }
-    const promotions = await listDriverSchemaPromotions(db);
-    return {
-      status: 200,
-      body: driverSchemaPromotionHistoryListResponseSchema.parse({
-        items: promotions.map((row) => ({
-          id: row.id,
-          platformSchemaId: row.platform_schema_id,
-          sourceSchemaId: row.source_schema_id,
-          sourceOrganizationId: row.source_organization_id,
-          promotedByUserId: row.promoted_by_user_id,
-          promotedAt: new Date(row.promoted_at).toISOString(),
-          documentationSource: row.documentation_source,
-        })),
-      }),
-    };
   });
 
   for (const route of legacyWriteRouteManifest.filter((entry) => entry.id.startsWith("parameterSpecs."))) {

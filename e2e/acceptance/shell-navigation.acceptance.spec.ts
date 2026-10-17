@@ -41,7 +41,6 @@ const routes = [
   "/organization/members",
   "/feedback-admin",
   "/audit",
-  "/platform-console",
   "/parameter-admin/projects/footer-acceptance/configuration"
 ] as const;
 

@@ -290,10 +290,6 @@
       "legacy-catalog-sql-write": 3,
       "legacy-overlay-catalog-contract": 4
     },
-    "server/modules/parameter-specs/driverSchemaOverlayRepository.ts": {
-      "legacy-catalog-raw-read": 1,
-      "legacy-overlay-catalog-contract": 4
-    },
     "server/modules/parameter-specs/effectiveDefinition.integration.test.ts": {
       "legacy-catalog-raw-read": 7,
       "legacy-catalog-sql-write": 63,

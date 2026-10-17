@@ -12,8 +12,7 @@ export type ActionKey =
   | "knowledge.edit"
   | "knowledge.manage"
   | "admin.access"
-  | "users.manage"
-  | "platform.schema-promote";
+  | "users.manage";
 
 const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   home: "guest",
@@ -34,7 +33,6 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "feedback-admin": "admin",
   feedback: "guest",
   audit: "admin",
-  "platform-console": "platform-admin",
   knowledge: "guest",
   "knowledge-admin": "admin"
 };
@@ -50,8 +48,7 @@ const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
   "knowledge.edit": "hardware-user",
   "knowledge.manage": "admin",
   "admin.access": "admin",
-  "users.manage": "admin",
-  "platform.schema-promote": "platform-admin"
+  "users.manage": "admin"
 };
 
 const roleLabels: Record<PlatformRoleId, string> = {

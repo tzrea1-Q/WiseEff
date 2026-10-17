@@ -62,6 +62,7 @@ describe("browser impact selection", () => {
     expect(home.qualityRoutes).toEqual(["/parameter-home"]);
     expect(home.acceptanceSpecs).toEqual([
       "e2e/acceptance/canonical-dashboard.acceptance.spec.ts",
+      "e2e/acceptance/issue897-canonical-modules.acceptance.spec.ts",
       "e2e/acceptance/parameter-admin-projects.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog.acceptance.spec.ts",

@@ -1,5 +1,4 @@
 import type { ZodTypeAny } from "zod";
-import { driverSchemaPromotionHistoryListResponseSchema } from "../../parameter-specs/promotionHistory";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -63,7 +62,6 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
-  DriverSchemaPromotionHistoryListResponse: driverSchemaPromotionHistoryListResponseSchema,
   ProjectListResponse: projectListResponseSchema,
   ProjectAdminListResponse: projectAdminListResponseSchema,
   ProjectAdminDetailResponse: projectAdminDetailResponseSchema,
@@ -118,7 +116,6 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
 };
 
 export const dtoSchemaCoveredRouteIds = [
-  "parameterSpecs.listPromotionHistory",
   "parameters.listProjects",
   "parameters.admin.listProjects",
   "parameters.admin.getProject",

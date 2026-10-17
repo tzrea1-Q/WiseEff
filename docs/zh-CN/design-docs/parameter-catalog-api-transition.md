@@ -612,15 +612,15 @@ Issue #678 是全部 R0-R10 生产 disposition 的唯一 owner。与 ReviewEvide
 
 parameter-modules 导航适配器在 registry envelope 中标记 `navigationOnly: true`。分类节点保留导航 ID 与 canonical 子树计数，但 `sourceKey`、`attributionSubjectId` 为 null，`mappings` 为空；这些字段不声明 Catalog subject 身份。历史驱动登记的 provenance 仍通过有界 driver-registry 读取只读展示。共享业务分类 CRUD 保持可用，但 v1 创建、编辑、移动、删除历史 Driver/NodeType 结构，以及相关重分类，均返回同一 410 退役合同，并写入可信拒绝审计。规范上下文中的历史 Driver/NodeType 详情只读，登记与归属变更转到对应规范 owner。项目 candidate/reload 重算仍由内部项目 workflow 负责，不经过公开模块重算路由。
 
-已退役的组织覆盖解析与 Platform 晋升界面链接至 Catalog 页面，通过定义提案与发布流程变更覆盖。`GET /api/v2/platform/driver-schema-promotion-history` 是经 Platform 授权的历史晋升记录只读投影，不是候选列表或有效 schema 读取。原有 legacy 标识仅保留为证据，不提供晋升、撤销或恢复操作。覆盖统计与导入不会将这些历史覆盖合并至运行时 schema 注册表。
+平台控制台及其专属历史晋升查询已清除。`GET /api/v2/platform/driver-schema-promotion-history` 不再注册，返回 404；对应客户端、DTO 和 OpenAPI 操作已删除。数据库历史晋升记录及原始 legacy 标识继续作为证据保留。旧 overlay/晋升/撤销接口维持 410 退役合同，覆盖统计与导入不会将历史覆盖合并至运行时 schema 注册表。
 
-被前置路由遮蔽的 Spec/overlay 编写、物化、晋升与 cutover 实现已删除（#1084），不再作为退役路由后的备选 owner。前置退休 handler、可信拒绝审计、有界读取和晋升来源记录保持不变。仍有保留流程或运维工具调用的共享 registry、matcher、ingest 与值形状推断 helper 继续保留；删除 writer 不代表退休历史存储或迁移 fixture。
+被前置路由遮蔽的 Spec/overlay 编写、物化、晋升与 cutover 实现已删除（#1084），不再作为退役路由后的备选 owner。前置退休 handler、可信拒绝审计、有界读取和数据库晋升来源记录保留，专属历史晋升查询已删除。仍有保留流程或运维工具调用的共享 registry、matcher、ingest 与值形状推断 helper 继续保留；删除 writer 不代表退休历史存储或迁移 fixture。
 
 Legacy read response 包含：
 
 spec 集合的精确 `id`/`specId` 筛选仍返回 `{ items, historicalItems }`，只有 `/:specId` 返回 `item` envelope。adapter 工作期间 Catalog 推进到新 release 时，返回 `409 release-drift`，并在 `X-WiseEff-Catalog-Release` 中标明新的当前 release，而不是已过期的捕获值。
 
-已删除仅供退役成功路径使用的请求、响应及 body schema 闭包（#1085）。OpenAPI 保留所有公开退役操作及其 `CatalogLegacyGoneResponse` 和必需的 successor `Link`，不再要求成功路径的请求 body，也不再声明成功响应。退役发生在 body 解析之前；发送旧写入 payload 不会重新启用 writer。有界读取 DTO、晋升历史、节点启用结构 schema、授权与可信拒绝审计均保持不变。
+已删除仅供退役成功路径使用的请求、响应及 body schema 闭包（#1085）。OpenAPI 保留所有公开退役操作及其 `CatalogLegacyGoneResponse` 和必需的 successor `Link`，不再要求成功路径的请求 body，也不再声明成功响应。退役发生在 body 解析之前；发送旧写入 payload 不会重新启用 writer。其他有界读取 DTO、节点启用结构 schema、授权与可信拒绝审计保持不变；专属历史晋升 DTO/查询已删除。
 
 effective spec 列表与精确详情共用前置 read-window adapter；被遮蔽的旧列表与详情 callback 已删除。它只枚举 owner scope 内的 typed legacy identity 与 mapping head，不查询 `parameter_specs` 或 `parameter_spec_versions`。可操作的 `items` 包含精确 Definition mapping、规范 Definition 与 registration projection，以及独立映射的旧版本 ID 和不可变规范 Revision 内容组成的 `revisions`。版本映射不得以当前 Revision 替代其固定 target。非操作性映射，以及 `archived`、`ambiguous`、`not-found` disposition，单独放入只读 `historicalItems`；未映射的精确详情返回 404，歧义详情返回 409，已归档详情返回 410。不得通过规范 ID、property 或 display name 猜测旧 ID。governance、raw、migration 查询模式在身份认证和历史读取前返回退役合同。effective 读取保留有界 header、权限检查和 Catalog Release drift 拒绝，认证失败也带有有界 header。无调用方的 organization driver-schema client/port 方法已删除；有意保留的 410 合同覆盖不变。
 

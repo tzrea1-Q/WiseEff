@@ -19,7 +19,7 @@ WiseEff 把工程参数变更、设备调试、日志分析和知识积累放在
 | 日志 | 上传日志并跟踪分析任务，让 Agent 结合领域上下文分析，核对结果证据并生成知识草稿。模型不可用时，不能报告为完整 Agent 分析成功。 | 智能分析（`/logs`）、看板（`/log-dashboard`）、日志后台（`/log-admin`）；[分析运维手册](runbooks/log-analysis-llm.md)。 |
 | 知识 | 在组织内创建和发布知识条目，保留不可变修订，从文件中提取正文，并检查索引健康。检索只返回已发布内容。 | 知识库（`/knowledge`）、知识后台（`/knowledge-admin`）；[知识库设计](design-docs/2026-08-12-knowledge-base-design.md)。 |
 | 小泽 | 在 API 模式下结合当前上下文调用读取工具、规划任务并引用来源，提出需要人工批准的操作建议。mock 模式不提供 Agent 界面。 | 各工作流共用的助手，没有独立业务页面；[Agent 架构](root/ARCHITECTURE.md)与 [Agent provider 手册](runbooks/agent-provider.md)。 |
-| 治理 | 管理组织成员和角色，审批注册与账号激活，查询审计，使用平台控制和就绪检查。 | 组织管理（`/organization`）、审计中心（`/audit`）、平台控制台（`/platform-console`）；[组织管理设计](design-docs/2026-08-19-organization-administration-design.md)与[安全文档](SECURITY.md)。 |
+| 治理 | 管理组织成员和角色，审批注册与账号激活，查询审计，检查运行就绪状态。 | 组织管理（`/organization`）、审计中心（`/audit`）；[组织管理设计](design-docs/2026-08-19-organization-administration-design.md)与[安全文档](SECURITY.md)。 |
 
 [操作覆盖矩阵](developer/user-operation-coverage-matrix.md)列出了各工作流的验收用例和证据要求。判断本次验收是否通过，还需查看实际运行结果。
 

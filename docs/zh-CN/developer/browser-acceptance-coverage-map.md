@@ -115,8 +115,9 @@
 - `MOD-ATTR-TREE-001`：树操作按 kind 分级；实例不可删；重命名自动模块即纳入（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-IMPORTANCE-001`：业务分类重要性被驱动组/实例继承并驱动工作台筛选（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-CREATE-KIND-001`：归属树按类型新建空业务/驱动组/实例/逻辑节点（父级规则、驱动组必填 compatible、空 curated 未实测）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PLAT-ROLE-001`～`003`：平台超级管理员控制台与跨租户访问边界（`e2e/acceptance/permissions-matrix.acceptance.spec.ts` 自动化）。
-- `DRV-PROMOTE-001`～`005`：overlay 晋升/遮蔽/拒绝编写与控制台晋升撤销（手工/补充证据，见 `2026-08-01-governance-platform-closeout`）。
+- `PLAT-ROLE-001`～`003`：已清除的平台控制台入口、平台超级管理员授予和跨租户访问边界（`e2e/acceptance/permissions-matrix.acceptance.spec.ts` 自动化）。
+- `DRV-PROMOTE-001`～`004`：旧 overlay 晋升/遮蔽历史要求（历史补充证据，见 `2026-08-01-governance-platform-closeout`）。
+- `DRV-PROMOTE-005`：控制台清除后不发起历史晋升查询，已删除接口返回 404（`issue897-canonical-modules.acceptance.spec.ts` 自动化）。
 - `SPEC-DEPRECATE-001` / `SPEC-RESTORE-001` / `SPEC-EDIT-DIFF-001`：定义软废弃/恢复/活性编辑 diff（已登记；Playwright 待跟进）。
 - `IDMAP-NEWID-001` / `IDMAP-HISTORY-001` / `IDMAP-REOPEN-001`：身份映射新身份/历史/重开（已登记）。
 - `MOD-QUEUE-RESTORE-001` / `OVERLAY-RETIRE-001` / `MOD-ATTR-SORT-001`：未归类恢复、overlay 停用影响、模块排序（已登记）。
