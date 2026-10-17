@@ -63,7 +63,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await queue.getByRole("button", { name: "处理审核" }).first().click();
     const dialog = page.getByRole("dialog", { name: "处理审核" });
     await expect(dialog).toBeVisible();
-    await dialog.getByText("标为范围外").click();
+    await dialog.getByRole("radio", { name: "标为范围外", exact: true }).check();
     const reason = dialog.getByRole("textbox", { name: "原因" });
     await reason.fill("op08 conflict keep this reason");
     let resolveRequests = 0;

@@ -59,7 +59,7 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await resolveButton.click();
     const dialog = page.getByRole("dialog", { name: "处理审核" });
     await expect(dialog).toBeVisible();
-    await dialog.getByText("标为范围外").click();
+    await dialog.getByRole("radio", { name: "标为范围外", exact: true }).check();
     await dialog.getByRole("textbox", { name: "原因" }).fill("op08 mark out of scope");
     await dialog.getByRole("button", { name: "继续确认" }).click();
     await expect(page.getByRole("dialog", { name: "确认处理审核" })).toContainText("op08 mark out of scope");

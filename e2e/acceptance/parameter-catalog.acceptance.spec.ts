@@ -1,5 +1,5 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, type Page } from "playwright/test";
+import { expect, type Page, type Route } from "playwright/test";
 import { catalogAppUrl, test } from "./helpers/catalogFixtureRuntime";
 
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -345,12 +345,56 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"])).toHaveCount(0);
 
     await openCatalogAt(page, "org-admin");
+    const chargerDefinitions = page.waitForResponse((response) => response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `/api/v2/catalog/subjects/${fixture.chargerSubjectId}/definitions`);
     await selectCatalogSubject(page, "charger");
-    await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"]).first()).toBeVisible();
+    const chargerResponse = await chargerDefinitions;
+    expect(chargerResponse.status()).toBe(200);
+    expect(await chargerResponse.json()).toMatchObject({ items: [], totalCount: 0,
+      catalogReleaseId: fixture.chain.pinF.id, emptyReason: "no-filter-match" });
+    await expect(catalogPage(page)).toHaveAttribute("data-empty-reason", "no-filter-match");
+    await expect(page.getByText(catalogUiCopy.emptyMessages["no-filter-match"]).first()).toBeVisible();
+
+    await selectCatalogSubject(page, "charger");
+    await page.getByRole("checkbox", { name: "包含退役主体" }).check();
+    await waitForCatalogState(page, "ready");
+    await expect(page.getByRole("table", { name: "参数定义列表" })).toBeVisible();
+    // UI-state simulation: this published fixture has definitions. Exercise a
+    // genuinely unfiltered empty collection without relabelling a subject filter.
+    const emptyCollectionRequests: string[] = [];
+    const emptyCollection = async (route: Route) => {
+      emptyCollectionRequests.push(route.request().url());
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        items: [], totalCount: 0, hasMore: false, nextCursor: null,
+        catalogReleaseId: fixture.chain.pinF.id, emptyReason: "no-definitions"
+      }) });
+    };
+    const definitionsRoute = "**/api/v2/catalog/definitions?*";
+    await page.route(definitionsRoute, emptyCollection);
+    try {
+      await page.reload();
+      await waitForCatalogState(page, "empty");
+      await expect(catalogPage(page)).toHaveAttribute("data-empty-reason", "no-definitions");
+      await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
+      await expect(catalogPage(page)).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
+      await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"]).first()).toBeVisible();
+      expect(emptyCollectionRequests.length).toBeGreaterThan(0);
+      for (const url of emptyCollectionRequests) {
+        expect([...new URL(url).searchParams.keys()].sort()).toEqual(["catalogReleaseId", "limit"]);
+      }
+    } finally {
+      await page.unroute(definitionsRoute, emptyCollection);
+    }
+    await page.reload();
+    await waitForCatalogState(page, "ready");
+    await expect(page.getByRole("table", { name: "参数定义列表" })).toBeVisible();
 
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("zzzz-no-such-definition");
     await expect(page.getByRole("button", { name: "搜索", exact: true })).toHaveCount(0);
+    await expect(catalogPage(page)).toHaveAttribute("data-empty-reason", "no-filter-match");
+    await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-filter-match"]).first()).toBeVisible();
+    await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"])).toHaveCount(0);
     await catalogScreenshot(page, testInfo, "pcat-ui-08-filter");
   });
 
