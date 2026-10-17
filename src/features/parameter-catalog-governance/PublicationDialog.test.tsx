@@ -142,6 +142,7 @@ describe("PublicationDialog", () => {
     } });
     const user = userEvent.setup();
     await user.click(await screen.findByLabelText("已发布主体"));
+    expect(await screen.findByRole("listbox")).toHaveClass("select-menu--modal");
     expect(screen.queryByRole("option", { name: "退役主体" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "退役登记主体" })).not.toBeInTheDocument();
     await user.keyboard("{Escape}");
