@@ -35,7 +35,7 @@ describe("DTS power seed catalog", () => {
     const resolved = resolveDts(baseSource);
     const resolvedPropertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
 
-    expect(resolvedPropertyCount).toBe(200);
+    expect(resolvedPropertyCount).toBe(219);
     expect(seed.parameterLibrary).toHaveLength(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.id)).size).toBe(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.sourceNodePath)).size).toBe(
@@ -126,9 +126,9 @@ describe("DTS power seed catalog", () => {
     const nebula = seed.projectFiles.find((file) => file.projectId === "nebula")!;
     const atlas = seed.projectFiles.find((file) => file.projectId === "atlas")!;
 
-    expect(aurora.source).toContain("cccv_10_20 = <4200 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>;");
-    expect(nebula.source).toContain("cccv_10_20 = <4189 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>;");
-    expect(atlas.source).toContain("cccv_10_20 = <4217 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>;");
+    expect(aurora.source).toContain("cccv_10_20 = <4200 10790 0\n\t\t\t\t4250 8092 0\n\t\t\t\t4565 2697 0>;");
+    expect(nebula.source).toContain("cccv_10_20 = <4189 10790 0\n\t\t\t\t4250 8092 0\n\t\t\t\t4565 2697 0>;");
+    expect(atlas.source).toContain("cccv_10_20 = <4217 10790 0\n\t\t\t\t4250 8092 0\n\t\t\t\t4565 2697 0>;");
     expect(nebula.source).not.toContain("cccv_10_20 = <4189 10790 0 4250 8092 0 4565 2697 0>;");
     expect(atlas.source).not.toContain("cccv_10_20 = <4217 10790 0 4250 8092 0 4565 2697 0>;");
   });
@@ -203,6 +203,6 @@ describe("DTS power seed catalog", () => {
         expect.objectContaining({ matchKind: "node-type", matchValue: "board", moduleName: "board" })
       ])
     );
-    expect(mappings.some((mapping) => mapping.matchKind === "instance")).toBe(false);
+    expect(mappings.map((mapping) => mapping.matchKind)).not.toContain("instance");
   });
 });

@@ -396,6 +396,7 @@ export async function listSourceBindingCandidates(
       parameterSpecId: row.definitionId,
       parameterSpecVersionId: row.effectiveRevisionId,
       propertyKey: row.propertyKey,
+      displayName: row.displayName ?? undefined,
       moduleId: row.moduleId ?? "",
       risk: normalizeRisk(row.risk),
       effectiveValue: view.typedValue,

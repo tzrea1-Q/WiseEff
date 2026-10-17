@@ -968,11 +968,12 @@ export function ParametersPage({
   ) : null;
 
   return (
-    <WorkbenchLayout title="项目参数用户工作台">
+    <WorkbenchLayout title="项目参数">
       <div className="parameters-page-layout">
         {isApiMode ? (
           <ApiProjectTopologyWorkspace
             projectId={resolvedProjectId}
+            projectName={activeProject?.name}
             notice={workbenchNotice}
             requestedBindingId={contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}
             canEdit={effectiveCanEdit}

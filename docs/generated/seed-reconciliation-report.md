@@ -36,7 +36,7 @@ Binding counts are PLANNED counts derived from the manifest, not achieved runtim
 | compatibilityCurrent | merge | 2 |
 | compatibilityCurrent | preserve | 2 |
 | compatibilityDeferred | defer | 8 |
-| boardOccurrences | exclude | 240 |
+| boardOccurrences | exclude | 297 |
 | boardOccurrences | merge | 21 |
 | boardOccurrences | preserve | 339 |
 
@@ -69,9 +69,9 @@ create no seeded binding or value this round.
 
 | Board | Nodes | Raw property occurrences | Business | Structural | Merge occurrences |
 | --- | --- | --- | --- | --- | --- |
-| aurora | 50 | 200 | 120 | 80 | 7 |
-| nebula | 50 | 200 | 120 | 80 | 7 |
-| atlas | 50 | 200 | 120 | 80 | 7 |
+| aurora | 58 | 219 | 120 | 99 | 7 |
+| nebula | 58 | 219 | 120 | 99 | 7 |
+| atlas | 58 | 219 | 120 | 99 | 7 |
 
 Business vs structural is decided by `isStructuralPropertyKey` (src/domain/parameter-topology/parameterSurface.ts).
 Each board records 18 phandle references.
@@ -90,12 +90,12 @@ from the source and the importer is not modified by this deliverable.
 
 ## Recon discrepancy: dangling overlay targets
 
-The '24 dangling overlay targets' figure is NOT reproducible in this worktree. This manifest records the measured value: 29 distinct unresolved &label overlay targets and 37 missing &name references per board. The number 24 matches the stale '24 repeated property keys' prose in docs/design-docs/2026-07-16-parameter-topology-schema-management-design.md, now 26 in committed code assertions; it is not a dangling-label count.
+The historical '24 dangling overlay targets' figure is NOT reproducible in this worktree. The self-contained committed demo boards currently have 0 distinct unresolved overlay targets and 0 missing label references per board. Repeated property keys are a separate topology measurement, not a dangling-label count.
 
 | Measured per board | Value |
 | --- | --- |
-| Distinct unresolved &label overlay targets | 29 |
-| Missing &name references | 37 |
+| Distinct unresolved &label overlay targets | 0 |
+| Missing &name references | 0 |
 
 ## Regenerate and verify
 
@@ -123,10 +123,10 @@ npx vitest run --config vitest.scripts.config.ts scripts/seed-reconciliation-man
 | vendorRawEqualsCanonicalPlusStructural | true |
 | vendorInventoryItemsRecorded | 137 |
 | compatibilityItemsRecorded | 12 |
-| boardOccurrencesRecorded | 600 |
+| boardOccurrencesRecorded | 657 |
 | boardBusinessOccurrencesRecorded | 360 |
-| boardStructuralOccurrencesRecorded | 240 |
-| boardOccurrencesPerProject | 200 |
+| boardStructuralOccurrencesRecorded | 297 |
+| boardOccurrencesPerProject | 219 |
 | everyInputRecordedExactlyOnce | true |
 | everyBoardOccurrenceRecordedExactlyOnce | true |
 | everyBoardBusinessOccurrenceRecordedExactlyOnce | true |

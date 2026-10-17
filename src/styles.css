@@ -193,7 +193,7 @@
   --bridge-guide-width: 30rem;
   --dts-workbench-table-min-width: 680px;
   --dts-workbench-scrollbar-width: var(--space-3);
-  --dts-workbench-table-actions-width: calc(3 * var(--space-8) + 2 * var(--space-1));
+  --dts-workbench-table-actions-width: var(--space-10);
   --dts-workbench-table-columns-without-selection: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width);
   --dts-workbench-table-columns: calc(var(--space-8) + var(--space-1)) var(--dts-workbench-table-columns-without-selection);
   --dts-workbench-table-columns-without-description: minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1.15fr) calc(var(--space-16) + var(--space-1)) var(--dts-workbench-table-actions-width);

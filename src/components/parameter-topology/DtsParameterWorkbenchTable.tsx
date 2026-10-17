@@ -4,16 +4,14 @@ import {
   ArrowUp,
   ArrowUpDown,
   CircleX,
-  Eye,
-  Pencil,
-  FlaskConical,
+  ArrowUpRight,
   TriangleAlert
 } from "lucide-react";
 
 import { ColumnFilter } from "@/components/ColumnFilter";
 import type { ModuleImportance } from "@/domain/parameter-topology/moduleRegistry";
 import type { TreeFilterNode } from "@/domain/tree-filter/treeFilter";
-import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
+import { formatDtsValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 
 export type DtsWorkbenchSortKey = "propertyKey" | "importance";
@@ -103,7 +101,7 @@ function ImportanceCell({ row }: { row: DtsParameterWorkbenchRow }) {
 }
 
 function bindingActionContext(row: DtsParameterWorkbenchRow): string {
-  const context = [row.moduleName, row.instanceName, row.driverModule]
+  const context = [...new Set([row.moduleName, row.instanceName, row.driverModule])]
     .filter((value): value is string => Boolean(value));
   return context.length > 0
     ? `${row.propertyKey}（${context.join(" · ")}）`
@@ -170,10 +168,7 @@ export function DtsParameterWorkbenchTable({
   selectedBindingId,
   draftBindingIds,
   selectedBindingIds,
-  canEdit,
   onSelectBinding,
-  onEditBinding,
-  onStartDtsReload,
   onSelectedBindingIdsChange
 }: DtsParameterWorkbenchTableProps) {
   const [sort, setSort] = useState<DtsWorkbenchSort | null>({
@@ -342,7 +337,7 @@ export function DtsParameterWorkbenchTable({
           const isSelected = selectedBindingId === row.bindingId;
           const isChecked = selectedBindingIds?.has(row.bindingId) ?? false;
           const actionContext = bindingActionContext(row);
-          const displayRaw = formatDtsRawValueForUi(row.rawValue) || row.rawValue;
+          const displayRaw = formatDtsValueForUi(row.rawValue, row.effectiveValue);
           const displayName = row.currentDisplayName?.trim() || row.displayName?.trim();
           const hasDisplayName = Boolean(displayName && displayName !== row.propertyKey);
           return (
@@ -413,8 +408,8 @@ export function DtsParameterWorkbenchTable({
               </span> : null}
               <span role="cell" data-label="所属模块">
                 <span className="dts-parameter-workbench-table__module">
-                  <strong>{row.moduleName}</strong>
-                  {!row.moduleMapped ? <small>未映射</small> : null}
+                  <strong title={row.modulePath.join(" / ")}>{row.moduleName}</strong>
+                  <small className="dts-parameter-workbench-table__instance" title={row.sourceNodePath || row.topologyPath || row.instanceName || undefined}>{row.sourceNodePath || row.topologyPath || row.instanceName}</small>
                 </span>
               </span>
               <span role="cell" data-label="器件 / 驱动" className="dts-parameter-workbench-table__driver-col">
@@ -434,37 +429,12 @@ export function DtsParameterWorkbenchTable({
                 <button
                   type="button"
                   className="button subtle dts-parameter-workbench-table__icon-action"
-                  aria-label={`查看 ${actionContext}`}
-                  title="查看"
+                  aria-label={`参数详情 ${actionContext}`}
+                  title={isDraft ? "查看并继续编辑草稿" : "参数详情"}
                   onClick={() => onSelectBinding(row.bindingId)}
                 >
-                  <Eye size={16} strokeWidth={1.9} aria-hidden="true" />
+                  <ArrowUpRight size={16} strokeWidth={1.9} aria-hidden="true" />
                 </button>
-                {onStartDtsReload ? (
-                  <button
-                    type="button"
-                    className="button subtle dts-parameter-workbench-table__icon-action"
-                    aria-label={`带入 DTS 调试 ${actionContext}`}
-                    title="带入 DTS 调试"
-                    onClick={() => onStartDtsReload(row.bindingId)}
-                  >
-                    <FlaskConical size={16} strokeWidth={1.9} aria-hidden="true" />
-                  </button>
-                ) : null}
-                {canEdit && onEditBinding ? (
-                  <button
-                    type="button"
-                    className="button subtle dts-parameter-workbench-table__icon-action"
-                    aria-label={`${isDraft ? "继续编辑" : "编辑"} ${actionContext}`}
-                    title={isDraft ? "继续编辑" : "编辑"}
-                    onClick={() => {
-                      onSelectBinding(row.bindingId);
-                      onEditBinding(row.bindingId);
-                    }}
-                  >
-                    <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
-                  </button>
-                ) : null}
               </span>
             </div>
           );

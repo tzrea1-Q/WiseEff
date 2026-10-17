@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { buildDtsPowerSeed } from "../../../scripts/dts-power-seed";
 import { seedM1DtsFiles } from "../../../scripts/seed-m1-parameters";
 import type { ObjectStore } from "../../modules/logs/objectStore";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import type { Database, QueryResult } from "../../shared/database/client";
 
 const root = path.dirname(path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))));
 const baseSource = await readFile(path.join(root, "src/config/dts-seed/aurora-board.dts"), "utf8");
@@ -15,7 +15,8 @@ const baseSource = await readFile(path.join(root, "src/config/dts-seed/aurora-bo
 function createHarness() {
   const queries: Array<{ text: string; values: unknown[] }> = [];
   const puts: Array<{ organizationId: string; fileName: string; bytes: Buffer }> = [];
-  const tx: Queryable = {
+  const tx: Database = {
+    transaction: async (fn) => fn(tx),
     async query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
       queries.push({ text, values });
       if (text.includes("insert into dts_config_set")) {
@@ -75,8 +76,8 @@ describe("seedM1DtsFiles", () => {
     expect(queries.filter((call) => call.text.includes("insert into dts_config_set"))).toHaveLength(3);
     expect(queries.filter((call) => call.text.includes("insert into project_parameter_files"))).toHaveLength(3);
     expect(queries.filter((call) => call.text.includes("insert into project_parameter_file_versions"))).toHaveLength(3);
-    expect(queries.filter((call) => call.text.includes("insert into dts_nodes"))).toHaveLength(150);
-    expect(queries.filter((call) => call.text.includes("insert into dts_properties"))).toHaveLength(600);
+    expect(queries.filter((call) => call.text.includes("insert into dts_nodes"))).toHaveLength(174);
+    expect(queries.filter((call) => call.text.includes("insert into dts_properties"))).toHaveLength(657);
     expect(queries.filter((call) => call.text.includes("insert into dts_phandle_refs"))).toHaveLength(54);
     expect(queries.filter((call) => call.text.includes("insert into dts_release_baseline ("))).toHaveLength(3);
     expect(queries.filter((call) => call.text.includes("insert into dts_release_baseline_members"))).toHaveLength(3);

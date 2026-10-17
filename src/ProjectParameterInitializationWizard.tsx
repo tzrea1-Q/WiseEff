@@ -1,6 +1,6 @@
 import { SelectControl } from "@/components/common/SelectControl";
 import { Eye, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import type { AppAction } from "@/application/state/appState";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
@@ -17,6 +17,9 @@ import { getInitializationScopeParameters, resolveInitializationConfig } from ".
 import type { SemanticInitializationSnapshotItem } from "@/domain/parameters/initializationTypes";
 import type { ProjectParameterInitializationSnapshotItem, RiskLevel } from "./domain/parameters/types";
 import type { PrototypeState } from "@/domain/prototype/types";
+import type { ParameterBindingValue } from "@/domain/parameter-topology/types";
+import { formatDtsValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
+import "./project-parameter-initialization.css";
 
 type Props = {
   state: PrototypeState;
@@ -81,6 +84,9 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
   const [notes, setNotes] = useState("");
   const [startFromEmpty, setStartFromEmpty] = useState(false);
   const [sourceProjectSearchQuery, setSourceProjectSearchQuery] = useState("");
+  const [parameterSearchQuery, setParameterSearchQuery] = useState("");
+  const detailRef = useRef<HTMLElement>(null);
+  const detailTriggerRef = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState("");
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [canonicalSnapshots, setCanonicalSnapshots] = useState<SemanticInitializationSnapshotItem[]>([]);
@@ -148,7 +154,9 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
     const selectedModuleSet = new Set(selectedModules);
     const selectedRiskSet = new Set<RiskLevel>(selectedRisks);
 
-    return scopePool.filter((candidate) => {
+    const searched = filterItems(scopePool, parameterSearchQuery, { fields: [{ name: "parameter", weight: 1,
+      getValues: (candidate) => [getCandidateDisplayName(candidate), getCandidatePropertyKey(candidate), getCandidateModuleLabel(candidate), formatCandidateSource(candidate), getCandidateRecommendedValue(candidate)] }] });
+    return searched.filter((candidate) => {
       const matchesModule = selectedModuleSet.size === 0 || selectedModuleSet.has(candidate.module);
       const candidateRisk = getCandidateRisk(candidate);
       const matchesRisk = selectedRiskSet.size === 0 || (candidateRisk !== null && selectedRiskSet.has(candidateRisk));
@@ -159,7 +167,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
 
       return matchesModule && matchesRisk && matchesColumnFilters;
     });
-  }, [scopePool, columnFilters, parameterNameById, projectNameById, selectedModules, selectedRisks, apiSnapshotByBindingId]);
+  }, [scopePool, parameterSearchQuery, columnFilters, parameterNameById, projectNameById, selectedModules, selectedRisks, apiSnapshotByBindingId, moduleNameById]);
   const availableScopeParameterIds = useMemo(() => new Set(scopePool.map((candidate) => candidate.parameterId)), [scopePool]);
   const visibleSelectedParameterIds = selectedParameterIds.filter((parameterId) =>
     candidates.some((candidate) => candidate.parameterId === parameterId)
@@ -178,6 +186,8 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
     ? detailParameter.values[detailCandidate.sourceProjectId]
     : undefined;
   const detailCurrentValue = detailSourceValue?.currentValue ?? detailSnapshot?.rawValue;
+
+  useEffect(() => { if (detailParameterId && currentStepIndex === 2) detailRef.current?.focus(); }, [detailParameterId, currentStepIndex]);
 
   function toggleStartFromEmpty() {
     if (previewingCanonicalSnapshots || submittingApiInitialization) {
@@ -634,9 +644,21 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
   }
 
   function getCandidateDisplayName(candidate: WizardCandidate) {
-    return apiSnapshotByBindingId.get(candidate.parameterId)?.propertyKey
-      ?? parameterNameById.get(candidate.parameterId)
-      ?? candidate.parameterId;
+    const snapshot = apiSnapshotByBindingId.get(candidate.parameterId);
+    return snapshot?.displayName?.trim() || (parameterNameById.get(candidate.parameterId)
+      ?? snapshot?.propertyKey
+      ?? candidate.parameterId);
+  }
+
+  function getCandidatePropertyKey(candidate: WizardCandidate) {
+    return apiSnapshotByBindingId.get(candidate.parameterId)?.propertyKey ?? "";
+  }
+
+  function getCandidateRecommendedValue(candidate: WizardCandidate) {
+    if (candidate.needsRecommendedValueConfirmation) return "需确认";
+    const snapshot = apiSnapshotByBindingId.get(candidate.parameterId);
+    if (snapshot?.sourceFormat === "dts") return formatDtsValueForUi(snapshot.rawValue, snapshot.effectiveValue as ParameterBindingValue | null);
+    return candidate.recommendedValue || "未知";
   }
 
   function getAlternativeSourceNotice(candidate: WizardCandidate) {
@@ -660,7 +682,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
       return getCandidateRisk(candidate) ?? "";
     }
     if (key === "recommendedValue") {
-      return candidate.needsRecommendedValueConfirmation ? "需确认" : candidate.recommendedValue;
+      return getCandidateRecommendedValue(candidate);
     }
     return formatCandidateSource(candidate);
   }
@@ -730,7 +752,9 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
   }
 
   function renderParameterStep() {
-    const emptyCandidateMessage = isApiMode
+    const emptyCandidateMessage = scopePool.length > 0
+      ? "没有匹配的参数，请调整搜索或清除筛选。"
+      : isApiMode
       ? "当前来源没有可用的来源参数。"
       : initializationConfig.parameterLibrary.length === 0
         ? "参数库尚未加载或当前为空，请稍后重试或联系管理员。"
@@ -742,21 +766,21 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
         : isEmptyInitialization
           ? `${scopePool.length} 个参数库条目可选，已选 ${selectedAvailableParameterIds.length} 个。`
           : `${scopePool.length} 个参数库条目可选，已选 ${selectedAvailableParameterIds.length} 个（来源继承 ${selectedFromSourceCount}，参数库 ${selectedFromLibraryCount}）。`;
-    const detailName = detailParameter?.name ?? detailSnapshot?.propertyKey ?? detailCandidate?.parameterId ?? "参数";
+    const detailName = detailCandidate ? getCandidateDisplayName(detailCandidate) : "参数";
     const detailDescription = detailParameter?.description ?? "来源参数绑定";
     const detailUnit = detailParameter?.unit ?? "";
-    const detailRecommendedValue = detailCandidate?.needsRecommendedValueConfirmation
-      ? "需确认"
-      : `${detailCandidate?.recommendedValue ?? "-"} ${detailUnit}`.trim();
+    const detailRecommendedValue = detailCandidate ? `${getCandidateRecommendedValue(detailCandidate)} ${detailUnit}`.trim() : "未知";
     const detailCurrentValueText = detailCurrentValue === undefined
       ? "-"
+      : detailSnapshot?.sourceFormat === "dts"
+        ? formatDtsValueForUi(detailCurrentValue, detailSnapshot.effectiveValue as ParameterBindingValue | null)
       : `${detailCurrentValue} ${detailUnit}`.trim();
-    const detailRange = detailParameter ? `${detailParameter.range} ${detailUnit}`.trim() : "-";
+    const detailRange = detailParameter?.range?.trim() ? `${detailParameter.range} ${detailUnit}`.trim() : null;
     const detailFormat = detailParameter?.configFormat || detailSnapshot?.sourceFormat?.toUpperCase() || "-";
     const detailAlternativeSourceNotice = detailCandidate ? getAlternativeSourceNotice(detailCandidate) : null;
 
     return (
-      <section className="project-init-parameter-step" aria-label="参数范围">
+      <section className={`project-init-parameter-step${detailCandidate ? " project-init-parameter-step--with-detail" : ""}`} aria-label="参数范围">
         <div className="project-init-scope-head">
           <div className="project-init-step-copy project-init-step-copy--scope">
             <span className="eyebrow">第 3 步</span>
@@ -772,6 +796,13 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
             ) : null}
           </div>
         </div>
+        <div className="project-init-scope-toolbar">
+          <SearchField value={parameterSearchQuery} onValueChange={setParameterSearchQuery} ariaLabel="搜索参数或来源" placeholder="搜索参数名称、标识或来源实例" />
+          <span role="status">显示 {candidates.length} / {scopePool.length} 项 · 已选 {selectedAvailableParameterIds.length} 项</span>
+          {parameterSearchQuery || selectedModules.length || selectedRisks.length || Object.values(columnFilters).some((values) => values.length) ? (
+            <button className="button subtle" type="button" onClick={() => { setParameterSearchQuery(""); setSelectedModules([]); setSelectedRisks([]); setColumnFilters({}); }}>清除筛选</button>
+          ) : null}
+        </div>
         <section className="project-init-scope-table-panel">
           <HorizontalDragScroll className="project-init-table">
             <table aria-label={isApiMode ? "来源参数选择表" : "参数库选择表"}>
@@ -781,7 +812,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
                 <col className="project-init-col-module" />
                 <col className="project-init-col-risk" />
                 <col className="project-init-col-value" />
-                <col className="project-init-col-source" />
+                {!detailCandidate ? <col className="project-init-col-source" /> : null}
                 <col className="project-init-col-detail" />
               </colgroup>
               <thead>
@@ -799,7 +830,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
                   <th>{renderHeader("module", "模块")}</th>
                   <th>{renderHeader("risk", "风险")}</th>
                   <th>{renderHeader("recommendedValue", "推荐值")}</th>
-                  <th>{renderHeader("source", "来源")}</th>
+                  {!detailCandidate ? <th>{renderHeader("source", "来源")}</th> : null}
                   <th>详情</th>
                 </tr>
               </thead>
@@ -820,35 +851,38 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
                         title={getCandidateDisplayName(candidate)}
                       >
                         {getCandidateDisplayName(candidate)}
+                        {getCandidatePropertyKey(candidate) && getCandidatePropertyKey(candidate) !== getCandidateDisplayName(candidate) ? <small className="project-init-identity">{getCandidatePropertyKey(candidate)}</small> : null}
+                        {detailCandidate ? <small className="project-init-identity" title={formatCandidateSource(candidate)}>{formatCandidateSource(candidate)}</small> : null}
                       </td>
                       <td className="project-init-table__module" title={getCandidateModuleLabel(candidate)}>
                         {getCandidateModuleLabel(candidate)}
                       </td>
                       <td>
                         <span className={`risk-badge ${(getCandidateRisk(candidate) ?? "unclassified").toLowerCase()}`}>
-                          {getCandidateRisk(candidate) ? riskLevelLabels[getCandidateRisk(candidate)!] : "未分类"}
+                          {getCandidateRisk(candidate) ? riskLevelLabels[getCandidateRisk(candidate)!] : "未评估"}
                         </span>
                       </td>
-                      <td className="project-init-table__value" title={candidate.needsRecommendedValueConfirmation ? "需确认" : candidate.recommendedValue}>
-                        {candidate.needsRecommendedValueConfirmation ? "需确认" : candidate.recommendedValue}
+                      <td className="project-init-table__value" title={getCandidateRecommendedValue(candidate)}>
+                        {getCandidateRecommendedValue(candidate)}
                         {getAlternativeSourceNotice(candidate) ? (
                           <small className="project-init-table__source-warning" role="status">
                             {getAlternativeSourceNotice(candidate)}
                           </small>
                         ) : null}
                       </td>
-                      <td
+                      {!detailCandidate ? <td
                         className="project-init-table__source"
                         title={formatCandidateSource(candidate)}
                       >
                         {formatCandidateSource(candidate)}
-                      </td>
+                      </td> : null}
                       <td className="project-init-table__detail">
                         <button
                           className="project-init-detail-button"
                           type="button"
                           aria-label={`查看 ${getCandidateDisplayName(candidate)} 详情`}
-                          onClick={() => {
+                          onClick={(event) => {
+                            detailTriggerRef.current = event.currentTarget;
                             setDetailParameterId(candidate.parameterId);
                           }}
                         >
@@ -860,7 +894,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7}>{emptyCandidateMessage}</td>
+                    <td colSpan={detailCandidate ? 6 : 7}>{emptyCandidateMessage}</td>
                   </tr>
                 )}
               </tbody>
@@ -868,13 +902,13 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
           </HorizontalDragScroll>
         </section>
         {detailCandidate && (detailParameter || detailSnapshot) ? (
-          <aside className="project-init-parameter-detail" aria-label="参数详情">
+          <aside className="project-init-parameter-detail" aria-label="参数详情" ref={detailRef} tabIndex={-1}>
             <div className="project-init-parameter-detail__head">
               <div>
                 <span className="eyebrow">参数详情</span>
                 <strong>{detailName}</strong>
               </div>
-              <button className="button subtle" type="button" aria-label="关闭参数详情" onClick={() => setDetailParameterId("")}>
+              <button className="button subtle" type="button" aria-label="关闭参数详情" onClick={() => { setDetailParameterId(""); detailTriggerRef.current?.focus(); }}>
                 <X size={14} />
               </button>
             </div>
@@ -886,7 +920,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
               </div>
               <div>
                 <dt>风险</dt>
-                <dd>{getCandidateRisk(detailCandidate) ? riskLevelLabels[getCandidateRisk(detailCandidate)!] : "未分类"}</dd>
+                <dd>{getCandidateRisk(detailCandidate) ? riskLevelLabels[getCandidateRisk(detailCandidate)!] : "未评估（来源未提供风险等级）"}</dd>
               </div>
               <div>
                 <dt>推荐值</dt>
@@ -896,10 +930,10 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
                 <dt>当前值</dt>
                 <dd>{detailCurrentValueText}</dd>
               </div>
-              <div>
+              {detailRange ? <div>
                 <dt>范围</dt>
                 <dd>{detailRange}</dd>
-              </div>
+              </div> : null}
               <div>
                 <dt>来源</dt>
                 <dd>{formatCandidateSource(detailCandidate)}</dd>
@@ -913,7 +947,8 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
               <code>{detailFormat}</code>
             </div>
             {detailSnapshot ? (
-              <>
+              <details className="project-init-technical">
+                <summary>技术信息</summary>
                 <div className="project-init-parameter-detail__note">
                   <span>定义标识</span>
                   <code>{detailSnapshot.parameterSpecId} · {detailSnapshot.parameterSpecVersionId}</code>
@@ -925,7 +960,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
                     {detailSnapshot.sourceConfigRevisionId ? ` · ${detailSnapshot.sourceConfigRevisionId}` : ""}
                   </code>
                 </div>
-              </>
+              </details>
             ) : null}
             {detailParameter?.explanation ? (
               <div className="project-init-parameter-detail__note">
@@ -971,6 +1006,19 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose,
             </div>
           </dl>
         </div>
+        {selectedAvailableParameterIds.length ? <div className="project-init-review-parameters">
+          <h4>核对所选参数</h4>
+          <p>以下来源与值将一并固定在初始化快照中。</p>
+          <HorizontalDragScroll className="project-init-table">
+            <table aria-label="所选参数快照">
+              <thead><tr><th>参数</th><th>来源项目及实例</th><th>复制值</th></tr></thead>
+              <tbody>{scopePool.filter((candidate) => selectedAvailableParameterIds.includes(candidate.parameterId)).map((candidate) => <tr key={candidate.parameterId}>
+                <td>{getCandidateDisplayName(candidate)}{getCandidatePropertyKey(candidate) && getCandidatePropertyKey(candidate) !== getCandidateDisplayName(candidate) ? <small className="project-init-identity">{getCandidatePropertyKey(candidate)}</small> : null}</td>
+                <td>{formatCandidateSource(candidate)}</td><td>{getCandidateRecommendedValue(candidate)}</td>
+              </tr>)}</tbody>
+            </table>
+          </HorizontalDragScroll>
+        </div> : <p className="project-init-empty-hint">将创建空项目，审核通过后再导入配置来源。</p>}
         <label className="project-init-notes">
           <span>备注</span>
           <textarea

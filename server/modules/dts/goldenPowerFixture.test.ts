@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { resolveDts } from "./index";
+import { resolveDtsConfigSet } from "./configSetResolver";
+import { missingReferencedLabels } from "./danglingAnchorStub";
+import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
 import { buildDtsPowerSeed } from "../../../scripts/dts-power-seed";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -11,15 +14,28 @@ const seedDir = join(root, "src/config/dts-seed");
 const fixtureDir = join(root, "server/modules/dts/fixtures");
 
 describe("golden power fixture", () => {
-  it("locks the 50-node, 200-property aurora project-primary topology", async () => {
+  it("defines every project board reference without a synthetic compile companion", async () => {
+    for (const projectId of ["aurora", "nebula", "atlas"]) {
+      const fileName = `${projectId}-board.dts`;
+      const content = await readFile(join(seedDir, fileName), "utf8");
+      const resolved = resolveDtsConfigSet({ entryFile: fileName, includeSearchPaths: [], overlayOrder: [],
+        files: new Map([[fileName, { fileVersionId: "golden-complete-board", content }]]) });
+      expect(missingReferencedLabels(content), projectId).toEqual([]);
+      expect(resolved.diagnostics, projectId).toEqual([]);
+      const tree = resolveDts(content);
+      const business = tree.nodes.flatMap(node => node.properties.filter(property => !isStructuralPropertyKey(property.name)));
+      expect(business, projectId).toHaveLength(120);
+    }
+  });
+
+  it("locks the complete aurora project-primary topology", async () => {
     const primarySource = await readFile(join(seedDir, "aurora-board.dts"), "utf8");
     const resolved = resolveDts(primarySource);
 
-    // Overlay-only board (synthetic base tree retired): `&label` targets self-anchor.
-    expect(resolved.nodes).toHaveLength(50);
+    expect(resolved.nodes).toHaveLength(58);
 
     const propertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
-    expect(propertyCount).toBe(200);
+    expect(propertyCount).toBe(219);
 
     const phandleCount = resolved.nodes.reduce((count, node) => count + node.phandleRefs.length, 0);
     expect(phandleCount).toBe(18);
@@ -31,7 +47,7 @@ describe("golden power fixture", () => {
       }
     }
     const repeatedKeys = [...keyCounts.entries()].filter(([, count]) => count > 1);
-    expect(repeatedKeys).toHaveLength(26);
+    expect(repeatedKeys).toHaveLength(28);
 
     const gpioIntNodePaths = resolved.nodes
       .filter((node) => node.properties.some((property) => property.name === "gpio_int"))

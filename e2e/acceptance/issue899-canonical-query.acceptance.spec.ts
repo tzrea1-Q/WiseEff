@@ -144,11 +144,11 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     if (await dismiss.isVisible()) await dismiss.click();
     const open = async () => {
       const row = page.locator(`[data-binding-id="${bindingId}"]`);
-      await row.getByRole("button", { name: /查看/ }).click();
+      await row.getByRole("button", { name: /^参数详情 / }).click();
       const detail = page.getByRole("dialog", { name: /参数详情/ });
       await expect(detail).not.toContainText("规格详情暂时无法加载");
       await expect(detail).not.toContainText("暂无其他项目的对比数据");
-      await expect(detail.getByRole("button", { name: "打开跨项目对比" })).toBeVisible();
+      await expect(detail.getByRole("tab", { name: "跨项目对比", exact: true })).toBeVisible();
       return detail;
     };
     const exactDefinition = page.waitForResponse(response => response.request().method() === "GET" && response.url().includes(`/definitions/${definitionId}/revisions/${effectiveRevisionId}`));
@@ -157,8 +157,8 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     expect(definitionResponse.status(), await definitionResponse.text()).toBe(200);
     expect((await definitionResponse.json()).item).toMatchObject({ id: effectiveRevisionId, definitionId });
     await page.screenshot({ path: info.outputPath("canonical-detail.png"), animations: "disabled" });
-    await detail.getByRole("button", { name: "打开跨项目对比" }).click();
-    const comparison = page.getByRole("dialog", { name: /跨项目对比/ });
+    await detail.getByRole("tab", { name: "跨项目对比", exact: true }).click();
+    const comparison = detail.getByRole("tabpanel", { name: "跨项目对比", exact: true });
     const selector = comparison.getByRole("combobox");
     await expect(selector).toHaveAttribute("data-value", "");
     await expect.poll(async () => (await readSelectControlOptions(selector)).filter((option) => option.value).length).toBe(3);
@@ -180,19 +180,18 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
       await expect(comparison.locator('[data-kind="remove"] code')).toContainText("1000");
     }
     await page.screenshot({ path: info.outputPath("canonical-instances.png"), animations: "disabled" });
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
+    await detail.getByRole("button", { name: "关闭参数详情" }).click();
     await page.reload();
     detail = await open();
     await expect(detail).toContainText("1000");
     await page.keyboard.press("Escape");
     // Produce history through the existing human-reviewed value/source owners.
-    await page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /编辑/ }).click();
-    const editor = page.getByRole("dialog", { name: "修改草稿" });
-    await editor.getByLabel("目标值", { exact: true }).fill("<1400>");
+    await page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /^参数详情 / }).click();
+    const editor = page.getByRole("dialog", { name: /参数详情$/ });
+    await editor.getByLabel(/^目标值(?:\s*·\s*.+)?$/).fill("1400");
     await editor.getByLabel("修改原因", { exact: true }).fill("Issue 899 exact history");
     const created = page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith(`/parameter-bindings/${bindingId}/drafts`));
-    await editor.getByRole("button", { name: "校验并加入本轮" }).click();
+    await editor.getByRole("button", { name: "保存草稿" }).click();
     const draftResponse = await created;
     expect(draftResponse.status(), await draftResponse.text()).toBe(201);
     const draftId = (await draftResponse.json()).item.draftId;
@@ -219,10 +218,11 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     await page.reload();
     detail = await open();
     await expect(detail).toContainText("1400");
-    await expect(detail.getByRole("list", { name: "参数历史" })).toContainText("1400");
-    await detail.getByRole("button", { name: "查看历史差异" }).click();
-    const historyDiff = page.getByRole("dialog", { name: /历史差异/ });
-    const changed = historyDiff.locator(".parameter-history-diff-card").filter({ has: page.locator("strong", { hasText: /1000.*→.*1400/ }) });
+    await detail.getByRole("tab", { name: "变更历史", exact: true }).click();
+    const historyDiff = detail.getByRole("tabpanel", { name: "变更历史", exact: true });
+    await expect(historyDiff).toContainText("1400");
+    const changed = historyDiff.locator(".parameter-history-diff-card").filter({ has: page.getByText(changedEvent.id, { exact: true }) });
+    await expect(changed).toHaveCount(1);
     await expect(changed.locator('[data-kind="remove"] code')).toContainText("1000");
     await expect(changed.locator('[data-kind="add"] code')).toContainText("1400");
     await page.screenshot({ path: info.outputPath("canonical-history.png"), animations: "disabled" });
@@ -241,17 +241,23 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters?project=${projectId}`);
     const dismiss = page.getByRole("button", { name: "不再提示" });
     if (await dismiss.isVisible()) await dismiss.click();
-    await page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /查看/ }).click();
+    await page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /^参数详情 / }).click();
     const detail = page.getByRole("dialog", { name: /参数详情/ });
-    await expect(detail.getByRole("alert")).toHaveCount(2);
-    await expect(detail).not.toContainText("暂无历史记录");
-    await expect(detail).not.toContainText("暂无其他项目的对比数据");
+    await detail.getByRole("tab", { name: "变更历史", exact: true }).click();
+    await expect(detail.getByRole("tabpanel", { name: "变更历史" }).getByRole("alert")).toHaveCount(1);
+    await expect(detail.getByRole("tabpanel", { name: "变更历史" })).not.toContainText("暂无历史记录");
+    await detail.getByRole("tab", { name: "跨项目对比", exact: true }).click();
+    await expect(detail.getByRole("tabpanel", { name: "跨项目对比" }).getByRole("alert")).toHaveCount(1);
+    await expect(detail.getByRole("tabpanel", { name: "跨项目对比" })).not.toContainText("暂无其他项目的对比数据");
     await page.screenshot({ path: info.outputPath("query-errors.png"), animations: "disabled" });
     for (const path of [historyPath, comparePath]) await page.unroute(`**${path}`);
+    await detail.getByRole("tab", { name: "变更历史", exact: true }).click();
     await detail.getByRole("button", { name: "重试历史", exact: true }).click();
+    await expect(detail.getByRole("tabpanel", { name: "变更历史" }).getByRole("alert")).toHaveCount(0);
+    await detail.getByRole("tab", { name: "跨项目对比", exact: true }).click();
     await detail.getByRole("button", { name: "重试对比", exact: true }).click();
     await expect(detail.getByRole("alert")).toHaveCount(0);
-    await expect(detail.getByRole("button", { name: "打开跨项目对比" })).toBeVisible();
+    await expect(detail.getByLabel("对比目标配置实例")).toBeVisible();
   });
 
   test("filters inaccessible project instances and displays real authorization failures", async ({ page, request }, info) => {
@@ -272,7 +278,7 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
       await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters?project=${projectId}`);
       const dismiss = page.getByRole("button", { name: "不再提示" });
       if (await dismiss.isVisible()) await dismiss.click();
-      const view = page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /查看/ });
+      const view = page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /^参数详情 / });
       await expect(view).toBeVisible();
       await withPgClient(async client => {
         expect((await client.query(`delete from user_role_bindings where id='issue899-project-a-reader' returning id`)).rowCount).toBe(1);
@@ -281,16 +287,23 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
         for (const query of ["history", "compare"]) expectedApiFailures.push({ method: "GET", path: `/api/v2/projects/${projectId}/bindings/${bindingId}/${query}`, status: 403 });
         await view.click();
         const detail = page.getByRole("dialog", { name: /参数详情/ });
-        await expect(detail.getByRole("alert")).toHaveCount(2);
-        await expect(detail.getByRole("alert").first()).toContainText(/权限|无权/);
+        for (const name of ["变更历史", "跨项目对比"]) {
+          await detail.getByRole("tab", { name, exact: true }).click();
+          const alert = detail.getByRole("tabpanel", { name, exact: true }).getByRole("alert");
+          await expect(alert).toHaveCount(1);
+          await expect(alert).toContainText(/权限|无权/);
+        }
         await page.screenshot({ path: info.outputPath("query-forbidden.png"), animations: "disabled" });
       } finally {
         await withPgClient(client => client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
           values ('issue899-project-a-reader',$1,'org-chargelab',$2,'software-user')`, [acceptanceCast.liuMin.userId, projectId]));
       }
-      await page.getByRole("dialog", { name: /参数详情/ }).getByRole("button", { name: "重试历史", exact: true }).click();
-      await page.getByRole("dialog", { name: /参数详情/ }).getByRole("button", { name: "重试对比", exact: true }).click();
-      await expect(page.getByRole("dialog", { name: /参数详情/ }).getByRole("alert")).toHaveCount(0);
+      const recoveredDetail = page.getByRole("dialog", { name: /参数详情/ });
+      for (const [name, retry] of [["变更历史", "重试历史"], ["跨项目对比", "重试对比"]]) {
+        await recoveredDetail.getByRole("tab", { name, exact: true }).click();
+        await recoveredDetail.getByRole("button", { name: retry, exact: true }).click();
+        await expect(recoveredDetail.getByRole("tabpanel", { name, exact: true }).getByRole("alert")).toHaveCount(0);
+      }
     } finally {
       await withPgClient(client => client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
         values ('issue899-project-b-reader',$1,'org-chargelab','issue899-project-b','software-user')`, [acceptanceCast.liuMin.userId]));
@@ -363,13 +376,14 @@ test.describe("Issue 899 JSON query regression", () => {
       await withPgClient(client => client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
         values ('issue899-json-reader',$1,'org-chargelab',$2,'software-user')`, [acceptanceCast.liuMin.userId, projectId]));
     }
-    await table.getByRole("button", { name: /^查看 / }).click();
+    await table.getByRole("button", { name: /^参数详情 / }).click();
     const detail = page.getByRole("dialog", { name: /参数详情/ });
-    const history = page.waitForResponse(response => response.url().includes(`/parameter-bindings/${bindingId}/change-history`));
-    await detail.getByRole("button", { name: "查看固定值历史" }).click();
+    const history = page.waitForResponse(response => response.url().includes(`/bindings/${bindingId}/history`));
+    await detail.getByRole("tab", { name: "变更历史", exact: true }).click();
     expect((await history).status()).toBe(200);
     const exported = page.waitForResponse(response => response.url().includes(`/parameter-bindings/${bindingId}/export`));
     const download = page.waitForEvent("download");
+    await detail.getByRole("tab", { name: "配置来源", exact: true }).click();
     await detail.getByRole("button", { name: "导出源文件" }).click();
     const exportResponse = await exported;
     expect(exportResponse.status()).toBe(200);

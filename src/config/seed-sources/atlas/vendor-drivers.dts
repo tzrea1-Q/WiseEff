@@ -14,14 +14,52 @@
  * The 0 inputs with a shape that has no DTS example are the only ones
  * omitted. The 8 YAML/TOML/ENV compatibility items stay deferred to TD-124.
  *
- * Overlay-only by design: an unresolved `&label` is an L1 `dangling-reference`
- * warning that self-anchors, and L2 compile uses an ephemeral, non-persisted stub
- * (server/modules/dts/danglingAnchorStub.ts). No synthetic base tree is committed.
+ * Every phandle target is defined in this source. GPIO and interrupt providers
+ * describe demonstration cell shapes only; their structure is not a real-device
+ * hardware description. Existing vendor nodes own the authentication references.
  */
 /dts-v1/;
-/plugin/;
 
 / {
+		/* node-type identity is the node name; no compatible is declared */
+		board_id = <12345>;
+
+	gic: gic {
+		interrupt-controller;
+		#interrupt-cells = <3>;
+		#address-cells = <0>;
+	};
+
+	gpio2: gpio2 {
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio5: gpio5 {
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio6: gpio6 {
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio7: gpio7 {
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio10: gpio10 {
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio13: gpio13 {
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
 	arm_amba_bus {
 		compatible = "arm,amba-bus";
 		interrupt-parent = <&gic>;
@@ -45,7 +83,7 @@
 		vbat_drop_vol_mv = <2500>;
 	};
 
-	huawei_batt_identify {
+	huawei_batt_identify: huawei_batt_identify {
 		compatible = "huawei,batt_identify";
 		gpios = <&gpio10 16 0>;
 		id_voltage_gpiov = <0 1>;
@@ -146,7 +184,7 @@
 		volt_para1 = "4500", "5000", "3776", "4555", "2697", "1200";
 	};
 
-	huawei_fm1230 {
+	fm1230: huawei_fm1230 {
 		compatible = "huawei,fm1230";
 		battct_id_gpio-supply = <&huawei_batt_identify>;
 		ic_index = <1>;
@@ -160,7 +198,7 @@
 		sensor-names = "bat0_raw_temp", "comp_para", "0", "bat1_raw_temp", "comp_para1", "0";
 	};
 
-	huawei_t91407 {
+	t91407: huawei_t91407 {
 		compatible = "huawei,t91407";
 		battct_id_gpio-supply = <&huawei_batt_identify>;
 		onewire-gpio = <&gpio2 14 0>;
@@ -272,11 +310,6 @@
 		/* node-type identity is the node name; no compatible is declared */
 		active_perf_limit = < 16 100 100 6 15 100 0 5 100>;
 		passive_perf_limit = < 0 5 10 40 10 0 6 15 10 70 10 0 16 100 0 100 10 0>;
-	};
-
-	/ {
-		/* node-type identity is the node name; no compatible is declared */
-		board_id = <12345>;
 	};
 
 	scharger_v800_buck {

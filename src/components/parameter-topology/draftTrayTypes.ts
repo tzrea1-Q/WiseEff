@@ -1,4 +1,5 @@
 import type { BindingDraftResult, NodeEnablementDraftResult } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterBindingValue } from "@/domain/parameter-topology/types";
 
 /**
  * `parameterId` stays optional because the canonical model has no parameter record:
@@ -13,6 +14,9 @@ export type PendingBindingDraftCore = Omit<BindingDraftResult, "parameterId"> & 
 
 export type PendingBindingDraft = PendingBindingDraftCore & {
   currentRawValue: string;
+  displayName?: string | null;
+  /** Preserve the value type: an empty DTS boolean/empty property is still present. */
+  effectiveValue?: ParameterBindingValue;
   /** Business module display name (same source as workbench「所属模块」). */
   moduleName: string;
 };

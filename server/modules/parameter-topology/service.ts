@@ -329,6 +329,7 @@ export async function listIdentityMappingTasks(
 
 export type BindingHistoryItem = {
   id: string;
+  actor?: string | null;
   changedAt: string;
   fromRawValue?: string | null;
   toRawValue?: string | null;
@@ -405,6 +406,18 @@ export async function getBindingHistory(
     }
   }
 
+  const auditRefs = [...new Set(events.map((event) => event.successAuditRef).filter(Boolean))];
+  const auditActors = auditRefs.length ? await db.query<{ id: string; actor: string | null }>(
+    `select audit.id, actor.name as actor
+       from audit_events audit
+       left join users actor on actor.id = audit.actor_user_id and actor.organization_id = audit.organization_id
+      where audit.organization_id = $1
+        and audit.project_id = $2
+        and audit.id = any($3::text[])`,
+    [auth.organization.id, input.projectId, auditRefs]
+  ) : { rows: [] };
+  const actorByAuditRef = new Map(auditActors.rows.map((event) => [event.id, event.actor]));
+
   return {
     items: events.map((event): BindingHistoryItem => {
       const oldValue = event.oldCurrentValueId ? valuesById.get(event.oldCurrentValueId) : undefined;
@@ -416,6 +429,7 @@ export async function getBindingHistory(
       return {
         id: event.id,
         changedAt: event.createdAt,
+        actor: actorByAuditRef.get(event.successAuditRef) ?? null,
         recordedAt: event.createdAt,
         fromRawValue: oldValue?.rawValue ?? null,
         toRawValue: newValue?.rawValue ?? null,

@@ -2,7 +2,7 @@ import { readSelectControlOptions, selectControlOption } from "./helpers/selectC
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page, type Response } from "playwright/test";
+import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page, type Request, type Response } from "playwright/test";
 import { seedSemanticBindingCatalog } from "../../server/testing/parameterCatalog/semanticBinding";
 
 import {
@@ -768,17 +768,19 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(workspace.getByRole("region", { name: "DTS 参数列表" })).toBeVisible({
       timeout: 20_000
     });
-    await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click({
+    await workspace.getByRole("button", { name: /参数详情 gpio_int/ }).first().click({
       timeout: 20_000
     });
-    const provenanceDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
+    const provenanceDetail = page.getByRole("dialog", { name: /参数详情$/ });
     await expect(provenanceDetail.getByRole("heading", { name: "参数定义" })).toBeVisible();
     await expect(provenanceDetail.getByText("来源链")).toHaveCount(0);
     // Phase-2: the detail history region is a real revision surface, not phase-1 placeholder copy.
-    const historyRegion = provenanceDetail.getByRole("region", { name: "近期历史" });
+    await provenanceDetail.getByRole("tab", { name: "变更历史", exact: true }).click();
+    const historyRegion = provenanceDetail.getByRole("tabpanel", { name: "变更历史" });
     await expect(historyRegion).toBeVisible();
     await expect(historyRegion.getByText(/阶段一占位/)).toHaveCount(0);
-    await expect(provenanceDetail.getByRole("region", { name: "跨项目对比" })).toBeVisible();
+    await provenanceDetail.getByRole("tab", { name: "跨项目对比", exact: true }).click();
+    await expect(provenanceDetail.getByRole("tabpanel", { name: "跨项目对比" })).toBeVisible();
     await provenanceDetail.getByRole("button", { name: "关闭参数详情" }).click();
 
     const topologyApi = await request.get(
@@ -874,9 +876,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       .toBeGreaterThanOrEqual(2);
     const sc8562Row = bindingRowById(workspace, scBinding!.id);
     await expect(sc8562Row.locator('[data-label="参数名"]')).toBeVisible();
-    await sc8562Row.getByRole("button", { name: /^查看 gpio_int/ }).click();
-    const detail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
+    await sc8562Row.getByRole("button", { name: /^参数详情 gpio_int/ }).click();
+    const detail = page.getByRole("dialog", { name: /参数详情$/ });
     await expect(detail).toBeVisible();
+    await expect(detail.locator(".parameter-inspector__header code")).toHaveText("gpio_int");
     await expect(detail.getByRole("heading", { name: "参数定义" })).toBeVisible();
     await expect(detail.getByText("<&gpio13 29 0>").first()).toBeVisible();
     await expect(detail.getByRole("heading", { name: "DTS 位置" })).toHaveCount(0);
@@ -884,7 +887,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(detail.getByText("治理状态")).toHaveCount(0);
     await expect(detail.getByText("来源链")).toHaveCount(0);
     await expect(detail.getByText("技术身份")).toHaveCount(0);
-    await expect(detail.getByText(scBinding!.id, { exact: true })).toHaveCount(0);
+    await expect(detail.getByText(scBinding!.id, { exact: true })).toBeHidden();
     await recordOperationEvidence({
       operationId: "PARAM-TOPOLOGY-BROWSE-001",
       title: "real source/effective tree and two gpio_int bindings",
@@ -914,19 +917,32 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const originalRaw = scBinding!.rawValue;
     await detail.getByRole("button", { name: "关闭参数详情" }).click();
     await expect(detail).toHaveCount(0);
-    await sc8562Row.getByRole("button", { name: /^(编辑|继续编辑) gpio_int/ }).click();
-    const draftDialog = page.getByRole("dialog", { name: "修改草稿" });
+    await sc8562Row.getByRole("button", { name: /^参数详情 gpio_int/ }).click();
+    const draftDialog = page.getByRole("dialog", { name: /参数详情$/ });
     await expect(draftDialog).toBeVisible();
     expectedApiFailures.push({
       method: "POST",
       path: `/api/v2/projects/${projectId}/parameter-bindings/${scBinding!.id}/drafts`,
       status: 400
     });
+    const invalidDraftPosts: string[] = [];
+    const captureInvalidDraftPost = (browserRequest: Request) => {
+      if (browserRequest.method() === "POST" && browserRequest.url().includes(`/parameter-bindings/${scBinding!.id}/drafts`)) invalidDraftPosts.push(browserRequest.url());
+    };
+    page.on("request", captureInvalidDraftPost);
     await draftDialog.getByLabel("目标值", { exact: true }).fill("<&gpio13 29 0");
     await draftDialog.getByLabel("修改原因", { exact: true }).fill(`${descriptionPrefix} invalid typed-value probe`);
-    await draftDialog.getByRole("button", { name: "校验并加入本轮" }).click();
-    await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toBeVisible({ timeout: 20_000 });
-    await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toContainText(/DTS_VALUE_PARSE/);
+    await expect(draftDialog.getByLabel("目标值", { exact: true })).toHaveAttribute("aria-invalid", "true");
+    await expect(draftDialog.getByText("目标值不符合 DTS 格式，请检查引号、括号和数值。")).toBeVisible();
+    await expect(draftDialog.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(invalidDraftPosts).toEqual([]);
+    page.off("request", captureInvalidDraftPost);
+    // The UI blocks invalid syntax; the authenticated API independently rejects malformed typed payloads.
+    const malformedTypedEdit = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings/${scBinding!.id}/drafts`), {
+      headers: authHeadersForRole("software-user"),
+      data: { baseRevisionId: revisionId, targetValue: { kind: "unsupported" }, reason: `${descriptionPrefix} invalid typed-value probe` }
+    });
+    expect(malformedTypedEdit.status(), await malformedTypedEdit.text()).toBe(400);
 
     const staleEdit = await request.post(
       apiRoute(
@@ -954,7 +970,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(staleEdit.status()).toBe(409);
 
     await draftDialog.getByLabel("目标值", { exact: true }).fill(originalRaw);
-    await draftDialog.getByRole("button", { name: "关闭草稿" }).click();
+    await draftDialog.getByLabel("修改原因", { exact: true }).fill("");
+    await draftDialog.getByRole("button", { name: "关闭参数详情" }).click();
     await expect(draftDialog).toHaveCount(0);
 
     // Fail-closed blocker from REAL bad DTS (include-missing → resolve-failed).
@@ -1048,8 +1065,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
       const sc8562EditRow = bindingRowById(editWorkspace, scBinding!.id);
       await expect(sc8562EditRow.locator('[data-label="参数名"]')).toBeVisible();
-      await sc8562EditRow.getByRole("button", { name: /^(编辑|继续编辑) gpio_int/ }).click();
-      const editDetail = page.getByRole("dialog", { name: "修改草稿" });
+      await sc8562EditRow.getByRole("button", { name: /^参数详情 gpio_int/ }).click();
+      const editDetail = page.getByRole("dialog", { name: /参数详情$/ });
       await expect(editDetail).toBeVisible();
       await editDetail.getByLabel("目标值", { exact: true }).fill(editedRaw);
       await editDetail.getByLabel("修改原因", { exact: true }).fill(typedEditReason);
@@ -1062,8 +1079,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/`) &&
         response.url().includes("/drafts")
       );
-      await editDetail.getByRole("button", { name: "校验并加入本轮" }).click();
-      return responsePromise;
+      await editDetail.getByRole("button", { name: "保存草稿" }).click();
+      const response = await responsePromise;
+      await expect(editDetail.getByText("草稿已保存，待提交审核。", { exact: true })).toBeVisible();
+      await editDetail.getByRole("button", { name: "关闭参数详情" }).click();
+      return response;
     };
 
     let successfulDraft = await createTypedDraftInAurora();
@@ -1603,16 +1623,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(sc8562ReloadRow.locator('[data-label="参数名"]')).toBeVisible({
       timeout: 20_000
     });
-    await sc8562ReloadRow.getByRole("button", { name: /^查看 gpio_int/ }).click();
-    const detailAfter = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
+    await sc8562ReloadRow.getByRole("button", { name: /^参数详情 gpio_int/ }).click();
+    const detailAfter = page.getByRole("dialog", { name: /参数详情$/ });
     await expect(detailAfter).toBeVisible();
     await expect(detailAfter.getByRole("heading", { name: "参数定义" })).toBeVisible();
     await expect(detailAfter.getByText("来源链")).toHaveCount(0);
     await expect(detailAfter.getByText("技术身份")).toHaveCount(0);
-    await expect(detailAfter.getByText(scBinding!.id, { exact: true })).toHaveCount(0);
+    await expect(detailAfter.getByText(scBinding!.id, { exact: true })).toBeHidden();
     const bindingIdAfter = scBinding!.id;
     const currentValueField = detailAfter.locator("dt", { hasText: "当前值" }).locator("xpath=..");
-    const valueAfter = (await currentValueField.locator("code").innerText()).trim();
+    const valueAfter = (await currentValueField.locator("dd").innerText()).trim();
 
     const persistedDb = await withPgClient(async (client) => {
       const result = await client.query<{ id: string; current_value_id: string; value: unknown }>(
@@ -1700,8 +1720,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     // Create a typed draft through the product UI (no API shortcut, so the tray
     // exercises the same seams a user does).
-    await bindingRowById(workspace, scBinding!.id).getByRole("button", { name: /^(编辑|继续编辑) gpio_int/ }).click();
-    const editDetail = page.getByRole("dialog", { name: "修改草稿" });
+    await bindingRowById(workspace, scBinding!.id).getByRole("button", { name: /^参数详情 gpio_int/ }).click();
+    const editDetail = page.getByRole("dialog", { name: /参数详情$/ });
     await expect(editDetail).toBeVisible();
     await editDetail.getByLabel("目标值", { exact: true }).fill("<&gpio13 31 0>");
     await editDetail.getByLabel("修改原因", { exact: true }).fill("PARAM-DRAFT-REMOVE acceptance draft");
@@ -1711,12 +1731,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/`) &&
         response.url().includes("/drafts")
     );
-    await editDetail.getByRole("button", { name: "校验并加入本轮" }).click();
+    await editDetail.getByRole("button", { name: "保存草稿" }).click();
     const draftResponse = await createdDraft;
     expect(draftResponse.status(), await draftResponse.text()).toBe(201);
     const draftBody = (await draftResponse.json()) as { item: { draftId: string } };
     const draftId = draftBody.item.draftId;
     expect(draftId).toBeTruthy();
+    await expect(editDetail.getByText("草稿已保存，待提交审核。", { exact: true })).toBeVisible();
+    await editDetail.getByRole("button", { name: "关闭参数详情" }).click();
 
     const tray = page.getByRole("heading", { name: "本轮已修改" });
     await expect(tray).toBeVisible();
@@ -2567,7 +2589,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const nodeRequestId = nodeRound.items[0]!.requestId;
       await page.goto(`${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
       await selectControlOption(page.getByRole("combobox", { name: "变更类型", exact: true }), "legacy");
-      const nodeSubmissionRow = page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${nodeRound.id}"]`);
+      const nodeSubmissionRow = page.getByRole("table", { name: "我的提交", exact: true }).locator(`[data-review-row-id="${nodeRound.id}"]`);
       await expect(nodeSubmissionRow).toContainText("旧版");
       await nodeSubmissionRow.getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
       const nodeTracking = page.getByRole("region", { name: "提交轮次详情" });
@@ -2665,7 +2687,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       expect(nodeEvidence.audits.map((audit) => audit.action)).toEqual(["advance", "advance", "merge"]);
 
       await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameter-submissions?project=${projectId}`);
-      await page.getByRole("tablist", { name: "审阅视角" }).getByRole("tab", { name: "已处理", exact: true }).click();
+      await page.getByRole("tablist", { name: "提交状态" }).getByRole("tab", { name: "已结束", exact: true }).click();
       await selectControlOption(page.getByRole("combobox", { name: "变更类型", exact: true }), "legacy");
       await nodeSubmissionRow.getByRole("button", { name: /^查看 .+ 提交详情$/ }).click();
       await expect(nodeTracking).toContainText(disableReason);

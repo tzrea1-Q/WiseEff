@@ -60,6 +60,12 @@ const exampleValueFor = (cache: Map<string, VendorYaml>, root: string, sourcePat
 const nodeNameForDriver = (compatible: string): string =>
   compatible.replace(/[^A-Za-z0-9]/g, "_");
 
+const REFERENCED_DRIVER_LABELS: Readonly<Record<string, string>> = {
+  "huawei,batt_identify": "huawei_batt_identify",
+  "huawei,fm1230": "fm1230",
+  "huawei,t91407": "t91407",
+};
+
 export type GeneratedVendorSource = {
   readonly text: string;
   readonly emitted: number;
@@ -108,7 +114,9 @@ export const generateVendorProjectSource = (
         const lines = bucket.props
           .map((prop) => `\t\t${prop.propertyKey}${literalFor(prop)};`)
           .join("\n");
-        return `\t${name} {\n${head}\n${lines}\n\t};\n`;
+        if (name === "/") return `${head}\n${lines}\n`;
+        const label = withCompatible ? REFERENCED_DRIVER_LABELS[bucket.value] : undefined;
+        return `\t${label ? `${label}: ` : ""}${name} {\n${head}\n${lines}\n\t};\n`;
       })
       .join("\n");
 
@@ -128,16 +136,27 @@ export const generateVendorProjectSource = (
  * The ${skipped.length} inputs with a shape that has no DTS example are the only ones
  * omitted. The 8 YAML/TOML/ENV compatibility items stay deferred to TD-124.
  *
- * Overlay-only by design: an unresolved \`&label\` is an L1 \`dangling-reference\`
- * warning that self-anchors, and L2 compile uses an ephemeral, non-persisted stub
- * (server/modules/dts/danglingAnchorStub.ts). No synthetic base tree is committed.
+ * Every phandle target is defined in this source. GPIO and interrupt providers
+ * describe demonstration cell shapes only; their structure is not a real-device
+ * hardware description. Existing vendor nodes own the authentication references.
  */
 /dts-v1/;
-/plugin/;
 
 / {
+${nodeBlocks(nodeTypes.filter(bucket => bucket.value === "/"), false)}
+\tgic: gic {
+\t\tinterrupt-controller;
+\t\t#interrupt-cells = <3>;
+\t\t#address-cells = <0>;
+\t};
+
+${[2, 5, 6, 7, 10, 13].map(index => `\tgpio${index}: gpio${index} {
+\t\tgpio-controller;
+\t\t#gpio-cells = <2>;
+\t};
+`).join("\n")}
 ${nodeBlocks(drivers, true)}
-${nodeBlocks(nodeTypes, false)}};
+${nodeBlocks(nodeTypes.filter(bucket => bucket.value !== "/"), false)}};
 `;
 
   return {

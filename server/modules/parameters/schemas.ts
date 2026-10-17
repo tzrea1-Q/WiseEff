@@ -274,6 +274,7 @@ export const initializationSnapshotItemSchema = z.object({
   parameterSpecId: nonEmptyString,
   parameterSpecVersionId: nonEmptyString,
   propertyKey: z.string(),
+  displayName: z.string().optional(),
   moduleId: nonEmptyString,
   risk: initializationRiskSchema.nullable(),
   effectiveValue: z.unknown(),

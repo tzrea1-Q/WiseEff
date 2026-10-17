@@ -94,10 +94,10 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameters",
     path: "/parameters",
-    label: "参数修改",
+    label: "项目参数",
     group: "参数管理",
     icon: SlidersHorizontal,
-    title: "项目参数用户工作台",
+    title: "项目参数",
     subtitle: "查看、筛选、对比并提交充电与电池参数修改请求"
   },
   {

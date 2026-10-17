@@ -29,6 +29,20 @@ function inbox(rows: ReviewInboxRow[] = [], search = "") {
 }
 
 describe("unified review inbox", () => {
+  it("uses personal submission language and gives an empty queue the full width", () => {
+    const { container } = render(<ReviewInbox projectId="aurora" state={initialState} search="" mineOnly legacyRows={[]}
+      renderLegacyDetail={() => null} />);
+    expect(screen.getByText("暂无审核中的提交")).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "提交状态" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "审核中" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText(/项目成员提交/)).not.toBeInTheDocument();
+    expect(container.querySelector(".review-inbox")).toHaveClass("review-inbox--list-only");
+    expect(screen.queryByRole("columnheader", { name: "提交人" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "项目" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看已处理提交" }));
+    expect(screen.getByText("暂无已处理提交")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "已结束" })).toHaveAttribute("aria-selected", "true");
+  });
   it("keeps one selectable summary row with the full title available when truncated", () => {
     const title = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";
     inbox([{ ...older, title }]);

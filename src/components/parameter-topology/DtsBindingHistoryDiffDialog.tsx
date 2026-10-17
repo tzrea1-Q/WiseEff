@@ -3,13 +3,15 @@ import { CircleX } from "lucide-react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { DiffCodeBlock } from "@/components/parameter-compare/ParameterDiffViews";
 import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
-import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
+import { formatDtsValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
+import type { DtsValue } from "@/domain/parameter-topology/types";
 import { Button } from "@/components/ui/button";
 
 export type BindingHistoryDiffEntry = {
   id: string;
   changedAt: string;
   actor?: string | null;
+  reason?: string | null;
   fromRawValue?: string | null;
   toRawValue?: string | null;
   definitionRevisionId?: string;
@@ -22,14 +24,10 @@ export type BindingHistoryDiffEntry = {
 export type DtsBindingHistoryDiffDialogProps = {
   propertyKey: string;
   historyEntries: readonly BindingHistoryDiffEntry[];
+  effectiveValue?: DtsValue;
+  embedded?: boolean;
   onClose: () => void;
 };
-
-function displayRaw(value: string | null | undefined, valueState?: BindingHistoryDiffEntry["valueState"]) {
-  if (valueState === "deleted" && (value == null || value.trim() === "")) return "已删除";
-  if (value == null || value.trim() === "") return "∅";
-  return formatDtsRawValueForUi(value) || "∅";
-}
 
 function historyRevisionLabel(
   entry: Pick<BindingHistoryDiffEntry, "definitionRevisionId" | "effectiveRevisionId">
@@ -45,11 +43,46 @@ function historyRevisionLabel(
   ].filter(Boolean).join(" / ") || null;
 }
 
+function historyReason(reason: string | null | undefined): string {
+  if (reason === "source-revision-propagation") return "同步来源修订";
+  if (reason === "project-value-append") return "项目配置写入";
+  return reason?.trim() || "未记录修改原因";
+}
+
 export function DtsBindingHistoryDiffDialog({
   propertyKey,
   historyEntries,
+  effectiveValue,
+  embedded = false,
   onClose
 }: DtsBindingHistoryDiffDialogProps) {
+  const content = <div className="parameter-history-diff-list">
+    {historyEntries.length === 0 ? <p role="status">暂无参数变更记录</p> : null}
+    {historyEntries.map((entry, index) => {
+      const fromValue = entry.fromRawValue == null ? "尚未配置" : formatDtsValueForUi(entry.fromRawValue, effectiveValue);
+      const toValue = formatDtsValueForUi(entry.toRawValue, effectiveValue, entry.valueState);
+      return <article className="parameter-history-diff-card" key={entry.id} aria-label={`历史事件 ${index + 1} 历史差异`}>
+        <div className="parameter-history-diff-card__head">
+          <div>
+            <strong>{entry.valueState === "deleted" ? "删除属性" : "配置变更"}</strong>
+            <span><time dateTime={entry.changedAt}>{formatAuditAbsoluteTime(entry.changedAt)}</time>{entry.actor ? ` · ${entry.actor}` : ""}</span>
+          </div>
+        </div>
+        <p>{historyReason(entry.reason)}</p>
+        <DiffCodeBlock baseValue={fromValue} targetValue={toValue} />
+        <details>
+          <summary>技术信息</summary>
+          <dl>
+            <div><dt>事件标识</dt><dd><code>{entry.id}</code></dd></div>
+            {historyRevisionLabel(entry) ? <div><dt>修订身份</dt><dd>{historyRevisionLabel(entry)}</dd></div> : null}
+            {entry.currentValueId ? <div><dt>值标识</dt><dd><code>{entry.currentValueId}</code></dd></div> : null}
+            {entry.eventType ? <div><dt>事件类型</dt><dd><code>{entry.eventType}</code></dd></div> : null}
+          </dl>
+        </details>
+      </article>;
+    })}
+  </div>;
+  if (embedded) return content;
   return (
     <ModalDialog
       open
@@ -72,41 +105,7 @@ export function DtsBindingHistoryDiffDialog({
           </Button>
         </header>
 
-        <div className="parameter-history-diff-list">
-          {historyEntries.map((entry, index) => {
-            const eventLabel = historyRevisionLabel(entry)
-              ?? (entry.currentValueId
-                ? `值 ${entry.currentValueId}`
-                : `历史事件 ${index + 1}`);
-            return (
-              <article
-                className="parameter-history-diff-card"
-                key={entry.id}
-                aria-label={`${eventLabel} 历史差异`}
-              >
-                <div className="parameter-history-diff-card__head">
-                  <div>
-                    <strong>
-                      {displayRaw(entry.fromRawValue)} → {displayRaw(entry.toRawValue, entry.valueState)}
-                    </strong>
-                    <span>
-                      <time dateTime={entry.changedAt}>{formatAuditAbsoluteTime(entry.changedAt)}</time>
-                      {entry.eventType ? ` / ${entry.eventType}` : ""}
-                      {historyRevisionLabel(entry) ? ` / ${historyRevisionLabel(entry)}` : ""}
-                      {entry.currentValueId ? ` / 值 ${entry.currentValueId}` : ""}
-                      {entry.actor ? ` / ${entry.actor}` : ""}
-                    </span>
-                  </div>
-                  <em>{eventLabel}</em>
-                </div>
-                <DiffCodeBlock
-                  baseValue={displayRaw(entry.fromRawValue)}
-                  targetValue={displayRaw(entry.toRawValue, entry.valueState)}
-                />
-              </article>
-            );
-          })}
-        </div>
+        {content}
 
         <footer className="parameter-history-diff-dialog__footer">
           <Button type="button" variant="outline" onClick={onClose}>

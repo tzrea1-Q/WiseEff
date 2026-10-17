@@ -227,7 +227,7 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(screen.getByText("battery_temp_target_c")).toBeInTheDocument();
     expect(screen.getByText(/power\/aurora\.dts/)).toBeInTheDocument();
     expect(screen.getByText(/temp-target @ \/battery@0/)).toBeInTheDocument();
-    expect(screen.getByText("未分类")).toBeInTheDocument();
+    expect(screen.getByText("未评估")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("选择 battery_temp_target_c"));
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
@@ -290,6 +290,50 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(screen.getByText(/power\/aurora\.dts/)).toBeInTheDocument();
     expect(screen.getByText(/power\/nebula\.dts/)).toBeInTheDocument();
     expect(screen.getByText(/temp-target @ \/battery@1/)).toBeInTheDocument();
+  });
+
+  it("searches readable canonical names and source instances, then reviews exact selected values", async () => {
+    const snapshot = canonicalSnapshot({ displayName: "电池目标温度" });
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={vi.fn()}
+      onPreview={vi.fn().mockResolvedValue([snapshot, canonicalSnapshot({ id: "second", sourceProjectParameterBindingId: "second-binding", sourceLocatorLabel: "temp-target @ /battery@1" })])}
+      onSubmit={vi.fn()} />);
+    fillProjectInfoAndContinue();
+    selectAuroraSourceAndContinue();
+    const table = await screen.findByRole("table", { name: "来源参数选择表" });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索参数或来源" }), { target: { value: "电池目标温度" } });
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    fireEvent.click(screen.getByLabelText("选择 电池目标温度"));
+    fireEvent.click(screen.getByRole("button", { name: "查看 电池目标温度 详情" }));
+    const detail = screen.getByRole("complementary", { name: "参数详情" });
+    expect(detail).toHaveFocus();
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(6);
+    expect(within(table).queryByRole("columnheader", { name: /^来源/ })).not.toBeInTheDocument();
+    expect(within(table).getByLabelText("选择 电池目标温度")).toBeEnabled();
+    expect(within(table).getByRole("button", { name: "查看 电池目标温度 详情" })).toBeVisible();
+    expect(within(detail).queryByText("范围")).not.toBeInTheDocument();
+    expect(within(detail).getByText("定义标识")).not.toBeVisible();
+    fireEvent.click(within(detail).getByText("技术信息"));
+    expect(within(detail).getByText("定义标识")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    const review = screen.getByRole("table", { name: "所选参数快照" });
+    expect(review).toHaveTextContent("电池目标温度");
+    expect(review).toHaveTextContent("36.5");
+    expect(review).toHaveTextContent("power/aurora.dts");
+    expect(review).toHaveTextContent("temp-target @ /battery@0");
+    expect(review).not.toHaveTextContent("/battery@1");
+  });
+
+  it("presents typed DTS boolean presence while keeping unknown empty values unconfirmed", async () => {
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={vi.fn()}
+      onPreview={vi.fn().mockResolvedValue([
+        canonicalSnapshot({ propertyKey: "enabled", rawValue: "", effectiveValue: { kind: "boolean", present: true } }),
+        canonicalSnapshot({ sourceProjectParameterBindingId: "unknown", propertyKey: "unknown", rawValue: "", effectiveValue: null, needsEffectiveValueConfirmation: true })
+      ])} onSubmit={vi.fn()} />);
+    fillProjectInfoAndContinue();
+    selectAuroraSourceAndContinue();
+    const table = await screen.findByRole("table", { name: "来源参数选择表" });
+    expect(within(table).getByText("属性存在")).toBeInTheDocument();
+    expect(within(table).getByText("需确认")).toBeInTheDocument();
   });
 
   it("does not fall back to the legacy parameter library when canonical preview is empty", async () => {
@@ -601,7 +645,7 @@ describe("ProjectParameterInitializationWizard", () => {
     fireEvent.click(within(riskMenu).getByLabelText("高"));
 
     expect(within(table).queryByText("battery_temp_target_c")).not.toBeInTheDocument();
-    expect(within(table).getByText(/当前筛选条件下没有匹配参数/)).toBeInTheDocument();
+    expect(within(table).getByText(/没有匹配的参数，请调整搜索或清除筛选/)).toBeInTheDocument();
   });
 
   it("supports header filters on every initialization candidate data column", () => {
@@ -716,6 +760,7 @@ describe("ProjectParameterInitializationWizard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
     expect(screen.queryByRole("complementary", { name: "参数详情" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma 详情" })).toHaveFocus();
   });
 
   it("keeps footer actions in a stable bottom action bar", () => {

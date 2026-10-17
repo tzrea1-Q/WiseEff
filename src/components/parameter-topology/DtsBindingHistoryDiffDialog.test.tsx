@@ -15,6 +15,17 @@ const historyEntries = [
 ];
 
 describe("DtsBindingHistoryDiffDialog", () => {
+  it("presents known system reasons in Chinese while preserving a user's own reason", () => {
+    render(<DtsBindingHistoryDiffDialog embedded propertyKey="flag" onClose={() => undefined}
+      historyEntries={[
+        { ...historyEntries[0]!, id: "source-sync", reason: "source-revision-propagation" },
+        { ...historyEntries[0]!, id: "value-write", reason: "project-value-append" },
+        { ...historyEntries[0]!, id: "user-edit", reason: "calibrate charging current" }
+      ]} />);
+    expect(screen.getByText("同步来源修订")).toBeInTheDocument();
+    expect(screen.getByText("项目配置写入")).toBeInTheDocument();
+    expect(screen.getByText("calibrate charging current")).toBeInTheDocument();
+  });
   it("uses the shared modal contract for naming, focus, and safe dismissal", () => {
     function Harness() {
       const [open, setOpen] = useState(false);
@@ -91,10 +102,18 @@ describe("DtsBindingHistoryDiffDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "gpio_int 历史差异" });
-    const card = within(dialog).getByRole("article", {
-      name: "值的固定修订 definition-revision-12 / 事件有效修订 effective-revision-13 历史差异"
-    });
+    const card = within(dialog).getByRole("article", { name: "历史事件 1 历史差异" });
     expect(card).toHaveTextContent("值的固定修订 definition-revision-12");
     expect(card).toHaveTextContent("事件有效修订 effective-revision-13");
+  });
+
+  it("embeds history with reason and actor while preserving technical identities in a disclosure", () => {
+    render(<DtsBindingHistoryDiffDialog embedded propertyKey="flag"
+      historyEntries={[{ ...historyEntries[0]!, reason: "校准板级配置", currentValueId: "value-exact" }]}
+      onClose={() => undefined} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("校准板级配置")).toBeInTheDocument();
+    expect(screen.getByText(/陈晨/)).toBeInTheDocument();
+    expect(screen.getByText("value-exact").closest("details")).not.toHaveAttribute("open");
   });
 });

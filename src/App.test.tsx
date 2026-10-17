@@ -2026,7 +2026,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(topbar.querySelector(".topbar-title")).toHaveTextContent("我的工作台");
     expect(topbar.querySelector(".topbar-subtitle")).toBeNull();
     expect(within(topbar).getByRole("radiogroup", { name: "工作台视图" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入 项目参数" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 变更审阅" })).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
@@ -2074,7 +2074,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByText("AI 驱动的企业业务效率平台")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数" })).toBeInTheDocument();
   });
 
   it("opens the project initialization wizard from the parameter workspace topbar", () => {
@@ -2357,7 +2357,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
     expect(window.location.pathname).toBe("/parameter-submissions");
-    expect(screen.getByRole("table", { name: "审阅队列" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
+    const submissionStatus = screen.getByRole("tablist", { name: "提交状态" });
+    expect(within(submissionStatus).getByRole("tab", { name: "审核中" })).toHaveAttribute("aria-selected", "true");
+    expect(within(submissionStatus).getByRole("tab", { name: "已结束" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "审阅视角" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     expect(within(document.querySelector(".topbar") as HTMLElement).getByRole("button", { name: "返回工作台" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "我的历史提交" })).not.toBeInTheDocument();
@@ -2386,7 +2390,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
     fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
-    expect(screen.getByRole("table", { name: "审阅队列" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     // Scope to the page content: the transient global toast legitimately
     // announces the submitted round id, but the history list must not leak it.
@@ -2436,8 +2440,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    const historyPanel = screen.getByRole("table", { name: "审阅队列" });
-    expect(historyPanel).toHaveTextContent("Zhao Heng");
+    const historyPanel = screen.getByRole("table", { name: "我的提交" });
+    expect(within(historyPanel).queryByRole("columnheader", { name: "提交人" })).not.toBeInTheDocument();
     expect(within(historyPanel).getAllByRole("row")).toHaveLength(2);
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("Zhao Heng");
@@ -2576,10 +2580,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    const historyPanel = screen.getByRole("table", { name: "审阅队列" });
+    const historyPanel = screen.getByRole("table", { name: "我的提交" });
     expect(within(historyPanel).getAllByRole("row")).toHaveLength(1);
     expect(screen.queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
-    expect(screen.getByText("暂无待审核请求")).toBeInTheDocument();
+    expect(screen.getByText("暂无审核中的提交")).toBeInTheDocument();
   });
 
   it("keeps submission round detail copy to a single prompt line and a single-row timeline", () => {
@@ -3473,7 +3477,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-home",
-        present: ["热榜", "概览", "参数修改", "变更审阅"],
+        present: ["热榜", "概览", "项目参数", "变更审阅"],
         absent: [
           "推荐依据",
           "保留原看板指标，用来解释工作台行动排序",
@@ -4109,7 +4113,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", "/parameters");
 
     renderApp({ initialAppState: userState });
-    expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数" })).toBeInTheDocument();
 
     window.history.pushState(null, "", "/logs");
     fireEvent.popState(window);

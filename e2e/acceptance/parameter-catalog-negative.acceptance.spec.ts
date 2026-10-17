@@ -153,7 +153,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await expect(archivedNotice).toContainText("legacy-id-archived");
     await expect(archivedNotice).not.toContainText(/迁移证据|migration-evidence/);
     await expect(archivedNotice).not.toContainText(/archive-op08-gone|candidate/i);
-    await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: /参数详情$/ })).toHaveCount(0);
     await assertNoPageOverflow(page);
     await catalogScreenshot(page, testInfo, "pcat-ui-11-archived-notice-desktop");
     await archivedNotice.getByRole("button", { name: "知道了" }).click();
@@ -188,7 +188,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     );
     expect((await scopeHiddenResponse).status()).toBe(404);
     await expect(page.locator(".parameter-archived-link-banner")).toHaveCount(0);
-    await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: /参数详情$/ })).toHaveCount(0);
     await expect(page.getByText(fixture.legacy.goneEvidenceId)).toHaveCount(0);
 
     const conflict = await catalogJson(

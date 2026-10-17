@@ -1,0 +1,160 @@
+.project-init-scope-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.project-init-scope-toolbar .search-field {
+  flex: 1;
+  min-width: 240px;
+}
+
+.project-init-scope-toolbar > span,
+.project-init-identity,
+.project-init-review-parameters > p {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.project-init-identity {
+  display: block;
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
+  font-weight: 400;
+}
+
+.project-init-parameter-step--with-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.6fr);
+  align-items: start;
+}
+
+.project-init-parameter-step .project-init-scope-head {
+  gap: var(--space-2);
+  margin-bottom: 0;
+  padding-bottom: var(--space-3);
+}
+
+.project-init-parameter-step .project-init-step-copy--scope {
+  gap: var(--space-1);
+}
+
+.project-init-parameter-step--with-detail .project-init-table table {
+  min-width: 0;
+}
+
+.project-init-parameter-step--with-detail .project-init-col-select {
+  width: 36px;
+}
+
+.project-init-parameter-step--with-detail .project-init-col-parameter {
+  width: auto;
+}
+
+.project-init-parameter-step--with-detail .project-init-col-module {
+  width: 22%;
+}
+
+.project-init-parameter-step--with-detail .project-init-col-value {
+  width: 23%;
+}
+
+.project-init-parameter-step--with-detail .project-init-col-risk {
+  width: 76px;
+}
+
+.project-init-parameter-step--with-detail .project-init-col-detail {
+  width: 80px;
+}
+
+.project-init-detail-button { white-space: nowrap; }
+
+.project-init-parameter-step--with-detail :is(th, .risk-badge) {
+  white-space: nowrap;
+}
+
+.project-init-parameter-step--with-detail :is(th, td) {
+  padding: var(--space-2);
+}
+
+.project-init-parameter-step--with-detail .project-init-identity {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-init-parameter-step--with-detail > :is(.project-init-scope-head, .project-init-scope-toolbar) {
+  grid-column: 1 / -1;
+}
+
+.project-init-parameter-step--with-detail .project-init-parameter-detail {
+  margin: 0;
+  max-height: 380px;
+  overflow-y: auto;
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.project-init-parameter-step--with-detail .project-init-parameter-detail dl {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.project-init-parameter-step--with-detail .project-init-parameter-detail dl > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.project-init-technical > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.project-init-technical[open] {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.project-init-technical code {
+  overflow-wrap: anywhere;
+}
+
+.project-init-parameter-detail:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: var(--space-1);
+}
+
+.project-init-review-parameters {
+  min-width: 0;
+}
+
+.project-init-review-parameters h4 {
+  margin: 0;
+}
+
+.project-init-review-parameters table {
+  min-width: 620px;
+}
+
+.project-init-review-parameters :is(th, td) {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.project-init-review-parameters :is(th, td):first-child {
+  width: 30%;
+}
+
+.project-init-review-parameters :is(th, td):last-child {
+  width: 25%;
+}
+
+@media (max-width: 900px) {
+  .project-init-parameter-step--with-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-init-parameter-step--with-detail .project-init-parameter-detail {
+    grid-row: 3;
+  }
+}

@@ -102,4 +102,12 @@ describe("dtc toolchain", () => {
       )
     ).resolves.toMatchObject({ ok: true, compiler: "dtc" });
   });
+
+  it("passes seed source unchanged so missing definitions cannot be hidden by a stub", async () => {
+    const source = "/dts-v1/; / { }; &missing { value = <1>; };";
+    await compileDtsSeedFiles([{ ...oneSeedFile[0], source }], createStubDtcValidator((files) => {
+      expect(files).toEqual([{ name: "aurora-board.dts", content: source }]);
+      return { ok: true, mode: "block", compiler: "dtc", diagnostics: [] };
+    }));
+  });
 });

@@ -21,6 +21,10 @@ function candidate(
 }
 
 describe("mergeInitializationBindingCandidates", () => {
+  it.each([{ kind: "boolean", present: true }, { kind: "empty" }])("accepts typed DTS empty literals as confirmed values: %j", (effectiveValue) => {
+    const merged = mergeInitializationBindingCandidates({ primary: [candidate({ sourceProjectId: "aurora", sourceBindingId: "boolean", parameterSpecId: "spec", moduleId: "mod", sourceFormat: "dts", rawValue: "", effectiveValue })], supplements: [] });
+    expect(merged[0].needsEffectiveValueConfirmation).toBe(false);
+  });
   it("keeps every canonical source value and exposes same-definition conflicts", () => {
     const primary = [
       candidate({

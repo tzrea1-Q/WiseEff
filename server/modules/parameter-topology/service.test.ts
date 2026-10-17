@@ -76,7 +76,7 @@ function makeAuth(): AuthContext {
 
 function makeDb(): Database {
   return {
-    query: vi.fn(),
+    query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
     transaction: vi.fn()
   };
 }
@@ -255,7 +255,9 @@ describe("parameter topology service org scope", () => {
       }
     ]);
 
-    const result = await getBindingHistory(makeDb(), makeAuth(), {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: "audit-2", actor: "陈晨" }], rowCount: 1 });
+    const result = await getBindingHistory(db, makeAuth(), {
       projectId: "project-1",
       bindingId: "canonical-binding-1"
     });
@@ -269,11 +271,14 @@ describe("parameter topology service org scope", () => {
         definitionRevisionId: "drev-value-2",
         currentValueId: "value-2",
         valueState: "present",
-        reason: "raise limit"
+        reason: "raise limit",
+        actor: "陈晨"
       })
     ]);
     expect(getBindingForProject).not.toHaveBeenCalled();
     expect(listBindingRevisionRows).not.toHaveBeenCalled();
+    expect(db.query).toHaveBeenCalledWith(expect.stringMatching(/audit_events[\s\S]*organization_id = \$1[\s\S]*project_id = \$2/),
+      ["org-1", "project-1", ["audit-2"]]);
   });
 
   it("getBindingHistory returns 404 for a binding absent from the canonical owner", async () => {

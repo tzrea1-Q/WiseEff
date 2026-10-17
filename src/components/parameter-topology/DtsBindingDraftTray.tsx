@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CircleCheck, Send, X } from "lucide-react";
+import { CircleCheck, Pencil, Send, X } from "lucide-react";
 
 import type {
   SubmitParameterChangesInput,
@@ -7,7 +7,7 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import { SelectControl } from "@/components/common/SelectControl";
-import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
+import { formatDtsRawValueForUi, formatDtsValueForUi, isDtsEmptyValueAllowed } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import { presentError } from "@/infrastructure/http/presentError";
 
 import {
@@ -19,7 +19,7 @@ import {
 
 export type { PendingBindingDraft, PendingEnablementDraft, PendingTopologyDraft } from "./draftTrayTypes";
 
-export const mixedDraftOwnerMessage = "节点启用与 canonical 参数值须分开提交，各自保留结构或 canonical 历史、审核与来源归属；请移出另一类草稿后提交。";
+export const mixedDraftOwnerMessage = "节点启用与参数值使用不同审核流程，请分别提交；可先移出另一类草稿。";
 
 export type DtsBindingDraftTrayProps = {
   projectId: string;
@@ -44,6 +44,8 @@ export type DtsBindingDraftTrayProps = {
     input: { projectId: string; draftIds: string[]; assignedToUserId?: string | null }
   ) => Promise<void | { notification: string; alreadyNotified?: boolean }>;
   onNavigate: (path: string) => void;
+  onEditBinding?: (bindingId: string) => void;
+  canEdit?: boolean;
 };
 
 function nonBlank(value: string): boolean {
@@ -79,13 +81,14 @@ function candidateBlocker(drafts: PendingTopologyDraft[]): string | null {
 }
 
 function actionValueBlocker(drafts: PendingTopologyDraft[]): string | null {
-  const emptySet = drafts.some((draft) => draft.action === "set" && !nonBlank(draft.rawText));
+  const emptySet = drafts.some((draft) => draft.action === "set" && !nonBlank(draft.rawText) &&
+    !(isBindingDraft(draft) && draft.sourceFormat !== "json" && isDtsEmptyValueAllowed(draft.effectiveValue)));
   if (emptySet) {
-    return "set action 必须携带非空 rawText，已阻止提交。";
+    return "目标值尚未填写，无法提交审核。";
   }
   const valuedDelete = drafts.some((draft) => draft.action === "delete" && draft.rawText !== "");
   return valuedDelete
-    ? "delete action 必须携带空目标值，已阻止提交。"
+    ? "删除草稿包含了目标值，请重新编辑后提交。"
     : null;
 }
 
@@ -156,7 +159,7 @@ function formatEnablementValue(raw: string | null): string {
 
 function formatBindingValue(draft: PendingBindingDraft, raw: string): string {
   if (draft.sourceFormat === "json") return raw || "∅";
-  return formatDtsRawValueForUi(raw) || raw || "∅";
+  return formatDtsValueForUi(raw, draft.effectiveValue);
 }
 
 function toSubmitItem(draft: PendingTopologyDraft) {
@@ -198,7 +201,9 @@ export function DtsBindingDraftTray({
   onRemove,
   onSubmit,
   onSubmitCanonical,
-  onNavigate
+  onNavigate,
+  onEditBinding,
+  canEdit = true
 }: DtsBindingDraftTrayProps) {
   const [candidateSnapshot, setCandidateSnapshot] = useState(() => ({
     candidates,
@@ -317,7 +322,7 @@ export function DtsBindingDraftTray({
     : null;
   const submissionEntryError = (useCanonical ? onSubmitCanonical : onSubmit)
     ? null
-    : "正式 binding 提交入口未配置，已阻止提交。";
+    : "审核服务暂不可用，请稍后重试。";
   const blocker = externalBlocker
     ?? mixedOwnerError
     ?? displayedCandidatesError
@@ -333,7 +338,7 @@ export function DtsBindingDraftTray({
     !blocker &&
     !submitting &&
     !submitted &&
-    !removingDraftId
+    !removingDraftId && canEdit
   );
   const submitDraftIds = new Set(submitDrafts.map((draft) => draft.draftId));
   const handleRemove = (draftId: string) => {
@@ -359,7 +364,7 @@ export function DtsBindingDraftTray({
           <h3>本轮已修改</h3>
           <p>
             {mixedOwnerError
-              ? "节点启用与 canonical 参数值须分开提交。"
+              ? "节点启用与参数值须分开提交。"
               : useCanonical
               ? `将提交 ${submitDrafts.length} 项参数值草稿；节点启用使用独立审核流程。`
               : selectedBindingIds && hasBindingDrafts
@@ -378,6 +383,7 @@ export function DtsBindingDraftTray({
 
       <div className="dts-binding-draft-tray__items">
         {drafts.map((draft) => {
+          const displayName = isBindingDraft(draft) ? draft.displayName?.trim() : null;
           const diffLabel = isBindingDraft(draft)
             ? `${draft.writeTarget.propertyKey} 值变更`
             : `${draft.nodeLabel} 节点启用变更`;
@@ -401,17 +407,27 @@ export function DtsBindingDraftTray({
               <div className="dts-binding-draft-tray__item-heading">
                 <div>
                   {isBindingDraft(draft) ? (
-                    <strong><code>{draft.writeTarget.propertyKey}</code></strong>
+                    <><strong>{displayName || <code>{draft.writeTarget.propertyKey}</code>}</strong>
+                      {displayName && displayName !== draft.writeTarget.propertyKey ? <small><code>{draft.writeTarget.propertyKey}</code></small> : null}</>
                   ) : (
                     <strong>{draft.nodeLabel}</strong>
                   )}
                   <span>{isBindingDraft(draft) ? draft.moduleName : "节点启用"}</span>
                 </div>
+                {isBindingDraft(draft) && onEditBinding ? (
+                  <button type="button" className="button subtle"
+                    aria-label={`继续编辑 ${draft.writeTarget.propertyKey}`}
+                    disabled={!canEdit || submitting || removingDraftId !== null}
+                    onClick={() => onEditBinding(draft.projectParameterBindingId)}>
+                    <Pencil size={15} strokeWidth={1.9} aria-hidden="true" />
+                    继续编辑
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="button subtle"
                   aria-label="移出本轮修改"
-                  disabled={submitting || removingDraftId !== null}
+                  disabled={!canEdit || submitting || removingDraftId !== null}
                   onClick={() => handleRemove(draft.draftId)}
                 >
                   <X size={15} strokeWidth={1.9} aria-hidden="true" />
@@ -437,7 +453,7 @@ export function DtsBindingDraftTray({
         <div className="submission-assignee-grid" aria-label="软件审核处理人">
           <label>
             软件 MDE
-            <SelectControl ariaLabel="软件 MDE" value={softwareCommitterId} disabled={submitting || submitted} onValueChange={setSoftwareCommitterId} options={[
+            <SelectControl ariaLabel="软件 MDE" value={softwareCommitterId} disabled={!canEdit || submitting || submitted} onValueChange={setSoftwareCommitterId} options={[
               { value: "", label: "软件审核池（未指定）" },
               ...displayedCandidates.softwareCommitters.map((candidate) => ({ value: candidate.id, label: candidate.name }))
             ]} />
@@ -448,21 +464,21 @@ export function DtsBindingDraftTray({
         <div className="submission-assignee-grid" aria-label="后续流程处理人">
           <label>
             硬件 MDE
-            <SelectControl ariaLabel="硬件 MDE" value={hardwareCommitterId} disabled={submitting || submitted} onValueChange={setHardwareCommitterId} options={[
+            <SelectControl ariaLabel="硬件 MDE" value={hardwareCommitterId} disabled={!canEdit || submitting || submitted} onValueChange={setHardwareCommitterId} options={[
               ...(displayedCandidates.hardwareCommitters.length === 0 ? [{ value: "", label: "无可用候选人" }] : []),
               ...displayedCandidates.hardwareCommitters.map((candidate) => ({ value: candidate.id, label: candidate.name }))
             ]} />
           </label>
           <label>
             软件 MDE
-            <SelectControl ariaLabel="软件 MDE" value={softwareCommitterId} disabled={submitting || submitted} onValueChange={setSoftwareCommitterId} options={[
+            <SelectControl ariaLabel="软件 MDE" value={softwareCommitterId} disabled={!canEdit || submitting || submitted} onValueChange={setSoftwareCommitterId} options={[
               ...(displayedCandidates.softwareCommitters.length === 0 ? [{ value: "", label: "无可用候选人" }] : []),
               ...displayedCandidates.softwareCommitters.map((candidate) => ({ value: candidate.id, label: candidate.name }))
             ]} />
           </label>
           <label>
             软件开发
-            <SelectControl ariaLabel="软件开发" value={softwareUserId} disabled={submitting || submitted} onValueChange={setSoftwareUserId} options={[
+            <SelectControl ariaLabel="软件开发" value={softwareUserId} disabled={!canEdit || submitting || submitted} onValueChange={setSoftwareUserId} options={[
               ...(displayedCandidates.softwareUsers.length === 0 ? [{ value: "", label: "无可用候选人" }] : []),
               ...displayedCandidates.softwareUsers.map((candidate) => ({ value: candidate.id, label: candidate.name }))
             ]} />
@@ -537,7 +553,7 @@ export function DtsBindingDraftTray({
               .then((result) => {
                 if (!requestIsCurrent()) return;
                 if (result && "notification" in result) {
-                  setSubmitError(result.notification);
+                  if (!useCanonical || !result.alreadyNotified) setSubmitError(result.notification);
                   return;
                 }
                 setSubmitted(true);

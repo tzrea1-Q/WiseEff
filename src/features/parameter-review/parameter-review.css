@@ -838,6 +838,23 @@
   min-width: 0;
 }
 
+.review-inbox.review-inbox--list-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.review-inbox--personal .review-inbox__type-column,
+.review-inbox--personal .review-inbox__module-column {
+  width: 18%;
+}
+
+.review-inbox--personal .review-inbox__time-column {
+  width: 20%;
+}
+
+.review-inbox--personal .review-inbox__status-column {
+  width: 16%;
+}
+
 .review-inbox__toolbar {
   display: flex;
   flex-wrap: wrap;

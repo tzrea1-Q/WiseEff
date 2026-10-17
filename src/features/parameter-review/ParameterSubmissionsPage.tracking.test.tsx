@@ -16,13 +16,15 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
     const round = { ...initialState.parameterSubmissionRounds[0], id: "mock-personal-round", submitter: "Xu Yun",
       summary: "本人待撤回提交", status: "硬件Committer检视" as const };
     const dispatch = vi.fn();
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterSubmissionsPage state={{ ...initialState, currentUserId: "u-xu-yun", parameterSubmissionRounds: [round,
-        { ...round, id: "other-personal-round", submitter: "Another user", summary: "他人提交" }] }}
+        { ...round, id: "other-personal-round", submitter: "Another user", summary: "他人提交" },
+        { ...round, id: "another-project-round", projectId: "nebula", summary: "其他项目提交" }] }}
         dispatch={dispatch} onNavigate={() => {}} search="?project=aurora" runtimeMode="mock" />
     </TopBarActionsContext.Provider>);
 
     expect(screen.queryByRole("button", { name: /他人提交/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /其他项目提交/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "撤回本轮提交" }));
     expect(dispatch).not.toHaveBeenCalled();
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
@@ -52,7 +54,7 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
     const runtime = { parameterRepository: { listSubmissionRounds }, parameterCatalogRepository: {
       listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [] })
     } } as unknown as AppRuntime;
-    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
       <ParameterSubmissionsPage state={initialState} dispatch={vi.fn()} onNavigate={() => {}} search="?project=aurora"
         runtime={runtime} runtimeMode="api" parameterActions={{ withdrawSubmissionRound } as never} />
     </TopBarActionsContext.Provider>);
@@ -70,9 +72,9 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
     await act(async () => { finishWithdrawal(); await withdrawal; });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(listSubmissionRounds).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("status")).toHaveTextContent("正在加载审核队列");
-    await user.click(screen.getByRole("tab", { name: "已处理" }));
-    expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载我的提交");
+    await user.click(screen.getByRole("tab", { name: "已结束" }));
+    expect(screen.getByRole("tab", { name: "已结束" })).toHaveAttribute("aria-selected", "true");
     await act(async () => { finishRefresh(); await refreshReady; });
     await waitFor(() => expect(screen.getByRole("button", { name: "撤回本轮提交" })).toBeDisabled());
   });
@@ -92,7 +94,7 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
     } as unknown as AppRuntime;
 
     render(
-      <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+      <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
         <ParameterSubmissionsPage
           state={initialState}
           dispatch={vi.fn()}
@@ -104,9 +106,9 @@ describe("ParameterSubmissionsPage canonical and legacy tracking", () => {
       </TopBarActionsContext.Provider>
     );
 
-    expect(await screen.findByText("暂无待审核请求")).toBeInTheDocument();
+    expect(await screen.findByText("暂无审核中的提交")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "提交轮次详情" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
+    await userEvent.click(screen.getByRole("tab", { name: "已结束" }));
     const archive = await screen.findByRole("region", { name: "提交轮次详情" });
     expect(listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora", mine: true });
     expect(within(archive).getByRole("heading", { level: 2 })).toBeInTheDocument();
