@@ -93,7 +93,7 @@ export const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   "hardware-committer": "包含硬件开发权限，并可执行硬件侧参数检视。",
   "software-committer": "包含软件开发权限，并可执行软件侧参数检视。",
   admin: "包含全部提交人权限，并可访问各应用后台和组织管理。",
-  "platform-admin": "跨组织平台运营角色，在本组织内拥有管理员能力，并可访问平台控制台。"
+  "platform-admin": "平台运营角色，在本组织内拥有管理员能力，并可管理平台超级管理员授权。"
 };
 
 type UserColumnFilterKey = "user" | "title" | "role" | "status" | "lastActive";

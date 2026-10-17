@@ -4,7 +4,7 @@
 
 ## Who can do this
 
-Organization Admins (`admin`) and Platform Admins (`platform-admin`) can manage their home Organization and use business consoles within their permissions. Changing member details or the Organization name requires `users:manage`; using Audit center and Feedback management requires `admin:access`. Each business console also checks its own permissions and resource scope. Only Platform Admins can use Platform console. Active, signed-in users, including guests, can send product feedback and view their own feedback.
+Organization Admins (`admin`) and Platform Admins (`platform-admin`) can manage their home Organization and use business consoles within their permissions. Changing member details or the Organization name requires `users:manage`; using Audit center and Feedback management requires `admin:access`. Each business console also checks its own permissions and resource scope. Active, signed-in users, including guests, can send product feedback and view their own feedback.
 
 The other roles are guest, hardware user, software user, hardware committer, and software committer. See [Account and access](account-and-access.md) for registration, password tasks, and access requests. Admin consoles are not the entry point for requesting access.
 
@@ -60,7 +60,6 @@ Organization management and Organization-scoped parameter governance have differ
 | Maintain debugging assets | Debugging admin (`/debugging-admin`); Node debugging area (`/debugging-admin/nodes`) | The default area maintains reload configuration; the node area maintains logical nodes, protocol bindings and the debugging module tree. See [Device debugging](device-debugging.md). |
 | Govern log analysis | Log admin (`/log-admin`) | Inspect analysis records and quality, and maintain business domains. Domain governance requires `logs:admin-domains`. See [Log analysis](log-analysis.md). |
 | Govern knowledge | Knowledge admin (`/knowledge-admin`) | Review Agent drafts, manage archived entries and inspect index health. Management operations require the knowledge-management capability. See [Knowledge](knowledge.md). |
-| Operate Platform-owned assets | Platform console (`/platform-console`) | A separate page for Platform Admins with no Organization switcher. Use the business consoles above for their respective workflows. |
 
 For parameter modules, open Module management (`/parameter-admin/modules`), expand the tree and check the parent before adding a root or child module. Use the available edit, rename and move controls to adjust the hierarchy. Inspect registered Catalog subjects through their placement controls; changing a classification does not create a new definition. Ordinary modules can be deleted only when they have no children, parameter references or Catalog placements. Read driver-group dissolution warnings separately; do not treat this as deleting an empty category.
 

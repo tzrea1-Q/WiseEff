@@ -2243,8 +2243,8 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     priority: "P1",
     area: "platform",
     route: "/platform-console",
-    roles: ["Platform Admin"],
-    action: "Open platform console from sidebar and confirm access; other roles denied.",
+    roles: ["Platform Admin", "Admin", "Guest"],
+    action: "Confirm the retired platform console has no sidebar entry or dedicated page for any role.",
     coverage: "automated",
     acceptanceIds: ["PLAT-ROLE-001"],
     specFiles: ["e2e/acceptance/permissions-matrix.acceptance.spec.ts"],
@@ -2280,12 +2280,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "platform",
     route: "/platform-console",
     roles: ["Platform Admin"],
-    action: "Promote compatible with blast-radius confirmation and revert to restore contributors.",
-    coverage: "manual",
+    action: "Confirm the retired platform console makes no promotion history query and its removed history endpoint returns 404.",
+    coverage: "automated",
     acceptanceIds: ["DRV-PROMOTE-005"],
-    specFiles: [],
-    deferralReason:
-      "Multi-org promote fixtures are not in local seed; blast-radius UI smoke archived under work/ui-checks/governance-closeout-* per 2026-08-01 closeout plan.",
+    specFiles: ["e2e/acceptance/issue897-canonical-modules.acceptance.spec.ts"],
     assertions: ["ui", "api"]
   },
   {

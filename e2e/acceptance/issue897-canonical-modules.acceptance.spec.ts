@@ -14,6 +14,7 @@ import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/rol
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { startDisposablePostCutoverRuntime, disposableRuntimeOutcomeFromTestInfo, type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
 import { captureProcessEnvForDisposableRuntime, applyDisposableRuntimeEnv, restoreProcessEnvFromDisposableRuntime } from "./helpers/semanticBindingFixture";
 
@@ -122,26 +123,38 @@ test("Issue 1067: historical modules expose provenance without structural contro
   await page.screenshot({ path: info.outputPath("issue1067-readonly-provenance-1440x900.png"), animations: "disabled" });
 });
 
-test("Issue 1066: old Platform bookmark explains retirement and links to Catalog", async ({ page }, info) => {
+test("retired Platform console has no page or promotion history query", async ({ page, request }, info) => {
+  // @acceptance DRV-PROMOTE-005
+  // @operation DRV-PROMOTE-005
   await seedAcceptanceRoleMatrix();
-  const retiredRequests: string[] = [];
+  const historyRequests: string[] = [];
   page.on("request", request => {
-    if (/\/organization-driver-schemas|\/driver-schemas\/(promotion-candidates|promotions)/.test(request.url())) {
-      retiredRequests.push(new URL(request.url()).pathname);
-    }
+    if (request.url().includes("driver-schema-promotion-history")) historyRequests.push(request.url());
   });
-  await signInBrowserAsRole(page, "platform-admin", "/platform-console");
-  await expect(page.getByRole("heading", { name: "覆盖解析已退役" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "晋升历史（只读）" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /晋升至平台|撤销晋升|恢复/ })).toHaveCount(0);
-  await expect(page.getByText("正在加载晋升历史…")).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath("issue1066-platform-history-1440x900.png"), animations: "disabled" });
-  const catalogLink = page.getByRole("link", { name: "前往 Catalog", exact: true });
-  await expect(catalogLink).toHaveAttribute("href", "/parameter-admin/specs");
-  await catalogLink.focus();
-  await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/parameter-admin\/specs/);
-  expect(retiredRequests).toEqual([]);
+  await signInBrowserAsRole(page, "platform-admin", "/parameter-home");
+  await expect(page.getByRole("button", { name: "平台控制台", exact: true })).toHaveCount(0);
+  await page.goto("/platform-console");
+  await expect(page.getByRole("region", { name: "平台控制台", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeVisible();
+  expect(historyRequests).toEqual([]);
+  const history = await request.get(apiRoute("/api/v2/platform/driver-schema-promotion-history"), {
+    headers: authHeadersForRole("platform-admin"),
+  });
+  expect(history.status()).toBe(404);
+  await recordOperationEvidence({
+    operationId: "DRV-PROMOTE-005",
+    title: "Platform console and promotion history query are removed",
+    status: "passed",
+    page,
+    testInfo: info,
+    api: [summarizeApiResponse(history, {
+      method: "GET",
+      path: "/api/v2/platform/driver-schema-promotion-history",
+      responseSummary: "Removed endpoint returns 404."
+    })],
+    notes: "No console entry or history request; the old page uses the home fallback and the removed API returns 404. Stored history is covered by the PostgreSQL retirement test."
+  });
+  await page.screenshot({ path: info.outputPath("platform-console-removed-1440x900.png"), animations: "disabled" });
 });
 
 test.describe("Issue 897 canonical module ownership", () => {

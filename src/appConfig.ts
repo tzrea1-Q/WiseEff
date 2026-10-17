@@ -13,8 +13,7 @@ import {
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
-  TerminalSquare,
-  TowerControl
+  TerminalSquare
 } from "lucide-react";
 
 import {
@@ -59,8 +58,7 @@ export type PageKey =
   | "user-permissions"
   | "feedback-admin"
   | "feedback"
-  | "audit"
-  | "platform-console";
+  | "audit";
 
 export type PageConfig = {
   key: PageKey;
@@ -202,7 +200,6 @@ export const navigationItems: PageConfig[] = [
 ];
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
-  { label: "平台控制台", icon: TowerControl, path: "/platform-console" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "审计中心", icon: ScrollText, path: "/audit" },
   { label: "组织管理", icon: Settings2, path: "/organization" }
@@ -230,18 +227,6 @@ export function getPageByPath(path: string): PageConfig {
       icon: Settings2,
       title: "组织管理",
       subtitle: area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
-    };
-  }
-
-  if (path === "/platform-console") {
-    return {
-      key: "platform-console",
-      path: "/platform-console",
-      label: "平台控制台",
-      group: "平台总览",
-      icon: TowerControl,
-      title: "平台控制台",
-      subtitle: ""
     };
   }
 

@@ -474,12 +474,6 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameters"],
     additionalResponses: { "403": "ErrorResponse" }
   }),
-  "parameterSpecs.listPromotionHistory": {
-    summary: "Read retained driver-schema promotion provenance without overlay or candidate state",
-    tags: ["parameters"],
-    responseBody: "DriverSchemaPromotionHistoryListResponse",
-    additionalResponses: { "401": "ErrorResponse", "403": "ErrorResponse" }
-  },
   "parameterSpecs.promoteDriverSchemaOverlay": retireLegacySurface({
     summary: "Promote organization driver schema overlays into a platform-tier schema",
     tags: ["parameters"],

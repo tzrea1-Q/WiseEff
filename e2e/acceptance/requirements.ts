@@ -1089,7 +1089,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PLAT-ROLE-001",
     workflow: "C",
-    title: "Platform admin sees platform console; other roles are denied on direct navigation.",
+    title: "The retired platform console has no navigation entry or dedicated page for any role.",
     required: true
   },
   {
@@ -1131,7 +1131,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "DRV-PROMOTE-005",
     workflow: "C",
-    title: "Console promotion confirms cross-tenant blast radius; revert restores contributors.",
+    title: "The retired platform console issues no promotion history query and the removed history endpoint returns 404.",
     required: false
   },
   {

@@ -128,14 +128,14 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `DRV-SCHEMA-003` | C | No (pending automation) | Activating an overlay for a compatible a pinned schema already covers is rejected with an explanation. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-004` | C | No (pending automation) | Activating an overlay for an already-uploaded device upgrades existing provisional specs in place without a re-upload and closes related review tasks. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-CREATE-KIND-001` | C | No (pending automation) | Admin creates empty business, driver-group, instance, or logical modules from the attribution tree with parent-kind rules, required compatibles for driver groups, and not-yet-observed markers on empty curated nodes. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PLAT-ROLE-001` | C | Yes | Platform admin sees `/platform-console`; other roles get permission-denied on direct navigation. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
+| `PLAT-ROLE-001` | C | Yes | Retired platform console has no sidebar entry or dedicated page for any role. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PLAT-ROLE-002` | C | Yes | Organization Admin cannot grant `platform-admin` and the control is not rendered. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` (+ `server/modules/users/service.test.ts`) |
 | `PLAT-ROLE-003` | C | Yes | Platform admin users listing and org-scoped APIs stay bounded to the home organization. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` (+ `server/modules/users/service.test.ts`) |
 | `DRV-PROMOTE-001` | C | No | Overlay shadowed by pinned or platform schema names the replacing tier. | Supplemental: `work/ui-checks/governance-closeout-*` (see closeout plan) |
 | `DRV-PROMOTE-002` | C | No | Promoted overlay reads as promoted and links the platform row. | Supplemental: `work/ui-checks/governance-closeout-*` |
 | `DRV-PROMOTE-003` | C | No | Authoring overlay when platform row covers compatible is refused with reason. | Supplemental / future when multi-org promote seed exists |
 | `DRV-PROMOTE-004` | C | No | After promotion, org without overlay sees platform-covered compatible on attribution tree. | Supplemental / future |
-| `DRV-PROMOTE-005` | C | No | Console promotion shows cross-tenant blast radius; revert restores contributors. | Supplemental: `work/ui-checks/governance-closeout-*` |
+| `DRV-PROMOTE-005` | C | Yes | Removed console makes no promotion history query; the removed history API returns 404. | `e2e/acceptance/issue897-canonical-modules.acceptance.spec.ts` |
 | `SPEC-DEPRECATE-001` | C | No | Admin soft-deprecates a definition with reason; row leaves default library; reference count shown. | Unit: `ParameterSpecLibrary.test.tsx` / `ParameterAdminNextPage.test.tsx`; browser smoke in closeout |
 | `SPEC-RESTORE-001` | C | No | Admin restores deprecated definition to `activated_at`-implied state. | Unit + browser smoke in closeout |
 | `SPEC-EDIT-DIFF-001` | C | No | Active definition save shows value_shape/constraints diff before confirm. | Unit + browser smoke in closeout |

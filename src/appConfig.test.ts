@@ -162,10 +162,17 @@ describe("WiseEff prototype configuration", () => {
   });
 
   it("keeps admin utilities discoverable", () => {
-    expect(utilityItems.map((item) => item.label)).toEqual(["平台控制台", "反馈管理", "审计中心", "组织管理"]);
+    expect(utilityItems.map((item) => item.label)).toEqual(["反馈管理", "审计中心", "组织管理"]);
   });
 
   it("does not expose a disabled Agent utility item", () => {
     expect(utilityItems.map((item) => item.label)).not.toContain("Agent 能力");
+  });
+});
+
+describe("retired platform console", () => {
+  it("has no navigation entry or dedicated route", () => {
+    expect([...navigationItems, ...utilityItems].map(item => item.path)).not.toContain("/platform-console");
+    expect(getPageByPath("/platform-console")).toEqual(getPageByPath("/"));
   });
 });

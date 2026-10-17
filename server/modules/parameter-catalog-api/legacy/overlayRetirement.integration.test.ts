@@ -1,14 +1,10 @@
 import pg from "pg";
-import { createHmac } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createSavepointDatabase, type Database } from "../../../shared/database/client";
 import { createRetirementTestHarness } from "../../../testing/parameterCatalog/retirementHarness";
 import { requestJson } from "../../../test/testClient";
 import { routeManifest } from "../../contracts/routeManifest";
-import { createTokenVerifier } from "../../auth/tokenVerifier";
-import type { DriverSchemaPromotionHistoryItem } from "../../parameter-specs/promotionHistory";
-import { listDriverSchemaPromotions } from "../../parameter-specs/driverSchemaOverlayRepository";
 
 const legacyTables = [
   "driver_schema_overlays", "driver_schema_overlay_properties", "driver_schema_overlay_promotions",
@@ -33,7 +29,7 @@ const retiredRoutes = [
   { method: "POST", path: `${platformPath}/promotions/promotion-t1066/revert` },
 ] as const;
 
-describe("assembled overlay retirement and retained promotion history on PostgreSQL", () => {
+describe("assembled overlay retirement preserves historical storage on PostgreSQL", () => {
   let client: pg.Client;
   let db: Database;
   let harness: ReturnType<typeof createRetirementTestHarness>;
@@ -101,7 +97,7 @@ describe("assembled overlay retirement and retained promotion history on Postgre
       path: route.path.replace(":schemaId", "source-overlay-t1066").replace(":promotionId", "promotion-t1066"),
     }));
     expect(routes).toHaveLength(10);
-    expect(routes).toEqual(expect.arrayContaining(retiredRoutes));
+    expect(routes).toEqual(expect.arrayContaining([...retiredRoutes]));
   });
 
   it.each(retiredRoutes)("$method $path returns 410 and preserves all legacy rows", async (route) => {
@@ -132,82 +128,15 @@ describe("assembled overlay retirement and retained promotion history on Postgre
     await harness.assertRetired({ method: "GET", path }, { headers: { "X-WiseEff-User": "admin-t1066" } });
   });
 
-  it("lists persisted archived promotion history, not active overlay candidates, without writes", async () => {
-    const before = [];
-    for (const table of legacyTables) before.push((await db.query(`select * from ${table} order by id`)).rows);
-    const response = await requestJson<{ items: unknown[] }>(harness.server, historyPath, {
-      headers: { "X-WiseEff-User": "platform-t1066" },
-    });
-    expect(response.status).toBe(200);
-    expect(response.body.items).toContainEqual({
-      id: "promotion-t1066", platformSchemaId: "platform-overlay-t1066", sourceSchemaId: "source-overlay-t1066",
-      sourceOrganizationId: "org-overlay-t1066", promotedByUserId: "platform-t1066",
-      promotedAt: "2026-10-01T12:00:00.000Z", documentationSource: "org-overlay-t1066",
-    });
-    expect(JSON.stringify(response.body)).not.toContain("candidate-overlay-t1066");
-    const after = [];
-    for (const table of legacyTables) after.push((await db.query(`select * from ${table} order by id`)).rows);
-    expect(after).toEqual(before);
-  });
-
-  it("retains nullable provenance and orders archived history by timestamp then promotion ID", async () => {
-    const response = await requestJson<{ items: DriverSchemaPromotionHistoryItem[] }>(harness.server, historyPath, {
-      headers: { "X-WiseEff-User": "platform-t1066" },
-    });
-    expect(response.status).toBe(200);
-    const items = response.body.items.filter((item) => ["promotion-t1066", "promotion-a-t1066", "promotion-b-t1066"].includes(item.id));
-    expect(items.map((item) => item.id)).toEqual(["promotion-a-t1066", "promotion-b-t1066", "promotion-t1066"]);
-    expect(items[0]).toEqual({
-      id: "promotion-a-t1066", platformSchemaId: "platform-overlay-t1066", sourceSchemaId: "source-overlay-a-t1066",
-      sourceOrganizationId: "org-overlay-t1066", promotedByUserId: null,
-      promotedAt: "2026-10-02T12:00:00.000Z", documentationSource: null,
-    });
-  });
-
-  it("uses the existing promotion reader for history while preserving its platform-schema filter", async () => {
-    const history = await listDriverSchemaPromotions(db);
-    expect(history.filter((row) => row.platform_schema_id === "platform-overlay-t1066").map((row) => row.id))
-      .toEqual(["promotion-a-t1066", "promotion-b-t1066", "promotion-t1066"]);
-    expect((await listDriverSchemaPromotions(db, "platform-overlay-t1066")).map((row) => row.id))
-      .toEqual(["promotion-a-t1066", "promotion-b-t1066", "promotion-t1066"]);
-    expect(await listDriverSchemaPromotions(db, "missing-platform-t1066")).toEqual([]);
-  });
-
-  it.each([
-    { userId: "admin-t1066", status: 403, code: "FORBIDDEN" },
-    { userId: "other-t1066", status: 403, code: "FORBIDDEN" },
-    { userId: "inactive-t1066", status: 403, code: "FORBIDDEN" },
-    { userId: "missing-user-t1066", status: 401, code: "UNAUTHENTICATED" },
-  ])("refuses promotion history for $userId with $status", async ({ userId, status, code }) => {
-    const response = await requestJson<{ error: { code: string }; items?: unknown[] }>(harness.server, historyPath, {
-      headers: { "X-WiseEff-User": userId },
-    });
-    expect(response.status).toBe(status);
-    expect(response.body.error.code).toBe(code);
-    expect(response.body.items).toBeUndefined();
-  });
-
-  it.each([
-    { userId: "platform-t1066", status: 200, spoofedUserId: "admin-t1066" },
-    { userId: "admin-t1066", status: 403, spoofedUserId: "platform-t1066" },
-    { userId: "inactive-t1066", status: 403, spoofedUserId: "platform-t1066" },
-  ])("uses signed production principal $userId, not spoofed development headers", async ({ userId, status, spoofedUserId }) => {
-    const issuer = "t1066-history-test";
-    const secret = "t1066-test-only-signing-key";
-    const payload = Buffer.from(JSON.stringify({
-      iss: issuer, sub: userId, org: "org-overlay-t1066", exp: Math.floor(Date.now() / 1000) + 300,
-    })).toString("base64url");
-    const signature = createHmac("sha256", secret).update(payload).digest("base64url");
-    const production = createRetirementTestHarness({
-      db, legacyTables, auth: { mode: "production", verifier: createTokenVerifier({ issuer, secret }) },
-    });
-    const response = await requestJson(production.server, historyPath, {
-      headers: { Authorization: `Bearer ${payload}.${signature}`, "X-WiseEff-User": spoofedUserId },
-    });
-    expect(response.status).toBe(status);
-    const unauthenticated = await requestJson(production.server, historyPath, {
-      headers: { "X-WiseEff-User": "platform-t1066" },
-    });
-    expect(unauthenticated.status).toBe(401);
-  });
+  it.each(["platform-t1066", "admin-t1066", "other-t1066", "inactive-t1066", "missing-user-t1066"])(
+    "removes history queries for %s without changing retained records", async (userId) => {
+      const before = (await db.query("select * from driver_schema_overlay_promotions order by id")).rows;
+      expect(before).toHaveLength(3);
+      const response = await requestJson(harness.server, historyPath, {
+        headers: { "X-WiseEff-User": userId },
+      });
+      expect(response.status).toBe(404);
+      expect((await db.query("select * from driver_schema_overlay_promotions order by id")).rows).toEqual(before);
+    },
+  );
 });

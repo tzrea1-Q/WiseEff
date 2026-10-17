@@ -584,7 +584,7 @@ styleTest("history and review diff surfaces bound long code without moving inspe
 
 styleTest("overview templates keep the shell gutter and settings controls keep their compact geometry", async ({ page, baseURL }) => {
   await renderFixture(page, baseURL, `<main style="width: 1000px"><section class="overview-page">Overview</section><section class="retired-notice">Moved</section>
-    ${["organization-page", "user-permissions-page", "audit-center-page", "param-admin-shell", "platform-console-page"].map((className) => `<section class="${className}" data-page-root><div>Content</div></section>`).join("")}
+    ${["organization-page", "user-permissions-page", "audit-center-page", "param-admin-shell"].map((className) => `<section class="${className}" data-page-root><div>Content</div></section>`).join("")}
     <section class="admin-list-page"><header class="user-permissions-toolbar admin-list-page__header"><div>Members</div><button class="button">Add user</button></header>
     <div class="admin-list-page__filters"><label class="admin-list-page__filter-field"><div class="search-field"><input class="search-field__input" aria-label="Search users"></div></label><select class="compact-filter-control"><option>All</option></select></div></section>
     <div class="user-permissions-approval-item"><div class="user-permissions-approval-user"><strong>${"Long member name ".repeat(30)}</strong></div><div class="user-permissions-approval-role-change">Role change</div><div class="user-permissions-approval-actions"><button class="button">Approve role</button></div></div>

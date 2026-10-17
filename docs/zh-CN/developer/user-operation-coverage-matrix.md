@@ -115,7 +115,7 @@
 - `MOD-ATTR-TREE-001`：Admin 在模块归属树执行按 kind 分级的操作（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-IMPORTANCE-001`：Admin 在业务分类设重要性并确认继承到工作台筛选（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-CREATE-KIND-001`：Admin 在归属树按类型新建空模块并确认父级规则与未实测标记（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PLAT-ROLE-001`～`003`：平台控制台入口与授予边界（`permissions-matrix.acceptance.spec.ts` 自动化）。
+- `PLAT-ROLE-001`～`003`：已清除的平台控制台入口、平台超级管理员授予与跨租户边界（`permissions-matrix.acceptance.spec.ts` 自动化）。
 - `DRV-PROMOTE-001`～`005`：晋升队列、遮蔽/晋升展示、平台覆盖拒绝编写、控制台晋升与撤销（手工/补充证据）。
 - `SPEC-DEPRECATE-001` / `SPEC-RESTORE-001` / `SPEC-EDIT-DIFF-001`：定义软废弃/恢复/编辑 diff（future）。
 - `IDMAP-NEWID-001` / `IDMAP-HISTORY-001` / `IDMAP-REOPEN-001`：身份映射三态与历史（future）。

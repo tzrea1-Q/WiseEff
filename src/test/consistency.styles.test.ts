@@ -159,7 +159,6 @@ describe("shared consistency contracts", () => {
       ".project-init-source-empty-toggle",
       ".project-init-detail-button",
       ".parameter-import-paste-dialog__header h3",
-      ".platform-console-page",
       ".knowledge-markdown-preview h1",
       ".knowledge-markdown-preview h2",
       ".knowledge-markdown-preview h3, .knowledge-markdown-preview h4"

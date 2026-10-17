@@ -176,10 +176,10 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DRV-SCHEMA-003` | P1 | parameters | future | `/parameter-admin` | Admin | Attempt to activate an overlay for a compatible already covered by a pinned schema and confirm a clear rejection. | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-004` | P1 | parameters | future | `/parameter-admin` | Admin | Activate an overlay for an already-uploaded device and confirm provisional specs upgrade in place without re-upload. | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-CREATE-KIND-001` | P1 | parameters | future | `/parameter-admin` | Admin | Create empty business or driver-group modules from the attribution tree with parent-kind rules and required driver-group compatibles; confirm empty curated nodes show not-yet-observed (node-type is ingest-only). | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PLAT-ROLE-001` | P1 | platform | automated | `/platform-console` | Platform Admin | Open platform console from sidebar and confirm access; other roles denied. | ui | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
+| `PLAT-ROLE-001` | P1 | platform | automated | `/platform-console` | Platform Admin, Admin, Guest | Confirm the retired platform console has no sidebar entry or dedicated page for any role. | ui | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PLAT-ROLE-002` | P1 | platform | automated | `/organization/members` | Admin | Confirm platform-admin grant control is hidden and API rejects self-grant. | ui, api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PLAT-ROLE-003` | P1 | platform | automated | `/api/v1/users` | Platform Admin | Confirm platform-admin user listing stays home-organization scoped. | api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
-| `DRV-PROMOTE-005` | P1 | platform | manual | `/platform-console` | Platform Admin | Promote compatible with blast-radius confirmation and revert to restore contributors. | ui, api |  |
+| `DRV-PROMOTE-005` | P1 | platform | automated | `/platform-console` | Platform Admin | Confirm the retired platform console makes no promotion history query and its removed history endpoint returns 404. | ui, api | `e2e/acceptance/issue897-canonical-modules.acceptance.spec.ts` |
 | `SPEC-DEPRECATE-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | Soft-deprecate a definition with reason and confirm it leaves the default library. | ui, api |  |
 | `SPEC-RESTORE-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | Restore a deprecated definition to the activated_at-implied state. | ui, api |  |
 | `SPEC-EDIT-DIFF-001` | P2 | parameters | future | `/parameter-admin/specs` | Admin | Show value_shape/constraints diff before saving an active definition. | ui |  |
@@ -229,7 +229,6 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `DRV-SCHEMA-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-SCHEMA-004`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `MOD-ATTR-CREATE-KIND-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
-- `DRV-PROMOTE-005`: Multi-org promote fixtures are not in local seed; blast-radius UI smoke archived under work/ui-checks/governance-closeout-* per 2026-08-01 closeout plan.
 - `SPEC-DEPRECATE-001`: Covered by unit tests today; Playwright path deferred to a follow-up after closeout browser smoke.
 - `SPEC-RESTORE-001`: Unit-covered; Playwright deferred after closeout smoke.
 - `SPEC-EDIT-DIFF-001`: Unit-covered; Playwright deferred after closeout smoke.

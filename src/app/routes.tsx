@@ -41,7 +41,6 @@ import { ParameterReviewPage } from "@/features/parameter-review/ParameterReview
 import { ParameterSubmissionsPage } from "@/features/parameter-review/ParameterSubmissionsPage";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
-import { PlatformConsolePage } from "@/PlatformConsolePage";
 import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
@@ -527,8 +526,6 @@ export function PageRouter({
       );
     case "audit":
       return <AuditCenterPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} runtimeMode={runtimeMode} />;
-    case "platform-console":
-      return <PlatformConsolePage />;
     default:
       return <LinearTemplateHome onNavigate={onNavigate} onFeedback={onFeedback} />;
   }

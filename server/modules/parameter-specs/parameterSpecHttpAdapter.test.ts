@@ -22,15 +22,13 @@ function fillRoutePath(path: string): string {
 }
 
 describe("parameter spec HTTP adapter", () => {
-  it("publishes an exact promotion history DTO without overlay state or mutation contracts", () => {
+  it("removes promotion history from the router and OpenAPI", async () => {
     const document = buildOpenApiDocument();
-    expect(document.paths["/api/v2/platform/driver-schema-promotion-history"].get?.operationId).toBe("parameterSpecs.listPromotionHistory");
-    const item = { id: "promotion", platformSchemaId: "platform", sourceSchemaId: "source",
-      sourceOrganizationId: "organization", promotedByUserId: null, promotedAt: "2026-10-01T12:00:00.000Z", documentationSource: null };
-    const schema = dtoSchemaCatalog.DriverSchemaPromotionHistoryListResponse;
-    expect(schema.safeParse({ items: [item] }).success).toBe(true);
-    expect(schema.safeParse({ items: [{ ...item, lifecycle: "active", equivalent: true }] }).success).toBe(false);
-    expect(Object.keys(document.paths["/api/v2/platform/driver-schema-promotion-history"])).toEqual(["get"]);
+    expect(document.paths["/api/v2/platform/driver-schema-promotion-history"]).toBeUndefined();
+    expect(dtoSchemaCatalog).not.toHaveProperty("DriverSchemaPromotionHistoryListResponse");
+    const { router } = buildWiseEffRouter();
+    const response = await requestJson(createHttpServer(router), "/api/v2/platform/driver-schema-promotion-history");
+    expect(response.status).toBe(404);
   });
 
   it.each(legacyDriverSchemaRetirementRouteManifest)("retires $method $path even when the module is registered independently", async (route) => {

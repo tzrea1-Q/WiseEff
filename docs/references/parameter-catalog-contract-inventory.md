@@ -75,7 +75,7 @@ history lives in definition detail; and raw migration diagnostics stay internal.
    and organization definition overrides retire.
    ([registry cache](../../server/modules/parameter-specs/schemaRegistryCache.ts),
    [overlay service](https://github.com/tzrea1-Q/WiseEff/blob/aec0f131fce2b78904cfc2d076c2877b95ef1a04/server/modules/parameter-specs/driverSchemaOverlayService.ts),
-   [overlay repository](../../server/modules/parameter-specs/driverSchemaOverlayRepository.ts),
+   [historical overlay repository](https://github.com/tzrea1-Q/WiseEff/blob/4e3d9d16a740bd9ccd65e709aa9cb95ee0ea48c7/server/modules/parameter-specs/driverSchemaOverlayRepository.ts),
    [Wayfinder map #668](https://github.com/tzrea1-Q/WiseEff/issues/668))
 3. Matching preserves an explicit tier order: Linux base, then a unique vendor
    add/narrow match, then reviewed manual platform/organization gap-fill. A

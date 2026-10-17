@@ -38,12 +38,9 @@ describe("app permission policy", () => {
     }
   });
 
-  it("allows platform-admin to access platform console and admin pages", () => {
-    expect(canAccessPage("platform-admin", "platform-console")).toBe(true);
+  it("allows platform-admin to access admin pages", () => {
     expect(canAccessPage("platform-admin", "parameter-admin")).toBe(true);
     expect(canAccessPage("platform-admin", "user-permissions")).toBe(true);
-    expect(canAccessPage("admin", "platform-console")).toBe(false);
-    expect(canAccessPage("hardware-user", "platform-console")).toBe(false);
   });
 
   it("allows Admin to access all admin and user management pages", () => {
@@ -66,8 +63,6 @@ describe("app permission policy", () => {
     expect(canPerform("software-committer", "parameter.review")).toBe(true);
     expect(canPerform("admin", "parameter.review")).toBe(true);
     expect(canPerform("admin", "users.manage")).toBe(true);
-    expect(canPerform("platform-admin", "platform.schema-promote")).toBe(true);
-    expect(canPerform("admin", "platform.schema-promote")).toBe(false);
   });
 
   it("returns required roles and safe fallback routes", () => {
