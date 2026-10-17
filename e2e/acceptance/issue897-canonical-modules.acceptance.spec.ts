@@ -381,7 +381,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     const canonicalPanel = page.locator("#canonical-subject-placement");
     await expect(canonicalPanel).toBeFocused();
     const canonicalSubject = page.locator('[data-canonical-subject-id="csub_issue897_canonical_driver"]');
-    await expect(canonicalSubject.getByText("归属：Canonical source", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical source", { exact: true })).toBeVisible();
     await expect(page.locator(".parameter-module-mapping-panel__error[role='alert']")).toHaveCount(0);
     expect(browserResponses.some(response =>
       response.path.startsWith("/api/v2/parameter-modules/driver-registry/issue897-canonical-a/")
@@ -438,7 +438,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(await readHistoricalState()).toEqual(historicalBefore);
     await historicalEditor.getByRole("button", { name: "取消" }).click();
 
-    await expect(canonicalSubject.getByText("归属：Canonical source", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical source", { exact: true })).toBeVisible();
     await canonicalSubject.getByRole("button", { name: "调整归属：issue897,canonical-only", exact: true }).click();
     await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-canonical-b");
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
@@ -450,7 +450,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     await page.getByRole("button", { name: "确认调整放置", exact: true }).click();
     const canonicalMoveResponse = await canonicalMove;
     expect(canonicalMoveResponse.status(), await canonicalMoveResponse.text()).toBe(200);
-    await expect(canonicalSubject.getByText("归属：Canonical destination", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical destination", { exact: true })).toBeVisible();
     const finalPlacementResponse = await request.get(canonicalPlacementUrl, {
       headers: authHeadersForRole("admin")
     });
@@ -597,8 +597,10 @@ test.describe("Issue 897 canonical module ownership", () => {
     const priorEtag = priorPlacement.headers().etag;
     expect(priorEtag).toMatch(/^".+:\d+"$/);
     await driver.getByRole("button", { name: "调整归属：acme,power", exact: true }).click();
-    await expect(page.getByText(/本主体 121 个有效定义、1 个当前/)).toBeVisible();
+    const placementImpact = page.getByRole("dialog", { name: "调整放置", exact: true }).getByRole("status");
+    await expect(placementImpact).toHaveText("本主体 121 个有效定义、1 个参数绑定、1 个项目，从 Issue 897 Modules / Input hardware → Issue 897 Modules / Input hardware。仅调整归属，不改参数值。");
     await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-driver-b");
+    await expect(placementImpact).toHaveText("本主体 121 个有效定义、1 个参数绑定、1 个项目，从 Issue 897 Modules / Input hardware → Issue 897 Modules / Output hardware。仅调整归属，不改参数值。");
     await page.screenshot({ path: info.outputPath("canonical-placement-impact.png"), animations: "disabled" });
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
     await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
@@ -614,13 +616,13 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(replay.status(), await replay.text()).toBe(200);
     expect(replay.headers().etag).toBe(moved.headers().etag);
     expect((await replay.json()).item).toEqual((await moved.json()).item);
-    await expect(driver.getByText("归属：Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
     await page.reload();
-    await expect(driver.getByText("归属：Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
     await page.getByRole("tab", { name: "来源识别" }).click();
     await expect(discovery.getByText(/已识别主体：acme,power/)).toBeVisible();
     await page.getByRole("tab", { name: "模块", exact: true }).click();
-    await expect(driver.getByText("归属：Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
     expect(moduleRequests.filter(path => path.includes("/driver-compatible-discovery")).length).toBeGreaterThanOrEqual(4);
     expect(moduleRequests.filter(path => /discovery-hints|recompute|\/mappings(?:\/|$)/.test(path))).toEqual([]);
     await withPgClient(async client => {
@@ -687,7 +689,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     await page.screenshot({ path: info.outputPath("canonical-module-query-error.png"), animations: "disabled" });
     await page.unroute("**/api/v2/catalog/subjects?*");
     await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
-    await expect(driver.getByText("归属：Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
     await page.getByRole("tree", { name: "模块归属树" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("canonical-module-tree-after-move.png"), animations: "disabled" });
     await page.getByRole("button", { name: "查看模块 Input hardware", exact: true }).click();
