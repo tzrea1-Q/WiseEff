@@ -335,8 +335,12 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
   }
 
   if (routePath === "/parameter-admin/projects/aurora/review-roles") {
-    await expect(page.getByRole("heading", { name: "aurora 项目审核角色配置", exact: true })).toBeVisible({ timeout });
-    await expect(page.getByRole("heading", { name: "组织成员职责授权", exact: true })).toBeVisible({ timeout });
+    const form = page.getByRole("form", { name: "项目审核角色设置", exact: true });
+    await expect(form).toHaveAttribute("aria-busy", "false", { timeout });
+    await expect(form.getByRole("heading", { name: / 项目审核角色配置$/ })).toBeVisible({ timeout });
+    await expect(form.getByRole("group", { name: "审核职责候选池", exact: true }).getByRole("article")).toHaveCount(3, { timeout });
+    await expect(form.getByRole("heading", { name: "组织成员职责授权", exact: true })).toBeVisible({ timeout });
+    await expect(form.getByRole("table", { name: "组织成员职责授权", exact: true })).toBeVisible({ timeout });
     return;
   }
 

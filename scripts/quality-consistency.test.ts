@@ -270,6 +270,20 @@ describe("project configuration workbench coverage", () => {
       inspector: { ...workbench.inspector, width: 360 } }], "/configuration")).toThrow(/inspector/);
     expect(() => requireNavigatorWorkbenchGeometry([{ ...workbench, inspectorOverlay: false,
       task: { ...workbench.task, right: 1108, width: 808 } }], "/configuration")).not.toThrow();
+    const readOnly = { ...workbench, pageKey: "parameter-definitions", primaryAction: null, inspector: null };
+    for (const path of ["/parameters/definitions", "/parameters/definitions?definitionId=exact-definition"]) {
+      expect(() => requireNavigatorWorkbenchGeometry([readOnly], path)).not.toThrow();
+      expect(() => requireNavigatorWorkbenchGeometry([workbench], path)).toThrow(/read-only/);
+      for (const invalid of [
+        { ...readOnly, firstRow: null },
+        { ...readOnly, navigator: { ...readOnly.navigator, width: 290 } },
+        { ...readOnly, toolbar: { ...readOnly.toolbar, bottom: 63 } },
+        { ...readOnly, pageOverflow: 2 },
+        { ...readOnly, navigatorCounts: [] },
+        { ...readOnly, firstRowClip: { ...firstRow, height: 20 } }
+      ]) expect(() => requireNavigatorWorkbenchGeometry([invalid], path)).toThrow();
+    }
+    expect(() => requireNavigatorWorkbenchGeometry([readOnly], "/parameter-admin/specs")).toThrow(/primary/);
   });
 });
 import { installConsistencyReadGuard } from "../e2e/quality/consistency";
@@ -472,6 +486,16 @@ describe("view-switch collection", () => {
     expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["4", "12 个参数"]);
   });
 
+  it("measures the project file count when the structure tree is in the task pane", () => {
+    const measurements = collectMarkup(`<div class="navigator-workbench" data-workbench-page="project-configuration:aurora">
+      <div class="navigator-workbench__navigation"><aside class="configuration-workbench__tree">
+        <div class="configuration-workbench__region-head"><div><span>源结构</span><strong>2 个文件</strong></div></div>
+      </aside></div>
+      <section class="navigator-workbench__task"><span class="dts-topology-navigator__count">3 个属性</span></section>
+    </div>`);
+    expect(measurements.navigatorWorkbenches[0].navigatorCounts.map((count) => count.text)).toEqual(["2 个文件"]);
+  });
+
   it.each(["/parameters", "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/spec-review", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping", "/parameters/definitions", "/node-debugging", "/dts-reload"])(
     "requires navigator-workbench geometry for the migrated route %s", (path) => {
       expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("navigatorWorkbenches");
@@ -626,6 +650,13 @@ describe("compact filter, sort and pagination height contract", () => {
       .toThrow("missing consistency measurements: filterControls");
   });
   const control = (dom: string, height: number, compactControl: string | null = "filter") => ({ dom, role: "button", height, compactControl });
+
+  it("checks rendered controls without inventing categories for an unregistered route", () => {
+    expect(() => requireCompactControlHeights({ filterControls: [control("select", 32)] }, "/unregistered-route"))
+      .not.toThrow();
+    expect(() => requireCompactControlHeights({ filterControls: [control("select", 38)] }, "/unregistered-route"))
+      .toThrow("has height 38px; expected 32px");
+  });
 
   it("does not invent pagination for read-only identity evidence but still validates rendered controls", () => {
     expect(() => requireCompactControlHeights({}, "/parameter-admin/specs/identity-mapping", ["navigatorWorkbenches"]))

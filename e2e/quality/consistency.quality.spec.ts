@@ -10,6 +10,7 @@ import { parseQualityLane, shouldRegisterConsistencyFixture } from "./quality-pa
 import { installConsistencyReadGuard } from "./consistency";
 import { AUDIT_KIND_LABELS } from "../../src/domain/audit/auditSlugLabels";
 import { detectBrowserBridgeTarget } from "../../src/infrastructure/http/bridgeReleaseSelection";
+import { parseParameterAdminModulesSubView } from "../../src/application/parameters/parameterAdminOrganizationPath";
 import {
   closeXiaozePopupIfOpen,
   expectBoundedMainScroll,
@@ -189,6 +190,104 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+        if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath)
+          && parseParameterAdminModulesSubView(routePath, new URL(page.url()).search) === "queue") {
+          const panel = page.locator(".parameter-module-mapping-panel");
+          const list = panel.getByRole("region", { name: "来源识别", exact: true });
+          const discovery = list.getByRole("region", { name: "来源识别结果", exact: true });
+          await expect(list).toHaveClass(/admin-list-page/);
+          await expect(list.getByRole("tabpanel")).toBeVisible();
+          const records = discovery.locator(".canonical-driver-discovery__list");
+          await expect(records).toHaveCount(1);
+          await expect(records).toBeVisible();
+          await expect(discovery.locator(".canonical-driver-discovery__item").first()).toBeVisible();
+          await expect(discovery.getByRole("combobox", { name: "发现项目范围", exact: true })).toBeVisible();
+          await expect(discovery.getByRole("searchbox", { name: "搜索发现记录", exact: true })).toBeVisible();
+          await expect(discovery.getByRole("combobox", { name: "筛选来源状态", exact: true })).toBeVisible();
+          await expect(discovery.getByRole("link", { name: "打开待审核事项", exact: true }))
+            .toHaveAttribute("href", "/parameter-admin/specs?review=open");
+          await expect(panel.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+          await expect(panel.getByRole("tree", { name: "模块归属树", exact: true })).toHaveCount(0);
+          await expect(panel.locator(".navigator-workbench")).toHaveCount(0);
+          const geometry = await records.evaluate((element) => {
+            const firstRecord = element.querySelector(".canonical-driver-discovery__item > p")!;
+            const rect = firstRecord.getBoundingClientRect();
+            const listRect = element.getBoundingClientRect();
+            const clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+            for (let parent = firstRecord.parentElement; parent; parent = parent.parentElement) {
+              const style = getComputedStyle(parent);
+              const bounds = parent.getBoundingClientRect();
+              if (/hidden|clip|auto|scroll/.test(style.overflowX)) {
+                clip.left = Math.max(clip.left, bounds.left + parent.clientLeft);
+                clip.right = Math.min(clip.right, bounds.left + parent.clientLeft + parent.clientWidth);
+              }
+              if (/hidden|clip|auto|scroll/.test(style.overflowY)) {
+                clip.top = Math.max(clip.top, bounds.top + parent.clientTop);
+                clip.bottom = Math.min(clip.bottom, bounds.top + parent.clientTop + parent.clientHeight);
+              }
+            }
+            const range = document.createRange();
+            range.selectNodeContents(firstRecord);
+            return { row: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+              list: { left: listRect.left, right: listRect.right, width: listRect.width }, viewportWidth: innerWidth,
+              clip, listClientWidth: element.clientWidth, listScrollWidth: element.scrollWidth,
+              textRects: Array.from(range.getClientRects(), (text) => ({ left: text.left, top: text.top, right: text.right, bottom: text.bottom })) };
+          });
+          expect(geometry.row.width).toBeGreaterThan(0);
+          expect(geometry.row.height).toBeGreaterThan(0);
+          expect(geometry.list.width).toBeGreaterThan(0);
+          expect(geometry.list.left).toBeGreaterThanOrEqual(-1);
+          expect(geometry.list.right).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+          expect(geometry.listScrollWidth, "discovery records must not create horizontal scrolling")
+            .toBeLessThanOrEqual(geometry.listClientWidth + 1);
+          expect(geometry.textRects.length).toBeGreaterThan(0);
+          for (const rect of [geometry.row, ...geometry.textRects]) {
+            expect(rect.left, "first discovery record must remain inside its scroll clip").toBeGreaterThanOrEqual(geometry.clip.left - 1);
+            expect(rect.right).toBeLessThanOrEqual(geometry.clip.right + 1);
+            expect(rect.top).toBeGreaterThanOrEqual(geometry.clip.top - 1);
+            expect(rect.bottom).toBeLessThanOrEqual(geometry.clip.bottom + 1);
+          }
+        }
+        if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath)
+          && parseParameterAdminModulesSubView(routePath, new URL(page.url()).search) === "registry") {
+          const panel = page.locator(".parameter-module-mapping-panel");
+          const list = panel.getByRole("region", { name: "历史注册表", exact: true });
+          await expect(list).toHaveClass(/admin-list-page/);
+          const history = list.getByRole("table", { name: "历史驱动注册表", exact: true });
+          await expect(history).toBeVisible();
+          for (const name of ["驱动组", "兼容标识", "业务分类", "观察状态", "实测处"]) {
+            await expect(list.getByRole("columnheader", { name, exact: true })).toBeVisible();
+          }
+          await expect(list.getByRole("searchbox", { name: "搜索历史记录", exact: true })).toBeVisible();
+          await expect(list.getByRole("combobox", { name: "筛选历史业务分类", exact: true })).toBeVisible();
+          await expect(list.getByRole("combobox", { name: "筛选历史观察状态", exact: true })).toBeVisible();
+          await expect(panel.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+          await expect(list.getByRole("group", { name: "历史注册表操作", exact: true })).toHaveCount(0);
+          await expect(panel.getByRole("tree", { name: "模块归属树", exact: true })).toHaveCount(0);
+          await expect(panel.locator(".navigator-workbench")).toHaveCount(0);
+          await expect(panel.getByRole("button", { name: /^(新增|新建|编辑|删除|归档|恢复|登记|发布|保存|处理)/ })).toHaveCount(0);
+          const rows = history.locator('tbody tr:has(td[data-label="观察状态"])');
+          if (await rows.count()) {
+            for (const row of await rows.all()) {
+              await expect(row.locator('td[data-label="观察状态"]')).toHaveText(/^(已观察|未观察|尚未观察)$/);
+              const actions = row.locator('td[data-label="操作"]');
+              await expect(actions.getByRole("button")).toHaveCount(1);
+              await expect(actions.getByRole("button", { name: /^查看历史记录 / })).toBeVisible();
+            }
+          } else {
+            await expect(list.getByText("暂无历史驱动注册记录。", { exact: true })).toBeVisible();
+          }
+        }
+        if (routePath === "/parameters/definitions") {
+          const catalog = page.getByRole("region", { name: "参数定义目录", exact: true });
+          await expect(catalog.getByRole("searchbox", { name: "搜索参数定义", exact: true })).toBeVisible();
+          const definitions = catalog.getByRole("table", { name: "参数定义列表", exact: true });
+          await expect(definitions).toBeVisible();
+          await expect(definitions.getByRole("button", { name: /^查看 / }).first()).toBeVisible();
+          await expect(catalog.locator('[data-catalog-row-action]:not([data-catalog-row-action="read"])')).toHaveCount(0);
+          await expect(catalog.locator("[data-catalog-action]")).toHaveCount(0);
+          await expect(catalog.getByRole("button", { name: /^(新增|新建|编辑|处理审核|待审核事项|发布|保存)/ })).toHaveCount(0);
+        }
         if (/^\/parameter-admin\/projects\/[^/]+\/(?:configuration|files|config-sets|structure|conflicts)$/.test(routePath)) {
           const workbench = page.getByRole("region", { name: "项目配置工作台", exact: true });
           await expect(workbench.getByRole("button", { name: "项目清单", exact: true })).toBeVisible();
@@ -581,7 +680,8 @@ for (const route of consistencyReadOnlyRoutes) {
           await trigger.click();
           const deleteItem = page.getByRole("menuitem", { name: /^删除 / });
           if (await deleteItem.isDisabled()) {
-            await expect(deleteItem).toHaveAccessibleDescription("项目需保留规范历史，不能删除；归档或处置功能尚未开放。");
+            await expect(deleteItem).toHaveAccessibleDescription("项目需保留规范历史，不能删除；可归档后从默认清单收起。");
+            await expect(page.getByRole("menuitem", { name: /^(归档|恢复项目) / })).toBeEnabled();
             await page.keyboard.press("Escape");
           } else {
             await deleteItem.click();

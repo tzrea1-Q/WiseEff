@@ -32,16 +32,31 @@ describe("navigator-workbench geometry", () => {
       expect(viewSwitchStyleExpectations[path]).toEqual(["tabs"]);
     }
   );
-  it.each([
-    "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
-    "/parameter-admin/modules?tab=queue", "/parameter-admin/modules?tab=registry"
-  ])("gates module governance geometry and content tabs on %s", (path) => {
-    expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("navigatorWorkbenches");
+  it("gates module tree geometry and content tabs", () => {
+    const path = "/parameter-admin/modules";
+    expect(consistencyRoutes.find((route) => route.path === path)?.required)
+      .toEqual(expect.arrayContaining(["navigatorWorkbenches", "moduleTreeLabels"]));
     expect(viewSwitchStyleExpectations[path.split("?")[0]]).toEqual(["section", "tabs"]);
     for (const theme of ["light", "dark"]) {
       expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), pageKey: "module-governance" }], `${path} (${theme})`)).not.toThrow();
       expect(() => requireNavigatorWorkbenchGeometry([{ ...measurement(), pageOverflow: 2 }], `${path} (${theme})`)).toThrow("horizontal");
     }
+  });
+  it.each(["queue", "registry"])("gates the real %s subview without inheriting module tree geometry", (view) => {
+    const path = `/parameter-admin/modules/${view}`;
+    const required = consistencyRoutes.find((route) => route.path === path)!.required;
+    expect(required).toEqual(expect.arrayContaining([
+      "titles", "buttons", "typeScale", "pageEdges", "xiaozeLaunchers",
+      "viewSwitches", "viewSwitchSignatures", "filterControls"
+    ]));
+    expect(required).not.toContain("moduleTreeLabels");
+    expect(required).not.toContain("navigatorWorkbenches");
+    expect(required).not.toContain("adminLists");
+    expect(required).not.toContain("rowActions");
+    expect(required.includes("tableScrollports")).toBe(view === "registry");
+    expect(consistencyRoutes.find((route) => route.path === `/parameter-admin/modules?tab=${view}`)?.required)
+      .toEqual(required);
+    expect(viewSwitchStyleExpectations[path]).toEqual(["section", "tabs"]);
   });
   it("rejects count text clipped by its own box or the navigator edge", () => {
     const count = measurement().navigatorCounts[0];
