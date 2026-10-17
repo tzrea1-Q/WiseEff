@@ -124,8 +124,15 @@ test.describe("issue902 canonical-only JSON project initialization", () => {
     expect(preview.status(), await preview.text()).toBe(200);
     const selection = wizard.getByRole("table", { name: "来源参数选择表" });
     await expect(selection).toBeVisible();
-    await expect(selection.getByRole("checkbox", { name: "选择 iin_max", exact: true })).toHaveCount(1);
-    await selection.getByRole("checkbox", { name: "选择 iin_max", exact: true }).check();
+    const sourceRow = selection.getByRole("row").filter({
+      has: page.getByRole("cell", {
+        name: `${sourceProjectName} (主来源) · settings.json · /a~1b/`, exact: true
+      })
+    });
+    await expect(sourceRow).toHaveCount(1);
+    await expect(sourceRow).toContainText("iin_max");
+    await expect(sourceRow.getByRole("checkbox")).toHaveCount(1);
+    await sourceRow.getByRole("checkbox").check();
     await expect(selection).toContainText("36.5");
     await wizard.getByRole("button", { name: "下一步", exact: true }).click();
     await expect(wizard.getByRole("region", { name: "初始化快照预览" })).toContainText(/参数数量\s*1/);

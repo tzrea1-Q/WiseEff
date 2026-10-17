@@ -233,7 +233,7 @@ describe("LogsPage api upload wiring", () => {
     vi.mocked(parameters.listParameters).mockClear();
     openUploadDialog();
     await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), project.id);
-    await userEvent.click(await screen.findByLabelText("项目参数"));
+    await userEvent.click(await screen.findByRole("combobox", { name: /^项目参数$/ }));
     const selectedBindingOption = await screen.findByRole("option", { name: "Canonical current parameter · /limit · binding-current" });
     expect(listProtectedProjectBindings).toHaveBeenCalledWith(project.id);
     expect(parameters.listParameters).not.toHaveBeenCalled();
@@ -280,7 +280,7 @@ describe("LogsPage api upload wiring", () => {
       id: "binding-b", effectiveRevisionId: "revision-b", currentValueId: "value-b" };
     const parameters = createTestParameterRepository({ listProjects: vi.fn().mockResolvedValue(projects) });
     const delayed = deferred<CatalogProtectedProjectBindingListResponse>();
-    const listProtectedProjectBindings = vi.fn((projectId: string) =>
+    const listProtectedProjectBindings = vi.fn<NonNullable<ParameterCatalogRepository["listProtectedProjectBindings"]>>((projectId: string) =>
       Promise.resolve({ items: [projectId === "project-a" ? first : second] }));
     const repository = renderApiLogs(createLogRepository(), "/logs", parameters, { listProtectedProjectBindings });
     await waitForApiRuntime(repository);
@@ -291,7 +291,7 @@ describe("LogsPage api upload wiring", () => {
     await selectControlOption(projectSelect, "project-a");
     await selectControlOption(projectSelect, "project-b");
     await act(async () => { delayed.resolve({ items: [first] }); await delayed.promise; });
-    await userEvent.click(screen.getByLabelText("项目参数"));
+    await userEvent.click(screen.getByRole("combobox", { name: /^项目参数$/ }));
     const currentBindingOption = await screen.findByRole("option", { name: "Selected project parameter · /limit · binding-b" });
     expect(screen.queryByRole("option", { name: /Old project parameter/ })).not.toBeInTheDocument();
     await userEvent.click(currentBindingOption);

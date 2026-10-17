@@ -1,9 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 import { ProjectPrimaryDtsViewer } from "./ProjectPrimaryDtsViewer";
 
 describe("ProjectPrimaryDtsViewer", () => {
-  it("renders line numbers and source text without a visible meta header", () => {
+  it("renders line numbers, source text and read-only source provenance", () => {
     render(
       <ProjectPrimaryDtsViewer
         fileName="aurora-board.dts"
@@ -13,8 +14,18 @@ describe("ProjectPrimaryDtsViewer", () => {
     );
     expect(screen.queryByText(/aurora-board\.dts · v3/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("aurora-board.dts · v3")).toBeInTheDocument();
+    expect(screen.getByText("aurora-board.dts")).toBeVisible();
+    expect(screen.getByText("版本 3")).toBeVisible();
+    expect(screen.getByText("只读来源")).toBeVisible();
     expect(screen.getByText("line-two")).toBeInTheDocument();
     expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
+  });
+
+  it("uses source-canvas theme tokens for provenance inside the dark configuration canvas", () => {
+    const styles = readStylesheet("src/components/project-configuration-workbench/configuration-workbench.css");
+    const meta = declarationsFor(styles, ".configuration-workbench__source .project-primary-dts-viewer__meta");
+    expect(meta.color).toBe("var(--configuration-source-text-secondary)");
+    expect(meta["border-bottom-color"]).toBe("var(--configuration-source-outline)");
   });
 
   it("marks focusLine as highlighted", () => {

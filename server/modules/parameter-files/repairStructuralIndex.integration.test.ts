@@ -30,7 +30,7 @@ it("repairs only a verified absent writeback index, atomically and safely on ret
       sourceFileVersionId: input.versionId, sourcePath: { kind: "node-locator", value: input.nodePath },
     });
     await expect(guarded()).rejects.toMatchObject({ code: "CONFLICT", details: { code: "parameter-sensitive-node-identity-mismatch" } });
-    expect(await repairDtsStructuralIndex(db, input)).toMatchObject({ status: "ready-dry-run", parsedNodes: 50, existingNodes: 0 });
+    expect(await repairDtsStructuralIndex(db, input)).toMatchObject({ status: "ready-dry-run", parsedNodes: 58, existingNodes: 0 });
     expect(await nodeCount()).toBe(0);
 
     for (const override of [{ projectId: "foreign-project" }, { fileName: "different.dts" }, { versionId: "missing" },
@@ -65,14 +65,14 @@ it("repairs only a verified absent writeback index, atomically and safely on ret
       ]);
       expect(reports.map(report => report.status).sort()).toEqual(["repaired", "skipped-existing-index"]);
     } finally { await pool.close(); }
-    expect(await nodeCount()).toBe(50);
+    expect(await nodeCount()).toBe(58);
     await expect(guarded()).resolves.toBe("mt,mt5788");
     expect(await snapshot()).toEqual(original);
     const audit = await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(
       "select actor_type, actor_user_id, metadata from audit_events where kind = 'dts-structural-index-repaired'");
     expect(audit.rows).toHaveLength(1);
     expect(audit.rows[0]).toMatchObject({ actor_type: "system", actor_user_id: null,
-      metadata: { checksum, nodes: 50, systemName: "repair-dts-structural-index" } });
+      metadata: { checksum, nodes: 58, systemName: "repair-dts-structural-index" } });
 
     // Even a partial/ambiguous existing index is never replaced or reported repaired.
     await db.query("delete from dts_phandle_refs");

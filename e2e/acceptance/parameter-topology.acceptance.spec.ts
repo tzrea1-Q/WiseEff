@@ -1091,9 +1091,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       return response;
     };
 
-    let successfulDraft = await createTypedDraftInAurora();
+    const successfulDraft = await createTypedDraftInAurora();
     expect(successfulDraft.status(), await successfulDraft.text()).toBe(201);
-    let draftBody = (await successfulDraft.json()) as {
+    const draftBody = (await successfulDraft.json()) as {
       item: {
         draftId: string;
         candidateRevisionId: string;
@@ -1105,9 +1105,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(draftBody.item.projectParameterBindingId).toBeTruthy();
     expect(draftBody.item.rawText ?? editedRaw).toMatch(/30/);
 
-    // Switching projects with a pending draft round now stops at the unsaved-work
-    // guard (HCI trust repair wave 0, merged via #331): the drafts are only dropped
-    // after the user explicitly acknowledges the discard. Acknowledge whichever
+    // Switching projects with a pending draft round stops at the unsaved-work
+    // guard. Leaving clears the local round; saved server drafts remain scoped to
+    // their project and are restored when returning. Acknowledge whichever
     // presentation the guard uses — window.confirm today, the shared ConfirmDialog
     // once the page-defect wave (#417) migrates it — so the switch proceeds and the
     // intentional discard below stays covered.
@@ -1152,11 +1152,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(editWorkspace).toHaveAttribute("data-project-id", projectId);
     await expect(editWorkspace).not.toHaveAttribute("data-revision-id", "");
 
-    // The project switch intentionally discarded the first pending draft UI; recreate it on Aurora current.
-    successfulDraft = await createTypedDraftInAurora();
-    expect(successfulDraft.status(), await successfulDraft.text()).toBe(201);
-    draftBody = (await successfulDraft.json()) as typeof draftBody;
-    expect(draftBody.item.candidateRevisionId).toBeTruthy();
+    // Returning restores the saved draft; identical input must not create a duplicate.
+    await editWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
+    const resumedRow = bindingRowById(editWorkspace, scBinding!.id);
+    await resumedRow.getByRole("button", { name: /^参数详情 gpio_int/ }).click();
+    const resumedDetail = page.getByRole("dialog", { name: /参数详情$/ });
+    await expect(resumedDetail.getByLabel("目标值", { exact: true })).toHaveValue(editedRaw);
+    await expect(resumedDetail.getByLabel("修改原因", { exact: true })).toHaveValue(typedEditReason);
+    await expect(resumedDetail.getByText("已保存草稿 · 待提交", { exact: true })).toBeVisible();
+    await expect(resumedDetail.getByRole("button", { name: "保存草稿", exact: true })).toBeDisabled();
+    await resumedDetail.getByRole("button", { name: "关闭参数详情", exact: true }).click();
     // Draft-time candidate is preview only — no open canonical request for this binding yet.
     const openCrBefore = await withPgClient(async (client) => {
       const result = await client.query<{ c: string }>(
