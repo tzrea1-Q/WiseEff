@@ -26,21 +26,17 @@ function routePage(counts: Record<string, number>, failedLog = false) {
   } as unknown as Page;
 }
 
-it("masks only the Catalog anchor and optional banner, leaving the populated workbench compared", async () => {
+it("masks only the optional Catalog banner after removal of the publication anchor, leaving the workbench compared", async () => {
   const counts = {
-    ".parameter-catalog__anchor": 1,
     ".parameter-catalog__banner": 1,
     ".parameter-catalog .navigator-workbench__body": 1,
     ".parameter-catalog__workspace": 1,
   };
   expect((await stableMasks(routePage(counts), "/parameter-admin")).map(String)).toEqual([
     ".parameter-catalog__banner",
-    ".parameter-catalog__anchor",
   ]);
   expect((await stableMasks(routePage({ ...counts, ".parameter-catalog__banner": 0 }), "/parameter-admin")).map(String))
-    .toEqual([".parameter-catalog__anchor"]);
-  await expect(stableMasks(routePage({ ...counts, ".parameter-catalog__anchor": 0 }), "/parameter-admin"))
-    .rejects.toThrow("Visual mask did not resolve");
+    .toEqual([]);
 });
 
 it("declares raw timestamps only for the log analysis state, not the failed-log state", async () => {
