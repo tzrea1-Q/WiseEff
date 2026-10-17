@@ -19,6 +19,7 @@ import type {
 import {
   catalogLifecycleLabel,
   catalogRegistrationLabel,
+  catalogStateMessage,
   catalogValueShapeLabel
 } from "../parameter-catalog/catalogPresentation";
 import {
@@ -52,6 +53,8 @@ export type DefinitionEditorBodyProps = {
    * administrator names the projects to migrate and the server rejects any
    * project that is not in the caller's organization.
    */
+  projects?: readonly { id: string; name: string }[];
+  onEditorStateChange?: (state: { dirty: boolean; pending: boolean }) => void;
   createIdempotencyKey?: () => string;
   onCompleted?: () => void;
   onRefreshEvidence?: () => void | Promise<void>;
@@ -63,6 +66,7 @@ export type DefinitionEditorBodyProps = {
   onClose?: () => void;
   /** Server gate: without it the dialog only reads. */
   authoringAllowed: boolean;
+  publishingAllowed?: boolean;
 };
 
 
@@ -203,13 +207,16 @@ export function DefinitionEditorBody({
   definition,
   relatedKnowledge,
   subjects,
+  projects = [],
+  onEditorStateChange,
   createIdempotencyKey,
   onCompleted,
   onRefreshEvidence,
   history,
   onRequestHistory,
   onClose,
-  authoringAllowed
+  authoringAllowed,
+  publishingAllowed = false
 }: DefinitionEditorBodyProps) {
   const [phase, setPhase] = useState<Phase>("compose");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -217,11 +224,7 @@ export function DefinitionEditorBody({
   const [propertyKey, setPropertyKey] = useState(definition.propertyKey);
   const [content, setContent] = useState(() => contentDraftOf(definition));
   const [reason, setReason] = useState("");
-  /**
-   * Free text while composing, parsed into exact project ids on use. Re-joining
-   * parsed ids on every keystroke would corrupt in-progress input.
-   */
-  const [projectIdsText, setProjectIdsText] = useState("");
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [preview, setPreview] = useState<CatalogReplacementPreview | null>(null);
   const [publicationJob, setPublicationJob] = useState<
     CatalogPublicationJobResponse["item"] | null
@@ -239,6 +242,9 @@ export function DefinitionEditorBody({
     domainState,
     sessionPermissions
   );
+  const publishDisabledReason = !publishingAllowed
+    ? "当前目录暂不允许发布，请查看发布状态说明。"
+    : "当前会话缺少目录发布权限。";
 
   useEffect(() => {
     setPhase("compose");
@@ -246,7 +252,7 @@ export function DefinitionEditorBody({
     setPropertyKey(definition.propertyKey);
     setContent(contentDraftOf(definition));
     setReason("");
-    setProjectIdsText("");
+    setSelectedProjects([]);
     setPreview(null);
     setReplacement(null);
     setPublicationJob(null);
@@ -261,24 +267,25 @@ export function DefinitionEditorBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definition.id]);
 
-  const selectedProjects = useMemo(
-    () =>
-      projectIdsText
-        .split(",")
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0),
-    [projectIdsText]
-  );
-
   const definitionSubject = useMemo(
     () => subjects.find((subject) => subject.id === definition.subject.id),
     [definition.subject.id, subjects]
   );
 
   const selectableSubjects = useMemo(
-    () => subjects.filter((subject) => subject.membership.status === "active"),
+    () => subjects.filter((subject) => subject.membership.status === "active" && subject.registration.status !== "retired"),
     [subjects]
   );
+  const editable = authoringAllowed && allowed && definition.lifecycle === "active" &&
+    definitionSubject?.membership.status === "active" &&
+    definitionSubject.registration.status !== "retired" && definition.registration.status !== "retired";
+  const targetSubjectAllowed = selectableSubjects.some((subject) => subject.id === subjectId);
+  const canPublish = editable && targetSubjectAllowed && publishingAllowed && canExecutePublicationAction(
+    actor, "publish-publication", domainState, sessionPermissions
+  );
+  useEffect(() => {
+    if (!editable || !targetSubjectAllowed) setConfirmOpen(false);
+  }, [editable, targetSubjectAllowed]);
 
   /** The form edits identity and content, so "unchanged" is a real state. */
   const identityChanged =
@@ -293,9 +300,60 @@ export function DefinitionEditorBody({
     content.valueType !== currentContent.valueType ||
     content.minimum !== currentContent.minimum ||
     content.maximum !== currentContent.maximum;
+  const dirty = (phase === "compose" || phase === "preview") &&
+    (identityChanged || contentChanged || Boolean(reason.trim()) || selectedProjects.length > 0);
+
+  useEffect(() => {
+    onEditorStateChange?.({ dirty, pending });
+  }, [dirty, pending, onEditorStateChange]);
+
+  useEffect(() => {
+    if (!dirty && !pending) return;
+    const preventUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventUnload);
+    return () => window.removeEventListener("beforeunload", preventUnload);
+  }, [dirty, pending]);
+
+  const refreshPublication = async () => {
+    if (!publicationJob) return;
+    try {
+      const response = await catalog.getPublication(publicationJob.id);
+      setPublicationJob(response.item);
+      setError("");
+    } catch (caught) {
+      setError(failureText(caught));
+    }
+  };
+  const publicationJobId = publicationJob?.id;
+  const publicationPending = Boolean(publicationJob && publicationJobIsPending(publicationJob.status));
+
+  useEffect(() => {
+    if (!publicationJobId || !publicationPending) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      let keepPolling = true;
+      try {
+        const response = await catalog.getPublication(publicationJobId);
+        if (cancelled) return;
+        keepPolling = publicationJobIsPending(response.item.status);
+        setPublicationJob(response.item);
+        setError("");
+      } catch (caught) {
+        if (!cancelled) setError(failureText(caught));
+      } finally {
+        if (!cancelled && keepPolling) timer = setTimeout(() => void poll(), 1000);
+      }
+    };
+    timer = setTimeout(() => void poll(), 1000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [catalog, publicationJobId, publicationPending]);
 
   const runPreview = async () => {
-    if (!allowed || pending) return;
+    if (!editable || !targetSubjectAllowed || pending) return;
     if (selectedProjects.length === 0) {
       setError("请选择至少一个受影响的项目。");
       return;
@@ -344,7 +402,7 @@ export function DefinitionEditorBody({
 
   /** Content-only edit: publish a revision, no project reference moves. */
   const saveContentRevision = async () => {
-    if (pending) return;
+    if (!canPublish || pending) return;
     if (!reason.trim()) {
       setError("请填写修改原因，用于审计。");
       return;
@@ -375,7 +433,7 @@ export function DefinitionEditorBody({
   };
 
   const execute = async () => {
-    if (!preview || pending) return;
+    if (!canPublish || !preview || pending) return;
     setPending(true);
     const key = idempotencyKey ?? (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
     setIdempotencyKey(key);
@@ -427,7 +485,7 @@ export function DefinitionEditorBody({
   };
 
   const continueBlocked = async () => {
-    if (!replacement || pending) return;
+    if (!canPublish || !replacement || pending) return;
     setPending(true);
     const key = (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
     try {
@@ -466,14 +524,14 @@ export function DefinitionEditorBody({
           <span className="parameter-catalog__badge" data-tone={definition.lifecycle === "active" ? undefined : "retired"}>
             {catalogLifecycleLabel(definition.lifecycle)}
           </span>
-          <span className="definition-editor__subject">{definition.subject.canonicalName}</span>
+          <span className="definition-editor__subject">{definition.subject.canonicalName || definitionSubject?.canonicalName || definition.subject.id}</span>
           <span className="parameter-catalog__muted">{`修订 #${definition.currentRevision.revisionNumber}`}</span>
           <code className="definition-editor__id">{definition.id}</code>
         </header>
-        {relatedKnowledge ? <SpecRelatedKnowledgeSection specId={definition.id} source={relatedKnowledge} /> : null}
 
-        {authoringAllowed ? (
+        {editable ? (
           <div className="definition-editor__form">
+            <fieldset className="definition-editor__inputs" disabled={pending || phase !== "compose"}>
             <div className="definition-editor__card">
               <div className="definition-editor__card-header">
                 <span className="definition-editor__card-title">核心属性定义</span>
@@ -487,8 +545,12 @@ export function DefinitionEditorBody({
                   <SelectControl
                     value={subjectId}
                     ariaLabel="主体"
+                    disabled={pending || phase !== "compose"}
                     onValueChange={(value) => setSubjectId(value)}
-                    options={selectableSubjects.map((subject) => ({ value: subject.id, label: subject.canonicalName }))}
+                    options={[
+                      ...(!targetSubjectAllowed ? [{ value: subjectId, label: `${subjects.find((subject) => subject.id === subjectId)?.canonicalName || subjectId}（当前不可用）`, disabled: true }] : []),
+                      ...selectableSubjects.map((subject) => ({ value: subject.id, label: subject.canonicalName }))
+                    ]}
                   />
                 </label>
                 <label className="definition-editor__field">
@@ -524,6 +586,7 @@ export function DefinitionEditorBody({
                   <SelectControl
                     value={content.valueType}
                     ariaLabel="取值形状"
+                    disabled={pending || phase !== "compose"}
                     onValueChange={(value) =>
                       setContent({ ...content, valueType: value as PublicationValueType })
                     }
@@ -581,17 +644,18 @@ export function DefinitionEditorBody({
               ) : null}
 
               <div className="definition-editor__governance-stack">
-                <label className="definition-editor__field definition-editor__field--full">
-                  <span className="definition-editor__field-label">
-                    受影响项目 {identityChanged ? <span className="definition-editor__required" aria-hidden="true">*</span> : null}
-                  </span>
-                  <input
-                    value={projectIdsText}
-                    aria-label="受影响项目"
-                    placeholder="输入需要同步迁移引用的项目编号，多个项目用逗号分隔（例如 proj-a, proj-b）"
-                    onChange={(event) => setProjectIdsText(event.target.value)}
-                  />
-                </label>
+                {identityChanged ? <fieldset className="definition-editor__projects">
+                  <legend>受影响项目</legend>
+                  <p className="parameter-catalog__muted">仅迁移明确选中的项目，预演会核对其引用与兼容性。</p>
+                  {projects.length === 0 ? <p role="status">当前没有可选择的项目。请确认项目访问权限后重试。</p> : projects.map((project) => (
+                    <label key={project.id}>
+                      <input type="checkbox" checked={selectedProjects.includes(project.id)}
+                        onChange={(event) => setSelectedProjects((current) => event.target.checked
+                          ? [...current, project.id] : current.filter((id) => id !== project.id))} />
+                      {project.name}
+                    </label>
+                  ))}
+                </fieldset> : null}
                 <label className="definition-editor__field definition-editor__field--full">
                   <span className="definition-editor__field-label">
                     修改原因 <span className="definition-editor__required" aria-hidden="true">*</span>
@@ -606,6 +670,7 @@ export function DefinitionEditorBody({
                 </label>
               </div>
             </div>
+            </fieldset>
 
             <div className="definition-editor__disclosures">
               <details className="definition-editor__more">
@@ -712,6 +777,7 @@ export function DefinitionEditorBody({
                       data-correction-action="preview"
                       disabled={
                         !allowed ||
+                        !targetSubjectAllowed ||
                         pending ||
                         selectedProjects.length === 0 ||
                         !reason.trim()
@@ -726,8 +792,8 @@ export function DefinitionEditorBody({
                       type="button"
                       className="button primary"
                       data-editor-action="save-content"
-                      disabled={!allowed || pending || !contentChanged || !reason.trim()}
-                      title={allowed ? undefined : "当前会话缺少发布能力。"}
+                      disabled={!canPublish || pending || !contentChanged || !reason.trim()}
+                      title={canPublish ? undefined : publishDisabledReason}
                       onClick={() => void saveContentRevision()}
                     >
                       {pending ? "正在发布…" : "保存内容修订"}
@@ -740,20 +806,26 @@ export function DefinitionEditorBody({
         ) : (
           <div className="definition-editor__readonly">
             <dl className="parameter-catalog__dl definition-editor__dl">
-              <dt>主体编号</dt>
-              <dd>
-                <code>{definition.subject.id}</code>
-              </dd>
-              <dt>定义编号</dt>
-              <dd>
-                <code>{definition.id}</code>
-              </dd>
+              <dt>显示名</dt>
+              <dd>{definition.currentRevision.displayName || "未设置"}</dd>
+              <dt>取值形状</dt>
+              <dd>{catalogValueShapeLabel(definition.currentRevision.valueShape.schema as never)}</dd>
+              <dt>单位</dt>
+              <dd>{definition.currentRevision.unit?.symbol ?? "未设置"}</dd>
+              <dt>登记</dt>
+              <dd>{catalogRegistrationLabel(definition.registration.status)}</dd>
+              <dt>所属模块</dt>
+              <dd>{definition.registration.status === "unregistered" ? "未建立" : definition.registration.placement?.displayName ?? "未建立"}</dd>
+              <dt>取值约束</dt>
+              <dd><details><summary>查看完整约束</summary><pre>{JSON.stringify(definition.currentRevision.valueShape.schema, null, 2)}</pre></details></dd>
+              {typeof definition.currentRevision.valueShape.schema.minimum === "number" ? <>
+                <dt>最小值</dt><dd>{String(definition.currentRevision.valueShape.schema.minimum)}</dd>
+              </> : null}
+              {typeof definition.currentRevision.valueShape.schema.maximum === "number" ? <>
+                <dt>最大值</dt><dd>{String(definition.currentRevision.valueShape.schema.maximum)}</dd>
+              </> : null}
               <dt>当前修订</dt>
               <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
-              <dt>纳入发布</dt>
-              <dd>
-                <code>{definition.currentRevision.publishedInCatalogReleaseId}</code>
-              </dd>
               <dt>说明</dt>
               <dd>{definition.currentRevision.documentation ?? "无"}</dd>
               <dt>使用</dt>
@@ -764,6 +836,14 @@ export function DefinitionEditorBody({
                 {definition.usageSummary.currentValueCount}
               </dd>
             </dl>
+            <details className="definition-editor__more">
+              <summary>技术标识</summary>
+              <dl className="parameter-catalog__dl definition-editor__dl">
+                <dt>主体编号</dt><dd><code>{definition.subject.id}</code></dd>
+                <dt>定义编号</dt><dd><code>{definition.id}</code></dd>
+                <dt>纳入发布</dt><dd><code>{definition.currentRevision.publishedInCatalogReleaseId}</code></dd>
+              </dl>
+            </details>
             <div className="definition-editor__history">
               <div className="definition-editor__history-header">
                 <span className="definition-editor__history-title">定义时间线与变更历史</span>
@@ -794,7 +874,7 @@ export function DefinitionEditorBody({
           </div>
         )}
 
-        {phase === "preview" && preview ? (
+        {editable && phase === "preview" && preview ? (
           <section aria-label="纠错影响预览" data-correction-preview="true" className="definition-editor__phase-panel">
             <div className="definition-editor__card-header">
               <h3 className="definition-editor__card-title">纠错影响预览</h3>
@@ -850,7 +930,7 @@ export function DefinitionEditorBody({
                 type="button"
                 className="button ghost"
                 disabled={pending}
-                onClick={() => setPhase("compose")}
+                onClick={() => { setPhase("compose"); setPreview(null); setPreviewIdempotencyKey(null); setIdempotencyKey(null); setError(""); }}
               >
                 返回修改
               </button>
@@ -858,7 +938,8 @@ export function DefinitionEditorBody({
                 type="button"
                 className="button primary"
                 data-correction-action="execute"
-                disabled={pending}
+                disabled={!canPublish || pending}
+                title={canPublish ? undefined : publishDisabledReason}
                 onClick={() => setConfirmOpen(true)}
               >
                 确认并执行迁移
@@ -910,7 +991,7 @@ export function DefinitionEditorBody({
                   type="button"
                   className="button subtle"
                   data-correction-continue="true"
-                  disabled={pending}
+                  disabled={!canPublish || pending}
                   onClick={() => void continueBlocked()}
                 >
                   继续处理被阻止的项目
@@ -928,9 +1009,10 @@ export function DefinitionEditorBody({
             <p>{publicationStatusCopy(publicationJob).message}</p>
             {publicationJobIsPending(publicationJob.status) ? (
               <p className="parameter-catalog__muted">
-                发布任务仍在处理中，状态可能随后更新。
+                发布任务仍在处理中，状态将自动更新。
               </p>
             ) : null}
+            {publicationJobIsPending(publicationJob.status) || error ? <button type="button" className="button subtle" onClick={() => void refreshPublication()}>刷新发布状态</button> : null}
             {onClose ? (
               <div className="dialog-actions definition-editor__dialog-actions">
                 <button type="button" className="button subtle" onClick={onClose}>
@@ -946,11 +1028,15 @@ export function DefinitionEditorBody({
             {error}
           </p>
         ) : null}
-
-
+        {relatedKnowledge ? (
+          <details className="definition-editor__more">
+            <summary>相关知识</summary>
+            <SpecRelatedKnowledgeSection specId={definition.id} source={relatedKnowledge} />
+          </details>
+        ) : null}
       </section>
       <ConfirmDialog
-        open={confirmOpen}
+        open={confirmOpen && canPublish}
         title="确认执行身份纠错迁移"
         description={
           preview
@@ -974,5 +1060,5 @@ export function DefinitionEditorBody({
 
 function failureText(error: unknown): string {
   const state = catalogStateFromFailure(error);
-  return `操作失败（${state.kind}）。请刷新证据后重试，输入已保留。`;
+  return `${catalogStateMessage(state) ?? "操作未完成，请稍后重试。"} 当前输入已保留。`;
 }

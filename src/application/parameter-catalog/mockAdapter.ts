@@ -349,7 +349,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         return emptyCatalogCollection("no-filter-match");
       }
       const items =
-        query?.search && query.search !== store.definition.propertyKey ? [] : [store.definition];
+        (query?.search && query.search !== store.definition.propertyKey) ||
+        (query?.subjectLifecycle && query.subjectLifecycle !== store.subject.membership.status)
+          ? [] : [store.definition];
       return collection(items, items.length === 0 ? "no-filter-match" : undefined);
     },
     async getDefinition(definitionId, query) {

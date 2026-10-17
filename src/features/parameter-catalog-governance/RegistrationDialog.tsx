@@ -6,6 +6,8 @@ import { catalogStateFromFailure, type CatalogDomainState } from "@/application/
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
+import { presentError } from "@/infrastructure/http/presentError";
 
 import {
   canExecuteGovernanceAction,
@@ -37,8 +39,8 @@ export type RegistrationModuleOption = PlacementOption & {
 
 export type RegistrationSubjectImpact = {
   activeDefinitionCount: number;
-  bindingCount: number;
-  projectCount: number;
+  bindingCount: number | null;
+  projectCount: number | null;
 };
 
 export type RegistrationDialogProps = {
@@ -54,6 +56,7 @@ export type RegistrationDialogProps = {
   ifMatch?: string;
   placementOptions?: PlacementOption[];
   moduleOptions?: RegistrationModuleOption[];
+  newDestinationParents?: RegistrationModuleOption[];
   initialDestinationModuleId?: string;
   subjectImpact?: RegistrationSubjectImpact;
   currentModuleName?: string;
@@ -76,6 +79,7 @@ export function RegistrationDialog({
   ifMatch,
   placementOptions = [],
   moduleOptions = [],
+  newDestinationParents = [],
   initialDestinationModuleId = "",
   subjectImpact,
   currentModuleName,
@@ -87,33 +91,102 @@ export function RegistrationDialog({
   const allowed = canExecuteGovernanceAction(actor, intent, domainState);
   const gateRef = useRef<GovernanceSubmitGate>(createGovernanceSubmitGate());
   const wasOpen = useRef(false);
+  const openedSubject = useRef("");
   const [placementMode, setPlacementMode] = useState<"use-default" | "choose-parent">("use-default");
   const [parentPlacementId, setParentPlacementId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [destinationModuleId, setDestinationModuleId] = useState(initialDestinationModuleId);
+  const [newParentId, setNewParentId] = useState("");
+  const [newModuleName, setNewModuleName] = useState("");
   const [reason, setReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [writeFailure, setWriteFailure] = useState<CatalogDomainState | undefined>();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+  const [evidenceRefreshed, setEvidenceRefreshed] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
 
   useEffect(() => {
-    const opened = open && !wasOpen.current;
+    const subjectKey = `${organizationId}:${subjectId}:${intent}`;
+    const opened = open && (!wasOpen.current || openedSubject.current !== subjectKey);
     wasOpen.current = open;
     if (!opened) {
       return;
     }
     gateRef.current = createGovernanceSubmitGate();
+    openedSubject.current = subjectKey;
     setPlacementMode("use-default");
     setParentPlacementId(placementOptions[0]?.id ?? "");
     setDisplayName(placementOptions[0]?.displayName ?? "");
     // A missing target is an explicit choice the caller must resolve.  Never
     // silently pick the first module: module identity is canonical data.
     setDestinationModuleId(initialDestinationModuleId);
+    setNewParentId("");
+    setNewModuleName("");
     setReason("");
     setConfirmOpen(false);
     setPending(false);
     setWriteFailure(undefined);
-  }, [open, intent, subjectId, placementOptions, initialDestinationModuleId, moduleOptions]);
+    setRefreshing(false);
+    setRefreshError("");
+    setEvidenceRefreshed(false);
+    setLeaveOpen(false);
+  }, [open, intent, subjectId, organizationId, placementOptions, initialDestinationModuleId, moduleOptions]);
+  const dirty = Boolean(reason.trim() || newParentId || newModuleName) || destinationModuleId !== initialDestinationModuleId || placementMode !== "use-default";
+  const busy = pending || refreshing;
+  const inputDisabled = busy || !allowed;
+  const requestClose = () => {
+    if (busy) return;
+    if (dirty) setLeaveOpen(true);
+    else onOpenChange(false);
+  };
+  const finishLeave = (allowed: boolean) => {
+    const navigation = leaveDecision.current;
+    leaveDecision.current = null;
+    navigation?.resolve(allowed);
+    setLeaveOpen(false);
+    if (allowed && !navigation) onOpenChange(false);
+  };
+  useEffect(() => {
+    if (!open || (!dirty && !busy)) return;
+    const guardLeave = (event: Event) => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      if (busy) return;
+      if (!leaveDecision.current) {
+        let resolve!: (allowed: boolean) => void;
+        const promise = new Promise<boolean>((complete) => { resolve = complete; });
+        leaveDecision.current = { promise, resolve };
+      }
+      (event as CustomEvent<SettingsLeaveRequest>).detail.decision = leaveDecision.current.promise;
+      setLeaveOpen(true);
+    };
+    const guardUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("wiseeff:settings-before-leave", guardLeave);
+    window.addEventListener("beforeunload", guardUnload);
+    return () => {
+      window.removeEventListener("wiseeff:settings-before-leave", guardLeave);
+      window.removeEventListener("beforeunload", guardUnload);
+      leaveDecision.current?.resolve(false);
+      leaveDecision.current = null;
+    };
+  }, [open, dirty, busy]);
+  const refreshEvidence = async () => {
+    if (!onRefreshEvidence || busy) return;
+    setConfirmOpen(false);
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      await onRefreshEvidence();
+      gateRef.current.reset();
+      setWriteFailure(undefined);
+      setEvidenceRefreshed(true);
+    } catch (error) {
+      setRefreshError(presentError(error, "证据刷新失败，请重试。"));
+    } finally { setRefreshing(false); }
+  };
 
   const choice: PlacementChoice =
     placementMode === "use-default"
@@ -122,9 +195,12 @@ export function RegistrationDialog({
   const placementReady =
     choice.mode === "use-default" ||
     (choice.parentPlacementId.trim().length > 0 && choice.displayName.trim().length > 0);
-  const destinationReady = moduleOptions.length === 0 || destinationModuleId.trim().length > 0;
+  const initializing = intent === "register-subject" && moduleOptions.length === 0 && newDestinationParents.length > 0;
+  const destinationReady = initializing
+    ? newDestinationParents.some((option) => option.id === newParentId) && Boolean(newModuleName.trim())
+    : moduleOptions.length === 0 || moduleOptions.some((option) => option.id === destinationModuleId);
   const selectedDestinationName =
-    moduleOptions.find((option) => option.id === destinationModuleId)?.displayName ??
+    (initializing ? `${newDestinationParents.find((option) => option.id === newParentId)?.displayName ?? "未选择业务分类"} / ${newModuleName.trim() || "未填写模块名称"}` : moduleOptions.find((option) => option.id === destinationModuleId)?.displayName) ??
     (destinationModuleId || "未选择目标模块");
   const title = intent === "register-subject" ? governanceCopy.registerTitle : governanceCopy.placementTitle;
   const confirmTitle =
@@ -133,7 +209,7 @@ export function RegistrationDialog({
     intent === "register-subject" ? governanceCopy.confirmRegister : governanceCopy.confirmPlacement;
 
   const submit = async () => {
-    if (!allowed || !placementReady || !destinationReady || pending) {
+    if (!allowed || !placementReady || !destinationReady || busy || writeFailure?.kind === "conflict") {
       return;
     }
     const prepared = gateRef.current.begin({
@@ -142,7 +218,7 @@ export function RegistrationDialog({
       state: domainState,
       catalogReleaseId,
       ifMatch,
-      draftFingerprint: fingerprintGovernanceDraft({ intent, choice, reason, destinationModuleId }),
+      draftFingerprint: fingerprintGovernanceDraft({ intent, choice, reason, destinationModuleId, newParentId, newModuleName }),
       createIdempotencyKey
     });
     if (prepared.status !== "ready") {
@@ -151,7 +227,7 @@ export function RegistrationDialog({
     setPending(true);
     try {
       const placement = placementIntentFromChoice(choice);
-      const destination = destinationModuleId.trim()
+      const destination = initializing ? { newDestination: { parentModuleId: newParentId, name: newModuleName.trim() } } : destinationModuleId.trim()
         ? { destinationModuleId: destinationModuleId.trim() }
         : {};
       if (intent === "register-subject") {
@@ -194,7 +270,7 @@ export function RegistrationDialog({
     <>
       <ModalDialog
         open={open}
-        onDismiss={pending ? undefined : () => onOpenChange(false)}
+        onDismiss={busy ? undefined : requestClose}
         className="confirm-dialog governance-confirm-dialog"
         backdropClassName="param-admin-modal-backdrop"
         describedBy
@@ -204,9 +280,9 @@ export function RegistrationDialog({
             <h2 id={titleId}>{title}</h2>
             <div className="confirm-dialog__scroll">
               <div id={descriptionId} className="governance-confirm-dialog__body">
-                {allowed ? (
-                  <>
-                    {moduleOptions.length === 0 ? (
+                {actor === "org-admin" ? (
+                  <fieldset className="registration-dialog-fields" disabled={inputDisabled}>
+                    {moduleOptions.length === 0 && !initializing ? (
                       <fieldset>
                         <legend>{governanceCopy.placementMode}</legend>
                         <label>
@@ -237,6 +313,7 @@ export function RegistrationDialog({
                           {governanceCopy.parentPlacement}
                           <SelectControl
                             ariaLabel={governanceCopy.parentPlacement}
+                            disabled={inputDisabled}
                             value={parentPlacementId}
                             onValueChange={(value) => {
                               const nextId = value;
@@ -264,6 +341,7 @@ export function RegistrationDialog({
                         目标模块
                         <SelectControl
                           ariaLabel="目标模块"
+                          disabled={inputDisabled}
                           value={destinationModuleId}
                           onValueChange={(value) => setDestinationModuleId(value)}
                           options={[{ value: "", label: "请选择目标模块" }, ...moduleOptions.map((option) => ({
@@ -273,10 +351,17 @@ export function RegistrationDialog({
                         />
                       </label>
                     ) : null}
+                    {initializing ? <>
+                      <p>当前没有同类型目标模块。选择业务分类并命名，确认后将创建模块并完成登记。</p>
+                      <label>业务分类<SelectControl ariaLabel="新模块业务分类" value={newParentId} disabled={inputDisabled}
+                        onValueChange={setNewParentId} options={[{ value: "", label: "请选择业务分类" }, ...newDestinationParents.map((option) => ({ value: option.id, label: option.displayName }))]} /></label>
+                      <label>模块名称<input aria-label="新模块名称" value={newModuleName} maxLength={120} onChange={(event) => setNewModuleName(event.target.value)} /></label>
+                    </> : null}
                     {subjectImpact ? (
                       <p className="governance-confirm-dialog__impact" role="status">
-                        本主体 {subjectImpact.activeDefinitionCount} 个有效定义、{subjectImpact.bindingCount} 个当前
-                        Binding、{subjectImpact.projectCount} 个项目，
+                        本主体 {subjectImpact.activeDefinitionCount} 个有效定义、
+                        {subjectImpact.bindingCount === null ? "参数绑定数量暂不可用" : `${subjectImpact.bindingCount} 个参数绑定`}、
+                        {subjectImpact.projectCount === null ? "项目数量暂不可用" : `${subjectImpact.projectCount} 个项目`}，
                         {intent === "update-placement"
                           ? `从 ${currentModuleName ?? "当前归属"} → ${selectedDestinationName}`
                           : `登记至 ${selectedDestinationName}`}。仅调整归属，不改参数值。
@@ -292,10 +377,11 @@ export function RegistrationDialog({
                         />
                       </label>
                     ) : null}
-                  </>
+                  </fieldset>
                 ) : (
                   <p>{governanceCopy.agentReadOnly}</p>
                 )}
+                {actor === "org-admin" && !allowed && !refreshing ? <p role="status">当前目录状态暂不允许修改，请刷新证据后重试。</p> : null}
                 {writeFailure ? (
                   <p
                     className="governance-confirm-dialog__error"
@@ -306,14 +392,16 @@ export function RegistrationDialog({
                     {governanceFailureMessage(writeFailure)}
                   </p>
                 ) : null}
+                {refreshError ? <p role="alert" className="governance-confirm-dialog__error">{refreshError}</p> : null}
+                {refreshing ? <p role="status">正在刷新当前归属与影响数据…</p> : evidenceRefreshed ? <p role="status">证据已刷新，请重新核对归属与影响并确认。</p> : null}
               </div>
             </div>
             <div className="dialog-actions">
               <button
                 className="button subtle"
                 type="button"
-                disabled={pending}
-                onClick={() => onOpenChange(false)}
+                disabled={busy}
+                onClick={requestClose}
               >
                 取消
               </button>
@@ -321,7 +409,7 @@ export function RegistrationDialog({
                 <button
                   className="button primary"
                   type="button"
-                  disabled={pending || !placementReady || !destinationReady}
+                  disabled={busy || !placementReady || !destinationReady || writeFailure?.kind === "conflict"}
                   onClick={() => setConfirmOpen(true)}
                 >
                   {governanceCopy.continueConfirm}
@@ -331,8 +419,8 @@ export function RegistrationDialog({
                 <button
                   className="button ghost"
                   type="button"
-                  disabled={pending}
-                  onClick={() => void onRefreshEvidence()}
+                  disabled={busy}
+                  onClick={() => void refreshEvidence()}
                 >
                   {governanceCopy.refreshEvidence}
                 </button>
@@ -346,7 +434,7 @@ export function RegistrationDialog({
         title={confirmTitle}
         description={
           <p>
-            {destinationModuleId.trim()
+            {initializing ? `新建目标模块并登记：${selectedDestinationName}` : destinationModuleId.trim()
               ? `目标模块：${selectedDestinationName}`
               : choice.mode === "use-default"
                 ? governanceCopy.useDefaultPlacement
@@ -361,6 +449,8 @@ export function RegistrationDialog({
         onConfirm={() => void submit()}
         onCancel={() => setConfirmOpen(false)}
       />
+      <ConfirmDialog open={leaveOpen} title="放弃未保存的归属修改？" description="关闭将丢失当前目标模块和原因。"
+        confirmLabel="放弃修改" cancelLabel="继续编辑" onConfirm={() => finishLeave(true)} onCancel={() => finishLeave(false)} />
     </>
   );
 }

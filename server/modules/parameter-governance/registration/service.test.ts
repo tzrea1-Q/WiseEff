@@ -87,6 +87,13 @@ const databaseError = (code: string, detail: string): pg.DatabaseError => {
 };
 
 describe("S4-REG public command contract", () => {
+  it("restricts destination initialization to explicit organization admins and fingerprints its exact parent/name", () => {
+    const command = registerCommand({ newDestination: { parentModuleId: "business", name: "Driver" } });
+    expect(validateRegistrationCommand(command).ok).toBe(true);
+    expect(validateRegistrationCommand({ ...command, method: "automatic", context: { actorKind: "trusted-system", principalId: "system" } }).ok).toBe(false);
+    expect(validateRegistrationCommand({ ...command, newDestination: { parentModuleId: "business", name: "\n" } }).ok).toBe(false);
+    expect(fingerprintRegistrationCommand(command)).not.toBe(fingerprintRegistrationCommand({ ...command, newDestination: { parentModuleId: "other", name: "Driver" } }));
+  });
   it("owns the frozen command family and threat-matrix coverage", () => {
     expect(registrationCommandFamily).toBe("subject-registration");
     expect(THREAT_MATRIX).toHaveLength(10);

@@ -808,6 +808,15 @@ export async function buildCompleteSuccessor(
     if (productPath !== "m2-core" && change.op !== "create-definition") {
       return fail({ kind: "unsupported-change-op", op: change.op });
     }
+    if (change.op === "revise-definition" || change.op === "retire-definition" || change.op === "restore-definition") {
+      const definition = documents.find((document) => document.kind === "definition" && document.content.id === change.definitionId);
+      if (definition?.kind === "definition") {
+        const subjectId = definition.content.subjectId;
+        const subject = documents.find((document) => document.kind === "subject" && document.content.id === subjectId);
+        if (subject?.kind !== "subject") return fail({ kind: "subject-not-found", subjectId });
+        if (subject.content.lifecycle !== "active") return fail({ kind: "subject-not-active", subjectId });
+      }
+    }
     if (change.op === "create-definition") {
       const created = applyCreateDefinition(
         change,

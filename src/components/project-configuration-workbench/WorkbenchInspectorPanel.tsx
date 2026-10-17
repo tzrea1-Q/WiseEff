@@ -132,6 +132,7 @@ export type WorkbenchInspectorPanelProps = {
   sourceWorkflowError: string;
   sourceWorkflowSetLoading: boolean;
   sourceWorkflowSetReady: boolean;
+  memberAddErrorsByFileId: Readonly<Record<string, string>>;
   sourceWorkflowSetCanonical: boolean;
   sourceWorkflowSetError: string;
   onRetrySourceWorkflow: () => void;
@@ -227,6 +228,7 @@ export function WorkbenchInspectorPanel({
   sourceWorkflowError,
   sourceWorkflowSetLoading,
   sourceWorkflowSetReady,
+  memberAddErrorsByFileId,
   sourceWorkflowSetCanonical,
   sourceWorkflowSetError,
   onRetrySourceWorkflow,
@@ -251,7 +253,7 @@ export function WorkbenchInspectorPanel({
   const sourceWorkflowUnknown = Boolean(selectedMember) && !sourceWorkflow && !sourceWorkflowError;
   const sourceMutationBlocked = sourceWorkflowLoading || Boolean(sourceWorkflowError) || sourceWorkflowUnknown;
   const selectedSourceCanonical = sourceWorkflow?.canonical === true;
-  const canonicalAddReason = "canonical 成员新增尚无受审入口，当前不能添加或编入文件。";
+  const canonicalAddReason = "此配置集的成员变更需要审核，当前不能直接编入文件。";
   const dtsRemovalReason = "DTS 成员删除尚无受审入口，当前不能移除。";
   const selectedDtsRemovalBlocked = sourceWorkflowSetCanonical && selectedMember?.format === "dts";
   const sourceSetMutationBlocked =
@@ -312,6 +314,42 @@ export function WorkbenchInspectorPanel({
         </div>
       </div>
       <div className="configuration-workbench__inspector-body">
+        {inspectorLevel === "property" && selectedStructureProperty && selectedStructureNode ? (
+          <section className="configuration-workbench__property-editor" aria-label="当前属性">
+            <p>{dtsValueTypeLabel(selectedStructureProperty.valueType)} · 当前值 <code>{selectedStructureProperty.rawText || "空值"}</code></p>
+              {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? (
+                <p className="configuration-workbench__risk-note" role="note">
+                  <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
+                  <span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
+                </p>
+              ) : null}
+              <div className="configuration-workbench__typed-editor" role="group" aria-label="属性值编辑">
+                {editorLocked ? (
+                  <p className="configuration-workbench__locked" role="note">
+                    <Lock size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>
+                      {staleDraftLocked
+                        ? "基线版本已变更：会话草稿仅可检查或复制。请先基于当前基线继续编辑，再修改取值。"
+                        : criticalLocked
+                          ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
+                          : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
+                    </span>
+                  </p>
+                ) : null}
+                <StructuredValueEditor
+                  propertyName={selectedStructureProperty.name}
+                  valueType={selectedStructureProperty.valueType}
+                  rawText={activePropertyDraft?.rawText ?? selectedStructureProperty.rawText}
+                  present={activePropertyDraft?.present}
+                  availableLabels={availableLabels}
+                  disabled={editorLocked || selectedStructureProperty.valueType === "empty"}
+                  onChange={onStructuredValueChange}
+                />
+              </div>
+          </section>
+        ) : null}
+        <details className="configuration-workbench__context-details" open={inspectorLevel !== "property"}>
+          <summary>配置与发布信息</summary>
         <WorkbenchBaselineDock
           baselines={baselines}
           releasedTipId={releasedBaseline?.id}
@@ -763,13 +801,14 @@ export function WorkbenchInspectorPanel({
                     <button
                       className="button subtle"
                       type="button"
-                      disabled={!memberFileId || pendingAction !== null || sourceSetMutationBlocked}
-                      title={sourceSetMutationBlocked ? sourceSetMutationReason : undefined}
+                      disabled={!memberFileId || pendingAction !== null || sourceSetMutationBlocked || Boolean(memberAddErrorsByFileId[memberFileId])}
+                      title={sourceSetMutationBlocked ? sourceSetMutationReason : memberAddErrorsByFileId[memberFileId] || undefined}
                       aria-describedby={sourceWorkflowSetCanonical ? "canonical-member-add-reason" : undefined}
                       onClick={onAddMember}
                     >
                       添加成员
                     </button>
+                    {memberAddErrorsByFileId[memberFileId] ? <p role="note">{memberAddErrorsByFileId[memberFileId]}</p> : null}
                     {sourceWorkflowSetCanonical ? <p id="canonical-member-add-reason" role="note">{canonicalAddReason}</p> : null}
                   </div>
                 ) : null}
@@ -971,38 +1010,11 @@ export function WorkbenchInspectorPanel({
                 </dd>
               </div>
               </dl>
-              {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? (
-                <p className="configuration-workbench__risk-note" role="note">
-                  <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
-                  <span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
-                </p>
-              ) : null}
-              <div className="configuration-workbench__typed-editor" role="group" aria-label="属性值编辑">
-                {editorLocked ? (
-                  <p className="configuration-workbench__locked" role="note">
-                    <Lock size={16} strokeWidth={2} aria-hidden="true" />
-                    <span>
-                      {staleDraftLocked
-                        ? "基线版本已变更：会话草稿仅可检查或复制。请先基于当前基线继续编辑，再修改取值。"
-                        : criticalLocked
-                          ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
-                          : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
-                    </span>
-                  </p>
-                ) : null}
-                <StructuredValueEditor
-                  propertyName={selectedStructureProperty.name}
-                  valueType={selectedStructureProperty.valueType}
-                  rawText={activePropertyDraft?.rawText ?? selectedStructureProperty.rawText}
-                  present={activePropertyDraft?.present}
-                  availableLabels={availableLabels}
-                  disabled={editorLocked || selectedStructureProperty.valueType === "empty"}
-                  onChange={onStructuredValueChange}
-                />
-              </div>
+
             </>
           ) : null}
         </div>
+        </details>
         {inspectorLevel === "file" && selectedMember ? (
           <section className="configuration-workbench__version-history" aria-label="不可变版本历史">
             <strong>不可变版本历史</strong>
@@ -1025,7 +1037,7 @@ export function WorkbenchInspectorPanel({
                         版本 {version.versionNumber}
                         {active ? " · 活跃" : ""}
                       </strong>
-                      <small className="mono">{version.id}</small>
+                      <details><summary>版本详情</summary><code>{version.id}</code></details>
                       <span>来源：{ORIGIN_LABELS[version.origin]}</span>
                       <span title={formatAbsolute(version.createdAt)}>创建时间：{formatRelativeOrAbsolute(version.createdAt)}</span>
                       <span>
@@ -1078,10 +1090,10 @@ export function WorkbenchInspectorPanel({
         <p className="configuration-workbench__read-only-note">
           {canEdit
             ? sourceWorkflow?.canonical
-              ? "源码画布保持只读；canonical 来源变更与回滚必须提交来源审核，审核通过前不会激活。当前文件属性仍可在类型化检查器中编辑，并进入会话变更坞提交。"
+              ? "源码画布保持只读；此文件的来源变更与回滚必须提交来源审核，审核通过前不会激活。当前文件属性仍可在类型化检查器中编辑，并进入会话变更坞提交。"
               : `源码画布保持只读；整文件替换请走候选文件版本。${selectedMember?.format === "json" ? "JSON" : "DTS"} 属性改动在类型化检查器中编辑，并进入会话变更坞提交。候选激活需确认影响范围；配置集创建/成员管理、手动同步与导出同样可用。`
             : "当前检查器为只读上下文。画布模式：" +
-              canvasMode +
+              ({ working: "工作配置", history: "历史源码", "unified-diff": "统一差异", "side-by-side": "并排对比", candidate: "候选源码" }[canvasMode]) +
               "。缺少参数修改权限时仍可浏览结构与源码。"}
         </p>
       </div>

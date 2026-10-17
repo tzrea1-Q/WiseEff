@@ -9,8 +9,6 @@ import type { CatalogApiFailureReason } from "@wiseeff/dto-schemas";
 export const catalogPageLabel = "参数定义目录";
 export const catalogListLabel = "目录列表";
 export const catalogNavigatorLabel = "模块导航";
-export const catalogModuleScopeClear = "清除选择";
-export const catalogModuleScopeHint = "选择模块会包含其子树，并筛选完整结果集。";
 export const catalogPageSizeLabel = "每页条数";
 export const catalogPaginationLabel = "分页";
 export const catalogPreviousPageLabel = "上一页";
@@ -20,15 +18,12 @@ export const catalogResultCountUnavailable = "结果计数不可用，请重试�
 export const catalogHistoryLabel = "历史修订";
 export const catalogHistoryOpenLabel = "查看历史";
 export const catalogHistoryCloseLabel = "收起历史";
-export const catalogPendingWorkLabel = "待处理工作";
+export const catalogPendingWorkLabel = "待审核事项";
 export const catalogDetailLabel = "定义详情";
 export const catalogAuthoringAccessHint = "如需编辑参数定义，请联系组织管理员开通参数目录编写权限。";
 export const catalogDetailCloseLabel = "关闭定义详情";
 export const catalogTimelineLabel = "定义时间线";
-export const catalogReleaseLabel = "目录发布";
 export const catalogSearchLabel = "搜索参数定义";
-export const catalogSearchSubmitLabel = "搜索";
-export const catalogSearchClearLabel = "清空筛选";
 export const catalogDefinitionsLabel = "参数定义列表";
 export const catalogReviewWorkLabel = "待审核事项";
 export const catalogSelectDefinitionHint = "选择一项参数定义以查看身份、修订与时间线。";
@@ -36,17 +31,6 @@ export const catalogLoadingLabel = "正在加载目录";
 export const catalogStaleLoadingLabel = "正在刷新目录发布，写入已暂停";
 export const catalogUnregisteredHint = "该主体尚未登记。可阅读目录内容，放置尚未建立。";
 export const catalogWritesPausedHint = "当前状态禁止写入";
-
-export const catalogStateBadges = {
-  unpublished: "尚未发布",
-  ready: "就绪",
-  loading: "加载中",
-  error: "失败",
-  empty: "空",
-  unregistered: "未登记",
-  retired: "已退役",
-  conflict: "冲突"
-} as const;
 
 export const catalogEmptyMessages = {
   "no-registrations": "当前发布中没有主体登记。",

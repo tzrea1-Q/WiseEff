@@ -1,5 +1,5 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect } from "playwright/test";
+import { expect, type Page, type Route } from "playwright/test";
 import { catalogAppUrl, test } from "./helpers/catalogFixtureRuntime";
 
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -16,7 +16,6 @@ import {
   openCatalogAt,
   openCatalogViaNav,
   selectDefinitionByKey,
-  selectSubjectByName,
   signInCatalogActor,
   waitForCatalogState
 } from "./helpers/catalogBrowser";
@@ -28,7 +27,13 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
-const CHARGER_SUBJECT = /^charger/;
+async function selectCatalogSubject(page: Page, canonicalName: string) {
+  const navigator = page.getByRole("navigation", { name: "参数定义模块树" });
+  const search = navigator.getByRole("searchbox", { name: "搜索模块", exact: true });
+  await search.fill(canonicalName);
+  await navigator.getByRole("button", { name: `选择主体 ${canonicalName}`, exact: true }).click();
+  await search.clear();
+}
 
 let fixture: CatalogAcceptanceFixture;
 
@@ -45,7 +50,7 @@ test.describe("canonical parameter catalog page", () => {
     await openCatalogViaNav(page, "org-admin");
     const region = catalogPage(page);
     await expect(region).toHaveAttribute("data-catalog-page", "true");
-    await expect(page.getByLabel("目录发布")).toContainText(fixture.chain.pinF.id);
+    await expect(region).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
     const document = await catalogJson(page.request, "GET", "/api/v2/catalog");
     expect(document.status).toBe(200);
     expect((document.body as { item: { catalogReleaseId: string } }).item.catalogReleaseId).toBe(
@@ -75,6 +80,8 @@ test.describe("canonical parameter catalog page", () => {
       await route.continue();
     });
     await openCatalogViaNav(page, "org-admin");
+    await page.getByRole("checkbox", { name: "包含退役主体" }).check();
+    await selectCatalogSubject(page, "acme,power");
     await selectDefinitionByKey(page, "iin_max");
     await expect(page).toHaveURL(new RegExp(`subjectId=${fixture.powerSubjectId}`));
     await expect(page).toHaveURL(new RegExp(`definitionId=${fixture.xDefinitionId}`));
@@ -196,13 +203,13 @@ test.describe("canonical parameter catalog page", () => {
     await catalogScreenshot(page, testInfo, "pcat-ui-05-timeline");
   });
 
-  test("exposes only role-authorized ready actions while keeping the Catalog Release visible", async ({
+  test("exposes only role-authorized ready actions while keeping the Catalog Release pinned", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-06
     // @operation PCAT-READY-ACTIONS-001
     const assertReleaseVisible = async () => {
-      await expect(page.getByLabel("目录发布")).toContainText(fixture.chain.pinF.id);
+      await expect(catalogPage(page)).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
     };
 
     await signInCatalogActor(page, "user", CATALOG_PAGE_PATH);
@@ -212,14 +219,20 @@ test.describe("canonical parameter catalog page", () => {
 
     await openCatalogAt(page, "org-admin");
     await assertReleaseVisible();
+    await selectCatalogSubject(page, "acme,sensor");
     await expect(
       page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
-    ).toBeVisible();
+    ).toBeEnabled();
+    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["update-placement"], exact: true })).toHaveCount(0);
+    await selectCatalogSubject(page, "charger");
+    await assertReleaseVisible();
     // The definition-editor dialog owns definition changes; the toolbar offers the
     // organization actions that still have a surface on this page.
     await expect(
       page.getByRole("button", { name: catalogUiCopy.actionLabels["update-placement"], exact: true })
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^待审核事项/ })).toBeEnabled();
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
     const userWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
@@ -235,8 +248,10 @@ test.describe("canonical parameter catalog page", () => {
 
     await openCatalogAt(page, "platform-admin");
     await assertReleaseVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["reject-proposal"] }).first()).toBeVisible();
+    await expect(page.getByText("组织审核队列需要 Organization 权限；Platform 权限不能代替组织审核权限。", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^待审核事项/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["reject-proposal"] })).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
     ).toHaveCount(0);
@@ -266,12 +281,14 @@ test.describe("canonical parameter catalog page", () => {
   }, testInfo) => {
     // @acceptance PCAT-UI-08
     // @operation PCAT-CATALOG-STATES-001
-    let catalogMode: "delay" | "not-ready" | "live" = "delay";
+    let catalogMode: "delay" | "not-ready" | "live" = "live";
+    let releaseCatalog!: () => void;
+    const catalogGate = new Promise<void>((resolve) => { releaseCatalog = resolve; });
     await page.route("**/api/v2/catalog**", async (route) => {
       const url = new URL(route.request().url());
       const method = route.request().method();
       if (method === "GET" && url.pathname === "/api/v2/catalog" && catalogMode === "delay") {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await catalogGate;
         await route.continue();
         return;
       }
@@ -292,11 +309,18 @@ test.describe("canonical parameter catalog page", () => {
       await route.continue();
     });
 
-    const loadingPromise = openCatalogAt(page, "org-admin");
-    await expect(catalogPage(page)).toHaveAttribute("data-catalog-state", "loading", { timeout: 5_000 });
-    await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
-    await expect(page.getByText(/正在加载目录|正在刷新目录发布/).first()).toBeVisible();
-    await loadingPromise;
+    await openCatalogAt(page, "org-admin");
+    await waitForCatalogState(page, /ready|empty|unregistered/);
+    catalogMode = "delay";
+    await page.reload({ waitUntil: "domcontentloaded" });
+    try {
+      await expect(catalogPage(page)).toHaveAttribute("data-catalog-state", "loading", { timeout: 5_000 });
+      await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
+      await expect(page.getByText(/正在加载目录|正在刷新目录发布/).first()).toBeVisible();
+    } finally {
+      releaseCatalog();
+    }
+    await waitForCatalogState(page, /ready|empty|unregistered/);
 
     catalogMode = "not-ready";
     await page.reload();
@@ -314,17 +338,63 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page.getByRole("status", { name: "结果计数" })).toContainText(/共 \d+ 项/);
     // The restored rail renders one module tree whose leaves are the subject
     // inventory; a scoped organization never sees a hidden or empty collection.
-    await expect(page.locator('[data-catalog-subject-node="true"]')).toHaveCount(2);
+    const navigator = page.getByRole("navigation", { name: "参数定义模块树" });
+    for (const toggle of await navigator.getByRole("button", { name: /^展开 / }).all()) await toggle.click();
+    await expect(navigator.locator('[data-catalog-subject-node="true"]')).toHaveCount(2);
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-registrations"])).toHaveCount(0);
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"])).toHaveCount(0);
 
     await openCatalogAt(page, "org-admin");
-    await selectSubjectByName(page, CHARGER_SUBJECT);
-    await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"]).first()).toBeVisible();
+    const chargerDefinitions = page.waitForResponse((response) => response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `/api/v2/catalog/subjects/${fixture.chargerSubjectId}/definitions`);
+    await selectCatalogSubject(page, "charger");
+    const chargerResponse = await chargerDefinitions;
+    expect(chargerResponse.status()).toBe(200);
+    expect(await chargerResponse.json()).toMatchObject({ items: [], totalCount: 0,
+      catalogReleaseId: fixture.chain.pinF.id, emptyReason: "no-filter-match" });
+    await expect(catalogPage(page)).toHaveAttribute("data-empty-reason", "no-filter-match");
+    await expect(page.getByText(catalogUiCopy.emptyMessages["no-filter-match"]).first()).toBeVisible();
+
+    await selectCatalogSubject(page, "charger");
+    await page.getByRole("checkbox", { name: "包含退役主体" }).check();
+    await waitForCatalogState(page, "ready");
+    await expect(page.getByRole("table", { name: "参数定义列表" })).toBeVisible();
+    // UI-state simulation: this published fixture has definitions. Exercise a
+    // genuinely unfiltered empty collection without relabelling a subject filter.
+    const emptyCollectionRequests: string[] = [];
+    const emptyCollection = async (route: Route) => {
+      emptyCollectionRequests.push(route.request().url());
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        items: [], totalCount: 0, hasMore: false, nextCursor: null,
+        catalogReleaseId: fixture.chain.pinF.id, emptyReason: "no-definitions"
+      }) });
+    };
+    const definitionsRoute = "**/api/v2/catalog/definitions?*";
+    await page.route(definitionsRoute, emptyCollection);
+    try {
+      await page.reload();
+      await waitForCatalogState(page, "empty");
+      await expect(catalogPage(page)).toHaveAttribute("data-empty-reason", "no-definitions");
+      await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
+      await expect(catalogPage(page)).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
+      await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"]).first()).toBeVisible();
+      expect(emptyCollectionRequests.length).toBeGreaterThan(0);
+      for (const url of emptyCollectionRequests) {
+        expect([...new URL(url).searchParams.keys()].sort()).toEqual(["catalogReleaseId", "limit"]);
+      }
+    } finally {
+      await page.unroute(definitionsRoute, emptyCollection);
+    }
+    await page.reload();
+    await waitForCatalogState(page, "ready");
+    await expect(page.getByRole("table", { name: "参数定义列表" })).toBeVisible();
 
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("zzzz-no-such-definition");
-    await page.getByRole("button", { name: "搜索", exact: true }).click();
+    await expect(page.getByRole("button", { name: "搜索", exact: true })).toHaveCount(0);
+    await expect(catalogPage(page)).toHaveAttribute("data-empty-reason", "no-filter-match");
+    await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-filter-match"]).first()).toBeVisible();
+    await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"])).toHaveCount(0);
     await catalogScreenshot(page, testInfo, "pcat-ui-08-filter");
   });
 
@@ -342,11 +412,14 @@ test.describe("canonical parameter catalog page", () => {
     );
     await waitForCatalogState(page, "retired");
     await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
-    await expect(page.getByText(/已退役或已弃用，历史记录仍可阅读|该主体已退役/).first()).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: catalogUiCopy.actionLabels["update-placement"], exact: true })
-    ).toBeDisabled();
-    await expect(page.getByRole("region", { name: "定义详情" })).toContainText(fixture.xDefinitionId);
+    const detail = page.getByRole("dialog", { name: "查看 iin_max", exact: true });
+    await expect(detail.getByRole("status").filter({ hasText: "主体已退役 · 只读" })).toBeVisible();
+    await expect(detail.getByRole("button", { name: /^编辑 / })).toHaveCount(0);
+    await expect(detail.getByRole("region", { name: "定义详情" })).toContainText(fixture.xDefinitionId);
+    await detail.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(page.getByText("当前主体已退役，参数定义仅供查看。", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["update-placement"], exact: true })).toHaveCount(0);
     const retiredWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
       headers: {
         "X-WiseEff-Catalog-Release": fixture.chain.pinF.id,

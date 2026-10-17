@@ -24078,24 +24078,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: var(--text-muted);
 }
 
-.module-attribution-tree__filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-}
-
-.module-attribution-tree__filters .dropdown-root {
-  position: relative;
-}
-
-.module-attribution-tree__filters .dropdown-menu {
-  right: 0;
-  left: auto;
-  min-width: calc(3 * var(--space-16) - var(--space-4));
-  z-index: var(--z-topbar);
-}
-
 .module-attribution-tree__scroll {
   max-height: min(58vh, calc(10 * var(--space-16)));
   overflow: auto;
@@ -24427,15 +24409,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
   white-space: nowrap;
 }
 
-.module-attribution-tree__filter-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
 .parameter-module-mapping-panel .parameter-canonical-subject-panel {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -24489,11 +24462,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .parameter-module-mapping-panel .module-attribution-tree__meta {
   justify-content: flex-start;
   text-align: left;
-}
-
-.parameter-module-mapping-panel .module-attribution-tree__filters .dropdown-menu {
-  position: static;
-  min-width: 0;
 }
 
 .parameter-module-mapping-panel .compact-filter-control {

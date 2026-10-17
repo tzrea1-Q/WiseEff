@@ -39,44 +39,32 @@ test.describe("canonical parameter catalog governance interactions", () => {
     // @operation PCAT-REVIEW-RESOLVE-001
     await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
     await openCatalogAt(page, "org-admin");
+    await waitForCatalogState(page, "empty");
+    await expect(catalogPage(page)).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
+    await page.getByRole("button", { name: /待审核事项/ }).click();
     const queue = page.getByRole("region", { name: "待审核事项" });
-    const resolveButton = queue.getByRole("button", { name: "处理审核" });
-    if ((await resolveButton.count()) === 0) {
-      await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
-      await page.reload();
-      await expect(catalogPage(page)).toBeVisible();
-      // Pending work is disclosed from the single count-bearing action, which
-      // opens the review queue in a dialog.
-      const pending = page.getByRole("button", { name: /待处理工作/ });
-      if (await pending.isVisible().catch(() => false)) {
-        await pending.click();
-      }
-    }
+    await expect(queue).toBeVisible();
+    const resolveButton = queue.getByRole("button", { name: "处理审核" }).first();
+    await expect(resolveButton).toBeEnabled();
     const listedBefore = await catalogJson(
       page.request,
       "GET",
       `/api/v2/organizations/${fixture.organizationId}/parameter-review-items`
     );
+    expect(listedBefore.status).toBe(200);
     const openBefore = ((listedBefore.body as { items: Array<{ status: string }> }).items ?? []).filter(
       (item) => item.status === "open"
     ).length;
-    await queue.getByRole("button", { name: "处理审核" }).first().click();
+    expect(openBefore).toBeGreaterThan(0);
+    await resolveButton.click();
     const dialog = page.getByRole("dialog", { name: "处理审核" });
     await expect(dialog).toBeVisible();
-    await dialog.getByText("标为范围外").click();
+    await dialog.getByRole("radio", { name: "标为范围外", exact: true }).check();
     await dialog.getByRole("textbox", { name: "原因" }).fill("op08 mark out of scope");
     await dialog.getByRole("button", { name: "继续确认" }).click();
+    await expect(page.getByRole("dialog", { name: "确认处理审核" })).toContainText("op08 mark out of scope");
     await confirmGovernanceDialog(page, "确认处理");
-    if (await dialog.getByText(/审核版本已变化|刷新后重新确认/).count()) {
-      await dialog.getByRole("button", { name: "刷新证据" }).click();
-      await expect(dialog).toHaveCount(0);
-      await queue.getByRole("button", { name: "处理审核" }).first().click();
-      await expect(page.getByRole("dialog", { name: "处理审核" })).toBeVisible();
-      await page.getByRole("dialog", { name: "处理审核" }).getByText("标为范围外").click();
-      await page.getByRole("dialog", { name: "处理审核" }).getByRole("textbox", { name: "原因" }).fill("op08 mark out of scope retry");
-      await page.getByRole("dialog", { name: "处理审核" }).getByRole("button", { name: "继续确认" }).click();
-      await confirmGovernanceDialog(page, "确认处理");
-    }
+    await expect(dialog.getByRole("status").filter({ hasText: "已标为范围外" })).toBeVisible();
     await expect(page.getByRole("button", { name: "确认处理" })).toHaveCount(0);
     const listed = await catalogJson(
       page.request,
@@ -87,22 +75,7 @@ test.describe("canonical parameter catalog governance interactions", () => {
     const openItems = ((listed.body as { items: Array<{ id: string; status: string; etag?: string }> }).items ?? []).filter(
       (item) => item.status === "open"
     );
-    for (const item of openItems.slice(0, 1)) {
-      const resolved = await catalogJson(
-        page.request,
-        "POST",
-        `/api/v2/organizations/${fixture.organizationId}/parameter-review-items/${item.id}/resolve`,
-        {
-          headers: {
-            "X-WiseEff-Catalog-Release": fixture.chain.pinF.id,
-            "Idempotency-Key": `pcat-ui-04:${item.id}`,
-            "If-Match": item.etag ?? "1"
-          },
-          data: { resolution: { type: "mark-out-of-scope" }, reason: "op08 api follow-up resolve" }
-        }
-      );
-      expect([200, 409]).toContain(resolved.status);
-    }
+    expect(openItems).toHaveLength(openBefore - 1);
     await catalogScreenshot(page, testInfo, "pcat-ui-04-review");
   });
 
@@ -157,29 +130,45 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
     await openCatalogViaNav(page, "org-admin");
-    await waitForCatalogState(page, /ready|unregistered/);
-    await expect(page.getByLabel("目录发布")).toContainText(fixture.chain.pinF.id);
+    // The latest pin retires the only definition owner, so its default active
+    // collection is empty while independent review work remains accessible.
+    await waitForCatalogState(page, "empty");
+    await expect(catalogPage(page)).toHaveAttribute("data-catalog-release", fixture.chain.pinF.id);
+    await expect(page.getByRole("button", { name: /待审核事项/ })).toBeEnabled();
+
+    await page.goto(catalogAppUrl(catalogHref(fixture, {
+      subjectId: fixture.powerSubjectId,
+      catalogReleaseId: fixture.chain.pinC.id
+    })));
+    await waitForCatalogState(page, "unregistered");
     await expect(
       page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
     ).toBeVisible();
-    const reviewAction = page.getByRole("button", { name: /处理审核|待处理工作/ }).first();
-    if (!(await reviewAction.isVisible().catch(() => false))) {
-      await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
-      await page.reload();
-      await expect(catalogPage(page)).toBeVisible();
-    }
-    await expect(page.getByRole("button", { name: /处理审核|待处理工作/ }).first()).toBeVisible();
 
+    // Exercise authoring against the explicit fixture pin whose owner is active.
+    await page.goto(catalogAppUrl(catalogHref(fixture, { catalogReleaseId: fixture.chain.pinC.id })));
     const { dialog: editor, authoringAllowed } = await openDefinitionEditor(page, page.request);
     if (authoringAllowed) {
       await editor.getByLabel("属性键").fill(`pcat-ui-15-${Date.now()}`);
-      await editor.getByLabel("受影响项目").fill("proj-a");
+      const projects = editor.getByRole("group", { name: "受影响项目" });
+      await projects.getByRole("checkbox", { name: "OP-08 archived-link project", exact: true }).check();
       await editor.getByLabel("修改原因").fill("op08 merged editor journey");
       await expect(editor.getByRole("button", { name: "预演影响" })).toBeEnabled();
     } else {
       await expect(editor.getByRole("region", { name: "定义详情" })).toBeVisible();
     }
-    await editor.getByRole("button", { name: /关闭/ }).click();
+    await editor.getByRole("button", { name: "关闭", exact: true }).click();
+    if (authoringAllowed) {
+      const discard = page.getByRole("dialog", { name: "放弃未保存的修改？" });
+      await expect(discard).toBeVisible();
+      await discard.getByRole("button", { name: "继续编辑", exact: true }).click();
+      await expect(editor.getByLabel("修改原因")).toHaveValue("op08 merged editor journey");
+      await expect(editor.getByRole("group", { name: "受影响项目" })
+        .getByRole("checkbox", { name: "OP-08 archived-link project", exact: true })).toBeChecked();
+      await editor.getByRole("button", { name: "关闭", exact: true }).click();
+      await discard.getByRole("button", { name: "放弃修改", exact: true }).click();
+    }
+    await expect(editor).not.toBeVisible();
 
     await page.goto(
       catalogAppUrl(
@@ -190,7 +179,8 @@ test.describe("canonical parameter catalog governance interactions", () => {
         })
       )
     );
-    await expect(page.getByRole("region", { name: "定义详情" })).toContainText("iin_max");
+    await expect(page.getByRole("dialog").getByRole("heading", { name: /^(编辑|查看) iin_max$/ })).toBeVisible();
+    await expect(page.getByRole("region", { name: "定义详情" })).toContainText("Documented maximum accepted input current.");
     await page.getByRole("button", { name: /查看历史/ }).click();
     await expect(page.getByRole("list", { name: "定义时间线" })).toBeVisible();
 

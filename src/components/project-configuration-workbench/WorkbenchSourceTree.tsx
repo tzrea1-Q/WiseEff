@@ -58,6 +58,7 @@ export type WorkbenchSourceTreeProps = {
   onMembersRetry: () => void;
   sourceWorkflowSetLoading: boolean;
   sourceWorkflowSetReady: boolean;
+  memberAddErrorsByFileId: Readonly<Record<string, string>>;
   sourceWorkflowSetCanonical: boolean;
   sourceWorkflowSetError: string;
   selectedMembers: DtsConfigSetMemberFile[];
@@ -100,6 +101,7 @@ export function WorkbenchSourceTree({
   onMembersRetry,
   sourceWorkflowSetLoading,
   sourceWorkflowSetReady,
+  memberAddErrorsByFileId,
   sourceWorkflowSetCanonical,
   sourceWorkflowSetError,
   selectedMembers,
@@ -132,7 +134,7 @@ export function WorkbenchSourceTree({
   const sourceSetMutationReason = sourceWorkflowSetError
     ? sourceWorkflowSetError
     : sourceWorkflowSetCanonical
-      ? "当前配置集包含 canonical 来源成员；canonical 成员新增尚无受审入口，不能编入文件。"
+      ? "此配置集的成员变更需要审核，当前不能直接编入文件。"
       : selectedMembers.length === 0
         ? "当前配置集尚无已验证的来源成员，不能确认目标来源。"
       : "配置集来源一致性尚未完成校验，成员变更已禁用。";
@@ -142,7 +144,7 @@ export function WorkbenchSourceTree({
       <div className="configuration-workbench__region-head">
         <div>
           <span>源结构</span>
-          <strong>{selectedConfigSet.name}</strong>
+          <strong>{selectedMembers.length} 个文件</strong>
         </div>
       </div>
       <form
@@ -316,15 +318,15 @@ export function WorkbenchSourceTree({
         {ungroupedFiles.map((item) => (
           <div key={item.id} className="configuration-workbench__ungrouped-file">
             <span>{item.fileName}</span>
-            <small>不参与当前工作配置与发布就绪度</small>
+            <small>{memberAddErrorsByFileId[item.id] || "尚未加入当前配置集"}</small>
             {canAdmin ? (
               <button
                 className="button subtle"
                 type="button"
                 aria-label={`编入 ${item.fileName}`}
-                title={sourceSetMutationBlocked ? sourceSetMutationReason : undefined}
+                title={sourceSetMutationBlocked ? sourceSetMutationReason : memberAddErrorsByFileId[item.id] || undefined}
                 aria-describedby={sourceSetMutationBlocked ? "source-tree-member-add-reason" : undefined}
-                disabled={pendingAction !== null || sourceSetMutationBlocked}
+                disabled={pendingAction !== null || sourceSetMutationBlocked || Boolean(memberAddErrorsByFileId[item.id])}
                 onClick={() => onAssignUngroupedFile(item)}
               >
                 编入当前配置集

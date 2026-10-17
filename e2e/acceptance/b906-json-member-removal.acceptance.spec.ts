@@ -7,6 +7,7 @@ import { makeTestAuthContext } from "../../server/testing/authContext";
 import { installConfigurationSourceFixture } from "../../server/testing/parameterCatalog/configurationSource";
 import { installDriverSourceFixture } from "../../server/testing/parameterCatalog/driverSource";
 import { insertFileVersion } from "../../server/modules/parameter-files/repository";
+import type { ParsedIndex } from "../../server/modules/parameter-files/types";
 import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
 import { createUserInvocation } from "../../server/modules/auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../../server/modules/audit/trustedRefusalSink";
@@ -170,13 +171,14 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
       await expect(page.getByRole("article", { name: "JSON 成员删除请求详情" })).toContainText("已撤回");
 
       const staleRequest = await submitFromPage(stale, "浏览器来源漂移路径");
-      const oldVersion = (await db.query<{ storage_key: string; checksum: string; size_bytes: number; parsed_index: unknown }>(
-        "select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
+      const oldVersion = (await db.query<{ version_number: number; storage_key: string; checksum: string; size_bytes: number; parsed_index: ParsedIndex }>(
+        "select version_number,storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index from project_parameter_file_versions where id=$1",
         [stale.removed.versionId])).rows[0]!;
       const driftVersionId = randomUUID();
       await insertFileVersion(db, { id: driftVersionId, fileId: stale.removed.id,
+        versionNumber: oldVersion.version_number + 1,
         storageKey: oldVersion.storage_key, checksum: oldVersion.checksum, sizeBytes: oldVersion.size_bytes,
-        parsedIndex: oldVersion.parsed_index as Record<string, unknown>, origin: "upload",
+        parsedIndex: oldVersion.parsed_index, origin: "upload",
         createdByUserId: acceptanceCast.xuYun.userId });
       await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [stale.removed.id, driftVersionId]);
       await signInBrowserAsRole(page, "software-committer", `${runtime.frontendUrl}/parameter-review?project=aurora&memberRequest=${staleRequest.id}`);
@@ -275,7 +277,7 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
       };
       const dtsSource = '/dts-v1/;\n/ { charger: device@0 { compatible = "acme,power"; iin_max = <36>; }; };\n';
       const memberContent = format === "json" ? '{"limit":36}\n' : dtsSource;
-      const members = [];
+      const members: Awaited<ReturnType<typeof upload>>[] = [];
       for (let index = 0; index < 2; index += 1) {
         const member = await upload(`b906-limits-${format}-${index}.${format}`, memberContent);
         const added = await request.post(api(`/api/v1/projects/aurora/config-sets/${setId}/files`), {
@@ -332,16 +334,19 @@ test(`#906 B explains unsupported canonical member actions for ${format} without
       await dismissXiaozeHint(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       const add = inspector.getByRole("button", { name: "添加成员" });
-      await expect(inspector.getByText(/canonical 成员新增尚无受审入口/)).toBeVisible();
       await expect(add).toBeDisabled();
+      await expect(add).toHaveAttribute("aria-describedby", /\S+/);
       const addReasonId = await add.getAttribute("aria-describedby");
       expect(addReasonId).toBeTruthy();
-      await expect(inspector.locator(`#${addReasonId}`)).toContainText("canonical 成员新增尚无受审入口");
+      const addReason = inspector.locator(`#${addReasonId}`);
+      await expect(addReason).toHaveAttribute("role", "note");
+      await expect(addReason).toBeVisible();
+      await expect(addReason).toHaveText("此配置集的成员变更需要审核，当前不能直接编入文件。");
       const treeAssign = page.getByRole("button", { name: `编入 ${ungrouped.name}` });
       await expect(treeAssign).toBeDisabled();
       const treeReasonId = await treeAssign.getAttribute("aria-describedby");
       expect(treeReasonId).toBeTruthy();
-      await expect(page.locator(`#${treeReasonId}`)).toContainText("canonical 成员新增尚无受审入口");
+      await expect(page.locator(`#${treeReasonId}`)).toHaveText("此配置集的成员变更需要审核，当前不能直接编入文件。");
       const memberRemove = inspector.getByRole("button", { name: `移除 ${members[0]!.name}` });
       if (format === "json") await expect(memberRemove).toBeEnabled();
       else await expect(memberRemove).toBeDisabled();

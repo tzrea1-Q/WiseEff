@@ -23,17 +23,20 @@ useBrowserDiagnostics(test, { expectedApiFailures });
 const organizationId = "org-chargelab";
 const projectId = "issue897-project";
 
-for (const [legacyTab, label] of [["queue", "发现队列"], ["registry", "历史注册表"]]) {
+for (const [legacyTab, label] of [["queue", "来源识别"], ["registry", "历史注册表"]]) {
   test(`Issue 1133: ${legacyTab} bookmarks select the workbench tab and survive browser Back`, async ({ page }) => {
     await signInBrowserAsRole(page, "admin", `/parameter-admin/modules/${legacyTab}?q=power`);
     await expect(page).toHaveURL(new RegExp(`/parameter-admin/modules\\?q=power&tab=${legacyTab}$`));
     await expect(page.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("tabpanel", { name: label })).toBeVisible();
-    await expect(page.getByRole("tree", { name: "模块归属树" })).toBeVisible();
+    await expect(page.getByRole("tree", { name: "模块归属树" })).toHaveCount(0);
     await page.getByRole("tab", { name: "模块", exact: true }).click();
     await expect(page).toHaveURL(/\/parameter-admin\/modules\?q=power$/);
+    await expect(page.getByRole("tree", { name: "模块归属树" })).toBeVisible();
     await page.goBack();
     await expect(page.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tabpanel", { name: label })).toBeVisible();
+    await expect(page.getByRole("tree", { name: "模块归属树" })).toHaveCount(0);
   });
 }
 
@@ -93,6 +96,7 @@ test("Issue 1067: historical modules expose provenance without structural contro
   await page.getByRole("tab", { name: "历史注册表" }).click();
   const history = page.getByRole("region", { name: "历史驱动注册表" });
   await expect(history).toHaveAttribute("aria-busy", "false");
+  await page.getByRole("tab", { name: "模块", exact: true }).click();
   const ancestors = [];
   let parentId = registry.modules.find((module: { id: string }) => module.id === historical.moduleId).parentId;
   while (parentId) {
@@ -104,7 +108,7 @@ test("Issue 1067: historical modules expose provenance without structural contro
     const expand = page.getByRole("region", { name: "模块导航", exact: true }).getByRole("button", { name: `展开 ${parent.name} 子模块`, exact: true });
     if (await expand.count()) await expand.click();
   }
-  await page.getByRole("button", { name: `修改模块 ${historical.name}`, exact: true }).click();
+  await page.getByRole("button", { name: `查看模块 ${historical.name}`, exact: true }).click();
   const dialog = page.getByRole("dialog", { name: historical.name, exact: true });
   await expect(dialog.getByLabel("驱动性质", { exact: true })).toHaveAttribute("readonly", "");
   await expect(dialog.getByLabel("实例基数", { exact: true })).toHaveAttribute("readonly", "");
@@ -148,7 +152,6 @@ test.describe("Issue 897 canonical module ownership", () => {
   let driverRegistrationId: string;
   let canonicalOnlyRegistrationId: string;
   let bindingId: string;
-  let unknownObservationId: string;
   let valueStateBefore: { currentValueId: string; values: number; pins: number; history: number };
 
   test.beforeAll(async ({ request }) => {
@@ -358,7 +361,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     const dismiss = page.getByRole("button", { name: "不再提示" });
     if (await dismiss.isVisible()) await dismiss.click();
 
-    await page.getByRole("button", { name: "修改模块 Canonical source", exact: true }).click();
+    await page.getByRole("button", { name: "查看模块 Canonical source", exact: true }).click();
     const canonicalEditor = page.getByRole("dialog", { name: "Canonical source" });
     await expect(canonicalEditor.getByRole("region", { name: "规范主体放置" })).toBeVisible();
     await expect(canonicalEditor.getByRole("button", { name: "管理规范主体与归属" })).toBeVisible();
@@ -378,7 +381,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     const canonicalPanel = page.locator("#canonical-subject-placement");
     await expect(canonicalPanel).toBeFocused();
     const canonicalSubject = page.locator('[data-canonical-subject-id="csub_issue897_canonical_driver"]');
-    await expect(canonicalSubject.getByText("归属：Canonical source", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical source", { exact: true })).toBeVisible();
     await expect(page.locator(".parameter-module-mapping-panel__error[role='alert']")).toHaveCount(0);
     expect(browserResponses.some(response =>
       response.path.startsWith("/api/v2/parameter-modules/driver-registry/issue897-canonical-a/")
@@ -388,7 +391,7 @@ test.describe("Issue 897 canonical module ownership", () => {
       animations: "disabled"
     });
 
-    await page.getByRole("button", { name: "修改模块 Input hardware", exact: true }).click();
+    await page.getByRole("button", { name: "查看模块 Input hardware", exact: true }).click();
     const historicalEditor = page.getByRole("dialog", { name: "Input hardware" });
     await expect(historicalEditor.getByRole("region", { name: "历史驱动登记" })).toHaveCount(0);
     await expect(historicalEditor.getByRole("region", { name: "历史 compatible 溯源" })).toContainText("issue897,uncovered");
@@ -435,7 +438,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(await readHistoricalState()).toEqual(historicalBefore);
     await historicalEditor.getByRole("button", { name: "取消" }).click();
 
-    await expect(canonicalSubject.getByText("归属：Canonical source", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical source", { exact: true })).toBeVisible();
     await canonicalSubject.getByRole("button", { name: "调整归属：issue897,canonical-only", exact: true }).click();
     await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-canonical-b");
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
@@ -447,7 +450,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     await page.getByRole("button", { name: "确认调整放置", exact: true }).click();
     const canonicalMoveResponse = await canonicalMove;
     expect(canonicalMoveResponse.status(), await canonicalMoveResponse.text()).toBe(200);
-    await expect(canonicalSubject.getByText("归属：Canonical destination", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical destination", { exact: true })).toBeVisible();
     const finalPlacementResponse = await request.get(canonicalPlacementUrl, {
       headers: authHeadersForRole("admin")
     });
@@ -550,24 +553,26 @@ test.describe("Issue 897 canonical module ownership", () => {
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
     const dismiss = page.getByRole("button", { name: "不再提示" });
     if (await dismiss.isVisible()) await dismiss.click();
-    await page.getByRole("tab", { name: "发现队列" }).click();
-    const discovery = page.getByRole("region", { name: "驱动兼容发现" });
+    await page.getByRole("tab", { name: "来源识别" }).click();
+    const discovery = page.getByRole("region", { name: "来源识别结果" });
     await expect(discovery.getByText("acme,power", { exact: true })).toBeVisible();
-    await expect(discovery.getByText(/已识别主体 csub_acme_power/)).toBeVisible();
+    await expect(discovery.getByText(/已识别主体：acme,power/)).toBeVisible();
     const refreshedDiscovery = page.waitForResponse(response => response.url().includes("/driver-compatible-discovery") && response.status() === 200);
-    await discovery.getByRole("button", { name: "刷新发现" }).click();
+    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
     await refreshedDiscovery;
-    await expect(discovery.getByText(/已识别主体 csub_acme_power/)).toBeVisible();
+    await expect(discovery.getByText(/已识别主体：acme,power/)).toBeVisible();
     await page.screenshot({ path: info.outputPath("canonical-driver-discovery.png"), animations: "disabled" });
     await expect(discovery.getByRole("button", { name: "编写覆盖解析" })).toHaveCount(0);
-    const catalogLink = discovery.getByRole("link", { name: "前往 Catalog 提交定义提案" });
-    await expect(catalogLink).toHaveAttribute("href", "/parameter-admin/specs");
+    const catalogLink = discovery.getByRole("link", { name: "打开待审核事项", exact: true });
+    await expect(catalogLink).toHaveAttribute("href", "/parameter-admin/specs?review=open");
     await catalogLink.focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/parameter-admin\/specs/);
+    await expect(page.getByRole("dialog", { name: "待审核事项", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog", { name: "配置组织级解析" })).toHaveCount(0);
     await page.goBack();
-    await expect(discovery.getByText(/已识别主体 csub_acme_power/)).toBeVisible();
+    await expect(discovery.getByText(/已识别主体：acme,power/)).toBeVisible();
+    await page.getByRole("tab", { name: "模块", exact: true }).click();
     await expect(page.getByLabel("规范主体列表").getByText("acme,power", { exact: true })).toBeVisible();
     await expect(page.getByText("wiseeff.issue897.settings", { exact: true })).toBeVisible();
     await expect(page.getByText("issue897-node", { exact: true })).toBeVisible();
@@ -592,8 +597,10 @@ test.describe("Issue 897 canonical module ownership", () => {
     const priorEtag = priorPlacement.headers().etag;
     expect(priorEtag).toMatch(/^".+:\d+"$/);
     await driver.getByRole("button", { name: "调整归属：acme,power", exact: true }).click();
-    await expect(page.getByText(/本主体 121 个有效定义、1 个当前/)).toBeVisible();
+    const placementImpact = page.getByRole("dialog", { name: "调整放置", exact: true }).getByRole("status");
+    await expect(placementImpact).toHaveText("本主体 121 个有效定义、1 个参数绑定、1 个项目，从 Issue 897 Modules / Input hardware → Issue 897 Modules / Input hardware。仅调整归属，不改参数值。");
     await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-driver-b");
+    await expect(placementImpact).toHaveText("本主体 121 个有效定义、1 个参数绑定、1 个项目，从 Issue 897 Modules / Input hardware → Issue 897 Modules / Output hardware。仅调整归属，不改参数值。");
     await page.screenshot({ path: info.outputPath("canonical-placement-impact.png"), animations: "disabled" });
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
     await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
@@ -609,9 +616,13 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(replay.status(), await replay.text()).toBe(200);
     expect(replay.headers().etag).toBe(moved.headers().etag);
     expect((await replay.json()).item).toEqual((await moved.json()).item);
-    await expect(driver.getByText("归属：Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
     await page.reload();
-    await expect(driver.getByText("归属：Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "来源识别" }).click();
+    await expect(discovery.getByText(/已识别主体：acme,power/)).toBeVisible();
+    await page.getByRole("tab", { name: "模块", exact: true }).click();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
     expect(moduleRequests.filter(path => path.includes("/driver-compatible-discovery")).length).toBeGreaterThanOrEqual(4);
     expect(moduleRequests.filter(path => /discovery-hints|recompute|\/mappings(?:\/|$)/.test(path))).toEqual([]);
     await withPgClient(async client => {
@@ -673,15 +684,15 @@ test.describe("Issue 897 canonical module ownership", () => {
     await page.getByRole("searchbox", { name: "筛选规范主体" }).fill("");
     expectedApiFailures.push({ method: "GET", path: "/api/v2/catalog/subjects", status: 500 });
     await page.route("**/api/v2/catalog/subjects?*", route => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "Injected subject query failure" } }) }));
-    await page.getByRole("button", { name: "刷新规范数据", exact: true }).click();
+    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
     await expect(page.getByRole("region", { name: "规范主体归属" }).getByRole("alert")).toBeVisible();
     await page.screenshot({ path: info.outputPath("canonical-module-query-error.png"), animations: "disabled" });
     await page.unroute("**/api/v2/catalog/subjects?*");
-    await page.getByRole("button", { name: "刷新规范数据", exact: true }).click();
-    await expect(driver.getByText("归属：Output hardware", { exact: true })).toBeVisible();
+    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
     await page.getByRole("tree", { name: "模块归属树" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("canonical-module-tree-after-move.png"), animations: "disabled" });
-    await page.getByRole("button", { name: "修改模块 Input hardware", exact: true }).click();
+    await page.getByRole("button", { name: "查看模块 Input hardware", exact: true }).click();
     const historicalDetails = page.getByRole("dialog", { name: "Input hardware", exact: true });
     await expect(historicalDetails.getByRole("region", { name: "历史 compatible 溯源" })).toContainText("issue897,uncovered");
     await expect(page.getByRole("button", { name: "配置组织级解析", exact: true })).toHaveCount(0);
@@ -727,19 +738,25 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(before.status(), await before.text()).toBe(200);
     const beforeBody = await before.json();
     expect(beforeBody.status).toBe("ready");
-    const itemIds = beforeBody.items.flatMap((entry: { compatibles: Array<{ compatible: string; candidate: { reviewItemIds: string[] | null } }> }) =>
-      entry.compatibles.filter(candidate => candidate.compatible === "vendor,device").flatMap(candidate => candidate.candidate.reviewItemIds ?? []));
+    const reviewRecords = beforeBody.items.flatMap((entry: { observationId: string; compatibles: Array<{ compatible: string; candidate: { reviewItemIds: string[] | null } }> }) =>
+      entry.compatibles.filter(candidate => candidate.compatible === "vendor,device").flatMap(candidate =>
+        (candidate.candidate.reviewItemIds ?? []).map((id, index) => ({ id, observationId: entry.observationId, ordinal: index + 1 }))));
+    const itemIds = reviewRecords.map((record: { id: string }) => record.id);
     expect(itemIds).toHaveLength(2);
-    unknownObservationId = beforeBody.items.find((entry: { compatibles: Array<{ compatible: string }> }) =>
-      entry.compatibles.some(candidate => candidate.compatible === "vendor,device"))?.observationId;
-    expect(unknownObservationId).toBeTruthy();
+    const [firstReview, secondReview] = reviewRecords;
+    expect(firstReview.observationId).toBeTruthy();
+    expect(secondReview.observationId).toBeTruthy();
 
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
-    await page.getByRole("tab", { name: "发现队列" }).click();
-    const discovery = page.getByRole("region", { name: "驱动兼容发现" });
-    await expect(discovery.getByRole("button", { name: `查看复核项 ${itemIds[0]}` })).toBeVisible();
+    await page.getByRole("tab", { name: "来源识别" }).click();
+    const discovery = page.getByRole("region", { name: "来源识别结果" });
+    const firstRecord = discovery.locator(".canonical-driver-discovery__item").filter({ hasText: firstReview.observationId });
+    await firstRecord.locator("summary").click();
+    await expect(firstRecord.getByText(firstReview.observationId, { exact: true })).toBeVisible();
+    const firstReviewButton = firstRecord.getByRole("button", { name: `查看复核项 ${firstReview.ordinal}`, exact: true });
+    await expect(firstReviewButton).toBeVisible();
     await page.screenshot({ path: info.outputPath("canonical-review-items-before.png"), animations: "disabled" });
-    await discovery.getByRole("button", { name: `查看复核项 ${itemIds[0]}` }).click();
+    await firstReviewButton.click();
     await expect(page).toHaveURL(new RegExp(`reviewItemId=${itemIds[0]}`));
     const dialog = page.getByRole("dialog", { name: "处理审核" });
     await expect(dialog).toBeVisible();
@@ -753,13 +770,18 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect((await resolved).status()).toBe(200);
 
     await page.goto(`${runtime.frontendUrl}/parameter-admin/modules`);
-    await page.getByRole("tab", { name: "发现队列" }).click();
-    await expect(page.getByRole("region", { name: "驱动兼容发现" }).getByText(/已忽略复核项：1/)).toBeVisible();
-    await expect(page.getByRole("button", { name: `查看复核项 ${itemIds[1]}` })).toBeVisible();
-    expect(page.getByRole("button", { name: `查看复核项 ${itemIds[0]}` })).toHaveCount(0);
+    await page.getByRole("tab", { name: "来源识别" }).click();
+    await expect(page.getByRole("region", { name: "来源识别结果" }).getByText(/已忽略复核项：1/)).toBeVisible();
+    const secondRecord = discovery.locator(".canonical-driver-discovery__item").filter({ hasText: secondReview.observationId });
+    await expect(secondRecord.getByRole("button", { name: `查看复核项 ${secondReview.ordinal}`, exact: true })).toBeVisible();
+    await expect(firstRecord.getByRole("button", { name: /^查看复核项 / })).toHaveCount(0);
     const after = await request.get(apiRoute(discoveryPath), { headers });
     expect(after.status(), await after.text()).toBe(200);
-    expect((await after.json()).ignoredReviewItemCount).toBe(1);
+    const afterBody = await after.json();
+    expect(afterBody.ignoredReviewItemCount).toBe(1);
+    const remainingIds = afterBody.items.flatMap((entry: { compatibles: Array<{ compatible: string; candidate: { reviewItemIds: string[] | null } }> }) =>
+      entry.compatibles.filter(candidate => candidate.compatible === "vendor,device").flatMap(candidate => candidate.candidate.reviewItemIds ?? []));
+    expect(remainingIds).toEqual([itemIds[1]]);
     await page.screenshot({ path: info.outputPath("canonical-review-items-after.png"), animations: "disabled" });
   });
 
@@ -796,8 +818,8 @@ test.describe("Issue 897 canonical module ownership", () => {
       }
     });
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
-    await page.getByRole("tab", { name: "发现队列" }).click();
-    const discovery = page.getByRole("region", { name: "驱动兼容发现" });
+    await page.getByRole("tab", { name: "来源识别" }).click();
+    const discovery = page.getByRole("region", { name: "来源识别结果" });
     await expect(discovery.locator(".canonical-driver-discovery__item")).toHaveCount(50);
     await discovery.getByRole("button", { name: "加载下一页" }).click();
     await expect.poll(() => discovery.locator(".canonical-driver-discovery__item").count()).toBeGreaterThan(50);
@@ -805,8 +827,17 @@ test.describe("Issue 897 canonical module ownership", () => {
     await page.screenshot({ path: info.outputPath("canonical-discovery-second-real-page.png"), animations: "disabled" });
   });
 
-  test("UI simulation: paginates with release pin and keeps historical, unavailable and nullable states distinct", async ({ page }, info) => {
+  test("UI simulation: paginates with release pin and keeps historical, unavailable and nullable states distinct", async ({ page, request }, info) => {
     const pin = { id: "crel_simulated", digest: "sha256:simulated" };
+    const subjectResponse = await request.get(apiRoute(`/api/v2/catalog/subjects/csub_acme_power?catalogReleaseId=${releaseId}`), { headers: authHeadersForRole("admin") });
+    expect(subjectResponse.status(), await subjectResponse.text()).toBe(200);
+    const simulatedSubject = (await subjectResponse.json()).item;
+    simulatedSubject.id = "csub_sim";
+    simulatedSubject.canonicalName = "Simulated subject";
+    simulatedSubject.membership.catalogReleaseId = pin.id;
+    await page.route("**/api/v2/catalog/subjects/csub_sim?*", route => route.fulfill({
+      status: 200, contentType: "application/json", body: JSON.stringify({ item: simulatedSubject })
+    }));
     const observation = (index: number, source: unknown, candidate: unknown) => ({
       observationId: `obs_sim_${index}`, projectId, logicalNodeId: `node_${index}`,
       configRevisionId: "revision_sim", observedCatalogReleaseId: pin.id,
@@ -836,20 +867,24 @@ test.describe("Issue 897 canonical module ownership", () => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     });
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
-    await page.getByRole("tab", { name: "发现队列" }).click();
-    const discovery = page.getByRole("region", { name: "驱动兼容发现" });
-    await expect(discovery.getByText(/历史 compatible：vendor,old/)).toBeVisible();
-    await expect(discovery.getByText(/来源不可用：source-proof-invalid/)).toBeVisible();
+    await page.getByRole("tab", { name: "来源识别" }).click();
+    const discovery = page.getByRole("region", { name: "来源识别结果" });
+    await expect(discovery.getByText(/历史兼容标识：vendor,old/)).toBeVisible();
+    const unavailable = discovery.locator(".canonical-driver-discovery__item").filter({ has: page.getByText("obs_sim_1", { exact: true }) });
+    await expect(unavailable.getByText("来源不可用，暂不能处理此记录。", { exact: true })).toBeVisible();
+    await unavailable.locator("summary").click();
+    await expect(unavailable.getByText("source-proof-invalid", { exact: true })).toBeVisible();
     await expect(discovery.getByText(/复核项关联不可查看/)).toBeVisible();
     await discovery.getByRole("button", { name: "加载下一页" }).click();
     await expect(discovery.getByText("vendor,device-50")).toBeVisible();
     expect(pinnedHeader).toBe(pin.id);
+    await expect(discovery.getByText(/已识别主体：Simulated subject/)).toBeVisible();
     await expect(discovery.getByText(/尚未登记/)).toBeVisible();
     await discovery.getByRole("button", { name: "加载下一页" }).click();
     await expect(discovery.getByRole("alert")).toContainText("目录发布已变化");
     await expect(discovery.getByText("vendor,device-50")).toBeVisible();
     phase = "zero";
-    await discovery.getByRole("button", { name: "刷新发现" }).focus();
+    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(discovery.getByText("当前范围没有来源观察记录。")).toBeVisible();
     await expect(discovery.getByText(/已忽略复核项：无权查看/)).toBeVisible();
@@ -857,6 +892,34 @@ test.describe("Issue 897 canonical module ownership", () => {
   });
 
   test("project viewer has scoped HTTP discovery but the admin page remains role gated", async ({ page, request }, info) => {
+    const headers = authHeadersForRole("admin");
+    const config = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+      headers, data: { name: "issue897-viewer-source" }
+    });
+    expect(config.status(), await config.text()).toBe(201);
+    const configSetId = (await config.json()).item.id;
+    const content = '/dts-v1/;\n/ { viewer { compatible = "vendor,viewer-device"; }; };\n';
+    const upload = () => request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+      headers, data: { fileName: "viewer-board.dts", contentBase64: Buffer.from(content).toString("base64") }
+    });
+    const file = await upload();
+    expect(file.status(), await file.text()).toBe(201);
+    const member = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`), {
+      headers, data: { fileId: (await file.json()).item.id, role: "base", sortOrder: 0 }
+    });
+    expect(member.ok(), await member.text()).toBe(true);
+    const parsed = await upload();
+    expect(parsed.status(), await parsed.text()).toBe(201);
+    const unknownObservationId = await withPgClient(async client => {
+      const observations = await client.query<{ id: string }>(`select observation.id
+        from parameter_catalog.parameter_observations observation
+        join parameter_catalog.project_parameter_source_occurrences occurrence
+          on occurrence.id=observation.source_occurrence_id and occurrence.organization_id=observation.organization_id
+        where observation.organization_id=$1 and observation.project_id=$2 and occurrence.config_set_id=$3`,
+      [organizationId, projectId, configSetId]);
+      expect(observations.rows).toHaveLength(1);
+      return observations.rows[0]!.id;
+    });
     const response = await request.get(apiRoute(`/api/v2/organizations/${organizationId}/driver-compatible-discovery?observationId=${unknownObservationId}`), {
       headers: authHeadersForRole("software-user")
     });
@@ -865,12 +928,13 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(body.status).toBe("ready");
     expect(body.items).toHaveLength(1);
     expect(body.ignoredReviewItemCount).toBeNull();
-    expect(body.items.flatMap((row: { compatibles: Array<{ candidate: { kind: string; reviewItemIds?: string[] | null } }> }) => row.compatibles)
-      .filter((row: { candidate: { kind: string } }) => row.candidate.kind === "review-required")
-      .every((row: { candidate: { reviewItemIds: string[] | null } }) => row.candidate.reviewItemIds === null)).toBe(true);
+    const reviewRequired = body.items.flatMap((row: { compatibles: Array<{ candidate: { kind: string; reviewItemIds?: string[] | null } }> }) => row.compatibles)
+      .filter((row: { candidate: { kind: string } }) => row.candidate.kind === "review-required");
+    expect(reviewRequired).toHaveLength(1);
+    expect(reviewRequired.every((row: { candidate: { reviewItemIds: string[] | null } }) => row.candidate.reviewItemIds === null)).toBe(true);
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-admin/modules`);
     await expect(page.getByText("无权访问该页面")).toBeVisible();
-    await expect(page.getByRole("region", { name: "驱动兼容发现" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "来源识别结果" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "全量重算" })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("canonical-admin-page-project-viewer-denied.png"), animations: "disabled" });
   });
@@ -912,8 +976,8 @@ test.describe("Issue 897 canonical module ownership", () => {
       });
     });
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
-    await page.getByRole("tab", { name: "发现队列" }).click();
-    const discovery = page.getByRole("region", { name: "驱动兼容发现" });
+    await page.getByRole("tab", { name: "来源识别" }).click();
+    const discovery = page.getByRole("region", { name: "来源识别结果" });
     await expect(discovery.locator(".canonical-driver-discovery__item")).toHaveCount(50);
     const first = await request.get(apiRoute(`${discoveryPath}?limit=50`), { headers });
     expect(first.status(), await first.text()).toBe(200);
@@ -921,7 +985,8 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(firstPage.status).toBe("ready");
     expect(firstPage.items).toHaveLength(50);
     expect(firstPage.nextCursor).toEqual(expect.any(String));
-    await expect(discovery.getByText(new RegExp(`目录发布 ${firstPage.catalogRelease.id}`))).toBeVisible();
+    await discovery.locator(".canonical-driver-discovery__item").first().locator("summary").click();
+    await expect(discovery.locator(".canonical-driver-discovery__item").first().getByText(firstPage.catalogRelease.id, { exact: true })).toBeVisible();
 
     const successor = structuredClone(releaseFixture.releases[0]!) as Parameters<typeof refreshAuthoritativeSource>[0];
     successor.manifest.release = { ...successor.manifest.release,
@@ -958,9 +1023,10 @@ test.describe("Issue 897 canonical module ownership", () => {
 
     const refreshedResponse = page.waitForResponse(response => new URL(response.url()).pathname === discoveryPath &&
       !new URL(response.url()).searchParams.has("cursor") && response.status() === 200);
-    await discovery.getByRole("button", { name: "刷新发现" }).click();
+    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
     expect((await (await refreshedResponse).json()).catalogRelease.id).toBe(successor.manifest.release.id);
-    await expect(discovery.getByText(new RegExp(`目录发布 ${successor.manifest.release.id}`))).toBeVisible();
+    await discovery.locator(".canonical-driver-discovery__item").first().locator("summary").click();
+    await expect(discovery.locator(".canonical-driver-discovery__item").first().getByText(successor.manifest.release.id, { exact: true })).toBeVisible();
     await expect(discovery.locator(".canonical-driver-discovery__item")).toHaveCount(50);
     const continuedResponse = page.waitForResponse(response => new URL(response.url()).pathname === discoveryPath &&
       new URL(response.url()).searchParams.has("cursor") && response.status() === 200);
@@ -972,7 +1038,7 @@ test.describe("Issue 897 canonical module ownership", () => {
       expect.objectContaining({ status: 200, releasePin: successor.manifest.release.id })
     ]));
     expect(legacyRequests).toEqual([]);
-    await discovery.getByText(new RegExp(`目录发布 ${successor.manifest.release.id}`)).scrollIntoViewIfNeeded();
+    await discovery.locator(".canonical-driver-discovery__item").first().getByText(successor.manifest.release.id, { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("canonical-real-release-drift-refreshed.png"), animations: "disabled" });
     await writeFile(info.outputPath("canonical-real-release-drift-network.json"), JSON.stringify({
       fixturePublication: { previous: firstPage.catalogRelease, current: {

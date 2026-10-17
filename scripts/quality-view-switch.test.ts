@@ -67,7 +67,8 @@ describe("view-switch consistency", () => {
   });
   it.each([
     ...["/parameter-home"].map((path) => [path, "toggle"]),
-    ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions"]
+    ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions",
+      ...["configuration", "files", "config-sets", "structure", "conflicts"].map((view) => `/parameter-admin/projects/aurora/${view}`)]
       .map((path) => [path, "tabs"]),
     ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
       "/parameter-admin/specs/identity-mapping", "/parameter-admin/identity-mapping", "/parameter-admin/spec-review",
@@ -83,7 +84,10 @@ describe("view-switch consistency", () => {
     }
   });
 
-  it.each(["/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry"])(
+  it.each([
+    "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
+    "/parameter-admin/modules?tab=queue", "/parameter-admin/modules?tab=registry"
+  ])(
     "requires both organization sections and governance content tabs on %s", (path) => {
       expect(() => requireViewSwitchStyles({
         viewSwitches: [measurement(signatures[0]), measurement(signatures[1])], viewSwitchSignatures: signatures
@@ -91,6 +95,11 @@ describe("view-switch consistency", () => {
       for (const style of signatures) {
         expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(style)], viewSwitchSignatures: signatures }, path)).toThrow(/matched 0|missing view-switch tiers/);
       }
+      expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: signatures }, path))
+        .toThrow("missing consistency measurements: viewSwitches");
+      expect(() => requireViewSwitchStyles({
+        viewSwitches: [measurement(signatures[0]), { ...measurement(signatures[1]), height: 43 }], viewSwitchSignatures: signatures
+      }, path)).toThrow("matched 0");
     }
   );
 

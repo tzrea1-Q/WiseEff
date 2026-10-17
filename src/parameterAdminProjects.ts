@@ -6,7 +6,7 @@ export type ParameterAdminProjectRow = {
   id: string;
   name: string;
   code: string;
-  status: ProjectInitializationStatus | "initialized";
+  status: ProjectInitializationStatus | "archived";
   statusLabel: string;
   moduleCount: number;
   parameterCount: number;
@@ -25,6 +25,7 @@ function baselineLabelFor(releasedBaselineCount: number) {
 const statusLabels: Record<string, string> = {
   initialized: "在研",
   maintenance: "维护",
+  archived: "已归档",
   initialization_pending_review: "待审阅",
   initialization_rejected: "已驳回",
   initialization_draft: "草稿",
@@ -101,7 +102,7 @@ export function mapProjectAdminSummaryDto(item: ProjectAdminSummaryDto): Paramet
   const initializationStatus = item.initializationStatus ?? "initialized";
   // Admin table status column merges init workflow + ops lifecycle: unfinished init wins.
   const status = (
-    initializationStatus !== "initialized" ? initializationStatus : item.status
+    item.status === "archived" ? "archived" : initializationStatus !== "initialized" ? initializationStatus : item.status
   ) as ParameterAdminProjectRow["status"];
   return {
     id: item.id,

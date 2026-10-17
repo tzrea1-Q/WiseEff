@@ -41,6 +41,7 @@ export type RegisterSubjectCommand = {
   readonly expectedRelease: CatalogReleasePin;
   readonly placement: PlacementIntent;
   readonly destinationModuleId: string;
+  readonly newDestination?: { readonly parentModuleId: string; readonly name: string };
   readonly method: "explicit" | "automatic" | "review";
   readonly proof: RegistrationProof;
   readonly idempotencyKey: string;
@@ -121,6 +122,10 @@ export const validateRegistrationCommand = (
     if (!controlFree(command.destinationModuleId)) {
       return invalid("destinationModuleId");
     }
+    if (command.newDestination) {
+      if (command.method !== "explicit" || command.context.actorKind !== "org-admin") return permissionDenied(command.context.actorKind, "initialize-destination");
+      if (!controlFree(command.newDestination.parentModuleId) || !controlFree(command.newDestination.name) || command.newDestination.name.length > 120 || command.placement.mode !== "use-default") return invalid("newDestination");
+    }
     if (command.method === "automatic") {
       if (command.context.actorKind !== "trusted-system") {
         return permissionDenied(command.context.actorKind, command.method);
@@ -190,6 +195,7 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
         expectedRelease: release,
         placement: placementModel(command.placement),
         destinationModuleId: command.destinationModuleId,
+        ...(command.newDestination ? { newDestination: { ...command.newDestination } } : {}),
         method: command.method,
         proof: command.proof,
         context: actor,

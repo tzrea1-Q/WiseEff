@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { decodeCatalogCursor, encodeCatalogCursor, fingerprintCatalogQuery } from "../../catalog-kernel/runtime/cursors";
 import {
   catalogAcceptProposalRequestSchema,
@@ -581,7 +582,9 @@ async function handleCreateRegistration(
   const organizationId = request.params.organizationId ?? scope.organizationId;
   const subjectKind = await resolveSubjectKind(ports, scope, subjectId);
   if (!subjectKind) return validationFailed(request.requestId, "subjectId");
-  const destinationModuleId = await resolveDestinationModuleId(ports, scope, {
+  const destinationModuleId = parsed.data.newDestination
+    ? `pmod_canonical_${createHash("sha256").update(JSON.stringify([organizationId, subjectId, idempotencyKey])).digest("hex").slice(0, 32)}`
+    : await resolveDestinationModuleId(ports, scope, {
     organizationId,
     subjectKind,
     placement,
@@ -596,8 +599,9 @@ async function handleCreateRegistration(
     expectedRelease: pin.pin,
     placement,
     destinationModuleId,
+    ...(parsed.data.newDestination ? { newDestination: parsed.data.newDestination } : {}),
     method: "explicit",
-    proof: { reason: parsed.data.reason ?? "explicit-registration" },
+    proof: { reason: parsed.data.reason ?? "explicit-registration", ...(parsed.data.newDestination ? { newDestination: parsed.data.newDestination } : {}) },
     idempotencyKey,
     context,
   };
@@ -866,9 +870,12 @@ async function handleListReviewItems(
     context: reviewContext(scope),
   });
   if (!result.ok) return mapReviewFailure(result.error, request.requestId);
+  const details = await ports.readReviewItemDetails?.({
+    ...queryScope(scope, request, pin.pin), items: result.value.items, pin: pin.pin,
+  });
   return catalogGovernanceOk({
     body: listEnvelope(
-      result.value.items.map(mapReviewItem),
+      result.value.items.map((item) => mapReviewItem(item, details?.get(item.id))),
       result.value.catalogRelease.id,
       result.value.emptyReason,
     ),
@@ -899,8 +906,11 @@ async function handleGetReviewItem(
     reviewItemId,
   });
   if (!result.ok) return mapReviewFailure(result.error, request.requestId);
+  const details = await ports.readReviewItemDetails?.({
+    ...queryScope(scope, request, pin.pin), items: [result.value], pin: pin.pin,
+  });
   return catalogGovernanceOk({
-    body: { item: mapReviewItem(result.value) },
+    body: { item: mapReviewItem(result.value, details?.get(result.value.id)) },
     requestId: request.requestId,
     catalogReleaseId: result.value.catalogReleaseId,
     etag: reviewEtag(result.value.etag),
@@ -963,6 +973,7 @@ async function handleResolveReviewItem(
       organizationId,
       subjectKind,
       placement,
+      destinationModuleId: resolution.destinationModuleId,
     });
     if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
     command = {

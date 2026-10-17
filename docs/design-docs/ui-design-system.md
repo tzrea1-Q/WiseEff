@@ -338,7 +338,9 @@ Component tests cover slots, sample policy and replacement navigation. The consi
 
 ### Navigator workbench
 
-`NavigatorWorkbench` in `src/components/layout/` owns the fixed order: toolbar (primary action at the right end), optional compact context, at most one notice slot, then named navigator, task and optional inspector regions. Page code fills slots; it does not redefine the grid, pane widths or scroll budget. `/parameters` uses this template for both DTS and JSON. Catalog definitions (`/parameter-admin`, `/parameter-admin/specs` and its definition aliases, `/parameters/definitions`) put the release strip in context and governance guidance in the notice slot, retaining the existing definition dialog. Catalog admin aliases share the `catalog-definitions` collapse key; the read-only `/parameters/definitions` uses `parameter-definitions`. Mock-mode flat parameter tables and other routes retain their existing layouts until separately migrated.
+Navigator titles define their own font with `--text-md`, weight 600 and `--leading-md`; they must not inherit page-local body typography.
+
+`NavigatorWorkbench` in `src/components/layout/` owns the fixed order: toolbar (primary action at the right end), optional compact context, at most one notice slot, then named navigator, task and optional inspector regions. Page code fills slots; it does not redefine the grid, pane widths or scroll budget. `/parameters` uses this template for both DTS and JSON. Catalog definitions (`/parameter-admin`, `/parameter-admin/specs` and its definition aliases, `/parameters/definitions`) omit the routine release strip and put actionable governance guidance in the notice slot, retaining the existing definition dialog. Catalog admin aliases share the `catalog-definitions` collapse key; the read-only `/parameters/definitions` uses `parameter-definitions`. Mock-mode flat parameter tables and other routes retain their existing layouts until separately migrated.
 
 | Slot | Contract |
 | --- | --- |

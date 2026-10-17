@@ -44,6 +44,7 @@ export function ModuleEditDialog({
   instanceCardinality = null,
   onManageCanonicalPlacement,
   historicalCompatibles = [],
+  readOnly = false,
 }: {
   module: EditableModule;
   existingNames: readonly string[];
@@ -61,6 +62,7 @@ export function ModuleEditDialog({
   instanceCardinality?: InstanceCardinality | null;
   onManageCanonicalPlacement?: () => void;
   historicalCompatibles?: readonly string[];
+  readOnly?: boolean;
 }) {
   const [draft, setDraft] = useState<ParameterModuleDraft>({
     name: module.name,
@@ -69,7 +71,7 @@ export function ModuleEditDialog({
   });
   const [importance, setImportance] = useState<ModuleImportance>(module.importance ?? "medium");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const moduleDetailsReadOnly = module.kind === "driver-group" || module.kind === "node-type";
+  const moduleDetailsReadOnly = readOnly || module.kind === "driver-group" || module.kind === "node-type";
   const showCanonicalPlacementEntry =
     moduleDetailsReadOnly &&
     canAdmin && onManageCanonicalPlacement !== undefined;
@@ -84,7 +86,7 @@ export function ModuleEditDialog({
   }, [module]);
 
   const canSubmit = canSubmitModuleDraft(draft, existingNames, module.name);
-  const importanceVisible = showImportance && !moduleDetailsReadOnly;
+  const importanceVisible = showImportance && module.kind !== "driver-group" && module.kind !== "node-type";
   const isDirty =
     draft.name.trim() !== module.name ||
     draft.description.trim() !== (module.description ?? "").trim() ||
@@ -110,11 +112,11 @@ export function ModuleEditDialog({
           <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
-            <span className="eyebrow">模块修改</span>
+            <span className="eyebrow">{moduleDetailsReadOnly ? "模块详情 · 只读" : "模块修改"}</span>
             <h2 id={titleId}>{module.name}</h2>
             <p id={descriptionId}>
               {moduleDetailsReadOnly
-                ? "历史模块名称与详情仅供溯源；规范主体登记与归属由规范面板管理。"
+                ? module.kind === "business" ? "查看模块的名称、描述与适用范围。当前会话为只读。" : "历史模块名称与详情仅供溯源；规范主体登记与归属由规范面板管理。"
                 : description ?? (showImportance
                     ? "更新模块名称、重要性、描述与适用范围。"
                     : "更新模块名称、描述与适用范围。修改名称会同步更新共享参数库中的模块归属。")}
@@ -194,7 +196,7 @@ export function ModuleEditDialog({
             <div className="module-edit-section__head">
               <h3>基础信息</h3>
               <p className="muted">{moduleDetailsReadOnly
-                ? "历史展示信息仅供读取，不会修改历史模块或当前规范主体归属。"
+                ? "模块展示信息仅供读取，不会修改模块或当前规范主体归属。"
                 : "维护模块在管理端展示的名称、描述和适用范围。"}</p>
             </div>
             <ModuleDefinitionForm

@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { selectControlOption } from "@/test/selectControlOption";
 
 import type { ParameterModule, ParameterModuleMapping } from "@/domain/parameter-topology/moduleRegistry";
@@ -66,6 +67,145 @@ const mappings: ParameterModuleMapping[] = [
 ];
 
 describe("ModuleAttributionTree", () => {
+  it("closes a portal action menu when another mutation becomes pending", () => {
+    const onUpdateModule = vi.fn();
+    const tree = (busy: boolean) => <ModuleAttributionTree canAdmin modules={modules} mappings={[]} busy={busy}
+      onUpdateModule={onUpdateModule} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />;
+    const view = render(tree(false));
+    fireEvent.click(screen.getByRole("button", { name: "Power 更多操作" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    view.rerender(tree(true));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Power 更多操作" })).toBeDisabled();
+    expect(onUpdateModule).not.toHaveBeenCalled();
+  });
+  it("restores tree filters and disclosures from URL across remount and Back/Forward without replacing the input", async () => {
+    const onSearchChange = vi.fn();
+    const tree = (search: string) => <ModuleAttributionTree modules={modules} mappings={[]} search={search}
+      onSearchChange={onSearchChange} onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />;
+    let view = render(tree("?moduleId=mod-power"));
+    const input = screen.getByRole("searchbox", { name: "搜索模块" });
+    await userEvent.type(input, "SC8562");
+    const query = onSearchChange.mock.lastCall![0] as string;
+    expect(new URLSearchParams(query).get("treeQ")).toBe("SC8562");
+    expect(input).toHaveFocus();
+    view.rerender(tree(`?moduleId=mod-power&${query}`));
+    expect(screen.getByRole("searchbox", { name: "搜索模块" })).toBe(input);
+    expect(input).toHaveValue("SC8562");
+    view.rerender(tree("?moduleId=mod-power"));
+    expect(input).toHaveValue("");
+    view.rerender(tree(`?${query}`));
+    expect(input).toHaveValue("SC8562");
+    view.unmount();
+    view = render(tree(`?${query}`));
+    expect(screen.getByRole("searchbox", { name: "搜索模块" })).toHaveValue("SC8562");
+    expect(screen.getByText("sc8562")).toBeVisible();
+    view.unmount();
+    const filtered = render(tree(`?treeKinds=business&treeOrigins=curated&treeHideUnobserved=1&treeExpanded=${encodeURIComponent("[]")}`));
+    expect(screen.queryByRole("checkbox", { name: "隐藏未实测" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开 Power 子模块" }));
+    expect(screen.getByText("SC8562")).toBeVisible();
+    filtered.rerender(tree(`?treeExpanded=${encodeURIComponent("[]")}`));
+    expect(screen.getByRole("button", { name: "展开 Power 子模块" })).toHaveAttribute("aria-expanded", "false");
+  });
+  it("opens a requested root creation once and keeps the administrator gate", () => {
+    const tree = (request: number, canAdmin: boolean) => <ModuleAttributionTree modules={modules} mappings={[]}
+      canAdmin={canAdmin} createRootRequest={request} onUpdateModule={vi.fn()} onMove={vi.fn()}
+      onDelete={vi.fn()} onCreateModule={vi.fn()} />;
+    const view = render(tree(0, false));
+    view.rerender(tree(1, false));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.rerender(tree(1, true));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.rerender(tree(2, true));
+    expect(screen.getByRole("dialog", { name: "新增根模块" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    view.rerender(tree(2, true));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.unmount();
+    render(tree(2, true));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  it("reports only matching module IDs, excluding structural ancestors, and restores an unrestricted scope", async () => {
+    const onVisibleModuleIdsChange = vi.fn();
+    render(<ModuleAttributionTree modules={modules} mappings={[]} onVisibleModuleIdsChange={onVisibleModuleIdsChange}
+      onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    expect(onVisibleModuleIdsChange).toHaveBeenLastCalledWith(null);
+    const search = screen.getByRole("searchbox", { name: "搜索模块" });
+    fireEvent.change(search, { target: { value: "SC8562" } });
+    expect(onVisibleModuleIdsChange).toHaveBeenLastCalledWith(["mod-group", "mod-node-type"]);
+    expect(screen.getByText("Power")).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "no-such-module" } });
+    expect(onVisibleModuleIdsChange).toHaveBeenLastCalledWith([]);
+    fireEvent.change(search, { target: { value: "" } });
+    expect(onVisibleModuleIdsChange).toHaveBeenLastCalledWith(null);
+  });
+  it("reveals a selected deep module and searches names without losing ancestors", async () => {
+    const renderTree = (selectedModuleId: string | null) => <ModuleAttributionTree modules={modules} mappings={[]}
+      selectedModuleId={selectedModuleId} onSelectModule={vi.fn()} onUpdateModule={vi.fn()}
+      onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />;
+    const view = render(renderTree("mod-node-type"));
+    expect(await screen.findByRole("button", { name: "查看模块：sc8562" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "折叠 SC8562" })).toHaveAttribute("aria-expanded", "true");
+    await userEvent.type(screen.getByRole("searchbox", { name: "搜索模块" }), "sc8562");
+    expect(screen.getByRole("button", { name: "查看模块：Power" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看模块：sc8562" })).toBeVisible();
+    view.rerender(renderTree(null));
+    expect(screen.getByRole("searchbox", { name: "搜索模块" })).toHaveValue("sc8562");
+  });
+
+  it("provides roving tree keys, explicit activation, and keyboard access to the action menu", async () => {
+    const onSelectModule = vi.fn();
+    render(<ModuleAttributionTree canAdmin modules={modules} mappings={[]} onSelectModule={onSelectModule}
+      onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    const user = userEvent.setup();
+    const tree = screen.getByRole("tree");
+    const root = within(tree).getAllByRole("treeitem")[0];
+    await user.click(screen.getByRole("button", { name: "查看模块：Power" }));
+    expect(root).toHaveFocus();
+    onSelectModule.mockClear();
+    await user.keyboard("{ArrowRight}");
+    const group = document.activeElement;
+    expect(group).toHaveAttribute("data-module-tree-id", "mod-group");
+    expect(onSelectModule).not.toHaveBeenCalled();
+    await user.keyboard("{ArrowRight}{ArrowRight}{Enter}");
+    expect(document.activeElement).toHaveAttribute("data-module-tree-id", "mod-node-type");
+    expect(onSelectModule).toHaveBeenCalledWith("mod-node-type");
+    await user.keyboard("{Home}{ArrowLeft}{End}{Home}");
+    expect(document.activeElement).toBe(root);
+    const trigger = screen.getByRole("button", { name: "Power 更多操作" });
+    trigger.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toHaveAttribute("role", "menuitem");
+    await user.keyboard("{End}");
+    expect(document.activeElement).toHaveAccessibleName("删除模块 Power");
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("starts navigation with search without module filters, duplicate headings or all-modules rows", () => {
+    render(<ModuleAttributionTree modules={modules} mappings={[]} onSelectModule={vi.fn()}
+      onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    expect(screen.getByRole("searchbox", { name: "搜索模块" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "模块树" })).not.toBeInTheDocument();
+    expect(screen.queryByText("选择模块查看所属主体，包含其子模块。")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "全部模块" })).not.toBeInTheDocument();
+    expect(screen.queryByText("筛选模块", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("模块树筛选")).not.toBeInTheDocument();
+  });
+
+  it("opens complete read-only module details for readers without exposing a write", () => {
+    const onUpdateModule = vi.fn();
+    render(<ModuleAttributionTree modules={modules} mappings={[]} onUpdateModule={onUpdateModule}
+      onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "查看模块 Power" }));
+    const dialog = screen.getByRole("dialog", { name: "Power" });
+    expect(dialog).toHaveTextContent("模块详情 · 只读");
+    expect(within(dialog).getByLabelText("模块名称")).toHaveAttribute("readonly");
+    expect(within(dialog).queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(onUpdateModule).not.toHaveBeenCalled();
+  });
   it("exposes the unselected state of module tree items", () => {
     render(<ModuleAttributionTree canAdmin modules={modules} mappings={[]}
       onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
@@ -118,7 +258,7 @@ describe("ModuleAttributionTree", () => {
       onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Power 更多操作" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "SC8562 更多操作" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看模块 SC8562" }));
     expect(within(screen.getByRole("dialog")).queryByLabelText("模块类型")).not.toBeInTheDocument();
   });
 
@@ -146,7 +286,7 @@ describe("ModuleAttributionTree", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).queryByRole("region", { name: "业务归属" })).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
@@ -180,7 +320,7 @@ describe("ModuleAttributionTree", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByRole("region", { name: "历史 compatible 溯源" })).toHaveTextContent("vendor,sc8562");
     expect(within(dialog).getByLabelText("驱动性质")).toHaveAttribute("readonly");
@@ -210,7 +350,7 @@ describe("ModuleAttributionTree", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).queryByRole("region", { name: "业务归属" })).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
@@ -237,7 +377,7 @@ describe("ModuleAttributionTree", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).queryByRole("region", { name: "业务归属" })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("region", { name: "规范主体放置" })).not.toBeInTheDocument();
@@ -253,7 +393,7 @@ describe("ModuleAttributionTree", () => {
     const tree = screen.getByRole("tree", { name: "模块归属树" });
     expect(within(tree).getByText("· 1 条 compatible")).toBeInTheDocument();
     expect(within(tree).queryByRole("button", { name: "SC8562 更多操作" })).not.toBeInTheDocument();
-    fireEvent.click(within(tree).getByRole("button", { name: "修改模块 SC8562" }));
+    fireEvent.click(within(tree).getByRole("button", { name: "查看模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByLabelText("模块名称")).toHaveAttribute("readonly");
     expect(within(dialog).queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
@@ -439,12 +579,15 @@ describe("ModuleAttributionTree", () => {
     });
   });
 
-  it("filters the tree through kind and origin multi-select dropdowns", () => {
+  it("ignores retired filter bookmarks and emits only search and expansion state", () => {
+    const onSearchChange = vi.fn();
     render(
       <ModuleAttributionTree
         canAdmin
         modules={modules}
         mappings={mappings}
+        search="?treeKinds=business&treeOrigins=curated&treeHideUnobserved=1&treeOnlyUncovered=1"
+        onSearchChange={onSearchChange}
         onUpdateModule={vi.fn()}
         onMove={vi.fn()}
         onDelete={vi.fn()}
@@ -452,15 +595,13 @@ describe("ModuleAttributionTree", () => {
       />
     );
 
-    const filters = screen.getByLabelText("模块树筛选");
-    fireEvent.click(within(filters).getByRole("button", { name: /类型/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "驱动组" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "节点类型" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "未分类" }));
-
     const tree = screen.getByRole("tree", { name: "模块归属树" });
     expect(within(tree).getByText("Power")).toBeInTheDocument();
-    expect(within(tree).queryByText("SC8562")).not.toBeInTheDocument();
+    expect(within(tree).getByText("SC8562")).toBeVisible();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索模块" }), { target: { value: "SC8562" } });
+    const query = new URLSearchParams(onSearchChange.mock.lastCall![0]);
+    expect(query.get("treeQ")).toBe("SC8562");
+    expect([...query.keys()].sort()).toEqual(["treeExpanded", "treeQ"]);
   });
 
   it("lets admins view the unclassified root read-only without a withdrawn queue handoff", () => {
@@ -535,7 +676,7 @@ describe("ModuleAttributionTree", () => {
     expect(within(tree).getByText("· 组织级解析覆盖")).toBeInTheDocument();
   });
 
-  it("shows parse coverage chips and filters to uncovered driver groups", () => {
+  it("shows parse coverage chips without hiding covered driver groups", () => {
     const coveredGroup: ParameterModule = {
       ...modules[1]!,
       id: "mod-covered",
@@ -591,12 +732,12 @@ describe("ModuleAttributionTree", () => {
     expect(within(tree).getByText("· 解析未覆盖")).toBeInTheDocument();
     expect(within(tree).getByText("· 解析覆盖 1/2")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "仅显示解析未覆盖" }));
-    expect(within(tree).queryByText("CoveredDG")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "仅显示解析未覆盖" })).not.toBeInTheDocument();
+    expect(within(tree).getByText("CoveredDG")).toBeInTheDocument();
     expect(within(tree).getByText("UncoveredDG")).toBeInTheDocument();
     expect(within(tree).getByText("SC8562")).toBeInTheDocument();
 
-    fireEvent.click(within(tree).getByRole("button", { name: "修改模块 SC8562" }));
+    fireEvent.click(within(tree).getByRole("button", { name: "查看模块 SC8562" }));
     const editDialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(editDialog).getByLabelText("模块名称")).toHaveAttribute("readonly");
     expect(within(editDialog).queryByRole("button", { name: /编写覆盖解析|添加 compatible/ })).not.toBeInTheDocument();

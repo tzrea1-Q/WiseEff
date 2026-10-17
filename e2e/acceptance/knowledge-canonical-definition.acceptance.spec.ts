@@ -359,6 +359,9 @@ test("manages exact Definition references, published-only reverse links and same
     await expect(page).toHaveURL(new RegExp(`/parameter-admin/specs\\?definitionId=${definitionId}`));
     expect((await related).status()).toBe(200);
     const relatedSection = page.getByTestId("spec-related-knowledge");
+    const relatedDisclosure = page.getByRole("dialog").locator("details").filter({ has: relatedSection });
+    await relatedDisclosure.locator("summary").click();
+    await expect(relatedDisclosure).toHaveAttribute("open", "");
     const relatedEntry = relatedSection.getByRole("button", { name: /KB-903 canonical browser entry/ });
     await expect(relatedEntry).toBeVisible();
     await expect(relatedSection.getByText("KB-903 draft excluded from reverse lookup")).toHaveCount(0);

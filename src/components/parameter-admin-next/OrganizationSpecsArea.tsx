@@ -79,7 +79,7 @@ export function OrganizationSpecsArea({
     parseParameterAdminSpecsSubView(pathname) ?? "library";
   const hasMappingSurface =
     mappingCounts.status === "error" ||
-    (mappingCounts.status === "ready" && mappingCounts.openCount > 0);
+    (mappingCounts.status === "ready" && mappingCounts.openCount + mappingCounts.historyCount > 0);
   const showSpecsSubNav = mappingCounts.status === "loading" || hasMappingSurface;
   const activeSubView: ParameterAdminSpecsSubView =
     requestedSubView === "identity-mapping" &&

@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "playwright/test";
 import { runNpmScript } from "../acceptance/helpers/database";
 import { resolveVisualMasks } from "../../scripts/quality-visual-mask-resolution";
+import { parseParameterAdminModulesSubView } from "../../src/application/parameters/parameterAdminOrganizationPath";
 import {
   assertVisualReviewFixtureConfigured,
   visualReviewFixtureConfigured
@@ -223,8 +224,7 @@ export async function stableMasks(page: Page, routePath = ""): Promise<Locator[]
   }
 
   if (routePath === "/parameter-admin") {
-    // Only the anchor and optional banner are masked; the populated workbench remains visually compared.
-    masks.push(page.locator(".parameter-catalog__anchor"));
+    // Only the optional status banner is masked; the populated workbench remains visually compared.
     optionalMasks.push(page.locator(".parameter-catalog__banner"));
   }
 
@@ -305,8 +305,21 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
   }
 
   if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath.split("?")[0])) {
-    await expect(page.locator('.parameter-module-mapping-panel[aria-busy="false"]')).toBeVisible({ timeout });
-    await expect(page.getByRole("tree", { name: "模块归属树" })).toBeVisible({ timeout });
+    const location = new URL(page.url());
+    const subView = parseParameterAdminModulesSubView(location.pathname, location.search);
+    const panel = page.locator(".parameter-module-mapping-panel");
+    await expect(panel).toBeVisible({ timeout });
+    if (subView === "queue") {
+      // The loaded count is rendered only after the authorized discovery response, including an empty page.
+      await expect(panel.getByRole("region", { name: "来源识别结果" }).getByText(/^已加载 \d+ 条，匹配 \d+ 条/)).toBeVisible({ timeout });
+    } else if (subView === "registry") {
+      await expect(panel.getByRole("region", { name: "历史驱动注册表" })).toHaveAttribute("aria-busy", "false", { timeout });
+      await expect(panel.getByRole("table", { name: "历史驱动注册表" })).toBeVisible({ timeout });
+    } else {
+      await expect(panel.getByRole("tree", { name: "模块归属树" })).toBeVisible({ timeout });
+      // This count appears only after every subject and registration page has loaded successfully.
+      await expect(panel.getByRole("region", { name: "规范主体归属" }).getByText(/^\d+ 个有效主体。/)).toBeVisible({ timeout });
+    }
     for (const label of ["正在加载规范主体…", "正在读取发现结果…", "正在加载历史驱动注册表…"]) {
       await expect(page.getByText(label, { exact: true })).toHaveCount(0, { timeout });
     }
@@ -322,8 +335,12 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
   }
 
   if (routePath === "/parameter-admin/projects/aurora/review-roles") {
-    await expect(page.getByRole("heading", { name: "aurora 项目审核角色配置", exact: true })).toBeVisible({ timeout });
-    await expect(page.getByRole("heading", { name: "组织成员职责授权", exact: true })).toBeVisible({ timeout });
+    const form = page.getByRole("form", { name: "项目审核角色设置", exact: true });
+    await expect(form).toHaveAttribute("aria-busy", "false", { timeout });
+    await expect(form.getByRole("heading", { name: / 项目审核角色配置$/ })).toBeVisible({ timeout });
+    await expect(form.getByRole("group", { name: "审核职责候选池", exact: true }).getByRole("article")).toHaveCount(3, { timeout });
+    await expect(form.getByRole("heading", { name: "组织成员职责授权", exact: true })).toBeVisible({ timeout });
+    await expect(form.getByRole("table", { name: "组织成员职责授权", exact: true })).toBeVisible({ timeout });
     return;
   }
 

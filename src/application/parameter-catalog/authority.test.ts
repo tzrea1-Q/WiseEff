@@ -8,8 +8,9 @@ import {
   catalogAuthorizedActions,
   isCatalogActionEnabled
 } from "./authority";
-import { catalogWritesEnabled, deriveCatalogDomainState } from "./states";
-import { readyCatalogDocument, unregisteredSubject } from "./fixtures";
+import { catalogEmptyReasons, catalogStateFromFailure, catalogWritesEnabled, deriveCatalogDomainState } from "./states";
+import { readyCatalogDocument, retiredSubject, unregisteredSubject } from "./fixtures";
+import { catalogApiFailure } from "./errors";
 
 describe("catalog actor authority", () => {
   const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
@@ -63,6 +64,36 @@ describe("catalog actor authority", () => {
     expect(isCatalogActionEnabled("org-admin", "resolve-review-item", loading)).toBe(false);
     expect(isCatalogActionEnabled("org-admin", "register-subject", loading)).toBe(false);
     expect(isCatalogActionEnabled("platform-admin", "accept-proposal", loading)).toBe(false);
+  });
+
+  it.each(catalogEmptyReasons)("keeps authorized review reachable for an empty %s collection", (emptyReason) => {
+    const empty = deriveCatalogDomainState({
+      document: readyCatalogDocument,
+      collection: { items: [], catalogReleaseId: readyCatalogDocument.item.catalogReleaseId, emptyReason }
+    });
+    expect(empty.kind).toBe("empty");
+    expect(isCatalogActionEnabled("org-admin", "resolve-review-item", empty)).toBe(true);
+    expect(catalogWritesEnabled(empty)).toBe(false);
+    for (const actor of ["platform-admin", "user", "agent"] as const) {
+      expect(isCatalogActionEnabled(actor, "resolve-review-item", empty, ["catalog:author", "catalog:publish"])).toBe(false);
+    }
+    for (const action of catalogActionsForActor("org-admin").filter((action) => action !== "read" && action !== "resolve-review-item")) {
+      expect(isCatalogActionEnabled("org-admin", action, empty)).toBe(false);
+    }
+    if (empty.kind !== "empty") throw new Error("Expected an empty collection state.");
+    expect(isCatalogActionEnabled("org-admin", "resolve-review-item", { ...empty, catalogReleaseId: "" })).toBe(false);
+  });
+
+  it("keeps review disabled for loading, unpublished, retired, conflict and failed states", () => {
+    for (const state of [
+      loading,
+      deriveCatalogDomainState({ document: { item: null, publicationState: "unpublished" } }),
+      deriveCatalogDomainState({ document: readyCatalogDocument, subject: retiredSubject }),
+      catalogStateFromFailure(catalogApiFailure("release-drift")),
+      catalogStateFromFailure(new Error("unavailable"))
+    ]) {
+      expect(isCatalogActionEnabled("org-admin", "resolve-review-item", state)).toBe(false);
+    }
   });
 
   it("does not grant catalog publication actions on the default org-admin or platform-admin matrix", () => {

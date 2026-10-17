@@ -12,6 +12,7 @@ export type CatalogUrlAnchor = {
    */
   q: string | null;
   lifecycle: string | null;
+  includeRetiredSubjects?: boolean;
   moduleNodeId: string | null;
   pageSize: number | null;
   cursor: string | null;
@@ -28,6 +29,7 @@ export const EMPTY_CATALOG_URL_ANCHOR: CatalogUrlAnchor = {
   reviewItemId: null,
   q: null,
   lifecycle: null,
+  includeRetiredSubjects: false,
   moduleNodeId: null,
   pageSize: null,
   cursor: null
@@ -67,6 +69,7 @@ export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
     reviewItemId: readOpaque(params, "reviewItemId"),
     q: readOpaque(params, "q"),
     lifecycle: readOpaque(params, "lifecycle"),
+    includeRetiredSubjects: params.get("includeRetiredSubjects") === "true",
     moduleNodeId: readOpaque(params, "moduleNodeId"),
     pageSize: parseCatalogPageSize(params.get("pageSize")),
     cursor: readOpaque(params, "cursor")
@@ -84,6 +87,7 @@ export function serializeCatalogUrlAnchor(anchor: CatalogUrlAnchor): string {
   if (anchor.pageSize) {
     params.set("pageSize", String(anchor.pageSize));
   }
+  if (anchor.includeRetiredSubjects) params.set("includeRetiredSubjects", "true");
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";
 }
@@ -91,7 +95,7 @@ export function serializeCatalogUrlAnchor(anchor: CatalogUrlAnchor): string {
 /** True when the anchor carries any non-identity collection state. */
 export function hasCatalogCollectionState(anchor: CatalogUrlAnchor): boolean {
   return Boolean(
-    anchor.q || anchor.lifecycle || anchor.moduleNodeId || anchor.cursor || anchor.pageSize
+    anchor.q || anchor.lifecycle || anchor.includeRetiredSubjects || anchor.moduleNodeId || anchor.cursor || anchor.pageSize
   );
 }
 

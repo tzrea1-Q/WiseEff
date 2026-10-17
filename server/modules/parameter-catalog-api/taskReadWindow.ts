@@ -1,6 +1,8 @@
 import { createReviewQueueReader, type ReviewQueueTrustedContext } from "../parameter-governance/review";
 import { mapReviewItem } from "./governance/dto";
-import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
+import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../catalog-publication/runtime";
+import { createCatalogKernel } from "../catalog-kernel/interface";
+import { readReviewItemDetailsFromPool } from "./productionReviewDetails";
 import { lookupProtectedIdentity } from "../catalog-cutover/mapping";
 import type { AuthContext } from "../auth/types";
 import { getRootPostgresPool, type Database } from "../../shared/database/client";
@@ -71,13 +73,19 @@ export async function readSpecTaskWindow<Task extends { id: string; status: stri
   });
   if (!queue.ok) throw new ApiError(queue.error.kind === "permission-denied" ? "FORBIDDEN" : "CONFLICT",
     "Canonical Review Queue access was refused.", { reason: queue.error.kind });
+  const catalog = await createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool)).loadCurrentCatalog(pin);
+  if (!catalog.ok) throw new ApiError("CONFLICT", "The canonical Catalog release changed; refresh the review.");
+  const details = await readReviewItemDetailsFromPool(pool, { organizationId: auth.organization.id, pin,
+    items: queue.value.items }, catalog.value);
   const adaptedIds = new Set<string>();
   for (const [taskId, target] of exactTargets) {
     const matches = queue.value.items.filter((item) => target.kind === "review-item"
       ? item.id === target.id : item.evidenceRefs.some((ref) => ref.id === target.id));
     if (matches.length !== 1) continue;
     adaptedIds.add(taskId);
-    if (!window.body.items.some((item) => item.id === matches[0]!.id)) window.body.items.push(mapReviewItem(matches[0]!));
+    if (!window.body.items.some((item) => item.id === matches[0]!.id)) {
+      window.body.items.push(mapReviewItem(matches[0]!, details.get(matches[0]!.id)));
+    }
   }
   window.body.historicalItems = window.body.historicalItems.filter((task) => !adaptedIds.has(task.id));
   return window;

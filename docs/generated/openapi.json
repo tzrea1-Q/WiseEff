@@ -7538,6 +7538,19 @@
             }
           },
           {
+            "name": "subjectLifecycle",
+            "in": "query",
+            "required": false,
+            "description": "Optional owner membership lifecycle filter, applied before pagination. Omitted includes both active and retired owners.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "retired"
+              ]
+            }
+          },
+          {
             "name": "cursor",
             "in": "query",
             "required": false,
@@ -7619,6 +7632,19 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "subjectLifecycle",
+            "in": "query",
+            "required": false,
+            "description": "Optional owner membership lifecycle filter, applied before pagination. Omitted includes both active and retired owners.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "retired"
+              ]
             }
           },
           {
@@ -38580,6 +38606,22 @@
           "destinationModuleId": {
             "type": "string"
           },
+          "newDestination": {
+            "type": "object",
+            "properties": {
+              "parentModuleId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "parentModuleId",
+              "name"
+            ],
+            "additionalProperties": false
+          },
           "reason": {
             "type": "string"
           }
@@ -39330,6 +39372,17 @@
                       "subjectId": {
                         "type": "string"
                       },
+                      "canonicalName": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "driver",
+                          "node-type",
+                          "configuration-schema"
+                        ]
+                      },
                       "evidence": {
                         "type": "array",
                         "items": {
@@ -39340,6 +39393,136 @@
                     "required": [
                       "subjectId",
                       "evidence"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "sourceSummary": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "available",
+                        "unavailable"
+                      ]
+                    },
+                    "evidenceCount": {
+                      "type": "number"
+                    },
+                    "observationId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "projectName": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "nodeLocator": {
+                      "type": "string"
+                    },
+                    "compatible": {
+                      "type": "string"
+                    },
+                    "nodeType": {
+                      "type": "string"
+                    },
+                    "propertyKey": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "evidenceCount"
+                  ],
+                  "additionalProperties": false
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "available",
+                          "unavailable"
+                        ]
+                      },
+                      "evidenceCount": {
+                        "type": "number"
+                      },
+                      "observationId": {
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "projectName": {
+                        "type": "string"
+                      },
+                      "fileId": {
+                        "type": "string"
+                      },
+                      "fileName": {
+                        "type": "string"
+                      },
+                      "configRevisionId": {
+                        "type": "string"
+                      },
+                      "nodeLocator": {
+                        "type": "string"
+                      },
+                      "compatible": {
+                        "type": "string"
+                      },
+                      "nodeType": {
+                        "type": "string"
+                      },
+                      "propertyKey": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "evidenceCount"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "restorableRegistrations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "subjectId": {
+                        "type": "string"
+                      },
+                      "canonicalName": {
+                        "type": "string"
+                      },
+                      "placementDisplayName": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "subjectId",
+                      "canonicalName",
+                      "placementDisplayName"
                     ],
                     "additionalProperties": false
                   }
@@ -39573,6 +39756,17 @@
                     "subjectId": {
                       "type": "string"
                     },
+                    "canonicalName": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "driver",
+                        "node-type",
+                        "configuration-schema"
+                      ]
+                    },
                     "evidence": {
                       "type": "array",
                       "items": {
@@ -39583,6 +39777,136 @@
                   "required": [
                     "subjectId",
                     "evidence"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "sourceSummary": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "available",
+                      "unavailable"
+                    ]
+                  },
+                  "evidenceCount": {
+                    "type": "number"
+                  },
+                  "observationId": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "projectName": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "nodeLocator": {
+                    "type": "string"
+                  },
+                  "compatible": {
+                    "type": "string"
+                  },
+                  "nodeType": {
+                    "type": "string"
+                  },
+                  "propertyKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "evidenceCount"
+                ],
+                "additionalProperties": false
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "available",
+                        "unavailable"
+                      ]
+                    },
+                    "evidenceCount": {
+                      "type": "number"
+                    },
+                    "observationId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "projectName": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "nodeLocator": {
+                      "type": "string"
+                    },
+                    "compatible": {
+                      "type": "string"
+                    },
+                    "nodeType": {
+                      "type": "string"
+                    },
+                    "propertyKey": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "evidenceCount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "restorableRegistrations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "canonicalName": {
+                      "type": "string"
+                    },
+                    "placementDisplayName": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "subjectId",
+                    "canonicalName",
+                    "placementDisplayName"
                   ],
                   "additionalProperties": false
                 }
@@ -39766,6 +40090,9 @@
                         "additionalProperties": false
                       }
                     ]
+                  },
+                  "destinationModuleId": {
+                    "type": "string"
                   }
                 },
                 "required": [

@@ -50,14 +50,14 @@ it("replaces legacy module bookmarks and restores governance tabs on browser Bac
   render(<App runtimeMode="mock" initialAppState={adminState} />);
   await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/parameter-admin/modules?q=power&tab=queue"));
   expect(window.history.length).toBe(historyLength);
-  expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "来源识别" })).toHaveAttribute("aria-selected", "true");
   await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
   await waitFor(() => expect(window.location.search).toBe("?q=power&tab=registry"));
   expect(window.history.length).toBe(historyLength + 1);
   window.history.back();
   await waitFor(() => {
     expect(window.location.search).toBe("?q=power&tab=queue");
-    expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "来源识别" })).toHaveAttribute("aria-selected", "true");
   });
 });
 
@@ -3527,8 +3527,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-admin",
-        present: ["项目参数管理后台", "组织配置", "项目运营", "批量参数导入", "目录发布"],
-        absent: ["项目参数 Admin", "items", "events", "建设中"]
+        present: ["参数管理后台", "组织配置", "项目运营", "批量参数导入", "参数定义管理", "模块导航"],
+        absent: ["项目参数 Admin", "items", "events", "建设中", "目录发布"]
       },
       {
         path: "/logs",

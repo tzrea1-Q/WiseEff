@@ -48,6 +48,7 @@ export type PublicationAuthorizationReason =
   | "publication-frozen"
   | "candidate-stale"
   | "candidate-tampered"
+  | "subject-retired"
   | "publication-authorization-revoked"
   | "unsupported-catalog-capability"
   | "unsupported-consumer-capability-revision"

@@ -19,6 +19,7 @@ type ProjectAdminTableProps = {
   onDeleteProject: (projectId: string) => void | Promise<void>;
   onManageFiles: (projectId: string) => void;
   onConfigureReviewRoles?: (projectId: string) => void;
+  onArchiveProject?: (projectId: string, archive: boolean) => void;
   primaryActionLabel?: string;
   detailDrawer?: ReactNode;
 };
@@ -28,7 +29,8 @@ const STATUS_FILTER_OPTIONS = [
   { value: "maintenance", label: "维护" },
   { value: "initialization_pending_review", label: "待审阅" },
   { value: "initialization_rejected", label: "已驳回" },
-  { value: "not_initialized", label: "未初始化" }
+  { value: "not_initialized", label: "未初始化" },
+  { value: "archived", label: "已归档" }
 ] as const;
 
 const statusClasses: Record<string, string> = {
@@ -72,6 +74,7 @@ export function ProjectAdminTable({
   onDeleteProject,
   onManageFiles,
   onConfigureReviewRoles,
+  onArchiveProject,
   primaryActionLabel = "管理文件",
   detailDrawer
 }: ProjectAdminTableProps) {
@@ -79,7 +82,7 @@ export function ProjectAdminTable({
   const filteredRows = useMemo(
     () => {
       const searched = filterItems(rows, search.q, projectAdminSearchProfile);
-      return searched.filter((row) => selectedStatuses.length === 0 || selectedStatuses.includes(row.status));
+      return searched.filter((row) => selectedStatuses.length === 0 ? row.status !== "archived" : selectedStatuses.includes(row.status));
     },
     [rows, search.q, selectedStatuses]
   );
@@ -190,7 +193,7 @@ export function ProjectAdminTable({
       headerContent={<>
         <p>维护项目基础信息与初始化状态；冲突与基线列标出需要治理关注的项目。</p>
         {rows.some((row) => row.canonicalOwned) ?
-          <p id="canonical-project-retention-policy">项目需保留规范历史，不能删除；归档或处置功能尚未开放。</p> : null}
+          <p id="canonical-project-retention-policy">项目需保留规范历史，不能删除；可归档后从默认清单收起。</p> : null}
       </>}
       table={{
         ariaLabel: "项目管理列表", rows: filteredRows, rowKey: (row) => row.id, columns, pageSize: 10,
@@ -230,6 +233,9 @@ export function ProjectAdminTable({
         items: [
           ...(onConfigureReviewRoles ? [{ id: "review-roles", label: "审核角色", ariaLabel: `审核角色 ${row.name}`, onSelect: () => onConfigureReviewRoles(row.id) }] : []),
           { id: "edit", label: "编辑", ariaLabel: `编辑 ${row.name}`, onSelect: () => onEditProject(row.id) },
+          ...(onArchiveProject ? [{ id: "archive", label: row.status === "archived" ? "恢复项目" : "归档",
+            ariaLabel: `${row.status === "archived" ? "恢复项目" : "归档"} ${row.name}`,
+            onSelect: () => onArchiveProject(row.id, row.status !== "archived") }] : []),
           { id: "delete", label: "删除", ariaLabel: `删除 ${row.name}`, disabled: row.canonicalOwned,
             descriptionId: row.canonicalOwned ? "canonical-project-retention-policy" : undefined,
             destructive: true, confirmation: projectDeleteConfirmation(row), onSelect: () => onDeleteProject(row.id) }

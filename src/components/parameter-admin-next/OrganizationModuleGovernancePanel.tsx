@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { Project } from "@/domain/prototype/types";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type {
   CreateParameterModuleInput,
@@ -23,7 +24,8 @@ export function OrganizationModuleGovernancePanel({
   organizationId,
   actor = "user",
   sessionPermissions,
-  canonicalEnabled = false
+  canonicalEnabled = false,
+  projects = []
 }: {
   pathname?: string;
   search?: string;
@@ -34,9 +36,11 @@ export function OrganizationModuleGovernancePanel({
   actor?: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
   canonicalEnabled?: boolean;
+  projects?: readonly Project[];
 }) {
   const { application } = useParameterAdmin();
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
+  const canManageTaxonomy = !canonicalEnabled || (actor !== "agent" && Boolean(sessionPermissions?.includes("admin:access")));
 
   const repository = useMemo((): ParameterModuleRegistryRepository => {
     const base = application.asModuleRegistryRepository();
@@ -71,7 +75,9 @@ export function OrganizationModuleGovernancePanel({
 
   return (
     <ParameterModuleMappingPanel
+      projects={projects}
       canAdmin={!canonicalEnabled || actor === "org-admin"}
+      canManageTaxonomy={canManageTaxonomy}
       repository={repository}
       pathname={pathname}
       search={search}

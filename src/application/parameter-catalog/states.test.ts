@@ -13,6 +13,7 @@ import {
 } from "./states";
 import {
   CATALOG_RELEASE_ID,
+  CATALOG_REGISTRATION_ID,
   CATALOG_SUBJECT_ID,
   activeDefinition,
   catalogReviewItem,
@@ -134,6 +135,18 @@ describe("catalog domain states", () => {
       kind: "retired",
       target: "legacy-surface"
     });
+  });
+
+  it("keeps historical definition status pinned to the captured catalog, not its old revision release", () => {
+    expect(deriveCatalogDomainState({ document: readyCatalogDocument, definition: {
+      ...retiredDefinition, currentRevision: { ...retiredDefinition.currentRevision, publishedInCatalogReleaseId: "crel_old_revision" }
+    } })).toMatchObject({ kind: "retired", target: "definition", catalogReleaseId: CATALOG_RELEASE_ID });
+  });
+
+  it("treats retired registration evidence on the definition as read-only even before the subject read catches up", () => {
+    expect(deriveCatalogDomainState({ document: readyCatalogDocument, subject: registeredSubject,
+      definition: { ...activeDefinition, registration: { ...registeredSubject.registration, id: CATALOG_REGISTRATION_ID, status: "retired" } }
+    })).toMatchObject({ kind: "retired", target: "registration", writesEnabled: false, catalogReleaseId: CATALOG_RELEASE_ID });
   });
 
   it("maps conflict reasons to preserve-input and forbids silent retry", () => {

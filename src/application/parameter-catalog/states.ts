@@ -244,7 +244,7 @@ export function deriveCatalogDomainState(input: CatalogDomainStateInput): Catalo
   if (definition?.lifecycle === "retired" || definition?.lifecycle === "deprecated") {
     return {
       kind: "retired",
-      catalogReleaseId: definition.currentRevision.publishedInCatalogReleaseId,
+      catalogReleaseId: input.document?.item?.catalogReleaseId ?? definition.currentRevision.publishedInCatalogReleaseId,
       target: "definition",
       writesEnabled: false
     };
@@ -259,10 +259,11 @@ export function deriveCatalogDomainState(input: CatalogDomainStateInput): Catalo
       writesEnabled: false
     };
   }
-  if (subject?.registration.status === "retired") {
+  if (subject?.registration.status === "retired" || definition?.registration.status === "retired") {
     return {
       kind: "retired",
-      catalogReleaseId: subject.membership.catalogReleaseId,
+      catalogReleaseId: input.document?.item?.catalogReleaseId ?? subject?.membership.catalogReleaseId ??
+        definition?.currentRevision.publishedInCatalogReleaseId ?? null,
       target: "registration",
       writesEnabled: false
     };

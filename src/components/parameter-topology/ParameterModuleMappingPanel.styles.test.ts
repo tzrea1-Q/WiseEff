@@ -11,5 +11,6 @@ describe("module governance workbench presentation", () => {
     const pageStyles = rules.map((rule) => `${rule.selector} { ${Object.entries(rule.declarations)
       .map(([property, value]) => `${property}: ${value};`).join(" ")} }`).join("\n");
     expect(scanCssContent("module-governance.css", pageStyles)).toEqual([]);
+    expect(scanCssContent("module-governance.css", readStylesheet("src/components/parameter-topology/module-governance.css"))).toEqual([]);
   });
 });

@@ -23,6 +23,7 @@ export type WorkbenchTaskDockProps = {
   exportEvidence: string;
   syncConflicts: ParameterFileSyncConflict[];
   autoLocateConflicts?: boolean;
+  showConflictArbitration?: boolean;
   releaseReadiness: DtsReleaseReadiness | null;
   draftRecoveryStatus: StructuredEditRecoveryStatus;
   draftCopyFallbackRef: RefObject<HTMLTextAreaElement | null>;
@@ -64,6 +65,7 @@ export function WorkbenchTaskDock({
   exportEvidence,
   syncConflicts,
   autoLocateConflicts = true,
+  showConflictArbitration = true,
   releaseReadiness,
   draftRecoveryStatus,
   draftCopyFallbackRef,
@@ -120,7 +122,8 @@ export function WorkbenchTaskDock({
         <span>{tasksOpen ? "收起" : "展开任务"}</span>
       </button>
       {tasksOpen ? (
-        <div role="region" aria-label="配置任务" className="configuration-workbench__task-panel">
+        <div role="region" aria-label="配置任务" className="configuration-workbench__task-content">
+        <div className="configuration-workbench__task-panel">
           <strong>会话变更</strong>
           {sessionDraftRows.length === 0 ? (
             <p>没有本轮更改。从结构树或源码定位选中属性后，用类型化编辑器写入本地会话变更。</p>
@@ -186,29 +189,7 @@ export function WorkbenchTaskDock({
                   disabled={!canEdit}
                 />
               </label>
-              <div className="configuration-workbench__task-actions">
-                <button
-                  className="button subtle"
-                  type="button"
-                  onClick={onValidateSelected}
-                  disabled={!canEdit || sessionDraftRows.length === 0 || draftRecoveryStatus === "stale-base"}
-                >
-                  校验所选
-                </button>
-                <button
-                  className="button primary"
-                  type="button"
-                  onClick={() => void onSubmitSelected()}
-                  disabled={
-                    !canEdit ||
-                    submittingEdits ||
-                    selectedDraftKeys.size === 0 ||
-                    draftRecoveryStatus === "stale-base"
-                  }
-                >
-                  {submittingEdits ? "提交中…" : `提交所选（${selectedDraftKeys.size}）`}
-                </button>
-              </div>
+
             </>
           )}
           {validateStatus ? <p role="status">{validateStatus}</p> : null}
@@ -229,7 +210,7 @@ export function WorkbenchTaskDock({
           <strong>任务证据</strong>
           {syncEvidence ? <p role="status">{syncEvidence}</p> : null}
           {exportEvidence ? <p role="status">{exportEvidence}</p> : null}
-          {syncConflicts.length > 0 ? (
+          {showConflictArbitration && syncConflicts.length > 0 ? (
             <WorkbenchConflictArbitrationDock
               projectId={projectId}
               repository={fileRepository}
@@ -254,6 +235,32 @@ export function WorkbenchTaskDock({
           {!syncEvidence && !exportEvidence && syncConflicts.length === 0 ? (
             <p>暂无同步或导出证据。手动同步与配置集导出结果会显示在这里。</p>
           ) : null}
+        </div>
+      {sessionDraftRows.length > 0 ? (
+              <div className="configuration-workbench__task-actions configuration-workbench__submit-actions">
+                <button
+                  className="button subtle"
+                  type="button"
+                  onClick={onValidateSelected}
+                  disabled={!canEdit || sessionDraftRows.length === 0 || draftRecoveryStatus === "stale-base"}
+                >
+                  校验所选
+                </button>
+                <button
+                  className="button primary"
+                  type="button"
+                  onClick={() => void onSubmitSelected()}
+                  disabled={
+                    !canEdit ||
+                    submittingEdits ||
+                    selectedDraftKeys.size === 0 ||
+                    draftRecoveryStatus === "stale-base"
+                  }
+                >
+                  {submittingEdits ? "提交中…" : `提交所选（${selectedDraftKeys.size}）`}
+                </button>
+              </div>
+      ) : null}
         </div>
       ) : null}
     </footer>

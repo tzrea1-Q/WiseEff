@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { CanonicalDriverDiscovery } from "./CanonicalDriverDiscovery";
+import { selectControlOption } from "@/test/selectControlOption";
+import { createMockParameterCatalogRepository } from "@/application/parameter-catalog/mockAdapter";
+import { registeredSubject } from "@/application/parameter-catalog/fixtures";
 
 const pin = { id: "crel_one", digest: "sha256:one" };
 const item = (observationId: string, compatible = "vendor,device") => ({
@@ -22,6 +25,62 @@ const port = (listDriverCompatibleDiscovery: ReturnType<typeof vi.fn>) =>
   ({ listDriverCompatibleDiscovery } as unknown as ParameterCatalogGovernanceRepository);
 
 describe("CanonicalDriverDiscovery", () => {
+  it("scopes every cursor page on the server to the explicitly selected project", async () => {
+    const list = vi.fn().mockResolvedValue(ready([item("obs_one")], "more"));
+    render(<CanonicalDriverDiscovery governance={port(list)} organizationId="org_one" projects={[{ id: "project_one", name: "Aurora" }]} />);
+    await screen.findByText("vendor,device");
+    await selectControlOption(screen.getByRole("combobox", { name: "发现项目范围" }), "project_one");
+    await waitFor(() => expect(list).toHaveBeenCalledWith("org_one", { projectId: "project_one", limit: 50 }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "加载下一页" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "加载下一页" }));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith("org_one", { projectId: "project_one", cursor: "more", limit: 50 }, pin));
+  });
+
+  it("retries a failed next page in place while retaining existing rows and the release pin", async () => {
+    const list = vi.fn().mockResolvedValueOnce(ready([item("obs_one")], "more"))
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce(ready([item("obs_two", "vendor,next")], null));
+    render(<CanonicalDriverDiscovery governance={port(list)} organizationId="org_one" managedRefresh />);
+    await screen.findByText("vendor,device");
+    fireEvent.click(screen.getByRole("button", { name: "加载下一页" }));
+    const retry = await screen.findByRole("button", { name: "重试加载下一页" });
+    expect(screen.getByText("vendor,device")).toBeVisible();
+    fireEvent.click(retry);
+    expect(await screen.findByText("vendor,next")).toBeVisible();
+    expect(list).toHaveBeenLastCalledWith("org_one", { cursor: "more", limit: 50 }, pin);
+  });
+
+  it("names the project and recognized subject from real projections, without inventing a node name", async () => {
+    const catalog = createMockParameterCatalogRepository();
+    vi.spyOn(catalog, "getSubject").mockResolvedValue({ item: { ...registeredSubject, membership: { status: "active", catalogReleaseId: pin.id } } });
+    const recognized = { ...item("obs_known"), compatibles: [{ compatible: "vendor,known", candidate: { kind: "recognized", subjectId: registeredSubject.id, registrationId: null } }] };
+    render(<CanonicalDriverDiscovery governance={port(vi.fn().mockResolvedValue(ready([recognized], null)))} catalog={catalog}
+      organizationId="org_one" projects={[{ id: "project_one", name: "Aurora" }]} />);
+    expect(await screen.findByText(new RegExp(`已识别主体：${registeredSubject.canonicalName}`))).toBeVisible();
+    expect(screen.getByText("Aurora")).toBeVisible();
+    expect(screen.getByText("node_one", { selector: "code" })).toBeVisible();
+  });
+
+  it("guides an empty observation scope to project configuration", async () => {
+    render(<CanonicalDriverDiscovery governance={port(vi.fn().mockResolvedValue({ ...ready([], null), emptyReason: "no-observations" }))} organizationId="org_one" />);
+    expect(await screen.findByText("当前范围没有来源观察记录。")).toBeVisible();
+    expect(screen.getByRole("link", { name: "前往项目配置" })).toHaveAttribute("href", "/parameter-admin/projects");
+  });
+  it("filters only loaded observations by source status and searchable source names", async () => {
+    const historical = { ...item("obs_history"), source: { status: "historical",
+      currentConfigRevisionId: "revision_two", historicalCompatibles: ["vendor,old"] }, compatibles: [] };
+    const list = vi.fn().mockResolvedValue(ready([item("obs_one"), historical], "more"));
+    render(<CanonicalDriverDiscovery governance={port(list)} organizationId="org_one" />);
+    expect(await screen.findByText(/当前来源：device.dts/)).toBeInTheDocument();
+    expect(screen.getByText(/仅筛选已加载记录/)).toBeInTheDocument();
+    await selectControlOption(screen.getByRole("combobox", { name: "筛选来源状态" }), "historical");
+    expect(screen.queryByText(/当前来源：device.dts/)).not.toBeInTheDocument();
+    expect(screen.getByText(/历史兼容标识：vendor,old/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索发现记录" }), { target: { value: "device.dts" } });
+    expect(screen.getByRole("status")).toHaveTextContent("已加载记录中没有匹配结果");
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "加载下一页" })).toBeInTheDocument();
+  });
   it("uses the first ready release pin for later observation pages and opens exact review IDs", async () => {
     const list = vi.fn()
       .mockResolvedValueOnce(ready([item("obs_one")], "obs_one", null))
@@ -33,7 +92,7 @@ describe("CanonicalDriverDiscovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "加载下一页" }));
     expect(await screen.findByText("vendor,second")).toBeInTheDocument();
     expect(list).toHaveBeenNthCalledWith(2, "org_one", { cursor: "obs_one", limit: 50 }, pin);
-    fireEvent.click(screen.getAllByRole("button", { name: "查看复核项 review_two" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "查看复核项 2" })[0]!);
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs?reviewItemId=review_two");
   });
 
@@ -104,8 +163,8 @@ describe("CanonicalDriverDiscovery", () => {
     const unavailable = { ...item("obs_missing"), source: { status: "unavailable", reason: "source-missing" }, compatibles: [] };
     const list = vi.fn().mockResolvedValue(ready([historical, unavailable], null));
     render(<CanonicalDriverDiscovery governance={port(list)} organizationId="org_one" />);
-    expect(await screen.findByText(/历史 compatible：vendor,old/)).toBeInTheDocument();
-    expect(screen.getByText(/来源不可用：source-missing/)).toBeInTheDocument();
+    expect(await screen.findByText(/历史兼容标识：vendor,old/)).toBeInTheDocument();
+    expect(screen.getByText(/来源不可用，暂不能处理此记录/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /查看主体|查看复核项/ })).not.toBeInTheDocument();
   });
 

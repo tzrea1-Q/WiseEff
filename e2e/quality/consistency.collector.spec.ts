@@ -170,8 +170,23 @@ test("settles a module-filtered debug table without requiring another module's r
 });
 
 test("settles project review roles on its loaded governance content, not a DTS file", async ({ page }) => {
-  await test.step("quality:navigation", () => page.setContent("<main><h1>aurora 项目审核角色配置</h1><h2>组织成员职责授权</h2></main>"));
+  await test.step("quality:navigation", () => page.setContent(`<main>
+    <form aria-label="项目审核角色设置" aria-busy="false">
+      <section><h2>极光 项目审核角色配置</h2>
+        <div role="group" aria-label="审核职责候选池">
+          <article><strong>硬件 MDE 池</strong><p>1 人就绪</p></article>
+          <article><strong>软件 MDE 池</strong><p>1 人就绪</p></article>
+          <article><strong>软件开发 (合入) 池</strong><p>1 人就绪</p></article>
+        </div>
+      </section>
+      <section><h2>组织成员职责授权</h2>
+        <table aria-label="组织成员职责授权"><thead><tr><th>成员</th></tr></thead>
+          <tbody><tr><td>项目审核员</td></tr></tbody></table>
+      </section>
+    </form>
+  </main>`));
   await test.step("quality:readiness", () => settleQualityRoute(page, "/parameter-admin/projects/aurora/review-roles", { readOnly: true }));
+  await expect(page.getByText("aurora-board.dts")).toHaveCount(0);
 });
 
 test("stubs Bridge pairing setup without sending a POST to the server", async ({ context, page }) => {

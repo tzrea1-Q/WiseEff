@@ -139,7 +139,10 @@ describe("assembled identity task read-window retirement", () => {
     expect(response.body.items).toHaveLength(1);
     expect(catalogReviewItemDtoSchema.parse(response.body.items[0])).toMatchObject({
       id: item.id, reason: "unknown", status: "open",
-      candidates: [{ subjectId: "property:gpio_int", evidence: [expect.stringMatching(/^sha256:/)] }],
+      observation: { id: evidence.value.id, propertyKey: "gpio_int",
+        sourceRef: { kind: "review-evidence", id: evidence.value.id } },
+      candidates: [],
+      allowedResolutions: ["open-definition-proposal", "mark-out-of-scope"],
     });
     expect(response.body.historicalItems.map((task) => task.id)).toEqual([specTaskId]);
     await db.query("update parameter_spec_review_tasks set status = 'resolved' where id = 't1068-exact-spec'");

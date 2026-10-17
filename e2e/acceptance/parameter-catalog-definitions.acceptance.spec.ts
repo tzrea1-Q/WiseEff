@@ -2,6 +2,7 @@ import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { expect } from "playwright/test";
 import { test } from "./helpers/catalogFixtureRuntime";
+import { catalogDefinitionListResponseSchema, catalogSubjectResponseSchema } from "../../server/modules/contracts/dtoSchemas/parameterCatalog";
 
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
@@ -53,6 +54,31 @@ test.describe("restored definition workspace and governed authoring", () => {
     const region = catalogPage(page);
     await waitForCatalogState(page, /ready|empty|unregistered/);
 
+    // F deliberately retires power: the default collection must exclude its
+    // historical definitions. C supplies the active collection exercised below.
+    const owner = await catalogJson(page.request, "GET", `/api/v2/catalog/subjects/${fixture.powerSubjectId}?catalogReleaseId=${fixture.chain.pinF.id}`);
+    expect(owner.status).toBe(200);
+    expect(catalogSubjectResponseSchema.parse(owner.body).item.membership.status).toBe("retired");
+    const active = await catalogJson(page.request, "GET", `/api/v2/catalog/definitions?catalogReleaseId=${fixture.chain.pinF.id}&subjectLifecycle=active&limit=50`);
+    expect(active.status).toBe(200);
+    const activePage = catalogDefinitionListResponseSchema.parse(active.body);
+    expect(activePage.items.some((item) => item.subject.id === fixture.powerSubjectId)).toBe(false);
+    const historical = await catalogJson(page.request, "GET", `/api/v2/catalog/definitions?catalogReleaseId=${fixture.chain.pinF.id}&limit=50`);
+    expect(historical.status).toBe(200);
+    const historicalPage = catalogDefinitionListResponseSchema.parse(historical.body);
+    expect(historicalPage.items.some((item) => item.id === fixture.xDefinitionId && item.subject.id === fixture.powerSubjectId)).toBe(true);
+    expect(historicalPage.totalCount).toBeGreaterThan(activePage.totalCount);
+    const includeRetired = region.getByRole("checkbox", { name: "包含退役主体" });
+    await expect(includeRetired).not.toBeChecked();
+    await expect(region.getByRole("status", { name: "结果计数" })).toContainText(`共 ${activePage.totalCount} 项`);
+    await includeRetired.check();
+    await expect(region.getByRole("status", { name: "结果计数" })).toContainText(`共 ${historicalPage.totalCount} 项`);
+    await expect(region.getByRole("table", { name: "参数定义列表" })).toContainText("iin_max");
+    await includeRetired.uncheck();
+    await expect(region.getByRole("status", { name: "结果计数" })).toContainText(`共 ${activePage.totalCount} 项`);
+    await openCatalogAt(page, "org-admin", `?catalogReleaseId=${fixture.chain.pinC.id}`);
+    await waitForCatalogState(page, "ready");
+
     const count = region.getByRole("status", { name: "结果计数" });
     await expect(count).toContainText(/共 \d+ 项/);
     const initial = await count.textContent();
@@ -75,8 +101,8 @@ test.describe("restored definition workspace and governed authoring", () => {
       await moduleOption.click();
       await expect(region.getByText(/已选模块子树/)).toBeVisible();
       await expect(count).toContainText(/共 \d+ 项/);
-      // Clearing returns to the full organization collection.
-      await region.getByRole("button", { name: "清除选择" }).click();
+      // Activating the selected module again clears the scope.
+      await moduleOption.click();
       await expect(region.getByText(/已选模块子树/)).toHaveCount(0);
     }
 
@@ -102,7 +128,7 @@ test.describe("restored definition workspace and governed authoring", () => {
   }, testInfo) => {
     // @acceptance PCAT-UI-17
     // @operation PCAT-DEFINITION-LIFECYCLE-001
-    await openCatalogAt(page, "org-admin");
+    await openCatalogAt(page, "org-admin", `?catalogReleaseId=${fixture.chain.pinC.id}`);
     await waitForCatalogState(page, /ready|empty|unregistered/);
     const region = catalogPage(page);
     const table = region.getByRole("table", { name: "参数定义列表" });
@@ -136,15 +162,23 @@ test.describe("restored definition workspace and governed authoring", () => {
       await expect(dialog.locator(".definition-editor__form")).toBeVisible();
       // Explicit manifest and an actual change: preview stays disabled until the
       // identity changes, projects are named and a reason exists.
-      await expect(dialog.getByRole("button", { name: "预演影响" })).toBeDisabled();
+      await expect(dialog.getByRole("button", { name: "保存内容修订" })).toBeDisabled();
       await dialog.getByLabel("属性键").fill(`pcat-ui-17-${Date.now()}`);
-      await dialog.getByLabel("受影响项目").fill("proj-a");
+      await expect(dialog.getByRole("button", { name: "预演影响" })).toBeDisabled();
+      await dialog.getByRole("group", { name: "受影响项目" })
+        .getByRole("checkbox", { name: "Aurora 量产平台", exact: true }).check();
       await dialog.getByLabel("修改原因").fill("op08 merged editor preview");
       await expect(dialog.getByRole("button", { name: "预演影响" })).toBeEnabled();
     } else {
       await expect(dialog.locator(".definition-editor__form")).toHaveCount(0);
     }
     await dialog.getByRole("button", { name: /关闭/ }).click();
+    if (permissions.authoringAllowed) {
+      const discard = page.getByRole("dialog", { name: "放弃未保存的修改？" });
+      await expect(discard).toBeVisible();
+      await discard.getByRole("button", { name: "放弃修改", exact: true }).click();
+    }
+    await expect(dialog).toHaveCount(0);
     await catalogScreenshot(page, testInfo, "pcat-ui-17-lifecycle");
   });
 

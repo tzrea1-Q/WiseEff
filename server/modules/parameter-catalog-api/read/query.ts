@@ -130,6 +130,7 @@ export function parseCatalogListQuery(
   const limitRaw = queryValue(request.query, "limit");
   const typeRaw = queryValue(request.query, "type");
   const lifecycleRaw = queryValue(request.query, "lifecycle");
+  const subjectLifecycleRaw = queryValue(request.query, "subjectLifecycle");
   const registrationRaw = queryValue(request.query, "registration");
   const searchRaw = queryValue(request.query, "search");
   const subjectIdRaw = queryValue(request.query, "subjectId");
@@ -157,6 +158,9 @@ export function parseCatalogListQuery(
 
   if (typeRaw !== undefined && !SUBJECT_KINDS.has(typeRaw as CatalogSubjectKind)) {
     return { ok: false, response: validationFailed(request.requestId, "type") };
+  }
+  if (subjectLifecycleRaw !== undefined && !SUBJECT_LIFECYCLES.has(subjectLifecycleRaw as SubjectLifecycle)) {
+    return { ok: false, response: validationFailed(request.requestId, "subjectLifecycle") };
   }
   if (registrationRaw !== undefined && !REGISTRATION_FILTERS.has(registrationRaw)) {
     return { ok: false, response: validationFailed(request.requestId, "registration") };
@@ -215,6 +219,7 @@ export function parseCatalogListQuery(
       limit,
       type: typeRaw as CatalogListQuery["type"],
       lifecycle: lifecycleRaw,
+      subjectLifecycle: subjectLifecycleRaw as CatalogListQuery["subjectLifecycle"],
       registration: registrationRaw,
       search: searchRaw,
       subjectId,

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page, type Response } from "playwright/test";
 import { seedSemanticBindingCatalog } from "../../server/testing/parameterCatalog/semanticBinding";
+import { catalogReviewItemListResponseSchema } from "../../server/modules/contracts/dtoSchemas/parameterCatalog";
 
 import {
   pickReviewCandidate,
@@ -650,11 +651,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       { headers: adminHeaders() }
     );
     expect(openReviews.status(), await openReviews.text()).toBe(200);
-    const openReviewBody = (await openReviews.json()) as {
-      items: Array<{ id: string; status: string; observation?: { propertyKey: string } }>;
-    };
+    const openReviewBody = catalogReviewItemListResponseSchema.parse(await openReviews.json());
     const mysteryReviews = openReviewBody.items.filter(
-      (item) => item.observation?.propertyKey.endsWith(`:vendor,acceptance-mystery-${reviewSuffix}`)
+      (item) => item.observation?.propertyKey === "compatible"
+        && item.sourceSummary?.status === "available"
+        && item.sourceSummary.compatible === `vendor,acceptance-mystery-${reviewSuffix}`
+        && item.sourceSummary.projectId === projectId
+        && item.sourceSummary.configRevisionId === reviewRevision.id
+        && item.sourceSummary.nodeLocator === "/mystery"
+        && item.sourceSummary.fileName === mysteryName
     );
     expect(mysteryReviews).toHaveLength(1);
     const mysteryReview = mysteryReviews[0];
@@ -699,7 +704,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(catalog).toHaveAttribute("data-catalog-page", "true");
     await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeVisible();
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("gpio_int");
-    await expect(page.getByRole("button", { name: "待处理工作" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "待审核事项" })).toBeVisible();
     await expect(page.getByRole("region", { name: "参数定义库" })).toHaveCount(0);
 
     await recordOperationEvidence({

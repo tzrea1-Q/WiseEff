@@ -55,6 +55,7 @@ import {
 
 import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
+import { readReviewItemDetailsFromPool } from "./productionReviewDetails";
 import { createParameterCatalogMigrationService } from "../parameter-catalog-migration/service";
 import type { ReplacementPublicationPorts } from "../parameter-catalog-migration/types";
 import { enqueuePublicationJob } from "../catalog-publication/enqueue";
@@ -713,6 +714,11 @@ const createGovernancePorts = (
       return pinOf(pointer.current.id, pointer.current.digest);
     },
     ...commands,
+    readReviewItemDetails: pool && kernel ? async (input) => {
+      const loaded = await kernel.loadCurrentCatalog(input.pin);
+      if (!loaded.ok) throw new ApiError("CONFLICT", "Catalog changed; refresh the review evidence.", { reason: "release-drift" });
+      return readReviewItemDetailsFromPool(pool, input, loaded.value);
+    } : undefined,
     ...(db
       ? {
           definitionMigration: createParameterCatalogMigrationService({

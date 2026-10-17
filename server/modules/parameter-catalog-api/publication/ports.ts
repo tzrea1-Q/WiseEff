@@ -172,6 +172,9 @@ const mapPreviewError = (kind: string, detail?: string): CatalogPublicationFailu
   if (kind === "subject-not-found") {
     return { kind: "reason", reason: "candidate-stale" };
   }
+  if (kind === "subject-not-active") {
+    return { kind: "reason", reason: "subject-retired" };
+  }
   if (kind === "invalid-input") {
     return { kind: "validation", field: detail ?? "changeSet" };
   }

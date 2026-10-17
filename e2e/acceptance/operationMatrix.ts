@@ -18,6 +18,24 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   {
+    id: "PCAT-REGISTRATION-INITIALIZE-001", priority: "P1", area: "parameters", coverage: "future",
+    route: "/parameter-admin/modules", roles: ["Org Admin"],
+    action: "Choose an explicit business parent and destination name, confirm atomic typed-module initialization and subject registration; retain tenant, release, idempotency and rollback guards.",
+    acceptanceIds: ["PCAT-REGISTRATION-INITIALIZE-001"],
+    specFiles: ["src/components/parameter-admin-next/CanonicalSubjectPlacementPanel.test.tsx", "src/features/parameter-catalog-governance/RegistrationDialog.test.tsx", "server/modules/parameter-governance/registration/integration.test.ts"],
+    assertions: ["ui", "api", "db"],
+    deferralReason: "Component and native PostgreSQL cases cover explicit initialization, authorization, concurrent replay and rollback; a dedicated browser write and audit receipt remain pending."
+  },
+  {
+    id: "PROJ-ARCHIVE-001", priority: "P1", area: "parameters", coverage: "future",
+    route: "/parameter-admin/projects", roles: ["Admin"],
+    action: "Confirm archive or restore-to-active through the existing audited project status API; hide archived projects by default and expose them through the status filter without deleting history or changing write permissions.",
+    acceptanceIds: ["PROJ-ARCHIVE-001"],
+    specFiles: ["src/components/admin/ProjectAdminTable.test.tsx", "src/components/parameter-admin-next/ProjectsOperationsPanel.test.tsx", "src/infrastructure/http/parameterAdminClient.test.ts", "server/modules/parameters/projectAdminMutations.test.ts"],
+    assertions: ["ui", "api"],
+    deferralReason: "Focused component/client tests cover archive intent and existing status writes; existing server mutation tests cover admin/tenant/audit behavior. Archive-specific browser, database and audit acceptance remains pending."
+  },
+  {
     id: "AUTH-RUNTIME-001",
     priority: "P0",
     area: "auth",

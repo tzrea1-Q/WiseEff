@@ -1,6 +1,7 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { selectControlOption } from "@/test/selectControlOption";
 import type { PropsWithChildren } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 
@@ -9,9 +10,11 @@ import {
   CATALOG_RELEASE_ID,
   activeDefinition,
   readyCatalogDocument,
-  registeredSubject
+  registeredSubject,
+  retiredSubject,
+  unregisteredSubject
 } from "@/application/parameter-catalog/fixtures";
-import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
+import { catalogStateFromFailure, deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 import { DefinitionEditorBody } from "./DefinitionEditorBody";
@@ -30,7 +33,97 @@ function EditorDialog({ children }: PropsWithChildren) {
  * through preview -> confirm -> execute -> continue.
  */
 describe("DefinitionEditorBody", () => {
-  function renderDialog(relatedKnowledge?: Parameters<typeof DefinitionEditorBody>[0]["relatedKnowledge"]) {
+  it.each([
+    ["retired subject", { subjects: [retiredSubject] }],
+    ["retired definition", { definition: { ...activeDefinition, lifecycle: "retired" } }],
+    ["deprecated definition", { definition: { ...activeDefinition, lifecycle: "deprecated" } }],
+    ["retired definition registration", { definition: { ...activeDefinition, registration: { ...registeredSubject.registration, status: "retired", id: "registration-retired" } } }],
+    ["retired subject registration", { subjects: [{ ...registeredSubject, registration: { ...registeredSubject.registration, status: "retired", id: "registration-retired" } }] }],
+    ["missing subject evidence", { subjects: [] }],
+    ["loading", { domainState: deriveCatalogDomainState({ inFlight: true }) }],
+    ["read failure", { domainState: catalogStateFromFailure(new Error("offline")) }],
+    ["conflicting evidence", { domainState: catalogStateFromFailure(new WiseEffApiError("CONFLICT", "stale", { reason: "revision-conflict" }, "req-stale")) }],
+    ["missing author permission", { sessionPermissions: [] }]
+  ] satisfies [string, Partial<Parameters<typeof DefinitionEditorBody>[0]>][])("keeps complete details and history read-only for %s", async (_name, overrides) => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "previewDefinitionReplacement");
+    const publish = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready}
+      catalog={ports.catalog} catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition}
+      subjects={[registeredSubject]} history={<p>保留的变更历史</p>} {...overrides} />);
+    const details = screen.getByRole("region", { name: "定义详情" });
+    expect(details).toHaveTextContent(activeDefinition.subject.canonicalName);
+    expect(details).toHaveTextContent(activeDefinition.currentRevision.displayName);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "主体" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存内容修订" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "预演影响" })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: /查看历史/ }));
+    expect(screen.getByText("保留的变更历史")).toBeVisible();
+    expect(preview).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("allows an author to preview an active unregistered definition without publication authority", async () => {
+    const user = userEvent.setup();
+    const { preview } = renderDialog(undefined, undefined, {
+      sessionPermissions: ["catalog:author"],
+      domainState: { kind: "unregistered", catalogReleaseId: CATALOG_RELEASE_ID, subjectId: unregisteredSubject.id, writesEnabled: false },
+      definition: { ...activeDefinition, registration: { status: "unregistered" } }, subjects: [unregisteredSubject]
+    });
+    await user.type(screen.getByLabelText("显示名"), "更新");
+    await user.type(screen.getByLabelText("修改原因"), "补充说明");
+    expect(screen.getByRole("button", { name: "保存内容修订" })).toBeDisabled();
+    await user.type(screen.getByLabelText("属性键"), "-new");
+    await user.click(screen.getByRole("checkbox", { name: "项目 A" }));
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+    expect(await screen.findByRole("button", { name: "确认并执行迁移" })).toBeDisabled();
+  });
+
+  it("revokes an open migration confirmation when refreshed subject evidence becomes retired", async () => {
+    const user = userEvent.setup();
+    const { catalog, rerender, execute } = renderDialog();
+    await user.type(screen.getByLabelText("属性键"), "-new");
+    await user.type(screen.getByLabelText("修改原因"), "修正身份");
+    await user.click(screen.getByRole("checkbox", { name: "项目 A" }));
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    await user.click(await screen.findByRole("button", { name: "确认并执行迁移" }));
+    expect(screen.getByRole("dialog", { name: "确认执行身份纠错迁移" })).toBeVisible();
+    const props: Parameters<typeof DefinitionEditorBody>[0] = {
+      authoringAllowed: true, publishingAllowed: true, actor: "org-admin",
+      sessionPermissions: ["catalog:author", "catalog:publish"], domainState: ready, catalog,
+      catalogReleaseId: CATALOG_RELEASE_ID, definition: activeDefinition,
+      subjects: [retiredSubject], history: <div />
+    };
+    rerender(<DefinitionEditorBody {...props} />);
+    expect(screen.queryByRole("dialog", { name: "确认执行身份纠错迁移" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "定义详情" })).toHaveTextContent(activeDefinition.subject.canonicalName);
+    rerender(<DefinitionEditorBody {...props} subjects={[registeredSubject]} />);
+    expect(screen.queryByRole("dialog", { name: "确认执行身份纠错迁移" })).not.toBeInTheDocument();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unavailable correction target labelled and blocks its preview after refresh", async () => {
+    const user = userEvent.setup();
+    const target = { ...registeredSubject, id: "target-subject", canonicalName: "target-subject-name" };
+    const { catalog, rerender, preview } = renderDialog(undefined, undefined, { subjects: [registeredSubject, target] });
+    await selectControlOption(screen.getByLabelText("主体"), target.id);
+    await user.type(screen.getByLabelText("修改原因"), "纠正主体");
+    await user.click(screen.getByRole("checkbox", { name: "项目 A" }));
+    rerender(<DefinitionEditorBody authoringAllowed publishingAllowed actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready}
+      catalog={catalog} catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition}
+      subjects={[registeredSubject, { ...target, registration: { status: "retired", id: "target-registration" } }]}
+      history={<div />} projects={[{ id: "proj-a", name: "项目 A" }]} />);
+    expect(screen.getByLabelText("主体")).toHaveTextContent("target-subject-name（当前不可用）");
+    expect(screen.getByRole("button", { name: "预演影响" })).toBeDisabled();
+    expect(preview).not.toHaveBeenCalled();
+  });
+
+  function renderDialog(relatedKnowledge?: Parameters<typeof DefinitionEditorBody>[0]["relatedKnowledge"], createIdempotencyKey = () => "idem-847-correction", overrides: Partial<Parameters<typeof DefinitionEditorBody>[0]> = {}) {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const preview = vi
       .spyOn(ports.catalog, "previewDefinitionReplacement")
@@ -195,6 +288,7 @@ describe("DefinitionEditorBody", () => {
     const view = render(
       <DefinitionEditorBody
         authoringAllowed
+        publishingAllowed
         history={<div />}
         actor="org-admin"
         sessionPermissions={["catalog:author", "catalog:publish"]}
@@ -204,7 +298,9 @@ describe("DefinitionEditorBody", () => {
         definition={activeDefinition}
         relatedKnowledge={relatedKnowledge}
         subjects={[registeredSubject]}
-        createIdempotencyKey={() => "idem-847-correction"}
+        projects={[{ id: "proj-a", name: "项目 A" }, { id: "proj-b", name: "项目 B" }]}
+        createIdempotencyKey={createIdempotencyKey}
+        {...overrides}
       />,
       { wrapper: EditorDialog }
     );
@@ -217,8 +313,39 @@ describe("DefinitionEditorBody", () => {
     renderDialog({ load, onOpenEntry });
     expect(await screen.findByText("定义关联知识")).toBeInTheDocument();
     expect(load).toHaveBeenCalledWith(activeDefinition.id);
+    const disclosure = screen.getByText("相关知识", { selector: "summary" }).closest("details")!;
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("显示名").compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("button", { name: "定义关联知识" })).not.toBeVisible();
+    await userEvent.setup().click(screen.getByText("相关知识", { selector: "summary" }));
     await userEvent.setup().click(screen.getByRole("button", { name: "定义关联知识" }));
     expect(onOpenEntry).toHaveBeenCalledWith("kb-903");
+  });
+
+  it("reports dirty and pending state and follows content publication to completion", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready", publicationOutcome: "queued" });
+    const read = vi.spyOn(ports.catalog, "getPublication").mockRejectedValueOnce(new Error("temporary transport failure")).mockResolvedValue({ item: {
+      id: "job-content", candidateId: "candidate-content", status: "active", attemptCount: 1,
+      effective: true, isCurrent: true, currentness: "active", failure: null
+    } });
+    const state = vi.fn();
+    render(<DefinitionEditorBody authoringAllowed publishingAllowed history={<div />} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={ready} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition} subjects={[registeredSubject]}
+      onEditorStateChange={state} />);
+    expect(screen.queryByRole("group", { name: "受影响项目" })).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("显示名"), "更新");
+    await user.type(screen.getByLabelText("修改原因"), "补充显示名称");
+    expect(state).toHaveBeenLastCalledWith({ dirty: true, pending: false });
+    await user.click(screen.getByRole("button", { name: "保存内容修订" }));
+    expect(await screen.findByRole("region", { name: "内容修订结果" })).toHaveTextContent("发布已入队");
+    expect(screen.getByRole("button", { name: "刷新发布状态" })).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("当前输入已保留"), { timeout: 3000 });
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "刷新发布状态" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(state).toHaveBeenLastCalledWith({ dirty: false, pending: false });
   });
 
   it("requires a reason for an exact Definition semantic revision without policyTarget or migration", async () => {
@@ -301,12 +428,13 @@ describe("DefinitionEditorBody", () => {
     await user.type(screen.getByLabelText("说明"), "旧说明");
     await user.type(screen.getByLabelText("最大值"), "64");
     await user.type(screen.getByLabelText("属性键"), "-old-edit");
-    await user.type(screen.getByLabelText("受影响项目"), "old-project");
+    await user.click(screen.getByRole("checkbox", { name: "项目 A" }));
     await user.type(screen.getByLabelText("修改原因"), "旧审计原因");
 
     rerender(
       <DefinitionEditorBody
         authoringAllowed
+        publishingAllowed
         history={<div />}
         actor="org-admin"
         sessionPermissions={["catalog:author", "catalog:publish"]}
@@ -326,7 +454,7 @@ describe("DefinitionEditorBody", () => {
     expect(screen.getByLabelText("取值形状")).toHaveAttribute("data-value", "integer");
     expect(screen.getByLabelText("最小值")).toHaveValue("2");
     expect(screen.getByLabelText("最大值")).toHaveValue("8");
-    expect(screen.getByLabelText("受影响项目")).toHaveValue("");
+    expect(screen.queryByRole("group", { name: "受影响项目" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("修改原因")).toHaveValue("");
     const save = screen.getByRole("button", { name: "保存内容修订" });
     expect(save).toBeDisabled();
@@ -356,7 +484,7 @@ describe("DefinitionEditorBody", () => {
     expect(button).toBeDisabled();
     expect(preview).not.toHaveBeenCalled();
 
-    await user.type(screen.getByLabelText("受影响项目"), "proj-a");
+    await user.click(screen.getByRole("checkbox", { name: "项目 A" }));
     await user.type(screen.getByLabelText("修改原因"), "identity was mis-authored");
     expect(button).toBeEnabled();
   });
@@ -367,7 +495,8 @@ describe("DefinitionEditorBody", () => {
 
     await user.clear(screen.getByLabelText("属性键"));
     await user.type(screen.getByLabelText("属性键"), "gpio-int-v2");
-    await user.type(screen.getByLabelText("受影响项目"), "proj-a, proj-b");
+    await user.click(screen.getByRole("checkbox", { name: "项目 A" }));
+    await user.click(screen.getByRole("checkbox", { name: "项目 B" }));
     await user.type(screen.getByLabelText("修改原因"), "identity was mis-authored");
     await user.click(screen.getByRole("button", { name: "预演影响" }));
 
@@ -386,6 +515,19 @@ describe("DefinitionEditorBody", () => {
 
     const previewRegion = await screen.findByRole("region", { name: "纠错影响预览" });
     expect(within(previewRegion).getByText("可迁移")).toBeInTheDocument();
+    expect(screen.getByLabelText("属性键")).toBeDisabled();
+    for (const label of ["主体", "取值形状"]) {
+      const trigger = screen.getByRole("combobox", { name: label });
+      expect(trigger).toHaveAttribute("disabled");
+      expect(trigger).toHaveAttribute("data-disabled");
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    }
+    expect(screen.getByRole("checkbox", { name: "项目 A" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "返回修改" }));
+    expect(screen.getByLabelText("属性键")).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "确认并执行迁移" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
 
     await user.click(screen.getByRole("button", { name: "确认并执行迁移" }));
     const confirm = await screen.findByRole("dialog", { name: /确认执行身份纠错迁移/ });
@@ -413,6 +555,31 @@ describe("DefinitionEditorBody", () => {
       catalogReleaseId: CATALOG_RELEASE_ID,
       ifMatch: '"drep_1-v1"'
     });
+  });
+
+  it("uses a fresh execution key for a new preview after a failed execution", async () => {
+    const user = userEvent.setup();
+    let key = 0;
+    const { preview, execute } = renderDialog(undefined, () => `attempt-${++key}`);
+    execute.mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "Preview expired", { reason: "revision-conflict" }, "req-expired"));
+    await user.type(screen.getByLabelText("属性键"), "-first");
+    await user.click(screen.getByRole("checkbox", { name: "项目 A" }));
+    await user.type(screen.getByLabelText("修改原因"), "修正身份");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    await user.click(await screen.findByRole("button", { name: "确认并执行迁移" }));
+    await user.click(await screen.findByRole("button", { name: "确认执行" }));
+    await screen.findByRole("alert");
+    expect(execute).toHaveBeenCalledTimes(1);
+    const original = await preview.mock.results[0].value;
+    preview.mockResolvedValue({ item: { ...original.item, previewId: "preview-new", previewFingerprint: "sha256:" + "b".repeat(64) } });
+    await user.click(screen.getByRole("button", { name: "返回修改" }));
+    await user.type(screen.getByLabelText("属性键"), "-second");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    await user.click(await screen.findByRole("button", { name: "确认并执行迁移" }));
+    await user.click(await screen.findByRole("button", { name: "确认执行" }));
+    await screen.findByRole("region", { name: "纠错执行结果" });
+    expect(execute.mock.calls[1][0]).toMatchObject({ previewId: "preview-new", idempotencyKey: "attempt-4" });
+    expect(execute.mock.calls[0][0]).toMatchObject({ idempotencyKey: "attempt-2" });
   });
 
   it("retries the same command while the publication manager installs the successor release", async () => {
@@ -469,6 +636,7 @@ describe("DefinitionEditorBody", () => {
     render(
       <DefinitionEditorBody
         authoringAllowed
+        publishingAllowed
         history={<div />}
         actor="org-admin"
         sessionPermissions={["catalog:author", "catalog:publish"]}
@@ -477,13 +645,14 @@ describe("DefinitionEditorBody", () => {
         catalogReleaseId={CATALOG_RELEASE_ID}
         definition={activeDefinition}
         subjects={[registeredSubject]}
+        projects={[{ id: "proj-a", name: "项目 A" }]}
         createIdempotencyKey={() => "idem-847-activation"}
       />,
       { wrapper: EditorDialog }
     );
 
     await user.type(screen.getByLabelText("属性键"), "gpio-int-v3");
-    await user.type(screen.getByLabelText("受影响项目"), "proj-a");
+    await user.click(screen.getByRole("checkbox", { name: "项目 A" }));
     await user.type(screen.getByLabelText("修改原因"), "activation retry");
     await user.click(screen.getByRole("button", { name: "预演影响" }));
     await screen.findByRole("region", { name: "纠错影响预览" });
@@ -539,6 +708,9 @@ describe("DefinitionEditorBody", () => {
     expect(detail).toHaveTextContent(activeDefinition.subject.id);
     expect(detail).toHaveTextContent(activeDefinition.id);
     expect(detail).toHaveTextContent(`修订 #${activeDefinition.currentRevision.revisionNumber}`);
+    expect(detail).toHaveTextContent(activeDefinition.currentRevision.displayName);
+    expect(detail).toHaveTextContent("整数");
+    expect(detail).toHaveTextContent("us");
     expect(screen.queryByRole("button", { name: "保存内容修订" })).not.toBeInTheDocument();
 
     expect(screen.getByText(policyCount === null ? /策略使用量暂不可用/ : /策略 0/)).toBeInTheDocument();

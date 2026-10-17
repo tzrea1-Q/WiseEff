@@ -19,7 +19,7 @@ import { ParameterModuleMappingPanel } from "./ParameterModuleMappingPanel";
 afterEach(() => cleanup());
 
 describe("historical registry isolation", () => {
-  it("keeps all canonical subject kinds visible when returning to the discovery queue URL", async () => {
+  it("keeps discovery separate from the subject list and restores subjects when returning to modules", async () => {
     const subjects = [
       { ...registeredSubject, canonicalName: "acme,power" },
       { ...unregisteredSubject, id: "subject_config", type: "configuration-schema" as const, canonicalName: "wiseeff.issue897.settings" },
@@ -51,21 +51,25 @@ describe("historical registry isolation", () => {
     };
     const view = render(<ParameterModuleMappingPanel {...props} />);
     expect(await screen.findByText("acme,power", { exact: true })).toBeVisible();
-    await userEvent.click(screen.getByRole("tab", { name: "发现队列" }));
+    await userEvent.click(screen.getByRole("tab", { name: "来源识别" }));
     expect(props.onNavigate).toHaveBeenLastCalledWith("/parameter-admin/modules?tab=queue");
     view.rerender(<ParameterModuleMappingPanel {...props} search="?tab=queue" />);
-    expect(screen.getByLabelText("规范主体列表")).toBeVisible();
-    expect(screen.getByRole("link", { name: "前往 Catalog 提交定义提案" }))
-      .toHaveAttribute("href", "/parameter-admin/specs");
+    expect(screen.queryByRole("list", { name: "规范主体列表" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "打开待审核事项" }))
+      .toHaveAttribute("href", "/parameter-admin/specs?review=open");
     view.rerender(<div>Catalog</div>);
     view.rerender(<ParameterModuleMappingPanel {...props} search="?tab=queue" />);
+    expect(await screen.findByRole("region", { name: "来源识别结果" })).toBeVisible();
+    expect(screen.queryByRole("list", { name: "规范主体列表" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "来源识别" })).toHaveAttribute("aria-selected", "true");
+    view.rerender(<ParameterModuleMappingPanel {...props} />);
     const subjectsList = await screen.findByRole("list", { name: "规范主体列表" });
     for (const subject of subjects) {
       expect(within(subjectsList).getByText(subject.canonicalName, { exact: true })).toBeVisible();
     }
-    expect(screen.getByRole("button", { name: "调整归属：acme,power", exact: true })).toBeVisible();
-    expect(screen.getByRole("region", { name: "驱动兼容发现" })).toBeVisible();
-    expect(screen.getByRole("tab", { name: "发现队列" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "调整归属：acme,power" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "来源识别结果" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "模块" })).toHaveAttribute("aria-selected", "true");
   });
 
   it.each(["ready history", "failed history"])(
@@ -85,7 +89,6 @@ describe("historical registry isolation", () => {
       const pendingHistory = new Promise<never>((_resolve, reject) => { rejectHistory = reject; });
       const repository = createTestModuleRegistryRepository({
         getRegistry: vi.fn().mockResolvedValue(registry),
-        getDiscoveryHints: vi.fn(),
         listDriverRegistry: vi.fn().mockReturnValue(
           scenario === "failed history" ? pendingHistory : Promise.resolve({ items: [] })
         )
@@ -123,16 +126,16 @@ describe("historical registry isolation", () => {
       const canonical = await screen.findByRole("region", { name: "规范主体归属" });
       expect(await within(canonical).findByText(registeredSubject.canonicalName)).toBeInTheDocument();
       expect(canonical).toHaveTextContent("归属：规范驱动组");
-      expect(canonical).toHaveTextContent("1 个主体 · 14 个有效定义");
+      expect(canonical).toHaveTextContent("14 个有效定义");
       expect(screen.getByRole("treeitem", { name: /规范驱动组/ })).toBeInTheDocument();
       expect(screen.queryByText("没有匹配的模块。")).not.toBeInTheDocument();
       expect(screen.queryByText("正在加载模块注册表…")).not.toBeInTheDocument();
-      expect(repository.getDiscoveryHints).not.toHaveBeenCalled();
-      await userEvent.click(screen.getByRole("tab", { name: "发现队列" }));
+      expect(repository).not.toHaveProperty("getDiscoveryHints");
+      await userEvent.click(screen.getByRole("tab", { name: "来源识别" }));
       expect(await screen.findByText("vendor,device")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "编写覆盖解析" })).not.toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "前往 Catalog 提交定义提案" }))
-        .toHaveAttribute("href", "/parameter-admin/specs");
+      expect(screen.getByRole("link", { name: "打开待审核事项" }))
+        .toHaveAttribute("href", "/parameter-admin/specs?review=open");
 
       if (scenario === "failed history") {
         await userEvent.click(screen.getByRole("tab", { name: "历史注册表" }));
@@ -141,8 +144,11 @@ describe("historical registry isolation", () => {
         rejectHistory(new Error("historical registry unavailable"));
         expect(await within(historical).findByRole("alert")).toHaveTextContent("无法加载历史驱动注册表，请重试。");
         expect(screen.getAllByRole("alert")).toHaveLength(1);
-        expect(canonical).toHaveTextContent(registeredSubject.canonicalName);
-        expect(canonical).toHaveTextContent("归属：规范驱动组");
+        expect(screen.queryByRole("region", { name: "规范主体归属" })).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole("tab", { name: "模块" }));
+        const restored = await screen.findByRole("region", { name: "规范主体归属" });
+        expect(await within(restored).findByText(registeredSubject.canonicalName)).toBeVisible();
+        expect(restored).toHaveTextContent("归属：规范驱动组");
         expect(screen.getByRole("treeitem", { name: /规范驱动组/ })).toBeInTheDocument();
       }
     }
@@ -153,11 +159,11 @@ describe("historical registry isolation", () => {
     const pendingHistory = new Promise<never>((_resolve, reject) => { rejectHistory = reject; });
     const listDriverRegistry = vi.fn()
       .mockReturnValueOnce(pendingHistory)
+      .mockReturnValueOnce(pendingHistory)
       .mockResolvedValue({ items: [] });
     const getRegistry = vi.fn().mockResolvedValue(EMPTY_PARAMETER_MODULE_REGISTRY);
-    const getDiscoveryHints = vi.fn();
     const repository = createTestModuleRegistryRepository({
-      getRegistry, getDiscoveryHints, listDriverRegistry
+      getRegistry, listDriverRegistry
     });
     const listSubjects = vi.fn().mockResolvedValue({
       items: [unregisteredSubject], totalCount: 1, hasMore: false, nextCursor: null,
@@ -191,19 +197,18 @@ describe("historical registry isolation", () => {
     rejectHistory(new Error("historical registry unavailable"));
     expect(await within(historical).findByRole("alert")).toHaveTextContent("无法加载历史驱动注册表，请重试。");
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(within(canonical).queryByRole("alert")).not.toBeInTheDocument();
-    expect(canonical).toHaveTextContent(unregisteredSubject.canonicalName);
-    expect(canonical).toHaveTextContent("1 个有效主体");
+    expect(screen.queryByRole("region", { name: "规范主体归属" })).not.toBeInTheDocument();
 
     fireEvent.click(within(historical).getByRole("button", { name: "重试历史驱动注册表" }));
     await waitFor(() => expect(historical).toHaveAttribute("aria-busy", "false"));
     expect(within(historical).queryByRole("alert")).not.toBeInTheDocument();
-    expect(listDriverRegistry).toHaveBeenCalledTimes(2);
+    expect(listDriverRegistry).toHaveBeenCalledTimes(3);
     expect(getRegistry).toHaveBeenCalledTimes(1);
     expect(listSubjects).toHaveBeenCalledTimes(1);
-    expect(getDiscoveryHints).not.toHaveBeenCalled();
-    expect(canonical).toHaveTextContent("1 个有效主体");
+    expect(repository).not.toHaveProperty("getDiscoveryHints");
     await userEvent.click(screen.getByRole("tab", { name: "模块" }));
-    expect(canonical).toBeVisible();
+    const restored = await screen.findByRole("region", { name: "规范主体归属" });
+    expect(await within(restored).findByText(unregisteredSubject.canonicalName)).toBeVisible();
+    expect(restored).toHaveTextContent("1 个有效主体");
   });
 });
