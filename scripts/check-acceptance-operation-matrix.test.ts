@@ -185,7 +185,7 @@ describe("acceptance operation matrix", () => {
       "PCAT-DEFINITION-COLLECTION-001",
       "PCAT-DEFINITION-LIFECYCLE-001"
     ];
-    const operations = acceptanceOperations.filter((operation) => operation.id.startsWith("PCAT-"));
+    const operations = acceptanceOperations.filter((operation) => operation.id.startsWith("PCAT-") && operation.coverage === "automated");
     const catalogSpec = "e2e/acceptance/parameter-catalog.acceptance.spec.ts";
     const governanceSpec = "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts";
     const negativeSpec = "e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts";
@@ -234,6 +234,34 @@ describe("acceptance operation matrix", () => {
         deferred: false
       }))
     );
+  });
+
+  it.each([
+    {
+      id: "PCAT-REGISTRATION-INITIALIZE-001",
+      specFiles: [
+        "src/components/parameter-admin-next/CanonicalSubjectPlacementPanel.test.tsx",
+        "src/features/parameter-catalog-governance/RegistrationDialog.test.tsx",
+        "server/modules/parameter-governance/registration/integration.test.ts"
+      ]
+    },
+    {
+      id: "PROJ-ARCHIVE-001",
+      specFiles: [
+        "src/components/admin/ProjectAdminTable.test.tsx",
+        "src/components/parameter-admin-next/ProjectsOperationsPanel.test.tsx",
+        "src/infrastructure/http/parameterAdminClient.test.ts",
+        "server/modules/parameters/projectAdminMutations.test.ts"
+      ]
+    }
+  ])("keeps $id deferred with exact focused test owners and pending browser/audit evidence", ({ id, specFiles }) => {
+    const operation = acceptanceOperations.find((entry) => entry.id === id);
+    expect(operation).toMatchObject({
+      coverage: "future",
+      acceptanceIds: [id],
+      deferralReason: expect.stringMatching(/browser.*audit.*pending/i)
+    });
+    expect(operation?.specFiles).toEqual(specFiles);
   });
 
   it("planned operation markers never satisfy an automated operation", () => {
