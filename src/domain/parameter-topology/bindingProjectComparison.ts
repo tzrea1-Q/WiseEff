@@ -1,4 +1,5 @@
 export type BindingComparePeer = {
+  valueState?: "present" | "deleted" | null;
   /** Canonical binding instance identity. */
   bindingId?: string;
   projectId: string;
@@ -22,6 +23,7 @@ export type BindingComparePeer = {
 };
 
 export type BindingComparisonRow = {
+  valueState?: "present" | "deleted" | null;
   bindingId?: string;
   comparisonKey: string;
   projectId: string;
@@ -134,7 +136,7 @@ export function bindingComparePeerDisplayLabel(peer: BindingComparePeer): string
 }
 
 function buildDelta(baseRawValue: string, target: BindingComparisonRow | null): BindingCompareDelta {
-  if (!target) {
+  if (!target || target.valueState === "deleted") {
     return { kind: "missing", label: "目标项目尚未配置该参数" };
   }
   if (baseRawValue === target.rawValue) {
@@ -157,6 +159,7 @@ export function buildBindingProjectComparison(
         previous.projectId === peer.projectId &&
         previous.projectName === peer.projectName &&
         previous.rawValue === peer.rawValue &&
+        previous.valueState === peer.valueState &&
         previous.sourceIdentity === peer.sourceIdentity &&
         previous.sourceOccurrenceId === peer.sourceOccurrenceId &&
         previous.sourceRef === peer.sourceRef &&
@@ -191,6 +194,7 @@ export function buildBindingProjectComparison(
       projectId: peer.projectId,
       projectName: peer.projectName,
       rawValue: peer.rawValue,
+      valueState: peer.valueState,
       sourceIdentity: peer.sourceIdentity,
       sourceOccurrenceId: peer.sourceOccurrenceId,
       sourceRef: peer.sourceRef,
@@ -293,7 +297,7 @@ export function buildBindingCompareOverview(
       isBase: row.isBase,
       isTarget: row.isTarget
     };
-    if (row.rawValue.trim() === "") {
+    if (row.valueState === "deleted" || (row.rawValue.trim() === "" && row.valueState !== "present")) {
       missing.push(project);
     } else if (row.rawValue === baseRawValue) {
       same.push(project);

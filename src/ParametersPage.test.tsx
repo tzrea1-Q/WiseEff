@@ -211,12 +211,14 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
   const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {
     setActions(nextActions);
   }, []);
-  const contextValue = useMemo(() => ({ setActions: setStableActions, setLeadingActions: () => {} }), [setStableActions]);
+  const [leadingActions, setLeadingActions] = useState<ReactNode | null>(null);
+  const contextValue = useMemo(() => ({ setActions: setStableActions, setLeadingActions }), [setStableActions]);
 
   return (
     <TopBarActionsContext.Provider value={contextValue}>
       <header className="topbar">
         <div className="topbar-page-actions" role="toolbar" aria-label="项目参数用户工作台页面操作">
+          {leadingActions}
           {actions}
         </div>
       </header>
@@ -599,7 +601,7 @@ describe("ParametersPage mock detail boundary", () => {
 describe("ParametersPage (抽出后的模块)", () => {
   it("可以从独立模块引入并渲染工作台根节点", () => {
     renderPage();
-    expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数" })).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Agent 参数洞察" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("参数筛选")).not.toBeInTheDocument();
   });
@@ -1730,7 +1732,7 @@ describe("ParametersPage API topology workspace", () => {
       </TopBarActionsHarness>
     );
 
-    expect(await screen.findByText(/尚未上传项目 DTS/i)).toBeInTheDocument();
+    expect(await screen.findByText("该项目尚无参数配置，请联系项目管理员导入 DTS 文件。")).toBeInTheDocument();
     const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     expect(screen.queryByRole("region", { name: "项目拓扑工作区" })).not.toBeInTheDocument();
     expect(workspace.getAttribute("data-config-set-id") ?? "").toBe("");

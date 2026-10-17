@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { declarationsFor, hasRule, readStylesheet } from "../../test/cssAssertions";
+import { declarationsFor, readStylesheet } from "../../test/cssAssertions";
 
-describe("DtsBindingDetailDialog styles after ModalDialog migration", () => {
-  it("gives the portaled card its own chrome and pins scroll to the body", () => {
-    const styles = readStylesheet("src/styles.css");
-    const card = declarationsFor(styles, ".dts-binding-detail-dialog");
-    expect(card["max-height"]).toBe("calc(100dvh - var(--space-12))");
-    expect(card.padding).toBe("var(--space-4)");
-    expect(card.background).toBe("var(--surface)");
-    expect(card["box-shadow"]).toBe("var(--shadow-3)");
-    expect(hasRule(styles, ".modal-backdrop.dts-binding-detail-dialog__overlay.is-suspended")).toBe(true);
+describe("DtsBindingDetailDialog unified inspector styles", () => {
+  it("uses shared surface, text, typography and spacing tokens", () => {
+    const styles = readStylesheet("src/components/parameter-topology/parameter-inspector.css");
+    const card = declarationsFor(styles, ".dts-binding-detail-dialog.parameter-inspector");
+    expect(card.background).toBe("var(--surface-raised)");
+    expect(card.color).toBe("var(--text)");
+    const body = declarationsFor(styles, ".parameter-inspector__content.dts-binding-detail-dialog__content");
+    expect(body.padding).toBe("var(--space-6)");
+    expect(declarationsFor(styles, ".parameter-inspector h2")["font-size"]).toBe("var(--text-lg)");
+    expect(declarationsFor(styles, ".parameter-inspector__editor").gap).toBe("var(--space-2)");
   });
 });

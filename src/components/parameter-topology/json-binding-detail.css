@@ -1,0 +1,75 @@
+.json-binding-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow: hidden;
+}
+
+.json-binding-detail__head,
+.json-binding-detail__footer,
+.json-binding-detail__filter-context {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.json-binding-detail__filter-context {
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.json-binding-detail__head {
+  justify-content: space-between;
+}
+
+.json-binding-detail__head h2 {
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.json-binding-detail__head p,
+.json-binding-detail__hint {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.json-binding-detail__body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.json-binding-detail__configuration {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  margin-bottom: var(--space-4);
+}
+
+.json-binding-detail__configuration section {
+  min-width: 0;
+}
+
+.json-binding-detail__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.json-binding-detail__footer {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.json-binding-detail__footer > span {
+  margin-right: auto;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.json-binding-detail code,
+.json-binding-detail dd {
+  overflow-wrap: anywhere;
+}

@@ -19,10 +19,11 @@ describe("canonical topology query wire", () => {
   });
 
   it("retains exact event identities and permits a revision event before the first value", () => {
-    const response = { items: [{ ...identity, currentValueId: undefined, id: "event-a", changedAt: "2026-09-23T00:00:00Z",
+    const response = { items: [{ ...identity, currentValueId: undefined, id: "event-a", changedAt: "2026-09-23T00:00:00Z", actor: "Local editor",
       recordedAt: "2026-09-23T00:00:00Z", oldDefinitionRevisionId: null, newDefinitionRevisionId: "drev-2",
       oldCurrentValueId: null, newCurrentValueId: null, fromRawValue: null, toRawValue: null, valueState: null }] };
     expect(bindingHistoryListResponseSchema.parse(response)).toEqual(response);
+    expect(bindingHistoryListResponseSchema.parse({ items: [{ ...response.items[0], actor: null }] }).items[0].actor).toBeNull();
     expect(bindingHistoryListResponseSchema.safeParse({ items: [{ ...response.items[0], bindingId: undefined }] }).success).toBe(false);
     expect(bindingHistoryListResponseSchema.safeParse({ ...response, unexpected: true }).success).toBe(false);
   });

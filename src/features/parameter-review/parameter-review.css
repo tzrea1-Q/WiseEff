@@ -951,6 +951,10 @@
   gap: var(--space-2);
 }
 
+.review-inbox.review-inbox--list-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .review-inbox__toolbar {
   display: flex;
   flex-wrap: wrap;

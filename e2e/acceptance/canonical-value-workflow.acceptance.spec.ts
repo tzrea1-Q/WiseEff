@@ -2,7 +2,7 @@ import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { createHash } from "node:crypto";
 import pg from "pg";
-import { expect, test, type APIRequestContext } from "playwright/test";
+import { expect, test, type APIRequestContext, type Request } from "playwright/test";
 import { compileCatalogRelease } from "../../server/modules/catalog-kernel/compiler/index";
 import { installPublishedRelease } from "../../server/modules/catalog-kernel/install/installer";
 import { jsonCatalogReleaseSource } from "../../server/modules/catalog-kernel/interface";
@@ -224,20 +224,23 @@ test.describe("canonical value workflow on real sources", () => {
     const createDraft = async (action: "set" | "delete" = "set") => {
       const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
       await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("iin_max");
-      await workspace.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /^(编辑|继续编辑) iin_max/ }).click();
-      const dialog = page.getByRole("dialog", { name: "修改草稿" });
+      await workspace.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /^参数详情 iin_max/ }).click();
+      const dialog = page.getByRole("dialog", { name: /参数详情$/ });
       if (action === "delete") {
-        await dialog.getByRole("button", { name: "删除属性", exact: true }).click();
-        await expect(dialog.getByLabel("目标值", { exact: true })).toHaveCount(0);
-        await expect(dialog).toContainText("批准后生效");
+        await dialog.getByText("更多修改操作", { exact: true }).click();
+        await dialog.getByRole("button", { name: "移除属性", exact: true }).click();
+        await expect(dialog.getByLabel(/^目标值(?:\s*·\s*.+)?$/)).toHaveCount(0);
+        await expect(dialog).toContainText("已选择移除属性，提交审核通过后生效。");
       } else {
-        await dialog.getByLabel("目标值", { exact: true }).fill("<1200>");
+        await dialog.getByLabel(/^目标值(?:\s*·\s*.+)?$/).fill("1200");
       }
       await dialog.getByLabel("修改原因", { exact: true }).fill("Local canonical source review");
       const created = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/parameter-bindings/${bindingId}/drafts`));
-      await dialog.getByRole("button", { name: "校验并加入本轮" }).click();
+      await dialog.getByRole("button", { name: "保存草稿" }).click();
       const response = await created;
       expect(response.status(), await response.text()).toBe(201);
+      await expect(dialog.getByText("草稿已保存，待提交审核。", { exact: true })).toBeVisible();
+      await dialog.getByRole("button", { name: "关闭参数详情" }).click();
       return (await response.json()).item.draftId as string;
     };
     const submit = async (expectedValueId = initialValueId) => {
@@ -343,13 +346,13 @@ test.describe("canonical value workflow on real sources", () => {
     expect(response.ok(), await response.text()).toBe(true);
     expect((await response.json()).item.status).toBe("approved");
     await assertTracking(approvedId, "approved");
-    const rejectedRow = page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${rejectedId}"]`);
+    const rejectedRow = page.getByRole("table", { name: "我的提交", exact: true }).locator(`[data-review-row-id="${rejectedId}"]`);
     await expect(rejectedRow).toContainText("已驳回");
     const selectRejected = rejectedRow.getByRole("button", { name: /查看 .+ 提交详情$/ });
     await selectRejected.focus();
     await selectRejected.press("Enter");
     await expect(page).toHaveURL(new RegExp(`request=${rejectedId}(?:&|$)`));
-    await expect(page.getByRole("complementary", { name: "审阅详情", exact: true })).toBeFocused();
+    await expect(page.getByRole("complementary", { name: "提交详情", exact: true })).toBeFocused();
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
     await expect(page.getByRole("article", { name: "源文件请求详情" }).locator("details").getByText(rejectedId, { exact: true }).first()).toBeVisible();
     await page.getByRole("article", { name: "源文件请求详情" }).getByText("查看完整源文件", { exact: true }).click();
@@ -546,23 +549,47 @@ test.describe("canonical JSON deletion on a real source", () => {
     await page.getByRole("tab", { name: /JSON 参数/ }).click();
     const panel = page.getByRole("region", { name: "JSON 参数", exact: true });
     await expect(panel).toBeVisible();
-    await panel.getByRole("button", { name: "编辑 iin_max" }).click();
-    const dialog = page.getByRole("dialog", { name: "修改草稿" });
+    await panel.getByRole("button", { name: "参数详情 iin_max" }).click();
+    const dialog = page.getByRole("dialog", { name: /参数详情$/ });
     await dialog.getByLabel("修改原因", { exact: true }).fill("Remove obsolete JSON member");
+    const invalidDraftPosts: string[] = [];
+    const captureInvalidDraftPost = (browserRequest: Request) => {
+      if (browserRequest.method() === "POST" && browserRequest.url().endsWith(`/parameter-bindings/${bindingId}/drafts`)) invalidDraftPosts.push(browserRequest.url());
+    };
+    page.on("request", captureInvalidDraftPost);
     await dialog.getByLabel("目标值", { exact: true }).fill("not-json");
-    const invalidEdit = page.waitForResponse(r => r.request().method() === "POST"
-      && r.url().endsWith(`/parameter-bindings/${bindingId}/drafts`));
-    await dialog.getByRole("button", { name: "校验并创建草稿", exact: true }).click();
-    const invalidResponse = await invalidEdit;
+    await expect(dialog.getByRole("button", { name: "保存草稿", exact: true })).toBeDisabled();
+    await expect(dialog.getByLabel("目标值", { exact: true })).toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.getByText("JSON 语法解析异常，请检查标点及闭合", { exact: true })).toBeVisible();
+    expect(invalidDraftPosts).toEqual([]);
+    page.off("request", captureInvalidDraftPost);
+    // Exercise the authenticated server boundary separately from client-side syntax validation.
+    const sourceRevision = await withPgClient(client => client.query<{ config_revision_id: string }>(
+      `select pin.config_revision_id from parameter_catalog.project_parameter_bindings binding
+       join parameter_catalog.project_value_source_pins pin on pin.binding_id=binding.id and pin.project_value_id=binding.current_value_id
+         and pin.organization_id=binding.organization_id and pin.project_id=binding.project_id
+       where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3`, [organizationId, jsonProjectId, bindingId]));
+    expect(sourceRevision.rows).toHaveLength(1);
+    const invalidResponse = await request.post(apiRoute(`/api/v2/projects/${jsonProjectId}/parameter-bindings/${bindingId}/drafts`), {
+      headers: authHeadersForRole("software-user"),
+      data: { baseRevisionId: sourceRevision.rows[0]!.config_revision_id,
+        sourceTarget: { format: "json", sourceText: "not-json" }, reason: "Remove obsolete JSON member" }
+    });
     expect(invalidResponse.status(), await invalidResponse.text()).toBe(400);
-    await expect(dialog.getByRole("alert")).toContainText("目标值未通过校验");
+    const draftsAfterInvalid = await request.get(apiRoute(`/api/v2/projects/${jsonProjectId}/parameter-value-drafts`), { headers: authHeadersForRole("software-user") });
+    expect(draftsAfterInvalid.status(), await draftsAfterInvalid.text()).toBe(200);
+    expect((await draftsAfterInvalid.json()).items).toEqual([]);
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     const created = page.waitForResponse(r => r.request().method() === "POST"
       && r.url().endsWith(`/parameter-bindings/${bindingId}/drafts`));
-    await dialog.getByRole("button", { name: "创建删除草稿", exact: true }).click();
+    await dialog.getByText("属性操作", { exact: true }).click();
+    await dialog.getByRole("checkbox", { name: "删除此属性", exact: true }).check();
+    await dialog.getByRole("button", { name: "保存删除草稿", exact: true }).click();
     const draftResponse = await created;
     expect(draftResponse.status(), await draftResponse.text()).toBe(201);
     const draftId = (await draftResponse.json()).item.draftId as string;
+    await expect(dialog.getByText("草稿已保存，待提交审核。当前生效值未改变。", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "关闭参数详情" }).click();
     const persistedDrafts = await request.get(apiRoute(`/api/v2/projects/${jsonProjectId}/parameter-value-drafts`), {
       headers: authHeadersForRole("software-user")
     });

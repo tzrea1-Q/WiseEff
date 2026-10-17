@@ -40,6 +40,14 @@ function renderCompare(
 }
 
 describe("DtsBindingCompareDialog", () => {
+  it("shows a single selection prompt in embedded details before offering a draft action", () => {
+    renderCompare({ embedded: true });
+    expect(screen.getByRole("combobox", { name: "对比目标配置实例" })).toBeInTheDocument();
+    expect(screen.queryByText("请选择要比较的配置实例")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "使用该项目配置加入草稿" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Nebula 高频调试项目/ }));
+    expect(screen.getByRole("button", { name: "使用该项目配置加入草稿" })).toBeEnabled();
+  });
   it("renders as a ModalDialog card named and described from the title, not the backdrop", () => {
     renderCompare();
 
@@ -113,7 +121,7 @@ describe("DtsBindingCompareDialog", () => {
 
     const compare = screen.getByRole("dialog", { name: "gpio_int 跨项目对比" });
     expect(within(compare).getByLabelText("对比目标配置实例")).toHaveAttribute("data-value", "");
-    expect(within(compare).getAllByText("请选择要比较的配置实例")).toHaveLength(2);
+    expect(within(compare).getAllByText("请选择要比较的配置实例")).toHaveLength(1);
 
     const overview = within(compare).getByRole("list", { name: "跨项目对比" });
     const entries = within(overview).getAllByRole("listitem").filter((item) => item.hasAttribute("data-kind"));
@@ -137,7 +145,7 @@ describe("DtsBindingCompareDialog", () => {
     renderCompare({ peers: [] });
 
     const compare = screen.getByRole("dialog", { name: "gpio_int 跨项目对比" });
-    expect(within(compare).getAllByText("暂无可比较实例")).toHaveLength(2);
+    expect(within(compare).getAllByText("暂无可比较实例")).toHaveLength(1);
     expect(within(compare).queryByText("请选择要比较的配置实例")).not.toBeInTheDocument();
   });
 
@@ -159,5 +167,22 @@ describe("DtsBindingCompareDialog", () => {
     expect(within(compare).getByText("值的固定修订与当前有效修订不同")).toBeInTheDocument();
     expect(within(compare).getByText("definition-revision-fixed")).toBeInTheDocument();
     expect(within(compare).getByText("binding-revision-effective")).toBeInTheDocument();
+  });
+
+  it("embeds without a nested modal and references a present boolean with empty raw text", () => {
+    const { onUseCompareAsDraft } = renderCompare({ embedded: true,
+      baseEffectiveValue: { kind: "boolean", present: true }, baseRawValue: "",
+      peers: [{ projectId: "peer", projectName: "参考项目", rawValue: "", valueState: "present" }] });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getAllByText("属性存在").length).toBeGreaterThan(0);
+    expect(screen.getByText("全部相同")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "使用该项目配置加入草稿" }));
+    expect(onUseCompareAsDraft).toHaveBeenCalledWith({ rawValue: "", reason: "参考 参考项目 当前配置生成草稿" });
+  });
+
+  it("cannot reference a deleted property as a present boolean", () => {
+    renderCompare({ baseEffectiveValue: { kind: "boolean", present: true },
+      peers: [{ projectId: "peer", projectName: "参考项目", rawValue: "", valueState: "deleted" }] });
+    expect(screen.getByRole("button", { name: "使用该项目配置加入草稿" })).toBeDisabled();
   });
 });

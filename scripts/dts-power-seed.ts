@@ -19,7 +19,7 @@ import {
 } from "../server/modules/parameter-modules/modulePlacement";
 import { compatibleSourceKey } from "../server/modules/parameter-modules/ensureAttributionModuleForBinding";
 import { isParameterSurfaceRow } from "../server/modules/parameter-topology/parameterSurface";
-import { mergePrimaryDtsBoard, primaryBoardFileName } from "./merge-primary-dts";
+import { primaryBoardFileName } from "./merge-primary-dts";
 
 /** Catalog template: aurora project-primary DTS (parameter library source). */
 export const DTS_POWER_SEED_FILE_NAME = "aurora-board.dts";
@@ -922,13 +922,10 @@ function valueTypeNote(valueType: DtsValueType) {
 
 export async function generateDtsPowerSeedArtifacts(rootDir: string) {
   console.warn(
-    "dts:seed:generate is an optional legacy regenerator. Committed *-board.dts files are the product source of truth; prefer hand-edits there."
+    "dts:seed:generate derives demo project variants from the committed aurora-board.dts. Prefer hand-edits to individual boards for project-specific changes."
   );
   const seedDir = path.join(rootDir, "src/config/dts-seed");
-  const fixtureDir = path.join(rootDir, "server/modules/dts/fixtures");
-  const syntheticBase = await readFile(path.join(fixtureDir, "synthetic-power-base.dts"), "utf8");
-  const auroraOverlay = await readFile(path.join(seedDir, "aurora-power-overlay.dts"), "utf8");
-  const auroraPrimary = mergePrimaryDtsBoard(syntheticBase, auroraOverlay);
+  const auroraPrimary = await readFile(path.join(seedDir, "aurora-board.dts"), "utf8");
   const seed = buildDtsPowerSeed(auroraPrimary);
   for (const file of seed.projectFiles) {
     await writeFile(path.join(seedDir, file.artifactFileName), file.source, "utf8");

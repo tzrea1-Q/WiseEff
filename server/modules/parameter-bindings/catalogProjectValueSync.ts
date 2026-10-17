@@ -591,6 +591,7 @@ export type CanonicalInitializationBindingCandidate = {
   definitionId: string;
   effectiveRevisionId: string;
   propertyKey: string;
+  displayName: string | null;
   moduleId: string | null;
   logicalNodeId: string | null;
   risk: string | null;
@@ -610,6 +611,7 @@ type CanonicalInitializationBindingRow = {
   definition_id: string;
   effective_revision_id: string;
   property_key: string;
+  display_name: string | null;
   module_id: string | null;
   logical_node_id: string | null;
   risk: string | null;
@@ -657,6 +659,7 @@ export async function listCanonicalInitializationBindingCandidates(
       b.definition_id,
       b.effective_revision_id,
       definition.property_key,
+      revision.content->>'displayName' as display_name,
       placement.module_id,
       b.logical_node_id,
       null::text as risk,
@@ -688,6 +691,9 @@ export async function listCanonicalInitializationBindingCandidates(
      and occurrence.project_id = b.project_id
     inner join parameter_catalog.parameter_definitions definition
       on definition.id = b.definition_id
+    inner join parameter_catalog.definition_revisions revision
+      on revision.id = b.effective_revision_id
+     and revision.definition_id = b.definition_id
     left join parameter_catalog.organization_subject_registrations registration
       on registration.id = b.registration_id
      and registration.organization_id = b.organization_id
@@ -733,6 +739,7 @@ export async function listCanonicalInitializationBindingCandidates(
       definitionId: row.definition_id,
       effectiveRevisionId: row.effective_revision_id,
       propertyKey: row.property_key,
+      displayName: row.display_name,
       moduleId: row.module_id,
       logicalNodeId: row.logical_node_id,
       risk: row.risk,

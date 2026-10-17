@@ -124,6 +124,7 @@ function toSnapshotItems(
     parameterSpecId: item.parameterSpecId,
     parameterSpecVersionId: item.parameterSpecVersionId,
     propertyKey: item.propertyKey,
+    displayName: item.displayName,
     moduleId: item.moduleId,
     risk: item.risk,
     effectiveValue: item.effectiveValue,

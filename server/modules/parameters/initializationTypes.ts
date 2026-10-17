@@ -18,6 +18,8 @@ export type InitializationSnapshotItemDto = {
   parameterSpecId: string;
   parameterSpecVersionId: string;
   propertyKey: string;
+  /** Name from the source binding's immutable effective Definition revision. */
+  displayName?: string;
   moduleId: string;
   risk: InitializationRiskLevel | null;
   /** Serializable effective value copied from source binding at snapshot time. */

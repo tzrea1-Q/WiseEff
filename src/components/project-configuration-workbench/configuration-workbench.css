@@ -846,6 +846,11 @@
   box-shadow: none;
 }
 
+.configuration-workbench__source .project-primary-dts-viewer__meta {
+  color: var(--configuration-source-text-secondary);
+  border-bottom-color: var(--configuration-source-outline);
+}
+
 .configuration-workbench__source .project-primary-dts-viewer__body {
   flex: 1 1 auto;
   max-height: none;

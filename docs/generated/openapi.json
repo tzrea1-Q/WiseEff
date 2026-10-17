@@ -21503,6 +21503,12 @@
                 "changedAt": {
                   "type": "string"
                 },
+                "actor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "fromRawValue": {
                   "type": [
                     "string",

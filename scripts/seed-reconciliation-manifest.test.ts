@@ -371,7 +371,7 @@ describe("seed reconciliation manifest", () => {
       const recorded = manifest.boardOccurrences.filter((entry) => entry.board === board);
       const recordedBusiness = recorded.filter((entry) => entry.scope === "current");
       expect(recordedBusiness).toHaveLength(120);
-      expect(recorded).toHaveLength(200);
+      expect(recorded).toHaveLength(219);
       expect(new Set(recordedBusiness.map((entry) => entry.sourceLocator)).size).toBe(120);
       expect(recordedBusiness.map((entry) => entry.sourceLocator).sort()).toEqual([...businessLocators].sort());
       expect(new Set(recorded.map((entry) => entry.sourceLocator))).toEqual(allResolvedLocators);
@@ -385,9 +385,9 @@ describe("seed reconciliation manifest", () => {
       deferredInputsRecorded: 8,
       vendorRawPropertyEntriesRecorded: 137,
       vendorRawEqualsCanonicalPlusStructural: true,
-      boardOccurrencesRecorded: 600,
+      boardOccurrencesRecorded: 657,
       boardBusinessOccurrencesRecorded: 360,
-      boardStructuralOccurrencesRecorded: 240,
+      boardStructuralOccurrencesRecorded: 297,
       everyInputRecordedExactlyOnce: true,
       everyBoardBusinessOccurrenceRecordedExactlyOnce: true,
     });
@@ -484,11 +484,11 @@ describe("seed reconciliation manifest", () => {
       measured: { distinctUnresolvedOverlayTargetsPerBoard: number; missingReferencedLabelsPerBoard: number; labels: string[] };
     };
     expect(discrepancy.reproducible).toBe(false);
-    expect(discrepancy.measured.distinctUnresolvedOverlayTargetsPerBoard).toBe(29);
-    expect(discrepancy.measured.missingReferencedLabelsPerBoard).toBe(37);
-    expect(discrepancy.measured.labels).toHaveLength(29);
-    expect(discrepancy.statement).toContain("29");
-    expect(discrepancy.statement).toContain("37");
+    expect(discrepancy.measured.distinctUnresolvedOverlayTargetsPerBoard).toBe(0);
+    expect(discrepancy.measured.missingReferencedLabelsPerBoard).toBe(0);
+    expect(discrepancy.measured.labels).toEqual([]);
+    expect(discrepancy.statement).toContain("0 distinct unresolved overlay targets");
+    expect(discrepancy.statement).toContain("0 missing label references");
     expect(discrepancy.statement).toContain("NOT reproducible");
   });
 

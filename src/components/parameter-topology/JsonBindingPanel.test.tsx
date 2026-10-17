@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import { JsonBindingPanel } from "./JsonBindingPanel";
+import { resetUnsavedParameterWork, unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 
 beforeEach(() => {
   localStorage.clear();
+  resetUnsavedParameterWork();
   window.history.replaceState(null, "", "/parameters");
 });
 afterEach(() => window.history.replaceState(null, "", "/"));
@@ -43,6 +45,7 @@ const secondBinding: ProjectParameterBinding = {
 };
 
 const moduleRegistry: ParameterModuleRegistry = {
+  mappings: [],
   modules: [
     {
       id: "module-charging",
@@ -78,6 +81,86 @@ const moduleRegistry: ParameterModuleRegistry = {
 };
 
 describe("JsonBindingPanel", () => {
+  it("consumes a tray edit request once across background refreshes and accepts a new token", () => {
+    const props = { bindings: [jsonBinding, secondBinding], requestedEditBindingId: secondBinding.id, editRequestToken: 1 };
+    const view = render(<JsonBindingPanel {...props} />);
+    expect(screen.getByRole("dialog", { name: "battery-limits 参数详情" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
+    view.rerender(<JsonBindingPanel {...props} bindings={[{ ...jsonBinding }, { ...secondBinding }]} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "变更历史" }), { button: 0, ctrlKey: false });
+    view.rerender(<JsonBindingPanel {...props} bindings={[{ ...jsonBinding }, { ...secondBinding }]} />);
+    expect(screen.getByRole("dialog", { name: "charging-policy 参数详情" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "变更历史" })).toHaveAttribute("aria-selected", "true");
+    view.rerender(<JsonBindingPanel {...props} editRequestToken={2} />);
+    expect(screen.getByRole("dialog", { name: "battery-limits 参数详情" })).toBeInTheDocument();
+  });
+  it("tracks only real edits and keeps another parameter's input through save and background reload", async () => {
+    const props = { bindings: [jsonBinding, secondBinding], canEdit: true,
+      onValidateEdit: vi.fn().mockResolvedValue({ valid: true, diagnostics: [] }) };
+    const view = render(<JsonBindingPanel {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
+    expect(unsavedParameterWorkCount()).toBe(0);
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: '{"limit":4}' } });
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "保留第一项" } });
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 battery-limits" }));
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "保存第二项" } });
+    expect(unsavedParameterWorkCount()).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await screen.findByText("草稿已保存，待提交审核。当前生效值未改变。");
+    await waitFor(() => expect(unsavedParameterWorkCount()).toBe(1));
+    view.rerender(<JsonBindingPanel {...props} bindings={props.bindings.map((binding) => ({ ...binding }))} />);
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
+    expect(screen.getByLabelText("目标值")).toHaveValue('{"limit":4}');
+    expect(screen.getByLabelText("修改原因")).toHaveValue("保留第一项");
+    view.unmount();
+    expect(unsavedParameterWorkCount()).toBe(0);
+  });
+
+  it("finds Chinese names and module labels and clears all active filters", () => {
+    render(<JsonBindingPanel bindings={[{ ...jsonBinding, displayName: "充电策略" }, secondBinding]} moduleRegistry={moduleRegistry} />);
+    fireEvent.click(screen.getByRole("treeitem", { name: /充电管理/ }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 JSON 参数" }), { target: { value: "充电策略" } });
+    expect(screen.getByText("匹配 1 / 2 项")).toBeInTheDocument();
+    expect(screen.getByLabelText("当前筛选")).toHaveTextContent("充电管理");
+    fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
+    expect(screen.getByText("共 2 项")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索 JSON 参数" })).toHaveValue("");
+  });
+  it("uses one detail entry, rejects invalid JSON and preserves failed saves and local edits across close", async () => {
+    const onValidateEdit = vi.fn().mockRejectedValue(new Error("offline"));
+    render(<JsonBindingPanel bindings={[jsonBinding]} canEdit onValidateEdit={onValidateEdit} />);
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
+    const dialog = screen.getByRole("dialog", { name: "charging-policy 参数详情" });
+    fireEvent.change(within(dialog).getByLabelText("目标值"), { target: { value: "{" } });
+    fireEvent.change(within(dialog).getByLabelText("修改原因"), { target: { value: "调整配置" } });
+    expect(within(dialog).getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("目标值"), { target: { value: '{"limit":5}' } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存草稿" }));
+    expect(await within(dialog).findByRole("alert")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("目标值")).toHaveValue('{"limit":5}');
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭参数详情" }));
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
+    expect(screen.getByLabelText("目标值")).toHaveValue('{"limit":5}');
+    expect(screen.getByLabelText("修改原因")).toHaveValue("调整配置");
+  });
+
+  it("keeps the detail open after saving and restores its persisted delete draft", async () => {
+    const pending = { projectParameterBindingId: jsonBinding.id, rawText: "", reason: "移除旧配置", action: "delete" };
+    const onValidateEdit = vi.fn().mockResolvedValue({ valid: true, diagnostics: [] });
+    render(<JsonBindingPanel bindings={[jsonBinding]} canEdit requestedEditBindingId={jsonBinding.id}
+      pendingDrafts={[pending as never]} onValidateEdit={onValidateEdit} />);
+    expect(screen.getByLabelText("修改原因")).toHaveValue("移除旧配置");
+    expect(screen.getByLabelText("删除此属性")).toBeChecked();
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "替换为新配置" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存删除草稿" }));
+    expect(await screen.findByText("草稿已保存，待提交审核。当前生效值未改变。")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(onValidateEdit).toHaveBeenCalledWith({ bindingId: jsonBinding.id, rawValue: "", reason: "替换为新配置", action: "delete" });
+  });
   it("keeps the selected JSON module and search when the shared navigator collapses", () => {
     render(<JsonBindingPanel bindings={[jsonBinding, secondBinding]} moduleRegistry={moduleRegistry} canEdit={false} />);
     fireEvent.click(screen.getByRole("treeitem", { name: /充电管理/ }));
@@ -95,34 +178,31 @@ describe("JsonBindingPanel", () => {
       editableBindingIds: new Set([jsonBinding.id]), onValidateEdit: vi.fn() };
     const rendered = render(<JsonBindingPanel {...props} requestedBindingId={secondBinding.id} />);
     expect(screen.getAllByRole("table", { name: "JSON 参数列表" })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: `编辑 ${jsonBinding.propertyKey}` })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: `编辑 ${secondBinding.propertyKey}` })).not.toBeInTheDocument();
     const readonlyDialog = await screen.findByRole("dialog");
-    expect(within(readonlyDialog).queryByRole("button", { name: "编辑此参数" })).not.toBeInTheDocument();
+    expect(within(readonlyDialog).getByLabelText("目标值")).toBeDisabled();
     rendered.rerender(<JsonBindingPanel {...props} requestedBindingId={jsonBinding.id} />);
-    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("button", { name: "编辑此参数" })).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByLabelText("目标值")).toBeEnabled());
     expect(props.onValidateEdit).not.toHaveBeenCalled();
   });
 
   it.each([undefined, new Set([jsonBinding.id])])("global canEdit=false overrides optional eligible IDs %s", (editableBindingIds) => {
     render(<JsonBindingPanel bindings={[jsonBinding]} canEdit={false} editableBindingIds={editableBindingIds} requestedBindingId={jsonBinding.id} />);
-    expect(screen.queryByRole("button", { name: `编辑 ${jsonBinding.propertyKey}` })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑此参数" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByLabelText("目标值")).toBeDisabled();
   });
 
   it.each(["eligible IDs", "global permission"])("blocks active JSON draft actions when %s is revoked", (revocation) => {
     const onValidateEdit = vi.fn();
     const props = { bindings: [jsonBinding], canEdit: true, editableBindingIds: new Set([jsonBinding.id]), onValidateEdit };
     const rendered = render(<JsonBindingPanel {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: `编辑 ${jsonBinding.propertyKey}` }));
-    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    fireEvent.click(screen.getByRole("button", { name: `参数详情 ${jsonBinding.propertyKey}` }));
+    const dialog = screen.getByRole("dialog", { name: "charging-policy 参数详情" });
     fireEvent.change(within(dialog).getByLabelText("修改原因"), { target: { value: "bounded edit" } });
-    expect(within(dialog).getByRole("button", { name: "校验并创建草稿" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "保存草稿" })).toBeEnabled();
     rendered.rerender(<JsonBindingPanel {...props} canEdit={revocation === "eligible IDs"}
       editableBindingIds={revocation === "eligible IDs" ? new Set() : props.editableBindingIds} />);
     expect(within(dialog).getByLabelText("目标值")).toBeDisabled();
     expect(within(dialog).getByLabelText("修改原因")).toBeDisabled();
-    for (const name of ["校验并创建草稿", "创建删除草稿"]) {
+    for (const name of ["保存草稿"]) {
       const button = within(dialog).getByRole("button", { name });
       expect(button).toBeDisabled();
       fireEvent.click(button);
@@ -160,8 +240,8 @@ describe("JsonBindingPanel", () => {
     expect(screen.getByRole("region", { name: "JSON 参数列表" })).toBeInTheDocument();
 
     const table = screen.getByRole("table", { name: "JSON 参数列表" });
-    expect(within(table).getAllByRole("button", { name: /^查看 / })).toHaveLength(2);
-    expect(within(table).getAllByRole("button", { name: /^编辑 / })).toHaveLength(2);
+    expect(within(table).getAllByRole("button", { name: /^参数详情 / })).toHaveLength(2);
+    expect(within(table).queryByRole("button", { name: /^编辑 / })).not.toBeInTheDocument();
 
     // Requirement 3: table rows must NOT contain export/download options
     expect(within(table).queryByRole("button", { name: /导出|下载/ })).not.toBeInTheDocument();
@@ -214,9 +294,9 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "编辑 charging-policy" }));
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
 
-    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    const dialog = screen.getByRole("dialog", { name: "charging-policy 参数详情" });
     expect(dialog).toBeVisible();
 
     fireEvent.change(within(dialog).getByLabelText("目标值"), {
@@ -225,7 +305,7 @@ describe("JsonBindingPanel", () => {
     fireEvent.change(within(dialog).getByLabelText("修改原因"), {
       target: { value: "校准充电策略" }
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "校验并创建草稿" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存草稿" }));
 
     await waitFor(() => {
       expect(onValidateEdit).toHaveBeenCalledWith({
@@ -236,7 +316,7 @@ describe("JsonBindingPanel", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
+      expect(within(dialog).getByText("草稿已保存，待提交审核。当前生效值未改变。")).toBeInTheDocument();
     });
   });
 
@@ -270,25 +350,23 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "查看 charging-policy" }));
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
 
     const detailDialog = screen.getByRole("dialog", { name: "charging-policy 参数详情" });
     expect(detailDialog).toBeVisible();
 
-    // Export action inside detail dialog
+    fireEvent.mouseDown(within(detailDialog).getByRole("tab", { name: "配置来源" }));
     fireEvent.click(within(detailDialog).getByRole("button", { name: "导出源文件" }));
     await waitFor(() => expect(onExportBinding).toHaveBeenCalledWith("binding-json-1"));
 
     // History action inside detail dialog
-    fireEvent.click(within(detailDialog).getByRole("button", { name: "查看固定值历史" }));
+    fireEvent.mouseDown(within(detailDialog).getByRole("tab", { name: "变更历史" }));
     await waitFor(() => expect(onLoadHistory).toHaveBeenCalledWith("binding-json-1"));
     expect(await within(detailDialog).findByText(/校准充电策略/)).toBeVisible();
-    expect(await within(detailDialog).findByText(/删除属性 · 移除过时属性/)).toBeVisible();
+    expect(await within(detailDialog).findByText("移除过时属性")).toBeVisible();
 
-    // Transition from detail to edit dialog
-    fireEvent.click(within(detailDialog).getByRole("button", { name: "编辑此参数" }));
-    expect(screen.queryByRole("dialog", { name: "charging-policy 参数详情" })).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeVisible();
+    fireEvent.mouseDown(within(detailDialog).getByRole("tab", { name: "配置" }));
+    expect(screen.getByRole("dialog", { name: "charging-policy 参数详情" })).toBeVisible();
   });
 
   it("does not render DTS bindings in the JSON surface", () => {
@@ -307,13 +385,14 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "编辑 charging-policy" }));
-    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
+    const dialog = screen.getByRole("dialog", { name: "charging-policy 参数详情" });
 
     fireEvent.change(within(dialog).getByLabelText("修改原因"), {
       target: { value: "移除过时属性" }
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "创建删除草稿" }));
+    fireEvent.click(within(dialog).getByLabelText("删除此属性"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存删除草稿" }));
 
     await waitFor(() => expect(onValidateEdit).toHaveBeenCalledWith({
       bindingId: "binding-json-1",
@@ -335,12 +414,12 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "编辑 charging-policy" }));
-    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
+    const dialog = screen.getByRole("dialog", { name: "charging-policy 参数详情" });
 
-    fireEvent.change(within(dialog).getByLabelText("目标值"), { target: { value: "not-json" } });
+    fireEvent.change(within(dialog).getByLabelText("目标值"), { target: { value: '{"limit":7}' } });
     fireEvent.change(within(dialog).getByLabelText("修改原因"), { target: { value: "校验错误提示" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "校验并创建草稿" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存草稿" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("目标值未通过校验");

@@ -113,7 +113,13 @@ describe("mergeInitializationBindingCandidates", () => {
     ]);
   });
 
-  it("flags empty raw values as needing effective-value confirmation", () => {
+  it.each([
+    { sourceFormat: "dts" as const, rawValue: "", effectiveValue: { kind: "boolean", present: true }, needsConfirmation: false },
+    { sourceFormat: "dts" as const, rawValue: "", effectiveValue: { kind: "empty" }, needsConfirmation: false },
+    { sourceFormat: "dts" as const, rawValue: "   ", effectiveValue: null, needsConfirmation: true },
+    { sourceFormat: "json" as const, rawValue: "", effectiveValue: { kind: "boolean", present: true }, needsConfirmation: true },
+    { sourceFormat: "dts" as const, rawValue: "", effectiveValue: { kind: "u32", value: 3200 }, needsConfirmation: true }
+  ])("requires confirmation except for typed DTS presence values: %j", ({ sourceFormat, rawValue, effectiveValue, needsConfirmation }) => {
     const merged = mergeInitializationBindingCandidates({
       primary: [
         candidate({
@@ -121,15 +127,16 @@ describe("mergeInitializationBindingCandidates", () => {
           sourceBindingId: "b-empty",
           parameterSpecId: "spec-e",
           moduleId: "mod-x",
-          rawValue: "   ",
-          effectiveValue: null
+          sourceFormat,
+          rawValue,
+          effectiveValue
         })
       ],
       supplements: []
     });
 
     expect(merged).toHaveLength(1);
-    expect(merged[0]?.needsEffectiveValueConfirmation).toBe(true);
+    expect(merged[0]?.needsEffectiveValueConfirmation).toBe(needsConfirmation);
     expect(merged[0]?.currentValueState).toBe("pending_project_confirmation");
   });
 

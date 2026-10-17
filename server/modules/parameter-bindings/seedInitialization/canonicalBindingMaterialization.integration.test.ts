@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
-import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
+import { CatalogReleaseDigest, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import {
   FIRST_ACME_RELEASE_DIGEST,
   FIRST_ACME_RELEASE_ID,
@@ -62,12 +62,21 @@ const REPO_ROOT = process.cwd();
 /**
  * Expectations come from the reviewed reconciliation manifest, not from the
  * generated file or the release: the manifest declares which vendor inputs exist, so
- * this is an independent cross-check of the source plane. All 113 are expressed.
+ * this is an independent cross-check of the source plane. All 115 are expressed.
  *
  * The generator emits a node per subject. Driver nodes declare a `compatible`, which
  * the parser records as one extra observable property per node; node-type nodes
- * declare none.
+ * declare none. The self-contained demo adds six GPIO providers and one interrupt
+ * provider containing only the structural properties below.
  */
+const DEMONSTRATION_PROVIDER_PROPERTY_COUNTS = {
+  "gpio-controller": 6,
+  "#gpio-cells": 6,
+  "interrupt-controller": 1,
+  "#interrupt-cells": 1,
+  "#address-cells": 1,
+};
+
 const manifestVendorInputs = () =>
   (
     JSON.parse(
@@ -94,16 +103,17 @@ const expectedSourcePlane = () => {
     expressible.filter((e) => e.formalSubject.kind !== "driver").map((e) => e.formalSubject.value),
   );
   const nodeTypeProperties = expressible.filter((e) => e.formalSubject.kind !== "driver").length;
+  const providerPropertyRows = Object.values(DEMONSTRATION_PROVIDER_PROPERTY_COUNTS).reduce((sum, count) => sum + count, 0);
   return {
     propertyKeys: [...new Set(expressible.map((e) => e.propertyKey))],
     driverSubjects: driverSubjects.size,
     nodeTypeSubjects: nodeTypeSubjects.size,
-    // Every node-type property row has no compatible; driver nodes additionally
-    // contribute one `compatible` row each.
-    nodeTypePropertyRows: nodeTypeProperties + 2,
+    // Node-type properties, two compatibility properties and the 15 provider
+    // structural properties have no compatible; no business subject is added.
+    rowsWithoutCompatible: nodeTypeProperties + 2 + providerPropertyRows,
     // Vendor DTS compile emits each reviewed property plus one compatible row per
-    // driver subject, and two extra occurrence effects from node-type DTS nodes.
-    observedPerProject: expressible.length + driverSubjects.size + 2,
+    // driver subject, two node-type compatibility properties and the providers.
+    observedPerProject: expressible.length + driverSubjects.size + 2 + providerPropertyRows,
   };
 };
 const SLICE_PROPERTIES = [
@@ -200,7 +210,7 @@ describe("canonical binding materialization from a published release", () => {
     const advanced = await installPublishedRelease(pool, {
       mode: "advance",
       source: jsonCatalogReleaseSource(vendor.bundle),
-      expectedTargetDigest: VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
+      expectedTargetDigest: CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST),
       expectedCurrent,
     });
     expect(advanced.ok, JSON.stringify(advanced)).toBe(true);
@@ -266,16 +276,22 @@ describe("canonical binding materialization from a published release", () => {
         [revisionRow.id],
       );
       const expected = expectedSourcePlane();
+      expect(manifestVendorInputs()).toHaveLength(115);
       expect(observed.rows.length, `${revisionRow.project_id} observed properties`).toBe(
         expected.observedPerProject,
       );
+      for (const [propertyName, count] of Object.entries(DEMONSTRATION_PROVIDER_PROPERTY_COUNTS)) {
+        const providerRows = observed.rows.filter((row) => row.property_name === propertyName);
+        expect(providerRows, `${revisionRow.project_id} ${propertyName} structure`).toHaveLength(count);
+        expect(providerRows.every((row) => row.compatible === null)).toBe(true);
+      }
       const propertyNames = new Set(observed.rows.map((row) => row.property_name));
       for (const propertyKey of expected.propertyKeys) {
         expect(propertyNames, `${revisionRow.project_id} ${propertyKey}`).toContain(propertyKey);
       }
-      // Driver rows carry their compatible; node-type rows carry none by design.
+      // Driver rows carry their compatible; node-type and provider rows carry none.
       const nodeTypeRows = observed.rows.filter((row) => row.compatible === null);
-      expect(nodeTypeRows.length).toBe(expected.nodeTypePropertyRows);
+      expect(nodeTypeRows.length).toBe(expected.rowsWithoutCompatible);
       // Either way the slice is never attributed to the retired acme sample.
       for (const row of observed.rows) {
         expect(row.compatible ?? "").not.toContain("acme");

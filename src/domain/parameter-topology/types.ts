@@ -265,6 +265,7 @@ export type ProjectParameterBinding = {
  */
 export type BindingHistoryEntry = {
   id: string;
+  actor?: string | null;
   changedAt: string;
   fromRawValue?: string | null;
   toRawValue?: string | null;

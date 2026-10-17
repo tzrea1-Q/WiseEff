@@ -19,6 +19,7 @@ import {
 } from "@/test/cssAssertions";
 
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
+import { resetUnsavedParameterWork, unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 
 const sourceNodes: SourceTopologyNode[] = [
   sourceNode("source-root", null, "/"),
@@ -214,7 +215,9 @@ function row(
       definition.rawValue,
       definition.governanceState
     ].join(" ").toLocaleLowerCase(),
-    view
+    view,
+    nodeEnablement: null,
+    nodeEnablementNotice: null
   };
 }
 
@@ -256,6 +259,75 @@ beforeEach(() => {
 afterEach(() => window.history.replaceState(null, "", "/"));
 
 describe("DtsParameterWorkbench", () => {
+  it("removes an acknowledged saved receipt when its server draft is removed", async () => {
+    const view = renderWorkbench({ draftBindingIds: new Set(), pendingDrafts: [] });
+    fireEvent.click(screen.getByRole("button", { name: /参数详情 gpio_int/ }));
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "<&gpio13 30 0>" } });
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "调整引脚" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await screen.findByText("草稿已保存，待提交审核。");
+    const pending = {
+      draftId: "draft-gpio", candidateRevisionId: "candidate-exact", projectId: "project-source",
+      projectParameterBindingId: "binding-gpio-int", parameterSpecId: "spec-binding-gpio-int",
+      rawText: "<&gpio13 30 0>", reason: "调整引脚", action: "set" as const,
+      currentRawValue: "<&gpio13 29 0>", moduleName: "充电策略",
+      writeTarget: { role: "project-overlay", propertyKey: "gpio_int" },
+      overlayFileId: "overlay-exact", overlayFileName: "project-overlay.dts"
+    };
+    view.rerender(<DtsParameterWorkbench {...view.props} pendingDrafts={[pending]} draftBindingIds={new Set(["binding-gpio-int"])} />);
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
+    view.rerender(<DtsParameterWorkbench {...view.props} pendingDrafts={[]} draftBindingIds={new Set()} />);
+    fireEvent.click(screen.getByRole("button", { name: /参数详情 gpio_int/ }));
+    expect(screen.getByLabelText("目标值")).toHaveValue("<&gpio13 29 0>");
+    expect(screen.getByLabelText("修改原因")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.queryByText("已保存草稿 · 待提交")).not.toBeInTheDocument();
+    expect(screen.getByText("当前生效配置")).toBeInTheDocument();
+  });
+
+  it("loads the selected binding's exact source file when locating it from the inspector", async () => {
+    const loadPrimaryDtsSource = vi.fn().mockResolvedValue({ fileName: "board.dts", versionNumber: 3,
+      text: Array.from({ length: 30 }, (_, index) => `line-${index + 1}`).join("\n") });
+    renderWorkbench({ loadPrimaryDtsSource });
+    fireEvent.click(screen.getByRole("button", { name: /参数详情 gpio_int/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "配置来源" }));
+    fireEvent.click(screen.getByRole("button", { name: "在源码中定位" }));
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalledWith("board.dts"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await within(screen.getByRole("tabpanel", { name: "DTS 源码" })).findByLabelText("DTS 源码")).toBeInTheDocument();
+    expect(screen.getByText("board.dts")).toBeVisible();
+  });
+
+  it("uses one parameter entry without creating unsaved work just by opening it", () => {
+    resetUnsavedParameterWork();
+    renderWorkbench();
+    const entry = screen.getByRole("button", { name: /参数详情 gpio_int/ });
+    fireEvent.click(entry);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("目标值")).toHaveValue("<&gpio13 29 0>");
+    expect(unsavedParameterWorkCount()).toBe(0);
+    expect(screen.queryByRole("button", { name: /^编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+  });
+
+  it("preserves a real local edit across close, another parameter, and detail tabs", () => {
+    resetUnsavedParameterWork();
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: /参数详情 gpio_int/ }));
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "<&gpio13 30 0>" } });
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "调整引脚" } });
+    expect(unsavedParameterWorkCount()).toBe(1);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "变更历史" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "配置" }));
+    expect(screen.getByLabelText("目标值")).toHaveValue("<&gpio13 30 0>");
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
+    fireEvent.click(screen.getByRole("button", { name: /参数详情 watchdog_time/ }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
+    fireEvent.click(screen.getByRole("button", { name: /参数详情 gpio_int/ }));
+    expect(screen.getByLabelText("目标值")).toHaveValue("<&gpio13 30 0>");
+    expect(screen.getByLabelText("修改原因")).toHaveValue("调整引脚");
+  });
+
   it("collapses the shared navigator without changing module scope, search or project URL", async () => {
     window.history.replaceState(null, "", "/parameters?project=atlas");
     renderWorkbench();
@@ -680,7 +752,7 @@ describe("DtsParameterWorkbench", () => {
       .toBe("min(var(--navigator-workbench-navigator-width), var(--navigator-workbench-navigator-cap)) minmax(0, 1fr)");
   });
 
-  it("reserves the same three-action track in header and rows, with or without draft selection", () => {
+  it("reserves one shared detail-action track in header and rows, with or without draft selection", () => {
     const styles = readStylesheet("src/styles.css");
     const tokens = declarationsFor(styles, ":root");
     expect(tokens["--dts-workbench-table-min-width"]).toBe("680px");
@@ -702,7 +774,7 @@ describe("DtsParameterWorkbench", () => {
       )).toMatch(/var\(--dts-workbench-table-actions-width\)$/);
     }
     expect(tokens["--dts-workbench-table-actions-width"])
-      .toBe("calc(3 * var(--space-8) + 2 * var(--space-1))");
+      .toBe("var(--space-10)");
   });
 
   it("renders importance as the primary column and only surfaces anomaly governance badges", () => {
@@ -742,7 +814,7 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ canEdit: false, onSelectBinding, onEditBinding });
 
     fireEvent.click(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
     expect(onSelectBinding).toHaveBeenCalledWith("binding-gpio-int");
     expect(screen.queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
@@ -761,10 +833,10 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ canEdit: false });
 
     fireEvent.click(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
-    const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
+    const dialog = screen.getByRole("dialog", { name: "gpio_int · 参数详情" });
     expect(within(dialog).getByRole("heading", { name: "参数定义" })).toBeInTheDocument();
     expect(within(dialog).queryByRole("heading", { name: "类型化编辑" })).not.toBeInTheDocument();
     expect(within(dialog).queryByText("来源链")).not.toBeInTheDocument();
@@ -784,14 +856,14 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ canEdit: false, loadBindingCompare, projectId: "project-source" });
 
     fireEvent.click(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
     await waitFor(() => expect(loadBindingCompare).toHaveBeenCalledWith("binding-gpio-int"));
-    const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
-    const entry = within(dialog).getByRole("heading", { name: "跨项目对比" }).closest("section") as HTMLElement;
-    expect(within(entry).getByRole("button", { name: "打开跨项目对比" })).toBeInTheDocument();
-    expect(within(entry).getByText(/个配置实例已配置/)).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "gpio_int · 参数详情" });
+    fireEvent.mouseDown(within(dialog).getByRole("tab", { name: "跨项目对比" }));
+    expect(await within(dialog).findByRole("combobox", { name: "对比目标配置实例" })).toBeInTheDocument();
+    expect(within(dialog).getByText("项目概览")).toBeInTheDocument();
   });
 
   it("requests the selected canonical definition revision with both identities", async () => {
@@ -828,7 +900,7 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ canEdit: false, effectiveRows: canonicalRows, loadParameterSpec });
 
     fireEvent.click(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
     await waitFor(() => expect(loadParameterSpec).toHaveBeenCalledWith(
@@ -858,10 +930,10 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ canEdit: false, loadParameterSpec });
 
     await user.click(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
-    const detail = await screen.findByRole("dialog", { name: "gpio_int 参数详情" });
+    const detail = await screen.findByRole("dialog", { name: "gpio_int · 参数详情" });
     await waitFor(() => expect(within(detail).getByRole("alert", { name: "规格详情加载失败" })).toBeInTheDocument());
     await user.click(within(detail).getByRole("button", { name: "重试规格详情" }));
 
@@ -892,23 +964,22 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ canEdit: false, loadBindingHistory, loadBindingCompare });
 
     await user.click(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
-    const detail = await screen.findByRole("dialog", { name: "gpio_int 参数详情" });
-    await waitFor(() => {
-      expect(within(detail).getByRole("alert", { name: "历史加载失败" })).toBeInTheDocument();
-      expect(within(detail).getByRole("alert", { name: "对比加载失败" })).toBeInTheDocument();
-    });
-
+    const detail = await screen.findByRole("dialog", { name: "gpio_int · 参数详情" });
+    await user.click(within(detail).getByRole("tab", { name: "变更历史" }));
+    await waitFor(() => expect(within(detail).getByRole("alert", { name: "历史加载失败" })).toBeInTheDocument());
     await user.click(within(detail).getByRole("button", { name: "重试历史" }));
+    await waitFor(() => expect(within(detail).getByText("<1>")).toBeInTheDocument());
+    await user.click(within(detail).getByRole("tab", { name: "跨项目对比" }));
+    await waitFor(() => expect(within(detail).getByRole("alert", { name: "对比加载失败" })).toBeInTheDocument());
     await user.click(within(detail).getByRole("button", { name: "重试对比" }));
 
     await waitFor(() => {
       expect(loadBindingHistory).toHaveBeenCalledTimes(2);
       expect(loadBindingCompare).toHaveBeenCalledTimes(2);
-      expect(within(detail).getByText("<1>")).toBeInTheDocument();
-      expect(within(detail).getByRole("button", { name: "打开跨项目对比" })).toBeInTheDocument();
+      expect(within(detail).getByRole("combobox", { name: "对比目标配置实例" })).toBeInTheDocument();
     });
   });
 
@@ -925,32 +996,31 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ loadBindingCompare, projectId: "project-source" });
 
     await user.click(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
     await waitFor(() => expect(loadBindingCompare).toHaveBeenCalled());
 
-    await user.click(screen.getByRole("button", { name: "打开跨项目对比" }));
+    await user.click(screen.getByRole("tab", { name: "跨项目对比" }));
     await user.click(screen.getByRole("button", { name: "使用该项目配置加入草稿" }));
 
-    const draftDialog = screen.getByRole("dialog", { name: "修改草稿" });
+    const draftDialog = screen.getByRole("dialog", { name: "gpio_int · 参数详情" });
     expect(within(draftDialog).getByRole("textbox", { name: "目标值" })).toHaveValue("<99>");
     expect(within(draftDialog).getByRole("textbox", { name: "修改原因" })).toHaveValue(
       "参考 Aurora 当前配置生成草稿"
     );
   });
 
-  it("opens edit in the draft dialog and focuses the target editor", async () => {
+  it("keeps editing inside the same detail dialog with keyboard-accessible fields", async () => {
     const user = userEvent.setup();
-    const { props } = renderWorkbench();
+    renderWorkbench();
 
     await user.click(screen.getByRole("button", {
-      name: "继续编辑 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
-    expect(screen.queryByRole("dialog", { name: "gpio_int 参数详情" })).not.toBeInTheDocument();
-    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
-    expect(within(dialog).getByRole("textbox", { name: "目标值" })).toHaveFocus();
-    expect(props.onEditBinding).toHaveBeenCalledWith("binding-gpio-int");
+    const dialog = screen.getByRole("dialog", { name: "gpio_int · 参数详情" });
+    expect(within(dialog).getByRole("textbox", { name: "目标值" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "保存草稿" })).toBeDisabled();
   });
 
   it("closes only the selected binding and restores the opener without clearing filters or draft identity", async () => {
@@ -960,15 +1030,15 @@ describe("DtsParameterWorkbench", () => {
       target: { value: "gpio13" }
     });
     const opener = screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     });
 
     await user.click(opener);
-    await user.click(within(screen.getByRole("dialog", { name: "gpio_int 参数详情" }))
+    await user.click(within(screen.getByRole("dialog", { name: "gpio_int · 参数详情" }))
       .getByRole("button", { name: "关闭参数详情" }));
 
     await waitFor(() => expect(opener).toHaveFocus());
-    expect(screen.queryByRole("dialog", { name: "gpio_int 参数详情" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "gpio_int · 参数详情" })).not.toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "搜索 DTS 参数" })).toHaveValue("gpio13");
     expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
     expect(visibleBindingRows()).toHaveLength(1);
@@ -977,7 +1047,7 @@ describe("DtsParameterWorkbench", () => {
   it("does not render an inert edit action when its handler is absent", () => {
     renderWorkbench({ canEdit: true, onEditBinding: undefined });
 
-    expect(screen.getByRole("button", { name: /查看 gpio_int/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /参数详情 gpio_int/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /继续编辑 gpio_int/ })).not.toBeInTheDocument();
   });
@@ -1008,17 +1078,14 @@ describe("DtsParameterWorkbench", () => {
     });
 
     expect(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     })).toBeInTheDocument();
     expect(screen.getByRole("button", {
-      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6F · sc8562）"
+      name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6F · sc8562）"
     })).toBeInTheDocument();
-    expect(screen.getByRole("button", {
-      name: "继续编辑 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
-    })).toBeInTheDocument();
-    expect(screen.getByRole("button", {
-      name: "编辑 gpio_int（未分类 · sc8562 · sc8562@6F · sc8562）"
-    })).toBeInTheDocument();
+    expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
+    expect(screen.getByRole("button", { name: "参数详情 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）" })).toHaveAttribute("title", "查看并继续编辑草稿");
+    expect(screen.queryByRole("button", { name: /^编辑 gpio_int/ })).not.toBeInTheDocument();
   });
 
   it("uses neutral row/card and navigator containers without accessibility violations", async () => {
@@ -1044,9 +1111,9 @@ describe("DtsParameterWorkbench", () => {
 
   it("focuses the smallest positive sourceLine when a module is selected in tech view", async () => {
     const rowsWithLines = effectiveRows.map((entry) => {
-      if (entry.bindingId === "binding-gpio-int") return { ...entry, sourceLine: 12 };
-      if (entry.bindingId === "binding-watchdog") return { ...entry, sourceLine: 8 };
-      return entry;
+      if (entry.bindingId === "binding-gpio-int") return { ...entry, sourceFileName: "aurora-board.dts", sourceLine: 12 };
+      if (entry.bindingId === "binding-watchdog") return { ...entry, sourceFileName: "aurora-board.dts", sourceLine: 8 };
+      return { ...entry, sourceFileName: "aurora-board.dts" };
     });
     const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
       fileName: "aurora-board.dts",
@@ -1078,7 +1145,7 @@ describe("DtsParameterWorkbench", () => {
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("当前模块暂无源码行定位");
+    expect(screen.getByRole("status", { name: "源码查找状态" })).toHaveTextContent("当前模块暂无源码行定位");
   });
 
   it("does not show DTS file meta in the header actions", async () => {
@@ -1127,7 +1194,7 @@ describe("DtsParameterWorkbench", () => {
     const searchbox = await screen.findByRole("searchbox", { name: "在 DTS 源码中查找" });
     expect(searchbox).toHaveAttribute("placeholder", "在 DTS 文本中查找");
     fireEvent.change(searchbox, { target: { value: "gamma" } });
-    expect(screen.getByRole("status")).toHaveTextContent(/匹配/);
+    expect(screen.getByRole("status", { name: "源码查找状态" })).toHaveTextContent(/匹配/);
   });
 
 });

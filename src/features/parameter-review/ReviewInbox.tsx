@@ -260,11 +260,12 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
   const appliedFilters = Object.entries(filters).flatMap(([field, values]) => values.map((value) => ({ field, value,
     label: field === "projectId" ? allRows.find((row) => row.projectId === value)?.project ?? value
       : field === "module" ? moduleRegistry.find((node) => node.id === value)?.name ?? value : value })));
-  return <div className={`review-inbox${selected || requestedId ? "" : " review-inbox--empty"}`}>
+  const queueLabel = mineOnly ? "我的提交" : "审阅队列";
+  return <div className={`review-inbox${selected || requestedId ? "" : " review-inbox--empty review-inbox--list-only"}${mineOnly ? " review-inbox--personal" : ""}`}>
       <div className="review-inbox__toolbar">
-        <ViewSwitch variant="tabs" ariaLabel="审阅视角" value={view} onValueChange={(value) => changeContext("view", value)} items={[
-          { value: "pending", label: <>{mineOnly ? "进行中" : "待处理"}<span aria-hidden="true">{reading ? "…" : incomplete ? "—" : allRows.filter((row) => row.view === "pending").length}</span></>, id: `${tabsId}-pending-tab`, panelId: `${tabsId}-pending-panel`, disabled: interactionBusy },
-          { value: "history", label: <>已处理<span aria-hidden="true">{reading ? "…" : incomplete ? "—" : historyCount}</span></>, id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel`, disabled: interactionBusy }
+        <ViewSwitch variant="tabs" ariaLabel={mineOnly ? "提交状态" : "审阅视角"} value={view} onValueChange={(value) => changeContext("view", value)} items={[
+          { value: "pending", label: <>{mineOnly ? "审核中" : "待处理"}<span aria-hidden="true">{reading ? "…" : incomplete ? "—" : allRows.filter((row) => row.view === "pending").length}</span></>, id: `${tabsId}-pending-tab`, panelId: `${tabsId}-pending-panel`, disabled: interactionBusy },
+          { value: "history", label: <>{mineOnly ? "已结束" : "已处理"}<span aria-hidden="true">{reading ? "…" : incomplete ? "—" : historyCount}</span></>, id: `${tabsId}-history-tab`, panelId: `${tabsId}-history-panel`, disabled: interactionBusy }
         ]} />
         <div className="review-inbox__toolbar-actions">
           <Button type="button" variant="outline" size="sm" disabled={interactionBusy || loading || legacyLoading} onClick={changed}>
@@ -312,12 +313,12 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
         </div> : null}
       </div> : null}
     <section className="review-queue" ref={queueRef} tabIndex={-1} aria-labelledby={`${tabsId}-queue-heading`}>
-      <h2 id={`${tabsId}-queue-heading`} className="sr-only">审阅队列</h2>
+      <h2 id={`${tabsId}-queue-heading`} className="sr-only">{queueLabel}</h2>
       <TabPanel id={`${tabsId}-${view}-panel`} aria-labelledby={`${tabsId}-${view}-tab`}>
         {incomplete ? <SectionError message={`${canonicalRows.length && error ? "队列未能更新，以下为上次读取的结果。" : hasRecords ? "部分请求未能加载，以下结果不完整。" : ""}${error ?? legacyError ?? ""}`} onRetry={changed} /> : null}
-        {loading || legacyLoading ? <SectionSkeleton label="正在加载审核队列…" /> : null}
+        {loading || legacyLoading ? <SectionSkeleton label={mineOnly ? "正在加载我的提交…" : "正在加载审核队列…"} /> : null}
         {view === "pending" && visibleRows.some((row) => row.kind === "legacy") ? queueActions : null}
-        {visibleRows.length ? <div className="table-wrap review-table-wrap"><Table aria-label="审阅队列" id="review-queue-table">
+        {visibleRows.length ? <div className="table-wrap review-table-wrap"><Table aria-label={queueLabel} id="review-queue-table">
           <colgroup>
             {renderRowSelection ? <col className="review-inbox__selection-column" /> : null}
             <col className="review-inbox__summary-column" /><col className="review-inbox__time-column" /><col className="review-inbox__status-column" />
@@ -354,12 +355,12 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
             : view === "history" ? "未记录" : "提交时间未记录"}</TableCell>
           <TableCell><span className="review-inbox__status" data-pending={row.view === "pending"}>{row.status}</span></TableCell>
         </TableRow>)}</TableBody></Table></div> : null}
-        {!visibleRows.length && !loading && !legacyLoading && !error && !legacyError ? <div className="review-inbox__empty-table"><Table aria-label="审阅队列" id="review-queue-table"><TableBody><TableRow><TableCell>
+        {!visibleRows.length && !loading && !legacyLoading && !error && !legacyError ? <div className="review-inbox__empty-table"><Table aria-label={queueLabel} id="review-queue-table"><TableBody><TableRow><TableCell>
           <Inbox size={28} aria-hidden="true" className="review-inbox__empty-icon" />
-          <SectionEmpty message={filtered ? "没有符合当前筛选条件的请求" : view === "pending" ? mineOnly ? "你还没有进行中的提交" : "暂无待审核请求" : "暂无已处理记录"}
-            actionLabel={filtered ? "清除筛选" : view === "pending" && historyCount > 0 ? "查看已处理记录" : undefined}
+          <SectionEmpty message={filtered ? "没有符合当前筛选条件的请求" : view === "pending" ? mineOnly ? "暂无审核中的提交" : "暂无待审核请求" : mineOnly ? "暂无已处理提交" : "暂无已处理记录"}
+            actionLabel={filtered ? "清除筛选" : view === "pending" && historyCount > 0 ? mineOnly ? "查看已处理提交" : "查看已处理记录" : undefined}
             onAction={filtered ? clearFilters : () => changeContext("view", "history")} />
-          <p className="review-inbox__empty-description">{filtered ? "调整或清除筛选条件可查看其他请求。" : mineOnly ? "在参数修改中提交变更后，可在这里追踪处理人、审核意见与应用结果。"
+          <p className="review-inbox__empty-description">{filtered ? "调整或清除筛选条件可查看其他请求。" : mineOnly ? view === "pending" ? "在项目参数工作台保存草稿并提交审核后，可在这里跟踪进度。" : "审核通过、被驳回或已撤回的提交会保留在这里。"
             : view === "pending" ? "当前项目暂无待审变更。" : "已批准、驳回或撤回的请求会保留在这里。"}</p>
           {mineOnly && onNavigate ? <Button type="button" size="sm" onClick={() => onNavigate(`/parameters?project=${encodeURIComponent(projectId)}`)}>前往参数修改</Button> : null}
         </TableCell></TableRow></TableBody></Table></div> : null}
@@ -368,7 +369,7 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
         aria-labelledby={`${tabsId}-${view === "pending" ? "history" : "pending"}-tab`} hidden />
     </section>
     {selected ? <aside className="review-detail" ref={detailRef} tabIndex={-1} aria-labelledby={`${tabsId}-detail-heading`}>
-      <h2 id={`${tabsId}-detail-heading`} className="sr-only">审阅详情</h2>
+      <h2 id={`${tabsId}-detail-heading`} className="sr-only">{mineOnly ? "提交详情" : "审阅详情"}</h2>
       <p className="review-inbox__detail-context sr-only">{selected.project} · {selected.typeLabel ?? typeLabels[selected.kind]}</p>
       {selected.kind === "legacy" ? renderLegacyDetail(selected) : selected.kind === "value" ? <CanonicalProjectValueReviewPanel
         key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.kind, selected.id])} refreshVersion={detailRefresh} projectId={projectId} repository={repository} currentUserId={state.currentUserId} canReview={canReview}

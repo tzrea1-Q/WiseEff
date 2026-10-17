@@ -30,6 +30,36 @@ function inbox(rows: ReviewInboxRow[] = [], search = "") {
 }
 
 describe("unified review inbox", () => {
+  it("uses personal submission language and gives an empty queue the full width", () => {
+    const onNavigate = vi.fn();
+    const { container } = render(<ReviewInbox projectId="aurora" state={initialState} search="" mineOnly legacyRows={[]}
+      renderLegacyDetail={() => null} onNavigate={onNavigate} />);
+    expect(screen.getByText("暂无审核中的提交")).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "提交状态" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "审核中" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText(/项目成员提交/)).not.toBeInTheDocument();
+    expect(container.querySelector(".review-inbox")).toHaveClass("review-inbox--list-only");
+    expect(screen.queryByRole("columnheader", { name: "提交人" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "项目" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "我的提交" })).queryByRole("columnheader")).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "前往参数修改" }));
+    expect(onNavigate).toHaveBeenCalledWith("/parameters?project=aurora");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "已结束" }));
+    expect(screen.getByText("暂无已处理提交")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "已结束" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens legacy details inside the personal submission workspace", () => {
+    render(<ReviewInbox projectId="aurora" state={initialState} search="" mineOnly legacyRows={[older]}
+      renderLegacyDetail={(row) => <h3>{row.title}详情</h3>} />);
+    const table = screen.getByRole("table", { name: "我的提交" });
+    fireEvent.click(within(table).getByRole("button", { name: "查看 调整电压 提交详情" }));
+    expect(within(screen.getByRole("complementary", { name: "提交详情" }))
+      .getByRole("heading", { name: "调整电压详情" })).toBeInTheDocument();
+    expect(window.location.search).toContain("legacyRequest=older");
+  });
+
   it("keeps older project bookmarks compatible while preferring the canonical query", () => {
     expect(getContextQuery("?projectId=nebula").projectId).toBe("nebula");
     expect(getContextQuery("?project=aurora&projectId=nebula").projectId).toBe("aurora");
@@ -255,7 +285,7 @@ describe("unified review inbox", () => {
       legacyRows={[]} renderLegacyDetail={() => null} onNavigate={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "前往变更审阅" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "前往参数修改" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "进行中" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "审核中" })).toBeInTheDocument();
   });
 
   it("shows a load failure rather than a false empty queue and can retry", async () => {

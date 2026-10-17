@@ -2043,16 +2043,18 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
       await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("cccv_0");
       await workspace.locator(`[data-binding-id="${bindingId}"]`)
-        .getByRole("button", { name: /^(编辑|继续编辑) cccv_0/ }).click();
-      const dialog = page.getByRole("dialog", { name: "修改草稿" });
-      await dialog.getByLabel("目标值", { exact: true }).fill("<4510 0>");
+        .getByRole("button", { name: /^参数详情 cccv_0/ }).click();
+      const dialog = page.getByRole("dialog", { name: /参数详情$/ });
+      await dialog.getByLabel(/^目标值(?:\s*·\s*.+)?$/).fill("<4510 0>");
       await dialog.getByLabel("修改原因", { exact: true }).fill("#1061 canonical submission gates release readiness");
       const created = page.waitForResponse((response) => response.request().method() === "POST"
         && response.url().endsWith(`/parameter-bindings/${bindingId}/drafts`));
-      await dialog.getByRole("button", { name: "校验并加入本轮" }).click();
+      await dialog.getByRole("button", { name: "保存草稿" }).click();
       const draft = await created;
       expect(draft.status(), await draft.text()).toBe(201);
       draftId = (await draft.json()).item.draftId;
+      await expect(dialog.getByText("草稿已保存，待提交审核。", { exact: true })).toBeVisible();
+      await dialog.getByRole("button", { name: "关闭参数详情" }).click();
       const submission = page.getByRole("region", { name: "参数修改提交" });
       await selectControlOption(submission.getByLabel("软件 MDE", { exact: true }), acceptanceCast.sunMei.userId);
       const submitted = page.waitForResponse((response) => response.request().method() === "POST"

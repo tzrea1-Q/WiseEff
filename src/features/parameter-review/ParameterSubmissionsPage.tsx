@@ -66,7 +66,7 @@ export function ParameterSubmissionsPage({
     const submitterAliases = new Set(
       currentUser ? getUserDisplayAliases(currentUser) : [activeRoleLabel(state.activeRoleId), "平台用户"]
     );
-    return state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
+    return state.parameterSubmissionRounds.filter((round) => round.projectId === canonicalProjectId && submitterAliases.has(round.submitter));
   }, [canonicalProjectId, currentUser, isApiMode, projectionMatchesScope, state.activeRoleId, state.parameterSubmissionRounds, submissionProjection.rounds]);
   const [withdrawTarget, setWithdrawTarget] = useState<LegacySubmissionRound | null>(null);
   const [locationSearch, setLocationSearch] = useState(search);

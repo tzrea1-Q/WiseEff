@@ -37,7 +37,7 @@ export function acceptanceUserIdForRole(roleId: AcceptanceRoleId) {
   return acceptanceUsersByRole[roleId].userId;
 }
 
-export function authHeadersForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId): Record<string, string> {
+export function authHeadersForUser(userId: string, email: string, name: string, scopedOrganizationId: string = organizationId): Record<string, string> {
   const authorization = createBearerTokenForUser(userId, email, name, scopedOrganizationId);
   // Always include x-wiseeff-user so AUTH_MODE=development resolvers (which ignore Bearer)
   // still load the intended user from the database.
@@ -94,7 +94,7 @@ export async function signInBrowserAsUser(
   email: string,
   name: string,
   route = "/parameter-home",
-  scopedOrganizationId = organizationId
+  scopedOrganizationId: string = organizationId
 ) {
   const authorization = createBearerTokenForUser(userId, email, name, scopedOrganizationId);
   if (!authorization) {

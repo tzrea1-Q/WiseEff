@@ -5,6 +5,7 @@ export type InitializationBindingCandidate = {
   parameterSpecId: string;
   parameterSpecVersionId: string;
   propertyKey: string;
+  displayName?: string;
   moduleId: string;
   risk: "High" | "Medium" | "Low" | null;
   effectiveValue: unknown;
@@ -30,6 +31,10 @@ function semanticKey(candidate: Pick<InitializationBindingCandidate, "sourceProj
 }
 
 function needsConfirmation(candidate: InitializationBindingCandidate) {
+  const value = candidate.effectiveValue;
+  if (candidate.sourceFormat === "dts" && typeof value === "object" && value !== null
+    && (("kind" in value && value.kind === "empty")
+      || ("kind" in value && value.kind === "boolean" && "present" in value && value.present === true))) return false;
   return candidate.rawValue.trim().length === 0 || candidate.effectiveValue == null;
 }
 

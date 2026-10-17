@@ -158,7 +158,7 @@ it("rolls back a failed source copy and retries the same approved initialization
   const results = [await api(1, pending.approvePath, {}), await api(1, pending.approvePath, {})];
   expect(results.map((result) => result.status)).toEqual([200, 200]);
   expect(results[0]!.body).toEqual(results[1]!.body);
-  expect((await db.query("select count(*)::int as count from parameter_catalog.current_project_parameter_bindings where organization_id=$1 and project_id=$2", [ORG, projectId])).rows[0]!.count).toBe(1);
+  expect((await db.query<{ count: number }>("select count(*)::int as count from parameter_catalog.current_project_parameter_bindings where organization_id=$1 and project_id=$2", [ORG, projectId])).rows[0]!.count).toBe(1);
 }, 60_000);
 
 it("refuses source drift after submission without materializing any target state", async () => {
@@ -345,7 +345,7 @@ it("keeps canonical source pins inaccessible to the governance runtime role", as
 });
 
 it("initializes from canonical-only JSON over authenticated HTTP, then independently reviews both sources", async () => {
-  expect((await db.query("select count(*)::int as count from public.project_parameter_bindings where organization_id=$1", [ORG])).rows[0]!.count).toBe(0);
+  expect((await db.query<{ count: number }>("select count(*)::int as count from public.project_parameter_bindings where organization_id=$1", [ORG])).rows[0]!.count).toBe(0);
   const created = await api(0, "/api/v1/parameters/admin/projects", { id: TARGET, name: "Independent target", code: "TARGET" });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('init-http-target-reviewer',$1,$2,$3,'software-committer')", [REVIEWER, ORG, TARGET]);
@@ -356,6 +356,10 @@ it("initializes from canonical-only JSON over authenticated HTTP, then independe
   expect(preview.body.items).toHaveLength(1);
   const sourceBefore = await exportBinding(SOURCE, sourceBindingId);
   expect(preview.body.items[0]!.sourceProjectValueId).toBe(sourceBefore.currentValueId);
+  expect(preview.body.items[0]!.displayName).toBe("Input current limit");
+  expect(preview.body.items[0]!.effectiveValue).toEqual({ kind: "json", value: JSON.parse(sourceBefore.files[0]!.content).limits.limit });
+  // This Catalog Definition does not supply a parameter risk classification.
+  expect(preview.body.items[0]!.risk).toBeNull();
   const input = {
     projectName: "Independent target", projectCode: "TARGET", ownerUserId: AUTHOR,
     sourceProjectIds: [SOURCE], primarySourceProjectId: SOURCE, supplementSourceProjectIds: [],
@@ -370,11 +374,12 @@ it("initializes from canonical-only JSON over authenticated HTTP, then independe
   expect(saved.status, JSON.stringify(saved.body)).toBe(200);
   expect(saved.body.item.bindingSnapshots[0]!.rawValue).toBe(preview.body.items[0]!.rawValue);
   expect(saved.body.item.bindingSnapshots[0]!.effectiveValue).toEqual(preview.body.items[0]!.effectiveValue);
+  expect(saved.body.item.bindingSnapshots[0]!.displayName).toBe("Input current limit");
   const submitted = await api<{ item: { id: string } }>(0, `${initPath}/submit`, {});
   expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
   const approvePath = `/api/v1/parameters/admin/initialization-reviews/${submitted.body.item.id}/approve`;
   expect((await api(2, approvePath, {})).status).toBe(403);
-  expect((await db.query("select count(*)::int as count from parameter_catalog.current_project_parameter_bindings where organization_id=$1 and project_id=$2", [ORG, TARGET])).rows[0]!.count).toBe(0);
+  expect((await db.query<{ count: number }>("select count(*)::int as count from parameter_catalog.current_project_parameter_bindings where organization_id=$1 and project_id=$2", [ORG, TARGET])).rows[0]!.count).toBe(0);
   const approved = await api<{ item: { status: string } }>(1, approvePath, {});
   expect(approved.status, JSON.stringify(approved.body)).toBe(200);
   expect(approved.body.item.status).toBe("approved");
@@ -396,5 +401,5 @@ it("initializes from canonical-only JSON over authenticated HTTP, then independe
   const changedSource = await changeValue(SOURCE, sourceBindingId, "72");
   expect(changedSource.files[0]!.content).toContain("72");
   expect(await exportBinding(TARGET, targetId)).toEqual(changedTarget);
-  expect((await db.query("select count(*)::int as count from public.project_parameter_bindings where organization_id=$1", [ORG])).rows[0]!.count).toBe(0);
+  expect((await db.query<{ count: number }>("select count(*)::int as count from public.project_parameter_bindings where organization_id=$1", [ORG])).rows[0]!.count).toBe(0);
 }, 60_000);

@@ -107,19 +107,19 @@ describe("ParameterSubmissionsPage unified inbox", () => {
         search="?project=aurora" runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
 
-    const pending = await screen.findByRole("tab", { name: "进行中" });
-    const history = screen.getByRole("tab", { name: "已处理" });
+    const pending = await screen.findByRole("tab", { name: "审核中" });
+    const history = screen.getByRole("tab", { name: "已结束" });
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
     expect(await screen.findByRole("button", { name: /停用充电节点/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /停用充电节点/ }).closest("tr")).toHaveTextContent("硬件MDE检视");
     expect(screen.queryByRole("region", { name: "旧版提交归档" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "我的提交" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("region", { name: "我的提交" })).toHaveLength(1);
     expect(listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora", mine: true });
     expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", { mine: true });
     expect(listMemberRemovalRequests).toHaveBeenCalledWith("aurora", { mine: true });
     expect(screen.getByRole("button", { name: "参数变更，查看 本人软件配置 提交详情" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看 本人删除成员 提交详情" })).toBeInTheDocument();
-    expect(within(screen.getByRole("table", { name: "审阅队列" })).getAllByRole("row")).toHaveLength(4);
+    expect(within(screen.getByRole("table", { name: "我的提交" })).getAllByRole("row")).toHaveLength(4);
 
     await userEvent.click(history);
     fireEvent.click(await screen.findByRole("button", { name: /旧版参数归档/ }));
@@ -186,7 +186,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
     </TopBarActionsContext.Provider>);
 
     expect(await screen.findByRole("heading", { level: 2, name: "已处理参数" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "已结束" })).toHaveAttribute("aria-selected", "true");
     expect(window.location.search).toContain("legacyRequest=history-round");
     expect(window.location.search).toContain("view=history");
 
@@ -220,14 +220,17 @@ describe("ParameterSubmissionsPage unified inbox", () => {
         search="?project=aurora" runtime={runtime} runtimeMode="api" />
     </TopBarActionsContext.Provider>);
 
-    expect(await screen.findByText("你还没有进行中的提交")).toBeInTheDocument();
-    expect(screen.getAllByText("你还没有进行中的提交")).toHaveLength(1);
+    expect(await screen.findByText("暂无审核中的提交")).toBeInTheDocument();
+    expect(screen.getAllByText("暂无审核中的提交")).toHaveLength(1);
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
     expect(screen.queryByRole("region", { name: "提交轮次详情" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "我的提交" })).queryByRole("columnheader")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "前往参数修改" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "查看已处理记录" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
-    expect(screen.getByRole("tab", { name: "已处理" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getAllByText("暂无已处理记录")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "查看已处理提交" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "已结束" }));
+    expect(screen.getByRole("tab", { name: "已结束" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByText("暂无已处理提交")).toHaveLength(1);
     expect(screen.queryByRole("region", { name: "提交轮次详情" })).not.toBeInTheDocument();
     expect(runtime.parameterRepository.listSubmissionRounds).toHaveBeenCalledWith({ projectId: "aurora", mine: true });
     expect(runtime.parameterCatalogRepository!.listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", { mine: true });

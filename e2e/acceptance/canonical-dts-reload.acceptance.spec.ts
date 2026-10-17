@@ -100,7 +100,11 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       const hint = page.getByRole("button", { name: "不再提示" });
       if (await hint.isVisible()) await hint.click();
       const candidateResponse = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/dts-reload/projects/${fixture.projectId}/candidates`);
-      await bindingRow.getByRole("button", { name: /^带入 DTS 调试 iin_max/ }).click();
+      await bindingRow.getByRole("button", { name: /^参数详情 iin_max/ }).click();
+      const parameterDetail = page.getByRole("dialog", { name: /参数详情$/ });
+      await expect(parameterDetail.locator(".parameter-inspector__header code")).toHaveText("iin_max");
+      await parameterDetail.getByRole("tab", { name: "配置来源", exact: true }).click();
+      await parameterDetail.getByRole("button", { name: "带入 DTS 调试", exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`/dts-reload\\?project=${fixture.projectId}`));
       const candidatePayload = await (await candidateResponse).json();
       const target = candidatePayload.items.find((item: { bindingId: string }) => item.bindingId === fixture.bindingId);
@@ -146,7 +150,9 @@ test("workbench handoff reaches canonical target, promotion survives re-entry an
       await expect(promotedRow.getByText("iin_max", { exact: true })).toBeVisible();
       await expect(promotedRow.getByText("草稿", { exact: true })).toBeVisible();
       await page.reload();
-      await expect(page.getByRole("button", { name: /^继续编辑 iin_max/ })).toBeVisible();
+      const resumedParameter = page.getByRole("button", { name: /^参数详情 iin_max/ });
+      await expect(resumedParameter).toBeVisible();
+      await expect(resumedParameter).toHaveAttribute("title", "查看并继续编辑草稿");
       const draft = (await db.query<{ id: string }>("select id from project_parameter_value_drafts where binding_id=$1", [fixture.bindingId])).rows;
       expect(draft).toHaveLength(1);
       async function currentValueId() {

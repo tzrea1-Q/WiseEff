@@ -136,7 +136,7 @@ test.beforeAll(async () => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString()) as { stream?: boolean; messages: Array<{ role: string }> };
-    const lastUser = body.messages.findLastIndex((message) => message.role === "user");
+    const lastUser = body.messages.map((message) => message.role).lastIndexOf("user");
     const hasResult = body.messages.slice(lastUser + 1).some((message) => message.role === "tool");
     modelCalls.push({ requestedTool, roles: body.messages.map((message) => message.role), hasResult });
     const tool = requestedTool === "search"
@@ -240,8 +240,11 @@ test("canonical JSON Agent search, edited approval, refresh, product review and 
   const jsonTab = page.getByRole("tab", { name: /JSON 参数/ });
   await jsonTab.click();
   const jsonTable = page.getByRole("table", { name: "JSON 参数列表" });
-  await expect(jsonTable.getByRole("cell", { name: "iin_max", exact: true })).toBeVisible();
-  await expect(jsonTable.getByRole("cell", { name: "5", exact: true })).toBeVisible();
+  const jsonRow = jsonTable.getByRole("row").filter({
+    has: page.getByRole("button", { name: "参数详情 iin_max", exact: true })
+  });
+  await expect(jsonRow.getByText("iin_max", { exact: true })).toBeVisible();
+  await expect(jsonRow.getByRole("cell", { name: "5", exact: true })).toBeVisible();
   const hint = page.getByRole("button", { name: "不再提示" });
   if (await hint.isVisible()) await hint.click();
   await page.getByRole("button", { name: "打开小泽" }).click();
@@ -323,7 +326,7 @@ test("canonical JSON Agent search, edited approval, refresh, product review and 
   await page.reload();
   await refreshedBindings;
   await jsonTab.click();
-  await expect(jsonTable.getByRole("cell", { name: "5", exact: true })).toBeVisible();
+  await expect(jsonRow.getByRole("cell", { name: "5", exact: true })).toBeVisible();
   expect((await requestRows()).length).toBe(1);
   expect(await currentValueId()).toBe(before);
   expect(await currentSourceState()).toMatchObject({ current_value_id: before, source_pin_id: fixture.sourcePinId,
@@ -350,7 +353,7 @@ test("canonical JSON Agent search, edited approval, refresh, product review and 
     parameter_submission_items: 0, parameter_change_requests: 0, parameter_specs: 0, dts_property_specs: 0 });
   await page.reload();
   await jsonTab.click();
-  await expect(jsonTable.getByRole("cell", { name: "10.25", exact: true })).toBeVisible();
+  await expect(jsonRow.getByRole("cell", { name: "10.25", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "打开小泽" }).click();
   await expect(popup).toBeVisible();
   await composer.fill("再次建议修改该参数");

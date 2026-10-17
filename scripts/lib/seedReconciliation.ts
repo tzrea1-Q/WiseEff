@@ -930,7 +930,7 @@ export const buildSeedReconciliation = (rootDir: string = process.cwd()): SeedRe
         method:
           "resolveDtsConfigSet(...).diagnostics filtered to code==='dangling-reference' (danglingAnchorLabels) plus missingReferencedLabels(source) per committed board file",
         statement:
-          "The '24 dangling overlay targets' figure is NOT reproducible in this worktree. This manifest records the measured value: 29 distinct unresolved &label overlay targets and 37 missing &name references per board. The number 24 matches the stale '24 repeated property keys' prose in docs/design-docs/2026-07-16-parameter-topology-schema-management-design.md, now 26 in committed code assertions; it is not a dangling-label count.",
+          `The historical '24 dangling overlay targets' figure is NOT reproducible in this worktree. The self-contained committed demo boards currently have ${boards.danglingLabels.length} distinct unresolved overlay targets and ${boards.missingReferencedLabels} missing label references per board. Repeated property keys are a separate topology measurement, not a dangling-label count.`,
       },
       parameterLibraryShape: {
         claimUnderReview: "power-management.json parameterLibrary items carrying propertyKey / constraints / examples fields.",

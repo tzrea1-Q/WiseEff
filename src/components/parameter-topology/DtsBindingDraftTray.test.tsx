@@ -6,6 +6,7 @@ import type { WorkflowAssigneeCandidates } from "@/application/ports/ParameterRe
 
 import {
   DtsBindingDraftTray,
+  type DtsBindingDraftTrayProps,
   type PendingTopologyDraft
 } from "./DtsBindingDraftTray";
 
@@ -59,6 +60,43 @@ function enablementDraft(
 }
 
 describe("DtsBindingDraftTray", () => {
+  it("uses the parameter's display name as its heading while retaining the exact technical action identity", () => {
+    render(<DtsBindingDraftTray projectId="aurora" drafts={[draft({ displayName: "看门狗超时" })]}
+      candidates={candidates} onRemove={vi.fn()} onSubmit={vi.fn()} onNavigate={vi.fn()} onEditBinding={vi.fn()} />);
+    expect(screen.getByText("看门狗超时").closest("strong")).not.toBeNull();
+    expect(screen.getByText("gpio_int").tagName).toBe("CODE");
+    expect(screen.getByText("gpio_int").closest("strong")).toBeNull();
+    expect(screen.getByRole("button", { name: "继续编辑 gpio_int" })).toBeEnabled();
+  });
+
+  it("edits a saved draft from the tray using its binding identity", () => {
+    const onEditBinding = vi.fn();
+    render(<DtsBindingDraftTray projectId="aurora" drafts={[draft()]}
+      candidates={candidates} onRemove={vi.fn()} onSubmit={vi.fn()}
+      onNavigate={vi.fn()} onEditBinding={onEditBinding} />);
+    fireEvent.click(screen.getByRole("button", { name: "继续编辑 gpio_int" }));
+    expect(onEditBinding).toHaveBeenCalledWith("binding-sc8562-gpio-int");
+  });
+
+  it.each(["boolean", "empty"] as const)("allows a present %s property with empty DTS text", (kind) => {
+    render(<DtsBindingDraftTray projectId="aurora"
+      drafts={[draft({ rawText: "", currentRawValue: "", effectiveValue: kind === "boolean"
+        ? { kind: "boolean", present: true } : { kind: "empty" } })]}
+      candidates={candidates} onRemove={vi.fn()} onSubmit={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /^提交审核/ })).toBeEnabled();
+    expect(screen.queryByText("∅")).not.toBeInTheDocument();
+  });
+
+  it("keeps saved drafts visible without offering writes to a read-only user", () => {
+    render(<DtsBindingDraftTray projectId="aurora" drafts={[draft()]} canEdit={false}
+      onEditBinding={vi.fn()} candidates={candidates} onRemove={vi.fn()}
+      onSubmit={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByText("Move interrupt line")).toBeVisible();
+    expect(screen.getByRole("button", { name: "继续编辑 gpio_int" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "移出本轮修改" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
+  });
+
   it("submits canonical binding drafts with an optional software reviewer", async () => {
     const onSubmitCanonical = vi.fn().mockResolvedValue(undefined);
     render(
@@ -163,7 +201,7 @@ describe("DtsBindingDraftTray", () => {
       draft({ writeTarget: { role: "canonical-project-value-draft",propertyKey: "limit" } }),enablementDraft()
     ]} candidates={candidates} onRemove={vi.fn()} onSubmit={onSubmit} onSubmitCanonical={onSubmitCanonical} onNavigate={vi.fn()} />);
     expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent("节点启用与 canonical 参数值须分开提交，各自保留结构或 canonical 历史、审核与来源归属");
+    expect(screen.getByRole("alert")).toHaveTextContent("节点启用与参数值使用不同审核流程，请分别提交");
     expect(screen.getByRole("alert")).not.toHaveTextContent("旧流程");
     expect(screen.queryAllByText(/一并提交|所见即所提/)).toHaveLength(0);
     expect(onSubmit).not.toHaveBeenCalled();
@@ -392,12 +430,12 @@ describe("DtsBindingDraftTray", () => {
     {
       name: "set with empty raw text",
       invalidDraft: draft({ action: "set", rawText: "  " }),
-      message: /set.*非空 rawText/
+      message: /目标值尚未填写/
     },
     {
       name: "delete with a non-empty raw value",
       invalidDraft: draft({ action: "delete", rawText: "<&gpio13 30 0>" }),
-      message: /delete.*空目标值/
+      message: /删除草稿包含了目标值/
     }
   ])("blocks an action/value mismatch: $name", ({ invalidDraft, message }) => {
     const onSubmit = vi.fn();
@@ -549,7 +587,7 @@ describe("DtsBindingDraftTray", () => {
     const pendingSubmit = new Promise<void>((resolve) => {
       resolveSubmit = resolve;
     });
-    const onSubmit = vi.fn(() => pendingSubmit);
+    const onSubmit = vi.fn<NonNullable<DtsBindingDraftTrayProps["onSubmit"]>>(() => pendingSubmit);
     const { rerender } = render(
       <DtsBindingDraftTray
         projectId="aurora"

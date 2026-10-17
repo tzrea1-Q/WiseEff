@@ -761,7 +761,7 @@ styleTest("sidebar feedback stays bottom-aligned and the existing compact drawer
   await expect(sidebar).toBeVisible();
   await expect.poll(async () => (await bounds(sidebar)).x).toBeCloseTo(0, 0);
   expect((await bounds(sidebar)).width).toBe(280);
-  const parameterPage = navigation.getByRole("button", { name: "参数修改", exact: true });
+  const parameterPage = navigation.getByRole("button", { name: "项目参数", exact: true });
   await expect(parameterPage).toBeInViewport();
   await parameterPage.click();
   await expect(sidebar).toBeHidden();

@@ -38,12 +38,10 @@ import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workb
 import type { BindingEditValidation } from "./BindingDetailPanel";
 import {
   DtsBindingDetailDialog,
-  type BindingCompareEntry
+  type BindingCompareEntry,
+  type DtsParameterEdit
 } from "./DtsBindingDetailDialog";
-import {
-  DtsBindingDraftDialog,
-  type LocalBindingDraftBag
-} from "./DtsBindingDraftDialog";
+import type { PendingBindingDraft } from "./draftTrayTypes";
 import { DtsParameterWorkbenchTable } from "./DtsParameterWorkbenchTable";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
 import { useModuleNodeSelection } from "@/hooks/useModuleNodeSelection";
@@ -59,7 +57,11 @@ type PrimaryDtsSource = {
 
 export type DtsParameterWorkbenchProps = {
   projectId?: string;
+  projectName?: string;
   requestedBindingId?: string;
+  pendingDrafts?: readonly PendingBindingDraft[];
+  requestedEditBindingId?: string;
+  editRequestToken?: number;
   configSetId?: string;
   revisionId?: string;
   layoutMode?: "desktop" | "tablet" | "mobile";
@@ -116,7 +118,7 @@ export type DtsParameterWorkbenchProps = {
   /** Called when the user asks to export the currently visible rows (semantic export). */
   onExportRows?: (rows: DtsParameterWorkbenchRow[]) => void;
   /** Loads the project's primary DTS source when entering tech view. */
-  loadPrimaryDtsSource?: () => Promise<PrimaryDtsSource>;
+  loadPrimaryDtsSource?: (sourceFileName?: string) => Promise<PrimaryDtsSource>;
 };
 
 function selectedSubtreeBindingIds(
@@ -171,9 +173,22 @@ function treeContainsNode(roots: DtsWorkbenchTreeNode[], nodeId: string): boolea
   return false;
 }
 
+function nodePath(roots: DtsWorkbenchTreeNode[], nodeId: string): string[] {
+  for (const node of roots) {
+    if (node.id === nodeId) return [node.label];
+    const childPath = nodePath(node.children, nodeId);
+    if (childPath.length) return [node.label, ...childPath];
+  }
+  return [];
+}
+
 export function DtsParameterWorkbench({
   projectId,
+  projectName,
   requestedBindingId,
+  pendingDrafts = [],
+  requestedEditBindingId,
+  editRequestToken,
   configSetId,
   revisionId,
   layoutMode = "desktop",
@@ -187,7 +202,6 @@ export function DtsParameterWorkbench({
   onSelectedBindingIdsChange,
   canEdit,
   onSelectBinding,
-  onEditBinding,
   onStartDtsReload,
   onCreateDraft,
   onEditNodeEnablement,
@@ -211,17 +225,35 @@ export function DtsParameterWorkbench({
   const [uncontrolledSelectedBindingIds, setUncontrolledSelectedBindingIds] = useState<Set<string>>(new Set());
   const selectedBindingIds = controlledSelectedBindingIds ?? uncontrolledSelectedBindingIds;
   const setSelectedBindingIds = onSelectedBindingIdsChange ?? setUncontrolledSelectedBindingIds;
-  const [detailIntent, setDetailIntent] = useState<"view" | "edit">("view");
-  const [localDraftBag, setLocalDraftBag] = useState<LocalBindingDraftBag>({});
-  // Unvalidated local edits are lost on project switch / reload — feed the guards.
+  const [localDraftBag, setLocalDraftBag] = useState<Record<string, DtsParameterEdit & { saved?: boolean }>>({});
+  const previousDraftBindingIds = useRef(draftBindingIds);
   useEffect(() => {
-    reportUnsavedParameterWork("workbench-local-draft-bag", Object.keys(localDraftBag).length);
+    const previous = previousDraftBindingIds.current;
+    previousDraftBindingIds.current = draftBindingIds;
+    setLocalDraftBag(current => {
+      const expired = Object.keys(current).filter(id => current[id].saved && (draftBindingIds.has(id) || previous.has(id)));
+      if (!expired.length) return current;
+      const next = { ...current };
+      expired.forEach(id => { delete next[id]; });
+      return next;
+    });
+  }, [draftBindingIds]);
+  const localChangeCount = Object.values(localDraftBag).filter((draft) => !draft.saved).length;
+  useEffect(() => {
+    reportUnsavedParameterWork("workbench-local-draft-bag", localChangeCount);
     return () => {
       clearUnsavedParameterWork("workbench-local-draft-bag");
     };
-  }, [localDraftBag]);
-  const [draftDialogOpen, setDraftDialogOpen] = useState(false);
-  const [focusedDraftBindingId, setFocusedDraftBindingId] = useState<string | null>(null);
+  }, [localChangeCount]);
+  const previousProject = useRef(projectId);
+  useEffect(() => {
+    if (previousProject.current === projectId) return;
+    previousProject.current = projectId;
+    setLocalDraftBag({});
+    setSelectedBindingId(null);
+    setQuery("");
+    setModuleFilter([]);
+  }, [projectId]);
   const detailOpenerRef = useRef<HTMLElement | null>(null);
   const pendingFocusRestoreRef = useRef<HTMLElement | null>(null);
   const listScrollXRef = useRef<HTMLDivElement | null>(null);
@@ -250,12 +282,23 @@ export function DtsParameterWorkbench({
     setSelectedNodeId(null);
     setResultsMode("parameters");
     setSelectedBindingId(requestedBindingId);
-    setDetailIntent("view");
     onSelectBinding(requestedBindingId);
   }, [currentRows, onSelectBinding, projectId, requestedBindingId, setSelectedNodeId]);
 
+  const handledEditRequest = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${projectId}:${requestedEditBindingId}:${editRequestToken}`;
+    if (!requestedEditBindingId || handledEditRequest.current === key || !currentRows.some(row => row.bindingId === requestedEditBindingId)) return;
+    handledEditRequest.current = key;
+    setSelectedBindingId(requestedEditBindingId);
+    setResultsMode("parameters");
+  }, [currentRows, editRequestToken, projectId, requestedEditBindingId]);
+
   const [dtsSourceStatus, setDtsSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [dtsSource, setDtsSource] = useState<PrimaryDtsSource | null>(null);
+  const [sourceFocusLine, setSourceFocusLine] = useState<number | null>(null);
+  const [sourceFileName, setSourceFileName] = useState<string | undefined>();
+  useEffect(() => { setSourceFocusLine(null); }, [effectiveSelectedNodeId]);
   const [dtsSourceErrorMessage, setDtsSourceErrorMessage] = useState<string | null>(null);
   const [dtsSourceLoadToken, setDtsSourceLoadToken] = useState(0);
   const [findNextToken, setFindNextToken] = useState(0);
@@ -283,7 +326,7 @@ export function DtsParameterWorkbench({
       return undefined;
     }
     let cancelled = false;
-    void loadPrimaryDtsSource()
+    void loadPrimaryDtsSource(sourceFileName)
       .then((source) => {
         if (!cancelled) {
           setDtsSource(source);
@@ -301,7 +344,7 @@ export function DtsParameterWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [dtsSourceLoadToken, loadPrimaryDtsSource, resultsMode]);
+  }, [dtsSourceLoadToken, loadPrimaryDtsSource, resultsMode, sourceFileName]);
 
   const enterDtsSourceMode = () => {
     setResultsMode("dtsSource");
@@ -334,9 +377,9 @@ export function DtsParameterWorkbench({
   );
   const moduleFocusLine = useMemo(
     () => resultsMode === "dtsSource"
-      ? smallestPositiveSourceLine(currentRows, subtreeBindingIds)
+      ? smallestPositiveSourceLine(currentRows.filter(row => row.sourceFileName === dtsSource?.fileName), subtreeBindingIds)
       : null,
-    [currentRows, resultsMode, subtreeBindingIds]
+    [currentRows, dtsSource?.fileName, resultsMode, subtreeBindingIds]
   );
   const moduleJumpStatus = useMemo(() => {
     if (resultsMode !== "dtsSource" || subtreeBindingIds === null) return null;
@@ -377,6 +420,7 @@ export function DtsParameterWorkbench({
     const selected = collectTreeFilterSelectedDescendantIds(moduleFilterNodes, activeModuleFilter);
     return scopedRows.filter((row) => selected.has(row.moduleId));
   }, [activeModuleFilter, moduleFilterNodes, scopedRows]);
+  const scopeLabel = effectiveSelectedNodeId ? nodePath(tree, effectiveSelectedNodeId).join(" / ") : "全部模块";
 
   useEffect(() => {
     const scroller = listScrollXRef.current;
@@ -442,37 +486,25 @@ export function DtsParameterWorkbench({
     ? effectiveNodesByLogicalId.get(selectedLogicalNodeId) ?? null
     : null;
 
-  const upsertLocalDraft = (
-    bindingId: string,
-    seed?: { rawValue?: string; reason?: string; overwrite?: boolean }
-  ) => {
-    setLocalDraftBag((current) => {
-      const existing = current[bindingId];
-      if (existing && !seed?.overwrite) return current;
-      const fallbackRaw = rowsByBindingId.get(bindingId)?.rawValue ?? "";
-      const nextRaw = seed?.rawValue ?? existing?.rawValue ?? fallbackRaw;
-      return {
-        ...current,
-        [bindingId]: {
-          rawValue: formatDtsRawValueForUi(nextRaw) || nextRaw,
-          reason: seed?.reason ?? existing?.reason ?? ""
-        }
-      };
-    });
+  const persistedDrafts = new Map(pendingDrafts.map(draft => [draft.projectParameterBindingId, draft]));
+  const baseEdit = (bindingId: string): DtsParameterEdit => {
+    const persisted = persistedDrafts.get(bindingId);
+    return persisted
+      ? { rawValue: formatDtsRawValueForUi(persisted.rawText), reason: persisted.reason, action: persisted.action }
+      : { rawValue: formatDtsRawValueForUi(rowsByBindingId.get(bindingId)?.rawValue), reason: "", action: "set" };
   };
-
-  const openDraftDialog = (bindingId: string, seed?: { rawValue?: string; reason?: string; overwrite?: boolean }) => {
-    const row = rowsByBindingId.get(bindingId);
-    if (!row) return;
-    const seededRaw = seed?.rawValue ?? row.rawValue;
-    upsertLocalDraft(bindingId, {
-      rawValue: formatDtsRawValueForUi(seededRaw) || seededRaw,
-      reason: seed?.reason,
-      overwrite: seed?.overwrite
+  const currentEdit = (bindingId: string): DtsParameterEdit => {
+    const local = localDraftBag[bindingId];
+    return local && (!local.saved || !persistedDrafts.has(bindingId)) ? local : baseEdit(bindingId);
+  };
+  const updateEdit = (bindingId: string, next: DtsParameterEdit) => {
+    const base = baseEdit(bindingId);
+    setLocalDraftBag(current => {
+      const result = { ...current };
+      if (next.rawValue === base.rawValue && next.reason === base.reason && (next.action ?? "set") === (base.action ?? "set")) delete result[bindingId];
+      else result[bindingId] = next;
+      return result;
     });
-    setFocusedDraftBindingId(bindingId);
-    setDraftDialogOpen(true);
-    setSelectedBindingId(null);
   };
 
   const selectBinding = (bindingId: string) => {
@@ -480,33 +512,16 @@ export function DtsParameterWorkbench({
       ? document.activeElement
       : null;
     setSelectedBindingId(bindingId);
-    setDetailIntent("view");
-    setDraftDialogOpen(false);
     onSelectBinding(bindingId);
-  };
-
-  const editBinding = (bindingId: string) => {
-    detailOpenerRef.current = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : detailOpenerRef.current;
-    openDraftDialog(bindingId);
-    setDetailIntent("edit");
-    onEditBinding?.(bindingId);
-  };
-
-  const addBindingToDraft = (bindingId: string) => {
-    openDraftDialog(bindingId);
-    setDetailIntent("edit");
   };
 
   const useCompareAsDraft = (input: { rawValue: string; reason: string }) => {
     if (!selectedBindingId) return;
-    openDraftDialog(selectedBindingId, {
+    updateEdit(selectedBindingId, {
       rawValue: input.rawValue,
       reason: input.reason,
-      overwrite: true
+      action: "set"
     });
-    setDetailIntent("edit");
   };
 
   const selectedRow = selectedBindingId
@@ -589,7 +604,7 @@ export function DtsParameterWorkbench({
   }, [selectedBindingId, loadBindingCompare, compareRetryToken]);
 
   useEffect(() => {
-    if (!selectedRow || detailIntent !== "view" || !loadParameterSpec) {
+    if (!selectedRow || !loadParameterSpec) {
       setSpecDetail(null);
       setSpecDetailStatus("idle");
       setSpecDetailErrorMessage(null);
@@ -618,28 +633,21 @@ export function DtsParameterWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [selectedRow, detailIntent, loadParameterSpec, specDetailRetryToken]);
+  }, [selectedRow, loadParameterSpec, specDetailRetryToken]);
 
   useEffect(() => {
-    if (selectedBindingId || draftDialogOpen || !pendingFocusRestoreRef.current) return;
+    if (selectedBindingId || !pendingFocusRestoreRef.current) return;
     const opener = pendingFocusRestoreRef.current;
     pendingFocusRestoreRef.current = null;
     queueMicrotask(() => {
       if (opener.isConnected) opener.focus();
     });
-  }, [draftDialogOpen, selectedBindingId]);
+  }, [selectedBindingId]);
 
   const closeDetail = () => {
     pendingFocusRestoreRef.current = detailOpenerRef.current;
     detailOpenerRef.current = null;
     setSelectedBindingId(null);
-  };
-
-  const closeDraftDialog = () => {
-    pendingFocusRestoreRef.current = detailOpenerRef.current;
-    detailOpenerRef.current = null;
-    setDraftDialogOpen(false);
-    setFocusedDraftBindingId(null);
   };
 
   const downloadDtsSource = () => {
@@ -654,13 +662,6 @@ export function DtsParameterWorkbench({
   };
 
   const dtsFindQuery = resultsMode === "dtsSource" ? query : "";
-
-  useEffect(() => {
-    if (draftDialogOpen && Object.keys(localDraftBag).length === 0) {
-      setDraftDialogOpen(false);
-      setFocusedDraftBindingId(null);
-    }
-  }, [draftDialogOpen, localDraftBag]);
 
   return (
     <section
@@ -696,7 +697,7 @@ export function DtsParameterWorkbench({
           />
         </label>
         {resultsMode === "dtsSource" ? (
-          <p role="status" aria-live="polite" className="dts-parameter-workbench__result-count">
+          <p role="status" aria-label="源码查找状态" aria-live="polite" className="dts-parameter-workbench__result-count">
             {moduleJumpStatus
               ?? (dtsFindQuery.trim()
                 ? `匹配 ${findStatus.activeIndex} / ${findStatus.matchCount}`
@@ -742,15 +743,19 @@ export function DtsParameterWorkbench({
                 导出当前结果
               </button>
             ) : null}
-        context={currentEdits ? (
-        <div
+        context={<>
+          <div className="parameter-workbench-context" aria-label="当前参数范围">
+            <div><span title={scopeLabel}>{scopeLabel}</span><span role="status">{visibleRows.length} / {currentRows.length} 个参数</span>{activeModuleFilter.length ? <span>已筛选 {activeModuleFilter.length} 个模块</span> : null}</div>
+            <div>{localChangeCount ? <button className="button subtle" type="button" onClick={() => selectBinding(Object.entries(localDraftBag).find(([, draft]) => !draft.saved)![0])}>继续未保存修改（{localChangeCount}）</button> : null}{query || effectiveSelectedNodeId || activeModuleFilter.length ? <button className="button subtle" type="button" onClick={() => { setQuery(""); setModuleFilter([]); setSelectedNodeId(null); }}>清除筛选</button> : null}</div>
+          </div>
+        {currentEdits ? <div
           className="dts-parameter-workbench__current-edits dts-draft-tray"
           role="region"
           aria-label="本轮已修改"
         >
           {currentEdits}
-        </div>
-        ) : null}
+        </div> : null}
+        </>}
         notice={notice || governanceContent ? <>{notice}{governanceContent}</> : undefined}
         navigator={<>
             {canEdit && onEditNodeEnablement && selectedEnablementNode ? (
@@ -760,7 +765,8 @@ export function DtsParameterWorkbench({
                 aria-label={`节点启用：${selectedEnablementNode.locator}`}
                 onClick={() => onEditNodeEnablement(selectedEnablementNode.logicalNodeId)}
               >
-                节点启用…
+                {selectedEnablementNode.name}{selectedEnablementNode.unitAddress ? `@${selectedEnablementNode.unitAddress}` : ""} · 节点启用状态
+                <small>影响 {currentRows.filter(row => row.logicalNodeId === selectedEnablementNode.logicalNodeId).length} 个参数</small>
               </button>
             ) : null}
           <DtsTopologyNavigator
@@ -771,7 +777,7 @@ export function DtsParameterWorkbench({
             labelKind="text"
             emptyMessage="暂无模块分组"
             ariaLabel="业务模块树"
-            onSelectNode={(nodeId) => setSelectedNodeId((current) => current === nodeId ? null : nodeId)}
+            onSelectNode={(nodeId) => { setSourceFocusLine(null); setSelectedNodeId((current) => current === nodeId ? null : nodeId); }}
           />
         </>}
       >
@@ -793,8 +799,6 @@ export function DtsParameterWorkbench({
                     selectedBindingIds={selectedBindingIds}
                     canEdit={canEdit}
                     onSelectBinding={selectBinding}
-                    onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
-                    onStartDtsReload={onStartDtsReload}
                     onSelectedBindingIdsChange={setSelectedBindingIds}
                   />
                   {visibleRows.length === 0 ? (
@@ -815,7 +819,7 @@ export function DtsParameterWorkbench({
               fileName={dtsSource.fileName}
               versionNumber={dtsSource.versionNumber}
               text={dtsSource.text}
-              focusLine={moduleFocusLine}
+              focusLine={sourceFocusLine ?? moduleFocusLine}
               findQuery={dtsFindQuery}
               findNextToken={findNextToken}
               onFindStatusChange={onFindStatusChange}
@@ -827,8 +831,9 @@ export function DtsParameterWorkbench({
           {footerContent}
         </div>
       ) : null}
-      {selectedRow && detailIntent === "view" ? (
+      {selectedRow ? (
         <DtsBindingDetailDialog
+          key={selectedRow.bindingId}
           row={selectedRow}
           canEdit={canEdit && Boolean(onCreateDraft)}
           historyEntries={historyEntries}
@@ -840,42 +845,35 @@ export function DtsParameterWorkbench({
           onRetryHistory={() => setHistoryRetryToken((token) => token + 1)}
           onRetryCompare={() => setCompareRetryToken((token) => token + 1)}
           baseProjectId={projectId ?? "current"}
-          baseProjectName="当前项目"
+          baseProjectName={projectName || projectId || "当前项目"}
           specDetail={specDetail}
           specDetailStatus={specDetailStatus}
           specDetailErrorMessage={specDetailErrorMessage}
           onRetrySpecDetail={() => setSpecDetailRetryToken((token) => token + 1)}
           onClose={closeDetail}
-          onAddToDraft={canEdit && onCreateDraft ? addBindingToDraft : undefined}
-          onUseCompareAsDraft={canEdit && onCreateDraft ? useCompareAsDraft : undefined}
-        />
-      ) : null}
-      {draftDialogOpen && Object.keys(localDraftBag).length > 0 ? (
-        <DtsBindingDraftDialog
-          rowsByBindingId={rowsByBindingId}
-          draftBag={localDraftBag}
-          focusedBindingId={focusedDraftBindingId}
-          canEdit={canEdit && Boolean(onCreateDraft)}
-          onClose={closeDraftDialog}
-          onUpdateDraft={(bindingId, patch) => {
-            setLocalDraftBag((current) => ({
-              ...current,
-              [bindingId]: {
-                rawValue: patch.rawValue ?? current[bindingId]?.rawValue ?? "",
-                reason: patch.reason ?? current[bindingId]?.reason ?? "",
-                action: patch.action ?? current[bindingId]?.action
-              }
-            }));
-          }}
-          onRemoveDraft={(bindingId) => {
-            setLocalDraftBag((current) => {
-              const next = { ...current };
-              delete next[bindingId];
-              return next;
+          draft={currentEdit(selectedRow.bindingId)}
+          hasLocalChanges={Boolean(localDraftBag[selectedRow.bindingId] && !localDraftBag[selectedRow.bindingId].saved)}
+          hasSavedDraft={draftBindingIds.has(selectedRow.bindingId) || Boolean(localDraftBag[selectedRow.bindingId]?.saved)}
+          onDraftChange={onCreateDraft ? next => updateEdit(selectedRow.bindingId, next) : undefined}
+          onResetDraft={() => setLocalDraftBag(current => { const next = { ...current }; delete next[selectedRow.bindingId]; return next; })}
+          onSaveDraft={onCreateDraft ? async input => {
+            const result = await onCreateDraft(input);
+            if (result.valid) setLocalDraftBag(current => {
+              const local = current[input.bindingId];
+              if (!local || local.rawValue !== input.rawValue || local.reason.trim() !== input.reason || (local.action ?? "set") !== (input.action ?? "set")) return current;
+              return { ...current, [input.bindingId]: { ...input, saved: true } };
             });
-          }}
-          onClearAll={() => setLocalDraftBag({})}
-          onCreateDraft={onCreateDraft ?? (() => Promise.reject(new Error("当前未配置语义草稿创建能力")))}
+            return result;
+          } : undefined}
+          onUseCompareAsDraft={onCreateDraft ? useCompareAsDraft : undefined}
+          onStartDtsReload={onStartDtsReload ? () => onStartDtsReload(selectedRow.bindingId) : undefined}
+          onOpenSource={loadPrimaryDtsSource && selectedRow.sourceFileName ? () => {
+            setSourceFileName(selectedRow.sourceFileName!);
+            setSourceFocusLine(selectedRow.sourceLine);
+            closeDetail();
+            setResultsMode("dtsSource");
+            loadDtsSource();
+          } : undefined}
         />
       ) : null}
     </section>

@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
+
+import { parseDts, resolveDts } from "../server/modules/dts";
+import { resolveDtsConfigSet } from "../server/modules/dts/configSetResolver";
+import { missingReferencedLabels } from "../server/modules/dts/danglingAnchorStub";
+import { isStructuralPropertyKey } from "../src/domain/parameter-topology/parameterSurface";
 
 import {
   SEED_SOURCE_PROJECTS,
@@ -31,6 +37,49 @@ describe("vendor project source generation", () => {
     const first = generateVendorProjectSource(manifest, root);
     const second = generateVendorProjectSource(manifest, root);
     expect(second.text).toBe(first.text);
+  });
+
+  it("defines every reference in the generated source without a compile companion", () => {
+    const { text } = generateVendorProjectSource(manifest, root);
+    expect(missingReferencedLabels(text)).toEqual([]);
+    const resolved = resolveDtsConfigSet({
+      entryFile: VENDOR_SOURCE_FILE_NAME,
+      includeSearchPaths: [],
+      overlayOrder: [],
+      files: new Map([[VENDOR_SOURCE_FILE_NAME, { fileVersionId: "vendor-complete-source", content: text }]]),
+    });
+    expect(resolved.diagnostics).toEqual([]);
+    const rootNode = parseDts(text).topLevel[0]!;
+    expect(rootNode.children[0]).toMatchObject({ kind: "property", name: "board_id" });
+    expect(rootNode.children.some(child => child.kind === "node" && child.name === "/")).toBe(false);
+    const nodes = resolveDts(text).nodes;
+    for (const label of ["gpio2", "gpio5", "gpio6", "gpio7", "gpio10", "gpio13"]) {
+      const provider = nodes.find(node => node.labels.includes(label));
+      expect(provider?.properties.find(property => property.name === "gpio-controller")?.valueType, label).toBe("bool");
+      expect(provider?.properties.find(property => property.name === "#gpio-cells")?.rawText, label).toBe("<2>");
+    }
+    const gic = nodes.find(node => node.labels.includes("gic"));
+    expect(gic?.properties.find(property => property.name === "interrupt-controller")?.valueType).toBe("bool");
+    expect(gic?.properties.find(property => property.name === "#interrupt-cells")?.rawText).toBe("<3>");
+  });
+
+  it("preserves all 115 business locators, subjects and reviewed example values", () => {
+    const nodes = resolveDts(generateVendorProjectSource(manifest, root).text).nodes;
+    const business = nodes.flatMap(node => node.properties
+      .filter(property => !isStructuralPropertyKey(property.name))
+      .map(property => ({ node, property })));
+    expect(business).toHaveLength(115);
+    for (const entry of vendorInputs) {
+      const driver = entry.formalSubject.kind === "driver";
+      const nodePath = driver ? entry.formalSubject.value.replace(/[^A-Za-z0-9]/g, "_")
+        : entry.formalSubject.value === "/" ? "" : entry.formalSubject.value;
+      const observed = business.find(({ node, property }) => node.nodePath === nodePath && property.name === entry.propertyKey);
+      expect(observed, entry.inputId).toBeDefined();
+      expect(observed?.node.compatible, entry.inputId).toBe(driver ? entry.formalSubject.value : undefined);
+      const yaml = parseYaml(readFileSync(path.join(root, entry.sourcePath), "utf8"));
+      const example = yaml.properties[entry.propertyKey].exampleValue;
+      expect(observed?.property.rawText, entry.inputId).toBe(example == null ? "" : String(example).replace(/\s+/g, " ").trim());
+    }
   });
 
   it("keeps the committed files identical to the generated text", () => {

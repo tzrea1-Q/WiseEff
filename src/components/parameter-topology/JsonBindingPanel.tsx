@@ -1,7 +1,7 @@
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { SectionEmpty } from "@/components/common/SectionState";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertCircle, Boxes, CheckCircle2, CircleX, Download, Eye, FileCode, History, Pencil } from "lucide-react";
+import { ArrowUpRight, Boxes, CircleX, Download, FileCode } from "lucide-react";
 import type {
   ProjectParameterBinding,
   TopologyDiagnostic
@@ -11,6 +11,11 @@ import { SearchField } from "@/components/common/SearchField";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { DiffCodeBlock } from "@/components/parameter-compare/ParameterDiffViews";
+import { clearUnsavedParameterWork, reportUnsavedParameterWork } from "@/application/parameters/unsavedParameterWork";
+import type { PendingBindingDraft } from "./draftTrayTypes";
+import "./json-binding-detail.css";
 import { presentError } from "@/infrastructure/http/presentError";
 import { formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
@@ -36,6 +41,9 @@ export type JsonBindingHistoryEntry = {
   id: string;
   reason: string;
   createdAt: string;
+  actor?: string | null;
+  fromRawValue?: string | null;
+  toRawValue?: string | null;
   oldCurrentValueId: string | null;
   newCurrentValueId: string | null;
   valueState?: "present" | "deleted" | null;
@@ -50,6 +58,9 @@ export type PrimaryJsonSource = {
 export type JsonBindingPanelProps = {
   bindings: readonly ProjectParameterBinding[];
   requestedBindingId?: string;
+  pendingDrafts?: readonly PendingBindingDraft[];
+  requestedEditBindingId?: string;
+  editRequestToken?: number;
   moduleRegistry?: ParameterModuleRegistry | null;
   canEdit?: boolean;
   editableBindingIds?: ReadonlySet<string>;
@@ -66,6 +77,10 @@ export type JsonBindingPanelProps = {
   onExportRows?: (bindings: readonly ProjectParameterBinding[]) => void;
   projectName?: string;
 };
+
+function prettyJson(raw: string): string {
+  try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
+}
 
 function selectedSubtreeBindingIds(
   roots: DtsWorkbenchTreeNode[],
@@ -150,6 +165,9 @@ function findEarliestJsonSourceLine(
 export function JsonBindingPanel({
   bindings,
   requestedBindingId,
+  pendingDrafts,
+  requestedEditBindingId,
+  editRequestToken,
   moduleRegistry,
   canEdit = false,
   editableBindingIds,
@@ -185,21 +203,60 @@ export function JsonBindingPanel({
 
   // Dialog states
   const [viewingBindingId, setViewingBindingId] = useState<string | null>(null);
-  const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const handledRequest = useRef<string | null>(null);
 
   // Draft form states inside edit dialog
-  const activeEditBinding = useMemo(
-    () => (editingBindingId ? jsonBindings.find((b) => b.id === editingBindingId) ?? null : null),
-    [editingBindingId, jsonBindings]
-  );
   const activeViewBinding = useMemo(
     () => (viewingBindingId ? jsonBindings.find((b) => b.id === viewingBindingId) ?? null : null),
     [viewingBindingId, jsonBindings]
   );
 
-  const [draftRaw, setDraftRaw] = useState("");
-  const [draftReason, setDraftReason] = useState("");
+  type Draft = { rawValue: string; reason: string; action: "set" | "delete" };
+  const [localDrafts, setLocalDrafts] = useState<Record<string, Draft>>({});
+  const [savedDrafts, setSavedDrafts] = useState<Record<string, Draft>>({});
+  useEffect(() => {
+    const acknowledged = Object.keys(savedDrafts).filter((id) => {
+      const pending = pendingDrafts?.find((draft) => draft.projectParameterBindingId === id);
+      const saved = savedDrafts[id]!;
+      return pending && pending.rawText === saved.rawValue && pending.reason === saved.reason && pending.action === saved.action;
+    });
+    if (!acknowledged.length) return;
+    setSavedDrafts((current) => {
+      const next = { ...current };
+      for (const id of acknowledged) delete next[id];
+      return next;
+    });
+    setLocalDrafts((current) => {
+      const next = { ...current };
+      for (const id of acknowledged) {
+        const local = next[id];
+        const saved = savedDrafts[id]!;
+        if (local && local.rawValue === saved.rawValue && local.reason === saved.reason && local.action === saved.action) delete next[id];
+      }
+      return next;
+    });
+  }, [pendingDrafts, savedDrafts]);
+  const pendingFor = (id: string): Draft | undefined => {
+    const pending = pendingDrafts?.find((draft) => draft.projectParameterBindingId === id);
+    return pending ? { rawValue: pending.rawText, reason: pending.reason, action: pending.action } : undefined;
+  };
+  const baselineFor = (binding: ProjectParameterBinding): Draft => savedDrafts[binding.id] ?? pendingFor(binding.id)
+    ?? { rawValue: binding.rawValue, reason: "", action: "set" };
+  const activeDraft = activeViewBinding ? localDrafts[activeViewBinding.id] ?? baselineFor(activeViewBinding) : null;
+  const draftRaw = activeDraft?.rawValue ?? "";
+  const draftReason = activeDraft?.reason ?? "";
+  const draftAction = activeDraft?.action ?? "set";
+  const updateDraft = (patch: Partial<Draft>) => {
+    if (!activeViewBinding || !activeDraft || validating || !canEditBinding(activeViewBinding.id)) return;
+    setLocalDrafts((current) => ({ ...current, [activeViewBinding.id]: { ...activeDraft, ...patch } }));
+    setDiagnostics([]);
+    setSaveMessage(null);
+  };
+  const sameDraft = (left: Draft, right: Draft) => left.rawValue === right.rawValue && left.reason === right.reason && left.action === right.action;
+  const activeDirty = Boolean(activeViewBinding && activeDraft && !sameDraft(activeDraft, baselineFor(activeViewBinding)));
+  const [detailTab, setDetailTab] = useState("configuration");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [diagnostics, setDiagnostics] = useState<TopologyDiagnostic[]>([]);
   const [validating, setValidating] = useState(false);
   const diagnosticId = useId();
@@ -211,26 +268,32 @@ export function JsonBindingPanel({
   const [history, setHistory] = useState<readonly JsonBindingHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const historyRequest = useRef(0);
 
   // Focus restore ref
   const openerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (activeEditBinding) {
-      setDraftRaw(activeEditBinding.rawValue);
-      setDraftReason("");
+    if (viewingBindingId) {
+      historyRequest.current += 1;
+      setDetailTab("configuration");
+      setHistory([]);
+      setHistoryError(null);
+      setHistoryLoaded(false);
+      setHistoryLoading(false);
       setDiagnostics([]);
-      setHistory([]);
-      setHistoryError(null);
+      setSaveMessage(null);
     }
-  }, [activeEditBinding]);
+  }, [viewingBindingId]);
 
+  const unsavedCount = jsonBindings.filter((binding) => localDrafts[binding.id]
+    && !sameDraft(localDrafts[binding.id]!, baselineFor(binding))).length;
   useEffect(() => {
-    if (activeViewBinding) {
-      setHistory([]);
-      setHistoryError(null);
-    }
-  }, [activeViewBinding]);
+    const key = `json-workbench:${resultsId}`;
+    reportUnsavedParameterWork(key, unsavedCount);
+    return () => clearUnsavedParameterWork(key);
+  }, [resultsId, unsavedCount]);
 
   // Module ids are opaque; show the registry name, else the driver module, before falling back to the id.
   const moduleLabel = useCallback((binding: { moduleId?: string | null; driverModule?: string | null }) =>
@@ -268,6 +331,15 @@ export function JsonBindingPanel({
   const [selectedNodeId, setSelectedNodeId] = useModuleNodeSelection((nodeId) => treeContainsNode(tree, nodeId));
   const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
   const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
+  const selectedModulePath = useMemo(() => {
+    const pending = tree.map((node) => ({ node, path: node.label }));
+    while (pending.length) {
+      const current = pending.pop()!;
+      if (current.node.id === effectiveSelectedNodeId) return current.path;
+      pending.push(...current.node.children.map((node) => ({ node, path: `${current.path} / ${node.label}` })));
+    }
+    return null;
+  }, [tree, effectiveSelectedNodeId]);
 
   useEffect(() => {
     if (!requestedBindingId || handledRequest.current === requestedBindingId
@@ -278,6 +350,16 @@ export function JsonBindingPanel({
     setSelectedNodeId(null);
     setViewingBindingId(requestedBindingId);
   }, [jsonBindings, requestedBindingId, setSelectedNodeId]);
+
+  const handledEditRequest = useRef<string | null>(null);
+  useEffect(() => {
+    const request = `${requestedEditBindingId}:${editRequestToken ?? 0}`;
+    if (!requestedEditBindingId || handledEditRequest.current === request
+      || !jsonBindings.some((binding) => binding.id === requestedEditBindingId)) return;
+    handledEditRequest.current = request;
+    setViewingBindingId(requestedEditBindingId);
+    setDetailTab("configuration");
+  }, [requestedEditBindingId, editRequestToken, jsonBindings]);
 
   const subtreeBindingIds = useMemo(
     () => selectedSubtreeBindingIds(tree, effectiveSelectedNodeId),
@@ -292,8 +374,8 @@ export function JsonBindingPanel({
     const q = query.trim().toLowerCase();
     if (!q) return result;
     return result.filter((binding) => {
-      const prop = binding.propertyKey.toLowerCase();
-      const mod = `${binding.moduleId ?? ""} ${binding.driverModule ?? ""}`.toLowerCase();
+      const prop = `${binding.propertyKey} ${binding.currentDisplayName ?? ""} ${binding.displayName ?? ""}`.toLowerCase();
+      const mod = `${moduleLabel(binding)} ${binding.moduleId ?? ""} ${binding.driverModule ?? ""}`.toLowerCase();
       const inst = (binding.instanceName ?? "").toLowerCase();
       const loc = (binding.locator ?? "").toLowerCase();
       const val = (binding.rawValue ?? "").toLowerCase();
@@ -305,10 +387,10 @@ export function JsonBindingPanel({
         val.includes(q)
       );
     });
-  }, [jsonBindings, query, subtreeBindingIds]);
+  }, [jsonBindings, query, subtreeBindingIds, moduleLabel]);
 
   const syntaxStatus = useMemo(() => {
-    if (!draftRaw.trim()) return null;
+    if (!draftRaw.trim()) return { valid: false, message: "请输入有效的 JSON 值；空字符串请填写双引号。" };
     try {
       JSON.parse(draftRaw);
       return { valid: true, message: "JSON 格式有效" };
@@ -318,22 +400,28 @@ export function JsonBindingPanel({
   }, [draftRaw]);
 
   const submitDraft = (action: "set" | "delete") => {
-    if (!activeEditBinding || !canEditBinding(activeEditBinding.id)) return;
+    if (!activeViewBinding || !canEditBinding(activeViewBinding.id) || validating || !onValidateEdit
+      || !draftReason.trim() || !activeDirty || (action === "set" && !syntaxStatus.valid)) return;
+    const bindingId = activeViewBinding.id;
+    const savedDraft: Draft = { rawValue: action === "delete" ? "" : draftRaw, reason: draftReason.trim(), action };
     setValidating(true);
-    void Promise.resolve(
-      onValidateEdit?.({
-        bindingId: activeEditBinding.id,
-        rawValue: action === "delete" ? "" : draftRaw,
-        reason: draftReason.trim(),
+    void Promise.resolve().then(() =>
+      onValidateEdit({
+        bindingId,
+        rawValue: savedDraft.rawValue,
+        reason: savedDraft.reason,
         ...(action === "delete" ? { action } : {})
       })
     )
       .then((result) => {
         setDiagnostics(result?.diagnostics ?? []);
-        if (result?.valid !== false && (!result?.diagnostics || result.diagnostics.length === 0)) {
-          setEditingBindingId(null);
+        if (result?.valid !== false) {
+          setSavedDrafts((current) => ({ ...current, [bindingId]: savedDraft }));
+          setLocalDrafts((current) => ({ ...current, [bindingId]: savedDraft }));
+          setSaveMessage("草稿已保存，待提交审核。当前生效值未改变。");
         }
       })
+      .catch((error: unknown) => setDiagnostics([{ message: presentError(error, "草稿保存失败，输入已保留，请重试。") }]))
       .finally(() => {
         setValidating(false);
       });
@@ -341,12 +429,13 @@ export function JsonBindingPanel({
 
   const loadHistoryFor = (bindingId: string) => {
     if (!onLoadHistory) return;
+    const request = ++historyRequest.current;
     setHistoryLoading(true);
     setHistoryError(null);
     void onLoadHistory(bindingId)
-      .then(setHistory)
-      .catch(() => setHistoryError("固定值历史加载失败，请稍后重试。"))
-      .finally(() => setHistoryLoading(false));
+      .then((items) => { if (request === historyRequest.current) { setHistory(items); setHistoryLoaded(true); } })
+      .catch(() => { if (request === historyRequest.current) setHistoryError("固定值历史加载失败，请稍后重试。"); })
+      .finally(() => { if (request === historyRequest.current) setHistoryLoading(false); });
   };
 
   const openDetail = (bindingId: string) => {
@@ -354,16 +443,9 @@ export function JsonBindingPanel({
     setViewingBindingId(bindingId);
   };
 
-  const openDraft = (bindingId: string) => {
-    if (!canEditBinding(bindingId)) return;
-    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setViewingBindingId(null);
-    setEditingBindingId(bindingId);
-  };
-
   const closeDialogs = () => {
+    if (validating) return;
     setViewingBindingId(null);
-    setEditingBindingId(null);
     queueMicrotask(() => {
       if (openerRef.current?.isConnected) {
         openerRef.current.focus();
@@ -387,7 +469,7 @@ export function JsonBindingPanel({
   }, []);
 
   useEffect(() => {
-    if (resultsMode !== "jsonSource" || jsonSourceLoadToken === 0) {
+    if ((resultsMode !== "jsonSource" && detailTab !== "source") || jsonSourceLoadToken === 0) {
       return undefined;
     }
     let cancelled = false;
@@ -418,7 +500,7 @@ export function JsonBindingPanel({
     return () => {
       cancelled = true;
     };
-  }, [jsonBindings, jsonSourceLoadToken, loadPrimaryJsonSource, projectName, resultsMode]);
+  }, [jsonBindings, jsonSourceLoadToken, loadPrimaryJsonSource, projectName, resultsMode, detailTab]);
 
   const enterJsonSourceMode = () => {
     setResultsMode("jsonSource");
@@ -514,6 +596,11 @@ export function JsonBindingPanel({
               : `共 ${jsonBindings.length} 项`}
           </span>
         )}
+        {resultsMode === "parameters" && (query.trim() || selectedModulePath) ? <div className="json-binding-detail__filter-context" aria-label="当前筛选">
+          {selectedModulePath ? <span>模块：{selectedModulePath}</span> : null}
+          {query.trim() ? <span>搜索：{query.trim()}</span> : null}
+          <button type="button" className="button subtle" onClick={() => { setQuery(""); setSelectedNodeId(null); }}>清除筛选</button>
+        </div> : null}
         <div className="dts-parameter-workbench__toolbar-actions">
           <div className="dts-parameter-workbench__header-actions">
             <ViewSwitch
@@ -601,7 +688,7 @@ export function JsonBindingPanel({
                     ) : (
                       filteredBindings.map((binding) => {
                         const isDraft = draftBindingIds?.has(binding.id) ?? false;
-                        const isSelected = viewingBindingId === binding.id || editingBindingId === binding.id;
+                        const isSelected = viewingBindingId === binding.id;
                         const rowModuleLabel = moduleLabel(binding);
 
                         return (
@@ -612,7 +699,8 @@ export function JsonBindingPanel({
                           >
                             <td className="dts-parameter-workbench-table__property">
                               <div className="json-parameter-workbench__property-cell">
-                                <code>{binding.propertyKey}</code>
+                                <strong>{binding.currentDisplayName || binding.displayName || binding.propertyKey}</strong>
+                                {(binding.currentDisplayName || binding.displayName) ? <small><code>{binding.propertyKey}</code></small> : null}
                                 {isDraft ? (
                                   <span className="dts-parameter-workbench-table__draft-badge">草稿</span>
                                 ) : null}
@@ -639,23 +727,12 @@ export function JsonBindingPanel({
                                 <button
                                   type="button"
                                   className="button subtle dts-parameter-workbench-table__icon-action"
-                                  title="查看"
-                                  aria-label={`查看 ${binding.propertyKey}`}
+                                  title="参数详情"
+                                  aria-label={`参数详情 ${binding.propertyKey}`}
                                   onClick={() => openDetail(binding.id)}
                                 >
-                                  <Eye size={15} strokeWidth={1.9} aria-hidden="true" />
+                                  <ArrowUpRight size={15} strokeWidth={1.9} aria-hidden="true" />
                                 </button>
-                                {canEditBinding(binding.id) ? (
-                                  <button
-                                    type="button"
-                                    className="button subtle dts-parameter-workbench-table__icon-action"
-                                    title="编辑"
-                                    aria-label={`编辑 ${binding.propertyKey}`}
-                                    onClick={() => openDraft(binding.id)}
-                                  >
-                                    <Pencil size={15} strokeWidth={1.9} aria-hidden="true" />
-                                  </button>
-                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -680,304 +757,112 @@ export function JsonBindingPanel({
           ) : null}
       </NavigatorWorkbench>
 
-      {/* 1. Detail Dialog (查看弹窗) */}
       {activeViewBinding ? (
-        <ModalDialog
-          open
-          onDismiss={closeDialogs}
-          className="dts-binding-detail-dialog"
-          backdropClassName="dts-binding-detail-dialog__overlay"
-        >
-          {({ titleId }) => (
-            <div className="dts-binding-detail-dialog__content">
-              <div className="dts-binding-detail-dialog__header">
-                <h2 id={titleId}>{activeViewBinding.propertyKey} 参数详情</h2>
-                <button
-                  type="button"
-                  className="button ghost"
-                  aria-label="关闭参数详情"
-                  onClick={closeDialogs}
-                >
-                  <CircleX size={18} aria-hidden="true" />
-                </button>
+        <ModalDialog open onDismiss={validating ? undefined : closeDialogs}
+          className="dts-binding-detail-dialog json-binding-detail"
+          backdropClassName="dts-binding-detail-dialog__overlay" describedBy>
+          {({ titleId, descriptionId }) => <>
+            <header className="json-binding-detail__head">
+              <div>
+                <h2 id={titleId}>{activeViewBinding.currentDisplayName || activeViewBinding.displayName || activeViewBinding.propertyKey} 参数详情</h2>
+                <p id={descriptionId}>{projectName ? `${projectName} · ` : ""}{moduleLabel(activeViewBinding)} · {activeViewBinding.instanceName || "固定配置"}</p>
+                <code>{activeViewBinding.propertyKey}</code>
               </div>
-
-              <section aria-label="属性标识">
-                <dl>
-                  <div>
-                    <dt>参数名</dt>
-                    <dd><code>{activeViewBinding.propertyKey}</code></dd>
-                  </div>
-                  <div>
-                    <dt>所属模块</dt>
-                    <dd>{moduleLabel(activeViewBinding)}</dd>
-                  </div>
-                  <div>
-                    <dt>器件 / 定位</dt>
-                    <dd>{activeViewBinding.instanceName ?? "—"} · <code>{activeViewBinding.locator ?? "—"}</code></dd>
-                  </div>
-                  <div>
-                    <dt>配置状态</dt>
-                    <dd>
-                      <span className="json-binding-card__status-pill">
-                        {activeViewBinding.schemaState === "valid" ? "有效配置" : "待校验"}
-                      </span>
-                    </dd>
-                  </div>
-                </dl>
-              </section>
-
-              <section aria-label="当前取值">
-                <h3>当前值</h3>
-                <pre className="json-binding-card__preview-code">
-                  {activeViewBinding.rawValue}
-                </pre>
-              </section>
-
-              {onLoadHistory ? (
-                <section aria-label="JSON 参数历史" className="json-binding-card__history">
-                  <div className="json-binding-card__history-header">
-                    <button
-                      type="button"
-                      className="button subtle"
-                      onClick={() => loadHistoryFor(activeViewBinding.id)}
-                      disabled={historyLoading}
-                    >
-                      <History size={13} aria-hidden="true" />
-                      {historyLoading ? "加载历史中…" : "查看固定值历史"}
-                    </button>
-                    {onExportBinding ? (
-                      <button
-                        type="button"
-                        className="button subtle"
-                        disabled={exportingId === activeViewBinding.id}
-                        onClick={() => handleExport(activeViewBinding.id)}
-                      >
-                        <Download size={13} aria-hidden="true" />
-                        {exportingId === activeViewBinding.id ? "导出中…" : "导出源文件"}
-                      </button>
-                    ) : null}
-                  </div>
-                  {exportError ? <p role="alert" className="json-parameter-workbench__error">{exportError}</p> : null}
-                  {historyError ? <p role="alert" className="json-parameter-workbench__error">{historyError}</p> : null}
-                  {history.length > 0 ? (
-                    <ol className="json-binding-card__history-timeline">
-                      {history.map((entry) => (
-                        <li key={entry.id} className="json-binding-card__history-entry">
-                          <time dateTime={entry.createdAt}>{formatRelativeOrAbsolute(entry.createdAt)}</time> · {entry.valueState === "deleted"
-                            ? "删除属性 · " : entry.valueState === "present" ? "更新属性 · " : ""}{entry.reason}
-                        </li>
-                      ))}
-                    </ol>
-                  ) : null}
-                </section>
-              ) : null}
-
-              <div className="dts-binding-detail-dialog__footer">
-                {canEditBinding(activeViewBinding.id) ? (
-                  <button
-                    type="button"
-                    className="button subtle is-primary"
-                    onClick={() => openDraft(activeViewBinding.id)}
-                  >
-                    <Pencil size={13} aria-hidden="true" />
-                    编辑此参数
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="button subtle"
-                  onClick={closeDialogs}
-                >
-                  关闭
-                </button>
-              </div>
-            </div>
-          )}
-        </ModalDialog>
-      ) : null}
-
-      {/* 2. Draft Dialog (修改草稿弹窗) */}
-      {activeEditBinding ? (
-        <ModalDialog
-          open
-          onDismiss={closeDialogs}
-          className="dts-binding-draft-dialog"
-          backdropClassName="dts-binding-draft-dialog__overlay"
-        >
-          {({ titleId }) => (
-            <div className="dts-binding-draft-dialog__content">
-              <div className="dts-binding-draft-dialog__header">
-                <div>
-                  <h2 id={titleId}>修改草稿</h2>
-                  <p>编辑 JSON 参数目标值与原因，提交后进入草稿变更集。</p>
-                </div>
-                <button
-                  type="button"
-                  className="button ghost dts-binding-draft-dialog__close"
-                  aria-label="关闭"
-                  onClick={closeDialogs}
-                >
-                  <CircleX size={18} aria-hidden="true" />
-                </button>
-              </div>
-
-              <article
-                className="dts-binding-draft-card"
-                aria-label={`${activeEditBinding.propertyKey} 草稿`}
-              >
-                <div className="dts-binding-draft-card__head">
-                  <div>
-                    <strong><code>{activeEditBinding.propertyKey}</code></strong>
-                    <small>
-                      {moduleLabel(activeEditBinding)} · {activeEditBinding.instanceName ?? "器件实例不可用"}
-                    </small>
-                  </div>
-                </div>
-
-                <p className="dts-binding-draft-card__context">
-                  <code>{activeEditBinding.locator ?? activeEditBinding.propertyKey}</code>
-                </p>
-
-                <div className="dts-binding-draft-card__documentation">
-                  <strong>参数说明</strong>
-                  <p>
-                    JSON 格式固定参数。校验通过后生成草稿变更，经审核后生效。
-                  </p>
-                </div>
-
-                <div className="dts-binding-draft-card__preview" aria-label={`${activeEditBinding.propertyKey} 当前到目标预览`}>
-                  <div className="json-binding-card__preview-label">当前值</div>
-                  <pre className="json-binding-card__preview-code">
-                    {activeEditBinding.rawValue}
-                  </pre>
-                </div>
-
-                <div className="json-binding-card__form">
-                  <div className="json-binding-card__field">
-                    <label htmlFor={`${diagnosticId}-value`}>目标值</label>
-                    <Textarea
-                      id={`${diagnosticId}-value`}
-                      ref={targetInputRef}
-                      aria-label="目标值"
-                      aria-invalid={diagnostics.length > 0}
-                      aria-describedby={diagnostics.length > 0 ? diagnosticId : undefined}
-                      value={draftRaw}
-                      disabled={!canEditBinding(activeEditBinding.id) || validating}
-                      rows={5}
-                      className="dts-binding-draft-card__code-editor"
-                      placeholder="输入合法的 JSON 字符串..."
-                      onChange={(e) => {
-                        setDraftRaw(e.target.value);
-                        setDiagnostics([]);
-                      }}
-                    />
-                    {syntaxStatus ? (
-                      <div className={`json-binding-card__syntax-status is-${syntaxStatus.valid ? "valid" : "invalid"}`}>
-                        {syntaxStatus.valid ? (
-                          <CheckCircle2 size={13} aria-hidden="true" />
-                        ) : (
-                          <AlertCircle size={13} aria-hidden="true" />
-                        )}
-                        <span>{syntaxStatus.message}</span>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="json-binding-card__field">
+              <button type="button" className="button ghost" aria-label="关闭参数详情" disabled={validating} onClick={closeDialogs}>
+                <CircleX size={18} aria-hidden="true" />
+              </button>
+            </header>
+            <ViewSwitch variant="tabs" ariaLabel="参数详情内容" value={detailTab}
+              onValueChange={(value) => {
+                setDetailTab(value);
+                if (value === "history" && !historyLoaded && !historyLoading) loadHistoryFor(activeViewBinding.id);
+                if (value === "source" && jsonSourceStatus !== "ready" && jsonSourceStatus !== "loading") loadJsonSource();
+              }}
+              items={[{ value: "configuration", label: "配置" }, { value: "history", label: "变更历史" }, { value: "source", label: "配置来源" }]
+                .map((item) => ({ ...item, id: `${diagnosticId}-${item.value}-tab`, panelId: `${diagnosticId}-${item.value}-panel` }))} />
+            <div className="json-binding-detail__body">
+              <div role="tabpanel" id={`${diagnosticId}-configuration-panel`} aria-labelledby={`${diagnosticId}-configuration-tab`} hidden={detailTab !== "configuration"}>
+                <div className="json-binding-detail__configuration">
+                  <section aria-label="当前配置">
+                    <h3>当前生效值</h3>
+                    {activeViewBinding.description || activeViewBinding.documentation ? <p>{activeViewBinding.description || activeViewBinding.documentation}</p> : null}
+                    <pre className="json-binding-card__preview-code">{prettyJson(activeViewBinding.rawValue)}</pre>
+                    <p className="json-binding-detail__hint">类型：JSON · {activeViewBinding.schemaState === "valid" ? "有效配置" : "待校验"}</p>
+                  </section>
+                  <section aria-label="草稿配置" className="json-binding-detail__form">
+                    {!canEditBinding(activeViewBinding.id) ? <p role="status">{validating ? "正在保存草稿，请稍候…" : "当前参数只读。可查看配置、历史及来源。"}</p> : null}
+                    <label htmlFor={`${diagnosticId}-target`}>目标值</label>
+                    <Textarea ref={targetInputRef} id={`${diagnosticId}-target`} aria-label="目标值" value={draftRaw}
+                      disabled={!canEditBinding(activeViewBinding.id) || validating || draftAction === "delete"} rows={8}
+                      aria-invalid={draftAction === "set" && (!syntaxStatus.valid || diagnostics.length > 0)}
+                      aria-describedby={diagnostics.length > 0 ? diagnosticId : `${diagnosticId}-syntax`}
+                      onChange={(event) => updateDraft({ rawValue: event.target.value })} />
+                    <p id={`${diagnosticId}-syntax`} role="status" className="json-binding-detail__hint">
+                      {draftAction === "delete" ? "保存后将删除此属性，需提交审核后生效。" : syntaxStatus.message}
+                    </p>
                     <label htmlFor={`${diagnosticId}-reason`}>修改原因</label>
-                    <Textarea
-                      id={`${diagnosticId}-reason`}
-                      aria-label="修改原因"
-                      value={draftReason}
-                      disabled={!canEditBinding(activeEditBinding.id) || validating}
-                      rows={2}
-                      placeholder={`说明为什么要修改 ${activeEditBinding.propertyKey}...`}
-                      onChange={(e) => {
-                        setDraftReason(e.target.value);
-                        setDiagnostics([]);
-                      }}
-                    />
-                  </div>
-
-                  {diagnostics.length > 0 ? (
-                    <ul id={diagnosticId} aria-label="编辑诊断" role="alert" className="json-binding-card__alert">
-                      {diagnostics.map((item) => (
-                        <li key={`${item.code ?? ""}:${item.message}`}>
-                          {presentError(new Error(item.message), "目标值未通过校验，请检查格式、范围及来源版本后重试。")}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-
-                  {onLoadHistory ? (
-                    <div className="json-binding-card__history-in-draft">
-                      <button
-                        type="button"
-                        className="button subtle"
-                        onClick={() => loadHistoryFor(activeEditBinding.id)}
-                        disabled={historyLoading}
-                      >
-                        <History size={13} aria-hidden="true" />
-                        {historyLoading ? "加载历史中…" : "查看固定值历史"}
-                      </button>
-                      {onExportBinding ? (
-                        <button
-                          type="button"
-                          className="button subtle"
-                          disabled={exportingId === activeEditBinding.id}
-                          onClick={() => handleExport(activeEditBinding.id)}
-                        >
-                          <Download size={13} aria-hidden="true" />
-                          {exportingId === activeEditBinding.id ? "导出中…" : "导出源文件"}
-                        </button>
-                      ) : null}
-                      {exportError ? <p role="alert" className="json-parameter-workbench__error">{exportError}</p> : null}
-                      {historyError ? <p role="alert" className="json-parameter-workbench__error">{historyError}</p> : null}
-                      {history.length > 0 ? (
-                        <ol className="json-binding-card__history-timeline">
-                          {history.map((entry) => (
-                            <li key={entry.id} className="json-binding-card__history-entry">
-                              <time dateTime={entry.createdAt}>{formatRelativeOrAbsolute(entry.createdAt)}</time> · {entry.valueState === "deleted"
-                                ? "删除属性 · " : entry.valueState === "present" ? "更新属性 · " : ""}{entry.reason}
-                            </li>
-                          ))}
-                        </ol>
-                      ) : null}
-                    </div>
-                  ) : null}
+                    <Textarea id={`${diagnosticId}-reason`} aria-label="修改原因" value={draftReason} rows={2}
+                      disabled={!canEditBinding(activeViewBinding.id) || validating} placeholder="说明本次配置调整的原因" onChange={(event) => updateDraft({ reason: event.target.value })} />
+                    <details><summary>属性操作</summary>
+                      <label><input type="checkbox" aria-label="删除此属性" checked={draftAction === "delete"} disabled={!canEditBinding(activeViewBinding.id) || validating}
+                        onChange={(event) => updateDraft({ action: event.target.checked ? "delete" : "set" })} /> 删除此属性</label>
+                      <p>删除操作会移除配置属性，与将 JSON 值设为 null 不同。</p>
+                    </details>
+                  </section>
                 </div>
-              </article>
-
-              <div className="dts-binding-draft-dialog__footer">
-                <button
-                  type="button"
-                  className="button subtle is-primary"
-                  disabled={!canEditBinding(activeEditBinding.id) || validating || !draftReason.trim()}
-                  onClick={() => submitDraft("set")}
-                >
-                  {validating ? "校验中…" : "校验并创建草稿"}
-                </button>
-                <button
-                  type="button"
-                  className="button subtle is-danger"
-                  disabled={!canEditBinding(activeEditBinding.id) || validating || !draftReason.trim()}
-                  onClick={() => submitDraft("delete")}
-                >
-                  创建删除草稿
-                </button>
-                <button
-                  type="button"
-                  className="button subtle"
-                  onClick={closeDialogs}
-                >
-                  取消
-                </button>
+                {activeDirty ? <section aria-label="当前到目标差异"><h3>变更预览</h3>
+                  <DiffCodeBlock baseValue={prettyJson(activeViewBinding.rawValue)} targetValue={draftAction === "delete" ? "已删除" : prettyJson(draftRaw)} />
+                </section> : null}
+              </div>
+              <div role="tabpanel" id={`${diagnosticId}-history-panel`} aria-labelledby={`${diagnosticId}-history-tab`} hidden={detailTab !== "history"}>
+                {!onLoadHistory ? <p>当前环境未提供参数历史。</p> : <>
+                  {historyLoading ? <p role="status">正在加载变更历史…</p> : null}
+                  {historyError ? <><p role="alert">{historyError}</p><button className="button subtle" onClick={() => loadHistoryFor(activeViewBinding.id)}>重试</button></> : null}
+                  {historyLoaded && history.length === 0 ? <p role="status">暂无参数变更记录</p> : null}
+                  <ol className="json-binding-card__history-timeline">{history.map((entry) => <li key={entry.id} className="json-binding-card__history-entry">
+                    <strong>{entry.valueState === "deleted" ? "删除属性" : "配置变更"}</strong>
+                    <p><time dateTime={entry.createdAt}>{formatRelativeOrAbsolute(entry.createdAt)}</time>{entry.actor ? ` · ${entry.actor}` : ""}</p>
+                    <p>{entry.reason === "source-revision-propagation" ? "同步来源修订" : entry.reason === "project-value-append" ? "项目配置写入" : entry.reason || "未记录修改原因"}</p>
+                    {entry.fromRawValue !== undefined || entry.toRawValue !== undefined ? <DiffCodeBlock
+                      baseValue={entry.fromRawValue == null ? "尚未配置" : prettyJson(entry.fromRawValue)}
+                      targetValue={entry.valueState === "deleted" ? "已删除" : entry.toRawValue == null ? "未知" : prettyJson(entry.toRawValue)} /> : null}
+                    <details><summary>技术信息</summary><dl>
+                      <div><dt>事件标识</dt><dd><code>{entry.id}</code></dd></div>
+                      <div><dt>原值标识</dt><dd><code>{entry.oldCurrentValueId || "无"}</code></dd></div>
+                      <div><dt>新值标识</dt><dd><code>{entry.newCurrentValueId || "无"}</code></dd></div>
+                    </dl></details>
+                  </li>)}</ol>
+                </>}
+              </div>
+              <div role="tabpanel" id={`${diagnosticId}-source-panel`} aria-labelledby={`${diagnosticId}-source-tab`} hidden={detailTab !== "source"}>
+                <dl><div><dt>配置定位</dt><dd><code>{activeViewBinding.locator || activeViewBinding.propertyKey}</code></dd></div>
+                  <div><dt>所属模块</dt><dd>{moduleLabel(activeViewBinding)}</dd></div></dl>
+                {jsonSourceStatus === "loading" ? <p role="status">正在加载配置来源…</p> : null}
+                {jsonSourceStatus === "error" ? <><p role="alert">{jsonSourceErrorMessage}</p><button className="button subtle" onClick={loadJsonSource}>重试</button></> : null}
+                {jsonSource ? <><p>{jsonSource.fileName} · 第 {jsonSource.versionNumber} 版 · 只读{!loadPrimaryJsonSource ? " · 当前配置快照" : ""}</p>
+                  <pre className="json-binding-card__preview-code">{jsonSource.text}</pre></> : null}
+                {onExportBinding ? <button type="button" className="button subtle" disabled={exportingId === activeViewBinding.id}
+                  onClick={() => handleExport(activeViewBinding.id)}><Download size={14} aria-hidden="true" />{exportingId ? "导出中…" : "导出源文件"}</button> : null}
+                {exportError ? <p role="alert">{exportError}</p> : null}
               </div>
             </div>
-          )}
+            {diagnostics.length > 0 ? <ul id={diagnosticId} role="alert" className="json-binding-card__alert">{diagnostics.map((item, index) => <li key={index}>
+              {presentError(new Error(item.message), "目标值未通过校验，请检查格式、范围及来源版本后重试。")}</li>)}</ul> : null}
+            <footer className="json-binding-detail__footer">
+              <span role="status">{saveMessage || (activeDirty ? "未保存修改 · 关闭后保留本次输入" : pendingFor(activeViewBinding.id) || savedDrafts[activeViewBinding.id] ? "已保存，待提交审核" : "尚无修改")}</span>
+              {activeDirty ? <button type="button" className="button subtle" disabled={validating} onClick={() => setDiscardOpen(true)}>放弃本地修改</button> : null}
+              <button type="button" className="button primary"
+                disabled={!canEditBinding(activeViewBinding.id) || validating || !onValidateEdit || !activeDirty || !draftReason.trim() || (draftAction === "set" && !syntaxStatus.valid)}
+                onClick={() => submitDraft(draftAction)}>{validating ? "保存中…" : draftAction === "delete" ? "保存删除草稿" : "保存草稿"}</button>
+              <button type="button" className="button subtle" disabled={validating} onClick={closeDialogs}>关闭</button>
+            </footer>
+          </>}
         </ModalDialog>
       ) : null}
+      <ConfirmDialog open={discardOpen} title="放弃本地修改" description="本次尚未保存的输入将被清除，已保存的草稿不受影响。"
+        confirmLabel="放弃修改" cancelLabel="继续编辑" tone="danger"
+        onConfirm={() => { if (activeViewBinding) setLocalDrafts((current) => { const next = { ...current }; delete next[activeViewBinding.id]; return next; }); setDiscardOpen(false); setDiagnostics([]); }}
+        onCancel={() => setDiscardOpen(false)} />
     </section>
   );
 }

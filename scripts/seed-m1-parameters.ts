@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { loadServerEnv } from "../server/config/env";
 import { parseDts } from "../server/modules/dts/parser";
+import { lexDts } from "../server/modules/dts/lexer";
 import { createObjectStoreFromEnv } from "../server/objectStoreFactory";
 import type { AuthContext } from "../server/modules/auth/types";
 import { buildDtsParsedIndex } from "../server/modules/parameter-files/parseIndex";
@@ -684,11 +685,16 @@ export async function seedM1BindingRevisionHistory(
 }
 
 
-/** Parse-only integrity gate for committed `*-board.dts` artifacts (no dtc required). */
+/** Syntax and reference integrity for committed boards (no dtc required). */
 export function assertCommittedDtsSeedParses(projectFiles: readonly DtsPowerSeedProjectFile[]) {
   for (const file of projectFiles) {
     try {
       parseDts(file.source);
+      const tokens = lexDts(file.source);
+      const labels = new Set(tokens.filter((token, index) => token.kind === "ident" && tokens[index + 1]?.kind === "colon").map(token => token.value));
+      const references = tokens.flatMap((token, index) => token.kind === "amp" && tokens[index + 1]?.kind === "ident" ? [tokens[index + 1]!.value] : []);
+      const missing = [...new Set(references)].filter(label => !labels.has(label));
+      if (missing.length) throw new Error(`Undefined DTS labels: ${missing.join(", ")}`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`Committed DTS seed artifact failed to parse for ${file.projectId}: ${detail}`);
@@ -714,7 +720,7 @@ async function main() {
   const dtsSeed = buildDtsPowerSeed(auroraPrimary);
   assertCommittedDtsSeedParses(projectFiles);
   console.log(
-    "Committed project-primary DTS seed boards passed parse-only integrity checks. Optional dtc compile: npm run dtc:seed:compile."
+    "Committed project-primary DTS seed boards passed syntax and reference integrity checks. Compile actual seed sources: npm run dtc:seed:compile."
   );
   const modulesByName = new Map(
     [...(compatibilityConfig.parameterModules ?? []), ...dtsSeed.parameterModules].map((module) => [module.name, module])

@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { withEphemeralDanglingAnchorStub } from "../server/modules/dts/danglingAnchorStub";
 import {
   createSubprocessDtcValidator,
   type DtcValidationResult,
@@ -16,7 +15,6 @@ import {
 import { primaryBoardFileName } from "./merge-primary-dts";
 import type { DtsPowerSeedProjectFile, DtsPowerSeedProjectId } from "./dts-power-seed";
 
-export { withEphemeralDanglingAnchorStub } from "../server/modules/dts/danglingAnchorStub";
 export { missingReferencedLabels } from "../server/modules/dts/danglingAnchorStub";
 
 export async function compileDtsSeedFiles(
@@ -26,7 +24,7 @@ export async function compileDtsSeedFiles(
   const result = await validator.validate(
     files.map((file) => ({
       name: file.artifactFileName,
-      content: withEphemeralDanglingAnchorStub(file.source)
+      content: file.source
     })),
     { mode: "block" }
   );
@@ -70,17 +68,14 @@ export async function compileDtsSeedEffectiveTrees(
         entryFile: primary.artifactFileName,
         includeSearchPaths: [],
         overlayOrder: [CHARGING_THERMAL_OVERLAY],
-        // Runner stubs the overlay-only board entry only. Overlay members are
-        // never the stubbed entry (comment `&charging_core` must not mint a stub).
+        // Committed boards define every reference before optional overlays apply.
         files: new Map([
           [primary.artifactFileName, { content: primary.source }],
           [CHARGING_THERMAL_OVERLAY, { content: overlaySource }]
         ])
       },
       {
-        // Seed boards may be overlay-only (dangling `&label`); L2 advisory uses an
-        // ephemeral stub companion. Vendor bindings currently describe properties,
-        // not every child node — keep schema advisory here.
+        // Vendor bindings describe properties, not every child node; keep schema advisory.
         mode: "warn",
         failOnSchema: false
       }
@@ -100,7 +95,13 @@ export async function compileDtsSeedEffectiveTrees(
 async function main() {
   const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   const primaries = await loadCommittedDtsSeedFiles(rootDir);
-  const result = await compileDtsSeedFiles(primaries);
+  const vendorSources = await Promise.all(primaries.map(async ({ projectId }) => ({
+    projectId,
+    fileName: "vendor-drivers.dts",
+    artifactFileName: `${projectId}-vendor-drivers.dts`,
+    source: await readFile(path.join(rootDir, "src/config/seed-sources", projectId, "vendor-drivers.dts"), "utf8")
+  })));
+  const result = await compileDtsSeedFiles([...primaries, ...vendorSources]);
   const effective = await compileDtsSeedEffectiveTrees(rootDir);
 
   console.log(
