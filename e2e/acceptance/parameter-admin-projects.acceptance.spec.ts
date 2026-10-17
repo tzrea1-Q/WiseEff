@@ -55,10 +55,11 @@ test("B1 preserves canonical admin and read-only Definition pages at PC 1440x900
   await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: `查看 ${definition.propertyKey}`, exact: true })).toBeVisible();
   await expect(dialog.getByText(definition.currentRevision.displayName, { exact: true })).toBeVisible();
-  await dialog.getByText("技术标识", { exact: true }).click();
-  await expect(dialog.getByText(definition.id, { exact: true }).first()).toBeVisible();
-  await expect(dialog.getByText(definition.subject.id, { exact: true })).toBeVisible();
-  await expect(dialog.getByText(definition.currentRevision.publishedInCatalogReleaseId, { exact: true })).toBeVisible();
+  const identifiers = dialog.locator("details").filter({ has: page.locator("summary", { hasText: /^技术标识$/ }) });
+  await identifiers.locator("summary").click();
+  await expect(identifiers.getByText(definition.id, { exact: true })).toBeVisible();
+  await expect(identifiers.getByText(definition.subject.id, { exact: true })).toBeVisible();
+  await expect(identifiers.getByText(definition.currentRevision.publishedInCatalogReleaseId, { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "保存内容修订" })).toHaveCount(0);
   await expect(dialog.getByRole("textbox", { name: "属性键" })).toHaveCount(0);
   await dialog.getByRole("button", { name: /查看历史/ }).click();
