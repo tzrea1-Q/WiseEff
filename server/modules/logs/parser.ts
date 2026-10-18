@@ -1,5 +1,6 @@
 import { TextDecoder } from "node:util";
 
+import { compileLogPattern, type LogPattern } from "./adminPattern";
 import type { LogFormatProfile } from "./formatProfile";
 import { supportedLogExtensions } from "./status";
 import { isSupportedStoredLogFileName, supportedLogArchiveExtensions } from "./unpack";
@@ -91,26 +92,26 @@ function parseEntriesWithProfile(rawLines: string[], profile: LogFormatProfile):
   return entries;
 }
 
-function compileProfileRegex(pattern: string | undefined): RegExp | undefined {
+function compileProfileRegex(pattern: string | undefined): LogPattern | undefined {
   if (!pattern) {
     return undefined;
   }
   try {
-    return new RegExp(pattern);
+    return compileLogPattern(pattern);
   } catch {
     // Stored profiles are validated on save; an uncompilable pattern degrades to generic behavior.
     return undefined;
   }
 }
 
-type SeverityMatchers = Array<{ severity: ParsedLogSeverity; regexes: RegExp[] }>;
+type SeverityMatchers = Array<{ severity: ParsedLogSeverity; regexes: LogPattern[] }>;
 
 function compileSeverityMatchers(profile: LogFormatProfile): SeverityMatchers {
   const matchers: SeverityMatchers = [];
   for (const severity of ["error", "warn", "info"] as const) {
     const regexes = (profile.severityMap?.[severity] ?? [])
       .map((pattern) => compileProfileRegex(pattern))
-      .filter((regex): regex is RegExp => regex !== undefined);
+      .filter((regex): regex is LogPattern => regex !== undefined);
     if (regexes.length > 0) {
       matchers.push({ severity, regexes });
     }
@@ -118,7 +119,7 @@ function compileSeverityMatchers(profile: LogFormatProfile): SeverityMatchers {
   return matchers;
 }
 
-function isContinuationLine(rawLine: string, profile: LogFormatProfile, startRegex: RegExp | undefined): boolean {
+function isContinuationLine(rawLine: string, profile: LogFormatProfile, startRegex: LogPattern | undefined): boolean {
   const multiline = profile.multiline;
   if (!multiline) {
     return false;
@@ -132,13 +133,13 @@ function isContinuationLine(rawLine: string, profile: LogFormatProfile, startReg
 function parseLineWithProfile(
   line: string,
   lineNumber: number,
-  compiled: { timestampRegex: RegExp | undefined; severityMatchers: SeverityMatchers }
+  compiled: { timestampRegex: LogPattern | undefined; severityMatchers: SeverityMatchers }
 ): ParsedLogEntry {
   let timestamp: string | undefined;
   let messageStart = line;
 
   if (compiled.timestampRegex) {
-    const match = line.match(compiled.timestampRegex);
+    const match = compiled.timestampRegex.exec(line);
     if (match && match.index === 0) {
       timestamp = match[1] ?? match[0];
       messageStart = line.slice(match[0].length).trimStart();

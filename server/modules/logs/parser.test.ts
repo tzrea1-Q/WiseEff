@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
+import { MAX_LOG_PATTERN_INPUT_LENGTH } from "./adminPattern";
 import { parseLogText } from "./parser";
 
 describe("parseLogText", () => {
@@ -110,6 +111,36 @@ describe("parseLogText", () => {
 });
 
 describe("parseLogText with a format profile", () => {
+  it("supports named timestamp groups and inline case-insensitive severity patterns", () => {
+    const result = parseLogText(
+      { fileName: "sample.log", content: "[123] critical failure" },
+      { profile: { timestampPattern: "^\\[(?<time>\\d+)\\]", severityMap: { error: ["(?i)CRITICAL"] } } }
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.entries[0]).toMatchObject({ timestamp: "123", severity: "error", message: "critical failure" });
+  });
+
+  it("degrades unsupported stored patterns to generic parsing", () => {
+    const input = { fileName: "sample.log", content: "2026-05-25T10:00:00Z WARN retry\nINFO next" };
+    expect(parseLogText(input, { profile: {
+      timestampPattern: "(?=x)x",
+      multiline: { mode: "start-pattern", startPattern: "(?<=x)y" },
+      severityMap: { error: ["(a)\\1"] }
+    } })).toEqual(parseLogText(input));
+  });
+
+  it("preserves raw over-long lines while skipping profile regex matches", () => {
+    const content = `[123] critical ${"a".repeat(MAX_LOG_PATTERN_INPUT_LENGTH)}`;
+    const result = parseLogText(
+      { fileName: "sample.log", content },
+      { profile: { timestampPattern: "^\\[(\\d+)\\]", severityMap: { error: ["critical"] } } }
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rawLines).toEqual([content]);
+    expect(result.entries[0]).toMatchObject({ timestamp: undefined, severity: "info", message: content });
+  });
+
   it("uses the profile timestamp pattern and severity map", () => {
     const result = parseLogText(
       {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_LOG_PATTERN_LENGTH } from "./adminPattern";
 import { readStoredLogFormatProfile, validateLogFormatProfile } from "./formatProfile";
 
 describe("validateLogFormatProfile", () => {
@@ -44,6 +45,20 @@ describe("validateLogFormatProfile", () => {
   it("rejects non-object payloads", () => {
     expect(validateLogFormatProfile("not an object").ok).toBe(false);
     expect(validateLogFormatProfile(42).ok).toBe(false);
+  });
+
+  it("rejects unsupported syntax and oversized patterns with exact field paths", () => {
+    const result = validateLogFormatProfile({
+      timestampPattern: "(?<=prefix)time",
+      multiline: { mode: "start-pattern", startPattern: "(a)\\1" },
+      severityMap: { error: ["valid", "(?=ERROR)", "a".repeat(MAX_LOG_PATTERN_LENGTH + 1)] }
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.split(" is not a valid regular expression:")[0])).toEqual([
+      "timestampPattern", "multiline.startPattern", "severityMap.error[1]", "severityMap.error[2]"
+    ]);
+    expect(readStoredLogFormatProfile({ timestampPattern: "(?=time)" })).toBeUndefined();
   });
 });
 
