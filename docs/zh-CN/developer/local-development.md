@@ -99,6 +99,8 @@ npm run db:migrate
 npm run db:seed:all
 ```
 
+从 0185 起，编写迁移时，每个新增的 public 表都必须在建表语句后包含使用 `has_table_privilege(oid, 'public.log_domains', 'INSERT')` 的运行时 DML 授权 DO 块，或显式注明 `-- runtime-acl: owner-only <table> <reason>` 以说明仅限所有者访问的原因。
+
 也可逐项执行：
 
 ```bash

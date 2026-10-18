@@ -148,6 +148,8 @@ npm run db:migrate
 npm run db:seed:all
 ```
 
+When authoring migrations from 0185 onward, each new public table must include a subsequent runtime DML grant DO block using `has_table_privilege(oid, 'public.log_domains', 'INSERT')`, or an explicit `-- runtime-acl: owner-only <table> <reason>` opt-out.
+
 The individual commands remain available:
 
 ```bash
