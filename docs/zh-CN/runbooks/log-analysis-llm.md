@@ -61,7 +61,28 @@
 
 ## 结果 Webhook（P3b）
 
-- 按域配置在 `/log-admin` → 业务域治理 → 结果回调（URL、只写密钥、启用开关）；发送端调参用 `LOG_WEBHOOK_TIMEOUT_MS` / `LOG_WEBHOOK_MAX_ATTEMPTS` / `LOG_WEBHOOK_RETRY_BASE_DELAY_MS`。该通道尽力而为：绝不阻塞、失败或拖慢分析,有意不进 `/health/ready`。
+- 按域配置在 `/log-admin` → 业务域治理 → 结果回调（URL、只写密钥、启用开关）；发送端调参用 `LOG_WEBHOOK_TIMEOUT_MS` / `LOG_WEBHOOK_MAX_ATTEMPTS` / `LOG_WEBHOOK_RETRY_BASE_DELAY_MS`。终态事务持久化 outbox，轮询及 Redis 模式的日志 worker 都负责排空；HTTP 故障不影响分析，入队失败则回滚终态事务。崩溃后租约到期可恢复；接收方按稳定 `eventId` 去重，耗尽重试后状态为 `failed`。该通道仍不进入 `/health/ready`。
+- 升级前向 API 与日志 worker 提供同一个 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY`（`openssl rand -base64 32`），跨重启保存并独立备份。先运行 migration `0185`；启动会幂等加密现有明文行。生产环境已有回调配置而缺少密钥时拒绝启动；开发/测试才可使用确定性默认值。
+- 轮换：停止所有 API 与日志 worker，备份数据库及旧密钥。使用下方离线调用，将旧密钥放在 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY`，新密钥放在临时环境变量 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY_NEXT`；脚本在单一事务中重新加密，并写入新密钥指纹。成功后将所有进程配置切换到新密钥再启动；保留旧密钥以恢复旧备份，切勿仅替换环境变量。
+
+```bash
+node --import tsx --input-type=module <<'JS'
+import { createPostgresDatabase } from './server/shared/database/client.ts';
+import { ensureLogWebhookSecretsEncrypted } from './server/modules/logs/webhookSecrets.ts';
+import { resolveLogWebhookSecretKey } from './server/config/logWebhookSecretKey.ts';
+const db = createPostgresDatabase(process.env.DATABASE_URL);
+try {
+  await ensureLogWebhookSecretsEncrypted(db, {
+    previousKey: resolveLogWebhookSecretKey(),
+    key: resolveLogWebhookSecretKey({
+      NODE_ENV: 'production',
+      LOG_WEBHOOK_SECRET_ENCRYPTION_KEY: process.env.LOG_WEBHOOK_SECRET_ENCRYPTION_KEY_NEXT
+    })
+  });
+} finally { await db.close(); }
+JS
+```
+
 - 排障「消费方什么都没收到」：打开该域的最近投递列表（或 `GET /api/v1/log-domains/:domainId/webhook-deliveries`）——按次行显示已送达/重试中/投递失败与 HTTP 码或错误。`webhook-url-private-address` 错误表示 URL 被 SSRF 拦截（见 `docs/zh-CN/SECURITY.md`）；未分类日志永远不触发 Webhook；未配置/未启用按设计静默跳过。
 - 用带审计的「发送测试投递」按钮沿生产同路径探测接收端。指标：`wiseeff_log_webhook_deliveries_total{domain,outcome}` 与 `wiseeff_log_webhook_delivery_duration_ms_*`——某个域的 `failed`/`blocked` 上升是接收端或配置问题,不是分析问题。
 - 接收端校验（签名、重放窗口）见 `docs/zh-CN/api/log-analysis-integration.md`。

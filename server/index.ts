@@ -15,6 +15,7 @@ import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/work
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { createLogWebhookDeliverer } from "./modules/logs/webhookDelivery";
+import { ensureLogWebhookSecretsEncrypted } from "./modules/logs/webhookSecrets";
 import { startLogWebhookDeliveryRetentionLoop } from "./modules/logs/webhookRetention";
 import { startLogWorkerLoop } from "./modules/logs/worker";
 import { configureNotificationDelivery } from "./modules/notifications/delivery";
@@ -40,6 +41,7 @@ for (const diagnostic of env.XIAOZE_LLM_CONFIG.diagnostics) {
   );
 }
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
+if (db) await ensureLogWebhookSecretsEncrypted(db);
 const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
 const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
 const hdcGateway = createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS });
@@ -108,6 +110,8 @@ const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
     ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer })
     : undefined;
+// The outbox is polled in both analysis queue modes.
+const stopLogWebhookWorker = env.LOG_WORKER_ENABLED ? logWebhookDeliverer?.start() : undefined;
 const stopLogWebhookDeliveryRetention =
   env.LOG_WORKER_ENABLED &&
   env.LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED &&
@@ -196,6 +200,7 @@ async function shutdown() {
   await Promise.all([
     stopLogWorker?.(),
     stopLogWebhookDeliveryRetention?.(),
+    stopLogWebhookWorker?.(),
     stopKnowledgeIndexWorker?.(),
     stopNotificationWorker?.(),
     logAnalysisQueueRuntime?.close().catch((error) => {

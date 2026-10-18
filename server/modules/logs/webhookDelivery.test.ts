@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "../../shared/database/client";
 import { getLogDomainWebhookConfig } from "./domainsRepository";
 import { insertLogWebhookDelivery } from "./webhookRepository";
+import { claimLogWebhook, enqueueLogWebhook } from "./webhookOutbox";
+import { encryptLogWebhookSecret } from "./webhookSecrets";
 import {
   buildLogResultWebhookPayload,
   createLogWebhookDeliverer,
@@ -22,11 +24,13 @@ vi.mock("./domainsRepository", () => ({
 vi.mock("./webhookRepository", () => ({
   insertLogWebhookDelivery: vi.fn()
 }));
+vi.mock("./webhookOutbox", () => ({ claimLogWebhook: vi.fn(), enqueueLogWebhook: vi.fn() }));
 
 const mockedGetConfig = vi.mocked(getLogDomainWebhookConfig);
 const mockedInsertDelivery = vi.mocked(insertLogWebhookDelivery);
 
-const db = {} as Database;
+const query = vi.fn().mockResolvedValue({ rows: [{ id: "delivery-1" }], rowCount: 1 });
+const db = { query, transaction: async (fn: (tx: Database) => unknown) => fn(db) } as unknown as Database;
 const defaultEnv: LogWebhookEnv = { timeoutMs: 5000, maxAttempts: 3, retryBaseDelayMs: 100, allowInsecureLocal: false };
 const secret = "webhook-secret-with-enough-entropy";
 
@@ -48,7 +52,7 @@ function resultInput(overrides: Partial<LogAnalysisResultWebhookInput> = {}): Lo
 }
 
 function configuredWebhook(url = "https://hooks.example.com/wiseeff") {
-  mockedGetConfig.mockResolvedValue({ url, secret, enabled: true, domainName: "charging-power" });
+  mockedGetConfig.mockResolvedValue({ url, secret: encryptLogWebhookSecret(secret, "org-chargelab", "domain-1"), enabled: true, domainName: "charging-power" });
 }
 
 function recordedStatuses() {
@@ -56,6 +60,16 @@ function recordedStatuses() {
 }
 
 beforeEach(() => {
+  query.mockClear();
+  vi.mocked(claimLogWebhook).mockReset();
+  vi.mocked(enqueueLogWebhook).mockReset();
+  let attempt = 0;
+  vi.mocked(enqueueLogWebhook).mockImplementation(async () => { attempt = 0; return "event-1"; });
+  vi.mocked(claimLogWebhook).mockImplementation(async () => ({
+    id: "event-1", organization_id: "org-chargelab", log_domain_id: "domain-1",
+    log_record_id: "log-1", run_id: "run-1", payload: buildLogResultWebhookPayload(resultInput()),
+    attempts: attempt++, lease_token: "token-1"
+  }));
   mockedGetConfig.mockReset();
   mockedInsertDelivery.mockReset();
   mockedInsertDelivery.mockResolvedValue(undefined);
@@ -65,6 +79,7 @@ describe("buildLogResultWebhookPayload", () => {
   it("stays a compact summary and never carries raw log content", () => {
     const payload = buildLogResultWebhookPayload(resultInput());
     expect(payload).toEqual({
+      eventId: "log-result:run-1",
       event: "log-analysis.completed",
       recordId: "log-1",
       runId: "run-1",
@@ -165,40 +180,34 @@ describe("createLogWebhookDeliverer", () => {
       .fn<WebhookTransport>()
       .mockResolvedValueOnce({ ok: false, httpStatus: 503, error: "Receiver responded with HTTP 503." })
       .mockResolvedValueOnce({ ok: true, httpStatus: 204 });
-    const sleeps: number[] = [];
     const deliverer = createLogWebhookDeliverer({
       db,
       env: defaultEnv,
       transport,
-      sleep: async (ms) => {
-        sleeps.push(ms);
-      }
     });
 
-    const outcome = await deliverer.deliverAnalysisResult(resultInput());
+    expect(await deliverer.deliverAnalysisResult(resultInput())).toMatchObject({ status: "retrying", attempts: 1 });
+    const outcome = await deliverer.processNext();
 
     expect(outcome).toMatchObject({ status: "delivered", attempts: 2, httpStatus: 204 });
-    expect(sleeps).toEqual([100]);
+    expect(query.mock.calls.some(([sql, values]) => sql.includes("next_attempt_at = $5") && values[2] === "retry")).toBe(true);
     expect(recordedStatuses()).toEqual(["1:retrying", "2:delivered"]);
   });
 
   it("marks the delivery failed after exhausting retries without touching the analysis", async () => {
     configuredWebhook();
     const transport = vi.fn<WebhookTransport>().mockResolvedValue({ ok: false, httpStatus: 500, error: "Receiver responded with HTTP 500." });
-    const sleeps: number[] = [];
     const deliverer = createLogWebhookDeliverer({
       db,
       env: defaultEnv,
       transport,
-      sleep: async (ms) => {
-        sleeps.push(ms);
-      }
     });
 
-    const outcome = await deliverer.deliverAnalysisResult(resultInput());
+    expect(await deliverer.deliverAnalysisResult(resultInput())).toMatchObject({ status: "retrying", attempts: 1 });
+    expect(await deliverer.processNext()).toMatchObject({ status: "retrying", attempts: 2 });
+    const outcome = await deliverer.processNext();
 
     expect(outcome).toMatchObject({ status: "failed", attempts: 3, httpStatus: 500 });
-    expect(sleeps).toEqual([100, 200]);
     expect(recordedStatuses()).toEqual(["1:retrying", "2:retrying", "3:failed"]);
   });
 
@@ -259,13 +268,24 @@ describe("createLogWebhookDeliverer", () => {
     expect(outcome.error).toContain("not fully configured");
   });
 
+  it("keeps the observed admin test result when attempt-history persistence fails", async () => {
+    configuredWebhook();
+    mockedInsertDelivery.mockRejectedValueOnce(new Error("database unavailable"));
+    const deliverer = createLogWebhookDeliverer({ db, env: defaultEnv,
+      transport: vi.fn<WebhookTransport>().mockResolvedValue({ ok: true, httpStatus: 204 }) });
+    expect(await deliverer.sendTestDelivery({ organizationId: "org-chargelab", domainId: "domain-1" }))
+      .toMatchObject({ status: "delivered", attempts: 1, httpStatus: 204 });
+  });
+
   it("contains fire-and-forget failures and resolves flush()", async () => {
     configuredWebhook();
     const transport = vi.fn<WebhookTransport>().mockRejectedValue(new Error("boom"));
-    const deliverer = createLogWebhookDeliverer({ db, env: { ...defaultEnv, maxAttempts: 1 }, transport, sleep: async () => {} });
+    vi.mocked(claimLogWebhook).mockRejectedValueOnce(new Error("database unavailable"));
+    const deliverer = createLogWebhookDeliverer({ db, env: { ...defaultEnv, maxAttempts: 1 }, transport });
 
     deliverer.notifyAnalysisTerminal(resultInput());
     await expect(deliverer.flush()).resolves.toBeUndefined();
+    expect(claimLogWebhook).toHaveBeenCalledOnce();
   });
 });
 

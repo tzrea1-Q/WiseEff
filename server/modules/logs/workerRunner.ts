@@ -11,7 +11,8 @@ import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { createLogWebhookDeliverer } from "./webhookDelivery";
+import { createLogWebhookDeliverer, type LogWebhookDeliverer } from "./webhookDelivery";
+import { ensureLogWebhookSecretsEncrypted } from "./webhookSecrets";
 import {
   startLogWebhookDeliveryRetentionLoop,
   type LogWebhookDeliveryRetentionLoopStarter
@@ -48,7 +49,7 @@ type LogWorkerRuntimeOptions = {
   leaseTtlMs?: number;
   intervalMs?: number;
   metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
-  webhooks?: LogWorkerWebhooks;
+  webhooks?: LogWorkerWebhooks & Partial<Pick<LogWebhookDeliverer, "start">>;
 };
 
 export function createLogWorkerObservabilityServer({ metrics }: { metrics: Pick<MetricsRegistry, "renderPrometheus"> }) {
@@ -161,11 +162,12 @@ export function createLogWorkerRuntime({
       const stopRetention = retention?.enabled
         ? startRetentionLoop({ db, keepPerDomain: retention.keepPerDomain })
         : undefined;
+      const stopWebhooks = webhooks?.start?.();
 
       return async () => {
         const retentionShutdown = stopRetention?.();
         const workerShutdown = stopWorker();
-        await Promise.all([retentionShutdown, workerShutdown]);
+        await Promise.all([retentionShutdown, workerShutdown, stopWebhooks?.()]);
       };
     }
   };
@@ -185,6 +187,7 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   });
 
   const db = createPostgresDatabase(workerUrl, { tracing: defaultTracingBoundary });
+  await ensureLogWebhookSecretsEncrypted(db);
   await resolveParameterIdentityMode(db, env);
 
   const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });

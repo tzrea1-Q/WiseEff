@@ -23,7 +23,7 @@ import { requireRelatedParameterRunSnapshot } from "./relatedParameter";
 type LogWorkerMetrics = Pick<MetricsRegistry, "recordLogAnalysisJobResult"> &
   Partial<Pick<MetricsRegistry, "recordLogAnalysisDegraded">>;
 
-/** Best-effort result-webhook hook; the worker never awaits or fails on it (P3b). */
+/** Wake-up hook only; terminal-state repositories enqueue durably in their transaction. */
 export type LogWorkerWebhooks = Pick<LogWebhookDeliverer, "notifyAnalysisTerminal">;
 
 export type ProcessLogWorkerOptions = {
@@ -209,33 +209,37 @@ async function processClaimedLogAnalysisJob(
       ? "Log analysis job is stale because its run is no longer current."
       : "Unable to load log analysis job target.";
 
-    const failedJob = await failJob(db, {
-      organizationId: job.organizationId,
-      jobId: job.id,
-      currentStage: "parse",
-      error: staleReason,
-      leaseOwner
-    });
-    if (!failedJob) return { status: "idle" };
+    const failed = await db.transaction(async (tx) => {
+      const failedJob = await failJob(tx, {
+        organizationId: job.organizationId,
+        jobId: job.id,
+        currentStage: "parse",
+        error: staleReason,
+        leaseOwner
+      });
+      if (!failedJob) return false;
 
-    if (jobSnapshot) {
-      await updateRunStageProgress(db, {
-        organizationId: jobSnapshot.organizationId,
-        runId: jobSnapshot.runId,
-        status: "failed",
-        stageStatus: "failed",
-        stage: jobSnapshot.currentStage,
-        progress: jobSnapshot.progress,
-        message: staleReason
-      });
-      await failRun(db, {
-        organizationId: jobSnapshot.organizationId,
-        logId: jobSnapshot.logId,
-        runId: jobSnapshot.runId,
-        currentStage: jobSnapshot.currentStage,
-        error: staleReason
-      });
-    }
+      if (jobSnapshot) {
+        await updateRunStageProgress(tx, {
+          organizationId: jobSnapshot.organizationId,
+          runId: jobSnapshot.runId,
+          status: "failed",
+          stageStatus: "failed",
+          stage: jobSnapshot.currentStage,
+          progress: jobSnapshot.progress,
+          message: staleReason
+        });
+        await failRun(tx, {
+          organizationId: jobSnapshot.organizationId,
+          logId: jobSnapshot.logId,
+          runId: jobSnapshot.runId,
+          currentStage: jobSnapshot.currentStage,
+          error: staleReason
+        });
+      }
+      return true;
+    });
+    if (!failed) return { status: "idle" };
     recordMetric({ status: "failed", stage: jobSnapshot?.currentStage ?? "parse", failureReason: "stale_run" });
     return { status: "processed" };
   }
@@ -432,8 +436,7 @@ async function processClaimedLogAnalysisJob(
       });
     }
 
-    // Terminal state is persisted; fire the best-effort domain result webhook
-    // without blocking the worker (degraded completions included, honestly marked).
+    // Wake the outbox after the terminal transaction commits.
     if (snapshot.logDomain && webhooks) {
       webhooks.notifyAnalysisTerminal({
         organizationId: snapshot.organizationId,
@@ -475,32 +478,36 @@ async function processClaimedLogAnalysisJob(
       return { status: "retry", reason: decision.reason, nextRunAt: decision.nextRunAt };
     }
 
-    const deadLettered = await markJobDeadLettered(db, {
-      organizationId: snapshot.organizationId,
-      jobId: snapshot.jobId,
-      currentStage,
-      error: message,
-      reason: decision.reason,
-      leaseOwner
+    const deadLettered = await db.transaction(async (tx) => {
+      const deadLettered = await markJobDeadLettered(tx, {
+        organizationId: snapshot.organizationId,
+        jobId: snapshot.jobId,
+        currentStage,
+        error: message,
+        reason: decision.reason,
+        leaseOwner
+      });
+      if (!deadLettered) return false;
+
+      await updateRunStageProgress(tx, {
+        organizationId: snapshot.organizationId,
+        runId: snapshot.runId,
+        status: "failed",
+        stageStatus: "failed",
+        stage: currentStage,
+        progress: currentProgress,
+        message
+      });
+      await failRun(tx, {
+        organizationId: snapshot.organizationId,
+        logId: snapshot.logId,
+        runId: snapshot.runId,
+        currentStage,
+        error: decision.reason
+      });
+      return true;
     });
     if (!deadLettered) return { status: "idle" };
-
-    await updateRunStageProgress(options.db, {
-      organizationId: snapshot.organizationId,
-      runId: snapshot.runId,
-      status: "failed",
-      stageStatus: "failed",
-      stage: currentStage,
-      progress: currentProgress,
-      message
-    });
-    await failRun(db, {
-      organizationId: snapshot.organizationId,
-      logId: snapshot.logId,
-      runId: snapshot.runId,
-      currentStage,
-      error: decision.reason
-    });
     if (snapshot.submittedByUserId) {
       await notifyLogAnalysisFailed(db, {
         organizationId: snapshot.organizationId,

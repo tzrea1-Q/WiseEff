@@ -17,6 +17,33 @@ function fakeDatabase(query: Database["query"]): Database {
 }
 
 describe("log webhook delivery retention loop", () => {
+  it("prunes terminal outbox rows under the same settings and bounded batch budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const victims = Array.from({ length: 10_000 }, (_, index) => ({ id: `outbox-${index}` }));
+      const query = vi.fn(async <Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+        if (text.includes("from log_webhook_deliveries")) return { rows: [], rowCount: 0 };
+        if (text.includes("row_number() over")) return { rows: victims as Row[], rowCount: victims.length };
+        const ids = values[0] as string[];
+        return { rows: ids.map((id) => ({ id })) as Row[], rowCount: ids.length };
+      });
+      const logger = { info: vi.fn(), warn: vi.fn() };
+      const stop = startLogWebhookDeliveryRetentionLoop({ db: fakeDatabase(query), keepPerDomain: 7, logger });
+      await vi.waitFor(() => expect(logger.info).toHaveBeenCalledOnce());
+      const selection = query.mock.calls.filter(([text]) => text.includes("row_number() over") && text.includes("from log_webhook_outbox"));
+      expect(selection).toHaveLength(1);
+      expect(selection[0][1]).toEqual([7, 10_000]);
+      expect(selection[0][0]).toContain("where status in ('delivered', 'failed')");
+      const deletes = query.mock.calls.filter(([text]) => text.includes("delete from log_webhook_outbox"));
+      expect(deletes).toHaveLength(LOG_WEBHOOK_DELIVERY_RETENTION_MAX_BATCHES);
+      expect(deletes.every(([text, values]) => text.includes("and status in ('delivered', 'failed')") && (values[0] as string[]).length === 1000)).toBe(true);
+      expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ deletedRows: 0, deletedOutboxRows: 10_000 }));
+      await stop();
+      await vi.advanceTimersByTimeAsync(LOG_WEBHOOK_DELIVERY_RETENTION_INTERVAL_MS * 2);
+      expect(query).toHaveBeenCalledTimes(12);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("runs immediately, caps one cycle at ten batches, and stops future cycles", async () => {
     vi.useFakeTimers();
     try {
@@ -31,6 +58,7 @@ describe("log webhook delivery retention loop", () => {
       const query = vi.fn(
         async <Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
           if (text.includes("row_number() over")) {
+            if (text.includes("from log_webhook_outbox")) return { rows: [], rowCount: 0 };
             return { rows: victimIds as Row[], rowCount: victimIds.length };
           }
           if (text.includes("delete from log_webhook_deliveries")) {
@@ -52,7 +80,7 @@ describe("log webhook delivery retention loop", () => {
         expect(logger.info).toHaveBeenCalledOnce();
       });
       const selectionQueries = query.mock.calls.filter(([text]) =>
-        text.includes("row_number() over")
+        text.includes("row_number() over") && text.includes("from log_webhook_deliveries")
       );
       const deleteQueries = query.mock.calls.filter(([text]) =>
         text.includes("delete from log_webhook_deliveries")
@@ -75,12 +103,13 @@ describe("log webhook delivery retention loop", () => {
         status: "succeeded",
         deletedRows:
           LOG_WEBHOOK_DELIVERY_RETENTION_BATCH_LIMIT * LOG_WEBHOOK_DELIVERY_RETENTION_MAX_BATCHES,
+        deletedOutboxRows: 0,
         durationMs: expect.any(Number)
       });
 
       await stop();
       await vi.advanceTimersByTimeAsync(LOG_WEBHOOK_DELIVERY_RETENTION_INTERVAL_MS * 2);
-      expect(query).toHaveBeenCalledTimes(1 + LOG_WEBHOOK_DELIVERY_RETENTION_MAX_BATCHES);
+      expect(query).toHaveBeenCalledTimes(2 + LOG_WEBHOOK_DELIVERY_RETENTION_MAX_BATCHES);
     } finally {
       vi.useRealTimers();
     }
@@ -110,11 +139,12 @@ describe("log webhook delivery retention loop", () => {
       expect(query).toHaveBeenCalledOnce();
 
       await vi.advanceTimersByTimeAsync(LOG_WEBHOOK_DELIVERY_RETENTION_INTERVAL_MS);
-      await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(3));
       expect(logger.info).toHaveBeenCalledWith({
         event: "log_webhook_delivery_retention",
         status: "succeeded",
         deletedRows: 0,
+        deletedOutboxRows: 0,
         durationMs: expect.any(Number)
       });
 
@@ -152,7 +182,7 @@ describe("log webhook delivery retention loop", () => {
       expect(stopped).toBe(true);
 
       await vi.advanceTimersByTimeAsync(LOG_WEBHOOK_DELIVERY_RETENTION_INTERVAL_MS * 2);
-      expect(query).toHaveBeenCalledOnce();
+      expect(query).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }

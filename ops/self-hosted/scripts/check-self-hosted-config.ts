@@ -138,6 +138,7 @@ export const requiredDockerignoreTokens = [
 ] as const;
 
 export const requiredEnvKeys = [
+  "LOG_WEBHOOK_SECRET_ENCRYPTION_KEY",
   "NODE_ENV",
   "HOST",
   "PORT",

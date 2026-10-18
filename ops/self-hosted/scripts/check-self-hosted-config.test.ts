@@ -219,6 +219,7 @@ LOG_ANALYSIS_API_BASE_URL=
 LOG_ANALYSIS_MODEL=
 LOG_ANALYSIS_API_KEY=
 LOG_ANALYSIS_API_TIMEOUT_MS=30000
+LOG_WEBHOOK_SECRET_ENCRYPTION_KEY=
 LOG_ANALYSIS_TOKEN_BUDGET=8000
 LOG_ANALYSIS_DETERMINISTIC=false
 WISEEFF_PUBLICATION_MANAGER_ENV_FILE=.env.publication-manager
@@ -364,6 +365,12 @@ describe("self-hosted config metadata", () => {
     );
     expect(result.status).toBe("failed");
     expect(result.envSafetyIssues).toContain("public-env-exposes-publication-manager-dsn");
+  });
+
+  it("requires the webhook encryption key in self-hosted configuration examples", () => {
+    const result = evaluateWithEnvExample(validEnvExample.replace("LOG_WEBHOOK_SECRET_ENCRYPTION_KEY=\n", ""));
+    expect(result.status).toBe("failed");
+    expect(result.missingEnvKeys).toContain("LOG_WEBHOOK_SECRET_ENCRYPTION_KEY");
   });
 
   it("reports all missing self-hosted runtime requirements", () => {

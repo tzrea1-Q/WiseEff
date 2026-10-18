@@ -61,7 +61,28 @@ Verify the degraded path visibly: kill or misconfigure the provider, upload a lo
 
 ## Result Webhooks (P3b)
 
-- Per-domain config lives in `/log-admin` domain governance → result-webhook editor (URL, write-only secret, enabled); sender tuning is `LOG_WEBHOOK_TIMEOUT_MS` / `LOG_WEBHOOK_MAX_ATTEMPTS` / `LOG_WEBHOOK_RETRY_BASE_DELAY_MS`. The channel is best-effort: it never blocks, fails, or delays an analysis and deliberately stays out of `/health/ready`.
+- Per-domain config lives in `/log-admin` domain governance → result-webhook editor (URL, write-only secret, enabled); sender tuning is `LOG_WEBHOOK_TIMEOUT_MS` / `LOG_WEBHOOK_MAX_ATTEMPTS` / `LOG_WEBHOOK_RETRY_BASE_DELAY_MS`. Terminal transactions persist an outbox drained by the log worker in both polling and Redis modes. HTTP failures do not affect analyses; enqueue failures roll back the terminal transaction. Expired leases recover abandoned sends; receivers dedupe on stable `eventId`, and exhausted retries remain `failed`. The channel stays out of `/health/ready`.
+- Before upgrading, give API and log workers the same `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY` (`openssl rand -base64 32`), retain it across restarts, and back it up separately. Apply migration `0185` first; startup idempotently encrypts existing plaintext rows. Configured production webhooks refuse startup without the key; only development/test may use the deterministic default.
+- Rotation: stop all API and log workers and back up the database and old key. Run the offline call below with the old key in `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY` and the new key in temporary environment variable `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY_NEXT`; it re-encrypts in one transaction and writes the new key fingerprint. After success, configure every process with the new key and restart. Retain the old key for older backups; changing only the environment variable cannot rotate stored ciphertext.
+
+```bash
+node --import tsx --input-type=module <<'JS'
+import { createPostgresDatabase } from './server/shared/database/client.ts';
+import { ensureLogWebhookSecretsEncrypted } from './server/modules/logs/webhookSecrets.ts';
+import { resolveLogWebhookSecretKey } from './server/config/logWebhookSecretKey.ts';
+const db = createPostgresDatabase(process.env.DATABASE_URL);
+try {
+  await ensureLogWebhookSecretsEncrypted(db, {
+    previousKey: resolveLogWebhookSecretKey(),
+    key: resolveLogWebhookSecretKey({
+      NODE_ENV: 'production',
+      LOG_WEBHOOK_SECRET_ENCRYPTION_KEY: process.env.LOG_WEBHOOK_SECRET_ENCRYPTION_KEY_NEXT
+    })
+  });
+} finally { await db.close(); }
+JS
+```
+
 - Triage a "consumer got nothing": open the domain's recent-deliveries list (or `GET /api/v1/log-domains/:domainId/webhook-deliveries`) — per-attempt rows show delivered/retrying/failed with HTTP status or error. `webhook-url-private-address` errors mean the URL is SSRF-blocked (see `docs/SECURITY.md`); uncategorized logs never fire webhooks; disabled/missing config is silently skipped by design.
 - Use the audited test-delivery button to probe the receiver through the exact production path. Metrics: `wiseeff_log_webhook_deliveries_total{domain,outcome}` and `wiseeff_log_webhook_delivery_duration_ms_*` — a climbing `failed`/`blocked` outcome for one domain is a receiver or config problem, not an analysis problem.
 - Receiver-side verification (signature, replay window) is specified in `docs/api/log-analysis-integration.md`.

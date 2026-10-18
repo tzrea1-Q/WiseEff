@@ -1,5 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
 import type { LogFormatProfile } from "./formatProfile";
+import { encryptLogWebhookSecret } from "./webhookSecrets";
 
 export type LogDomainStatus = "active" | "archived";
 
@@ -36,6 +37,7 @@ type LogDomainRow = {
   model_override: string | null;
   webhook_url: string | null;
   webhook_secret: string | null;
+  webhook_secret_last_four: string | null;
   webhook_enabled: boolean;
   created_at: string | Date;
   updated_at: string | Date;
@@ -45,13 +47,13 @@ function dateTimeToIso(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function toWebhookSummary(row: Pick<LogDomainRow, "webhook_url" | "webhook_secret" | "webhook_enabled">): LogDomainWebhookSummary {
+function toWebhookSummary(row: Pick<LogDomainRow, "webhook_url" | "webhook_secret" | "webhook_secret_last_four" | "webhook_enabled">): LogDomainWebhookSummary {
   const secret = row.webhook_secret ?? undefined;
   return {
     enabled: row.webhook_enabled,
     url: row.webhook_url ?? undefined,
     secretConfigured: Boolean(secret),
-    secretLastFour: secret ? secret.slice(-4) : undefined
+    secretLastFour: row.webhook_secret_last_four ?? undefined
   };
 }
 
@@ -71,7 +73,7 @@ function toLogDomainDto(row: LogDomainRow): LogDomainDto {
 
 const logDomainSelect = `
   select id, name, description, status, format_profile, model_override,
-    webhook_url, webhook_secret, webhook_enabled, created_at, updated_at
+    webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, created_at, updated_at
   from log_domains
 `;
 
@@ -146,7 +148,7 @@ export async function insertLogDomain(
     insert into log_domains (id, organization_id, name, description, status, format_profile)
     values ($1, $2, $3, $4, 'active', $5::jsonb)
     returning id, name, description, status, format_profile, model_override,
-      webhook_url, webhook_secret, webhook_enabled, created_at, updated_at
+      webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, created_at, updated_at
     `,
     [input.id, input.organizationId, input.name, input.description ?? null, input.formatProfile ? JSON.stringify(input.formatProfile) : null]
   );
@@ -180,7 +182,7 @@ export async function updateLogDomainRow(
     where organization_id = $1
       and id = $2
     returning id, name, description, status, format_profile, model_override,
-      webhook_url, webhook_secret, webhook_enabled, created_at, updated_at
+      webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, created_at, updated_at
     `,
     [
       input.organizationId,
@@ -219,26 +221,29 @@ export async function updateLogDomainWebhookRow(
     set webhook_url = $3,
       webhook_enabled = $4,
       webhook_secret = case when $5 then $6 else webhook_secret end,
+      webhook_secret_last_four = case when $5 then $7 else webhook_secret_last_four end,
       updated_at = now()
     where organization_id = $1
       and id = $2
     returning id, name, description, status, format_profile, model_override,
-      webhook_url, webhook_secret, webhook_enabled, created_at, updated_at
+      webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, created_at, updated_at
     `,
-    [input.organizationId, input.domainId, input.url, input.enabled, input.secret !== undefined, input.secret ?? null]
+    [input.organizationId, input.domainId, input.url, input.enabled, input.secret !== undefined,
+      input.secret ? encryptLogWebhookSecret(input.secret, input.organizationId, input.domainId) : null,
+      input.secret ? input.secret.slice(-4) : null]
   );
 
   return result.rows[0] ? toLogDomainDto(result.rows[0]) : null;
 }
 
-/** Delivery-time lookup: raw webhook config (including the secret) for the sender only. */
+/** Delivery-time lookup: the secret stays encrypted until the sender signs. */
 export async function getLogDomainWebhookConfig(
   db: Queryable,
   query: { organizationId: string; domainId: string }
 ): Promise<{ url: string | null; secret: string | null; enabled: boolean; domainName: string } | null> {
   const result = await db.query<{ webhook_url: string | null; webhook_secret: string | null; webhook_enabled: boolean; name: string }>(
     `
-    select webhook_url, webhook_secret, webhook_enabled, name
+    select webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, name
     from log_domains
     where organization_id = $1
       and id = $2

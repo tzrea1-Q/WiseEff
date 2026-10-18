@@ -151,11 +151,20 @@ describe("self-host profile renderer", () => {
 
   it("reuses existing secrets unless force is set", () => {
     expect(
-      resolveSecrets({ POSTGRES_PASSWORD: "keep_pg", MINIO_ROOT_PASSWORD: "keep_minio" }, false, () => "generated")
-    ).toEqual({ postgresPassword: "keep_pg", minioPassword: "keep_minio" });
+      resolveSecrets({ POSTGRES_PASSWORD: "keep_pg", MINIO_ROOT_PASSWORD: "keep_minio", LOG_WEBHOOK_SECRET_ENCRYPTION_KEY: "persist-key" }, false, () => "generated")
+    ).toEqual({ postgresPassword: "keep_pg", minioPassword: "keep_minio", logWebhookEncryptionKey: "persist-key" });
     expect(
-      resolveSecrets({ POSTGRES_PASSWORD: "keep_pg", MINIO_ROOT_PASSWORD: "keep_minio" }, true, () => "generated")
-    ).toEqual({ postgresPassword: "generated", minioPassword: "generated" });
+      resolveSecrets({ POSTGRES_PASSWORD: "keep_pg", MINIO_ROOT_PASSWORD: "keep_minio", LOG_WEBHOOK_SECRET_ENCRYPTION_KEY: "persist-key" }, true, () => "generated")
+    ).toEqual({ postgresPassword: "generated", minioPassword: "generated", logWebhookEncryptionKey: "persist-key" });
+  });
+
+  it("generates a 32-byte webhook key and renders it for both profiles", () => {
+    const generated = resolveSecrets(undefined, false);
+    expect(Buffer.from(generated.logWebhookEncryptionKey!, "base64")).toHaveLength(32);
+    for (const profile of ["ip-lab", "acme"] as const) {
+      const rendered = renderSelfHostEnv(normalizeAnswers({ profile, siteHost: "example.com", tlsEmail: "ops@example.com", adminPassword: "password123" }), generated);
+      expect(parseEnvText(rendered).LOG_WEBHOOK_SECRET_ENCRYPTION_KEY).toBe(generated.logWebhookEncryptionKey);
+    }
   });
 
   it("accepts the committed ACME Caddyfile", () => {
