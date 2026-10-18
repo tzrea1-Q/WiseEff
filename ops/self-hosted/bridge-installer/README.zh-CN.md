@@ -43,6 +43,7 @@ npm run build:bridge-installers
 - Windows 后台服务通过 `sc create` 注册为 `node.exe` + `cli.js start`（**不能**把 `start-service.cmd` 作为服务 `binPath`，否则会 `sc start` 错误 87）。
 - `npm run build:bridge-installers` 会**强制**先跑 `bridge:build`，并校验 bundle 含 `POST /connect` HTTP 路由后再打安装包。
 - Windows 无 `zip` 命令时，`bridge:build` 使用 PowerShell `Compress-Archive` 生成 portable zip。
+- Windows 升级时，安装器通过 Windows Restart Manager 关闭占用所选安装目录文件的进程，包括独立启动的 Bridge。出现关闭应用提示时，请同意后继续。安装器会启动更新后的后台服务，Restart Manager 不会重新拉起旧进程。若仍出现 `DeleteFile failed; code 5`，关闭从该目录运行的 Bridge 进程后重试。
 - 当前未签名；试点阶段 Gatekeeper / SmartScreen 提示属预期。
 - 未内置 `adb` / `hdc`（Phase B/C）。
 
