@@ -1,3 +1,4 @@
+import { buildTrustedAuditEventInput, type TrustedAuditEventInput } from "../audit/trustedAudit";
 import { describe, expect, it, vi } from "vitest";
 
 import { createPairingService } from "./pairingService";
@@ -115,9 +116,9 @@ describe("pairingService", () => {
       issueToken: () => "wb_test_token",
       createBridgeId: () => "br-1",
       db: {} as never,
-      createAuditEvent: (async (_db: unknown, input: unknown) => {
-        events.push(input);
-      }) as never
+      writeAuditEvent: (async (_db: unknown, input: TrustedAuditEventInput) => {
+        events.push(buildTrustedAuditEventInput(input));
+      })
     });
 
     await service.pairWithCode({ code: "123456", machineLabel: "WIN-PC", platform: "windows", arch: "amd64" });

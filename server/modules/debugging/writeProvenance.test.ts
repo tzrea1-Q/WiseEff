@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Database } from "../../shared/database/client";
 import type { CreateAuditEventInput } from "../audit/types";
+import { buildTrustedAuditEventInput } from "../audit/trustedAudit";
 import type { AuthContext } from "../auth/types";
 import { createDebuggingService } from "./service";
 
 vi.mock("../agent/repository", async (importOriginal) => ({
   ...await importOriginal<typeof import("../agent/repository")>(),
+  updateAgentToolCall: vi.fn(async () => true),
   getAgentApproval: vi.fn(async () => ({ status: "approved", requestedByUserId: "user-1", toolCallId: "tool-1" })),
   getAgentToolCall: vi.fn(async () => ({
     id: "tool-1", sessionId: "agent-session-1", name: "action.writeDebugNode",
@@ -58,7 +60,7 @@ describe("debugging write audit provenance", () => {
           readResult: { ok: true, value: "3200", durationMs: 1 }
         }))
       },
-      createAuditEvent: async (_tx, event) => { events.push(event); }
+      writeAuditEvent: async (_tx, event) => { events.push(buildTrustedAuditEventInput(event)); }
     });
 
     await service.writeNode(auth, {

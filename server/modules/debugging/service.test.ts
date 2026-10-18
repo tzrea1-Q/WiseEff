@@ -10,17 +10,20 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import { serializePostgresJsonb } from "../../shared/database/jsonb";
+import { createPostgresDatabase } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   createInMemoryTestDatabase,
+  createEphemeralTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
 import type { CreateAuditEventInput } from "../audit/types";
+import { buildTrustedAuditEventInput, type TrustedAuditEventInput } from "../audit/trustedAudit";
 import { listAuditEvents } from "../audit/repository";
-import { createAgentApproval, createAgentSession } from "../agent/repository";
+import { createAgentApproval, createAgentSession, getAgentToolCall } from "../agent/repository";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
 import { createDebugDeviceGatewayRegistry } from "./gatewayRegistry";
@@ -85,11 +88,11 @@ function makeGateway(overrides: Partial<DebugDeviceGateway> = {}): DebugDeviceGa
 
 function createAuditSpy() {
   const events: CreateAuditEventInput[] = [];
-  const createAuditEvent = vi.fn(async (_db: unknown, input: CreateAuditEventInput) => {
-    events.push(input);
+  const writeAuditEvent = vi.fn(async (_db: unknown, input: TrustedAuditEventInput) => {
+    events.push(buildTrustedAuditEventInput(input));
   });
 
-  return { createAuditEvent, events };
+  return { writeAuditEvent, events };
 }
 
 function createDeviceMetricsSpy() {
@@ -580,7 +583,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         enabled: true
       });
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
 
       await service.deleteAdminDebugNode(adminAuth, node.id, { requestId: "request-delete" });
 
@@ -620,7 +623,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         [session.id, node.id]
       );
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
 
       await expect(service.deleteAdminDebugNode(adminAuth, node.id, { requestId: "request-cascade" })).resolves.toBeUndefined();
       await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.not.toEqual(
@@ -646,7 +649,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const disabledNode = await createDebugNode(db, { organizationId: "org-1", name: "Disabled unused node" });
       await db.query(`update debug_nodes set enabled = false where id = $1`, [disabledNode.id]);
       const foreignNode = await createDebugNode(db, { organizationId: "org-2", name: "Foreign node" });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.deleteAdminDebugNode(readAuth, disabledNode.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(service.deleteAdminDebugNode(adminAuth, foreignNode.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -668,7 +671,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       ]);
       await seedBinding(parameter.id, { protocol: "hdc", nodePath: "/sys/hdc/current" });
       await seedBinding(parameter.id, { protocol: "adb", nodePath: "/sys/adb/current" });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.listAdminParameters(readAuth, { includeArchived: true })).rejects.toMatchObject(
         new ApiError("FORBIDDEN", "Missing permission: debugging:admin.", { permission: "debugging:admin" })
@@ -696,7 +699,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedBinding(covered.id, { protocol: "adb", nodePath: "/sys/covered/adb" });
       const uncovered = await seedParameter({ key: "voltage", name: "Voltage", nodePath: "/sys/voltage" });
       await seedBinding(uncovered.id, { protocol: "hdc", nodePath: "/sys/voltage/hdc" });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.listAdminParameters(adminAuth, { coverage: "missing-adb" })).resolves.toEqual([
         expect.objectContaining({ id: uncovered.id })
@@ -709,7 +712,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await db.query(`update debugging_parameters set archived_at = '2026-06-22T12:00:00.000Z' where id = $1`, [
         archived.id
       ]);
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       // Without includeArchived, the archived coverage filter still reaches archived rows.
       await expect(service.listAdminParameters(adminAuth, { coverage: "archived" })).resolves.toEqual([
@@ -720,7 +723,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("archives a debug parameter and writes summary audit metadata", async () => {
       const parameter = await seedParameter({ nodePath: "/sys/current" });
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
 
       const item = await service.archiveAdminParameter(
         adminAuth,
@@ -751,7 +754,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
     it("creates an admin parameter with bindings in one transaction and omits raw node paths from audit", async () => {
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
 
       const item = await service.createAdminParameter(
         adminAuth,
@@ -804,7 +807,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const parameter = await seedParameter({ name: "Existing parameter", nodePath: "/sys/existing" });
       await seedBinding(parameter.id, { protocol: "adb", nodePath: "/sys/adb/existing", accessMode: "RO" });
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
 
       const item = await service.updateAdminParameter(
         adminAuth,
@@ -855,7 +858,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("upserts an admin parameter binding and converts repository null to NOT_FOUND", async () => {
       const parameter = await seedParameter();
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
 
       await expect(
         service.upsertAdminParameterBinding(
@@ -896,7 +899,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedDevice({ id: "device-foreign", organization_id: "org-2", name: "Foreign Bench" });
       const mine = await seedParameter();
       await seedParameter({ organizationId: "org-2", key: "foreign", nodePath: "/sys/foreign" });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.listDevices(readAuth)).resolves.toEqual([expect.objectContaining({ id: "device-1" })]);
       await expect(service.listParameters(readAuth)).resolves.toEqual([expect.objectContaining({ id: mine.id })]);
@@ -906,7 +909,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const parameter = await seedParameter();
       await seedBinding(parameter.id, { protocol: "hdc", nodePath: "/sys/current" });
       await seedBinding(parameter.id, { protocol: "adb", nodePath: "/sys/adb/current", notes: "ADB lab" });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.listParameters(readAuth, { protocol: "adb" })).resolves.toEqual([
         expect.objectContaining({
@@ -932,7 +935,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedBinding(adbDisabled.id, { protocol: "adb", nodePath: "/sys/adb/disabled", enabled: false });
       const adbEnabled = await seedParameter({ key: "adb_enabled", nodePath: "/sys/adb/enabled" });
       await seedBinding(adbEnabled.id, { protocol: "adb", nodePath: "/sys/adb/enabled" });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.listParameters(readAuth, { protocol: "adb" })).resolves.toEqual([
         expect.objectContaining({
@@ -947,7 +950,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedTarget();
       const parameter = await seedParameter({ module: "Battery", risk: "Medium" });
       const session = await seedSession();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.listDevices(makeAuth([]))).rejects.toMatchObject(
         new ApiError("FORBIDDEN", "Missing permission: debugging:view.", { permission: "debugging:view" })
@@ -964,7 +967,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       // Record an operation through the real write path so the event listing has content.
       await seedBinding(parameter.id);
-      const writeService = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const writeService = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
       await writeService.readNode(readAuth, { sessionId: session.id, parameterId: parameter.id });
 
       await expect(service.listDevices(readAuth)).resolves.toEqual([expect.objectContaining({ id: "device-1" })]);
@@ -988,7 +991,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const audit = createAuditSpy();
       const metrics = createDeviceMetricsSpy();
       const { spans, tracing } = createTraceRecorder();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent, metrics, gatewayMode: "simulator", tracing });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent, metrics, gatewayMode: "simulator", tracing });
 
       await expect(service.detectTargets(makeAuth(["debugging:view"]), { deviceId: "device-1" })).rejects.toMatchObject(
         new ApiError("FORBIDDEN", "Missing permission: debugging:read.", { permission: "debugging:read" })
@@ -1052,7 +1055,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
-        createAuditEvent: audit.createAuditEvent
+        writeAuditEvent: audit.writeAuditEvent
       });
 
       const targets = await service.detectTargets(readAuth, { deviceId: "device-1", protocol: "adb" });
@@ -1082,7 +1085,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       await service.detectTargets(readAuth, { deviceId: "device-1", protocol: "adb" });
@@ -1099,7 +1102,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: false, targets: [], error: "USB bridge unavailable." })) }),
-        createAuditEvent: createAuditSpy().createAuditEvent,
+        writeAuditEvent: createAuditSpy().writeAuditEvent,
         metrics,
         gatewayMode: "hdc"
       });
@@ -1140,7 +1143,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         }),
         bridgeConnectionPool,
         bridgeRpcClient,
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const targets = await service.detectTargets(readAuth, { protocol: "hdc", bridgeId: "br-1" });
@@ -1176,7 +1179,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: true, targets: [] })) }),
         bridgeConnectionPool,
         bridgeRpcClient,
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const targets = await service.detectTargets(readAuth, {});
@@ -1204,7 +1207,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: true, targets: [] })) }),
         bridgeConnectionPool,
         bridgeRpcClient,
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const targets = await service.detectTargets(readAuth, { bridgeId: "br-1" });
@@ -1233,7 +1236,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: true, targets: [] })) }),
         bridgeConnectionPool: { isConnected: vi.fn(() => true) },
         bridgeRpcClient,
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const targets = await service.detectTargets(makeAuth(["debugging:view", "debugging:read"], [{ projectId: null, roleId: "software-user" }], "user-2"), {
@@ -1250,7 +1253,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gateway: makeGateway(),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       await expect(service.detectTargets(readAuth, { deviceId: "device-1", protocol: "adb" })).rejects.toMatchObject({
@@ -1263,7 +1266,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects offline or lost targets and persists an active session", async () => {
       await seedDevice();
       await seedTarget({ status: "lost" });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" })).rejects.toMatchObject(
         new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.")
@@ -1277,7 +1280,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await db.query(`update debugging_devices set status = 'online' where id = 'device-1'`);
       const audit = createAuditSpy();
-      const auditedService = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const auditedService = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
       const session = await auditedService.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" });
 
       expect(session).toMatchObject({ deviceId: "device-1", targetId: "target-1", status: "active" });
@@ -1304,7 +1307,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         gateway: makeGateway(),
         bridgeConnectionPool: { isConnected: vi.fn(() => true) },
         bridgeRpcClient: { call: vi.fn() },
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       await expect(
@@ -1339,7 +1342,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedDevice();
       await seedDevice({ id: "device-2", name: "Other Bench" });
       await seedTarget({ device_id: "device-2" });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" })).rejects.toMatchObject(
         new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.")
@@ -1349,7 +1352,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("inserts a session-created debug event", async () => {
       await seedDevice();
       await seedTarget();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       const session = await service.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" });
 
@@ -1381,7 +1384,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const audit = createAuditSpy();
       const metrics = createDeviceMetricsSpy();
       const { spans, tracing } = createTraceRecorder();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent, metrics, gatewayMode: "simulator", tracing });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent, metrics, gatewayMode: "simulator", tracing });
 
       await expect(
         service.readNode(makeAuth(["debugging:view"]), { sessionId: session.id, nodePath: "/sys/current" })
@@ -1434,7 +1437,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       await service.readNode(readAuth, {
@@ -1468,7 +1471,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         call: vi.fn().mockResolvedValue({ ok: true, value: "3000", stdout: "3000", durationMs: 4 })
       };
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, bridgeRpcClient, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, bridgeRpcClient, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await service.readNode(readAuth, { sessionId: session.id, parameterId: parameter.id });
 
@@ -1491,7 +1494,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const operation = await service.readNode(readAuth, { sessionId: session.id, parameterId: parameter.id });
@@ -1504,7 +1507,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const { parameter, session } = await seedRuntime({ bindingAccessMode: "WO" });
       await db.query(`update debugging_sessions set status = 'closed' where id = $1`, [session.id]);
       const inactiveGateway = makeGateway();
-      const inactiveService = createDebuggingService({ db, gateway: inactiveGateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const inactiveService = createDebuggingService({ db, gateway: inactiveGateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         inactiveService.readNode(readAuth, { sessionId: session.id, nodePath: "/sys/current" })
@@ -1513,7 +1516,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await db.query(`update debugging_sessions set status = 'active' where id = $1`, [session.id]);
       const writeOnlyGateway = makeGateway();
-      const writeOnlyService = createDebuggingService({ db, gateway: writeOnlyGateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const writeOnlyService = createDebuggingService({ db, gateway: writeOnlyGateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         writeOnlyService.readNode(readAuth, { sessionId: session.id, parameterId: parameter.id, nodePath: "/sys/current" })
@@ -1525,7 +1528,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const { parameter, session } = await seedRuntime();
       await db.query(`update debugging_parameters set archived_at = now() where id = $1`, [parameter.id]);
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.readNode(readAuth, { sessionId: session.id, parameterId: parameter.id })).rejects.toMatchObject(
         new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.")
@@ -1541,7 +1544,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gateway: makeGateway({ readNode: vi.fn(async () => ({ ok: false, stderr: "node missing", error: "node missing", durationMs: 12 })) }),
-        createAuditEvent: audit.createAuditEvent
+        writeAuditEvent: audit.writeAuditEvent
       });
 
       const operation = await service.readNode(readAuth, { sessionId: session.id, nodePath: "/sys/current" });
@@ -1566,10 +1569,10 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedDevice();
       await seedTarget();
       const session = await seedSession();
-      const createAuditEvent = vi.fn(async () => {
+      const writeAuditEvent = vi.fn(async () => {
         throw new Error("audit unavailable");
       });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent });
 
       await expect(service.readNode(readAuth, { sessionId: session.id, nodePath: "/sys/current" })).rejects.toThrow(
         "audit unavailable"
@@ -1588,7 +1591,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       );
 
       const readGateway = makeGateway();
-      const readService = createDebuggingService({ db, gateway: readGateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const readService = createDebuggingService({ db, gateway: readGateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
       await expect(
         readService.readNode(otherUser, { sessionId: session.id, parameterId: parameter.id, nodePath: "/sys/current" })
       ).rejects.toMatchObject(
@@ -1597,7 +1600,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(readGateway.readNode).not.toHaveBeenCalled();
 
       const writeGateway = makeGateway();
-      const writeService = createDebuggingService({ db, gateway: writeGateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const writeService = createDebuggingService({ db, gateway: writeGateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
       await expect(
         writeService.writeNode(otherUser, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
       ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
@@ -1618,7 +1621,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         enabled: true
       });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       const operation = await service.readNode(readAuth, { sessionId: session.id, nodeId: node.id });
 
@@ -1639,7 +1642,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const session = await seedSession({ protocol: "hdc" });
       const node = await createDebugNode(db, { organizationId: "org-1", name: "Charge current" });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(service.readNode(readAuth, { sessionId: session.id, nodeId: node.id })).rejects.toMatchObject(
         new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug node is not configured for the selected protocol.", {
@@ -1658,7 +1661,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedTarget();
       const session = await seedSession();
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
       const created = await seedAdminParameter(service);
 
       const operation = await service.readNode(readAuth, { sessionId: session.id, parameterId: created.id });
@@ -1680,7 +1683,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedDevice();
       await seedTarget();
       const session = await seedSession();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
       const created = await seedAdminParameter(service, { nodePath: "/sys/linked/current" });
       const node = await createDebugNode(db, { organizationId: "org-1", name: "Linked node", module: "Battery" });
       await upsertDebugNodeBinding(db, {
@@ -1702,7 +1705,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
   describe("writeNode", () => {
     it("requires debugging:write and rejects inactive sessions before gateway call", async () => {
       const permissionGateway = makeGateway();
-      const permissionService = createDebuggingService({ db, gateway: permissionGateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const permissionService = createDebuggingService({ db, gateway: permissionGateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         permissionService.writeNode(readAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })
@@ -1714,7 +1717,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const { parameter, session } = await seedRuntime();
       await db.query(`update debugging_sessions set status = 'closed' where id = $1`, [session.id]);
       const inactiveGateway = makeGateway();
-      const inactiveService = createDebuggingService({ db, gateway: inactiveGateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const inactiveService = createDebuggingService({ db, gateway: inactiveGateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         inactiveService.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
@@ -1725,7 +1728,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects RO parameters before gateway call", async () => {
       const { parameter, session } = await seedRuntime({ bindingAccessMode: "RO" });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
@@ -1736,7 +1739,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects true write-only parameters because a rollback snapshot cannot be prepared", async () => {
       const { parameter, session } = await seedRuntime({ bindingAccessMode: "WO" });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
@@ -1748,7 +1751,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects disabled parameters before gateway call", async () => {
       const { parameter, session } = await seedRuntime({ parameter: { enabled: false } });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
@@ -1760,7 +1763,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects numeric values outside minValue/maxValue", async () => {
       const { parameter, session } = await seedRuntime();
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "6000" })
@@ -1771,7 +1774,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects non-numeric values when a parameter has a numeric range", async () => {
       const { parameter, session } = await seedRuntime();
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "not-a-number" })
@@ -1785,7 +1788,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects High-risk parameters without confirmation token or approval", async () => {
       const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
@@ -1797,7 +1800,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
       const gateway = makeGateway();
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent });
 
       const operation = await service.writeNode(writeAuth, {
         sessionId: session.id,
@@ -1814,7 +1817,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects an arbitrary approvalId string that is not an approved matching agent_approvals row", async () => {
       const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, {
@@ -1835,7 +1838,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects pending, rejected, wrong-tool, and payload-mismatched device-write approvals", async () => {
       const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
       const matchingPayload = { sessionId: session.id, parameterId: parameter.id, value: "3200" };
 
       const pending = await seedAgentDeviceApproval({ status: "pending", payload: matchingPayload });
@@ -1890,7 +1893,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
       const gateway = makeGateway();
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent });
       const { approvalId, sessionId: agentSessionId, toolCallId } = await seedAgentDeviceApproval({
         payload: { sessionId: session.id, parameterId: parameter.id, value: "3200" }
       });
@@ -1915,6 +1918,66 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         actorUserId: writeAuth.user.id,
         metadata: { initiator: "agent", sessionId: agentSessionId, toolCallId, approvalId }
       });
+      expect((await getAgentToolCall(db, "org-1", toolCallId))?.status).toBe("succeeded");
+
+      await expect(service.writeNode(writeAuth, {
+        sessionId: session.id, parameterId: parameter.id, value: "3200", approvalId
+      })).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Device write approval is not valid for this write.", {
+        approvalId, reason: "already-executed"
+      }));
+      expect(gateway.readNode).toHaveBeenCalledOnce();
+      expect(gateway.writeNode).toHaveBeenCalledOnce();
+      expect(audit.events).toHaveLength(1);
+      expect(await nodeOperationRows(session.id)).toHaveLength(1);
+    });
+
+    it("allows exactly one concurrent use of an approval across service instances", async () => {
+      const ephemeral = await createEphemeralTestDatabase("td068replay");
+      const concurrentDb = createPostgresDatabase(ephemeral.url);
+      await db.rollback();
+      db = { ...concurrentDb, rollback: async () => {
+        await concurrentDb.close();
+        await ephemeral.drop();
+      } };
+      await seedCoreGraph(db, {
+        organization: { id: "org-1", name: "ChargeLab" },
+        users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }]
+      });
+      const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
+      const { approvalId, toolCallId } = await seedAgentDeviceApproval({
+        payload: { sessionId: session.id, parameterId: parameter.id, value: "3200" }
+      });
+      const gateway = makeGateway();
+      const services = [createDebuggingService({ db, gateway }), createDebuggingService({ db, gateway })];
+      const results = await Promise.allSettled(services.map((service) => service.writeNode(writeAuth, {
+        sessionId: session.id, parameterId: parameter.id, value: "3200", approvalId
+      })));
+
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.find((result) => result.status === "rejected")).toMatchObject({
+        reason: { code: "VALIDATION_FAILED", details: { approvalId, reason: "already-executed" } }
+      });
+      expect(gateway.readNode).toHaveBeenCalledOnce();
+      expect(gateway.writeNode).toHaveBeenCalledOnce();
+      expect(await nodeOperationRows(session.id)).toHaveLength(1);
+      expect((await getAgentToolCall(db, "org-1", toolCallId))?.status).toBe("succeeded");
+      expect((await listAuditEvents(db, { organizationId: "org-1", kind: "debug-node-write" })).items).toHaveLength(1);
+    });
+
+    it("rolls back approval consumption with the operation when its success audit fails", async () => {
+      const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
+      const { approvalId, toolCallId } = await seedAgentDeviceApproval({
+        payload: { sessionId: session.id, parameterId: parameter.id, value: "3200" }
+      });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: async () => {
+        throw new Error("audit unavailable");
+      } });
+      await expect(service.writeNode(writeAuth, {
+        sessionId: session.id, parameterId: parameter.id, value: "3200", approvalId
+      })).rejects.toThrow("audit unavailable");
+      expect((await getAgentToolCall(db, "org-1", toolCallId))?.status).toBe("pending_approval");
+      expect(await nodeOperationRows(session.id)).toHaveLength(0);
+      expect(await snapshotRows()).toHaveLength(0);
     });
 
     it("writes an org-scoped writable parameter through the active session binding", async () => {
@@ -1927,7 +1990,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: makeGateway() }),
-        createAuditEvent: audit.createAuditEvent
+        writeAuditEvent: audit.writeAuditEvent
       });
 
       await service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" });
@@ -1975,7 +2038,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
           })
       };
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, bridgeRpcClient, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, bridgeRpcClient, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       const operation = await service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" });
 
@@ -2012,7 +2075,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: gateway }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       await expect(
@@ -2032,7 +2095,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: gateway }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       await expect(
@@ -2063,7 +2126,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
           };
         })
       });
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       const operation = await service.writeNode(
         writeAuth,
@@ -2107,7 +2170,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       });
       expect(lease?.sessionId).toBe(rivalSession.id);
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
@@ -2131,7 +2194,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const operation = await service.writeNode(
@@ -2173,7 +2236,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const operation = await service.writeNode(writeAuth, {
@@ -2213,7 +2276,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const operation = await service.writeNode(writeAuth, {
@@ -2243,7 +2306,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         gateway: makeGateway({
           readNode: vi.fn(async () => ({ ok: false, error: "read denied", durationMs: 5 }))
         }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const operation = await service.writeNode(writeAuth, {
@@ -2274,7 +2337,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
-        createAuditEvent: createAuditSpy().createAuditEvent,
+        writeAuditEvent: createAuditSpy().writeAuditEvent,
         metrics,
         gatewayMode: "hdc",
         tracing
@@ -2321,7 +2384,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
     it("updates parameter current and target values after a verified write", async () => {
       const { parameter, session } = await seedRuntime();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" });
 
@@ -2335,7 +2398,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("writes audit metadata for successful writes", async () => {
       const { parameter, session } = await seedRuntime();
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
 
       const operation = await service.writeNode(
         writeAuth,
@@ -2367,10 +2430,10 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
     it("treats audit write failure as operation failure and transaction failure", async () => {
       const { parameter, session } = await seedRuntime();
-      const createAuditEvent = vi.fn(async () => {
+      const writeAuditEvent = vi.fn(async () => {
         throw new Error("audit unavailable");
       });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
@@ -2391,7 +2454,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         parameter: { valueKind: "complex", valueFormat: "json", key: "complex_config", nodePath: "/sys/complex" }
       });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "{not-json" })
@@ -2424,7 +2487,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         }))
       });
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent });
 
       const operation = await service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: jsonValue });
 
@@ -2480,7 +2543,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({
         db,
         gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
-        createAuditEvent: createAuditSpy().createAuditEvent
+        writeAuditEvent: createAuditSpy().writeAuditEvent
       });
 
       const operation = await service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: jsonValue });
@@ -2512,7 +2575,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         }))
       });
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent });
 
       await service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: largeValue });
 
@@ -2538,7 +2601,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         enabled: true
       });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       const operation = await service.writeNode(writeAuth, { sessionId: session.id, nodeId: node.id, value: "3200" });
 
@@ -2563,7 +2626,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await seedTarget();
       const session = await seedSession();
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
       const created = await seedAdminParameter(service);
 
       const operation = await service.writeNode(
@@ -2609,7 +2672,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         accessMode: "RW",
         enabled: true
       });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
       const parameter = await seedAdminParameter(service);
       // A node-catalog binding covering the parameter's protocol + path, so
       // the parameterId-mode write resolves its node identity (#419).
@@ -2647,7 +2710,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("creates a separate read operation linked to the original write without writing again", async () => {
       const { parameter, session } = await seedRuntime();
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
       const write = await service.writeNode(writeAuth, {
         sessionId: session.id,
         parameterId: parameter.id,
@@ -2693,7 +2756,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
     it("requires debugging:rollback and confirmation token before gateway call", async () => {
       const permissionGateway = makeGateway();
-      const permissionService = createDebuggingService({ db, gateway: permissionGateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const permissionService = createDebuggingService({ db, gateway: permissionGateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         permissionService.rollbackSnapshot(writeAuth, { snapshotId: "snapshot-1", confirmationToken: "confirm-rollback" })
@@ -2703,7 +2766,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(permissionGateway.writeNode).not.toHaveBeenCalled();
 
       const tokenGateway = makeGateway();
-      const tokenService = createDebuggingService({ db, gateway: tokenGateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const tokenService = createDebuggingService({ db, gateway: tokenGateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         tokenService.rollbackSnapshot(rollbackAuth, { snapshotId: "snapshot-1", confirmationToken: "wrong-token" })
@@ -2714,7 +2777,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("rejects an arbitrary rollback approvalId that is not an approved matching agent_approvals row", async () => {
       const { snapshot } = await seedRollbackReady();
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, approvalId: "not-a-real-approval" })
@@ -2731,7 +2794,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const { snapshot } = await seedRollbackReady();
       const gateway = makeGateway();
       const audit = createAuditSpy();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent });
       const { approvalId, sessionId: agentSessionId, toolCallId } = await seedAgentDeviceApproval({
         toolName: "action.rollbackDebugSnapshot",
         payload: { snapshotId: snapshot.id }
@@ -2747,6 +2810,32 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         actorUserId: rollbackAuth.user.id,
         metadata: { initiator: "agent", sessionId: agentSessionId, toolCallId, approvalId }
       });
+      expect((await getAgentToolCall(db, "org-1", toolCallId))?.status).toBe("succeeded");
+    });
+
+    it("refuses to reuse a rollback approval even when a failed rollback leaves the snapshot valid", async () => {
+      const { snapshot, session } = await seedRollbackReady();
+      const { approvalId, toolCallId } = await seedAgentDeviceApproval({
+        toolName: "action.rollbackDebugSnapshot", payload: { snapshotId: snapshot.id }
+      });
+      const gateway = makeGateway({ writeNode: vi.fn(async (): Promise<GatewayWriteResult> => ({
+        ok: false, verified: false, writeOutcome: "failed", readbackOutcome: "not_requested",
+        writeResult: { ok: false, durationMs: 1, error: "Device refused rollback" }
+      })) });
+      const audit = createAuditSpy();
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent });
+
+      const result = await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, approvalId });
+      expect(result.snapshot).toMatchObject({ status: "valid" });
+      expect((await getAgentToolCall(db, "org-1", toolCallId))?.status).toBe("failed");
+      await expect(service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, approvalId })).rejects.toMatchObject(
+        new ApiError("VALIDATION_FAILED", "Device rollback approval is not valid for this snapshot.", {
+          approvalId, reason: "already-executed"
+        })
+      );
+      expect(gateway.writeNode).toHaveBeenCalledOnce();
+      expect(audit.events).toHaveLength(1);
+      expect(await nodeOperationRows(session.id)).toHaveLength(1);
     });
 
     it("rejects missing, consumed, and rollback-pending snapshots", async () => {
@@ -2754,7 +2843,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       // session lookup returned — a state a real database cannot produce, since the
       // session is loaded by the snapshot's own session id. That defensive branch is
       // covered by the not-valid check below.)
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.rollbackSnapshot(rollbackAuth, { snapshotId: "missing-snapshot", confirmationToken: "confirm-rollback" })
@@ -2780,7 +2869,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         leaseTtlMs: 60_000
       });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await expect(
         service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" })
@@ -2821,7 +2910,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
             writeResult: { ok: false, error: "Rollback write failed.", durationMs: 5 }
           })
       });
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       const result = await service.rollbackSnapshot(rollbackAuth, {
         snapshotId: snapshot.id,
@@ -2870,7 +2959,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const audit = createAuditSpy();
       const metrics = createDeviceMetricsSpy();
       const { spans, tracing } = createTraceRecorder();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent, metrics, gatewayMode: "simulator", tracing });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent, metrics, gatewayMode: "simulator", tracing });
 
       const result = await service.rollbackSnapshot(rollbackAuth, {
         snapshotId: snapshot.id,
@@ -2965,7 +3054,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         })
       };
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, bridgeRpcClient, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, bridgeRpcClient, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" });
 
@@ -2989,7 +3078,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
           readResult: { ok: true, value: "3000", stdout: "3000", durationMs: 8 }
         }))
       });
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" });
 
@@ -3030,7 +3119,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       });
       const audit = createAuditSpy();
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway, writeAuditEvent: audit.writeAuditEvent });
       const write = await service.writeNode(writeAuth, { sessionId: session.id, nodeId: node.id, value: "3200" });
       expect(write).toMatchObject({ status: "succeeded", snapshotId: expect.any(String) });
 
@@ -3097,7 +3186,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         ] as never,
         createdByUserId: "user-1"
       });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       const result = await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" });
 
@@ -3143,7 +3232,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         ] as never,
         createdByUserId: "user-1"
       });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: createAuditSpy().writeAuditEvent });
 
       const result = await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" });
 
@@ -3167,7 +3256,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         entries: [{ parameterId: "ghost-parameter", nodePath: "/sys/ghost", previousValue: "3000", targetValue: "3200" }] as never,
         createdByUserId: "user-1"
       });
-      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const service = createDebuggingService({ db, gateway: makeGateway(), writeAuditEvent: audit.writeAuditEvent });
 
       const result = await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" });
 
