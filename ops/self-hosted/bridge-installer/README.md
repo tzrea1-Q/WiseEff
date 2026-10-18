@@ -35,6 +35,7 @@ Rebuilding one platform preserves the other published installers. The Windows bu
 - On Windows hosts without `zip`, `bridge:build` uses PowerShell `Compress-Archive` for the portable zip.
 - Windows installer requests administrator approval once so `WiseEffBridge` service registration succeeds; legacy test directories under `%LOCALAPPDATA%\\WiseEff\\` are removed before install when they are not the chosen target folder.
 - Users may choose a custom install directory in the Windows setup wizard (default `%LOCALAPPDATA%\\WiseEff\\Bridge`).
+- During Windows upgrades, Setup uses Windows Restart Manager to close processes holding files in the selected installation, including independently started Bridge processes. Accept the close-applications prompt before continuing. The installer starts the updated background service; Restart Manager does not relaunch the old process. If replacement still reports `DeleteFile failed; code 5`, close the Bridge process running from that installation and retry.
 - Builds are unsigned; Gatekeeper / SmartScreen warnings are expected in pilot.
 - `adb` / `hdc` are not bundled (Phase B/C).
 
