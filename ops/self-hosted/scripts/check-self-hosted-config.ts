@@ -46,11 +46,19 @@ export const requiredSelfHostedFiles = [
   "ops/self-hosted/upgrade-protocol.env",
   "ops/self-hosted/.env.publication-manager.example",
   "ops/self-hosted/images/base-image-bundle.env",
+  "ops/self-hosted/images/minio-bundle.env",
+  "ops/self-hosted/images/minio/Dockerfile",
+  "ops/self-hosted/images/minio/prepare.cjs",
+  "ops/self-hosted/images/minio/entrypoint.sh",
   "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
   ...requiredIpLabFiles
 ] as const;
 
 export const requiredComposeTokens = [
+  "image: wiseeff/minio:RELEASE.2024-12-18T13-15-44Z",
+  "image: wiseeff/mc:RELEASE.2024-11-21T17-21-54Z",
+  "dockerfile: ops/self-hosted/images/minio/Dockerfile",
+  "wiseeff-minio-data:/data",
   "x-wiseeff-image: &wiseeff-image",
   "image: *wiseeff-image",
   "wiseeff-postgres-data:/var/lib/postgresql/data",
@@ -264,7 +272,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
     ...requiredComposeTokens.filter((token) => !composeText.includes(normalize(token))),
     ...requiredBuildProxyArgs.filter((key) => !hasComposeBuildArg(input.composeText, key)).map((key) => `${key}:`)
   ];
-  const missingDockerfileTokens = requiredDockerfileTokens.filter((token) =>
+  const missingDockerfileTokens: string[] = requiredDockerfileTokens.filter((token) =>
     token === "FROM node:>=22.19.0" ? !hasRequiredNodeRuntime(dockerfileText) : !dockerfileText.includes(normalize(token))
   );
   const dockerfileSafetyIssues: string[] = [];

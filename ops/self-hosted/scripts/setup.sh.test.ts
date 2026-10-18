@@ -88,8 +88,12 @@ describe("setup.sh", () => {
     const calls = readFileSync(fixture.dockerLog, "utf8");
     expect(calls).toContain("bundle-load");
     expect(calls).toContain("bundle-tag");
-    expect(calls).toContain("up -d --build postgres redis minio minio-init");
-    expect(calls.indexOf("bundle-load")).toBeLessThan(calls.indexOf("up -d --build"));
+    expect(calls).toContain("up -d --no-build postgres redis minio minio-init");
+    expect(calls).toContain("build minio");
+    expect(calls).toContain("build minio-init");
+    expect(calls.indexOf("bundle-load")).toBeLessThan(calls.indexOf("build minio"));
+    expect(calls.indexOf("build minio-init")).toBeLessThan(calls.indexOf("build api"));
+    expect(calls.indexOf("build api")).toBeLessThan(calls.indexOf("up -d --no-build"));
   });
 
   it("starts and migrates without --build under Bash 3.2 nounset", () => {
@@ -98,17 +102,21 @@ describe("setup.sh", () => {
     expect(result.stderr).not.toContain("unbound variable");
     expect(result.status, result.stderr).toBe(0);
     const calls = readFileSync(fixture.dockerLog, "utf8");
-    expect(calls).toContain("up -d postgres redis minio minio-init");
+    expect(calls).toContain("up -d --no-build postgres redis minio minio-init");
     expect(calls).toContain("run --rm --no-deps -e DATABASE_URL api npm run db:migrate");
     expect(calls).toContain("up -d api worker publication-manager web proxy");
     expect(calls).not.toContain("--build");
+    expect(calls).not.toContain("build api");
   });
 
-  it("retains --build for the normal startup path", () => {
+  it("builds the application before starting the data plane on the normal startup path", () => {
     const fixture = preflightFixture("postgres://wiseeff_api:independent_secret@postgres:5432/wiseeff");
     const result = runSetup(["--non-interactive", "up", "--env-file", fixture.envFile], fixture.env, "/bin/bash");
     expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(fixture.dockerLog, "utf8")).toContain("up -d --build postgres redis minio minio-init");
+    const calls = readFileSync(fixture.dockerLog, "utf8");
+    expect(calls).toContain("build api");
+    expect(calls).toContain("up -d --no-build postgres redis minio minio-init");
+    expect(calls.indexOf("build api")).toBeLessThan(calls.indexOf("up -d --no-build"));
   });
 
   it("documents the private build-network contract", () => {
@@ -333,6 +341,14 @@ if [ "$1" = load ]; then
 fi
 if [ "$1" = tag ]; then printf 'bundle-tag\\n' >> "$TEST_DOCKER_LOG"; exit 0; fi
 if [ "$1" = run ]; then
+  if [ "\${!#}" = --version ]; then
+    case "$8" in
+      /usr/bin/minio) echo 'minio version RELEASE.2024-12-18T13-15-44Z (commit-id=test)' ;;
+      /usr/bin/mc) echo 'mc version RELEASE.2024-11-21T17-21-54Z (commit-id=test)' ;;
+      *) exit 99 ;;
+    esac
+    exit 0
+  fi
   printf 'run-parser' >> "$TEST_DOCKER_LOG"
   while [ "$#" -gt 0 ]; do
     if [ "$1" = -e ]; then

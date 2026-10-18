@@ -2,6 +2,8 @@
 
 > Chinese: [Chinese](operations.zh-CN.md)
 
+MinIO/mc now use WiseEff images built from the same pinned upstream binaries on the bundled Node base. Existing servers should keep or `docker save` their official images until moving to this release. Offline builds read checksum-verified `minio` and `mc` files from the gitignored `ops/self-hosted/images/minio/offline/` directory. Setup/upgrade prepare images before service recreation; data paths and volume names stay unchanged. See [image preparation](images/README.md#pinned-minio-binaries) for exact filenames, recovery compatibility, and commands.
+
 This is the command handbook for an operator maintaining one WiseEff Linux self-hosted checkout. Start here for routine work. Follow the linked specialist runbook when an operation needs a recovery drill, target-environment evidence, or incident approval.
 
 Unless a section says otherwise, run commands as the dedicated deployment user from:

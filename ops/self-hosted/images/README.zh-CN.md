@@ -1,6 +1,30 @@
-# 自托管基础镜像
+# 自托管镜像
 
 > English: [English](README.md)
+
+## 固定版本的 MinIO 二进制文件
+
+WiseEff 镜像 `wiseeff/minio:RELEASE.2024-12-18T13-15-44Z` 和 `wiseeff/mc:RELEASE.2024-11-21T17-21-54Z` 沿用原上游版本、root 用户和 `/data` 卷行为。它们基于附带的 Node 基础镜像构建，不拉取 MinIO registry 镜像或安装额外软件包。仅支持 linux/amd64。`minio-bundle.env` 仅作为数据解析，固定 GitHub asset URL 和 SHA-256。缺失或占位校验和、重复或未知键、版本/URL 改动、校验和不符均拒绝构建。
+
+安装和升级会在启动或重建服务前验证并准备镜像。已有官方固定版本镜像通过可执行文件的 release 验证后在本地复用。本地兼容标签也支持回滚旧 Compose。迁移到此版本前，请保留原镜像或将其保存：
+
+```bash
+docker save -o minio-pinned-images.tar minio/minio:RELEASE.2024-12-18T13-15-44Z minio/mc:RELEASE.2024-11-21T17-21-54Z
+```
+
+请随旧恢复点保留该归档。新的 `minio-volume-v1` 恢复点记录 `server-release`，允许同版本重建镜像具有不同 digest。仅记录 digest 的旧恢复点在恢复到另一镜像 ID 时，需要原镜像仍在本地以确认 release。不同 release 一律拒绝。
+
+离线构建时，将普通文件（不允许符号链接）放入下面已加入 gitignore 的目录。从仓库根目录执行：
+
+```bash
+mkdir -p ops/self-hosted/images/minio/offline
+cp /media/minio.linux-amd64.RELEASE.2024-12-18T13-15-44Z ops/self-hosted/images/minio/offline/minio
+cp /media/mc.linux-amd64.RELEASE.2024-11-21T17-21-54Z ops/self-hosted/images/minio/offline/mc
+```
+
+已有文件均验证校验和；无效时直接失败，不回退下载。仅缺失文件才从固定 GitHub asset 下载，沿用现有构建代理、批准 CA 和 TLS 授权契约。构建代理设置不会进入最终运行镜像。数据路径和 Compose 卷名不变。
+
+手工构建时先按下文 load/tag 基础镜像，再从 `ops/self-hosted` 执行 `./scripts/compose --env-file .env build minio minio-init`。受限网络配置见 [upgrade.zh-CN.md](../upgrade.zh-CN.md#受限网络构建配置)。
 
 WiseEff 自托管 Dockerfile 基础镜像（`node:22.21.1-alpine`，**linux/amd64**）的离线包。
 

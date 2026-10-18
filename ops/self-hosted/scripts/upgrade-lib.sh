@@ -626,6 +626,52 @@ wiseeff_upgrade_record_base_image() {
   wiseeff_upgrade_state_write base_image_status ready || return $?
 }
 
+wiseeff_upgrade_minio_image_release() {
+  local image="$1" binary="${2:-minio}" version
+  version="$(wiseeff_upgrade_docker run --rm --pull never --network none --entrypoint "/usr/bin/${binary}" "$image" --version)" || return 40
+  printf '%s\n' "$version" | sed -n "s/^${binary} version \(RELEASE\.[0-9T:Z.-]*\) .*/\1/p"
+}
+
+wiseeff_upgrade_prepare_minio_images() {
+  local binary release service image official actual
+  for binary in minio mc; do
+    if [ "$binary" = minio ]; then
+      release=RELEASE.2024-12-18T13-15-44Z
+      service=minio
+    else
+      release=RELEASE.2024-11-21T17-21-54Z
+      service=minio-init
+    fi
+    image="wiseeff/${binary}:${release}"
+    official="minio/${binary}:${release}"
+    if ! wiseeff_upgrade_docker image inspect "$image" >/dev/null 2>&1; then
+      if wiseeff_upgrade_docker image inspect "$official" >/dev/null 2>&1; then
+        actual="$(wiseeff_upgrade_minio_image_release "$official" "$binary")" || return $?
+        [ "$actual" = "$release" ] || { wiseeff_upgrade_die 10 "Local ${official} has a different release."; return $?; }
+        wiseeff_upgrade_docker tag "$official" "$image" || return $?
+      else
+        [ "${1:-false}" != true ] || { wiseeff_upgrade_die 10 "Missing ${image}; --skip-build requires local MinIO images."; return $?; }
+        [ -f "${upgrade_compose_dir}/images/minio-bundle.env" ] || {
+          wiseeff_upgrade_die 10 "MinIO images are unavailable; prepare them from the release containing images/minio-bundle.env before recovery."
+          return $?
+        }
+        wiseeff_upgrade_ensure_base_image || return $?
+        wiseeff_upgrade_compose build "$service" || return $?
+      fi
+    fi
+    actual="$(wiseeff_upgrade_minio_image_release "$image" "$binary")" || return $?
+    [ "$actual" = "$release" ] || { wiseeff_upgrade_die 10 "Prepared ${image} has a different release."; return $?; }
+    # Old checkouts still name the official tags during rollback. A local alias
+    # lets those checkouts recover without attempting an unavailable pull.
+    if ! wiseeff_upgrade_docker image inspect "$official" >/dev/null 2>&1; then
+      wiseeff_upgrade_docker tag "$image" "$official" || return $?
+    else
+      actual="$(wiseeff_upgrade_minio_image_release "$official" "$binary")" || return $?
+      [ "$actual" = "$release" ] || { wiseeff_upgrade_die 10 "Local ${official} has a different release."; return $?; }
+    fi
+  done
+}
+
 wiseeff_upgrade_ensure_base_image() {
   local identity
   wiseeff_upgrade_load_base_image_contract_file || return $?
@@ -1233,7 +1279,7 @@ wiseeff_upgrade_build_candidate() {
   fi
 
   if BUILDKIT_PROGRESS=plain WISEEFF_APP_TAG="$upgrade_target_sha" \
-    wiseeff_upgrade_compose build api 2>&1 \
+    wiseeff_upgrade_build_prepared_images 2>&1 \
       | wiseeff_upgrade_sanitize_diagnostic_stream \
       | tee -a "$upgrade_build_log"; then
     build_pipeline_statuses=("${PIPESTATUS[@]}")
@@ -1421,6 +1467,11 @@ wiseeff_upgrade_restore_queue() {
   fi
 }
 
+wiseeff_upgrade_build_prepared_images() {
+  wiseeff_upgrade_prepare_minio_images || return $?
+  wiseeff_upgrade_compose build api
+}
+
 wiseeff_upgrade_candidate_data_plane_up() {
   local services=("$@")
   if [ "${#services[@]}" -eq 0 ]; then
@@ -1436,6 +1487,7 @@ wiseeff_upgrade_previous_data_plane_up() {
   if [ "${#services[@]}" -eq 0 ]; then
     services=(postgres redis minio minio-init)
   fi
+  wiseeff_upgrade_prepare_minio_images || return $?
   wiseeff_upgrade_compose_for_image "$image_ref" up -d --force-recreate --no-build "${services[@]}"
 }
 
@@ -1974,9 +2026,12 @@ wiseeff_upgrade_local_minio_container() {
 
 wiseeff_upgrade_snapshot_objects() {
   local output_dir="${upgrade_backup_dir}/object-store"
-  local network container
+  local network container image release
   mkdir -p "$output_dir" || return $?
   if container="$(wiseeff_upgrade_local_minio_container)"; then
+    image="$(wiseeff_upgrade_docker inspect -f '{{.Image}}' "$container")" || return $?
+    release="$(wiseeff_upgrade_minio_image_release "$image")" || return $?
+    [ "$release" = RELEASE.2024-12-18T13-15-44Z ] || return 40
     # A filesystem mirror of S3 objects loses their metadata. Capture the owned
     # single-node MinIO volume while stopped, including its actual metadata.
     wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" minio || return $?
@@ -1984,14 +2039,15 @@ wiseeff_upgrade_snapshot_objects() {
     wiseeff_upgrade_docker cp "${container}:/data/." "${output_dir}/data.part" || return $?
     [ -f "${output_dir}/data.part/.minio.sys/format.json" ] || return 40
     mv "${output_dir}/data.part" "${output_dir}/data" || return $?
-    wiseeff_upgrade_docker inspect -f '{{.Image}}' "$container" > "${output_dir}/image-id" || return $?
+    printf '%s\n' "$image" > "${output_dir}/image-id" || return $?
+    printf '%s\n' "$release" > "${output_dir}/server-release" || return $?
     printf '%s\n' minio-volume-v1 > "${output_dir}/format" || return $?
     wiseeff_upgrade_state_write object_backup "$output_dir"
     return $?
   fi
   [ "${upgrade_parameter_data_mode:-}" != "new-empty" ] || return 40
   network="$(wiseeff_upgrade_state_read network)"
-  local image="${WISEEFF_BACKUP_MC_IMAGE:-minio/mc:RELEASE.2024-11-21T17-21-54Z}"
+  image="${WISEEFF_BACKUP_MC_IMAGE:-wiseeff/mc:RELEASE.2024-11-21T17-21-54Z}"
   local endpoint bucket
   endpoint="$(wiseeff_upgrade_env_value OBJECT_STORAGE_ENDPOINT)"
   bucket="$(wiseeff_upgrade_env_value OBJECT_STORAGE_BUCKET)"
@@ -2561,14 +2617,29 @@ wiseeff_upgrade_restore_postgres() {
 }
 
 wiseeff_upgrade_restore_objects() {
-  local object_dir network image container
+  local object_dir network image container release backup_release backup_image
   object_dir="$(wiseeff_upgrade_state_read object_backup)"
   [ -d "${object_dir}/data" ] || { wiseeff_upgrade_die 40 "Object-store recovery point is missing: ${object_dir}"; return $?; }
   if [ -f "${object_dir}/format" ]; then
     [ "$(cat "${object_dir}/format")" = "minio-volume-v1" ] || return 40
     container="$(wiseeff_upgrade_local_minio_container)" || return 40
     image="$(wiseeff_upgrade_docker inspect -f '{{.Image}}' "$container")" || return $?
-    [ "$image" = "$(cat "${object_dir}/image-id")" ] || return 40
+    release="$(wiseeff_upgrade_minio_image_release "$image")" || return $?
+    [ "$release" = RELEASE.2024-12-18T13-15-44Z ] || return 40
+    if [ -f "${object_dir}/server-release" ]; then
+      backup_release="$(cat "${object_dir}/server-release")"
+    else
+      # Legacy points recorded only the official image ID. Resolve that local
+      # immutable image, never a mutable tag or a registry pull, to its release.
+      backup_image="$(cat "${object_dir}/image-id")" || return 40
+      if [ "$image" = "$backup_image" ]; then
+        backup_release="$release"
+      else
+        case "$backup_image" in sha256:*) ;; *) return 40 ;; esac
+        backup_release="$(wiseeff_upgrade_minio_image_release "$backup_image")" || return 40
+      fi
+    fi
+    [ "$backup_release" = "$release" ] || return 40
     [ -f "${object_dir}/data/.minio.sys/format.json" ] || return 40
     wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" minio || return $?
     [ "$(wiseeff_upgrade_docker inspect -f '{{.State.Running}}' "$container")" = "false" ] || return 40
@@ -2580,7 +2651,7 @@ wiseeff_upgrade_restore_objects() {
     return $?
   fi
   network="$(wiseeff_upgrade_state_read network)"
-  image="${WISEEFF_BACKUP_MC_IMAGE:-minio/mc:RELEASE.2024-11-21T17-21-54Z}"
+  image="${WISEEFF_BACKUP_MC_IMAGE:-wiseeff/mc:RELEASE.2024-11-21T17-21-54Z}"
   wiseeff_upgrade_docker run --rm --network "$network" --env-file "$upgrade_env_file" -v "${object_dir}/data:/backup/data:ro" --entrypoint /bin/sh "$image" -lc \
     'mc alias set live "$OBJECT_STORAGE_ENDPOINT" "$OBJECT_STORAGE_ACCESS_KEY_ID" "$OBJECT_STORAGE_SECRET_ACCESS_KEY" >/dev/null && mc mirror --remove --overwrite /backup/data "live/$OBJECT_STORAGE_BUCKET" >/dev/null'
 }
