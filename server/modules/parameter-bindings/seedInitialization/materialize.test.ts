@@ -282,7 +282,7 @@ describe("seed source materialization", () => {
 
     const run = await getSeedInitializationRun(root, { organizationId: ORG, seedDigest: DIGEST });
     expect(run?.status).toBe("completed");
-    expect(run?.targetProjectIds.sort()).toEqual(["atlas", "aurora", "nebula"]);
+    expect([...(run?.targetProjectIds ?? [])].sort()).toEqual(["atlas", "aurora", "nebula"]);
   }, 120_000);
 
   it("is a no-op when the same seed digest already completed", async () => {

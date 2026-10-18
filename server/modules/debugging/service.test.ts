@@ -45,7 +45,7 @@ const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(
   permissions: AuthContext["permissions"],
-  roles: AuthContext["roles"] = [{ roleId: "software-user" }],
+  roles: AuthContext["roles"] = [{ projectId: null, roleId: "software-user" }],
   userId = "user-1"
 ): AuthContext {
   return {
@@ -116,7 +116,7 @@ const readAuth = makeAuth(["debugging:view", "debugging:read"]);
 const writeAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"]);
 const rollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"]);
 const adminAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:admin"], [
-  { roleId: "admin" }
+  { projectId: null, roleId: "admin" }
 ]);
 
 describe.skipIf(!databaseAvailable)("debugging service", () => {
@@ -531,7 +531,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         { bindings: [binding], archiveProtocols: ["hdc"] as const }
       ]) {
         await expect(service.updateAdminDebugNode(adminAuth, {
-          ...intents, archiveProtocols: "archiveProtocols" in intents ? [...intents.archiveProtocols] : undefined,
+          ...intents, archiveProtocols: "archiveProtocols" in intents && intents.archiveProtocols ? [...intents.archiveProtocols] : undefined,
           nodeId: node.id, name: "Must not change"
         }, { requestId: "invalid-intents" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
       }
@@ -1236,7 +1236,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         createAuditEvent: createAuditSpy().createAuditEvent
       });
 
-      const targets = await service.detectTargets(makeAuth(["debugging:view", "debugging:read"], [{ roleId: "software-user" }], "user-2"), {
+      const targets = await service.detectTargets(makeAuth(["debugging:view", "debugging:read"], [{ projectId: null, roleId: "software-user" }], "user-2"), {
         protocol: "hdc",
         bridgeId: "br-A"
       });
@@ -1321,7 +1321,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(session).toMatchObject({ executionMode: "bridge", bridgeId: "br-1", bridgeMachineLabel: "Laptop" });
 
       await expect(
-        service.createSession(makeAuth(["debugging:view", "debugging:read", "debugging:write"], [{ roleId: "software-user" }], "user-2"), {
+        service.createSession(makeAuth(["debugging:view", "debugging:read", "debugging:write"], [{ projectId: null, roleId: "software-user" }], "user-2"), {
           deviceId: "bridge:br-1",
           targetId,
           bridgeId: "br-1",
@@ -1583,7 +1583,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const { parameter, session } = await seedRuntime();
       const otherUser = makeAuth(
         ["debugging:view", "debugging:read", "debugging:write"],
-        [{ roleId: "software-user" }],
+        [{ projectId: null, roleId: "software-user" }],
         "user-2"
       );
 

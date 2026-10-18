@@ -20,7 +20,7 @@ import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtu
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
-import { CatalogSubjectId } from "../../parameter-catalog-contract/index";
+import { CatalogSubjectId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import type { RegisterSubjectCommand } from "../../parameter-governance/registration/command";
 import { writeGuardedRegistration } from "../../parameter-governance/registration/internalGuardedRegistrationWriter";
 import {
@@ -247,7 +247,7 @@ describe("canonical pending value drafts", () => {
     organizationId: ORG,
     subjectId: SUBJECT_ID,
     subjectKind: "driver",
-    expectedRelease,
+    expectedRelease: expectedRelease as unknown as CatalogReleasePin,
     placement: { mode: "use-default" },
     destinationModuleId: MODULE,
     method: "explicit",
