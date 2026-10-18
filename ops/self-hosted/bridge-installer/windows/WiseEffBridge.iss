@@ -1,5 +1,7 @@
 #define MyAppName "WiseEff Bridge"
-#define MyAppVersion "0.1.0"
+#ifndef MyAppVersion
+  #error Pass the canonical Bridge version with /DMyAppVersion
+#endif
 #define MyAppPublisher "WiseEff"
 #define MyAppLauncher "wiseeff-bridge.cmd"
 #define MyAppNodeExe "node.exe"
@@ -9,6 +11,7 @@
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}
 DefaultDirName={localappdata}\WiseEff\Bridge
 UsePreviousAppDir=yes
 DisableProgramGroupPage=yes

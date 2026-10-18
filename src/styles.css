@@ -8106,11 +8106,11 @@ td small {
 
 .local-device-bridge-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   width: 100%;
   min-width: 0;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--surface);
   border: 1px solid var(--outline);
   border-radius: var(--radius-lg);
@@ -8171,17 +8171,6 @@ td small {
 .local-device-bridge-panel > .local-device-bridge-panel__body,
 .local-device-bridge-panel > .local-device-bridge-panel__install-notice {
   grid-column: 1 / -1;
-}
-
-.local-device-bridge-panel__management {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: center;
-}
-
-.local-device-bridge-panel__management[open] {
-  grid-column: 1 / -1;
-  grid-row: auto;
 }
 
 .local-device-bridge-panel__guide,
@@ -8396,11 +8385,6 @@ td small {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .local-device-bridge-panel__management {
-    grid-column: 1;
-    grid-row: auto;
-  }
-
   .local-device-bridge-panel__readiness {
     align-items: stretch;
     flex-direction: column;
@@ -8491,7 +8475,7 @@ td small {
 .local-device-bridge-panel__error {
   margin: 0;
   font-size: var(--text-sm);
-  color: #b42318;
+  color: var(--danger);
 }
 
 .local-device-bridge-panel__ready {
@@ -8612,24 +8596,46 @@ td small {
 }
 
 .local-device-bridge-panel__management {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, calc(100vw - var(--space-12)));
+  max-height: calc(100dvh - var(--space-12));
+  overflow: hidden;
   border: 1px solid var(--outline);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 
-.local-device-bridge-panel__management > summary {
-  cursor: pointer;
-  padding: 10px var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: 700;
+.local-device-bridge-panel__management-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: var(--stroke-hairline) solid var(--border);
+}
+
+.local-device-bridge-panel__management-head h2 {
+  margin: 0;
   color: var(--text);
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+}
+
+.local-device-bridge-panel__management-head p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
 }
 
 .local-device-bridge-panel__bridge-list {
   display: grid;
   gap: var(--space-2);
   margin: 0;
-  padding: 0 var(--space-3) var(--space-3);
+  padding: var(--space-4);
+  min-height: 0;
+  overflow-y: auto;
   list-style: none;
 }
 
@@ -8639,16 +8645,17 @@ td small {
   gap: var(--space-2);
   align-items: flex-end;
   justify-content: space-between;
-  padding: 10px;
+  padding: var(--space-3);
   border: 1px solid var(--outline);
-  border-radius: 10px;
-  background: #f8fafc;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
 }
 
 .local-device-bridge-panel__bridge-meta {
   display: grid;
   gap: var(--space-1);
-  min-width: 260px;
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .local-device-bridge-panel__bridge-meta label {
@@ -8691,18 +8698,18 @@ td small {
 }
 
 .bridge-status-online {
-  color: #066046;
-  background: #d7f8e8;
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .bridge-status-offline {
-  color: #7a4100;
-  background: #fff3cf;
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
 }
 
 .bridge-status-revoked {
-  color: #7f1d1d;
-  background: #fee2e2;
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .bridge-target-picker {
@@ -21190,7 +21197,6 @@ body.xiaoze-popup-drag-active {
   background: var(--surface-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  margin-bottom: var(--space-3);
 }
 
 .parameter-workspace-format-switch__tab {

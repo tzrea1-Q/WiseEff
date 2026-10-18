@@ -143,7 +143,7 @@ describe("quality partitions", () => {
       `asserts read-only UI consistency for ${route.path} (${theme})`));
     const homeTitles = ["light", "dark"].map((theme) => `asserts public home accessibility semantics (${theme})`);
     const bridgeTitles = ["/node-debugging", "/dts-reload"].flatMap((path) => ["light", "dark"].flatMap((theme) =>
-      ["returning", "first-time", "connected"].map((readiness) => `Bridge readiness on ${path}: ${readiness} (${theme})`)));
+      ["returning", "first-time", "pairing", "connected"].map((readiness) => `Bridge readiness on ${path}: ${readiness} (${theme})`)));
     expect(titles(unfiltered).filter((title) => title.startsWith("asserts read-only UI consistency")).sort())
       .toEqual(routeTitles.sort());
     expect(titles(unfiltered)).toEqual(expect.arrayContaining([...homeTitles, ...bridgeTitles]));
@@ -167,7 +167,7 @@ describe("quality partitions", () => {
       const tests = keys.filter((key) => JSON.parse(key)[0] !== "runtime-warmup");
       expect(tests.length).toBeGreaterThan(0);
       expect(keys.filter((key) => JSON.parse(key)[0] === "compact")).toEqual(lane === "visual" ? compact : []);
-      const consistencyTitles = [...routeTitles, ...bridgeTitles, ...homeTitles];
+      const consistencyTitles = [...routeTitles, ...bridgeTitles, ...homeTitles, "aligns parameter toolbar actions across DTS and JSON views"];
       expect(titles(keys.filter((key) => JSON.parse(key)[1] === "consistency.quality.spec.ts")).sort())
         .toEqual(consistencyTitles.filter((id) => shouldRegisterConsistencyFixture(lane, id)).sort());
       expect(keys.filter((key) => JSON.parse(key)[1] === "styles.consistency.collector.spec.ts"))

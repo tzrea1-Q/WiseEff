@@ -77,6 +77,17 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
 }
 
 describe("createParameterRuntimeActions", () => {
+  it.each([{ projects: apiProjects }, { projects: [] }])("drops an archived active project after refresh: $projects", async ({ projects }) => {
+    let state = { ...initialState, activeProjectId: "archived-project" };
+    const actions = createParameterRuntimeActions({ runtimeMode: "api",
+      repository: createRepository({ listProjects: vi.fn().mockResolvedValue(projects) }),
+      dispatch: (action) => { state = appReducer(state, action); }
+    });
+    await actions.refresh();
+    expect(state.configDraft.projects).toEqual(projects);
+    expect(state.activeProjectId).toBe(projects[0]?.id ?? "");
+  });
+
   it.each([false, true])("lets only the latest refresh publish when an older request fails=%s", async (fails) => {
     let complete!: (projects: typeof apiProjects) => void;
     let reject!: (error: Error) => void;

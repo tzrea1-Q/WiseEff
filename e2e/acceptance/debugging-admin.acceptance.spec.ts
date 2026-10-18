@@ -237,7 +237,7 @@ function catalogAuditSummaryFor(
   );
 
   expect(item, `${kind} audit with request id ${requestId}`).toBeTruthy();
-  expect(item!.metadata).toEqual(expectedMetadata);
+  expect(item!.metadata).toEqual({ ...expectedMetadata, initiator: "user" });
 
   const serializedMetadata = JSON.stringify(item!.metadata);
   expect(serializedMetadata.toLowerCase()).not.toContain("nodepath");

@@ -18,10 +18,12 @@ The old Parameter debugging (`/debugging`) workspace is offline; use `/dts-reloa
 ## Connect your computer and select a device
 
 1. Open Node debugging (`/node-debugging`) or Parameter debugging (`/dts-reload`) and choose **HDC** or **ADB** for your device.
-2. Open **Installation guide**, check the platform, architecture and package version, and download the appropriate installer. A Mac browser cannot reliably identify the chip: choose Apple Silicon or Intel after checking About This Mac. When the graphical installer is older than the current portable package, the guide labels the versions separately. Follow the installation guidance; Windows requires running the installer as administrator so the browser can launch Bridge.
+2. Open **Installation guide**, check the platform, architecture and package version, and download the appropriate installer. Graphical installers appear by default; expand **Portable archives (zip / tar.gz)** if needed. A Mac browser cannot reliably identify the chip: choose Apple Silicon or Intel after checking About This Mac. When the graphical installer is older than the current portable package, the guide labels the versions separately. Follow the installation guidance; Windows requires running the installer as administrator so the browser can launch Bridge.
 3. Choose **Connect this computer** and allow the browser to open the installed Bridge. The guide stays open and provides retry/manual terminal recovery. Temporary pairing codes refresh on expiry; use the regenerate action to request a fresh code if needed, rather than reusing an old code.
 4. Connect the target device to the computer running Bridge and complete the device's debugging authorization. Detect devices in the page. If multiple targets are offered, select the intended one before any write or deployment.
 5. Check the Bridge connection and HDC/ADB device detection separately. If detection fails, check the cable, device authorization, selected protocol, and the panel's tool status, then detect again.
+
+The connection bar shows the current Bridge state and the next step. Once a computer is registered, use **Manage device agents** to open its management dialog, rename the computer, or request revocation. Revocation still requires confirmation. Close the dialog or press Escape to return to the same workbench position.
 
 If installation, pairing, or HDC/ADB tooling remains unavailable, ask your deployment operator to use the [local Device Bridge runbook](../runbooks/local-device-bridge.md). Confirm the target device before writing. Real-device verification requires the hardware and tools on site; simulated results do not establish target-device readiness.
 

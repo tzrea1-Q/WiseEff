@@ -12,6 +12,8 @@ import {
 } from "./helpers/operationEvidence";
 import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
+import { waitForInteractionSurfaceReady } from "./helpers/interactionSurface";
 
 useBrowserDiagnostics(test);
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -74,6 +76,55 @@ test("B1 preserves canonical admin and read-only Definition pages at PC 1440x900
 test.describe("parameter-admin project list", () => {
   test.beforeAll(async () => {
     await seedAcceptanceRoleMatrix();
+  });
+
+  test("removes archived projects from parameter and debugging selectors and restores their availability", async ({ page, request }, testInfo) => {
+    const suffix = randomUUID().slice(0, 8);
+    const projectId = `archive-selector-${suffix}`;
+    const name = `项目归档选择检查-${suffix}`;
+    const selectors = [["/parameters", "项目"], ["/dts-reload", "选择项目"]] as const;
+    const url = apiRoute(`/api/v1/parameters/admin/projects/${projectId}`);
+    const created = await request.post(apiRoute("/api/v1/parameters/admin/projects"), {
+      headers: adminHeaders(), data: { id: projectId, name, code: `AS${suffix}` }
+    });
+    expect(created.status()).toBe(201);
+    try {
+      await signInBrowserAsRole(page, "admin", "/dts-reload");
+      await selectControlOption(page.getByRole("combobox", { name: "选择项目", exact: true }), projectId);
+      await expect(page.getByRole("combobox", { name: "选择项目", exact: true })).toHaveAttribute("data-value", projectId);
+      const archived = await request.patch(url, { headers: adminHeaders(), data: { status: "archived" } });
+      expect(archived.status()).toBe(200);
+      const adminList = await request.get(apiRoute("/api/v1/parameters/admin/projects"), { headers: adminHeaders() });
+      expect((await adminList.json()).items).toContainEqual(expect.objectContaining({ id: projectId, status: "archived" }));
+      const activeList = await request.get(apiRoute("/api/v1/projects"), { headers: adminHeaders() });
+      const activeIds = (await activeList.json()).items.map((item: { id: string }) => item.id);
+      expect(activeIds.length).toBeGreaterThan(0);
+      for (const [route, label] of selectors) {
+        if (route === "/parameters") await page.goto("/parameters");
+        else await page.goto("/dts-reload");
+        await waitForInteractionSurfaceReady(page);
+        const selector = page.getByRole("combobox", { name: label, exact: true });
+        await expect(selector).not.toHaveAttribute("data-value", projectId);
+        const options = await readSelectControlOptions(selector);
+        expect(options.map((option) => option.value)).toEqual(activeIds);
+        expect(options).not.toContainEqual(expect.objectContaining({ value: projectId }));
+        await selector.click();
+        await testInfo.attach(`archived-project-selector-${route.slice(1)}`, { contentType: "image/png", body: await page.screenshot() });
+        await page.keyboard.press("Escape");
+      }
+      const restored = await request.patch(url, { headers: adminHeaders(), data: { status: "initialized" } });
+      expect(restored.status()).toBe(200);
+      for (const [route, label] of selectors) {
+        if (route === "/parameters") await page.goto("/parameters");
+        else await page.goto("/dts-reload");
+        await waitForInteractionSurfaceReady(page);
+        expect(await readSelectControlOptions(page.getByRole("combobox", { name: label, exact: true })))
+          .toContainEqual(expect.objectContaining({ value: projectId, label: name }));
+      }
+    } finally {
+      const cleanup = await request.delete(url, { headers: adminHeaders() });
+      expect(cleanup.status()).toBe(200);
+    }
   });
 
   test("gates canonical project Delete with its retention explanation at PC 1440x900", async ({ page, request }, testInfo) => {

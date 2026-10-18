@@ -555,7 +555,7 @@ export function JsonBindingPanel({
           : jsonSourceStatus === "error" ? { kind: "error", message: "无法加载 JSON 源码。", detail: jsonSourceErrorMessage ?? undefined, onRetry: loadJsonSource }
           : !jsonSource ? { kind: "empty", message: "暂无 JSON 源码。" } : undefined}
         notice={notice}
-        toolbar={<>
+        toolbar={(primaryAction) => <>
         <label className="dts-parameter-workbench__search">
           <span>{resultsMode === "jsonSource" ? "查找源码" : "搜索参数"}</span>
           <SearchField
@@ -617,6 +617,7 @@ export function JsonBindingPanel({
             />
           </div>
           {toolbarActions}
+          {primaryAction}
         </div>
         </>}
         primaryAction={resultsMode === "jsonSource" ? (

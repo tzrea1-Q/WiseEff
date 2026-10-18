@@ -103,6 +103,21 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     });
   });
 
+  test("scrolls the configuration tree with the mouse wheel while keeping search visible", async ({ page }) => {
+    await signInBrowserAsRole(page, "admin", "/parameter-admin/projects/aurora/configuration?configSet=dcs-default-aurora&file=seed-dts-file-aurora");
+    const navigator = page.getByRole("region", { name: "配置导航", exact: true });
+    const tree = navigator.getByRole("tree", { name: "默认配置 配置文件" });
+    const node = tree.getByRole("treeitem", { name: "节点 amba", exact: true });
+    await expect(node).toBeVisible();
+    await expect.poll(() => tree.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+    await node.hover();
+    await page.mouse.wheel(0, 400);
+    await expect.poll(() => tree.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect(navigator.getByRole("searchbox", { name: "统一搜索查询" })).toBeInViewport();
+    await page.mouse.wheel(0, -400);
+    await expect.poll(() => tree.evaluate((element) => element.scrollTop)).toBe(0);
+  });
+
   test("keeps canonical baseline restore read-only while showing source drift", async ({ page, request }, testInfo) => {
     const baselineId = "seed-dts-baseline-aurora";
     const preview = await request.get(apiRoute(`/api/v1/projects/${projectId}/baselines/${baselineId}/restore-preview`), {

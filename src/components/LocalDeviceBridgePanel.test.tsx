@@ -152,7 +152,15 @@ it("keeps returning users on a compact readiness bar using any unrevoked server 
   expect(screen.getByRole("button", { name: "安装指南" })).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Bridge 连接步骤" })).not.toBeInTheDocument();
   expect(screen.queryByText("暂时无法加载安装包列表，请稍后重试。")).not.toBeInTheDocument();
-  expect(screen.getByRole("list", { name: "我的设备代理列表", hidden: true }).closest("details")).not.toHaveAttribute("open");
+  expect(screen.queryByRole("list", { name: "我的设备代理列表" })).not.toBeInTheDocument();
+  const management = screen.getByRole("button", { name: "管理设备代理" });
+  management.focus();
+  fireEvent.click(management);
+  const dialog = screen.getByRole("dialog", { name: "管理设备代理" });
+  expect(within(dialog).getByDisplayValue("工程机")).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(management).toHaveFocus();
 });
 
 it("shows first-time setup once and opens the same guide in a keyboard-accessible drawer", async () => {
@@ -361,6 +369,7 @@ it("retains confirmed pairing when listing fails and allows retry", async () => 
   const props = { detecting: false, protocol: "hdc" as const, onDetect: vi.fn(), listBridges,
     createPairingCode: createCode, onBridgeStateChange: onState };
   const view = render(<LocalDeviceBridgePanel {...props} probeHealth={probeHealth} />);
+  fireEvent.click(await screen.findByRole("button", { name: "管理设备代理" }));
   await screen.findByDisplayValue("本机");
   createCode.mockClear();
   listBridges.mockRejectedValueOnce(new Error("代理列表暂时不可用"));
@@ -432,6 +441,7 @@ it("refreshes online tool changes without overlapping probes or replacing a rena
   const createCode = vi.fn(async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" }));
   render(<LocalDeviceBridgePanel detecting={false} protocol="hdc" onDetect={vi.fn()}
     listBridges={async () => [bridge] as never} probeHealth={probeHealth} createPairingCode={createCode} />);
+  fireEvent.click(await screen.findByRole("button", { name: "管理设备代理" }));
   const input = await screen.findByDisplayValue("工程机");
   await waitFor(() => expect(screen.queryByText("正在检查 Bridge…")).not.toBeInTheDocument());
   fireEvent.change(input, { target: { value: "正在编辑的名称" } });

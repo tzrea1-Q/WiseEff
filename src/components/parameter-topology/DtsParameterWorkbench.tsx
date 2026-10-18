@@ -680,7 +680,7 @@ export function DtsParameterWorkbench({
           : dtsSourceStatus === "loading" ? { kind: "loading", message: "正在加载 DTS 源码…" }
           : dtsSourceStatus === "error" ? { kind: "error", message: "无法加载 DTS 源码。", detail: dtsSourceErrorMessage ?? undefined, onRetry: loadDtsSource }
           : !dtsSource ? { kind: "empty", message: "暂无 DTS 源码。" } : undefined}
-        toolbar={<>
+        toolbar={(primaryAction) => <>
         <label className="dts-parameter-workbench__search">
           <span>{resultsMode === "dtsSource" ? "查找源码" : "搜索参数"}</span>
           <SearchField
@@ -720,6 +720,7 @@ export function DtsParameterWorkbench({
             />
           </div>
           {toolbarActions}
+          {primaryAction}
         </div>
         </>}
         primaryAction={resultsMode === "dtsSource" ? (

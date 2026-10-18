@@ -57,9 +57,59 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
+{
+  const fixtureId = "aligns parameter toolbar actions across DTS and JSON views";
+  if (shouldRegisterConsistencyFixture(qualityLane, fixtureId)) test(fixtureId, async ({ context, page }, testInfo) => {
+    testInfo.annotations.push({ type: "setup", description: "A read-only JSON Binding fixture extends the real API response to expose both format tabs. Identity, DTS topology and source reads use the real API; no project data is changed." });
+    const blockedRequests = await installConsistencyReadGuard(context);
+    await context.route("**/api/v2/projects/aurora/parameter-bindings", async (route) => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(200);
+      const body = await response.json() as { items: Array<Record<string, unknown>> };
+      expect(body.items.length).toBeGreaterThan(0);
+      await route.fulfill({ response, json: { ...body, items: [...body.items, {
+        ...body.items[0], id: "pbind_quality_toolbar_json", propertyKey: "toolbar_layout_preview",
+        rawValue: '{"limit":1}', effectiveValue: { kind: "json", value: { limit: 1 } }
+      }] } });
+    });
+    await page.goto("/parameters?project=aurora");
+    await expectUsablePage(page);
+    await settleQualityRoute(page, "/parameters", { readOnly: true });
+    await settleXiaozePopupClosed(page);
+    for (const width of [1440, 1280]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 800 });
+      for (const format of ["DTS", "JSON"] as const) {
+        await page.getByRole("tab", { name: format === "DTS" ? /^DTS 设备树参数/ : /^JSON 参数/ }).click();
+        await page.getByRole("tab", { name: "参数列表", exact: true }).click();
+        for (const source of [false, true]) {
+          if (source) await page.getByRole("tab", { name: `${format} 源码`, exact: true }).click();
+          const toolbar = page.getByRole("group", { name: "工作台操作", exact: true });
+          const controls = [
+            toolbar.getByRole("tablist", { name: "结果模式" }),
+            toolbar.getByRole("tablist", { name: "参数配置格式" }),
+            toolbar.getByRole("button", { name: source ? `下载 ${format}` : "导出当前结果", exact: true })
+          ];
+          const boxes = await Promise.all(controls.map(async (control) => {
+            await expect(control).toBeVisible();
+            return (await control.boundingBox())!;
+          }));
+          const centers = boxes.map((box) => box.y + box.height / 2);
+          expect(Math.max(...centers) - Math.min(...centers), "result mode, format switch and export must share one horizontal centerline").toBeLessThanOrEqual(1);
+          for (let index = 1; index < boxes.length; index++) expect(boxes[index]!.x).toBeGreaterThanOrEqual(boxes[index - 1]!.x + boxes[index - 1]!.width);
+          await expectNoHorizontalOverflow(page);
+          if (!source) await testInfo.attach(`parameter-toolbar-${format.toLowerCase()}-${width}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+        }
+      }
+    }
+    expect(blockedRequests).toEqual([]);
+  });
+}
+
 for (const path of ["/node-debugging", "/dts-reload"]) {
   for (const theme of ["light", "dark"] as const) {
-  for (const readiness of ["returning", "first-time", "connected"] as const) {
+  for (const readiness of ["returning", "first-time", "pairing", "connected"] as const) {
     const fixtureId = `Bridge readiness on ${path}: ${readiness} (${theme})`;
     if (!shouldRegisterConsistencyFixture(qualityLane, fixtureId)) continue;
     test(fixtureId, async ({ context, page }, testInfo) => {
@@ -73,6 +123,9 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
         }]
       } }));
       await context.route("**/local-bridge/health", async (request) => {
+        if (readiness === "pairing") return request.fulfill({ json: {
+          ok: true, paired: false, connected: false, clientVersion: "999.0.0", updatedAt: "2026-10-11T00:00:00Z"
+        } });
         if (readiness !== "connected") return request.abort("connectionrefused");
         await request.fulfill({ json: {
           ok: true, paired: true, connected: true, bridgeId: "quality-readiness-bridge",
@@ -98,7 +151,7 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
         await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(0);
         await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
       } else {
-        await expect(panel.getByText(readiness === "returning" ? "本地 Bridge 未运行" : "未检测到本地 Bridge", { exact: true })).toBeVisible();
+        await expect(panel.getByText(readiness === "pairing" ? "Bridge 等待配对" : readiness === "returning" ? "本地 Bridge 未运行" : "未检测到本地 Bridge", { exact: true })).toBeVisible();
         await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(1);
         if (readiness === "returning") {
           await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
@@ -121,7 +174,7 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
           requireNavigatorWorkbenchGeometry(measurements.navigatorWorkbenches, path);
         }
       }
-      if (readiness === "returning" || readiness === "connected") {
+      if (readiness !== "first-time") {
         const firstRow = page.locator(path === "/node-debugging"
           ? '.navigator-workbench__task tbody tr:has(td[data-label="参数名称"])'
           : ".navigator-workbench__task tbody tr:has(.dts-reload-candidate-table__param)").first();
@@ -133,6 +186,38 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
       await testInfo.attach(`bridge-${readiness}-${theme}${path.replaceAll("/", "-")}`, {
         contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
       });
+      if (readiness !== "first-time") {
+        const checkConnectionLayout = async () => {
+          const actions = await panel.getByRole("group", { name: "本地连接操作" }).getByRole("button").all();
+          const boxes = await Promise.all(actions.map((action) => action.boundingBox()));
+          expect(boxes.every((box) => box && box.height === 32 && Math.abs(box.y - boxes[0]!.y) < 1)).toBe(true);
+          const toolbar = await page.getByRole("group", { name: "工作台操作", exact: true }).boundingBox();
+          const connection = await panel.boundingBox();
+          expect(connection!.y).toBeGreaterThanOrEqual(toolbar!.y + toolbar!.height);
+          await expectNoHorizontalOverflow(page);
+        };
+        await checkConnectionLayout();
+        const before = await panel.boundingBox();
+        const trigger = panel.getByRole("button", { name: "管理设备代理", exact: true });
+        await trigger.click();
+        const dialog = page.getByRole("dialog", { name: "管理设备代理", exact: true });
+        await expect(dialog.getByRole("textbox", { name: "设备名" })).toHaveValue("质量检查工作站");
+        await testInfo.attach(`bridge-management-${readiness}-${theme}${path.replaceAll("/", "-")}`, {
+          contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+        });
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+        expect(await panel.boundingBox()).toEqual(before);
+        if (readiness === "pairing" && theme === "light") {
+          await page.setViewportSize({ width: 1280, height: 800 });
+          await checkConnectionLayout();
+          await testInfo.attach(`bridge-pairing-compact${path.replaceAll("/", "-")}`, {
+            contentType: "image/png", body: await page.screenshot({ animations: "disabled" })
+          });
+          await page.setViewportSize({ width: 1440, height: 900 });
+        }
+      }
       {
         const trigger = panel.getByRole("button", { name: "安装指南", exact: true });
         await trigger.click();
