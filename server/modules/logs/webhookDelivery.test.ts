@@ -6,7 +6,7 @@ import type { Database } from "../../shared/database/client";
 import { getLogDomainWebhookConfig } from "./domainsRepository";
 import { insertLogWebhookDelivery } from "./webhookRepository";
 import { claimLogWebhook, enqueueLogWebhook } from "./webhookOutbox";
-import { encryptLogWebhookSecret } from "./webhookSecrets";
+import { decryptLogWebhookSecret, encryptLogWebhookSecret } from "./webhookSecrets";
 import {
   buildLogResultWebhookPayload,
   createLogWebhookDeliverer,
@@ -76,6 +76,14 @@ beforeEach(() => {
 });
 
 describe("buildLogResultWebhookPayload", () => {
+  it("decrypts persisted v1 webhook envelopes after moving the crypto helper", () => {
+    const envelope = "logwh:v1:4bb06f8e4e3a7715:V0VBUkMxAQMDAwMDAwMDAwMDAwpGHbJ5luly+R+8EIohqZhJm8RiOVFzNR8iKzOEPNJ/iF+SisA=";
+    expect(decryptLogWebhookSecret(envelope, "fixture-org", "fixture-domain", Buffer.alloc(32, 7)))
+      .toBe("legacy-webhook-secret");
+    expect(() => decryptLogWebhookSecret(envelope, "another-org", "fixture-domain", Buffer.alloc(32, 7)))
+      .toThrow("integrity check failed");
+  });
+
   it("stays a compact summary and never carries raw log content", () => {
     const payload = buildLogResultWebhookPayload(resultInput());
     expect(payload).toEqual({

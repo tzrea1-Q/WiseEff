@@ -1,16 +1,19 @@
 import { createHash } from "node:crypto";
 import { resolveLogWebhookSecretKey } from "../../config/logWebhookSecretKey";
 import type { Database } from "../../shared/database/client";
-import { decryptArchiveObject, encryptArchiveObject } from "../catalog-cutover/archive/crypto";
+import { decryptAesGcmEnvelope, encryptAesGcmEnvelope } from "../../shared/crypto/aesGcm";
 
 const PREFIX = "logwh:v1:";
+// Preserve the v1 header already used by stored webhook secrets.
+const ENVELOPE_HEADER = Buffer.concat([Buffer.from("WEARC1", "ascii"), Buffer.from([1])]);
 const keyId = (key: Buffer) => createHash("sha256").update(key).digest("hex").slice(0, 16);
 const aad = (organizationId: string, domainId: string) => Buffer.from(JSON.stringify(["log-webhook", organizationId, domainId]));
 
 export class LogWebhookSecretDecryptionError extends Error {}
 
 export function encryptLogWebhookSecret(secret: string, organizationId: string, domainId: string, key = resolveLogWebhookSecretKey()): string {
-  const envelope = encryptArchiveObject({ key, aad: aad(organizationId, domainId), plaintext: Buffer.from(secret) });
+  const envelope = Buffer.concat([ENVELOPE_HEADER,
+    encryptAesGcmEnvelope({ key, aad: aad(organizationId, domainId), plaintext: Buffer.from(secret) })]);
   return `${PREFIX}${keyId(key)}:${envelope.toString("base64")}`;
 }
 
@@ -18,7 +21,9 @@ export function decryptLogWebhookSecret(secret: string, organizationId: string, 
   const prefix = `${PREFIX}${keyId(key)}:`;
   if (!secret.startsWith(prefix)) throw new LogWebhookSecretDecryptionError("Webhook secret version or key id mismatch; restore the correct key or rotate this domain's secret.");
   try {
-    return decryptArchiveObject({ key, aad: aad(organizationId, domainId), envelope: Buffer.from(secret.slice(prefix.length), "base64") }).toString("utf8");
+    const envelope = Buffer.from(secret.slice(prefix.length), "base64");
+    if (!envelope.subarray(0, ENVELOPE_HEADER.length).equals(ENVELOPE_HEADER)) throw new Error("Invalid webhook envelope header.");
+    return decryptAesGcmEnvelope({ key, aad: aad(organizationId, domainId), envelope: envelope.subarray(ENVELOPE_HEADER.length) }).toString("utf8");
   } catch {
     throw new LogWebhookSecretDecryptionError("Webhook secret integrity check failed; restore the correct key or rotate this domain's secret.");
   }

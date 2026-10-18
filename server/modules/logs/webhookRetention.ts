@@ -40,7 +40,7 @@ async function pruneWebhookRows(
 
   return db.transaction(async (tx) => {
     const selectionLimit = options.batchLimit * LOG_WEBHOOK_DELIVERY_RETENTION_MAX_BATCHES;
-    const victims = await tx.query<{ id: string }>(
+    const victims = table === "log_webhook_deliveries" ? await tx.query<{ id: string }>(
       `with ranked as (
          select
            id,
@@ -51,8 +51,27 @@ async function pruneWebhookRows(
              partition by organization_id, log_domain_id
              order by created_at desc, id desc
            ) as retention_rank
-         from ${table}
-         ${table === "log_webhook_outbox" ? "where status in ('delivered', 'failed')" : ""}
+         from log_webhook_deliveries
+       )
+       select id
+       from ranked
+       where retention_rank > $1
+       order by organization_id, log_domain_id, created_at desc, id desc
+       limit $2`,
+      [options.keepPerDomain, selectionLimit]
+    ) : await tx.query<{ id: string }>(
+      `with ranked as (
+         select
+           id,
+           organization_id,
+           log_domain_id,
+           created_at,
+           row_number() over (
+             partition by organization_id, log_domain_id
+             order by created_at desc, id desc
+           ) as retention_rank
+         from log_webhook_outbox
+         where status in ('delivered', 'failed')
        )
        select id
        from ranked
@@ -67,10 +86,15 @@ async function pruneWebhookRows(
       const victimIds = victims.rows
         .slice(offset, offset + options.batchLimit)
         .map((row) => row.id);
-      const result = await tx.query<{ id: string }>(
-        `delete from ${table}
+      const result = table === "log_webhook_deliveries" ? await tx.query<{ id: string }>(
+        `delete from log_webhook_deliveries
          where id = any($1::text[])
-         ${table === "log_webhook_outbox" ? "and status in ('delivered', 'failed')" : ""}
+         returning id`,
+        [victimIds]
+      ) : await tx.query<{ id: string }>(
+        `delete from log_webhook_outbox
+         where id = any($1::text[])
+           and status in ('delivered', 'failed')
          returning id`,
         [victimIds]
       );
