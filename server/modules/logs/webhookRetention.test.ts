@@ -28,7 +28,7 @@ describe("log webhook delivery retention loop", () => {
         return { rows: ids.map((id) => ({ id })) as Row[], rowCount: ids.length };
       });
       const logger = { info: vi.fn(), warn: vi.fn() };
-      const stop = startLogWebhookDeliveryRetentionLoop({ db: fakeDatabase(query), keepPerDomain: 7, logger });
+      const stop = startLogWebhookDeliveryRetentionLoop({ db: fakeDatabase(query as Database["query"]), keepPerDomain: 7, logger });
       await vi.waitFor(() => expect(logger.info).toHaveBeenCalledOnce());
       const selection = query.mock.calls.filter(([text]) => text.includes("row_number() over") && text.includes("from log_webhook_outbox"));
       expect(selection).toHaveLength(1);
@@ -36,7 +36,7 @@ describe("log webhook delivery retention loop", () => {
       expect(selection[0][0]).toContain("where status in ('delivered', 'failed')");
       const deletes = query.mock.calls.filter(([text]) => text.includes("delete from log_webhook_outbox"));
       expect(deletes).toHaveLength(LOG_WEBHOOK_DELIVERY_RETENTION_MAX_BATCHES);
-      expect(deletes.every(([text, values]) => text.includes("and status in ('delivered', 'failed')") && (values[0] as string[]).length === 1000)).toBe(true);
+      expect(deletes.every(([text, values]) => text.includes("and status in ('delivered', 'failed')") && values !== undefined && (values[0] as string[]).length === 1000)).toBe(true);
       expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ deletedRows: 0, deletedOutboxRows: 10_000 }));
       await stop();
       await vi.advanceTimersByTimeAsync(LOG_WEBHOOK_DELIVERY_RETENTION_INTERVAL_MS * 2);
@@ -71,7 +71,7 @@ describe("log webhook delivery retention loop", () => {
       const logger = { info: vi.fn(), warn: vi.fn() };
 
       const stop: () => Promise<void> = startLogWebhookDeliveryRetentionLoop({
-        db: fakeDatabase(query),
+        db: fakeDatabase(query as Database["query"]),
         keepPerDomain: 10_000,
         logger
       });
@@ -96,7 +96,7 @@ describe("log webhook delivery retention loop", () => {
       );
       expect(deleteQueries).toHaveLength(LOG_WEBHOOK_DELIVERY_RETENTION_MAX_BATCHES);
       expect(
-        deleteQueries.every(([, values]) => (values[0] as string[]).length === 1000)
+        deleteQueries.every(([, values]) => values !== undefined && (values[0] as string[]).length === 1000)
       ).toBe(true);
       expect(logger.info).toHaveBeenCalledWith({
         event: "log_webhook_delivery_retention",
@@ -124,7 +124,7 @@ describe("log webhook delivery retention loop", () => {
         .mockResolvedValue({ rows: [], rowCount: 0 });
       const logger = { info: vi.fn(), warn: vi.fn() };
       const stop = startLogWebhookDeliveryRetentionLoop({
-        db: fakeDatabase(query),
+        db: fakeDatabase(query as Database["query"]),
         keepPerDomain: 10_000,
         logger
       });
@@ -163,7 +163,7 @@ describe("log webhook delivery retention loop", () => {
       });
       const query = vi.fn<Database["query"]>().mockReturnValue(selection);
       const stop = startLogWebhookDeliveryRetentionLoop({
-        db: fakeDatabase(query),
+        db: fakeDatabase(query as Database["query"]),
         keepPerDomain: 10_000,
         logger: { info: vi.fn(), warn: vi.fn() }
       });
