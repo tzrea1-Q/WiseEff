@@ -1,14 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { createSystemInvocation } from "../auth/trustedInvocation";
-import { buildTrustedAuditEventInput } from "../audit/trustedAudit";
 
 import { ApiError } from "../../shared/http/errors";
 import type { DeviceBridgeRepository } from "./repository";
 import { normalizeMachineLabel, pickBridgeToReuse } from "./machineIdentity";
 import type { DeviceBridgePlatform } from "./types";
 import type { Database } from "../../shared/database/client";
-import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
+import { writeTrustedMilestoneAudit } from "../audit/auditedWrite";
 import {
   bridgeTokenExpiresAt,
   createBridgeId,
@@ -31,7 +30,7 @@ export type PairingServiceOptions = {
   issueToken?: () => string;
   createBridgeId?: () => string;
   db?: Database;
-  createAuditEvent?: typeof defaultCreateAuditEvent;
+  writeAuditEvent?: typeof writeTrustedMilestoneAudit;
 };
 
 export function createPairingService(options: PairingServiceOptions) {
@@ -41,7 +40,7 @@ export function createPairingService(options: PairingServiceOptions) {
   const randomCode = options.randomCode ?? generatePairingCode;
   const issueToken = options.issueToken ?? issueBridgeToken;
   const nextBridgeId = options.createBridgeId ?? createBridgeId;
-  const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
+  const writeAudit = options.writeAuditEvent ?? writeTrustedMilestoneAudit;
 
   async function auditPair(
     bridgeId: string,
@@ -52,7 +51,7 @@ export function createPairingService(options: PairingServiceOptions) {
     if (!options.db) {
       return;
     }
-    await writeAudit(options.db, buildTrustedAuditEventInput({
+    await writeAudit(options.db, {
       id: randomUUID(),
       organizationId: pairing.organizationId,
       projectId: null,
@@ -65,7 +64,7 @@ export function createPairingService(options: PairingServiceOptions) {
       targetId: bridgeId,
       metadata: { platform, arch, pairingUserId: pairing.userId },
       traceId: randomUUID()
-    }));
+    });
   }
 
   return {

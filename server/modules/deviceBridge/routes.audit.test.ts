@@ -5,6 +5,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import type { CreateAuditEventInput } from "../audit/types";
+import { buildTrustedAuditEventInput, type TrustedAuditEventInput } from "../audit/trustedAudit";
 import * as repository from "./repository";
 import { registerDeviceBridgeRoutes } from "./routes";
 
@@ -62,8 +63,8 @@ function makeServer(options: {
   const router = createRouter();
   vi.mocked(repository.createDeviceBridgeRepository).mockReturnValue(options.repo as never);
   const events: CreateAuditEventInput[] = [];
-  const createAuditEvent = vi.fn(async (_db: unknown, input: CreateAuditEventInput) => {
-    events.push(input);
+  const writeAuditEvent = vi.fn(async (_db: unknown, input: TrustedAuditEventInput) => {
+    events.push(buildTrustedAuditEventInput(input));
   });
 
   registerDeviceBridgeRoutes(router, {
@@ -71,7 +72,7 @@ function makeServer(options: {
     getCurrentAuthContext: () => options.auth ?? makeAuth(),
     pairingService: options.pairingService as never,
     now: options.now,
-    createAuditEvent: createAuditEvent as never
+    writeAuditEvent
   });
 
   return { server: createHttpServer(router), events };
