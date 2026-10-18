@@ -17,6 +17,8 @@ const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
 const repairCommit = "b7ed7b9d3fb15ffedee3f3231c2ba6580c4c7983";
 const performanceRepairBaseCommit = "dcc3ed436617e01fc749ccecf02ed2c13a570bc2";
+// #1187 authorizes the second performance repair on this exact base.
+const secondPerformanceRepairBaseCommit = "dc5f1b068a87b6a485abbe60317a8a56c1826f58";
 const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
@@ -181,11 +183,12 @@ const secretPattern = new RegExp(
   "i",
 );
 
-function runGitText(args: string[]) {
+function runGitText(args: string[], input?: string) {
   const result = spawnSync("git", args, {
     cwd: projectRoot,
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
+    input,
   });
   expect(result.status, result.stderr).toBe(0);
   return result.stdout;
@@ -301,18 +304,21 @@ function commitChangedPaths(parent: string, commit: string) {
     .filter(Boolean);
 }
 
-function commitTouchedPaths(commit: string) {
-  return runGitText([
-    "diff-tree",
-    "--no-commit-id",
-    "--name-status",
-    "-m",
-    "-r",
-    commit,
-  ])
-    .trim()
-    .split("\n")
-    .filter(Boolean);
+function commitTouchedPaths(commits: string[]) {
+  const paths = new Map(commits.map((commit) => [commit, [] as string[]]));
+  let current: string[] | undefined;
+  for (const line of runGitText([
+    "diff-tree", "--stdin", "--name-status", "-m", "-r",
+  ], commits.join("\n") + "\n").trim().split("\n").filter(Boolean)) {
+    if (/^[0-9a-f]{40}$/.test(line)) {
+      current = paths.get(line);
+      expect(current).toBeDefined();
+    } else {
+      expect(current).toBeDefined();
+      current!.push(line);
+    }
+  }
+  return paths;
 }
 
 function protectedTreeEntries(revision: string) {
@@ -486,6 +492,22 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       }
     }
     expect(performanceTreeEntries.get(sourceLockPath)).not.toBe(lockTreeEntries.get(sourceLockPath));
+    runGitText(["merge-base", "--is-ancestor", secondPerformanceRepairBaseCommit, "HEAD"]);
+    const secondPerformanceRepairs = postRepairCommits.filter(({ commit, parents }) =>
+      parents.length === 1
+      && parents[0] === secondPerformanceRepairBaseCommit
+      && commitChangedPaths(secondPerformanceRepairBaseCommit, commit).join("\n") === `M\t${sourceLockPath}`,
+    );
+    expect(secondPerformanceRepairs).toHaveLength(1);
+    const secondPerformanceRepairCommit = secondPerformanceRepairs[0]!.commit;
+    const secondPerformanceTreeEntries = protectedTreeEntries(secondPerformanceRepairCommit);
+    for (const sourcePath of lockedSourcePaths) {
+      expect(secondPerformanceTreeEntries.get(sourcePath)).toBeDefined();
+      if (sourcePath !== sourceLockPath) {
+        expect(secondPerformanceTreeEntries.get(sourcePath)).toBe(lockTreeEntries.get(sourcePath));
+      }
+    }
+    expect(secondPerformanceTreeEntries.get(sourceLockPath)).not.toBe(performanceTreeEntries.get(sourceLockPath));
     const lineageCommits = new Set(runGitText([
       "rev-list", "--ancestry-path", `${sourceLockCommit}..HEAD`,
     ]).trim().split("\n").filter(Boolean));
@@ -494,19 +516,43 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       "rev-list", "--ancestry-path", `${performanceRepairCommit}..HEAD`,
     ]).trim().split("\n").filter(Boolean));
     performanceLineageCommits.add(performanceRepairCommit);
-    const expectedTreeEntry = (revision: string, sourcePath: string) =>
-      sourcePath === sourceLockPath && performanceLineageCommits.has(revision)
-        ? performanceTreeEntries.get(sourcePath)
-        : lockTreeEntries.get(sourcePath);
-    const checkedTrees = new Map<string, Map<string, string>>();
-    const treeAt = (revision: string) => {
-      let entries = checkedTrees.get(revision);
-      if (!entries) {
-        entries = protectedTreeEntries(revision);
-        checkedTrees.set(revision, entries);
+    const secondPerformanceLineageCommits = new Set(runGitText([
+      "rev-list", "--ancestry-path", `${secondPerformanceRepairCommit}..HEAD`,
+    ]).trim().split("\n").filter(Boolean));
+    secondPerformanceLineageCommits.add(secondPerformanceRepairCommit);
+    const expectedTreeEntry = (revision: string, sourcePath: string) => {
+      if (sourcePath === sourceLockPath) {
+        if (secondPerformanceLineageCommits.has(revision)) return secondPerformanceTreeEntries.get(sourcePath);
+        if (performanceLineageCommits.has(revision)) return performanceTreeEntries.get(sourcePath);
       }
-      return entries;
+      return lockTreeEntries.get(sourcePath);
     };
+    const touchedPathsByCommit = commitTouchedPaths(postRepairCommits
+      .filter(({ parents }) => parents.length === 1).map(({ commit }) => commit));
+    const treeRevisions = [...new Set(postRepairCommits.filter(({ parents }) => parents.length > 1)
+      .flatMap(({ commit, parents }) => [commit, ...parents.filter((parent) => lineageCommits.has(parent))]))];
+    // Compare immutable trees in one Git process, retaining modes and blob IDs for every protected path.
+    const checkedTrees = new Map(treeRevisions.map((revision) => [revision, new Map(lockTreeEntries)]));
+    let currentTree: Map<string, string> | undefined;
+    for (const line of runGitText([
+      "diff-tree", "--stdin", "--raw", "--no-abbrev", "--no-renames", "-r", "--", ...lockedSourcePaths,
+    ], treeRevisions.map((revision) => `${revision} ${sourceLockCommit}\n`).join("")).trim().split("\n").filter(Boolean)) {
+      if (/^[0-9a-f]{40}$/.test(line)) {
+        currentTree = checkedTrees.get(line);
+        expect(currentTree).toBeDefined();
+      } else {
+        const match = /^:\d{6} (\d{6}) [0-9a-f]{40} ([0-9a-f]{40}) [A-Z]\t(.+)$/.exec(line);
+        expect(match).not.toBeNull();
+        expect(currentTree).toBeDefined();
+        const [, mode, object, sourcePath] = match!;
+        if (mode === "000000") currentTree!.delete(sourcePath);
+        else currentTree!.set(sourcePath, `${mode} ${mode === "160000" ? "commit" : "blob"} ${object}\t${sourcePath}`);
+      }
+    }
+    const treeAt = (revision: string) => checkedTrees.get(revision)!;
+    for (const revision of [headSha, sourceLockCommit, performanceRepairCommit]) {
+      if (checkedTrees.has(revision)) expect(treeAt(revision)).toEqual(protectedTreeEntries(revision));
+    }
     for (const { commit, parents } of postRepairCommits) {
       if (commit === sourceLockCommit) {
         continue;
@@ -532,8 +578,8 @@ describe("parameter catalog rehearsal repaired source lock", () => {
         }
         continue;
       }
-      const touchedPaths = commitTouchedPaths(commit);
-      if (commit === performanceRepairCommit) {
+      const touchedPaths = touchedPathsByCommit.get(commit)!;
+      if (commit === performanceRepairCommit || commit === secondPerformanceRepairCommit) {
         expect(touchedPaths).toEqual([`M\t${sourceLockPath}`]);
         continue;
       }
