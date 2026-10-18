@@ -44,8 +44,8 @@
 
 ## 近期关闭项
 
-- **TD-116（Webhook 持久化投递）：** **2026-10-18 关闭。** migration `0185` 新增 outbox；分析终态与事件在同一事务落库，worker 通过 `FOR UPDATE SKIP LOCKED`、租约及发送期间行锁领取事件，崩溃后可恢复并按指数退避重试，耗尽后标记失败。保留逐次投递 API 与单次管理员测试；新增稳定 `eventId` 供消费方去重。恢复、并发、退避与终态事务回滚测试覆盖持久化边界；现有保留循环按相同的每域设置独立清理终态 outbox，并保护非终态工作。限定 logs/config 验证 37 文件、445/445 通过，含真实 PostgreSQL 测试（`cxlogwh3`）；两个 ops 配置套件 49/49 通过。服务端 TypeScript 与改动文件 ESLint 通过。
-- **TD-103（Webhook 签名密钥静态加密）：** **2026-10-18 关闭。** 复用 AES-256-GCM，信封含版本与密钥指纹，AAD 绑定组织及业务域。签名时解密，末四位单独存储；启动幂等回填旧明文，生产已有回调配置但缺少 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY` 时拒绝启动。自托管生成并保留密钥，双语文档说明离线重新加密轮换；静态加密、签名、回填及拒绝启动覆盖在限定 logs/config 验证中通过（37 文件、445/445，含 `cxlogwh3` 真实 PostgreSQL 测试）；两个 ops 配置套件 49/49 通过。服务端 TypeScript 与改动文件 ESLint 通过。
+- **TD-116（Webhook 持久化投递）：** **2026-10-18 经 #1215 关闭。** migration `0185` 新增 outbox；分析终态与事件在同一事务落库，worker 通过 `FOR UPDATE SKIP LOCKED`、租约及发送期间行锁领取事件，崩溃后可恢复并按指数退避重试，耗尽后标记失败。保留逐次投递 API 与单次管理员测试；新增稳定 `eventId` 供消费方去重。恢复、并发、退避与终态事务回滚测试覆盖持久化边界；现有保留循环按相同的每域设置独立清理终态 outbox，并保护非终态工作。限定 logs/config 验证 37 文件、445/445 通过，含真实 PostgreSQL 测试（`cxlogwh3`）；两个 ops 配置套件 49/49 通过。服务端 TypeScript 与改动文件 ESLint 通过。
+- **TD-103（Webhook 签名密钥静态加密）：** **2026-10-18 经 #1215 关闭。** 复用 AES-256-GCM，信封含版本与密钥指纹，AAD 绑定组织及业务域。签名时解密，末四位单独存储；启动幂等回填旧明文，生产已有回调配置但缺少 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY` 时拒绝启动。自托管生成并保留密钥，双语文档说明离线重新加密轮换；静态加密、签名、回填及拒绝启动覆盖在限定 logs/config 验证中通过（37 文件、445/445，含 `cxlogwh3` 真实 PostgreSQL 测试）；两个 ops 配置套件 49/49 通过。服务端 TypeScript 与改动文件 ESLint 通过。
 - **TD-068（DTS 重载 / 安全）：** **2026-10-18 经 #1212 及 #1213 关闭：** 审计写入要求 ADR-0038 `TrustedInvocationContext`；debugging 设备写入与回滚复用数据库工具调用状态，在操作和审计所在事务内以条件更新单次消费 Agent 审批；debugging/deviceBridge 注入式审计写入也要求可信调用上下文。回归覆盖相同写入的审批重放、回滚审批单次使用及并发双重使用。
 
 - **TD-123（调试设备写审计溯源）：** **2026-10-17 经 #1212 关闭。** Agent 审批后的 debugging device-write 与 rollback 在审批校验时返回 ADR-0038 Agent 调用上下文，链路内每条审计都记录 `actorType=agent` 及会话、工具调用与审批关联；确认令牌写入记录 `user`。由 `debugging/writeProvenance.test.ts` 覆盖。审批重放（已批准的 `approvalId` 未被消费）仍是独立的开放问题。
