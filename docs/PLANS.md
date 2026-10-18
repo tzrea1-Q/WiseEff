@@ -35,6 +35,7 @@ This list is only plans that still have remaining work. Finished implementation 
 ### Waiting on external inputs or a target environment
 
 - `exec-plans/active/2026-08-12-agent-log-analysis-system.md`: P1–P3b are on `main`. Remaining work is expert-annotated golden cases, a second pilot domain, and human judge-calibration reviews — not an open PR. Residuals: TD-090, TD-103, TD-116. TD-105 retention closed separately in Wave 4 via #599.
+- `exec-plans/active/2026-10-18-log-analysis-skill-platform.md`: proposed successor (ADR-0047) — analysis skills per business module (procedure, declarative parsing and decoding, knowledge, source snapshots, in-product tests) over shared intake, file management, signals and the bounded agent. Design only; phases S1–S5, sandboxed parse scripts later (S6).
 - `exec-plans/active/2026-07-16-parameter-topology-schema-management.md`: semantic identity implementation landed; **TD-042** still blocks claiming production cutover until a clean snapshot rehearsal. Review-round plans are under `completed/`.
 - `exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md`: M5.2 staging pilot evidence.
 - `exec-plans/active/2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md`: M5.2 non-HDC target evidence.

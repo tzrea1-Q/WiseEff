@@ -53,6 +53,7 @@ WiseEff 主要用于 PC。[界面质量检查清单](developer/ui-quality-checkl
 ### 等待外部输入或目标环境
 
 - `exec-plans/active/2026-08-12-agent-log-analysis-system.md`：P1–P3b 已在 `main`。剩下的是专家标注金标准案例、第二个试点域、以及人工 judge 校准记录——不是开放 PR。残留 TD-090 / TD-103 / TD-116；TD-105 retention 已由 Wave 4 #599 独立关闭。
+- `exec-plans/active/2026-10-18-log-analysis-skill-platform.md`：提议中的后续计划（ADR-0047）——按业务模块构建分析技能（诊断流程、声明式解析与解码、知识、源码快照、产品内测试），共享接收、文件管理、信号和有界 Agent。仅设计；阶段 S1–S5，沙箱化解析脚本后续提供（S6）。
 - `exec-plans/active/2026-07-16-parameter-topology-schema-management.md`：语义身份实现已落地；**TD-042** 在干净快照演练完成前仍阻断“生产 cutover 就绪”声明。各轮 review 计划已在 `completed/`。
 - `exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md` 与 `2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md`：M5.2 目标环境证据。
 - `exec-plans/active/2026-06-02-wiseeff-m6-2-identity-user-governance.md` 至 `2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`：自托管身份、备份、队列、可观测、发布/回滚/容量证据（TD-019–025）。
