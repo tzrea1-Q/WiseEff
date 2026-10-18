@@ -3,7 +3,10 @@ import { lookup as dnsLookup } from "node:dns";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 
-import type { Database } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
+import { decideRetry } from "../jobs/retryPolicy";
+import { claimLogWebhook, enqueueLogWebhook } from "./webhookOutbox";
+import { decryptLogWebhookSecret, LogWebhookSecretDecryptionError } from "./webhookSecrets";
 import { getLogDomainWebhookConfig } from "./domainsRepository";
 import { insertLogWebhookDelivery } from "./webhookRepository";
 import {
@@ -19,11 +22,8 @@ import {
  * Domain-level result webhook delivery (P3b, glossary: Result webhook).
  *
  * Design choices:
- * - Best-effort and asynchronous: the worker fires delivery AFTER the terminal
- *   state is fully persisted and never awaits it on its main path — a webhook
- *   outage can never fail, retry, or slow down an analysis. The trade-off is
- *   at-most-once semantics per attempt chain (a process crash mid-delivery loses
- *   the remaining retries); consumers that need stronger guarantees poll the API.
+ * - Terminal-state transactions enqueue a durable event. Leased workers send
+ *   asynchronously with bounded retries; consumers dedupe on the stable eventId.
  * - The payload is a compact summary (never raw log content or evidence text).
  * - Anti-SSRF: URL shape is validated up front, and the actual TCP connection
  *   resolves the hostname through a validating lookup that rejects private /
@@ -32,22 +32,8 @@ import {
  *   are discarded; only the status code is recorded.
  */
 
-export const WEBHOOK_CONCLUSION_SUMMARY_MAX_CHARS = 300;
-
-export type LogAnalysisResultWebhookInput = {
-  organizationId: string;
-  logDomainId: string;
-  logId: string;
-  runId: string;
-  fileName: string;
-  status: "complete" | "failed";
-  analysisSource?: string;
-  degradedReason?: string;
-  severity?: string;
-  confidence?: number;
-  conclusion?: string;
-  occurredAt: string;
-};
+import type { LogAnalysisResultWebhookInput } from "./webhookPayload";
+export { buildLogResultWebhookPayload, WEBHOOK_CONCLUSION_SUMMARY_MAX_CHARS, type LogAnalysisResultWebhookInput } from "./webhookPayload";
 
 export type LogWebhookEnv = {
   timeoutMs: number;
@@ -135,6 +121,8 @@ export const nodeWebhookTransport: WebhookTransport = ({ url, rawBody, headers, 
     request.setTimeout(timeoutMs, () => {
       request.destroy(new Error(`Webhook delivery timed out after ${timeoutMs}ms.`));
     });
+    const deadline = setTimeout(() => request.destroy(new Error("Webhook delivery deadline exceeded.")), timeoutMs);
+    request.on("close", () => clearTimeout(deadline));
     request.on("error", (error) => {
       const code = (error as NodeJS.ErrnoException & { code?: string }).code;
       resolve({
@@ -145,34 +133,6 @@ export const nodeWebhookTransport: WebhookTransport = ({ url, rawBody, headers, 
     request.end(rawBody);
   });
 
-function truncateSummary(text: string | undefined): string | undefined {
-  if (text === undefined) {
-    return undefined;
-  }
-  const trimmed = text.trim();
-  return trimmed.length > WEBHOOK_CONCLUSION_SUMMARY_MAX_CHARS
-    ? `${trimmed.slice(0, WEBHOOK_CONCLUSION_SUMMARY_MAX_CHARS - 1)}…`
-    : trimmed;
-}
-
-/** Compact result payload; NEVER includes raw log lines or evidence text. */
-export function buildLogResultWebhookPayload(input: LogAnalysisResultWebhookInput) {
-  return {
-    event: input.status === "complete" ? "log-analysis.completed" : "log-analysis.failed",
-    recordId: input.logId,
-    runId: input.runId,
-    fileName: input.fileName,
-    logDomainId: input.logDomainId,
-    status: input.status,
-    analysisSource: input.analysisSource,
-    degradedReason: input.degradedReason,
-    severity: input.severity,
-    confidence: input.confidence,
-    conclusionSummary: truncateSummary(input.conclusion),
-    occurredAt: input.occurredAt,
-    productPath: input.status === "complete" ? `/logs?id=${encodeURIComponent(`report-${input.runId}`)}` : "/logs"
-  };
-}
 
 export type LogWebhookDeliveryMetrics = {
   recordLogAnalysisWebhookDelivery(input: {
@@ -188,198 +148,149 @@ export type LogWebhookDelivererOptions = {
   transport?: WebhookTransport;
   metrics?: LogWebhookDeliveryMetrics;
   now?: () => Date;
-  sleep?: (ms: number) => Promise<void>;
   newId?: () => string;
 };
 
 export type LogWebhookDeliveryOutcome = {
-  status: "delivered" | "failed" | "skipped";
+  status: "delivered" | "failed" | "skipped" | "retrying";
   attempts: number;
   httpStatus?: number;
   error?: string;
 };
 
 export type LogWebhookDeliverer = {
-  /** Fire-and-forget entry used by the worker; errors are contained. */
+  /** Thin wake-up only; terminal-state repositories durably enqueue the event. */
   notifyAnalysisTerminal(input: LogAnalysisResultWebhookInput): void;
-  /** Awaitable delivery (tests, direct callers). */
+  /** Enqueue durably and process the first due attempt; retries are worker-owned. */
   deliverAnalysisResult(input: LogAnalysisResultWebhookInput): Promise<LogWebhookDeliveryOutcome>;
-  /** Single-attempt admin test delivery (kind='test'); returns the observed result. */
   sendTestDelivery(input: { organizationId: string; domainId: string }): Promise<LogWebhookDeliveryOutcome>;
-  /** Awaits all in-flight fire-and-forget deliveries (tests, shutdown). */
+  processNext(id?: string): Promise<LogWebhookDeliveryOutcome | null>;
   flush(): Promise<void>;
+  start(): () => Promise<void>;
 };
 
-const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 export function createLogWebhookDeliverer({
-  db,
-  env,
-  transport = nodeWebhookTransport,
-  metrics,
-  now = () => new Date(),
-  sleep = defaultSleep,
-  newId = randomUUID
+  db, env, transport = nodeWebhookTransport, metrics, now = () => new Date(), newId = randomUUID
 }: LogWebhookDelivererOptions): LogWebhookDeliverer {
-  const inFlight = new Set<Promise<unknown>>();
   const ssrf: WebhookSsrfOptions = { allowInsecureLocal: env.allowInsecureLocal };
 
-  async function attemptOnce(input: {
-    url: URL;
-    secret: string;
-    payload: unknown;
-  }): Promise<WebhookTransportResult> {
-    const rawBody = JSON.stringify(input.payload);
-    const timestampSeconds = Math.floor(now().getTime() / 1000);
-    return transport({
-      url: input.url,
-      rawBody,
-      headers: {
-        [WEBHOOK_SIGNATURE_HEADER]: signWebhookPayload({ secret: input.secret, timestampSeconds, rawBody }),
-        [WEBHOOK_TIMESTAMP_HEADER]: String(timestampSeconds)
-      },
-      timeoutMs: env.timeoutMs,
-      ssrf
-    });
-  }
-
-  async function recordAttempt(input: {
-    organizationId: string;
-    logDomainId: string;
-    logRecordId?: string;
-    runId?: string;
-    kind: "result" | "test";
-    attempt: number;
-    status: "delivered" | "retrying" | "failed";
-    httpStatus?: number;
-    error?: string;
-  }) {
-    try {
-      await insertLogWebhookDelivery(db, { id: newId(), ...input });
-    } catch {
-      // Recording is itself best-effort; a bookkeeping failure must not break delivery.
-    }
-  }
-
-  async function runDelivery(input: {
-    organizationId: string;
-    logDomainId: string;
-    logRecordId?: string;
-    runId?: string;
-    kind: "result" | "test";
-    payload: unknown;
-    maxAttempts: number;
+  async function sendAttempt(queryable: Queryable, input: {
+    organizationId: string; logDomainId: string; logRecordId?: string; runId?: string;
+    kind: "result" | "test"; payload: unknown; attempt: number; maxAttempts: number;
   }): Promise<LogWebhookDeliveryOutcome> {
-    const config = await getLogDomainWebhookConfig(db, {
-      organizationId: input.organizationId,
-      domainId: input.logDomainId
+    const config = await getLogDomainWebhookConfig(queryable, {
+      organizationId: input.organizationId, domainId: input.logDomainId
     });
-    if (!config || !config.enabled || !config.url?.trim() || !config.secret?.trim()) {
-      const error =
-        input.kind === "test"
-          ? "Webhook is not fully configured (URL, secret, and enabled are all required)."
-          : undefined;
-      if (input.kind === "test") {
-        metrics?.recordLogAnalysisWebhookDelivery({ domain: input.logDomainId, outcome: "skipped" });
-      }
-      return { status: "skipped", attempts: 0, error };
+    if (!config?.enabled || !config.url?.trim() || !config.secret?.trim()) {
+      if (input.kind === "test") metrics?.recordLogAnalysisWebhookDelivery({ domain: input.logDomainId, outcome: "skipped" });
+      return { status: "skipped", attempts: 0, error: input.kind === "test"
+        ? "Webhook is not fully configured (URL, secret, and enabled are all required)." : undefined };
     }
-
+    const startedAtMs = now().getTime();
     const validation = validateWebhookUrl(config.url, ssrf);
+    let result: WebhookTransportResult;
+    let signingFailed = false;
     if (!validation.ok) {
-      await recordAttempt({
-        organizationId: input.organizationId,
-        logDomainId: input.logDomainId,
-        logRecordId: input.logRecordId,
-        runId: input.runId,
-        kind: input.kind,
-        attempt: 1,
-        status: "failed",
-        error: `${validation.reason}: ${validation.message}`
-      });
-      metrics?.recordLogAnalysisWebhookDelivery({ domain: input.logDomainId, outcome: "blocked" });
-      return { status: "failed", attempts: 1, error: validation.message };
-    }
-
-    let lastResult: WebhookTransportResult = { ok: false, error: "not attempted" };
-    for (let attempt = 1; attempt <= input.maxAttempts; attempt += 1) {
-      const startedAtMs = now().getTime();
-      lastResult = await attemptOnce({ url: validation.url, secret: config.secret, payload: input.payload });
-      const durationMs = Math.max(0, now().getTime() - startedAtMs);
-      const ssrfBlocked = lastResult.error === "Webhook host resolves to a blocked address range.";
-      const terminal = lastResult.ok || ssrfBlocked || attempt === input.maxAttempts;
-      const status = lastResult.ok ? "delivered" : terminal ? "failed" : "retrying";
-
-      await recordAttempt({
-        organizationId: input.organizationId,
-        logDomainId: input.logDomainId,
-        logRecordId: input.logRecordId,
-        runId: input.runId,
-        kind: input.kind,
-        attempt,
-        status,
-        httpStatus: lastResult.httpStatus,
-        error: lastResult.error
-      });
-      metrics?.recordLogAnalysisWebhookDelivery({
-        domain: input.logDomainId,
-        outcome: lastResult.ok ? "delivered" : ssrfBlocked ? "blocked" : terminal ? "failed" : "retrying",
-        durationMs
-      });
-
-      if (lastResult.ok) {
-        return { status: "delivered", attempts: attempt, httpStatus: lastResult.httpStatus };
-      }
-      if (ssrfBlocked) {
-        // A blocked address will not heal by retrying; stop immediately.
-        return { status: "failed", attempts: attempt, httpStatus: lastResult.httpStatus, error: lastResult.error };
-      }
-      if (attempt < input.maxAttempts) {
-        await sleep(env.retryBaseDelayMs * 2 ** (attempt - 1));
+      result = { ok: false, error: `${validation.reason}: ${validation.message}` };
+    } else {
+      try {
+        const secret = config.secretEncrypted
+          ? decryptLogWebhookSecret(config.secret, input.organizationId, input.logDomainId)
+          : config.secret;
+        const rawBody = JSON.stringify(input.payload);
+        const timestampSeconds = Math.floor(now().getTime() / 1000);
+        result = await transport({
+          url: validation.url, rawBody,
+          headers: {
+            [WEBHOOK_SIGNATURE_HEADER]: signWebhookPayload({ secret, timestampSeconds, rawBody }),
+            [WEBHOOK_TIMESTAMP_HEADER]: String(timestampSeconds)
+          },
+          timeoutMs: env.timeoutMs, ssrf
+        });
+      } catch (error) {
+        signingFailed = error instanceof LogWebhookSecretDecryptionError;
+        result = { ok: false, error: error instanceof LogWebhookSecretDecryptionError ? error.message : "Webhook signing or transport failed." };
       }
     }
-
-    return { status: "failed", attempts: input.maxAttempts, httpStatus: lastResult.httpStatus, error: lastResult.error };
+    const blocked = !validation.ok || result.error === "Webhook host resolves to a blocked address range.";
+    const status = result.ok ? "delivered" : blocked || signingFailed || input.attempt >= input.maxAttempts ? "failed" : "retrying";
+    const recording = insertLogWebhookDelivery(queryable, {
+      id: newId(), organizationId: input.organizationId, logDomainId: input.logDomainId,
+      logRecordId: input.logRecordId, runId: input.runId, kind: input.kind,
+      attempt: input.attempt, status, httpStatus: result.httpStatus, error: result.error
+    });
+    if (input.kind === "test") await recording.catch(() => { /* keep the observed single-send result */ });
+    else await recording;
+    metrics?.recordLogAnalysisWebhookDelivery({
+      domain: input.logDomainId, outcome: blocked ? "blocked" : status,
+      durationMs: Math.max(0, now().getTime() - startedAtMs)
+    });
+    return { status, attempts: input.attempt, httpStatus: result.httpStatus, error: validation.ok ? result.error : validation.message };
   }
 
-  async function deliverAnalysisResult(input: LogAnalysisResultWebhookInput): Promise<LogWebhookDeliveryOutcome> {
-    return runDelivery({
-      organizationId: input.organizationId,
-      logDomainId: input.logDomainId,
-      logRecordId: input.logId,
-      runId: input.runId,
-      kind: "result",
-      payload: buildLogResultWebhookPayload(input),
-      maxAttempts: Math.max(1, env.maxAttempts)
+  async function processNext(id?: string): Promise<LogWebhookDeliveryOutcome | null> {
+    const row = await claimLogWebhook(db, Math.max(60_000, env.timeoutMs * 2), id);
+    if (!row) return null;
+    return db.transaction(async (tx) => {
+      // Keep the row lock through send + bookkeeping. Even an expired lease cannot
+      // cause a second live worker to send this attempt; a crash releases the lock.
+      const locked = await tx.query(
+        `select id from log_webhook_outbox where id = $1 and lease_token = $2
+         and status = 'processing' for update`, [row.id, row.lease_token]
+      );
+      if (!locked.rows.length) return null;
+      const outcome = await sendAttempt(tx, {
+        organizationId: row.organization_id, logDomainId: row.log_domain_id,
+        logRecordId: row.log_record_id, runId: row.run_id, kind: "result",
+        payload: row.payload, attempt: row.attempts + 1, maxAttempts: env.maxAttempts
+      });
+      const decision = decideRetry({
+        attemptCount: outcome.attempts, maxAttempts: env.maxAttempts,
+        // Preserve the existing first retry delay (the shared policy starts at 2x).
+        baseDelayMs: env.retryBaseDelayMs / 2, now: now()
+      });
+      await tx.query(
+        `update log_webhook_outbox set status = $3, attempts = $4, next_attempt_at = $5,
+           lease_token = null, lease_expires_at = null, updated_at = now()
+         where id = $1 and lease_token = $2`,
+        [row.id, row.lease_token, outcome.status === "retrying" ? "retry" : outcome.status === "delivered" ? "delivered" : "failed",
+          outcome.attempts, decision.action === "retry" ? decision.nextRunAt : now().toISOString()]
+      );
+      return outcome;
     });
+  }
+
+  let draining: Promise<void> | undefined;
+  function flush(): Promise<void> {
+    if (!draining) {
+      draining = (async () => { while (await processNext()) { /* drain due rows */ } })()
+        .catch(() => { /* durable rows remain due or recover after lease expiry */ })
+        .finally(() => { draining = undefined; });
+    }
+    return draining;
   }
 
   return {
-    deliverAnalysisResult,
-    notifyAnalysisTerminal(input) {
-      const pending = deliverAnalysisResult(input).catch(() => {
-        // Best-effort channel: a delivery failure never surfaces into the worker.
-      });
-      inFlight.add(pending);
-      void pending.finally(() => inFlight.delete(pending));
+    processNext, flush,
+    async deliverAnalysisResult(input) {
+      const id = await enqueueLogWebhook(db, input);
+      if (!id) return { status: "skipped", attempts: 0 };
+      return (await processNext(id)) ?? { status: "skipped", attempts: 0 };
     },
+    notifyAnalysisTerminal() { void flush(); },
     async sendTestDelivery(input) {
-      const nowIso = now().toISOString();
-      return runDelivery({
-        organizationId: input.organizationId,
-        logDomainId: input.domainId,
-        kind: "test",
-        payload: {
-          event: "log-analysis.test",
-          logDomainId: input.domainId,
-          occurredAt: nowIso,
-          message: "WiseEff log-analysis webhook test delivery."
-        },
-        maxAttempts: 1
+      return sendAttempt(db, {
+        organizationId: input.organizationId, logDomainId: input.domainId, kind: "test",
+        payload: { event: "log-analysis.test", logDomainId: input.domainId,
+          occurredAt: now().toISOString(), message: "WiseEff log-analysis webhook test delivery." },
+        attempt: 1, maxAttempts: 1
       });
     },
-    async flush() {
-      await Promise.all([...inFlight]);
+    start() {
+      const tick = () => { void flush(); };
+      const timer = setInterval(tick, 1000);
+      tick();
+      return async () => { clearInterval(timer); await draining; };
     }
   };
 }

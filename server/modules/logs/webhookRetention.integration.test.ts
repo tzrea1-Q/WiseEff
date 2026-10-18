@@ -5,7 +5,7 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import { pruneLogWebhookDeliveries } from "./webhookRetention";
+import { pruneLogWebhookDeliveries, pruneLogWebhookOutbox } from "./webhookRetention";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -99,5 +99,37 @@ describe.skipIf(!databaseAvailable)("log webhook delivery retention (integration
     expect(await deliveryIds("retention-domain-a1")).toEqual(["a1-04", "a1-03"]);
     expect(await deliveryIds("retention-domain-a2")).toEqual(["a2-04", "a2-03"]);
     expect(await deliveryIds("retention-domain-b1")).toEqual(["b1-04", "b1-03"]);
+  });
+
+  it("retains the newest terminal outbox rows per organization/domain without pruning live work", async () => {
+    for (const [domainId, organizationId] of [
+      ["retention-domain-a1", "retention-org-a"],
+      ["retention-domain-a2", "retention-org-a"],
+      ["retention-domain-b1", "retention-org-b"]
+    ]) {
+      await db.query(`insert into log_file_objects
+        (id, organization_id, storage_key, file_name, content_type, file_size_bytes, checksum_sha256)
+        values ($1, $2, $1, 'retention.log', 'text/plain', 1, 'checksum')`, [`${domainId}-file`, organizationId]);
+      await db.query(`insert into log_records (id, organization_id, file_object_id, file_name, source, status, log_domain_id)
+        values ($1, $2, $3, 'retention.log', 'api', 'complete', $4)`, [`${domainId}-log`, organizationId, `${domainId}-file`, domainId]);
+      for (const [suffix, status] of [
+        ["01", "delivered"], ["02", "failed"], ["03", "delivered"], ["04", "failed"],
+        ["05", "pending"], ["06", "retry"], ["07", "processing"]
+      ]) {
+        const id = `${domainId}-${suffix}`;
+        await db.query(`insert into log_webhook_outbox
+          (id, organization_id, log_domain_id, log_record_id, run_id, payload, status, created_at)
+          values ($1, $2, $3, $4, $1, '{}'::jsonb, $5, '2026-08-23T01:00:00.000Z')`,
+        [id, organizationId, domainId, `${domainId}-log`, status]);
+      }
+    }
+    expect(await pruneLogWebhookOutbox(db, { keepPerDomain: 2, batchLimit: 1 })).toBe(6);
+    expect(await pruneLogWebhookOutbox(db, { keepPerDomain: 2, batchLimit: 1 })).toBe(0);
+    const remaining = await db.query<{ id: string; status: string }>(`select id, status from log_webhook_outbox order by id`);
+    expect(remaining.rows).toEqual(["retention-domain-a1", "retention-domain-a2", "retention-domain-b1"].flatMap((domainId) => [
+      { id: `${domainId}-03`, status: "delivered" }, { id: `${domainId}-04`, status: "failed" },
+      { id: `${domainId}-05`, status: "pending" }, { id: `${domainId}-06`, status: "retry" },
+      { id: `${domainId}-07`, status: "processing" }
+    ]));
   });
 });

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createTokenVerifier } from "../modules/auth/tokenVerifier";
 import { loadServerEnv } from "./env";
+import { resolveLogWebhookSecretKey } from "./logWebhookSecretKey";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const envExamplePath = path.join(projectRoot, ".env.example");
@@ -76,6 +77,7 @@ describe(".env.example", () => {
       M5_SMOKE_ALLOW_NO_API: "false"
     });
     expect(parsed.AUTH_TOKEN_HMAC_SECRET.length).toBeGreaterThanOrEqual(32);
+    expect(resolveLogWebhookSecretKey(parsed)).toEqual(resolveLogWebhookSecretKey({ NODE_ENV: "development" }));
     expect(parsed.M5_SMOKE_AUTHORIZATION).toMatch(/^Bearer \S+\.\S+$/);
     expect(parsed.WISEEFF_SMOKE_AUTHORIZATION).toBe(parsed.M5_SMOKE_AUTHORIZATION);
     await expect(

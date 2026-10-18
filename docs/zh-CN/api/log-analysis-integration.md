@@ -41,6 +41,7 @@ Admin 在 `/log-admin`(业务域治理 → 结果回调)按域配置:HTTPS URL�
 ```json
 {
   "event": "log-analysis.completed",
+  "eventId": "log-result:run-...",
   "recordId": "log-...",
   "runId": "run-...",
   "fileName": "charging-foldback.log",
@@ -60,10 +61,10 @@ Admin 在 `/log-admin`(业务域治理 → 结果回调)按域配置:HTTPS URL�
 
 ### 投递语义
 
-- 尽力而为、异步:投递永不阻塞或影响分析本身。失败按指数退避重试(默认 3 次)后标记失败;每次尝试都在 `/log-admin` → 最近投递中可见。请把 Webhook 当通知通道,REST API 才是事实来源。
-- 投递尝试历史按日志业务域分别设上界。worker 默认按 `created_at DESC, id DESC` 保留最近 10,000 行；清理失败只记录脱敏 warning，并在下一个 60 秒周期重试，不会中断投递。运维方可通过 `LOG_WEBHOOK_DELIVERY_RETENTION_*` 调整上界或停止未来裁剪，但已删除记录只能从数据库备份恢复。
+- 有界重试下的至少一次投递：终态事务在确认完成前持久化 outbox 事件。worker 通过租约和 `FOR UPDATE SKIP LOCKED` 领取到期事件；发送或退避期间崩溃后，可在租约过期后恢复。失败按指数退避重试（默认 3 次），耗尽后保留失败状态；已记录的每次尝试都在 `/log-admin` → 最近投递中可见，REST API 仍是事实来源。
+- 投递尝试历史按日志业务域分别设上界。worker 默认按 `created_at DESC, id DESC` 保留最近 10,000 行；清理失败只记录脱敏 warning，并在下一个 60 秒周期重试，不会中断投递。运维方可通过 `LOG_WEBHOOK_DELIVERY_RETENTION_*` 调整上界或停止未来裁剪，但已删除记录只能从数据库备份恢复。 投递尝试历史与终态 outbox（`delivered` / `failed`）分别按同一设置、同一排序独立保留最近 N 行；每张表每周期最多清理十批、每批 1,000 行。`pending`、`processing`、`retry` 事件不参与裁剪。
 - 尽快返回 `2xx`(耗时处理请异步化)。发送端不跟随重定向、丢弃响应体。
-- 重试链路上是 at-least-once——若处理端不幂等,请按 `runId` 去重。
+- 接收方可能已接受请求，而发送方在记录成功前崩溃。结果事件请按稳定的 `eventId`（或现有 `runId`）去重；重试保留原 payload 与事件 ID。管理员测试端点仍同步发送一次。
 
 ### 校验签名
 

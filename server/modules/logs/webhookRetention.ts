@@ -17,14 +17,15 @@ export type LogWebhookDeliveryRetentionLoopStarter = (
 ) => () => Promise<void>;
 
 /**
- * Prune one bounded maintenance cycle while keeping the newest delivery
- * attempts for every organization-scoped log domain. Timestamp ties resolve
+ * Prune one bounded maintenance cycle while keeping the newest rows
+ * for every organization-scoped log domain. Timestamp ties resolve
  * by immutable row id. Victims are selected once, then deleted in small
  * batches so one cycle never repeats the ranking scan.
  */
-export async function pruneLogWebhookDeliveries(
+async function pruneWebhookRows(
   db: Database,
-  options: { keepPerDomain: number; batchLimit: number }
+  options: { keepPerDomain: number; batchLimit: number },
+  table: "log_webhook_deliveries" | "log_webhook_outbox"
 ): Promise<number> {
   if (!Number.isInteger(options.keepPerDomain) || options.keepPerDomain < 1 || options.keepPerDomain > 1_000_000) {
     throw new Error("keepPerDomain must be an integer between 1 and 1000000.");
@@ -39,7 +40,7 @@ export async function pruneLogWebhookDeliveries(
 
   return db.transaction(async (tx) => {
     const selectionLimit = options.batchLimit * LOG_WEBHOOK_DELIVERY_RETENTION_MAX_BATCHES;
-    const victims = await tx.query<{ id: string }>(
+    const victims = table === "log_webhook_deliveries" ? await tx.query<{ id: string }>(
       `with ranked as (
          select
            id,
@@ -58,6 +59,26 @@ export async function pruneLogWebhookDeliveries(
        order by organization_id, log_domain_id, created_at desc, id desc
        limit $2`,
       [options.keepPerDomain, selectionLimit]
+    ) : await tx.query<{ id: string }>(
+      `with ranked as (
+         select
+           id,
+           organization_id,
+           log_domain_id,
+           created_at,
+           row_number() over (
+             partition by organization_id, log_domain_id
+             order by created_at desc, id desc
+           ) as retention_rank
+         from log_webhook_outbox
+         where status in ('delivered', 'failed')
+       )
+       select id
+       from ranked
+       where retention_rank > $1
+       order by organization_id, log_domain_id, created_at desc, id desc
+       limit $2`,
+      [options.keepPerDomain, selectionLimit]
     );
 
     let deletedRows = 0;
@@ -65,9 +86,15 @@ export async function pruneLogWebhookDeliveries(
       const victimIds = victims.rows
         .slice(offset, offset + options.batchLimit)
         .map((row) => row.id);
-      const result = await tx.query<{ id: string }>(
+      const result = table === "log_webhook_deliveries" ? await tx.query<{ id: string }>(
         `delete from log_webhook_deliveries
          where id = any($1::text[])
+         returning id`,
+        [victimIds]
+      ) : await tx.query<{ id: string }>(
+        `delete from log_webhook_outbox
+         where id = any($1::text[])
+           and status in ('delivered', 'failed')
          returning id`,
         [victimIds]
       );
@@ -76,6 +103,14 @@ export async function pruneLogWebhookDeliveries(
 
     return deletedRows;
   });
+}
+
+export function pruneLogWebhookDeliveries(db: Database, options: { keepPerDomain: number; batchLimit: number }): Promise<number> {
+  return pruneWebhookRows(db, options, "log_webhook_deliveries");
+}
+
+export function pruneLogWebhookOutbox(db: Database, options: { keepPerDomain: number; batchLimit: number }): Promise<number> {
+  return pruneWebhookRows(db, options, "log_webhook_outbox");
 }
 
 /**
@@ -100,11 +135,16 @@ export function startLogWebhookDeliveryRetentionLoop(
         keepPerDomain: options.keepPerDomain,
         batchLimit: LOG_WEBHOOK_DELIVERY_RETENTION_BATCH_LIMIT
       });
+      const deletedOutboxRows = await pruneLogWebhookOutbox(options.db, {
+        keepPerDomain: options.keepPerDomain,
+        batchLimit: LOG_WEBHOOK_DELIVERY_RETENTION_BATCH_LIMIT
+      });
 
       logger.info({
         event: "log_webhook_delivery_retention",
         status: "succeeded",
         deletedRows,
+        deletedOutboxRows,
         durationMs: Math.max(0, Date.now() - startedAt)
       });
     })()

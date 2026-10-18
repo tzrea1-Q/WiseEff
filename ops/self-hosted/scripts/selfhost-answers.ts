@@ -1,4 +1,7 @@
 import { resolveXiaozeLlmConfig } from "../../../server/config/xiaozeLlmConfig";
+import { randomBytes } from "node:crypto";
+
+export const generateLogWebhookEncryptionKey = () => randomBytes(32).toString("base64");
 
 export const selfHostProfiles = ["ip-lab", "acme"] as const;
 export const selfHostTlsModes = ["http", "internal", "acme"] as const;
@@ -35,6 +38,7 @@ export type SelfHostAnswers = {
 export type SelfHostSecrets = {
   postgresPassword: string;
   minioPassword: string;
+  logWebhookEncryptionKey?: string;
 };
 
 export type SelfHostCliOptions = {

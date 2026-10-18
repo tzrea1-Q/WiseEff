@@ -1,4 +1,5 @@
 import type { AuthContext } from "../auth/types";
+import { enqueueTerminalLogWebhook } from "./webhookOutbox";
 import { completeJob, createLogAnalysisJob, updateJobProgress } from "../jobs/repository";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -986,6 +987,7 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         `,
         [input.organizationId, input.logId, input.runId]
       );
+      await enqueueTerminalLogWebhook(tx, input);
     });
 
     return true;
@@ -1027,6 +1029,7 @@ export async function completeRun(
       `,
       [input.organizationId, input.logId, input.runId]
     );
+    await enqueueTerminalLogWebhook(tx, input);
   });
 }
 
@@ -1061,6 +1064,7 @@ export async function failRun(
       `,
       [input.organizationId, input.logId, input.runId, input.error]
     );
+    await enqueueTerminalLogWebhook(tx, input);
   });
 }
 

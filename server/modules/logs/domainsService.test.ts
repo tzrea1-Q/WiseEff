@@ -9,6 +9,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
+import { decryptLogWebhookSecret } from "./webhookSecrets";
 import {
   archiveLogDomainRecord,
   createLogDomainRecord,
@@ -467,12 +468,15 @@ describe.skipIf(!databaseAvailable)("log domains service", () => {
       });
       expect(JSON.stringify(saved)).not.toContain(secretValue);
 
-      // The secret lives only in the row; responses never carry it.
-      expect(await domainRow(domain.id)).toMatchObject({
+      // The raw column is encrypted; responses and audit never carry the secret.
+      const stored = await domainRow(domain.id);
+      expect(stored).toMatchObject({
         webhook_url: "https://hooks.example.com/wiseeff",
-        webhook_secret: secretValue,
+        webhook_secret: expect.stringMatching(/^logwh:v1:/),
         webhook_enabled: true
       });
+      expect(stored.webhook_secret).not.toBe(secretValue);
+      expect(decryptLogWebhookSecret(stored.webhook_secret!, "org-1", domain.id)).toBe(secretValue);
 
       const audits = await auditRows("log-domain-webhook-config");
       expect(audits).toHaveLength(1);
@@ -489,6 +493,7 @@ describe.skipIf(!databaseAvailable)("log domains service", () => {
         { domainId: domain.id, url: "https://hooks.example.com/wiseeff", enabled: true, secret: secretValue },
         context
       );
+      const encrypted = (await domainRow(domain.id)).webhook_secret;
 
       const saved = await setLogDomainWebhookRecord(
         db,
@@ -498,7 +503,8 @@ describe.skipIf(!databaseAvailable)("log domains service", () => {
       );
 
       expect(saved.webhook.secretConfigured).toBe(true);
-      expect((await domainRow(domain.id)).webhook_secret).toBe(secretValue);
+      expect((await domainRow(domain.id)).webhook_secret).toBe(encrypted);
+      expect(decryptLogWebhookSecret(encrypted!, "org-1", domain.id)).toBe(secretValue);
       // created_at is transaction-stable, so pick each audit by content.
       const audits = await auditRows("log-domain-webhook-config");
       expect(audits).toHaveLength(2);
