@@ -1,0 +1,55 @@
+# ADR-0047: Log analysis is a skill platform over a shared agent kernel
+
+> Chinese companion: [中文决策记录](../zh-CN/design-docs/adr-0047-log-analysis-is-a-skill-platform-over-a-shared-agent-kernel.md)
+
+Date: 2026-10-18
+
+## Status
+
+Proposed. The product owner settled the three open inputs on 2026-10-18 (recorded under Decision). Implementation is tracked in the [analysis skill platform plan](../exec-plans/active/2026-10-18-log-analysis-skill-platform.md); nothing in this record is implemented yet.
+
+## Context
+
+The shipped log analysis system ([2026-08-12 plan](../exec-plans/active/2026-08-12-agent-log-analysis-system.md), ADR-0022) has a sound engine and a weak extension model:
+
+- **Domain logic lives in code.** The prefilter's rules are charging-specific regexes (`server/modules/logs/prefilter.ts:27`), rule ids are a closed TypeScript union (`server/modules/logs/analyzer.ts:7`), and the agent's instructions are identical for every domain (`server/modules/logs/analyzer/agentLoop.ts:76`). Onboarding a new business module means a code change and a deploy.
+- **A log domain is thin, live configuration.** It holds a name, description, format profile, model override, webhook and knowledge links. The worker joins the domain's *current* format profile at analysis time (`server/modules/logs/repository.ts:765`), and reports record only `promptVersion` and `model`, so editing a domain silently changes how past runs would reproduce.
+- **The toolset is fixed.** Five tools (`server/modules/logs/analyzer/tools/toolCatalog.ts`); nothing a domain declares can add one.
+- **One file per analysis.** Intake accepts a text file, single-file `.gz` or single-entry `.zip` (`server/modules/logs/unpack.ts`), and the worker holds the whole text in memory. Device log dumps are normally multi-file bundles.
+- **Structured payloads are opaque.** The format profile reads timestamps, severity, multi-line merges and `key=value` tokens. It cannot take a hex register value or protocol frame out of a line and decode it into named fields.
+- **Quality checks are developer-only.** Golden cases are YAML files in the repository run from a CLI; an administrator cannot test what they configure.
+
+The product goal (2026-10-18) is a general log analysis platform: administrators build analysis capabilities per business module — diagnostic procedures, log parsing, Markdown knowledge, and the module's source code — while WiseEff provides intake, file management, signal extraction and a common agent workflow.
+
+## Decision
+
+1. **The unit of extension is an analysis skill.** An analysis skill is an organization-scoped, versioned bundle describing how to analyze one business module's logs: diagnostic procedure (Markdown), file applicability, parsing and decoding rules, signal rules, knowledge links, an optional source snapshot, budgets, and test cases. It evolves the log domain in place: existing log domain ids become skill ids, so records, knowledge links, webhooks and feedback keep their references, and `logDomainId` stays accepted as an alias at the API.
+2. **Skills publish immutable revisions, and runs pin one.** Editing creates a draft; publishing freezes a revision. Every analysis run records the skill revision it used and the worker loads that revision, never live configuration. A rerun uses the current published revision unless one is named. Knowledge stays in the knowledge base: a skill links entries, and a run records which knowledge revisions it actually retrieved.
+3. **Parsing is declarative extraction plus decoding, with a closed construct set.** A skill's parsing rules select files, extract fields from lines with named-group patterns, convert them to typed values, and decode them with a fixed set of constructs: register bit-fields, byte-layout frames (endianness, offsets, `switch` on a decoded field, counted repeats, TLV), lookup tables, scale/offset/unit, and a fixed checksum set. Signal rules over decoded fields replace hard-coded prefilter rules. The output is **decoded events** anchored to a file and line. Administrator-authored patterns run on a linear-time regex engine with per-line and per-run limits.
+4. **Parse scripts come later, behind the same contract.** Scripts restricted to log parsing are a planned later phase. They will produce the same decoded-event contract, run in an isolated sandbox with no network, filesystem, database or secrets, under CPU, memory and time limits, and their output is untrusted data. The sandbox choice needs its own ADR before implementation.
+5. **Source code enters through source snapshots and bounded tools.** A source snapshot is an immutable, version-labelled upload of a module's source, stored in the object store and indexed in PostgreSQL (consistent with ADR-0025): a log-statement index (format strings and where they are emitted) plus chunked text search. The agent reaches source only through capped tools; source is never bulk-loaded into the prompt. Source and log excerpts may be sent to the configured `LOG_ANALYSIS_*` provider (product-owner decision, 2026-10-18).
+6. **The platform owns everything that is not module-specific.** Bundle intake and unpacking, file management and per-file line indexes, generic signals (severity, timestamps, error codes, crash signatures, line-template clustering, bursts and gaps), the agent loop and its protocol, grounding, degradation, budgets, evaluation scoring, permissions, audit, webhooks and the API. A run without a skill uses only these, which is the evolved uncategorized log domain.
+7. **The kernel stays the ADR-0022 bounded loop, with tools composed per run.** Platform tools are always available; skill-dependent tools (decoded events, source search) appear only when the pinned revision provides their data. The skill's procedure is inserted as a delimited section that cannot override the platform protocol: read-only, strict JSON, grounded evidence. Evidence cites a log line (file and line) or a source location, and every citation must have been seen in a tool result. Skills may lower budgets or raise them up to platform caps.
+8. **Skills are tested in the product before publishing.** Parse tests (sample line → expected decoded fields) are deterministic and run on every save. Analysis cases (a log bundle plus expected root cause, key evidence and actions) run on the real model with the existing quality scoring, compared with the previous revision. Results are shown at publish time; they inform the administrator rather than block publication.
+
+## Considered Options
+
+- **Keep the log domain as live configuration and add fields** — rejected: without revisions a report cannot say which procedure, rules or decoders produced it, and an edit changes the meaning of every rerun.
+- **Admin-uploaded scripts as the first parsing mechanism** — rejected for the first phases: it puts administrator code inside the worker, next to database credentials and other organizations' data. Declarative decoding covers structured line formats; scripts follow once a sandbox is decided (Decision 4).
+- **Store source code as knowledge-base entries** — rejected: knowledge entries are prose documents with editorial revisions; source needs version labels matching a firmware build, file and line addressing, and a log-statement index.
+- **External code or log search (OpenGrok, Sourcegraph, Elasticsearch)** — rejected for now: a new stateful service per self-hosted install, against ADR-0025's PostgreSQL-first retrieval. Revisit if snapshot size makes PostgreSQL indexing impractical.
+- **A general agent-skill runtime with a filesystem and code execution** — rejected: it requires the code-execution sandbox this ADR defers, and it would turn an advisory batch analyzer into a general executor. The bundle *layout* (a `SKILL.md` procedure plus supporting files) is borrowed for import and export because administrators already recognize it.
+- **A general expression language for decoding (CEL, JSONata)** — deferred: a closed construct set is easier to validate, test and explain in the editor. Add a bounded expression construct only when a real protocol needs it.
+
+## Consequences
+
+- Run provenance grows a skill revision id; evidence grows an optional file path and an optional source location. Both are additive to the output contract, and single-file runs without a skill read as today.
+- The hard-coded charging rules move into data as a seed skill. The rules fallback then uses the pinned skill's signal rules plus generic signals, so degraded analysis stays meaningful for any skill.
+- The physical `log_domains` table remains the skill identity table; renaming it is cosmetic and deferred. The term "log domain" retires in favour of "analysis skill" in UI and docs.
+- Bundles raise intake limits and require per-file line-offset indexes so tools can read ranges without loading every file into memory. Archive handling must reject path traversal, links and nested archives beyond one level.
+- The existing format profile's `new RegExp` on administrator input (`server/modules/logs/parser.ts`) is a backtracking risk on large inputs; the move to a linear-time engine applies to existing profiles too.
+- Source snapshots can be large. Indexing is asynchronous, capped by file type and size, and a snapshot is unavailable to analysis until indexed; the agent then runs without source tools rather than failing.
+- Sending source to the provider is an accepted data flow. `docs/SECURITY.md` must state it when source snapshots ship.
+- Self-service integration needs a machine credential, which the product does not have today (users authenticate with OIDC or local-account bearer tokens). Integration credentials are a new principal kind and get their own ADR before they ship.
+- Authoring is sample-driven and form-first in the product; the YAML form of a revision is an equivalent view and the package format, not the primary editor.
+- Two LLM paths still coexist (ADR-0022). Skills never gain write access, and Xiaoze still reads finished conclusions only.
