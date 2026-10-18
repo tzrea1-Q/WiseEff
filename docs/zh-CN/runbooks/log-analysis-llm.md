@@ -62,8 +62,8 @@
 ## 结果 Webhook（P3b）
 
 - 按域配置在 `/log-admin` → 业务域治理 → 结果回调（URL、只写密钥、启用开关）；发送端调参用 `LOG_WEBHOOK_TIMEOUT_MS` / `LOG_WEBHOOK_MAX_ATTEMPTS` / `LOG_WEBHOOK_RETRY_BASE_DELAY_MS`。终态事务持久化 outbox，轮询及 Redis 模式的日志 worker 都负责排空；HTTP 故障不影响分析，入队失败则回滚终态事务。崩溃后租约到期可恢复；接收方按稳定 `eventId` 去重，耗尽重试后状态为 `failed`。该通道仍不进入 `/health/ready`。
-- 升级前向 API 与日志 worker 提供同一个 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY`（`openssl rand -base64 32`），跨重启保存并独立备份。先运行 migration `0185`；启动会幂等加密现有明文行。生产环境已有回调配置而缺少密钥时拒绝启动；开发/测试才可使用确定性默认值。
-- 轮换：停止所有 API 与日志 worker，备份数据库及旧密钥。使用下方离线调用，将旧密钥放在 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY`，新密钥放在临时环境变量 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY_NEXT`；脚本在单一事务中重新加密，并写入新密钥指纹。成功后将所有进程配置切换到新密钥再启动；保留旧密钥以恢复旧备份，切勿仅替换环境变量。
+- 升级前向 API 与日志 worker 提供同一个 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY`（`openssl rand -base64 32`），跨重启保存并独立备份。先运行 migration `0185`；启动会幂等加密现有明文行。生产环境已有回调配置而缺少密钥时拒绝启动；开发/测试才可使用确定性默认值。 migration 同时向已有 `log_domains` INSERT 权限的非 owner、非 PUBLIC 角色授予 outbox DML，无需重新配置运行时 LOGIN。回填只处理 `webhook_secret_encrypted=false` 的行，密钥以 `logwh:` 开头也仍作为明文处理；写入信封时将标记设为 true。已标记密文不在启动时解密；密钥 ID 不匹配或完整性校验失败只使该域投递立即失败，原因写入投递记录，其它域及进程启动不受影响。
+- 轮换：停止所有 API 与日志 worker，备份数据库及旧密钥。使用下方离线调用，将旧密钥放在 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY`，新密钥放在临时环境变量 `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY_NEXT`；脚本在单一事务中重新加密，并写入新密钥指纹。成功后将所有进程配置切换到新密钥再启动；保留旧密钥以恢复旧备份，切勿仅替换环境变量。 离线轮换只重加密已标记且密钥 ID/版本不同的行；旧密钥错误时整个轮换事务回滚。
 
 ```bash
 node --import tsx --input-type=module <<'JS'

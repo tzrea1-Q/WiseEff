@@ -3997,6 +3997,7 @@ Indexes:
 | `webhook_enabled` | `boolean` | no | `false` |
 | `model_override` | `text` | yes | — |
 | `webhook_secret_last_four` | `text` | yes | — |
+| `webhook_secret_encrypted` | `boolean` | no | `false` |
 
 Constraints:
 

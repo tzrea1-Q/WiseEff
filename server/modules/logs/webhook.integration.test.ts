@@ -7,7 +7,7 @@ import type { AuthContext, BackendPermission } from "../auth/types";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable, type EphemeralTestDatabase } from "../../testing/testDatabase";
 import { createPostgresDatabase, type Database, type RootDatabase } from "../../shared/database/client";
 import { claimLogWebhook, enqueueLogWebhook } from "./webhookOutbox";
-import { decryptLogWebhookSecret, ensureLogWebhookSecretsEncrypted } from "./webhookSecrets";
+import { decryptLogWebhookSecret, encryptLogWebhookSecret, ensureLogWebhookSecretsEncrypted } from "./webhookSecrets";
 import { resolveLogWebhookSecretKey } from "../../config/logWebhookSecretKey";
 import { completeLogAnalysisJobWithReport, failRun } from "./repository";
 import { claimJobById, createLogAnalysisJob } from "../jobs/repository";
@@ -232,6 +232,38 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     expect(await read()).toBe("logwh:v2:unknown");
   });
 
+  it.each(["logwh:customer-secret-value", encryptLogWebhookSecret(SECRET, ORG_ID, "legacy-domain")])(
+    "backfills a legacy logwh-prefixed plaintext secret and preserves its signature (%#)", async (secret) => {
+    await configureWebhook();
+    await db.query(`update log_domains set webhook_secret = $2, webhook_secret_encrypted = false where id = $1`, [domainId, secret]);
+    await ensureLogWebhookSecretsEncrypted(db);
+    const raw = await db.query<{ webhook_secret: string; webhook_secret_encrypted: boolean }>(
+      `select webhook_secret, webhook_secret_encrypted from log_domains where id = $1`, [domainId]);
+    expect(raw.rows[0].webhook_secret_encrypted).toBe(true);
+    expect(raw.rows[0].webhook_secret).not.toBe(secret);
+    expect(await makeDeliverer().sendTestDelivery({ organizationId: ORG_ID, domainId })).toMatchObject({ status: "delivered" });
+    const timestampSeconds = Number(received[0].timestamp);
+    expect(verifyWebhookSignature({ secret, timestampSeconds, rawBody: received[0].body,
+      signatureHeader: received[0].signature!, nowSeconds: timestampSeconds })).toBe(true);
+  });
+
+  it("isolates a wrong encrypted key id to that domain's failed attempt without blocking startup", async () => {
+    await configureWebhook();
+    const broken = await createLogDomainRecord(db, auth, { name: "broken-key" }, { requestId: "req-broken-key" });
+    await db.query(`update log_domains set webhook_url = $2, webhook_enabled = true,
+      webhook_secret = 'logwh:v1:wrong-key-id:ciphertext', webhook_secret_encrypted = true where id = $1`, [broken.id, receiverUrl]);
+    await expect(ensureLogWebhookSecretsEncrypted(db)).resolves.toBeUndefined();
+    const logId = await seedLogRecord(db, broken.id);
+    expect(await makeDeliverer().deliverAnalysisResult({ organizationId: ORG_ID, logDomainId: broken.id, logId,
+      runId: "wrong-key-run", fileName: "charging.log", status: "complete", occurredAt: new Date().toISOString() }))
+      .toMatchObject({ status: "failed", attempts: 1, error: expect.stringContaining("key id mismatch") });
+    expect(received).toHaveLength(0);
+    const attempts = await listLogDomainWebhookDeliveryRecords(db, auth, { domainId: broken.id });
+    expect(attempts.items).toEqual([expect.objectContaining({ status: "failed", attempt: 1, error: expect.stringContaining("key id mismatch") })]);
+    expect(await makeDeliverer().sendTestDelivery({ organizationId: ORG_ID, domainId })).toMatchObject({ status: "delivered" });
+    expect(received).toHaveLength(1);
+  });
+
   it("refuses production startup with configured webhooks and no encryption key", async () => {
     await configureWebhook();
     vi.stubEnv("NODE_ENV", "production");
@@ -287,9 +319,10 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
       secretLastFour: SECRET.slice(-4)
     });
     expect(JSON.stringify(saved)).not.toContain(SECRET);
-    const raw = await db.query<{ webhook_secret: string }>(`select webhook_secret from log_domains where id = $1`, [domainId]);
+    const raw = await db.query<{ webhook_secret: string; webhook_secret_encrypted: boolean }>(`select webhook_secret, webhook_secret_encrypted from log_domains where id = $1`, [domainId]);
     expect(raw.rows[0].webhook_secret).not.toBe(SECRET);
     expect(raw.rows[0].webhook_secret).toMatch(/^logwh:v1:/);
+    expect(raw.rows[0].webhook_secret_encrypted).toBe(true);
   });
 
   it("delivers a signed result payload end to end and records the delivery attempt", async () => {

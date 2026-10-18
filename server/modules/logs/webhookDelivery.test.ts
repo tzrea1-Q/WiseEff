@@ -52,7 +52,7 @@ function resultInput(overrides: Partial<LogAnalysisResultWebhookInput> = {}): Lo
 }
 
 function configuredWebhook(url = "https://hooks.example.com/wiseeff") {
-  mockedGetConfig.mockResolvedValue({ url, secret: encryptLogWebhookSecret(secret, "org-chargelab", "domain-1"), enabled: true, domainName: "charging-power" });
+  mockedGetConfig.mockResolvedValue({ url, secret: encryptLogWebhookSecret(secret, "org-chargelab", "domain-1"), secretEncrypted: true, enabled: true, domainName: "charging-power" });
 }
 
 function recordedStatuses() {
@@ -112,8 +112,22 @@ describe("buildLogResultWebhookPayload", () => {
 });
 
 describe("createLogWebhookDeliverer", () => {
+  it("signs unmarked legacy secrets verbatim even when they look like an envelope", async () => {
+    const plaintext = encryptLogWebhookSecret(secret, "org-chargelab", "domain-1");
+    mockedGetConfig.mockResolvedValue({ url: "https://hooks.example.com/wiseeff", secret: plaintext,
+      secretEncrypted: false, enabled: true, domainName: "charging-power" });
+    const transport = vi.fn<WebhookTransport>().mockResolvedValue({ ok: true, httpStatus: 204 });
+    const deliverer = createLogWebhookDeliverer({ db, env: defaultEnv, transport });
+    expect(await deliverer.sendTestDelivery({ organizationId: "org-chargelab", domainId: "domain-1" }))
+      .toMatchObject({ status: "delivered", attempts: 1 });
+    const { headers, rawBody } = transport.mock.calls[0][0];
+    const timestampSeconds = Number(headers[WEBHOOK_TIMESTAMP_HEADER]);
+    expect(verifyWebhookSignature({ secret: plaintext, rawBody, timestampSeconds,
+      signatureHeader: headers[WEBHOOK_SIGNATURE_HEADER], nowSeconds: timestampSeconds })).toBe(true);
+  });
+
   it("skips silently when the domain has no webhook configured", async () => {
-    mockedGetConfig.mockResolvedValue({ url: null, secret: null, enabled: false, domainName: "d" });
+    mockedGetConfig.mockResolvedValue({ url: null, secret: null, secretEncrypted: false, enabled: false, domainName: "d" });
     const transport = vi.fn();
     const deliverer = createLogWebhookDeliverer({ db, env: defaultEnv, transport });
 
@@ -125,7 +139,7 @@ describe("createLogWebhookDeliverer", () => {
   });
 
   it("skips when the webhook is configured but disabled", async () => {
-    mockedGetConfig.mockResolvedValue({ url: "https://hooks.example.com/x", secret, enabled: false, domainName: "d" });
+    mockedGetConfig.mockResolvedValue({ url: "https://hooks.example.com/x", secret, secretEncrypted: false, enabled: false, domainName: "d" });
     const transport = vi.fn();
     const deliverer = createLogWebhookDeliverer({ db, env: defaultEnv, transport });
 
@@ -259,7 +273,7 @@ describe("createLogWebhookDeliverer", () => {
   });
 
   it("reports an unconfigured webhook explicitly for test deliveries", async () => {
-    mockedGetConfig.mockResolvedValue({ url: "https://hooks.example.com/x", secret: null, enabled: true, domainName: "d" });
+    mockedGetConfig.mockResolvedValue({ url: "https://hooks.example.com/x", secret: null, secretEncrypted: false, enabled: true, domainName: "d" });
     const deliverer = createLogWebhookDeliverer({ db, env: defaultEnv, transport: vi.fn() });
 
     const outcome = await deliverer.sendTestDelivery({ organizationId: "org-chargelab", domainId: "domain-1" });

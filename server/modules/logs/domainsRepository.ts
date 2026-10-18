@@ -221,6 +221,7 @@ export async function updateLogDomainWebhookRow(
     set webhook_url = $3,
       webhook_enabled = $4,
       webhook_secret = case when $5 then $6 else webhook_secret end,
+      webhook_secret_encrypted = case when $5 then $6 is not null else webhook_secret_encrypted end,
       webhook_secret_last_four = case when $5 then $7 else webhook_secret_last_four end,
       updated_at = now()
     where organization_id = $1
@@ -236,14 +237,14 @@ export async function updateLogDomainWebhookRow(
   return result.rows[0] ? toLogDomainDto(result.rows[0]) : null;
 }
 
-/** Delivery-time lookup: the secret stays encrypted until the sender signs. */
+/** Only the sender decrypts secrets explicitly marked as encrypted. */
 export async function getLogDomainWebhookConfig(
   db: Queryable,
   query: { organizationId: string; domainId: string }
-): Promise<{ url: string | null; secret: string | null; enabled: boolean; domainName: string } | null> {
-  const result = await db.query<{ webhook_url: string | null; webhook_secret: string | null; webhook_enabled: boolean; name: string }>(
+): Promise<{ url: string | null; secret: string | null; secretEncrypted: boolean; enabled: boolean; domainName: string } | null> {
+  const result = await db.query<{ webhook_url: string | null; webhook_secret: string | null; webhook_secret_encrypted: boolean; webhook_enabled: boolean; name: string }>(
     `
-    select webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, name
+    select webhook_url, webhook_secret, webhook_secret_encrypted, webhook_enabled, name
     from log_domains
     where organization_id = $1
       and id = $2
@@ -252,7 +253,7 @@ export async function getLogDomainWebhookConfig(
     [query.organizationId, query.domainId]
   );
   const row = result.rows[0];
-  return row ? { url: row.webhook_url, secret: row.webhook_secret, enabled: row.webhook_enabled, domainName: row.name } : null;
+  return row ? { url: row.webhook_url, secret: row.webhook_secret, secretEncrypted: row.webhook_secret_encrypted, enabled: row.webhook_enabled, domainName: row.name } : null;
 }
 
 /** Upload/rerun binding lookup: the domain must belong to the organization and be active. */

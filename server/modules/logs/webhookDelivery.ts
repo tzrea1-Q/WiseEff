@@ -6,7 +6,7 @@ import { request as httpsRequest } from "node:https";
 import type { Database, Queryable } from "../../shared/database/client";
 import { decideRetry } from "../jobs/retryPolicy";
 import { claimLogWebhook, enqueueLogWebhook } from "./webhookOutbox";
-import { decryptLogWebhookSecret } from "./webhookSecrets";
+import { decryptLogWebhookSecret, LogWebhookSecretDecryptionError } from "./webhookSecrets";
 import { getLogDomainWebhookConfig } from "./domainsRepository";
 import { insertLogWebhookDelivery } from "./webhookRepository";
 import {
@@ -189,11 +189,14 @@ export function createLogWebhookDeliverer({
     const startedAtMs = now().getTime();
     const validation = validateWebhookUrl(config.url, ssrf);
     let result: WebhookTransportResult;
+    let signingFailed = false;
     if (!validation.ok) {
       result = { ok: false, error: `${validation.reason}: ${validation.message}` };
     } else {
       try {
-        const secret = decryptLogWebhookSecret(config.secret, input.organizationId, input.logDomainId);
+        const secret = config.secretEncrypted
+          ? decryptLogWebhookSecret(config.secret, input.organizationId, input.logDomainId)
+          : config.secret;
         const rawBody = JSON.stringify(input.payload);
         const timestampSeconds = Math.floor(now().getTime() / 1000);
         result = await transport({
@@ -204,12 +207,13 @@ export function createLogWebhookDeliverer({
           },
           timeoutMs: env.timeoutMs, ssrf
         });
-      } catch {
-        result = { ok: false, error: "Webhook signing or transport failed." };
+      } catch (error) {
+        signingFailed = error instanceof LogWebhookSecretDecryptionError;
+        result = { ok: false, error: error instanceof LogWebhookSecretDecryptionError ? error.message : "Webhook signing or transport failed." };
       }
     }
     const blocked = !validation.ok || result.error === "Webhook host resolves to a blocked address range.";
-    const status = result.ok ? "delivered" : blocked || input.attempt >= input.maxAttempts ? "failed" : "retrying";
+    const status = result.ok ? "delivered" : blocked || signingFailed || input.attempt >= input.maxAttempts ? "failed" : "retrying";
     const recording = insertLogWebhookDelivery(queryable, {
       id: newId(), organizationId: input.organizationId, logDomainId: input.logDomainId,
       logRecordId: input.logRecordId, runId: input.runId, kind: input.kind,

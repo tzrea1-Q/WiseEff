@@ -1,5 +1,6 @@
 -- Durable result events are independent of the retained per-attempt API history.
 alter table log_domains add column webhook_secret_last_four text;
+alter table log_domains add column webhook_secret_encrypted boolean not null default false;
 
 create table log_webhook_outbox (
   id text primary key,
@@ -21,3 +22,18 @@ create table log_webhook_outbox (
 );
 create index log_webhook_outbox_due_idx on log_webhook_outbox (next_attempt_at, id)
   where status in ('pending', 'retry', 'processing');
+
+-- Runtime LOGINs provisioned before this upgrade need the new table's DML too.
+do $$
+declare
+  role_name text;
+begin
+  for role_name in
+    select rolname from pg_roles
+    where has_table_privilege(oid, 'public.log_domains', 'INSERT')
+      and oid <> (select relowner from pg_class where oid = 'public.log_webhook_outbox'::regclass)
+      and rolname <> 'PUBLIC'
+  loop
+    execute format('grant select, insert, update, delete on public.log_webhook_outbox to %I', role_name);
+  end loop;
+end $$;
