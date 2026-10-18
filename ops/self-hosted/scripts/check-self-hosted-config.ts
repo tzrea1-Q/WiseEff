@@ -272,7 +272,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
     ...requiredComposeTokens.filter((token) => !composeText.includes(normalize(token))),
     ...requiredBuildProxyArgs.filter((key) => !hasComposeBuildArg(input.composeText, key)).map((key) => `${key}:`)
   ];
-  const missingDockerfileTokens = requiredDockerfileTokens.filter((token) =>
+  const missingDockerfileTokens: string[] = requiredDockerfileTokens.filter((token) =>
     token === "FROM node:>=22.19.0" ? !hasRequiredNodeRuntime(dockerfileText) : !dockerfileText.includes(normalize(token))
   );
   const dockerfileSafetyIssues: string[] = [];

@@ -7,6 +7,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../../server/modules/catalog-kernel/compiler/index";
+import { CatalogReleaseDigest } from "../../../server/modules/parameter-catalog-contract/index";
 import { validCatalogReleaseBundle } from "../../../server/modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import type { CatalogReleaseBundle } from "../../../server/modules/catalog-kernel/compiler/types";
 import {
@@ -4455,7 +4456,7 @@ describe("offline MOD D02 maintenance entry on disposable PostgreSQL", { timeout
 
       const wrongPin = apply("populated", populated.url, graph, "d02-entry-wrong-pin",
         { ...maintenanceUrls, WISEEFF_MOD_D02_CAPTURE_ENABLED: "true" },
-        `sha256:${"0".repeat(64)}`);
+        CatalogReleaseDigest(`sha256:${"0".repeat(64)}`));
       expect(wrongPin.result.status).not.toBe(0);
       expect(`${wrongPin.result.stdout}\n${wrongPin.result.stderr}`).toContain(
         "target catalog release digest does not match the compiled bundle",
