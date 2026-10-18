@@ -4,7 +4,6 @@ import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridge
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { buildTrustedAuditEventInput } from "../audit/trustedAudit";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -17,7 +16,7 @@ import { bridgeIdParamsSchema, pairWithCodeBodySchema, renameBridgeBodySchema } 
 import { randomUUID } from "node:crypto";
 
 import type { DeviceBridgeRecord } from "./types";
-import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
+import { writeTrustedMilestoneAudit } from "../audit/auditedWrite";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -59,9 +58,9 @@ function toBridgeItem(record: DeviceBridgeRecord) {
 function resolvePairingService(
   db: Database,
   pairingService: PairingService | undefined,
-  createAuditEvent?: typeof defaultCreateAuditEvent
+  writeAuditEvent?: typeof writeTrustedMilestoneAudit
 ) {
-  return pairingService ?? createPairingService({ repo: createDeviceBridgeRepository(db), db, createAuditEvent });
+  return pairingService ?? createPairingService({ repo: createDeviceBridgeRepository(db), db, writeAuditEvent });
 }
 
 export function registerDeviceBridgeRoutes(
@@ -73,11 +72,11 @@ export function registerDeviceBridgeRoutes(
     loadReleaseManifest?: () => Promise<BridgeReleaseManifest>;
     loadToolReleaseManifest?: () => Promise<BridgeToolReleaseManifest>;
     now?: () => Date;
-    createAuditEvent?: typeof defaultCreateAuditEvent;
+    writeAuditEvent?: typeof writeTrustedMilestoneAudit;
   }
 ) {
   const now = options.now ?? (() => new Date());
-  const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
+  const writeAudit = options.writeAuditEvent ?? writeTrustedMilestoneAudit;
 
   registerDeviceBridgeToolRoutes(router, {
     loadToolReleaseManifest: options.loadToolReleaseManifest
@@ -102,7 +101,7 @@ export function registerDeviceBridgeRoutes(
       organizationId: auth.user.organizationId
     });
 
-    await writeAudit(db, buildTrustedAuditEventInput({
+    await writeAudit(db, {
       id: randomUUID(),
       invocation: createUserInvocation(auth),
       projectId: null,
@@ -114,7 +113,7 @@ export function registerDeviceBridgeRoutes(
       targetId: null,
       metadata: { expiresAt: issued.expiresAt },
       traceId: request.requestId ?? randomUUID()
-    }));
+    });
 
     return { status: 201, body: issued };
   });
@@ -165,7 +164,7 @@ export function registerDeviceBridgeRoutes(
       throw new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: params.bridgeId });
     }
 
-    await writeAudit(db, buildTrustedAuditEventInput({
+    await writeAudit(db, {
       id: randomUUID(),
       invocation: createUserInvocation(auth),
       projectId: null,
@@ -177,7 +176,7 @@ export function registerDeviceBridgeRoutes(
       targetId: updated.id,
       metadata: { platform: updated.platform, arch: updated.arch },
       traceId: request.requestId ?? randomUUID()
-    }));
+    });
 
     return {
       status: 200,
@@ -205,7 +204,7 @@ export function registerDeviceBridgeRoutes(
       throw new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: params.bridgeId });
     }
 
-    await writeAudit(db, buildTrustedAuditEventInput({
+    await writeAudit(db, {
       id: randomUUID(),
       invocation: createUserInvocation(auth),
       projectId: null,
@@ -217,7 +216,7 @@ export function registerDeviceBridgeRoutes(
       targetId: revoked.id,
       metadata: { platform: revoked.platform, arch: revoked.arch, clientVersion: revoked.clientVersion },
       traceId: request.requestId ?? randomUUID()
-    }));
+    });
 
     return {
       status: 200,

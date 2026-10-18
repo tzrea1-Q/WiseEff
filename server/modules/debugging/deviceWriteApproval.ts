@@ -2,7 +2,7 @@ import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { createAgentInvocation, createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
-import { getAgentApproval, getAgentToolCall } from "../agent/repository";
+import { getAgentApproval, getAgentToolCall, updateAgentToolCall } from "../agent/repository";
 
 /** Reserved Agent tool name for a device node write. Not in the Xiaoze catalog yet. */
 export const DEVICE_WRITE_AGENT_TOOL = "action.writeDebugNode";
@@ -78,6 +78,7 @@ export async function assertApprovedDeviceWrite(
   if (!writeIdentityMatches(toolCall.payload, write)) {
     throw new ApiError("VALIDATION_FAILED", WRITE_INVALID, { approvalId, reason: "write-mismatch" });
   }
+  await claimDeviceApproval(db, auth, approvalId, toolCall.id, WRITE_INVALID);
   return toolCall;
 }
 
@@ -97,7 +98,28 @@ export async function assertApprovedDeviceRollback(
   if (payloadString(toolCall.payload, "snapshotId") !== snapshotId) {
     throw new ApiError("VALIDATION_FAILED", ROLLBACK_INVALID, { approvalId, reason: "write-mismatch" });
   }
+  await claimDeviceApproval(db, auth, approvalId, toolCall.id, ROLLBACK_INVALID);
   return toolCall;
+}
+
+async function claimDeviceApproval(db: Queryable, auth: AuthContext, approvalId: string, toolCallId: string, message: string) {
+  // The conditional transition holds the row lock until the device operation and its audit commit.
+  const claimed = await updateAgentToolCall(db, organizationIdFor(auth), toolCallId, {
+    status: "running", expectedStatus: "pending_approval"
+  });
+  if (!claimed) {
+    throw new ApiError("VALIDATION_FAILED", message, { approvalId, reason: "already-executed" });
+  }
+}
+
+export async function completeDeviceApproval(db: Queryable, invocation: TrustedInvocationContext, failed: boolean) {
+  if (invocation.initiator !== "agent") return;
+  const completed = await updateAgentToolCall(db, organizationIdFor(invocation.principal), invocation.toolCallId, {
+    status: failed ? "failed" : "succeeded", expectedStatus: "running"
+  });
+  if (!completed) {
+    throw new ApiError("CONFLICT", "Device approval execution could not be completed.");
+  }
 }
 
 export async function assertDeviceWriteAuthorization(

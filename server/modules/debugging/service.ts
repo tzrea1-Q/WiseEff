@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
-import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
+import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { notifyDebugNodeReadbackFailed, notifyDebugNodeWriteFailed, notifyDebugSnapshotRollback } from "../notifications/producers";
 import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
-import { buildTrustedAuditEventInput } from "../audit/trustedAudit";
+import type { TrustedAuditEventInput } from "../audit/trustedAudit";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
@@ -38,7 +38,7 @@ import {
   type CanonicalDebugPin,
   type CanonicalDebugReference
 } from "./canonicalProtectedReference";
-import { assertDeviceRollbackAuthorization, assertDeviceWriteAuthorization } from "./deviceWriteApproval";
+import { assertDeviceRollbackAuthorization, assertDeviceWriteAuthorization, completeDeviceApproval } from "./deviceWriteApproval";
 import {
   requireDebugAdmin,
   requireDebugRead,
@@ -130,8 +130,6 @@ import {
   DEBUG_VALUE_KIND_COMPLEX
 } from "./types";
 
-type AuditWriter = typeof defaultCreateAuditEvent;
-
 const DEVICE_LEASE_TTL_MS = 5 * 60 * 1000;
 const BRIDGE_DETECT_TIMEOUT_MS = 5_000;
 const BRIDGE_NODE_TIMEOUT_MS = 10_000;
@@ -140,7 +138,7 @@ type ServiceOptions = {
   db: Database;
   gateway?: DebugDeviceGateway;
   gatewayRegistry?: DebugDeviceGatewayRegistry;
-  createAuditEvent?: AuditWriter;
+  writeAuditEvent?: typeof writeTrustedAuditEventInTx;
   metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
   tracing?: Pick<TracingBoundary, "withSpan">;
   gatewayMode?: "simulator" | "hdc" | "adb" | "multi" | string;
@@ -361,14 +359,14 @@ function auditInput(
   invocation: TrustedInvocationContext,
   input: Omit<CreateAuditEventInput, "id" | "organizationId" | "actorUserId" | "actorType" | "app" | "traceId">,
   context: ServiceContext = {}
-): CreateAuditEventInput {
-  return buildTrustedAuditEventInput({
+): TrustedAuditEventInput {
+  return {
     id: randomUUID(),
     invocation,
     app: "debugging",
     traceId: context.requestId ?? randomUUID(),
     ...input
-  });
+  };
 }
 
 function ensureActiveSession(session: DebugSessionRecord | null): DebugSessionRecord {
@@ -923,7 +921,8 @@ export function createDebuggingService(options: ServiceOptions) {
   const db = options.db;
   const gatewayRegistry =
     options.gatewayRegistry ?? createDebugDeviceGatewayRegistry(options.gateway ? { hdc: options.gateway } : {});
-  const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
+  const auditWriter = options.writeAuditEvent ?? writeTrustedAuditEventInTx;
+  const writeAudit = (tx: Queryable, input: TrustedAuditEventInput) => auditWriter(asAuditTx(tx), input);
   const gatewayMode = options.gatewayMode ?? "unknown";
   const tracing = options.tracing;
 
@@ -2406,6 +2405,7 @@ export function createDebuggingService(options: ServiceOptions) {
               context
             )
           );
+          await completeDeviceApproval(tx, invocation, true);
           await maybeNotifyDebugWriteFailed(tx, auth, session, parameter.name, operation);
           return { ...operation, operation };
         }
@@ -2538,6 +2538,7 @@ export function createDebuggingService(options: ServiceOptions) {
           )
         );
 
+        await completeDeviceApproval(tx, invocation, writeOutcome !== "executed");
         await maybeNotifyDebugWriteFailed(tx, auth, session, parameter.name, operation);
         await maybeNotifyDebugReadbackFailed(tx, auth, session, parameter.name, operation);
         return { ...operation, operation, snapshot };
@@ -2715,6 +2716,7 @@ export function createDebuggingService(options: ServiceOptions) {
           )
         );
 
+        await completeDeviceApproval(tx, invocation, failed);
         await notifyDebugSnapshotRollback(tx, {
           organizationId,
           sessionId: session.id,
