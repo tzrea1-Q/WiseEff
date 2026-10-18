@@ -803,7 +803,12 @@ describe("upgrade.sh public interface", () => {
         wiseeff_upgrade_docker() {
           case "$1" in
             inspect) case "$3" in *Mounts*) printf 'yes';; *Running*) printf 'false';; *) printf '${scenario === "image-drift" ? "sha256:other" : "sha256:minio-image"}';; esac;;
-            run) printf 'offline-copy\\n'; [ "$2 $3 $4 $5 $6" = '--rm --network none --volumes-from minio-id' ];;
+            run)
+              if [ "\${!#}" = --version ]; then
+                printf 'minio version ${scenario === "image-drift" ? "RELEASE.2025-01-01T00-00-00Z" : "RELEASE.2024-12-18T13-15-44Z"} (commit-id=test)\\n'
+              else
+                printf 'offline-copy\\n'; [ "$2 $3 $4 $5 $6" = '--rm --network none --volumes-from minio-id' ]
+              fi;;
             start) printf 'start\\n';;
             *) return 99;;
           esac
@@ -3062,13 +3067,14 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_ensure_base_image() { printf 'prepare-base\\n'; }
+      wiseeff_upgrade_prepare_minio_images() { printf 'prepare-minio\\n'; }
       wiseeff_upgrade_compose() { printf 'build-app\\n'; }
       wiseeff_upgrade_docker() { return 0; }
       wiseeff_upgrade_build_candidate
     `], { encoding: "utf8", env: { ...process.env, WISEEFF_TEST_RUN_DIR: runDir } });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/prepare-base[\s\S]*build-app/);
+    expect(result.stdout).toMatch(/prepare-base[\s\S]*prepare-minio[\s\S]*build-app/);
   });
 
   it("does not enter the candidate build when base-image preparation fails", () => {
@@ -3407,6 +3413,7 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_ensure_base_image() { return 0; }
+      wiseeff_upgrade_prepare_minio_images() { return 0; }
       wiseeff_upgrade_compose() {
         printf 'progress=%s\\n' "$BUILDKIT_PROGRESS"
         printf 'proxy=https://operator:build-secret@registry.example.com\\n'
@@ -3487,6 +3494,7 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_ensure_base_image() { return 0; }
+      wiseeff_upgrade_prepare_minio_images() { return 0; }
       wiseeff_upgrade_compose() { printf 'build-complete\\n'; return 0; }
       wiseeff_upgrade_docker() { return 29; }
       if wiseeff_upgrade_build_candidate; then exit 0; else exit $?; fi
@@ -3507,6 +3515,7 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_ensure_base_image() { return 0; }
+      wiseeff_upgrade_prepare_minio_images() { return 0; }
       wiseeff_upgrade_compose() { printf 'build-complete\\n'; return 0; }
       wiseeff_upgrade_docker() { return 0; }
       wiseeff_upgrade_build_candidate

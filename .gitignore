@@ -64,3 +64,4 @@ work/
 
 # playwright-cli browser automation snapshots
 .playwright-cli/
+ops/self-hosted/images/minio/offline/

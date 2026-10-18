@@ -855,12 +855,21 @@ run_official_migrate() {
 }
 
 run_up() {
-  set -- up -d
+  (
+    source "${script_dir}/upgrade-lib.sh"
+    upgrade_repo_root="${repo_root}"
+    upgrade_compose_dir="${compose_dir}"
+    upgrade_script_dir="${script_dir}"
+    upgrade_env_file="${env_file}"
+    upgrade_run_dir=""
+    wiseeff_upgrade_ensure_base_image
+    wiseeff_upgrade_prepare_minio_images "${skip_build}"
+  )
   if [ "${skip_build}" != "true" ]; then
-    set -- "$@" --build
-    echo "Building and starting the stack. The first image build can take several minutes."
+    echo "Building the application before starting the stack. The first image build can take several minutes."
+    "${script_dir}/compose" --env-file "${env_file}" build api
   fi
-  "${script_dir}/compose" --env-file "${env_file}" "$@" postgres redis minio minio-init
+  "${script_dir}/compose" --env-file "${env_file}" up -d --no-build postgres redis minio minio-init
   run_official_migrate
   "${script_dir}/compose" --env-file "${env_file}" up -d api worker publication-manager web proxy
 }
