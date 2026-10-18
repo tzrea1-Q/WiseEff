@@ -9,6 +9,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import { createAgentSession, updateAgentToolCall } from "./repository";
 import type { AgentToolExecutionContext } from "./toolRegistry";
 import { createAgentOrchestrator, type ApprovalBeginInput } from "./orchestrator";
+import { requireAgentToolMetadata } from "./toolMetadata";
 import type { AgentToolDefinition, AgentToolRegistry } from "./toolRegistry";
 import type { AgentToolName, AgentToolResult } from "./types";
 import { createMemoryAgentDb as createMemoryDb } from "./testing/memoryAgentDb";
@@ -19,6 +20,7 @@ function createToolDefinition(input: {
   kind?: AgentToolDefinition["kind"];
 }): AgentToolDefinition {
   const definition: AgentToolDefinition = {
+    ...requireAgentToolMetadata(input.name),
     name: input.name,
     label: input.name,
     kind: input.kind ?? "read",
