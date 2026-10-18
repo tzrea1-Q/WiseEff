@@ -54,6 +54,14 @@ x-wiseeff-build: &wiseeff-build
   secrets:
     - wiseeff-corporate-ca
 services:
+  minio:
+    image: wiseeff/minio:RELEASE.2024-12-18T13-15-44Z
+    build:
+      dockerfile: ops/self-hosted/images/minio/Dockerfile
+    volumes:
+      - wiseeff-minio-data:/data
+  minio-init:
+    image: wiseeff/mc:RELEASE.2024-11-21T17-21-54Z
   postgres:
     image: postgres:16-alpine
     env_file: \${WISEEFF_ENV_FILE:-.env}
@@ -259,6 +267,10 @@ const existingSelfHostedFiles = new Set([
   "ops/self-hosted/upgrade-protocol.env",
   "ops/self-hosted/.env.publication-manager.example",
   "ops/self-hosted/images/base-image-bundle.env",
+  "ops/self-hosted/images/minio-bundle.env",
+  "ops/self-hosted/images/minio/Dockerfile",
+  "ops/self-hosted/images/minio/prepare.cjs",
+  "ops/self-hosted/images/minio/entrypoint.sh",
   "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
   "ops/self-hosted/Caddyfile.ip-lab",
   "ops/self-hosted/Caddyfile.ip-lab-tls",

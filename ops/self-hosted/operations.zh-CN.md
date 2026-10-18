@@ -2,6 +2,8 @@
 
 > English: [English](operations.md)
 
+MinIO/mc 现使用 WiseEff 镜像，在附带的 Node 基础镜像上加入原固定版本的上游二进制。已有服务器迁移到此版本前，应保留原官方镜像或执行 `docker save`。离线构建从已加入 gitignore 的 `ops/self-hosted/images/minio/offline/` 读取经校验和验证的 `minio` 和 `mc` 文件。安装和升级在重建服务前准备镜像；数据路径和卷名不变。准确文件名、恢复兼容性和命令见[镜像准备](images/README.zh-CN.md#固定版本的-minio-二进制文件)。
+
 本文是 WiseEff Linux 自托管部署的统一命令手册。日常运维先从这里选择正确入口；涉及恢复演练、目标环境证据或事故审批时，再进入链接的专题运行手册。
 
 除非章节另有说明，所有命令都由专用部署用户在以下目录执行：

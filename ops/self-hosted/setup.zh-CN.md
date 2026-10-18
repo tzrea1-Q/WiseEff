@@ -2,6 +2,8 @@
 
 > English: [English](setup.md)
 
+MinIO/mc 现使用 WiseEff 镜像，在附带的 Node 基础镜像上加入原固定版本的上游二进制。已有服务器迁移到此版本前，应保留原官方镜像或执行 `docker save`。离线构建从已加入 gitignore 的 `ops/self-hosted/images/minio/offline/` 读取经校验和验证的 `minio` 和 `mc` 文件。安装和升级在重建服务前准备镜像；数据路径和卷名不变。准确文件名、恢复兼容性和命令见[镜像准备](images/README.zh-CN.md#固定版本的-minio-二进制文件)。
+
 这是自托管 WiseEff 主机的操作员入口。它只问人必须决定的项，自动生成密钥，并且之后可以只改一段，而不轮换数据库密码。
 
 它**不**声称商用试点或发布就绪。

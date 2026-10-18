@@ -2,6 +2,8 @@
 
 > English: [English](upgrade.md)
 
+MinIO/mc 现使用 WiseEff 镜像，在附带的 Node 基础镜像上加入原固定版本的上游二进制。已有服务器迁移到此版本前，应保留原官方镜像或执行 `docker save`。离线构建从已加入 gitignore 的 `ops/self-hosted/images/minio/offline/` 读取经校验和验证的 `minio` 和 `mc` 文件。安装和升级在重建服务前准备镜像；数据路径和卷名不变。准确文件名、恢复兼容性和命令见[镜像准备](images/README.zh-CN.md#固定版本的-minio-二进制文件)。
+
 ## 厂商 Catalog 后继发布
 
 仅当当前 Catalog 指针是首个夹具发布 `crel_acme_1`，且 digest 为 `sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044` 时使用。常见路径：`--parameter-data-mode new-empty` 之后，已用既有评审夹具包完成 bootstrap。
@@ -48,7 +50,7 @@ API 镜像必须包含 `scripts/compile-vendor-catalog-release.ts`，以及 `scr
 
 准入核对完整迁移清单及固定旧源 `82344044b436a8dafecefbb85dfd724cecb05e3f` 的已知 schema；不支持及部分转换状态在停服前拒绝。此外，仅支持具有 `/data` 命名卷的原 Compose `http://minio:9000`，不把远程对象存储静默视为等价恢复目标。
 
-此本地 MinIO 形态在备份时停止 MinIO 并采集实际卷，包括 S3 metadata；`minio-volume-v1` 恢复要求 MinIO 镜像身份一致。Redis 复制 AOF manifest/文件前也会停进程；恢复先校验 RDB/AOF，再替换停止服务的数据并重新加载。PostgreSQL 恢复重建备份中的数据库并保留 owner，移除候选新增 schema。这些仅是显式恢复操作，正常升级不删除原业务数据。应预留完整 MinIO 卷和 Redis 校验暂存所需空间。旧 bucket mirror 备份仍按原格式读取，但不能追认为已保全 metadata。
+此本地 MinIO 形态在备份时停止 MinIO 并采集实际卷，包括 S3 metadata；新的 `minio-volume-v1` 恢复点记录准确 server release，允许同版本 WiseEff 重建镜像具有不同 digest，不同 release 一律拒绝。仅记录 digest 的旧恢复点在恢复到不同镜像 ID 时，需要原镜像仍在本地以确认 release。Redis 复制 AOF manifest/文件前也会停进程；恢复先校验 RDB/AOF，再替换停止服务的数据并重新加载。PostgreSQL 恢复重建备份中的数据库并保留 owner，移除候选新增 schema。这些仅是显式恢复操作，正常升级不删除原业务数据。应预留完整 MinIO 卷和 Redis 校验暂存所需空间。旧 bucket mirror 备份仍按原格式读取，但不能追认为已保全 metadata。
 
 隔离终端升级、原数据保全（126 张表、183 条原记录、661 条原有约束）、正常重启、错误目标拒绝、实际迁移中断及两次整套恢复的上一轮页面闭环绿在 `2cf966a9790df97e7502a0609fd0452c36685be3` 的 [34424170420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424170420)（PR L1 [34424167069](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424167069)）。当前代码候选 `f51569d2c32f6a27e8f64271c358fefcd62b8d61` 将 ingest sync 与 catalog 导入预览改写接入其审计事务；该 SHA 的专用 Hosted 待跑，此前 Hosted 证据不可复用。尚不可合并或投入生产：人工 visual/console 审查仍待完成。恢复后的独立镜像别名仅在实际运行镜像 ID 与保留的原 SHA 镜像完全一致时才能重入限定的源路径；镜像缺失或不同仍拒绝。初始化模式仅由 plan/apply 接受，status 展示 run 的持久 `parameterDataMode`；恢复消费既有 run，无需再次传初始化选项。
 

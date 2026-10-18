@@ -7,6 +7,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../../server/modules/catalog-kernel/compiler/index";
+import { CatalogReleaseDigest } from "../../../server/modules/parameter-catalog-contract/index";
 import { validCatalogReleaseBundle } from "../../../server/modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import type { CatalogReleaseBundle } from "../../../server/modules/catalog-kernel/compiler/types";
 import {
@@ -76,10 +77,38 @@ function catalogCliEnv(env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 }
 
 function runLibrary(command: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
-  return spawnSync("bash", ["-c", `source ops/self-hosted/scripts/upgrade-lib.sh\n${command}`, "test", ...args], {
-    encoding: "utf8",
-    env: { ...process.env, ...env }
-  });
+  const composeDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-library-"));
+  try {
+    return spawnSync("bash", ["-c", `
+    source ops/self-hosted/scripts/upgrade-lib.sh
+    upgrade_repo_root="$PWD"
+    upgrade_script_dir="$upgrade_repo_root/ops/self-hosted/scripts"
+    upgrade_compose_dir="$WISEEFF_TEST_LIBRARY_COMPOSE_DIR"
+    # Library fixtures bypass main; initialize its paths and never use host Docker.
+    docker() {
+      case "$*" in
+        'image inspect wiseeff/minio:RELEASE.2024-12-18T13-15-44Z'|\
+        'image inspect minio/minio:RELEASE.2024-12-18T13-15-44Z'|\
+        'image inspect wiseeff/mc:RELEASE.2024-11-21T17-21-54Z'|\
+        'image inspect minio/mc:RELEASE.2024-11-21T17-21-54Z') return 0 ;;
+        'run --rm --pull never --network none --entrypoint /usr/bin/minio wiseeff/minio:RELEASE.2024-12-18T13-15-44Z --version'|\
+        'run --rm --pull never --network none --entrypoint /usr/bin/minio minio/minio:RELEASE.2024-12-18T13-15-44Z --version')
+          printf 'minio version RELEASE.2024-12-18T13-15-44Z (commit-id=test)\\n' ;;
+        'run --rm --pull never --network none --entrypoint /usr/bin/mc wiseeff/mc:RELEASE.2024-11-21T17-21-54Z --version'|\
+        'run --rm --pull never --network none --entrypoint /usr/bin/mc minio/mc:RELEASE.2024-11-21T17-21-54Z --version')
+          printf 'mc version RELEASE.2024-11-21T17-21-54Z (commit-id=test)\\n' ;;
+        *) printf 'Unexpected Docker invocation in library fixture\\n' >&2; return 99 ;;
+      esac
+    }
+    export -f docker
+    ${command}
+    `, "test", ...args], {
+      encoding: "utf8",
+      env: { ...process.env, ...env, WISEEFF_TEST_LIBRARY_COMPOSE_DIR: composeDir }
+    });
+  } finally {
+    rmSync(composeDir, { recursive: true, force: true });
+  }
 }
 
 // Minimal two-commit checkout whose controller uses the real handoff code, so
@@ -803,7 +832,12 @@ describe("upgrade.sh public interface", () => {
         wiseeff_upgrade_docker() {
           case "$1" in
             inspect) case "$3" in *Mounts*) printf 'yes';; *Running*) printf 'false';; *) printf '${scenario === "image-drift" ? "sha256:other" : "sha256:minio-image"}';; esac;;
-            run) printf 'offline-copy\\n'; [ "$2 $3 $4 $5 $6" = '--rm --network none --volumes-from minio-id' ];;
+            run)
+              if [ "\${!#}" = --version ]; then
+                printf 'minio version ${scenario === "image-drift" ? "RELEASE.2025-01-01T00-00-00Z" : "RELEASE.2024-12-18T13-15-44Z"} (commit-id=test)\\n'
+              else
+                printf 'offline-copy\\n'; [ "$2 $3 $4 $5 $6" = '--rm --network none --volumes-from minio-id' ]
+              fi;;
             start) printf 'start\\n';;
             *) return 99;;
           esac
@@ -3062,13 +3096,14 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_ensure_base_image() { printf 'prepare-base\\n'; }
+      wiseeff_upgrade_prepare_minio_images() { printf 'prepare-minio\\n'; }
       wiseeff_upgrade_compose() { printf 'build-app\\n'; }
       wiseeff_upgrade_docker() { return 0; }
       wiseeff_upgrade_build_candidate
     `], { encoding: "utf8", env: { ...process.env, WISEEFF_TEST_RUN_DIR: runDir } });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/prepare-base[\s\S]*build-app/);
+    expect(result.stdout).toMatch(/prepare-base[\s\S]*prepare-minio[\s\S]*build-app/);
   });
 
   it("does not enter the candidate build when base-image preparation fails", () => {
@@ -3407,6 +3442,7 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_ensure_base_image() { return 0; }
+      wiseeff_upgrade_prepare_minio_images() { return 0; }
       wiseeff_upgrade_compose() {
         printf 'progress=%s\\n' "$BUILDKIT_PROGRESS"
         printf 'proxy=https://operator:build-secret@registry.example.com\\n'
@@ -3487,6 +3523,7 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_ensure_base_image() { return 0; }
+      wiseeff_upgrade_prepare_minio_images() { return 0; }
       wiseeff_upgrade_compose() { printf 'build-complete\\n'; return 0; }
       wiseeff_upgrade_docker() { return 29; }
       if wiseeff_upgrade_build_candidate; then exit 0; else exit $?; fi
@@ -3507,6 +3544,7 @@ describe("upgrade.sh public interface", () => {
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_ensure_base_image() { return 0; }
+      wiseeff_upgrade_prepare_minio_images() { return 0; }
       wiseeff_upgrade_compose() { printf 'build-complete\\n'; return 0; }
       wiseeff_upgrade_docker() { return 0; }
       wiseeff_upgrade_build_candidate
@@ -4446,7 +4484,7 @@ describe("offline MOD D02 maintenance entry on disposable PostgreSQL", { timeout
 
       const wrongPin = apply("populated", populated.url, graph, "d02-entry-wrong-pin",
         { ...maintenanceUrls, WISEEFF_MOD_D02_CAPTURE_ENABLED: "true" },
-        `sha256:${"0".repeat(64)}`);
+        CatalogReleaseDigest(`sha256:${"0".repeat(64)}`));
       expect(wrongPin.result.status).not.toBe(0);
       expect(`${wrongPin.result.stdout}\n${wrongPin.result.stderr}`).toContain(
         "target catalog release digest does not match the compiled bundle",

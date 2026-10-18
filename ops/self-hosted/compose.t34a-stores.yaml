@@ -35,7 +35,28 @@ services:
       retries: 12
 
   minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    image: wiseeff/minio:RELEASE.2024-12-18T13-15-44Z
+    pull_policy: never
+    build: &minio-build
+      context: ../..
+      dockerfile: ops/self-hosted/images/minio/Dockerfile
+      target: minio
+      args: &minio-build-args
+        BINARY: minio
+        BINARY_URL: https://github.com/minio/minio/releases/download/RELEASE.2024-12-18T13-15-44Z/minio.linux-amd64.RELEASE.2024-12-18T13-15-44Z
+        HTTP_PROXY:
+        HTTPS_PROXY:
+        ALL_PROXY:
+        NO_PROXY:
+        http_proxy:
+        https_proxy:
+        all_proxy:
+        no_proxy:
+        WISEEFF_BUILD_TLS_POLICY: ${WISEEFF_BUILD_TLS_POLICY:-verify}
+        WISEEFF_BUILD_TLS_ACK: ${WISEEFF_BUILD_TLS_ACK:-}
+        WISEEFF_BUILD_TRANSPORT_FINGERPRINT: ${WISEEFF_BUILD_TRANSPORT_FINGERPRINT:-unmanaged-verified}
+      secrets:
+        - wiseeff-corporate-ca
     container_name: wiseeff-t34a-minio
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -48,7 +69,15 @@ services:
       - wiseeff-t34a-minio-data:/data
 
   minio-init:
-    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    image: wiseeff/mc:RELEASE.2024-11-21T17-21-54Z
+    pull_policy: never
+    build:
+      <<: *minio-build
+      target: mc
+      args:
+        <<: *minio-build-args
+        BINARY: mc
+        BINARY_URL: https://github.com/minio/mc/releases/download/RELEASE.2024-11-21T17-21-54Z/mc.linux-amd64.RELEASE.2024-11-21T17-21-54Z
     container_name: wiseeff-t34a-minio-init
     depends_on:
       minio:
@@ -69,3 +98,7 @@ volumes:
   wiseeff-t34a-pg-data:
   wiseeff-t34a-redis-data:
   wiseeff-t34a-minio-data:
+
+secrets:
+  wiseeff-corporate-ca:
+    file: ${WISEEFF_BUILD_CA_CERT_FILE:-./build-network/empty-ca.pem}
