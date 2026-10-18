@@ -18,6 +18,8 @@ npm run build:bridge-installers
 
 Outputs land under `ops/self-hosted/bridge-artifacts/<BRIDGE_CLIENT_VERSION>/` and update `manifest.json` with `artifactKind: "installer"` entries. The packaged CLI must report the same `clientVersion` as `packages/device-bridge/src/version.ts`. After runtime source changes, rebuild artifacts so `npm run bridge:package:check` stays green.
 
+Rebuilding one platform preserves the other published installers. The Windows build script defaults to the Bridge package version; direct Inno Setup compilation requires `/DMyAppVersion=<version>`.
+
 ## URL scheme registration
 
 - Windows registry: `wiseeff-bridge://` → `wiseeff-bridge.cmd --handle-url "%1"`

@@ -1,8 +1,16 @@
 {
   "recommendedVersion": "0.1.1",
   "minCompatibleVersion": "0.1.0",
-  "sourceFingerprint": "c1c9e8aacc6f98ad02e6970479d6f244e1b9ad28286871c48a1dc91b2b3086dd",
+  "sourceFingerprint": "5ce475246b79bb25a74e6ee498b0b0cfc8d602dd68097390acc0d9a9d7366d5c",
   "items": [
+    {
+      "platform": "windows",
+      "arch": "amd64",
+      "version": "0.1.1",
+      "artifact": "WiseEffBridgeSetup_0.1.1.exe",
+      "artifactKind": "installer",
+      "sha256": "3c7a06c87749809cdc085cd501cf894fe38a38d8d66faeb1042f7b399454d37d"
+    },
     {
       "platform": "darwin",
       "arch": "arm64",

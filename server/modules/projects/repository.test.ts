@@ -11,7 +11,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
-import { deleteProject, getProjectById, listProjects } from "./repository";
+import { deleteProject, getProjectById, listProjectAdminSummaries, listProjects } from "./repository";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -45,6 +45,19 @@ describe.skipIf(!databaseAvailable)("project repository", () => {
       { id: "aurora", name: "Aurora", code: "AUR" },
       { id: "zephyr", name: "Zephyr", code: "ZEP" }
     ]);
+  });
+
+  it("excludes archived projects from selection and makes restored projects available again", async () => {
+    await db.query("update projects set status = 'archived' where id = 'zephyr'");
+    expect(await listProjects(db, { organizationId: "org-chargelab" })).toEqual([
+      { id: "aurora", name: "Aurora", code: "AUR" }
+    ]);
+    await expect(getProjectById(db, { organizationId: "org-chargelab", projectId: "zephyr" })).resolves.toMatchObject({ id: "zephyr" });
+    expect(await listProjectAdminSummaries(db, { organizationId: "org-chargelab" })).toContainEqual(
+      expect.objectContaining({ id: "zephyr", status: "archived" })
+    );
+    await db.query("update projects set status = 'initialized' where id = 'zephyr'");
+    expect((await listProjects(db, { organizationId: "org-chargelab" })).map((project) => project.id)).toEqual(["aurora", "zephyr"]);
   });
 
   it("getProjectById scopes project ownership to organization", async () => {

@@ -1,11 +1,14 @@
 param(
-  [string]$Version = "0.1.0",
+  [string]$Version = "",
   [string]$StagingDir = "",
   [string]$NodeVersion = "22.14.0"
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
+if (-not $Version) {
+  $Version = (Get-Content (Join-Path $root "packages/device-bridge/package.json") -Raw | ConvertFrom-Json).version
+}
 if (-not $StagingDir) {
   $StagingDir = Join-Path $root "ops/self-hosted/bridge-installer/staging"
 }
@@ -40,4 +43,7 @@ Copy-Item (Join-Path $StagingDir "cli.js") (Join-Path $packDir "cli.js")
 Copy-Item (Join-Path $StagingDir "wiseeff-bridge.cmd") (Join-Path $packDir "wiseeff-bridge.cmd")
 
 & iscc "/DSourceDir=$packDir" "/DMyAppVersion=$Version" (Join-Path $PSScriptRoot "WiseEffBridge.iss") "/O$outDir"
+if ($LASTEXITCODE -ne 0) {
+  throw "Inno Setup compiler failed with exit code $LASTEXITCODE."
+}
 Write-Host "Windows installer output: $outDir"

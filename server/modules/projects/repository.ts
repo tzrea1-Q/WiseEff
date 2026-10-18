@@ -89,6 +89,7 @@ export async function listProjects(db: Queryable, query: { organizationId: strin
     select id, name, code
     from projects
     where organization_id = $1
+      and status <> 'archived'
     order by name asc
     `,
     [query.organizationId]

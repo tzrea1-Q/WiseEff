@@ -6,10 +6,19 @@ import { describe, expect, it } from "vitest";
 import {
   REQUIRED_BRIDGE_BUNDLE_MARKERS,
   checkBridgePackageConsistency,
-  computeBridgeSourceFingerprint
+  computeBridgeSourceFingerprint,
+  mergeBridgeInstallerItems
 } from "./lib/bridgePackageConsistency";
 
 describe("bridge package consistency", () => {
+  it("keeps other platforms and portable releases when rebuilding one installer", () => {
+    const windows = { platform: "windows", arch: "amd64", version: "0.1.0", artifact: "old.exe", artifactKind: "installer" };
+    const mac = { platform: "darwin", arch: "arm64", version: "0.1.1", artifact: "mac.pkg", artifactKind: "installer" };
+    const portable = { ...windows, artifact: "portable.zip", artifactKind: "portable" };
+    const current = { ...windows, version: "0.1.1", artifact: "current.exe" };
+    expect(mergeBridgeInstallerItems([windows, mac, portable], [current])).toEqual([current, mac, portable]);
+    expect(mergeBridgeInstallerItems([windows, mac, portable], [])).toEqual([windows, mac, portable]);
+  });
   it("passes against committed Bridge artifacts once they match the runtime source", async () => {
     const result = await checkBridgePackageConsistency(process.cwd());
     expect(result.failures.map((failure) => `${failure.code}: ${failure.message}`)).toEqual([]);

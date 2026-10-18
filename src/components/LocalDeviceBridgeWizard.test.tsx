@@ -126,7 +126,7 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(onDetect).toHaveBeenCalledTimes(1);
   });
 
-  it("labels an older Windows installer and exposes the current portable release", async () => {
+  it("keeps portable downloads collapsed even when the Windows installer is older", async () => {
     render(<LocalDeviceBridgeWizard {...baseProps} panelStatus="missing_bridge" recommendedVersion="0.1.1"
       health={{ ok: true, paired: true, connected: false, updatedAt: "2026-10-15T00:00:00Z", launcherPath: "C:\\Old\\wiseeff-bridge.cmd" }}
       pairingCode={{ code: "123456", expiresAt: "2099-01-01T00:00:00Z" }}
@@ -135,8 +135,10 @@ describe("LocalDeviceBridgeWizard", () => {
     await selectControlOption(screen.getByRole("combobox", { name: "安装环境" }), "windows/amd64");
     expect(screen.getByText("较早版本 · v0.1.0")).toBeInTheDocument();
     expect(screen.queryByText("本机推荐 · v0.1.0")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "下载 Windows Bridge（x64）" })).toHaveAttribute("href", expect.stringContaining("/current.zip"));
     const portable = screen.getByText("便携压缩包（zip / tar.gz）").closest("details")!;
+    expect(portable).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
+    expect(screen.getByRole("link", { name: "下载 Windows Bridge（x64）" })).toHaveAttribute("href", expect.stringContaining("/current.zip"));
     expect(within(portable).getByText(/node \.\/cli.js connect/, { selector: "code" })).toHaveTextContent("--code 123456");
     expect(portable).not.toHaveTextContent("C:\\Old");
     expect(within(portable).getByRole("button", { name: "复制便携版连接命令" })).toBeInTheDocument();

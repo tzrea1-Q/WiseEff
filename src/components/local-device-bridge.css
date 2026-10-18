@@ -1,5 +1,69 @@
 .local-device-bridge-panel .local-device-bridge-panel__readiness {
+  column-gap: var(--space-4);
+}
+
+.local-device-bridge-panel__connection-copy {
+  display: grid;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.local-device-bridge-panel__connection-copy :is(.local-device-bridge-panel__readiness-status, .local-device-bridge-panel__connected) {
+  display: block;
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: var(--leading-base);
+}
+
+.local-device-bridge-panel__connection-copy .local-device-bridge-panel__status-dot {
+  display: inline-block;
+  margin-inline-end: var(--space-2);
+  vertical-align: middle;
+}
+
+.local-device-bridge-panel__connection-description {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.local-device-bridge-panel__connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.local-device-bridge-panel__readiness[data-status="not_paired"] .local-device-bridge-panel__status-dot,
+.local-device-bridge-panel__readiness[data-status="not_connected"] .local-device-bridge-panel__status-dot,
+.local-device-bridge-panel__readiness[data-status="tools_missing"] .local-device-bridge-panel__status-dot {
+  background: var(--warning);
+}
+
+.local-device-bridge-panel .local-device-bridge-panel__readiness-hint {
+  padding: var(--space-2) var(--space-3);
+  border-left: calc(2 * var(--stroke-hairline)) solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.local-device-bridge-panel__management > .local-device-bridge-panel__error {
+  margin: var(--space-3) var(--space-4) 0;
 }
 
 .local-device-bridge-panel__guide,

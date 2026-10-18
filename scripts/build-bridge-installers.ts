@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { execFile, spawnSync } from "node:child_process";
 
-import { computeBridgeSourceFingerprint, readBridgeClientVersion } from "./lib/bridgePackageConsistency";
+import { computeBridgeSourceFingerprint, mergeBridgeInstallerItems, readBridgeClientVersion } from "./lib/bridgePackageConsistency";
+import type { ManifestFile } from "./lib/bridgePackageConsistency";
 
 const execFileAsync = promisify(execFile);
 const NODE_VERSION = "22.14.0";
@@ -152,17 +153,11 @@ async function buildMacInstaller(arch: "amd64" | "arm64") {
 
 async function mergeManifestInstallers(built: Array<{ target: InstallerTarget; path: string }>) {
   const raw = await readFile(manifestPath, "utf8");
-  const manifest = JSON.parse(raw) as {
-    recommendedVersion: string;
-    minCompatibleVersion: string;
-    sourceFingerprint?: string;
-    items: Array<Record<string, unknown>>;
-  };
+  const manifest = JSON.parse(raw) as ManifestFile;
   manifest.recommendedVersion = VERSION;
   manifest.minCompatibleVersion = manifest.minCompatibleVersion || "0.1.0";
   manifest.sourceFingerprint = await computeBridgeSourceFingerprint(rootDir);
 
-  const portableItems = manifest.items.filter((item) => item.artifactKind !== "installer");
   const installerItems: ManifestInstallerItem[] = [];
 
   for (const entry of built) {
@@ -176,7 +171,8 @@ async function mergeManifestInstallers(built: Array<{ target: InstallerTarget; p
     });
   }
 
-  manifest.items = [...installerItems, ...portableItems.map((item) => ({ ...item, artifactKind: item.artifactKind ?? "portable" }))];
+  manifest.items = mergeBridgeInstallerItems(manifest.items, installerItems)
+    .map((item) => ({ ...item, artifactKind: item.artifactKind ?? "portable" }));
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   console.log(`Updated manifest with installer artifacts: ${manifestPath}`);
 }

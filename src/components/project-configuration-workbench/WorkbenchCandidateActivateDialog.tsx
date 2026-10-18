@@ -38,6 +38,7 @@ export function WorkbenchCandidateActivateDialog({
   return (
     <ConfirmDialog
       open={open && activeCandidate?.status === "ready"}
+      className="workbench-candidate-activate-dialog"
       title="确认应用来源更新"
       description={
         <div>

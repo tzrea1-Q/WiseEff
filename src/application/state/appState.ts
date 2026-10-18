@@ -429,9 +429,9 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const parameterModules = buildParameterModulesFromRecords(action.parameters, state.configDraft.parameterModules);
       // Keep the active project pointed at real server data, never at a stale demo id.
       const activeProjectId =
-        projects.length > 0 && !projects.some((project) => project.id === state.activeProjectId)
-          ? projects[0].id
-          : state.activeProjectId;
+        projects.some((project) => project.id === state.activeProjectId)
+          ? state.activeProjectId
+          : projects[0]?.id ?? "";
       return {
         ...state,
         activeProjectId,

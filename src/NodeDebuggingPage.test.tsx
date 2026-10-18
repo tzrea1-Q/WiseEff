@@ -1403,7 +1403,7 @@ describe("/node-debugging", () => {
     expect(await screen.findByText(/已连接：MacBook · serial-123/)).toBeInTheDocument();
   });
 
-  it("supports inline bridge rename and revoke in adb bridge management", async () => {
+  it("supports bridge rename and revoke in the adb bridge management dialog", async () => {
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn()
         .mockResolvedValueOnce({ session: apiSession, target: apiTarget })
@@ -1450,6 +1450,7 @@ describe("/node-debugging", () => {
     await screen.findByText(/已连接：API Gateway Target/);
     await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
 
+    await userEvent.click(await screen.findByRole("button", { name: "管理设备代理" }));
     const renameInput = await screen.findByDisplayValue("Laptop");
     fireEvent.change(renameInput, { target: { value: "Desk-PC" } });
     fireEvent.click(screen.getByRole("button", { name: "保存名称" }));

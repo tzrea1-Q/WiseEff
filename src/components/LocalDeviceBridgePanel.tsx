@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { ModalDialog } from "@/components/common/ModalDialog";
 
 import { LocalDeviceBridgeWizard } from "./LocalDeviceBridgeWizard";
 import {
@@ -31,6 +32,7 @@ import {
   type LocalBridgeReachability
 } from "../infrastructure/http/bridgeConnectLauncher";
 import {
+  bridgeHostTargetLabel,
   detectBrowserBridgeTarget,
   listInstallerBridgeReleases,
   listPortableBridgeReleases,
@@ -97,6 +99,7 @@ export function LocalDeviceBridgePanel({
   const [renamingBridgeId, setRenamingBridgeId] = useState<string | null>(null);
   const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
   const [revokeCandidate, setRevokeCandidate] = useState<DeviceBridgeRecord | null>(null);
+  const [managementOpen, setManagementOpen] = useState(false);
   const [releasesLoading, setReleasesLoading] = useState(false);
   const [recommendedVersion, setRecommendedVersion] = useState<string | null>(null);
   const installReleasesLoadedRef = useRef(false);
@@ -438,11 +441,24 @@ export function LocalDeviceBridgePanel({
     ? presentLocalBridgeError(panelError.error)
     : presentError(panelError.error, "设备代理请求失败，请刷新代理状态后重试。");
   const panelErrorDetail = panelError?.error instanceof Error ? panelError.error.message : typeof panelError?.error === "string" ? panelError.error : "";
+  const serverError = panelError?.source === "server" ? (
+    <div role="alert" className="local-device-bridge-panel__error">
+      <p>{panelErrorMessage}</p>
+      {panelErrorDetail && panelErrorDetail !== panelErrorMessage ? <details>
+        <summary>技术详情</summary><p>{panelErrorDetail}</p>
+      </details> : null}
+      <button className="button subtle" type="button" disabled={checking} onClick={() => void refreshBridgeState()}>
+        刷新代理状态
+      </button>
+    </div>
+  ) : null;
 
   return (
     <section className="local-device-bridge-panel" aria-label="本地设备连接">
       <LocalDeviceBridgeWizard
         compact={compact}
+        managementAction={bridges.length > 0 ? <button type="button" className="button subtle"
+          aria-haspopup="dialog" onClick={() => setManagementOpen(true)}>管理设备代理</button> : null}
         panelStatus={panelStatus}
         pairingStale={pairingStale}
         pairingAuthFailure={pairingAuthFailure}
@@ -479,9 +495,18 @@ export function LocalDeviceBridgePanel({
         releasesLoading={releasesLoading}
         onLoadInstallReleases={loadInstallReleases}
       />
-      {bridges.length > 0 ? (
-        <details className="local-device-bridge-panel__management">
-          <summary>管理设备代理</summary>
+      <ModalDialog open={managementOpen} onDismiss={() => setManagementOpen(false)}
+        className="local-device-bridge-panel__management" describedBy>
+        {({ titleId, descriptionId }) => <>
+          <header className="local-device-bridge-panel__management-head">
+            <div>
+              <h2 id={titleId}>管理设备代理</h2>
+              <p id={descriptionId}>查看已登记的电脑，修改名称或撤销配对授权。</p>
+            </div>
+            <button type="button" className="button subtle" aria-label="关闭设备代理管理"
+              onClick={() => setManagementOpen(false)}>关闭</button>
+          </header>
+          {serverError}
           <ul className="local-device-bridge-panel__bridge-list" aria-label="我的设备代理列表">
             {bridges.map((bridge) => {
               const draft = renameDraftById[bridge.id] ?? bridge.machineLabel;
@@ -506,7 +531,7 @@ export function LocalDeviceBridgePanel({
                       />
                     </label>
                     <small>
-                      {bridge.platform}/{bridge.arch} · 最近在线 {formatBridgeLastSeen(bridge.lastSeenAt)}
+                      {bridgeHostTargetLabel(bridge)} · {bridge.lastSeenAt ? `最近在线 ${formatBridgeLastSeen(bridge.lastSeenAt)}` : "尚无在线记录"}
                     </small>
                   </div>
                   <div className="local-device-bridge-panel__bridge-actions">
@@ -537,22 +562,9 @@ export function LocalDeviceBridgePanel({
               );
             })}
           </ul>
-        </details>
-      ) : null}
-      {panelError?.source === "server" ? (
-        <div role="alert">
-          <p className="node-row-error">{panelErrorMessage}</p>
-          {panelErrorDetail && panelErrorDetail !== panelErrorMessage ? (
-            <details>
-              <summary>技术详情</summary>
-              <p>{panelErrorDetail}</p>
-            </details>
-          ) : null}
-          <button className="button subtle" type="button" disabled={checking} onClick={() => void refreshBridgeState()}>
-            刷新代理状态
-          </button>
-        </div>
-      ) : null}
+        </>}
+      </ModalDialog>
+      {!managementOpen ? serverError : null}
       <ConfirmDialog
         open={revokeCandidate !== null}
         title="撤销设备代理"

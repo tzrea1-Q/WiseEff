@@ -587,6 +587,7 @@ describe("DtsReloadPage", () => {
     await user.click(within(currentRow).getByRole("button", { name: "撤销" }));
     await user.click(within(await screen.findByRole("dialog", { name: "撤销设备代理" })).getByRole("button", { name: "撤销" }));
     await screen.findByText(revokeFails ? "撤销失败" : "已撤销");
+    await user.click(screen.getByRole("button", { name: "关闭设备代理管理" }));
     if (revokeOther || revokeFails) {
       expect(screen.queryByRole("button", { name: "连接本机" })).not.toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "重新检测" }));

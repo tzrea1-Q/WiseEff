@@ -9,15 +9,6 @@
   box-shadow: var(--shadow-1);
 }
 
-.dts-reload-page .navigator-workbench__toolbar::before {
-  content: "";
-  position: absolute;
-  z-index: var(--z-content-base);
-  inset: calc(-1 * var(--page-gutter)) 0 calc(-1 * var(--space-4));
-  background: var(--surface);
-  pointer-events: none;
-}
-
 .dts-reload-page .navigator-workbench__controls {
   position: relative;
   z-index: var(--z-content);

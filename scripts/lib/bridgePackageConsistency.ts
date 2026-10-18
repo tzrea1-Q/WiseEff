@@ -19,7 +19,7 @@ export const REQUIRED_BRIDGE_BUNDLE_MARKERS = [
   'pathname === "/connect"'
 ] as const;
 
-type ManifestFile = {
+export type ManifestFile = {
   recommendedVersion: string;
   minCompatibleVersion: string;
   sourceFingerprint?: string;
@@ -32,6 +32,12 @@ type ManifestFile = {
     artifactKind?: string;
   }>;
 };
+
+export function mergeBridgeInstallerItems(items: ManifestFile["items"], built: ManifestFile["items"]): ManifestFile["items"] {
+  return [...built, ...items.filter((item) => !built.some(
+    (replacement) => item.artifactKind === "installer" && item.platform === replacement.platform && item.arch === replacement.arch
+  ))];
+}
 
 export type BridgePackageCheckFailure = {
   code: string;
