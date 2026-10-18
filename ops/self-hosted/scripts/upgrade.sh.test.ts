@@ -77,10 +77,38 @@ function catalogCliEnv(env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 }
 
 function runLibrary(command: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
-  return spawnSync("bash", ["-c", `source ops/self-hosted/scripts/upgrade-lib.sh\n${command}`, "test", ...args], {
-    encoding: "utf8",
-    env: { ...process.env, ...env }
-  });
+  const composeDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-library-"));
+  try {
+    return spawnSync("bash", ["-c", `
+    source ops/self-hosted/scripts/upgrade-lib.sh
+    upgrade_repo_root="$PWD"
+    upgrade_script_dir="$upgrade_repo_root/ops/self-hosted/scripts"
+    upgrade_compose_dir="$WISEEFF_TEST_LIBRARY_COMPOSE_DIR"
+    # Library fixtures bypass main; initialize its paths and never use host Docker.
+    docker() {
+      case "$*" in
+        'image inspect wiseeff/minio:RELEASE.2024-12-18T13-15-44Z'|\
+        'image inspect minio/minio:RELEASE.2024-12-18T13-15-44Z'|\
+        'image inspect wiseeff/mc:RELEASE.2024-11-21T17-21-54Z'|\
+        'image inspect minio/mc:RELEASE.2024-11-21T17-21-54Z') return 0 ;;
+        'run --rm --pull never --network none --entrypoint /usr/bin/minio wiseeff/minio:RELEASE.2024-12-18T13-15-44Z --version'|\
+        'run --rm --pull never --network none --entrypoint /usr/bin/minio minio/minio:RELEASE.2024-12-18T13-15-44Z --version')
+          printf 'minio version RELEASE.2024-12-18T13-15-44Z (commit-id=test)\\n' ;;
+        'run --rm --pull never --network none --entrypoint /usr/bin/mc wiseeff/mc:RELEASE.2024-11-21T17-21-54Z --version'|\
+        'run --rm --pull never --network none --entrypoint /usr/bin/mc minio/mc:RELEASE.2024-11-21T17-21-54Z --version')
+          printf 'mc version RELEASE.2024-11-21T17-21-54Z (commit-id=test)\\n' ;;
+        *) printf 'Unexpected Docker invocation in library fixture\\n' >&2; return 99 ;;
+      esac
+    }
+    export -f docker
+    ${command}
+    `, "test", ...args], {
+      encoding: "utf8",
+      env: { ...process.env, ...env, WISEEFF_TEST_LIBRARY_COMPOSE_DIR: composeDir }
+    });
+  } finally {
+    rmSync(composeDir, { recursive: true, force: true });
+  }
 }
 
 // Minimal two-commit checkout whose controller uses the real handoff code, so

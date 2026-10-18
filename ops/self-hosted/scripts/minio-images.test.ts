@@ -110,4 +110,62 @@ describe("MinIO release images", () => {
     if (scenario === "build") expect(result.stdout).toMatch(/base[\s\S]*build:minio[\s\S]*build:minio-init/);
     if (scenario === "skip-build") expect(result.stdout).not.toContain("build:");
   });
+
+  it.each([
+    ["missing-contract", 10],
+    ["base-image-failure", 42],
+    ["build-failure", 43],
+    ["version-failure", 40],
+    ["different-owned-release", 10],
+    ["different-official-release", 10],
+    ["reuse-tag-failure", 44],
+    ["rollback-tag-failure", 44],
+  ] as const)("refuses data-plane startup when MinIO preparation fails: %s", (scenario, exitCode) => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-minio-prepare-failure-"));
+    if (scenario !== "missing-contract") {
+      mkdirSync(join(directory, "images"));
+      writeFileSync(join(directory, "images/minio-bundle.env"), contract);
+    }
+    try {
+      const result = runLibrary(`
+        upgrade_compose_dir="$1"
+        scenario="$2"
+        wiseeff_upgrade_ensure_base_image() {
+          printf 'base\\n'
+          [ "$scenario" != base-image-failure ] || return 42
+        }
+        wiseeff_upgrade_compose() {
+          printf 'build:%s\\n' "$2"
+          [ "$scenario" != build-failure ] || return 43
+        }
+        wiseeff_upgrade_compose_for_image() { printf 'start-data-plane\\n'; }
+        wiseeff_upgrade_docker() {
+          case "$1" in
+            image)
+              case "$scenario:$3" in
+                version-failure:wiseeff/*|different-owned-release:wiseeff/*|rollback-tag-failure:wiseeff/*|\
+                different-official-release:minio/*|reuse-tag-failure:minio/*) return 0 ;;
+                *) return 1 ;;
+              esac ;;
+            run)
+              [ "$2 $3 $4 $5 $6 $7 $8" = '--rm --pull never --network none --entrypoint /usr/bin/minio' ] || return 99
+              [ "\${!#}" = --version ] || return 99
+              [ "$scenario" != version-failure ] || return 1
+              case "$scenario" in
+                different-*-release) printf 'minio version RELEASE.2025-01-01T00-00-00Z (commit-id=test)\\n' ;;
+                *) printf 'minio version ${release} (commit-id=test)\\n' ;;
+              esac ;;
+            tag) return 44 ;;
+            *) return 99 ;;
+          esac
+        }
+        wiseeff_upgrade_previous_data_plane_up wiseeff-app:previous
+      `, [directory, scenario]);
+      expect(result.status, result.stderr).toBe(exitCode);
+      expect(result.stderr).not.toContain("unbound variable");
+      expect(result.stdout).not.toContain("start-data-plane");
+      if (scenario === "missing-contract") expect(result.stdout).not.toContain("base");
+      if (scenario === "base-image-failure") expect(result.stdout).not.toContain("build:");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });
