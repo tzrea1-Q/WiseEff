@@ -117,8 +117,7 @@ function createTraceRecorder() {
   };
 }
 
-async function createTestSession(db: Database) {
-  const sessionId = `agent-session-${randomUUID()}`;
+async function createTestSession(db: Database, sessionId = `agent-session-${randomUUID()}`) {
   await createAgentSession(db, {
     id: sessionId,
     organizationId: developmentAuthContext.organization.id,
@@ -371,7 +370,8 @@ describe("agent orchestrator", () => {
       async () => ({ summary: "executed", data: {}, citations: [] })
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
-    const sessionId = await createTestSession(db);
+    // The session ID may contain the proposed value without changing the approval payload.
+    const sessionId = await createTestSession(db, "agent-session-9999");
     const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-owner-turn",
@@ -387,6 +387,7 @@ describe("agent orchestrator", () => {
       user: { ...developmentAuthContext.user, id: "u-intruder" }
     };
 
+    const originalToolCalls = structuredClone(tables.toolCalls);
     await expect(
       orchestrator.resolveApproval({
         auth: intruderAuth,
@@ -399,7 +400,7 @@ describe("agent orchestrator", () => {
 
     expect(registry.run).not.toHaveBeenCalled();
     expect(tables.approvals[0]?.status).toBe("pending");
-    expect(JSON.stringify(tables.toolCalls)).not.toContain("9999");
+    expect(tables.toolCalls).toEqual(originalToolCalls);
   });
 
   it("exports low-cardinality direct tool execution spans without payload or identifiers", async () => {
