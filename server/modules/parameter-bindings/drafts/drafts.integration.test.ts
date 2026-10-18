@@ -413,7 +413,7 @@ describe("canonical pending value drafts", () => {
 
     const syncSnapshot = await loadPublishedCatalog(pool);
     if (!syncSnapshot) throw new Error("Published fixture is unavailable");
-    const written = await withAuditedWrite(root, adminAuth, { requestId: "req-849-drafts-sync" }, async (tx) => {
+    const written = await withAuditedWrite(root, createUserInvocation(adminAuth), { requestId: "req-849-drafts-sync" }, async (tx) => {
       const count = await syncPublishedCatalogProjectValuesInTransaction(
         asValueClient(tx),syncSnapshot,
         {
@@ -470,7 +470,7 @@ describe("canonical pending value drafts", () => {
     );
     const valueCountBefore = Number(valuesBefore.rows[0]!.c);
 
-    const draft = await withAuditedWrite(root, editorAuth, { requestId: "req-849-draft-create" }, async (tx) => {
+    const draft = await withAuditedWrite(root, createUserInvocation(editorAuth), { requestId: "req-849-draft-create" }, async (tx) => {
       const created = await createPreparedDraft(tx, editorAuth, {
         projectId: PROJECT,
         bindingId,

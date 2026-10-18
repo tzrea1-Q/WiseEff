@@ -144,8 +144,7 @@ describe("seed source materialization", () => {
       "parameter:view",
       "parameter:edit",
       "parameter:review",
-      "admin:access",
-      "parameter:file-admin"
+      "admin:access"
     ]
   });
 

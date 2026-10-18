@@ -130,8 +130,15 @@ describe("pairingService", () => {
       severity: "High",
       targetType: "device-bridge",
       targetId: "br-1",
-      actorUserId: "u-1",
-      organizationId: "org-1"
+      actorUserId: null,
+      actorType: "system",
+      organizationId: "org-1",
+      metadata: {
+        initiator: "system",
+        systemKind: "service",
+        systemName: "device-bridge-pairing",
+        pairingUserId: "u-1"
+      }
     });
     expect(JSON.stringify(events[0])).not.toContain("wb_test_token");
   });

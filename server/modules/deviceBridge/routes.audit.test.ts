@@ -104,7 +104,9 @@ describe("device bridge revoke audit", () => {
       targetType: "device-bridge",
       targetId: "br-1",
       actorUserId: "user-1",
-      organizationId: "org-1"
+      actorType: "user",
+      organizationId: "org-1",
+      metadata: { initiator: "user" }
     });
     expect(JSON.stringify(events[0].metadata)).not.toContain("WIN-PC");
   });
@@ -162,7 +164,9 @@ describe("device bridge pairing-code audit", () => {
       severity: "High",
       targetType: "device-bridge-pairing-code",
       actorUserId: "user-1",
-      organizationId: "org-1"
+      actorType: "user",
+      organizationId: "org-1",
+      metadata: { initiator: "user" }
     });
     expect(JSON.stringify(events[0].metadata)).not.toContain("123456");
   });
@@ -208,7 +212,9 @@ describe("device bridge rename audit", () => {
       targetType: "device-bridge",
       targetId: "br-1",
       actorUserId: "user-1",
-      organizationId: "org-1"
+      actorType: "user",
+      organizationId: "org-1",
+      metadata: { initiator: "user" }
     });
     expect(JSON.stringify(events[0].metadata)).not.toContain("LAB-PC-02");
   });

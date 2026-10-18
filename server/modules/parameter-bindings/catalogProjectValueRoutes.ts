@@ -266,7 +266,7 @@ async function syncLatestPublishedValues(
   if (!revision || revision.status !== "resolved") return;
   const snapshot = await loadPublishedCatalog(pool);
   if (!snapshot) return;
-  await withAuditedWrite(db, auth, { requestId: context.requestId }, async (tx) => {
+  await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId }, async (tx) => {
     const written = await syncPublishedCatalogProjectValuesInTransaction(
       asValueClient(tx),snapshot,
       {
@@ -562,7 +562,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const item = await withCanonicalSourceAttemptTransaction(
       db,
       options.objectStore,
-      async (outerTx, attempt) => withAuditedWrite(outerTx, auth, { requestId: request.requestId }, async (tx) => {
+      async (outerTx, attempt) => withAuditedWrite(outerTx, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
         const draft = await createCanonicalValueDraft(tx, auth, {
           projectId: params.projectId,
           bindingId: params.bindingId,
@@ -746,7 +746,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const catalogMatches = body.items.map((source) =>
       matchCatalogImportRow({ id: source.id, name: source.name }, catalog)
     );
-    const rewritten = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
+    const rewritten = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
       const items = body.items.map((row, index) => {
         const match = catalogMatches[index];
         return {
@@ -826,7 +826,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       if (!refusalAuditSink) {
         throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for canonical value submission.");
       }
-      const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
+      const item = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
         const submitted = await submitCanonicalValueChange(tx, auth, {
           projectId: params.projectId,
           draftId: params.draftId,
@@ -1141,7 +1141,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         }
         const batchSnapshot = await loadPublishedCatalog(pool);
         if (!batchSnapshot) throw new ApiError("CONFLICT", "The published catalog snapshot is unavailable.");
-        const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => ({
+        const item = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => ({
           result: await approveCanonicalBatchValueChange(tx, options.objectStore!, auth, batchSnapshot, {
             projectId: params.projectId, requestId: params.requestId,
             batchProofDigest: body.batchProofDigest!, draftImpactDigest: body.draftImpactDigest,
@@ -1251,7 +1251,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       }
       const item = await withAuditedWrite(
         db,
-        auth,
+        createUserInvocation(auth),
         { requestId: request.requestId },
         async (tx) => {
           const reviewed = await reviewCanonicalValueChange(tx, auth, {
@@ -1319,7 +1319,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         });
         return { status: 200, body: { item } };
       }
-      const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
+      const item = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => {
         const withdrawn = await withdrawCanonicalValueChange(tx, auth, {
           projectId: params.projectId,
           requestId: params.requestId,

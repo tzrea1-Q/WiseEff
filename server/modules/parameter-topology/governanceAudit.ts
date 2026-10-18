@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { writeAuditEventInTx, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { TrustedInvocationContext } from "../auth/trustedInvocation";
-import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 
 export type GovernanceAuditAction =
@@ -43,7 +42,7 @@ export type GovernanceAuditAction =
  */
 export async function writeGovernanceAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     action: GovernanceAuditAction;
     projectId?: string | null;
@@ -54,7 +53,7 @@ export async function writeGovernanceAudit(
   context: AuditCorrelationContext = {}
 ) {
   // requestId fallback survives only until governance contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "parameter-topology-governance",
     action: input.action,

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { basename, extname } from "node:path";
 
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import {
   asAuditTx,
   writeAuditEventInTx,
@@ -191,7 +192,7 @@ function buildParsedIndex(format: ParameterFileFormat, bytes: Buffer) {
 
 async function createParameterFileUploadAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     projectId: string;
     file: ProjectParameterFileDto;
@@ -202,7 +203,7 @@ async function createParameterFileUploadAudit(
   // requestId fallback survives only until upload contexts become mandatory (ADR-0027).
   await writeAuditEventInTx(
     tx,
-    auth,
+    invocation,
     { requestId: context.requestId ?? randomUUID() },
     {
       app: "parameters",
@@ -422,7 +423,7 @@ export async function uploadProjectParameterFile(
     }
     await createParameterFileUploadAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         projectId: normalized.projectId,
         file: {
@@ -483,7 +484,7 @@ export async function listProjectParameterFilesForAuth(
 
 async function writeParameterFileRollbackAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     projectId: string;
     file: ProjectParameterFileDto;
@@ -494,7 +495,7 @@ async function writeParameterFileRollbackAudit(
 ) {
   await writeAuditEventInTx(
     tx,
-    auth,
+    invocation,
     { requestId: context.requestId ?? randomUUID() },
     {
       app: "parameters",
@@ -602,7 +603,7 @@ export async function rollbackProjectParameterFileVersion(
 
     await writeParameterFileRollbackAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         projectId: input.projectId,
         file: updatedFile,

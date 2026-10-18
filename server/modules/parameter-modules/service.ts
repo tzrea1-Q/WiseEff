@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { AuthContext } from "../auth/types";
 import {
   asAuditTx,
@@ -85,7 +86,7 @@ async function captureRegistryCatalog(
 
 async function writeModuleAttributionAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     kind: string;
     action: string;
@@ -98,7 +99,7 @@ async function writeModuleAttributionAudit(
   // (ADR-0027); previously the traceId was always a fresh random UUID.
   await writeAuditEventInTx(
     tx,
-    auth,
+    invocation,
     { requestId: context.requestId ?? randomUUID() },
     {
       app: "parameter-management",
@@ -369,7 +370,7 @@ export async function recomputeBindingModules(
       [],
       emptiedModules,
     );
-    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
+    await writeModuleAttributionAudit(asAuditTx(tx), createUserInvocation(auth), {
       kind: "parameter-module-bindings-recomputed",
       action: "recompute",
       targetId: input.projectId ?? auth.organization.id,

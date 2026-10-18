@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation } from "../auth/trustedInvocation";
 import { writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -154,7 +155,7 @@ export async function syncFileVersion(
 
   // requestId fallback survives only until sync contexts become mandatory (ADR-0027).
   for (const conflict of openedConflicts) {
-    await writeAuditEventInTx(db, auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(db, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "parameters",
       kind: "parameter-file-conflict-open",
       action: "open",
@@ -171,7 +172,7 @@ export async function syncFileVersion(
     });
   }
 
-  await writeAuditEventInTx(db, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(db, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "parameter-file-sync",
     action: "sync",

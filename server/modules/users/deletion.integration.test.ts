@@ -408,7 +408,7 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
         kind: "user-delete",
         action: "delete",
         target_id: "u-target",
-        metadata: { isActive: true, roles: [{ projectId: null, roleId: "hardware-user" }] },
+        metadata: { initiator: "user", isActive: true, roles: [{ projectId: null, roleId: "hardware-user" }] },
         trace_id: "delete-request"
       }
     ]);

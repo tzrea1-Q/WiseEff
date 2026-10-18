@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createPostgresDatabase, type Queryable } from "../../shared/database/client";
 import { withTempDatabase } from "../../testing/tempDatabase";
@@ -256,7 +256,10 @@ describe("assertSensitiveNodeWriteAllowed", () => {
           actorType: "agent",
           requestId: "req-refusal"
         },
-        { refusalDb }
+        { refusalDb, invocation: createAgentInvocation(
+          auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] }),
+          { sessionId: "session-refusal", toolCallId: "tool-refusal", approval: { required: true, approvalId: "approval-refusal" } }
+        ) }
       )
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
 

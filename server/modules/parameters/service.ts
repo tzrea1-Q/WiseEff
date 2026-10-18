@@ -801,11 +801,13 @@ async function createParameterReviewAudit(
     changeRequest: ChangeRequestDto;
     participants?: Array<{ role: string; name: string; action?: string; note?: string; time?: string }>;
   },
-  context: ServiceContext = {}
+  context: ServiceContext & { invocation: TrustedInvocationContext }
 ) {
   // requestId fallback survives only until review-flow contexts become mandatory
   // (audited-write migration batches, ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  const invocation = context.invocation;
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
+    ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
     app: "parameter-management",
     kind: input.kind,
     action: input.action,
@@ -1671,7 +1673,8 @@ export async function withdrawSubmissionRound(
 
     // requestId fallback survives only until this function's context becomes mandatory
     // (audited-write migration batches, ADR-0027).
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    const invocation = createUserInvocation(auth);
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-management",
       kind: "parameter-submission-withdraw",
       action: "withdraw",
@@ -1703,6 +1706,7 @@ export async function reviewChange(
   input: ReviewParameterChangeInput,
   context: ParameterReviewContext = {}
 ) {
+  const reviewContext = { ...context, invocation: context.invocation ?? createUserInvocation(auth) };
   return db.transaction(async (tx) => {
     const initial = await loadChangeRequestForReview(tx, auth, input.requestId, false);
     const request = initial.editSubjectKind === "node-enablement" && initial.status === "software_merge" && input.decision === "advance"
@@ -1760,7 +1764,7 @@ export async function reviewChange(
             note: input.note
           }
         ]
-      }, context);
+      }, reviewContext);
 
       if (request.submitterUserId && request.projectId) {
         const project = await getProjectById(tx, {
@@ -1834,7 +1838,7 @@ export async function reviewChange(
             note: input.note
           }
         ]
-      }, context);
+      }, reviewContext);
 
       if (request.submitterUserId && request.projectId) {
         const project = await getProjectById(tx, {
@@ -2152,7 +2156,7 @@ function legacyStructuralWriteRetirementError(): ApiError {
 
 async function createParameterModuleAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     kind: "parameter-module-admin-create" | "parameter-module-admin-update" | "parameter-module-admin-move" | "parameter-module-admin-delete";
     action: "create" | "update" | "move" | "delete";
@@ -2163,7 +2167,7 @@ async function createParameterModuleAudit(
 ) {
   // requestId fallback survives only until module-admin contexts become mandatory
   // (audited-write migration batches, ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: input.kind,
     action: input.action,
@@ -2301,7 +2305,7 @@ export async function createParameterModuleForAuth(
 
     await createParameterModuleAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "parameter-module-admin-create",
         action: "create",
@@ -2395,7 +2399,7 @@ export async function updateParameterModuleForAuth(
 
     await createParameterModuleAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "parameter-module-admin-update",
         action: "update",
@@ -2473,7 +2477,7 @@ export async function moveParameterModuleForAuth(
 
       await createParameterModuleAudit(
         asAuditTx(tx),
-        auth,
+        createUserInvocation(auth),
         {
           kind: "parameter-module-admin-move",
           action: "move",
@@ -2541,7 +2545,7 @@ export async function deleteParameterModuleForAuth(
 
     await createParameterModuleAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "parameter-module-admin-delete",
         action: "delete",

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation } from "../../auth/trustedInvocation";
 import type { RootDatabase } from "../../../shared/database/client";
 import { getRootPostgresPool } from "../../../shared/database/client";
 import { makeTestAuthContext } from "../../../testing/authContext";
@@ -492,7 +493,7 @@ export async function createCanonicalServiceFixture(
         `service fixture Catalog definition missing: ${propertyKey}`,
       );
     }
-    const synced = await withAuditedWrite(root, auth,
+    const synced = await withAuditedWrite(root, createUserInvocation(auth),
       { requestId: `dts-reload-service-sync-${randomUUID()}` }, async (tx) => {
       const write = asValueClient(tx);
     const stabilized = await writeCanonicalBinding(

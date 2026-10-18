@@ -311,7 +311,7 @@ export function registerParameterFileRoutes(
     const snapshot = await loadPublishedCatalog(pool);
     if (!snapshot) throw new ApiError("CONFLICT", "The published catalog snapshot is unavailable.");
     const refusalSink = createTrustedRefusalAuditSink(db);
-    const registered = await withAuditedWrite(db,auth,{ requestId: request.requestId },async (tx) => ({
+    const registered = await withAuditedWrite(db,createUserInvocation(auth),{ requestId: request.requestId },async (tx) => ({
       result: await registerCanonicalJsonSource(tx,requireObjectStore(options.objectStore),auth,snapshot,{
         ...params,...body,invocation: createUserInvocation(auth),requestId: request.requestId,refusalSink
       }),audit: null
@@ -533,7 +533,7 @@ export function registerParameterFileRoutes(
     }
     // Manual re-sync previously ran its draft/binding/conflict writes and audits
     // auto-committed; one audited write makes the whole sync atomic (ADR-0027).
-    const summary = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => ({
+    const summary = await withAuditedWrite(db, createUserInvocation(auth), { requestId: request.requestId }, async (tx) => ({
       result: await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId }, { requestId: request.requestId }),
       audit: null
     }));

@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { Database } from "../../../shared/database/client";
 import { createRouter } from "../../../shared/http/router";
 import { registerXiaozeThreadRoutes } from "./threadRoutes";
+import { makeTestAuthContext } from "../../../testing/authContext";
 
-const auth = {
-  organization: { id: "org-1" },
-  user: { id: "user-1", isActive: true },
+const auth = makeTestAuthContext({
+  organizationId: "org-1",
+  userId: "user-1",
   permissions: [],
   roles: []
-} as never;
+});
 
 function createTestDb() {
   return {

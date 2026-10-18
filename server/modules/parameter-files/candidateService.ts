@@ -5,6 +5,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
   assertTrustedInvocationMatchesAuth,
+  createUserInvocation,
   trustedAccountableUser,
   trustedDomainAttribution,
   TrustedInvocationContextError,
@@ -204,7 +205,7 @@ function writeCandidateAudit(
     });
   }
   // requestId fallback survives only until candidate contexts become mandatory (ADR-0027).
-  return writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  return writeAuditEventInTx(tx, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: input.kind,
     action: input.action,

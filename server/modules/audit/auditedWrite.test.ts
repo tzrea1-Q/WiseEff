@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createSystemInvocation, createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { createDatabase, type Queryable, type QueryResult } from "../../shared/database/client";
-import { asAuditTx, withAuditedWrite, writeAuditEventInTx } from "./auditedWrite";
+import { asAuditTx, withAuditedWrite, writeAuditEventInTx, writeMilestoneAudit, writeRefusalAudit } from "./auditedWrite";
 
 function auth(): AuthContext {
   return {
@@ -44,11 +45,26 @@ const AUDIT = {
 };
 
 describe("withAuditedWrite", () => {
+  it.each([undefined, auth(), { initiator: "user", principal: auth() }])(
+    "rejects missing or unbranded invocation before any domain write",
+    async (raw) => {
+      const { session, statements } = recordingSession();
+      let called = false;
+      await expect(withAuditedWrite(createDatabase(session), raw as TrustedInvocationContext,
+        { requestId: "invalid" }, async () => {
+          called = true;
+          return { result: undefined, audit: null };
+        })).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+      expect(called).toBe(false);
+      expect(statements).toEqual([]);
+    }
+  );
+
   it("commits the domain write and the audit event in one transaction", async () => {
     const { session, statements } = recordingSession();
     const db = createDatabase(session);
 
-    const result = await withAuditedWrite(db, auth(), { requestId: "req-1" }, async (tx) => {
+    const result = await withAuditedWrite(db, createUserInvocation(auth()), { requestId: "req-1" }, async (tx) => {
       await tx.query("insert into things values (1)");
       return { result: "ok", audit: AUDIT };
     });
@@ -80,7 +96,7 @@ describe("withAuditedWrite", () => {
     const db = createDatabase(session);
 
     await expect(
-      withAuditedWrite(db, auth(), { requestId: "req-2" }, async (tx) => {
+      withAuditedWrite(db, createUserInvocation(auth()), { requestId: "req-2" }, async (tx) => {
         await tx.query("insert into things values (1)");
         return { result: "ok", audit: AUDIT };
       })
@@ -97,7 +113,7 @@ describe("withAuditedWrite", () => {
     const db = createDatabase(session);
 
     await expect(
-      withAuditedWrite(db, auth(), { requestId: "req-3" }, async (tx) => {
+      withAuditedWrite(db, createUserInvocation(auth()), { requestId: "req-3" }, async (tx) => {
         // Services that open their own transaction degrade to savepoints here.
         await tx.transaction(async (inner) => {
           await inner.query("insert into nested values (1)");
@@ -115,14 +131,14 @@ describe("withAuditedWrite", () => {
     const { session, statements } = recordingSession();
     const db = createDatabase(session);
 
-    await withAuditedWrite(db, auth(), { requestId: "req-4" }, async () => ({
+    await withAuditedWrite(db, createUserInvocation(auth()), { requestId: "req-4" }, async () => ({
       result: undefined,
       audit: [AUDIT, { ...AUDIT, kind: "unit-test-2" }]
     }));
     expect(statements.filter((s) => s.startsWith("insert into audit_events"))).toHaveLength(2);
 
     statements.length = 0;
-    await withAuditedWrite(db, auth(), { requestId: "req-5" }, async () => ({
+    await withAuditedWrite(db, createUserInvocation(auth()), { requestId: "req-5" }, async () => ({
       result: undefined,
       audit: null
     }));
@@ -132,6 +148,49 @@ describe("withAuditedWrite", () => {
 });
 
 describe("writeAuditEventInTx", () => {
+  it("projects User, Agent and System provenance without trusting spec metadata", async () => {
+    const values: unknown[][] = [];
+    const tx: Queryable = { query: async (_text, args = []) => {
+      values.push(args);
+      return { rows: [], rowCount: 0 };
+    } };
+    const principal = auth();
+    const agent = createAgentInvocation(principal, {
+      sessionId: "session-1", toolCallId: "tool-1",
+      approval: { required: true, approvalId: "approval-1" }
+    });
+    for (const invocation of [createUserInvocation(principal), agent]) {
+      await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: "req-provenance" }, {
+        ...AUDIT, id: "explicit-id", metadata: { initiator: "spoof", toolCallId: "spoof" }
+      });
+    }
+    expect(values[0].slice(0, 5)).toEqual(["explicit-id", "org-1", "p1", "user-1", "user"]);
+    expect(values[1].slice(0, 5)).toEqual(["explicit-id", "org-1", "p1", "user-1", "agent"]);
+    expect(JSON.parse(values[1][11] as string)).toMatchObject({
+      initiator: "agent", sessionId: "session-1", toolCallId: "tool-1", approvalId: "approval-1"
+    });
+    await writeAuditEventInTx(asAuditTx(tx), createSystemInvocation({ kind: "job", name: "audit-test" }),
+      { requestId: "system" }, { ...AUDIT, organizationId: "org-1" });
+    expect(values[2].slice(1, 5)).toEqual(["org-1", "p1", null, "system"]);
+    expect(JSON.parse(values[2][11] as string)).toMatchObject({
+      initiator: "system", systemKind: "job", systemName: "audit-test"
+    });
+    await expect(writeAuditEventInTx(asAuditTx(tx), createUserInvocation(principal),
+      { requestId: "override" }, { ...AUDIT, organizationId: "other-org" }))
+      .rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+    expect(values).toHaveLength(3);
+  });
+
+  it("rejects raw AuthContext in transactional, refusal and milestone writes", async () => {
+    const { session, statements } = recordingSession();
+    const db = createDatabase(session);
+    for (const write of [writeAuditEventInTx, writeRefusalAudit, writeMilestoneAudit]) {
+      await expect(write(db as typeof db & ReturnType<typeof asAuditTx>, auth() as unknown as TrustedInvocationContext,
+        { requestId: "invalid" }, AUDIT)).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+    }
+    expect(statements).toEqual([]);
+  });
+
   it("derives actor and organization from auth and traceId from context", async () => {
     const calls: Array<{ text: string; values: unknown[] }> = [];
     const tx: Queryable = {
@@ -141,7 +200,7 @@ describe("writeAuditEventInTx", () => {
       }
     };
 
-    await writeAuditEventInTx(asAuditTx(tx), auth(), { requestId: "req-6" }, AUDIT);
+    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth()), { requestId: "req-6" }, AUDIT);
 
     expect(calls).toHaveLength(1);
     expect(calls[0]!.values).toEqual(

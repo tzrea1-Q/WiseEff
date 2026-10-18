@@ -5,6 +5,7 @@ import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext, BackendRoleId, RoleBinding } from "../auth/types";
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import {
   checkProjectBelongsToOrg,
   countActiveAdmins,
@@ -182,7 +183,7 @@ async function assertNoSelfLockout(
 
 async function auditUserMutation(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     kind: "user-create" | "user-update" | "user-activation" | "user-role-replace" | "user-password-reset" | "user-delete";
     action: "create" | "update" | "activate" | "deactivate" | "replace-roles" | "reset-password" | "delete";
@@ -192,7 +193,7 @@ async function auditUserMutation(
   context: AuditCorrelationContext = {}
 ) {
   // requestId fallback survives only until user-governance contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "user-governance",
     kind: input.kind,
     action: input.action,
@@ -206,7 +207,7 @@ async function auditUserMutation(
 
 async function auditRegistrationRoleRequestDecision(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     action: "approve" | "reject";
     requestId: string;
@@ -215,7 +216,7 @@ async function auditRegistrationRoleRequestDecision(
   },
   context: AuditCorrelationContext = {}
 ) {
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "user-governance",
     kind: "registration-role-request",
     action: input.action,
@@ -271,7 +272,7 @@ export async function updateHomeOrganization(
       throw new ApiError("NOT_FOUND", "Organization was not found.");
     }
 
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "user-governance",
       kind: "organization-update",
       action: "update",
@@ -334,7 +335,7 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
       userId: user.id,
       roles: roles.map((r) => r.roleId)
     });
-    await auditUserMutation(asAuditTx(tx), auth, {
+    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
       kind: "user-create",
       action: "create",
       userId: user.id,
@@ -365,7 +366,7 @@ export async function updateUserProfile(
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    await auditUserMutation(asAuditTx(tx), auth, {
+    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
       kind: "user-update",
       action: "update",
       userId,
@@ -399,7 +400,7 @@ export async function resetUserPassword(
       throw new ApiError("NOT_FOUND", "Local password credential was not found.", { userId });
     }
     await revokeLocalUserSessions(tx, { userId, revokedAt: new Date().toISOString() });
-    await auditUserMutation(asAuditTx(tx), auth, {
+    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
       kind: "user-password-reset",
       action: "reset-password",
       userId,
@@ -424,7 +425,7 @@ export async function deactivateUser(
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
-    await auditUserMutation(asAuditTx(tx), auth, {
+    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
       kind: "user-activation",
       action: input.isActive ? "activate" : "deactivate",
       userId,
@@ -472,7 +473,7 @@ export async function deleteUser(
       });
     }
 
-    await auditUserMutation(asAuditTx(tx), auth, {
+    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
       kind: "user-delete",
       action: "delete",
       userId,
@@ -530,7 +531,7 @@ export async function replaceUserRoles(
       userId,
       roles: desiredOrgRoles
     });
-    await auditUserMutation(asAuditTx(tx), auth, {
+    await auditUserMutation(asAuditTx(tx), createUserInvocation(auth), {
       kind: "user-role-replace",
       action: "replace-roles",
       userId,
@@ -614,7 +615,7 @@ export async function approveRegistrationRoleRequest(
     if (!decided) {
       throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
     }
-    await auditRegistrationRoleRequestDecision(asAuditTx(tx), auth, {
+    await auditRegistrationRoleRequestDecision(asAuditTx(tx), createUserInvocation(auth), {
       action: "approve",
       requestId,
       userId: request.userId,
@@ -664,7 +665,7 @@ export async function rejectRegistrationRoleRequest(
     if (!decided) {
       throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
     }
-    await auditRegistrationRoleRequestDecision(asAuditTx(tx), auth, {
+    await auditRegistrationRoleRequestDecision(asAuditTx(tx), createUserInvocation(auth), {
       action: "reject",
       requestId,
       userId: request.userId,
@@ -783,7 +784,7 @@ export async function replaceProjectWorkflowRoles(
 
     await writeAuditEventInTx(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       { requestId: context.requestId ?? randomUUID() },
       {
         app: "user-governance",
@@ -863,7 +864,7 @@ export async function replaceOrganizationRoles(
 
     await auditUserMutation(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "user-role-replace",
         action: "replace-roles",

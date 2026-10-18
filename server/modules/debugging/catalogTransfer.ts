@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import { ApiError } from "../../shared/http/errors";
 import { createDatabase, getRootPostgresPool, type Database } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import { withAuditedWrite } from "../audit/auditedWrite";
 import { requireDebugAdmin } from "./policy";
 import {
@@ -1555,7 +1556,7 @@ export async function exportDebugCatalogFull(
     );
   }
 
-  await withAuditedWrite(db, auth, { requestId: context.requestId }, async () => ({
+  await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId }, async () => ({
     result: undefined,
     audit: {
       app: "debugging",
@@ -1851,7 +1852,7 @@ export async function importDebugCatalog(
   const document = parseDebugCatalogTransferDocument(body.document);
   const requestedDigest = body.previewDigest.trim();
 
-  return withAuditedWrite(db, auth, { requestId: context.requestId }, async (tx) => {
+  return withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId }, async (tx) => {
     await lockCatalogWriter(tx, organizationId);
     const target = await loadCatalogTargetSnapshot(tx, { organizationId });
     const plan = buildCatalogImportPlan({ organizationId, document, target });

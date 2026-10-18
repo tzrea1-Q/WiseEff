@@ -3,6 +3,9 @@
  * as the domain write it describes. `AuditTx` is the proof-of-transaction brand —
  * `withAuditedWrite` is the normal way to obtain it, `asAuditTx` is the explicit
  * escape hatch for callers that already orchestrate their own transaction.
+ * ADR-0038 requires a server-owned TrustedInvocationContext: actor, organization,
+ * and provenance derive from it, never from a default user actor. System events
+ * may explicitly scope their organization in the audit spec.
  *
  * The deprecated `createAuditEvent(db, …)` path (audit outside the write's
  * transaction) is being retired call site by call site; `auditRatchet.test.ts`
@@ -10,11 +13,11 @@
  */
 import { randomUUID } from "node:crypto";
 
-import type { AuthContext } from "../auth/types";
+import { assertTrustedInvocationContext, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { Database, Queryable } from "../../shared/database/client";
 import { createAuditEvent, writePlatformAuditEvent } from "./repository";
 import { buildTrustedAuditEventInput, type TrustedAuditEventInput } from "./trustedAudit";
-import type { AuditActorType, AuditSeverity } from "./types";
+import type { AuditSeverity } from "./types";
 
 declare const auditTxBrand: unique symbol;
 
@@ -40,7 +43,7 @@ export type AuditedWriteContext = {
 
 /**
  * What a write must state about itself. Actor and organization fields derive
- * from `auth`; id and traceId derive from the seam, so call sites stop
+ * from the trusted invocation; id and traceId derive from the seam, so call sites stop
  * hand-copying them.
  */
 export type AuditSpec = {
@@ -52,8 +55,8 @@ export type AuditSpec = {
   targetType: string | null;
   targetId: string | null;
   metadata: Record<string, unknown>;
-  /** Defaults to "user". */
-  actorType?: AuditActorType;
+  /** Only System invocations may supply an explicit organization scope. */
+  organizationId?: string | null;
   /** Defaults to a fresh UUID. */
   id?: string;
 };
@@ -61,23 +64,14 @@ export type AuditSpec = {
 /** Write one audit event inside a proven transaction. */
 export async function writeAuditEventInTx(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   context: AuditedWriteContext,
   spec: AuditSpec
 ): Promise<void> {
-  await createAuditEvent(tx, {
+  await writeTrustedAuditEventInTx(tx, {
+    ...spec,
+    invocation,
     id: spec.id ?? randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: spec.projectId,
-    actorUserId: auth.user.id,
-    actorType: spec.actorType ?? "user",
-    app: spec.app,
-    kind: spec.kind,
-    action: spec.action,
-    severity: spec.severity,
-    targetType: spec.targetType,
-    targetId: spec.targetId,
-    metadata: spec.metadata,
     traceId: context.requestId
   });
 }
@@ -99,23 +93,14 @@ export async function writeTrustedAuditEventInTx(tx: AuditTx, input: TrustedAudi
 
 async function writeStandaloneAuditEvent(
   db: Database,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   context: AuditedWriteContext,
   spec: AuditSpec
 ): Promise<void> {
-  await createAuditEvent(db, {
+  await writeTrustedAuditEvent(db, {
+    ...spec,
+    invocation,
     id: spec.id ?? randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: spec.projectId,
-    actorUserId: auth.user.id,
-    actorType: spec.actorType ?? "user",
-    app: spec.app,
-    kind: spec.kind,
-    action: spec.action,
-    severity: spec.severity,
-    targetType: spec.targetType,
-    targetId: spec.targetId,
-    metadata: spec.metadata,
     traceId: context.requestId
   });
 }
@@ -130,11 +115,11 @@ async function writeStandaloneAuditEvent(
  */
 export async function writeRefusalAudit(
   db: Database,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   context: AuditedWriteContext,
   spec: AuditSpec
 ): Promise<void> {
-  await writeStandaloneAuditEvent(db, auth, context, spec);
+  await writeStandaloneAuditEvent(db, invocation, context, spec);
 }
 
 /** Write trusted refusal evidence through the pool so it survives a rolled-back domain transaction. */
@@ -156,11 +141,11 @@ export async function writeTrustedMilestoneAudit(db: Database, input: TrustedAud
  */
 export async function writeMilestoneAudit(
   db: Database,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   context: AuditedWriteContext,
   spec: AuditSpec
 ): Promise<void> {
-  await writeStandaloneAuditEvent(db, auth, context, spec);
+  await writeStandaloneAuditEvent(db, invocation, context, spec);
 }
 
 export type AuditedWriteOutcome<T> = {
@@ -181,16 +166,17 @@ export type AuditedWriteOutcome<T> = {
  */
 export async function withAuditedWrite<T>(
   db: Database,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   context: AuditedWriteContext,
   fn: (tx: Database & AuditTx) => Promise<AuditedWriteOutcome<T>>
 ): Promise<T> {
+  assertTrustedInvocationContext(invocation);
   return db.transaction(async (tx) => {
     const outcome = await fn(tx as Database & AuditTx);
     if (outcome.audit !== null) {
       const specs = Array.isArray(outcome.audit) ? outcome.audit : [outcome.audit];
       for (const spec of specs) {
-        await writeAuditEventInTx(asAuditTx(tx), auth, context, spec);
+        await writeAuditEventInTx(asAuditTx(tx), invocation, context, spec);
       }
     }
     return outcome.result;

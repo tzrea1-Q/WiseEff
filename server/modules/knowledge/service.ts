@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { asAuditTx, writeAuditEventInTx, type AuditSpec, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import { assertTrustedInvocationMatchesAuth, createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { getLogRecord } from "../logs/service";
 import { getReloadRunRecord } from "../dts-reload/service";
@@ -131,7 +132,7 @@ function buildSearchText(input: { title: string; tags: string[]; content: string
 
 async function writeKnowledgeAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     kind: string;
     action: string;
@@ -142,7 +143,7 @@ async function writeKnowledgeAudit(
   context: KnowledgeServiceContext = {}
 ) {
   // requestId fallback survives only until knowledge contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "knowledge",
     kind: input.kind,
     action: input.action,
@@ -205,6 +206,7 @@ export async function createKnowledgeEntry(
   input: CreateKnowledgeEntryInput,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
+  const invocation = createUserInvocation(auth);
   requireKnowledgeEdit(auth);
 
   const entryId = randomUUID();
@@ -243,7 +245,7 @@ export async function createKnowledgeEntry(
       });
       await writeKnowledgeAudit(
         asAuditTx(tx),
-        auth,
+        invocation,
         {
           kind: "knowledge-entry-create",
           action: "create",
@@ -309,7 +311,7 @@ export async function createKnowledgeEntry(
     });
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: "knowledge-entry-create",
         action: "create",
@@ -344,6 +346,7 @@ export async function createKnowledgeEntry(
 async function createMarkdownDraftWithSource(
   db: Database,
   auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     title: string;
     tags: string[];
@@ -352,7 +355,7 @@ async function createMarkdownDraftWithSource(
     sourceSessionId: string | null;
     sourceLogId: string | null;
     sourceReloadRunId: string | null;
-    audit: Pick<AuditSpec, "kind" | "action" | "metadata" | "actorType">;
+    audit: Pick<AuditSpec, "kind" | "action" | "metadata">;
   },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
@@ -390,11 +393,10 @@ async function createMarkdownDraftWithSource(
       tags: input.tags,
       searchText
     });
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
       app: "knowledge",
       kind: input.audit.kind,
       action: input.audit.action,
-      actorType: input.audit.actorType,
       severity: "Medium",
       projectId: null,
       targetType: "knowledge-entry",
@@ -436,6 +438,7 @@ export async function distillKnowledgeFromLog(
   return createMarkdownDraftWithSource(
     db,
     auth,
+    createUserInvocation(auth),
     {
       ...draft,
       sourceType: "human",
@@ -492,6 +495,7 @@ export async function distillKnowledgeFromReloadRun(
   return createMarkdownDraftWithSource(
     db,
     auth,
+    createUserInvocation(auth),
     {
       ...draft,
       sourceType: "human",
@@ -531,8 +535,10 @@ export async function createAgentKnowledgeDraft(
     sourceLogId?: string;
     sourceReloadRunId?: string;
   },
+  invocation: TrustedInvocationContext,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Agent knowledge draft");
   requireKnowledgeEdit(auth);
 
   let sourceLogId: string | null = null;
@@ -557,6 +563,7 @@ export async function createAgentKnowledgeDraft(
   return createMarkdownDraftWithSource(
     db,
     auth,
+    invocation,
     {
       title: input.title,
       tags: input.tags,
@@ -568,7 +575,6 @@ export async function createAgentKnowledgeDraft(
       audit: {
         kind: "knowledge-entry-agent-draft",
         action: "agent-draft-create",
-        actorType: "agent",
         metadata: {
           sessionId: input.sessionId,
           title: input.title,
@@ -594,6 +600,7 @@ export async function rejectAgentKnowledgeDraft(
   entryId: string,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
+  const invocation = createUserInvocation(auth);
   await db.transaction(async (tx) => {
     const entry = await getEntryForUpdate(tx, auth, entryId);
     if (!entry || !canReadEntry(auth, entry)) {
@@ -612,7 +619,7 @@ export async function rejectAgentKnowledgeDraft(
     // A draft was never indexed (published-only retrieval), so no index refresh
     // is enqueued here — the entry goes straight to archived.
     await setEntryStatus(tx, auth, { entryId, status: "archived" });
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
       app: "knowledge",
       kind: "knowledge-entry-reject",
       action: "reject",
@@ -643,6 +650,7 @@ export async function updateKnowledgeEntry(
   input: UpdateKnowledgeEntryInput,
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
+  const invocation = createUserInvocation(auth);
   requireKnowledgeEdit(auth);
 
   let uploadedBytes: Buffer | null = null;
@@ -751,7 +759,7 @@ export async function updateKnowledgeEntry(
 
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: "knowledge-entry-update",
         action: "update",
@@ -785,6 +793,7 @@ export async function updateKnowledgeEntry(
 async function transitionKnowledgeEntry(
   db: Database,
   auth: AuthContext,
+  invocation: TrustedInvocationContext,
   entryId: string,
   input: {
     fromStatuses: KnowledgeStatus[];
@@ -815,7 +824,7 @@ async function transitionKnowledgeEntry(
     await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: input.kind,
         action: input.action,
@@ -841,6 +850,7 @@ export async function publishKnowledgeEntry(
   return transitionKnowledgeEntry(
     db,
     auth,
+    createUserInvocation(auth),
     entryId,
     { fromStatuses: ["draft"], toStatus: "published", kind: "knowledge-entry-publish", action: "publish" },
     context
@@ -856,6 +866,7 @@ export async function archiveKnowledgeEntry(
   return transitionKnowledgeEntry(
     db,
     auth,
+    createUserInvocation(auth),
     entryId,
     { fromStatuses: ["published"], toStatus: "archived", kind: "knowledge-entry-archive", action: "archive" },
     context
@@ -871,6 +882,7 @@ export async function restoreKnowledgeEntry(
   return transitionKnowledgeEntry(
     db,
     auth,
+    createUserInvocation(auth),
     entryId,
     { fromStatuses: ["archived"], toStatus: "published", kind: "knowledge-entry-restore", action: "restore" },
     context
@@ -883,6 +895,7 @@ export async function hardDeleteKnowledgeEntry(
   entryId: string,
   context: KnowledgeServiceContext = {}
 ): Promise<void> {
+  const invocation = createUserInvocation(auth);
   requireKnowledgeManage(auth);
 
   await db.transaction(async (tx) => {
@@ -896,7 +909,7 @@ export async function hardDeleteKnowledgeEntry(
     await deleteEntry(tx, auth, entryId);
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: "knowledge-entry-delete",
         action: "delete",
@@ -970,6 +983,7 @@ export async function addKnowledgeDefinitionReference(
   input: { entryId: string; definitionId: string },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
+  const invocation = createUserInvocation(auth);
   await db.transaction(async (tx) => {
     const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
     if (await hasDefinitionReference(tx, auth, input)) return;
@@ -991,7 +1005,7 @@ export async function addKnowledgeDefinitionReference(
 
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: "knowledge-definition-reference-add",
         action: "definition-reference-add",
@@ -1019,6 +1033,7 @@ export async function removeKnowledgeParameterReference(
   input: { entryId: string; specId: string },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
+  const invocation = createUserInvocation(auth);
   await db.transaction(async (tx) => {
     const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
 
@@ -1035,7 +1050,7 @@ export async function removeKnowledgeParameterReference(
 
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: "knowledge-parameter-reference-remove",
         action: "parameter-reference-remove",
@@ -1057,6 +1072,7 @@ export async function removeKnowledgeDefinitionReference(
   input: { entryId: string; definitionId: string },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
+  const invocation = createUserInvocation(auth);
   await db.transaction(async (tx) => {
     const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
     const removed = await deleteDefinitionReference(tx, auth, input);
@@ -1064,7 +1080,7 @@ export async function removeKnowledgeDefinitionReference(
 
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: "knowledge-definition-reference-remove",
         action: "definition-reference-remove",
@@ -1149,6 +1165,7 @@ export async function restoreKnowledgeRevision(
   input: { expectedHeadRevisionNumber: number },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
+  const invocation = createUserInvocation(auth);
   requireKnowledgeEdit(auth);
 
   await db.transaction(async (tx) => {
@@ -1202,7 +1219,7 @@ export async function restoreKnowledgeRevision(
 
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: "knowledge-revision-restore",
         action: "restore-revision",
@@ -1438,6 +1455,7 @@ export async function retryKnowledgeEntryIndex(
   entryId: string,
   context: KnowledgeServiceContext = {}
 ): Promise<void> {
+  const invocation = createUserInvocation(auth);
   requireKnowledgeManage(auth);
   await db.transaction(async (tx) => {
     const entry = await getEntryById(tx, auth, entryId);
@@ -1447,7 +1465,7 @@ export async function retryKnowledgeEntryIndex(
     await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
     await writeKnowledgeAudit(
       asAuditTx(tx),
-      auth,
+      invocation,
       {
         kind: "knowledge-index-retry",
         action: "index-retry",
@@ -1465,11 +1483,12 @@ export async function rebuildKnowledgeIndex(
   auth: AuthContext,
   context: KnowledgeServiceContext = {}
 ): Promise<{ enqueued: number }> {
+  const invocation = createUserInvocation(auth);
   requireKnowledgeManage(auth);
   let enqueued = 0;
   await db.transaction(async (tx) => {
     enqueued = await enqueueAllPublishedEntries(tx, auth.organization.id);
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
       app: "knowledge",
       kind: "knowledge-index-rebuild",
       action: "index-rebuild",

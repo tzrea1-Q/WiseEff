@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation } from "../auth/trustedInvocation";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { listDraftsForParameterValue } from "../parameter-drafts/repository";
@@ -185,7 +186,7 @@ export async function resolveParameterFileConflict(
     );
 
     // requestId fallback survives only until conflict contexts become mandatory (ADR-0027).
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "parameters",
       kind: "parameter-file-conflict-resolve",
       action: "resolve",

@@ -1,5 +1,6 @@
 import type { Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
+import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../../auth/trustedInvocation";
 import { withAuditedWrite, type AuditSpec } from "../../audit/auditedWrite";
 import { getAgentSession } from "../repository";
 import type { AgentCitation } from "../types";
@@ -21,6 +22,7 @@ function normalizePageContext(pageContext: PersistXiaozeTurnInput["pageContext"]
 
 export type PersistXiaozeTurnInput = {
   auth: AuthContext;
+  invocation: TrustedInvocationContext;
   requestId: string;
   threadId: string;
   runId: string;
@@ -63,6 +65,7 @@ export function createXiaozeTurnPersister(options: { db: Database }) {
     if (messages.length === 0) {
       return;
     }
+    const invocation = assertTrustedInvocationMatchesAuth(input.auth, input.invocation, "Xiaoze turn persistence");
 
     const pageContext = normalizePageContext(input.pageContext);
 
@@ -78,7 +81,7 @@ export function createXiaozeTurnPersister(options: { db: Database }) {
     // Persisted messages and their audit evidence commit together (ADR-0027);
     // previously the messages auto-committed and the session-start/append audits
     // could be lost after them.
-    await withAuditedWrite(options.db, input.auth, { requestId: input.requestId }, async (tx) => {
+    await withAuditedWrite(options.db, invocation, { requestId: input.requestId }, async (tx) => {
       const sessionStarted = !(await getAgentSession(tx, input.auth.organization.id, input.threadId));
       const persisted = await persistXiaozeTurnMessages(tx, payload);
       if (!persisted) {

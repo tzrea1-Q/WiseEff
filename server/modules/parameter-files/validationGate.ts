@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { withAuditedWrite } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -76,7 +77,7 @@ function computeRequiresConfirmation(result: {
 
 async function writeValidationGateAudit(
   db: Database,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     configSetId: string;
     projectId: string | null;
@@ -93,7 +94,7 @@ async function writeValidationGateAudit(
   // so it gets an audited write of its own (ADR-0027) — deliberately independent of
   // any caller transaction: a failed release must not erase the evidence that the
   // gate ran. requestId fallback survives only until gate contexts become mandatory.
-  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async () => ({
+  await withAuditedWrite(db, invocation, { requestId: context.requestId ?? randomUUID() }, async () => ({
     result: undefined,
     audit: {
       app: "parameters",
@@ -166,7 +167,7 @@ export async function runValidationGate(
 
     await writeValidationGateAudit(
       db,
-      auth,
+      createUserInvocation(auth),
       {
         configSetId: input.configSetId,
         projectId: configSet.projectId,
@@ -213,7 +214,7 @@ export async function runValidationGate(
       ];
       await writeValidationGateAudit(
         db,
-        auth,
+        createUserInvocation(auth),
         {
           configSetId: input.configSetId,
           projectId: configSet.projectId,
@@ -242,7 +243,7 @@ export async function runValidationGate(
     };
     await writeValidationGateAudit(
       db,
-      auth,
+      createUserInvocation(auth),
       {
         configSetId: input.configSetId,
         projectId: configSet.projectId,
@@ -287,7 +288,7 @@ export async function runValidationGate(
 
   await writeValidationGateAudit(
     db,
-    auth,
+    createUserInvocation(auth),
     {
       configSetId: input.configSetId,
       projectId: configSet.projectId,

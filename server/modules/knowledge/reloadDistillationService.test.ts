@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
+import { createAgentInvocation } from "../auth/trustedInvocation";
 import type { ReloadRunStatus, ReloadSnapshotDto } from "../dts-reload/types";
 import { insertReloadRun, insertReloadRunTarget } from "../dts-reload/repository";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
@@ -289,7 +290,7 @@ describe.skipIf(!databaseAvailable)("knowledge reload distillation service", () 
           contentMarkdown: "## 结论\n\nwatchdog 超时上调后不可验证,需补调试节点绑定。",
           sessionId: "xiaoze-session-kbr",
           sourceReloadRunId: "run-kbr-agent"
-        },
+        }, createAgentInvocation(auth, { sessionId: "xiaoze-session-kbr", toolCallId: "knowledge-draft-tool", approval: { required: false } }),
         { requestId: "req-kbr-agent-1" }
       );
 
@@ -317,7 +318,7 @@ describe.skipIf(!databaseAvailable)("knowledge reload distillation service", () 
           contentMarkdown: "body",
           sessionId: "s-kbr-1",
           sourceReloadRunId: "run-kbr-agent-gate"
-        })
+        }, createAgentInvocation(makeAuth(NO_RELOAD_READ, knowledgeEditOnly), { sessionId: "s-kbr-1", toolCallId: "knowledge-draft-tool", approval: { required: false } }))
       ).rejects.toMatchObject({ code: "FORBIDDEN", details: { permission: "debugging:view" } });
     });
 
@@ -331,7 +332,7 @@ describe.skipIf(!databaseAvailable)("knowledge reload distillation service", () 
           contentMarkdown: "body",
           sessionId: "s-kbr-2",
           sourceReloadRunId: "run-kbr-agent-org"
-        })
+        }, createAgentInvocation(makeAuth(OTHER_ORG_EDITOR, editorPermissions, OTHER_ORG_ID), { sessionId: "s-kbr-2", toolCallId: "knowledge-draft-tool", approval: { required: false } }))
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
   });

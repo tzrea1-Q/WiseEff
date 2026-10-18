@@ -88,7 +88,6 @@ describe("node-type subject resolution during seed materialization", () => {
       "parameter:edit",
       "parameter:review",
       "admin:access",
-      "parameter:file-admin",
     ],
   });
 

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridgeApiPaths";
 
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { buildTrustedAuditEventInput } from "../audit/trustedAudit";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -100,12 +102,10 @@ export function registerDeviceBridgeRoutes(
       organizationId: auth.user.organizationId
     });
 
-    await writeAudit(db, {
+    await writeAudit(db, buildTrustedAuditEventInput({
       id: randomUUID(),
-      organizationId: auth.user.organizationId,
+      invocation: createUserInvocation(auth),
       projectId: null,
-      actorUserId: auth.user.id,
-      actorType: "user",
       app: "device-bridge",
       kind: "device-bridge-pairing-code-issue",
       action: "create",
@@ -114,7 +114,7 @@ export function registerDeviceBridgeRoutes(
       targetId: null,
       metadata: { expiresAt: issued.expiresAt },
       traceId: request.requestId ?? randomUUID()
-    });
+    }));
 
     return { status: 201, body: issued };
   });
@@ -165,12 +165,10 @@ export function registerDeviceBridgeRoutes(
       throw new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: params.bridgeId });
     }
 
-    await writeAudit(db, {
+    await writeAudit(db, buildTrustedAuditEventInput({
       id: randomUUID(),
-      organizationId: auth.user.organizationId,
+      invocation: createUserInvocation(auth),
       projectId: null,
-      actorUserId: auth.user.id,
-      actorType: "user",
       app: "device-bridge",
       kind: "device-bridge-rename",
       action: "update",
@@ -179,7 +177,7 @@ export function registerDeviceBridgeRoutes(
       targetId: updated.id,
       metadata: { platform: updated.platform, arch: updated.arch },
       traceId: request.requestId ?? randomUUID()
-    });
+    }));
 
     return {
       status: 200,
@@ -207,12 +205,10 @@ export function registerDeviceBridgeRoutes(
       throw new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: params.bridgeId });
     }
 
-    await writeAudit(db, {
+    await writeAudit(db, buildTrustedAuditEventInput({
       id: randomUUID(),
-      organizationId: auth.user.organizationId,
+      invocation: createUserInvocation(auth),
       projectId: null,
-      actorUserId: auth.user.id,
-      actorType: "user",
       app: "device-bridge",
       kind: "device-bridge-revoke",
       action: "revoke",
@@ -221,7 +217,7 @@ export function registerDeviceBridgeRoutes(
       targetId: revoked.id,
       metadata: { platform: revoked.platform, arch: revoked.arch, clientVersion: revoked.clientVersion },
       traceId: request.requestId ?? randomUUID()
-    });
+    }));
 
     return {
       status: 200,

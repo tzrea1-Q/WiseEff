@@ -304,7 +304,7 @@ describe("published catalog project values", () => {
     expect(revision.status).toBe("resolved");
     const syncSnapshot = await loadPublishedCatalog(pool);
     if (!syncSnapshot) throw new Error("Published fixture is unavailable");
-    const written = await withAuditedWrite(root, auth, { requestId: "req-min-upg-sync" }, async (tx) => {
+    const written = await withAuditedWrite(root, createUserInvocation(auth), { requestId: "req-min-upg-sync" }, async (tx) => {
       const count = await syncPublishedCatalogProjectValuesInTransaction(
         asValueClient(tx),syncSnapshot,
         {
@@ -419,7 +419,7 @@ describe("published catalog project values", () => {
       expect.objectContaining({ id: listed[0]!.id, propertyKey: "iin_max" }),
     ]));
 
-    await expect(withAuditedWrite(root, auth, { requestId: "req-min-upg-val" }, async (tx) => {
+    await expect(withAuditedWrite(root, createUserInvocation(auth), { requestId: "req-min-upg-val" }, async (tx) => {
       const result = await saveCanonicalProjectValue(
         pool,
         {
@@ -524,7 +524,7 @@ describe("published catalog project values", () => {
     const snapshot = await loadPublishedCatalog(pool);
     if (!snapshot) throw new Error("Published fixture is unavailable");
     const selected = observed[0]!;
-    const written = await withAuditedWrite(root, auth, { requestId: "req-filtered-sync" }, async (tx) => {
+    const written = await withAuditedWrite(root, createUserInvocation(auth), { requestId: "req-filtered-sync" }, async (tx) => {
       const count = await syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, {
         organizationId: ORG,
         projectId,
@@ -726,7 +726,7 @@ describe("published catalog project values", () => {
     const syncSnapshot = await loadPublishedCatalog(pool);
     if (!syncSnapshot) throw new Error("Published fixture is unavailable");
     await expect(
-      withAuditedWrite(root, auth, { requestId: "req-min-upg-sync-rollback" }, async (tx) => {
+      withAuditedWrite(root, createUserInvocation(auth), { requestId: "req-min-upg-sync-rollback" }, async (tx) => {
         const count = await syncPublishedCatalogProjectValuesInTransaction(
           asValueClient(tx),syncSnapshot,
           {
@@ -756,7 +756,7 @@ describe("published catalog project values", () => {
 
   it("rolls import preview provenance back with the outer transaction", async () => {
     await expect(
-      withAuditedWrite(root, auth, { requestId: "req-min-upg-preview-rollback" }, async (tx) => {
+      withAuditedWrite(root, createUserInvocation(auth), { requestId: "req-min-upg-preview-rollback" }, async (tx) => {
         const item = await insertImportBatch(tx, {
           id: randomUUID(), organizationId: ORG, projectId: PROJECT, createdByUserId: USER,
           sourceName: "pasted-import.txt",

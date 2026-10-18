@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -200,7 +200,7 @@ function storedObjectFromBytes(input: UploadLogFileInput): StoredObject {
 
 async function createLogAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     kind: "log-upload" | "log-upload-failed" | "log-rerun" | "log-archive" | "log-unarchive" | "log-feedback";
     action: string;
@@ -211,7 +211,7 @@ async function createLogAudit(
   context: ServiceContext = {}
 ) {
   // requestId fallback survives only until log contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "log-analysis",
     kind: input.kind,
     action: input.action,
@@ -284,7 +284,7 @@ export async function uploadLogFile(
       }
       await createLogAudit(
         asAuditTx(tx),
-        auth,
+        createUserInvocation(auth),
         {
           kind: "log-upload-failed",
           action: "upload-failed",
@@ -321,7 +321,7 @@ export async function uploadLogFile(
     );
     await createLogAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "log-upload",
         action: "upload",
@@ -386,7 +386,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
       if (!log) throw new ApiError("NOT_FOUND", "Log record was not created.");
       await createLogAudit(
         asAuditTx(tx),
-        auth,
+        createUserInvocation(auth),
         {
           kind: "log-upload-failed",
           action: "upload-failed",
@@ -421,7 +421,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
     );
     await createLogAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "log-upload",
         action: "upload",
@@ -503,7 +503,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     }
     await createLogAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "log-rerun",
         action: "rerun",
@@ -545,7 +545,7 @@ export async function archiveLogRecord(db: Database, auth: AuthContext, logId: s
     }
     await createLogAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "log-archive",
         action: "archive",
@@ -571,7 +571,7 @@ export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId:
     }
     await createLogAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "log-unarchive",
         action: "unarchive",
@@ -613,7 +613,7 @@ export async function submitLogFeedback(db: Database, auth: AuthContext, input: 
     });
     await createLogAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "log-feedback",
         action: "feedback",
