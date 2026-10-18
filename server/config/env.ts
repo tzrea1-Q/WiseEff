@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveLogWebhookSecretKey } from "./logWebhookSecretKey";
 import {
   resolveXiaozeLlmConfig,
   type ResolvedXiaozeLlmConfig
@@ -66,6 +67,7 @@ const rawEnvSchema = z.object({
   LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   LOG_ANALYSIS_JUDGE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.2),
   LOG_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  LOG_WEBHOOK_SECRET_ENCRYPTION_KEY: z.string().optional(),
   LOG_WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   LOG_WEBHOOK_RETRY_BASE_DELAY_MS: z.coerce.number().int().positive().default(1000),
   LOG_WEBHOOK_ALLOW_INSECURE_LOCAL: z
@@ -117,6 +119,7 @@ export type ServerEnv = ParsedServerEnv & {
 
 export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   const env = rawEnvSchema.parse(raw);
+  if (env.LOG_WEBHOOK_SECRET_ENCRYPTION_KEY) resolveLogWebhookSecretKey(raw);
   const xiaozeLlmConfig = resolveXiaozeLlmConfig(raw);
 
   if (env.NODE_ENV === "production" && !env.DATABASE_URL) {

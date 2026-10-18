@@ -41,6 +41,7 @@ An Admin configures the webhook per log domain in `/log-admin` (business-domain 
 ```json
 {
   "event": "log-analysis.completed",
+  "eventId": "log-result:run-...",
   "recordId": "log-...",
   "runId": "run-...",
   "fileName": "charging-foldback.log",
@@ -60,10 +61,10 @@ An Admin configures the webhook per log domain in `/log-admin` (business-domain 
 
 ### Delivery semantics
 
-- Best-effort and asynchronous: delivery never blocks or fails the analysis itself. Failed sends retry with exponential backoff (default 3 attempts) and are then marked failed; every attempt is visible in `/log-admin` → 最近投递. Treat the webhook as a notification channel and the REST API as the source of truth.
-- Delivery-attempt history is bounded independently per log domain. The worker keeps the latest 10,000 rows by `created_at DESC, id DESC` by default; cleanup failures produce a redacted warning and retry on the next 60-second cycle without interrupting delivery. Operators can tune the bound or disable future pruning with `LOG_WEBHOOK_DELIVERY_RETENTION_*`, but only database backup/restore can recover rows already deleted.
+- At-least-once with bounded retries: the terminal-state transaction persists an outbox event before acknowledging completion. Workers claim due events using leases and `FOR UPDATE SKIP LOCKED`; crashes during delivery or backoff resume after lease expiry. Failed sends retry with exponential backoff (default 3 attempts), then remain failed. Every recorded attempt is visible in `/log-admin` → 最近投递; the REST API remains the source of truth.
+- Delivery-attempt history is bounded independently per log domain. The worker keeps the latest 10,000 rows by `created_at DESC, id DESC` by default; cleanup failures produce a redacted warning and retry on the next 60-second cycle without interrupting delivery. Operators can tune the bound or disable future pruning with `LOG_WEBHOOK_DELIVERY_RETENTION_*`, but only database backup/restore can recover rows already deleted. Attempt history and terminal outbox rows (`delivered` / `failed`) each independently retain the newest N rows under the same setting and ordering, with at most ten batches of 1,000 deletes per table per cycle. `pending`, `processing`, and `retry` events are never pruned.
 - Respond with a `2xx` quickly (do the work async). Redirects are not followed; response bodies are discarded.
-- Deliveries are at-least-once across retries — deduplicate on `runId` if your handler is not idempotent.
+- A receiver may accept a request before the sender crashes and records success. Deduplicate result events using the stable `eventId` (or existing `runId`); retries preserve the payload and event id. The admin test endpoint remains a synchronous single attempt.
 
 ### Verify the signature
 

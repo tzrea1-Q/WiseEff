@@ -13,6 +13,7 @@ import {
 } from "./ip-lab-profile";
 import {
   normalizeAnswers,
+  generateLogWebhookEncryptionKey,
   type SelfHostAnswers,
   type SelfHostSecrets,
   type SelfHostTlsMode
@@ -56,19 +57,22 @@ export function resolveSecrets(
 ): SelfHostSecrets {
   const postgresPassword = existing?.POSTGRES_PASSWORD?.trim();
   const minioPassword = existing?.MINIO_ROOT_PASSWORD?.trim();
+  const logWebhookEncryptionKey = existing?.LOG_WEBHOOK_SECRET_ENCRYPTION_KEY?.trim() || generateLogWebhookEncryptionKey();
   if (!force && postgresPassword && minioPassword) {
-    return { postgresPassword, minioPassword };
+    return { postgresPassword, minioPassword, logWebhookEncryptionKey };
   }
   return {
     postgresPassword: generate(),
-    minioPassword: generate()
+    minioPassword: generate(),
+    logWebhookEncryptionKey
   };
 }
 
 export function renderSelfHostEnv(answers: SelfHostAnswers, secrets: SelfHostSecrets) {
   const normalized = normalizeAnswers(answers);
+  const keyLine = `LOG_WEBHOOK_SECRET_ENCRYPTION_KEY=${secrets.logWebhookEncryptionKey ?? generateLogWebhookEncryptionKey()}\n`;
   if (normalized.profile === "ip-lab") {
-    return renderIpLabEnv({
+    return keyLine + renderIpLabEnv({
       host: normalized.siteHost,
       tlsMode: normalized.tlsMode as IpLabTlsMode,
       adminUsername: normalized.adminUsername,
@@ -85,7 +89,7 @@ export function renderSelfHostEnv(answers: SelfHostAnswers, secrets: SelfHostSec
       logAnalysisApiKey: normalized.logAnalysisApiKey
     });
   }
-  return renderAcmeEnv(normalized, secrets);
+  return keyLine + renderAcmeEnv(normalized, secrets);
 }
 
 function renderAcmeEnv(answers: SelfHostAnswers, secrets: SelfHostSecrets) {

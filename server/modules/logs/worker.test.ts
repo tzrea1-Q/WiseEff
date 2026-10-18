@@ -58,6 +58,7 @@ type Fixture = {
   };
   stages: Array<{ stage: string; status: string; progress: number; message: string }>;
   reports: Array<Record<string, unknown>>;
+  webhookOutbox: Array<{ id: string; status: string; payload: Record<string, unknown> }>;
   evidence: Array<{ id: string; stage: string; line_numbers: number[]; inference: string; suggested_action: string; rule_hit: string | null }>;
 };
 
@@ -110,6 +111,7 @@ function createFixture(overrides: Partial<Fixture> = {}): Fixture {
     },
     stages: [],
     reports: [],
+    webhookOutbox: [],
     evidence: [],
     ...overrides
   };
@@ -157,6 +159,22 @@ function createFakeWorkerDb(fixture = createFixture()) {
     async query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
       const normalized = text.replace(/\s+/g, " ").trim();
       calls.push(normalized);
+
+      if (normalized.startsWith("select r.log_domain_id, a.log_record_id")) {
+        if (!fixture.log.log_domain) return { rows: [], rowCount: 0 };
+        return { rows: [{
+          log_domain_id: fixture.log.log_domain.id, log_record_id: fixture.log.id,
+          file_name: fixture.log.file_name, status: fixture.run.status,
+          completed_at: fixture.run.updated_at, error_message: fixture.run.error_message,
+          ...fixture.reports[0]
+        } as Row], rowCount: 1 };
+      }
+      if (normalized.startsWith("insert into log_webhook_outbox")) {
+        const id = values[0] as string;
+        if (fixture.webhookOutbox.some((row) => row.id === id)) return { rows: [], rowCount: 0 };
+        fixture.webhookOutbox.push({ id, status: "pending", payload: JSON.parse(values[5] as string) });
+        return { rows: [{ id } as Row], rowCount: 1 };
+      }
 
       if (normalized.startsWith("update jobs set status = 'processing'")) {
         if (normalized.includes("and id = $4") && values[3] !== fixture.job.id) {
@@ -363,7 +381,7 @@ function createFakeWorkerDb(fixture = createFixture()) {
     transaction: async (fn) => {
       const before = structuredClone(fixture);
       try {
-        return await fn(queryable);
+        return await fn(db);
       } catch (error) {
         Object.assign(fixture.job, before.job);
         Object.assign(fixture.run, before.run);
@@ -372,6 +390,7 @@ function createFakeWorkerDb(fixture = createFixture()) {
         fixture.stages.splice(0, fixture.stages.length, ...before.stages);
         fixture.reports.splice(0, fixture.reports.length, ...before.reports);
         fixture.evidence.splice(0, fixture.evidence.length, ...before.evidence);
+        fixture.webhookOutbox.splice(0, fixture.webhookOutbox.length, ...before.webhookOutbox);
         throw error;
       }
     }
@@ -822,7 +841,7 @@ describe("log worker", () => {
     expect(webhooks.notifyAnalysisTerminal).not.toHaveBeenCalled();
   });
 
-  it("fires the domain result webhook with status failed after dead-lettering", async () => {
+  it("enqueues the domain result webhook with status failed after dead-lettering", async () => {
     const fixture = createFixture({
       job: {
         ...createFixture().job,
@@ -840,6 +859,14 @@ describe("log worker", () => {
     });
 
     expect(result).toBe("processed");
+    expect(fixture.webhookOutbox).toEqual([{
+      id: "log-result:run-1", status: "pending",
+      payload: expect.objectContaining({
+        eventId: "log-result:run-1", event: "log-analysis.failed",
+        logDomainId: "domain-1", recordId: "log-1", runId: "run-1",
+        status: "failed", conclusionSummary: "Job exhausted 4 attempts."
+      })
+    }]);
     expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledOnce();
     expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledWith(
       expect.objectContaining({
