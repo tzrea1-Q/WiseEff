@@ -19,6 +19,11 @@ import {
   type Result,
 } from "../parameter-catalog-contract/index";
 import type { AuthContext } from "../auth/types";
+import {
+  assertTrustedInvocationMatchesAuth,
+  createUserInvocation,
+  type TrustedInvocationContext,
+} from "../auth/trustedInvocation";
 import { classifyImpact } from "../catalog-publication/authorization/classify";
 import { previewPublicationCandidate } from "../catalog-publication/preview";
 import type { SupportedDefinitionContent } from "../catalog-publication/builder/types";
@@ -362,13 +367,12 @@ export function createParameterCatalogMigrationService(
   };
 
   const auditedTransaction = async <T>(
-    principalId: string,
+    invocation: TrustedInvocationContext | undefined,
     requestId: string,
     fn: (tx: Database) => Promise<{ result: T; audit: AuditSpec }>,
   ): Promise<T> => {
-    const auth = await resolveAuthContext(principalId);
-    if (auth) {
-      return withAuditedWrite(db, auth, { requestId }, (tx) =>
+    if (invocation) {
+      return withAuditedWrite(db, invocation, { requestId }, (tx) =>
         fn(tx as unknown as Database),
       );
     }
@@ -850,6 +854,7 @@ export function createParameterCatalogMigrationService(
     replacementId: string,
     approvedProjectIds: readonly string[] | null,
     auditRequestId: string,
+    invocation?: TrustedInvocationContext,
   ): Promise<Result<DefinitionReplacementView, DefinitionReplacementFailure>> => {
     const successor = await (async () => {
       const replacement = await loadReplacement(db, organizationId, replacementId);
@@ -899,8 +904,16 @@ export function createParameterCatalogMigrationService(
     }
 
     let audited: DefinitionReplacementView;
+    // Audit only for a principal that resolves in this Organization (pre-existing
+    // contract); a supplied trusted actor must be that same principal.
+    const auth = await resolveAuthContext(principalId);
+    const auditInvocation = !auth
+      ? undefined
+      : invocation
+        ? assertTrustedInvocationMatchesAuth(auth, invocation, "definition replacement audit")
+        : createUserInvocation(auth);
     try {
-      audited = await auditedTransaction(principalId, auditRequestId, async (tx) => {
+      audited = await auditedTransaction(auditInvocation, auditRequestId, async (tx) => {
         const discoveredReplacement = await loadReplacement(tx, organizationId, replacementId, { lock: "none" });
         if (!discoveredReplacement) {
           throw new Error("definition-replacement-vanished");
@@ -1209,6 +1222,7 @@ export function createParameterCatalogMigrationService(
       return {
         result: view,
         audit: {
+          ...(auditInvocation?.initiator === "system" ? { organizationId } : {}),
           app: "parameter-catalog-migration",
           kind: "definition-replacement",
           action: "definition-replacement-advanced",
@@ -1449,6 +1463,7 @@ export function createParameterCatalogMigrationService(
         finalized.replacementId,
         null,
         `definition-replacement:${finalized.replacementId}`,
+        command.trustedActor,
       );
     };
 

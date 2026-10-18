@@ -6,6 +6,8 @@ import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository
 import { notifyDebugNodeReadbackFailed, notifyDebugNodeWriteFailed, notifyDebugSnapshotRollback } from "../notifications/producers";
 import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { buildTrustedAuditEventInput } from "../audit/trustedAudit";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
@@ -356,19 +358,17 @@ async function resolveDebugNodeModuleAssignment(
 }
 
 function auditInput(
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: Omit<CreateAuditEventInput, "id" | "organizationId" | "actorUserId" | "actorType" | "app" | "traceId">,
   context: ServiceContext = {}
 ): CreateAuditEventInput {
-  return {
+  return buildTrustedAuditEventInput({
     id: randomUUID(),
-    organizationId: organizationIdFor(auth),
-    actorUserId: auth.user.id,
-    actorType: "user",
+    invocation,
     app: "debugging",
     traceId: context.requestId ?? randomUUID(),
     ...input
-  };
+  });
 }
 
 function ensureActiveSession(session: DebugSessionRecord | null): DebugSessionRecord {
@@ -932,7 +932,7 @@ export function createDebuggingService(options: ServiceOptions) {
     if (!binding) {
       throw notFound("Debug node was not found.");
     }
-    await writeAudit(tx, auditInput(auth, {
+    await writeAudit(tx, auditInput(createUserInvocation(auth), {
       projectId: null,
       kind: "debug-node-binding-admin-upsert",
       action: "update",
@@ -949,7 +949,7 @@ export function createDebuggingService(options: ServiceOptions) {
     if (!binding) {
       throw notFound("Debug node binding was not found.");
     }
-    await writeAudit(tx, auditInput(auth, {
+    await writeAudit(tx, auditInput(createUserInvocation(auth), {
       projectId: null,
       kind: "debug-node-binding-admin-archive",
       action: "archive",
@@ -1084,7 +1084,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-target-detect",
@@ -1214,7 +1214,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-parameter-admin-create",
@@ -1295,7 +1295,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-parameter-admin-update",
@@ -1342,7 +1342,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-parameter-admin-archive",
@@ -1381,7 +1381,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-parameter-admin-restore",
@@ -1424,7 +1424,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-parameter-binding-admin-upsert",
@@ -1463,7 +1463,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-parameter-binding-admin-archive",
@@ -1545,7 +1545,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-node-admin-create",
@@ -1632,7 +1632,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-node-admin-update",
@@ -1673,7 +1673,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-node-admin-delete",
@@ -1733,7 +1733,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-node-module-admin-create",
@@ -1798,7 +1798,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-node-module-admin-update",
@@ -1866,7 +1866,7 @@ export function createDebuggingService(options: ServiceOptions) {
           await writeAudit(
             tx,
             auditInput(
-              auth,
+              createUserInvocation(auth),
               {
                 projectId: null,
                 kind: "debug-node-module-admin-move",
@@ -1916,7 +1916,7 @@ export function createDebuggingService(options: ServiceOptions) {
           await writeAudit(
             tx,
             auditInput(
-              auth,
+              createUserInvocation(auth),
               {
                 projectId: null,
                 kind: "debug-node-module-admin-delete",
@@ -2049,7 +2049,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-session-create",
@@ -2220,7 +2220,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            createUserInvocation(auth),
             {
               projectId: null,
               kind: "debug-node-read",
@@ -2306,7 +2306,7 @@ export function createDebuggingService(options: ServiceOptions) {
           throw new ApiError("VALIDATION_FAILED", "nodeId or parameterId is required.");
         }
 
-        await assertDeviceWriteAuthorization(tx, auth, {
+        const invocation = await assertDeviceWriteAuthorization(tx, auth, {
           risk: parameter.risk,
           sessionId: session.id,
           parameterId: input.parameterId,
@@ -2384,7 +2384,7 @@ export function createDebuggingService(options: ServiceOptions) {
           await writeAudit(
             tx,
             auditInput(
-              auth,
+              invocation,
               {
                 projectId: null,
                 kind: "debug-node-write",
@@ -2512,7 +2512,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            invocation,
             {
               projectId: null,
               kind: "debug-node-write",
@@ -2564,7 +2564,7 @@ export function createDebuggingService(options: ServiceOptions) {
         if (snapshot.status !== "valid" || snapshot.sessionId !== session.id) {
           throw new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.");
         }
-        await assertDeviceRollbackAuthorization(tx, auth, {
+        const invocation = await assertDeviceRollbackAuthorization(tx, auth, {
           snapshotId: snapshot.id,
           confirmationToken: input.confirmationToken,
           approvalId: input.approvalId
@@ -2701,7 +2701,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await writeAudit(
           tx,
           auditInput(
-            auth,
+            invocation,
             {
               projectId: null,
               kind: "debug-snapshot-rollback",

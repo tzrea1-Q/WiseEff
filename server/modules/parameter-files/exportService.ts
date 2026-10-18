@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { withAuditedWrite } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -109,7 +110,7 @@ async function loadVersionSource(objectStore: ObjectStore, storageKey: string): 
 
 async function writeExportAudit(
   db: Database,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     action: "file" | "config-set";
     projectId: string | null;
@@ -121,7 +122,7 @@ async function writeExportAudit(
   // Exports have no domain write; the audit event is the only persistent effect,
   // so it gets an audited write of its own (ADR-0027). requestId fallback survives
   // only until export contexts become mandatory.
-  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async () => ({
+  await withAuditedWrite(db, invocation, { requestId: context.requestId ?? randomUUID() }, async () => ({
     result: undefined,
     audit: {
       app: "parameters",
@@ -169,7 +170,7 @@ export async function exportFile(
 
   await writeExportAudit(
     db,
-    auth,
+    createUserInvocation(auth),
     {
       action: "file",
       projectId: file.projectId,
@@ -258,7 +259,7 @@ export async function exportConfigSet(
 
   await writeExportAudit(
     db,
-    auth,
+    createUserInvocation(auth),
     {
       action: "config-set",
       projectId: configSet.projectId,

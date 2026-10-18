@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createPostgresDatabase, type Queryable } from "../../shared/database/client";
 import { withTempDatabase } from "../../testing/tempDatabase";
@@ -154,7 +154,7 @@ describe("assertSensitiveNodeWriteAllowed", () => {
         })),
         rowCount: rules.length
       }))
-    };
+    } as unknown as Queryable;
   }
 
   it("allows writes when no sensitive rules match", async () => {
@@ -256,7 +256,10 @@ describe("assertSensitiveNodeWriteAllowed", () => {
           actorType: "agent",
           requestId: "req-refusal"
         },
-        { refusalDb }
+        { refusalDb, invocation: createAgentInvocation(
+          auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] }),
+          { sessionId: "session-refusal", toolCallId: "tool-refusal", approval: { required: true, approvalId: "approval-refusal" } }
+        ) }
       )
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
 
@@ -272,7 +275,7 @@ describe("assertSensitiveNodeWriteAllowed", () => {
   });
 
   it("resolves compatible from dts_nodes and blocks writes matching compatible rules", async () => {
-    const db: Queryable = {
+    const db = {
       query: vi.fn(async (text: string) => {
         if (text.includes("from dts_sensitive_node_rules")) {
           return {
@@ -299,7 +302,7 @@ describe("assertSensitiveNodeWriteAllowed", () => {
         }
         return { rows: [], rowCount: 0 };
       })
-    };
+    } as unknown as Queryable;
 
     await expect(
       assertSensitiveNodeWriteAllowed(db, auth({ permissions: ["parameter:view", "parameter:edit"] }), {
@@ -345,7 +348,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", [structuralPath, `/${structuralPath}`]]);
       return { rows: [{ node_id: "node-1", compatible: null }], rowCount: 1 };
     });
-    await expect(resolveDtsNodeCompatible({ query }, {
+    await expect(resolveDtsNodeCompatible({ query } as unknown as Queryable, {
       organizationId: "org-1", projectId: "project-1", sourceFileName: "board.dts",
       sourceFileVersionId: "version-locked", sourcePath: { kind: "node-locator", value: locator }
     })).resolves.toBeNull();
@@ -358,7 +361,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         expect(sql).not.toContain("dts_nodes n");
         return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
       });
-      await expect(resolveDtsNodeCompatible({ query }, {
+      await expect(resolveDtsNodeCompatible({ query } as unknown as Queryable, {
         organizationId: "org-1", projectId: "project-1", sourceFileName: "board.dts",
         sourceFileVersionId: "version-locked", sourcePath: { kind: "node-locator", value: locator }
       })).rejects.toMatchObject({ code: "CONFLICT", details: {
@@ -378,7 +381,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       expect(values).toEqual([organizationId, projectId, sourceFileName, sourceFileVersionId]);
       return { rows: [], rowCount: 0 };
     });
-    await expect(resolveDtsNodeCompatible({ query }, {
+    await expect(resolveDtsNodeCompatible({ query } as unknown as Queryable, {
       organizationId, projectId, sourceFileName, sourceFileVersionId,
       sourcePath: { kind: "node-locator", value: "/power" }
     })).rejects.toMatchObject({ code: "CONFLICT", details: {
@@ -405,7 +408,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       return { rows: [{ node_id: "node-1", compatible: "vendor,locked-critical" }], rowCount: 1 };
     });
 
-    await expect(resolveDtsNodeCompatible({ query }, {
+    await expect(resolveDtsNodeCompatible({ query } as unknown as Queryable, {
       organizationId: "org-1",
       projectId: "project-1",
       sourceFileName: "board.dts",
@@ -427,7 +430,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       return { rows: [{ node_id: "node-1", compatible: "vendor,locked-critical" }], rowCount: 1 };
     });
 
-    await expect(resolveDtsNodeCompatible({ query }, {
+    await expect(resolveDtsNodeCompatible({ query } as unknown as Queryable, {
       organizationId: "org-1",
       projectId: "project-1",
       sourceFileName: "board.dts",
@@ -438,9 +441,9 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
   });
 
   it("fails closed when the exact file version has no matching file and node identity", async () => {
-    const db: Queryable = {
+    const db = {
       query: vi.fn(async () => ({ rows: [], rowCount: 0 }))
-    };
+    } as unknown as Queryable;
     await expect(resolveDtsNodeCompatible(db, {
       organizationId: "org-1",
       projectId: "project-1",
@@ -455,14 +458,14 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
 
   it.each(["amba/wdt@0/missing", "/amba/wdt@0/missing"])("fails closed when exact node locator %s is absent instead of inheriting its parent", async (locator) => {
     let call = 0;
-    const db: Queryable = {
+    const db = {
       query: vi.fn(async () => {
         call += 1;
         return call === 1
           ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
           : { rows: [], rowCount: 0 };
       })
-    };
+    } as unknown as Queryable;
 
     await expect(resolveDtsNodeCompatible(db, {
       organizationId: "org-1",
@@ -479,14 +482,14 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
 
   it("preserves a persisted exact node with compatible NULL as a no-compatible result", async () => {
     let call = 0;
-    const db: Queryable = {
+    const db = {
       query: vi.fn(async () => {
         call += 1;
         return call === 1
           ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
           : { rows: [{ node_id: "node-1", compatible: null }], rowCount: 1 };
       })
-    };
+    } as unknown as Queryable;
 
     await expect(resolveDtsNodeCompatible(db, {
       organizationId: "org-1",
@@ -500,7 +503,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
 
   it("ignores a caller compatible value when an exact source version is supplied", async () => {
     let call = 0;
-    const db: Queryable = {
+    const db = {
       query: vi.fn(async (text: string) => {
         call += 1;
         expect(text).not.toContain("f.current_version_id");
@@ -508,7 +511,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
           ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
           : { rows: [{ node_id: "node-1", compatible: "vendor,locked" }], rowCount: 1 };
       })
-    };
+    } as unknown as Queryable;
 
     await expect(resolveDtsNodeCompatible(db, {
       organizationId: "org-1",
@@ -546,14 +549,13 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         expect(query).not.toHaveBeenCalled();
       } catch (error) {
         primaryError = error;
-        throw error;
-      } finally {
-        try {
-          await trustedRefusalRoot.close();
-        } catch (cleanupError) {
-          if (primaryError === undefined) throw cleanupError;
-        }
       }
+      try {
+        await trustedRefusalRoot.close();
+      } catch (cleanupError) {
+        if (primaryError === undefined) throw cleanupError;
+      }
+      if (primaryError !== undefined) throw primaryError;
     });
   });
 
@@ -582,14 +584,13 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         expect(query).not.toHaveBeenCalled();
       } catch (error) {
         primaryError = error;
-        throw error;
-      } finally {
-        try {
-          await trustedRefusalRoot.close();
-        } catch (cleanupError) {
-          if (primaryError === undefined) throw cleanupError;
-        }
       }
+      try {
+        await trustedRefusalRoot.close();
+      } catch (cleanupError) {
+        if (primaryError === undefined) throw cleanupError;
+      }
+      if (primaryError !== undefined) throw primaryError;
     });
   });
 
@@ -602,7 +603,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         const principal = auth({
           permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"]
         });
-        const db: Queryable = {
+        const db = {
           query: vi.fn(async () => ({
             rows: [
               {
@@ -618,7 +619,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
             ],
             rowCount: 1
           }))
-        };
+        } as unknown as Queryable;
 
         await expect(
           assertTrustedSensitiveNodeWriteAllowed(db, principal, {
@@ -632,14 +633,13 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         ).resolves.toBeUndefined();
       } catch (error) {
         primaryError = error;
-        throw error;
-      } finally {
-        try {
-          await trustedRefusalRoot.close();
-        } catch (cleanupError) {
-          if (primaryError === undefined) throw cleanupError;
-        }
       }
+      try {
+        await trustedRefusalRoot.close();
+      } catch (cleanupError) {
+        if (primaryError === undefined) throw cleanupError;
+      }
+      if (primaryError !== undefined) throw primaryError;
     });
   });
 

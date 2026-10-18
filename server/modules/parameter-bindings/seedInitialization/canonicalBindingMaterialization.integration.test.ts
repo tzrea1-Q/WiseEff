@@ -166,7 +166,6 @@ describe("canonical binding materialization from a published release", () => {
       "parameter:edit",
       "parameter:review",
       "admin:access",
-      "parameter:file-admin",
     ],
   });
 

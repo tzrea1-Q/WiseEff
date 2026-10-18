@@ -5,6 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation } from "../../auth/trustedInvocation";
 import { ApiError } from "../../../shared/http/errors";
 import type { Database, Queryable } from "../../../shared/database/client";
 import { withAuditedWrite } from "../../audit/auditedWrite";
@@ -583,7 +584,7 @@ export async function disposeProjectParameterPlaneResidue(
   requireTargetProject(input.projectId);
   const organizationId = auth.organization.id;
   const plan = await planProjectParameterPlaneDisposal(root, objectStore, auth, operator, input);
-  return withAuditedWrite(root, auth, { requestId: operator.approvalRef }, async (tx) => {
+  return withAuditedWrite(root, createUserInvocation(auth), { requestId: operator.approvalRef }, async (tx) => {
     await tx.query("select pg_advisory_xact_lock(hashtext('plane-disposal'), hashtext($1))", [
       `${organizationId}:${input.projectId}`,
     ]);

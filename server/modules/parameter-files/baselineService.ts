@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -94,7 +95,7 @@ function requireParameterFileAdmin(auth: AuthContext) {
 
 async function writeBaselineAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     action: "created";
     projectId: string | null;
@@ -104,7 +105,7 @@ async function writeBaselineAudit(
   context: BaselineServiceContext = {}
 ) {
   // requestId fallback survives only until baseline contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "baseline",
     action: input.action,
@@ -187,7 +188,7 @@ export async function createBaseline(
 
     await writeBaselineAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         action: "created",
         projectId: configSet.projectId,
@@ -477,7 +478,7 @@ export async function previewRestoreBaseline(
 
 async function writeBaselineRolledBackAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     projectId: string | null;
     baselineId: string;
@@ -487,7 +488,7 @@ async function writeBaselineRolledBackAudit(
   },
   context: BaselineServiceContext = {}
 ) {
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "baseline",
     action: "rolled_back",
@@ -588,7 +589,7 @@ export async function rollbackToBaseline(
 
     await writeBaselineRolledBackAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         projectId: configSet?.projectId ?? null,
         baselineId,
@@ -605,7 +606,7 @@ export async function rollbackToBaseline(
 
 async function writeBaselineReleasedAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     projectId: string | null;
     baselineId: string;
@@ -614,7 +615,7 @@ async function writeBaselineReleasedAudit(
   },
   context: BaselineServiceContext = {}
 ) {
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "baseline",
     action: "released",
@@ -702,7 +703,7 @@ export async function releaseBaseline(
 
     await writeBaselineReleasedAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         projectId: configSet?.projectId ?? null,
         baselineId,

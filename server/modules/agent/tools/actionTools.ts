@@ -300,6 +300,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             sourceLogId,
             sourceReloadRunId
           },
+          assertTrustedInvocationContext(context.invocation),
           { requestId: context.requestId }
         );
 

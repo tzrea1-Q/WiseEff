@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuthContext } from "../../auth/types";
+import { createUserInvocation } from "../../auth/trustedInvocation";
 import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared/http/router";
 import type { Database } from "../../../shared/database/client";
@@ -321,6 +322,7 @@ export function createXiaozeAgUiHandler(options: {
       }
       await options.persistTurn({
         auth: verifiedAuth,
+        invocation: createUserInvocation(verifiedAuth),
         requestId: request.requestId,
         threadId,
         runId,

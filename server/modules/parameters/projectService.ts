@@ -50,7 +50,7 @@ export async function createProjectForAuth(
 ): Promise<ProjectAdminSummaryDto> {
   requireCanAdmin(auth);
 
-  return withAuditedWrite(db, auth, context, async (tx) => {
+  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
     const item = await createProject(tx, {
       organizationId: auth.organization.id,
       id: input.id,
@@ -89,7 +89,7 @@ export async function updateProjectForAuth(
 ): Promise<ProjectAdminSummaryDto | null> {
   requireCanAdmin(auth);
 
-  return withAuditedWrite(db, auth, context, async (tx) => {
+  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
     const item = await updateProject(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
@@ -130,7 +130,7 @@ export async function deleteProjectForAuth(
 ): Promise<Awaited<ReturnType<typeof deleteProject>>> {
   requireCanAdmin(auth);
 
-  const result = await withAuditedWrite(db, auth, context, async (tx) => {
+  const result = await withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
     const result = await deleteProject(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId

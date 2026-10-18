@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation } from "../auth/trustedInvocation";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { resolveDtsConfigSet } from "../dts";
@@ -645,7 +646,7 @@ async function persistFailedValidation(
   const runId = randomUUID();
   // Run record, revision status, and audit commit together (ADR-0027); previously
   // each write auto-committed and a mid-sequence failure left partial evidence.
-  const nextStatus = await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+  const nextStatus = await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, async (tx) => {
     await insertValidationRun(tx, {
       id: runId,
       organizationId: auth.organization.id,
@@ -679,7 +680,7 @@ async function persistFailedValidation(
 
     await writeGovernanceAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         action: "config-revision-validated",
         projectId: input.projectId,
@@ -1233,7 +1234,7 @@ export async function validateConfigRevision(
   const runId = randomUUID();
   // Run record, revision status, and audit commit together (ADR-0027); the toolchain
   // execution above deliberately stays outside the transaction.
-  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+  await withAuditedWrite(db, createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, async (tx) => {
     await insertValidationRun(tx, {
       id: runId,
       organizationId: auth.organization.id,
@@ -1271,7 +1272,7 @@ export async function validateConfigRevision(
 
     await writeGovernanceAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         action: "config-revision-validated",
         projectId: revision.projectId,

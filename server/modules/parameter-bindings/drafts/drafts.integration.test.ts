@@ -20,7 +20,7 @@ import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtu
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
-import { CatalogSubjectId } from "../../parameter-catalog-contract/index";
+import { CatalogSubjectId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import type { RegisterSubjectCommand } from "../../parameter-governance/registration/command";
 import { writeGuardedRegistration } from "../../parameter-governance/registration/internalGuardedRegistrationWriter";
 import {
@@ -247,7 +247,7 @@ describe("canonical pending value drafts", () => {
     organizationId: ORG,
     subjectId: SUBJECT_ID,
     subjectKind: "driver",
-    expectedRelease,
+    expectedRelease: expectedRelease as unknown as CatalogReleasePin,
     placement: { mode: "use-default" },
     destinationModuleId: MODULE,
     method: "explicit",
@@ -413,7 +413,7 @@ describe("canonical pending value drafts", () => {
 
     const syncSnapshot = await loadPublishedCatalog(pool);
     if (!syncSnapshot) throw new Error("Published fixture is unavailable");
-    const written = await withAuditedWrite(root, adminAuth, { requestId: "req-849-drafts-sync" }, async (tx) => {
+    const written = await withAuditedWrite(root, createUserInvocation(adminAuth), { requestId: "req-849-drafts-sync" }, async (tx) => {
       const count = await syncPublishedCatalogProjectValuesInTransaction(
         asValueClient(tx),syncSnapshot,
         {
@@ -470,7 +470,7 @@ describe("canonical pending value drafts", () => {
     );
     const valueCountBefore = Number(valuesBefore.rows[0]!.c);
 
-    const draft = await withAuditedWrite(root, editorAuth, { requestId: "req-849-draft-create" }, async (tx) => {
+    const draft = await withAuditedWrite(root, createUserInvocation(editorAuth), { requestId: "req-849-draft-create" }, async (tx) => {
       const created = await createPreparedDraft(tx, editorAuth, {
         projectId: PROJECT,
         bindingId,

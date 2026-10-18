@@ -340,7 +340,7 @@ export async function seedCanonicalParameterFixture(
     );
   const synced = await withAuditedWrite(
     root,
-    seedAuth,
+    createUserInvocation(seedAuth),
     { requestId: `issue-898-fixture-sync-${randomUUID()}` },
     async (tx) => {
       const count = await syncPublishedCatalogProjectValuesInTransaction(

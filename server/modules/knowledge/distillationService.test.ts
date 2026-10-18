@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
+import { createAgentInvocation } from "../auth/trustedInvocation";
 import type { LogRecordDto } from "../logs/types";
 import { ApiError } from "../../shared/http/errors";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
@@ -171,10 +172,11 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
         degradedReason: "provider-unavailable"
       });
       const entry = await distillKnowledgeFromLog(db, makeAuth(EDITOR_A, logsAndKnowledgeEdit), { logId: log.logId });
+      const markdown = entry.contentMarkdown ?? "";
 
-      expect(entry.contentMarkdown.startsWith("> 降级分析 · 规则回退")).toBe(true);
-      expect(entry.contentMarkdown).toContain("AI 分析服务不可用，本结论由规则引擎回退生成");
-      expect(entry.contentMarkdown).toContain("规则评分 87%");
+      expect(markdown.startsWith("> 降级分析 · 规则回退")).toBe(true);
+      expect(markdown).toContain("AI 分析服务不可用，本结论由规则引擎回退生成");
+      expect(markdown).toContain("规则评分 87%");
       expect(await listAuditEvents(db, entry.id)).toEqual([
         expect.objectContaining({
           kind: "knowledge-entry-distill",
@@ -200,18 +202,19 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
       const auth = makeAuth(EDITOR_A, logsAndKnowledgeEdit);
       const created = await distillKnowledgeFromLog(db, auth, { logId: log.logId });
       const entry = await getKnowledgeEntry(db, auth, created.id);
+      const markdown = entry.contentMarkdown ?? "";
 
       if (label) {
-        expect(entry.contentMarkdown.startsWith(`> ${label}`)).toBe(true);
-        expect(entry.contentMarkdown).toContain(reason);
-        expect(entry.contentMarkdown).toContain("依赖结论前请复核证据");
-        expect(entry.contentMarkdown.indexOf(label)).toBeLessThan(entry.contentMarkdown.indexOf("由日志分析记录沉淀"));
+        expect(markdown.startsWith(`> ${label}`)).toBe(true);
+        expect(markdown).toContain(reason);
+        expect(markdown).toContain("依赖结论前请复核证据");
+        expect(markdown.indexOf(label)).toBeLessThan(markdown.indexOf("由日志分析记录沉淀"));
       } else {
-        expect(entry.contentMarkdown.startsWith("> 由日志分析记录沉淀。")).toBe(true);
-        expect(entry.contentMarkdown).not.toContain("降级分析");
+        expect(markdown.startsWith("> 由日志分析记录沉淀。")).toBe(true);
+        expect(markdown).not.toContain("降级分析");
       }
-      expect(entry.contentMarkdown).toContain(`${caption} 87%`);
-      expect(entry.contentMarkdown).not.toContain("RULE-THERMAL-042");
+      expect(markdown).toContain(`${caption} 87%`);
+      expect(markdown).not.toContain("RULE-THERMAL-042");
 
       const [audit] = await listAuditEvents(db, entry.id);
       if (analysisSource) {
@@ -313,7 +316,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
         contentMarkdown: "## 结论\n\n需要复核。",
         sessionId: "s-provenance",
         sourceLogId: log.logId
-      });
+      }, createAgentInvocation(auth, { sessionId: "s-provenance", toolCallId: "knowledge-draft-tool", approval: { required: false } }));
 
       const persisted = await getKnowledgeEntry(db, auth, entry.id);
       expect(persisted.contentMarkdown?.startsWith(
@@ -335,7 +338,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
         contentMarkdown: "submitted body",
         sessionId: "s-provenance-matrix",
         sourceLogId: log.logId
-      });
+      }, createAgentInvocation(makeAuth(EDITOR_A, logsAndKnowledgeEdit), { sessionId: "s-provenance-matrix", toolCallId: "knowledge-draft-tool", approval: { required: false } }));
 
       expect(entry.contentMarkdown?.startsWith(`> ${label}\n> ${reason}\n> 依赖结论前请复核证据。`)).toBe(true);
       expect(entry.contentMarkdown?.endsWith("submitted body")).toBe(true);
@@ -350,7 +353,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
         contentMarkdown,
         sessionId: "s-existing-notice",
         sourceLogId: log.logId
-      });
+      }, createAgentInvocation(makeAuth(EDITOR_A, logsAndKnowledgeEdit), { sessionId: "s-existing-notice", toolCallId: "knowledge-draft-tool", approval: { required: false } }));
 
       expect(entry.contentMarkdown).toBe(contentMarkdown);
     });
@@ -368,7 +371,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
           contentMarkdown,
           sessionId: "s-unchanged",
           sourceLogId: log?.logId
-        });
+        }, createAgentInvocation(makeAuth(EDITOR_A, logsAndKnowledgeEdit), { sessionId: "s-unchanged", toolCallId: "knowledge-draft-tool", approval: { required: false } }));
 
         expect(entry.contentMarkdown).toBe(contentMarkdown);
       }
@@ -387,7 +390,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
           contentMarkdown: "## 结论\n\n温度超过 45 度时降流。",
           sessionId: "xiaoze-session-1",
           sourceLogId: log.logId
-        },
+        }, createAgentInvocation(auth, { sessionId: "xiaoze-session-1", toolCallId: "knowledge-draft-tool", approval: { required: false } }),
         { requestId: "req-agent-draft-1" }
       );
 
@@ -419,7 +422,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
           contentMarkdown: "body",
           sessionId: "s-1",
           sourceLogId: foreignLog.logId
-        })
+        }, createAgentInvocation(makeAuth(EDITOR_A, logsAndKnowledgeEdit), { sessionId: "s-1", toolCallId: "knowledge-draft-tool", approval: { required: false } }))
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
 
@@ -430,7 +433,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
           tags: [],
           contentMarkdown: "body",
           sessionId: "s-2"
-        })
+        }, createAgentInvocation(makeAuth(VIEWER, viewOnly), { sessionId: "s-2", toolCallId: "knowledge-draft-tool", approval: { required: false } }))
       ).rejects.toMatchObject({ code: "FORBIDDEN", details: { permission: "knowledge:edit" } });
     });
 
@@ -441,7 +444,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
         tags: [],
         contentMarkdown: "检索关键词 agent-draft-invisible",
         sessionId: "s-3"
-      });
+      }, createAgentInvocation(owner, { sessionId: "s-3", toolCallId: "knowledge-draft-tool", approval: { required: false } }));
 
       const search = await searchKnowledge(db, owner, { q: "agent-draft-invisible" });
       expect(search.items).toHaveLength(0);
@@ -466,13 +469,13 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
         tags: [],
         contentMarkdown: "body",
         sessionId: "s-own"
-      });
+      }, createAgentInvocation(owner, { sessionId: "s-own", toolCallId: "knowledge-draft-tool", approval: { required: false } }));
       const second = await createAgentKnowledgeDraft(db, owner, {
         title: "他人不可发布的草稿",
         tags: [],
         contentMarkdown: "body",
         sessionId: "s-own"
-      });
+      }, createAgentInvocation(owner, { sessionId: "s-own", toolCallId: "knowledge-draft-tool", approval: { required: false } }));
 
       // Publisher accountability: the distilling session's user holds edit rights on it.
       const published = await publishKnowledgeEntry(db, owner, first.id);
@@ -494,7 +497,7 @@ describe.skipIf(!databaseAvailable)("knowledge distillation service", () => {
         tags: [],
         contentMarkdown: "body",
         sessionId
-      });
+      }, createAgentInvocation(makeAuth(EDITOR_A, logsAndKnowledgeEdit), { sessionId: sessionId, toolCallId: "knowledge-draft-tool", approval: { required: false } }));
     }
 
     it("archive-rejects an agent draft with audit evidence", async () => {

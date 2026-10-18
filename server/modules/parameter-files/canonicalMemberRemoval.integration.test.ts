@@ -20,6 +20,7 @@ import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { applyReviewedCanonicalMemberRemoval, prepareCanonicalMemberRemoval,
   type CanonicalMemberRemovalProof, type ReviewedCanonicalMemberRemoval } from "./canonicalMemberRemoval";
 import { insertFileVersion } from "./repository";
+import type { ParsedIndex } from "./types";
 
 const organizationId = "org-906-member-cohort";
 const projectId = "project-906-member-cohort";
@@ -157,7 +158,7 @@ describe("#906 reviewed canonical member removal cohort", () => {
     const tombstoneId = randomUUID();
     const manifest = [{ bindingId: removed.binding_id, valueId: removed.value_id, sourcePinId: removed.pin_id }];
     await expect(db.transaction(async (tx) => {
-      await writeAuditEventInTx(asAuditTx(tx), admin, { requestId: tombstoneId }, {
+      await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(admin), { requestId: tombstoneId }, {
         id: auditId, app: "parameters", kind: "parameter-topology-governance",
         action: "source-member-removed", severity: "Medium", projectId,
         targetType: "project-parameter-file", targetId: removedFileId,
@@ -258,9 +259,9 @@ describe("#906 reviewed canonical member removal cohort", () => {
       select storage_key,checksum,size_bytes::float8 as size_bytes,parsed_index
       from project_parameter_file_versions where id=$1`, [frozen.fileVersionId])).rows[0]!;
     const drift = await insertFileVersion(db, {
-      id: randomUUID(), fileId: removedFileId, storageKey: oldVersion.storage_key,
+      id: randomUUID(), fileId: removedFileId, versionNumber: 0, storageKey: oldVersion.storage_key,
       checksum: oldVersion.checksum, sizeBytes: oldVersion.size_bytes,
-      parsedIndex: oldVersion.parsed_index as Record<string, unknown>, origin: "upload", createdByUserId: adminId
+      parsedIndex: oldVersion.parsed_index as ParsedIndex, origin: "upload", createdByUserId: adminId
     });
     await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [removedFileId, drift.id]);
     try {

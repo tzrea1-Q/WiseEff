@@ -30,7 +30,7 @@ import type {
 } from "./initializationTypes";
 import { mergeInitializationBindingCandidates } from "./mergeInitializationBindings";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
-import type { TrustedInvocationContext } from "../auth/trustedInvocation";
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
@@ -319,6 +319,7 @@ export async function submitDraft(
   context: InitializationServiceContext = {}
 ): Promise<InitializationReviewDto> {
   requireCanEdit(auth, input.projectId);
+  const invocation = context.invocation ?? createUserInvocation(auth);
 
   return db.transaction(async (tx) => {
     const status = await lockProjectInitialization(tx, {
@@ -362,7 +363,8 @@ export async function submitDraft(
       status: "initialization_pending_review"
     });
 
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
+      ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
       app: "parameter-admin",
       kind: "project-initialization-submitted",
       action: "submit",
@@ -399,6 +401,7 @@ export async function approveReview(
   context: InitializationServiceContext = {}
 ): Promise<InitializationReviewDto> {
   requireCanAdmin(auth);
+  const invocation = context.invocation ?? createUserInvocation(auth);
 
   const approve = async (tx: Database, objectStore?: ObjectStore) => {
     // Every lifecycle mutation takes the project lock before the review lock.
@@ -475,7 +478,8 @@ export async function approveReview(
       status: "initialized"
     });
 
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
+      ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
       app: "parameter-admin",
       kind: "project-initialization-approved",
       action: "approve",
@@ -506,6 +510,7 @@ export async function rejectReview(
   context: InitializationServiceContext = {}
 ): Promise<InitializationReviewDto> {
   requireCanAdmin(auth);
+  const invocation = context.invocation ?? createUserInvocation(auth);
 
   const reason = input.reason.trim();
   if (!reason) {
@@ -571,7 +576,8 @@ export async function rejectReview(
       status: "initialization_rejected"
     });
 
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId: context.requestId ?? randomUUID() }, {
+      ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
       app: "parameter-admin",
       kind: "project-initialization-rejected",
       action: "reject",

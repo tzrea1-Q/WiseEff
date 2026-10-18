@@ -3,13 +3,14 @@ import { EventType } from "@ag-ui/core";
 import { ApiError } from "../../../shared/http/errors";
 import { createXiaozeAgUiHandler } from "./agUiEndpoint";
 import type { RunEventSink } from "./runEventSink";
+import { makeTestAuthContext } from "../../../testing/authContext";
 
-const anyAuth = {
-  organization: { id: "org1" },
-  user: { id: "u1", isActive: true },
+const anyAuth = makeTestAuthContext({
+  organizationId: "org1",
+  userId: "u1",
   permissions: ["parameter:edit"],
   roles: []
-} as never;
+});
 
 async function collectSseEvents(response: { sse: AsyncIterable<{ event: string; data: unknown }> }) {
   const events: Array<{ event: string; data: unknown }> = [];

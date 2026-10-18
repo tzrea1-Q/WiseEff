@@ -408,7 +408,7 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
         kind: "user-delete",
         action: "delete",
         target_id: "u-target",
-        metadata: { isActive: true, roles: [{ projectId: null, roleId: "hardware-user" }] },
+        metadata: { initiator: "user", isActive: true, roles: [{ projectId: null, roleId: "hardware-user" }] },
         trace_id: "delete-request"
       }
     ]);
@@ -841,8 +841,8 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
         transaction: (fn) => grantDatabaseBase.transaction((tx) =>
           fn({
             ...tx,
-            query: async (text, values = []) => {
-              const result = await tx.query(text, values);
+            query: async <Row,>(text: string, values: unknown[] = []) => {
+              const result = await tx.query<Row>(text, values);
               if (!grantPaused && text.includes("insert into user_role_bindings")) {
                 grantPaused = true;
                 signalGrantApplied();

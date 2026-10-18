@@ -910,7 +910,7 @@ describe("#906 canonical JSON candidate workflow", () => {
       const tombstoneId = randomUUID();
       const auditId = randomUUID();
       const frozen = corruptManifest ? manifest.slice(1) : manifest;
-      await writeAuditEventInTx(asAuditTx(tx), jsonReviewer, { requestId: tombstoneId }, {
+      await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(jsonReviewer), { requestId: tombstoneId }, {
         id: auditId, app: "parameters", kind: "parameter-topology-governance",
         action: "source-member-removed", severity: "Medium", projectId: JSON_PROJECT,
         targetType: "project-parameter-file", targetId: fileId,

@@ -45,7 +45,7 @@ const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(
   permissions: AuthContext["permissions"],
-  roles: AuthContext["roles"] = [{ roleId: "software-user" }],
+  roles: AuthContext["roles"] = [{ projectId: null, roleId: "software-user" }],
   userId = "user-1"
 ): AuthContext {
   return {
@@ -58,7 +58,7 @@ function makeAuth(
       isActive: true
     },
     organization: { id: "org-1", name: "ChargeLab" },
-    roles,
+    roles: roles.map((role) => ({ ...role, projectId: role.projectId ?? null })),
     permissions
   };
 }
@@ -116,7 +116,7 @@ const readAuth = makeAuth(["debugging:view", "debugging:read"]);
 const writeAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"]);
 const rollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"]);
 const adminAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:admin"], [
-  { roleId: "admin" }
+  { projectId: null, roleId: "admin" }
 ]);
 
 describe.skipIf(!databaseAvailable)("debugging service", () => {
@@ -531,7 +531,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         { bindings: [binding], archiveProtocols: ["hdc"] as const }
       ]) {
         await expect(service.updateAdminDebugNode(adminAuth, {
-          ...intents, archiveProtocols: "archiveProtocols" in intents ? [...intents.archiveProtocols] : undefined,
+          ...intents, archiveProtocols: "archiveProtocols" in intents && intents.archiveProtocols ? [...intents.archiveProtocols] : undefined,
           nodeId: node.id, name: "Must not change"
         }, { requestId: "invalid-intents" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
       }
@@ -1236,7 +1236,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         createAuditEvent: createAuditSpy().createAuditEvent
       });
 
-      const targets = await service.detectTargets(makeAuth(["debugging:view", "debugging:read"], [{ roleId: "software-user" }], "user-2"), {
+      const targets = await service.detectTargets(makeAuth(["debugging:view", "debugging:read"], [{ projectId: null, roleId: "software-user" }], "user-2"), {
         protocol: "hdc",
         bridgeId: "br-A"
       });
@@ -1321,7 +1321,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(session).toMatchObject({ executionMode: "bridge", bridgeId: "br-1", bridgeMachineLabel: "Laptop" });
 
       await expect(
-        service.createSession(makeAuth(["debugging:view", "debugging:read", "debugging:write"], [{ roleId: "software-user" }], "user-2"), {
+        service.createSession(makeAuth(["debugging:view", "debugging:read", "debugging:write"], [{ projectId: null, roleId: "software-user" }], "user-2"), {
           deviceId: "bridge:br-1",
           targetId,
           bridgeId: "br-1",
@@ -1583,7 +1583,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const { parameter, session } = await seedRuntime();
       const otherUser = makeAuth(
         ["debugging:view", "debugging:read", "debugging:write"],
-        [{ roleId: "software-user" }],
+        [{ projectId: null, roleId: "software-user" }],
         "user-2"
       );
 
@@ -1796,7 +1796,8 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("accepts standalone High-risk writes with the confirmation token and no approval id", async () => {
       const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const audit = createAuditSpy();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
 
       const operation = await service.writeNode(writeAuth, {
         sessionId: session.id,
@@ -1807,6 +1808,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       expect(operation).toMatchObject({ status: "succeeded", approvalId: null });
       expect(gateway.writeNode).toHaveBeenCalledOnce();
+      expect(audit.events[0]).toMatchObject({ actorType: "user", actorUserId: writeAuth.user.id, metadata: { initiator: "user" } });
     });
 
     it("rejects an arbitrary approvalId string that is not an approved matching agent_approvals row", async () => {
@@ -1887,8 +1889,9 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("accepts a High-risk write when approvalId is an approved agent_approvals row matching this write", async () => {
       const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
-      const { approvalId } = await seedAgentDeviceApproval({
+      const audit = createAuditSpy();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const { approvalId, sessionId: agentSessionId, toolCallId } = await seedAgentDeviceApproval({
         payload: { sessionId: session.id, parameterId: parameter.id, value: "3200" }
       });
 
@@ -1907,6 +1910,11 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         readbackOutcome: "observed"
       });
       expect(gateway.writeNode).toHaveBeenCalledOnce();
+      expect(audit.events[0]).toMatchObject({
+        actorType: "agent",
+        actorUserId: writeAuth.user.id,
+        metadata: { initiator: "agent", sessionId: agentSessionId, toolCallId, approvalId }
+      });
     });
 
     it("writes an org-scoped writable parameter through the active session binding", async () => {
@@ -2722,8 +2730,9 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     it("accepts rollback when approvalId is an approved agent_approvals row matching this snapshot", async () => {
       const { snapshot } = await seedRollbackReady();
       const gateway = makeGateway();
-      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
-      const { approvalId } = await seedAgentDeviceApproval({
+      const audit = createAuditSpy();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const { approvalId, sessionId: agentSessionId, toolCallId } = await seedAgentDeviceApproval({
         toolName: "action.rollbackDebugSnapshot",
         payload: { snapshotId: snapshot.id }
       });
@@ -2733,6 +2742,11 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(result.snapshot).toMatchObject({ id: snapshot.id, status: "consumed" });
       expect(result.operations[0]).toMatchObject({ operationType: "rollback", approvalId });
       expect(gateway.writeNode).toHaveBeenCalled();
+      expect(audit.events[0]).toMatchObject({
+        actorType: "agent",
+        actorUserId: rollbackAuth.user.id,
+        metadata: { initiator: "agent", sessionId: agentSessionId, toolCallId, approvalId }
+      });
     });
 
     it("rejects missing, consumed, and rollback-pending snapshots", async () => {

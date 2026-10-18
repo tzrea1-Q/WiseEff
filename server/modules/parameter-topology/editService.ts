@@ -656,7 +656,7 @@ async function createNodeEnablementDraftInTransaction(
   // Draft upsert, rebase, and audit commit together (ADR-0027).
   const { draftId, rebasedDraftIds } = await withAuditedWrite(
     db,
-    auth,
+    context.invocation,
     { requestId: context.requestId },
     async (tx) => {
       const persistedDraft = await upsertEnablementDraft(tx, {

@@ -313,7 +313,7 @@ export function createAgentOrchestrator(options: {
     });
     // Approval row, tool-call transition, and audit commit together (ADR-0027);
     // previously each auto-committed and the audit could be lost after them.
-    await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+    await withAuditedWrite(db, invocation, { requestId: input.requestId }, async (tx) => {
       await createAgentApproval(tx, {
         id: approvalId,
         sessionId,
@@ -358,7 +358,7 @@ export function createAgentOrchestrator(options: {
       result = await withToolExecutionSpan(toolCall, () => toolRegistry.run(toolCall.name, executionContext, toolCall.payload));
     } catch (error) {
       // Failure transition and audit commit together, then the error propagates.
-      await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+      await withAuditedWrite(db, executionContext.invocation!, { requestId: input.requestId }, async (tx) => {
         const failed = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
           status: "failed",
           expectedStatus: "running",
@@ -387,7 +387,7 @@ export function createAgentOrchestrator(options: {
     // success transition or audit failure must not become a second terminal write.
     // Result transition and audit commit together (ADR-0027); "running" remains
     // visible outside this transaction during execution.
-    await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+    await withAuditedWrite(db, executionContext.invocation!, { requestId: input.requestId }, async (tx) => {
       const succeeded = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
         status: "succeeded",
         expectedStatus: "running",
@@ -700,7 +700,7 @@ export function createAgentOrchestrator(options: {
     const invocation = buildAgentExecutionContext(input, toolCall, approval.id).invocation!;
 
     // Rejection decision, tool-call transition, message, and audit commit together (ADR-0027).
-    await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+    await withAuditedWrite(db, invocation, { requestId: input.requestId }, async (tx) => {
       const rejected = await markAgentApprovalRejected(
         tx,
         input.auth.organization.id,

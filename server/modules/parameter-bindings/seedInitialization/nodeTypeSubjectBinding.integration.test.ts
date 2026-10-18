@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
-import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
+import type { CatalogReleaseDigest, CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import {
   FIRST_ACME_RELEASE_DIGEST,
   FIRST_ACME_RELEASE_ID,
@@ -88,7 +88,6 @@ describe("node-type subject resolution during seed materialization", () => {
       "parameter:edit",
       "parameter:review",
       "admin:access",
-      "parameter:file-admin",
     ],
   });
 
@@ -127,7 +126,7 @@ describe("node-type subject resolution during seed materialization", () => {
     const advanced = await installPublishedRelease(pool, {
       mode: "advance",
       source: jsonCatalogReleaseSource(vendor.bundle),
-      expectedTargetDigest: VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
+      expectedTargetDigest: VENDOR_SUCCESSOR_AGGREGATE_DIGEST as CatalogReleaseDigest,
       expectedCurrent: {
         id: FIRST_ACME_RELEASE_ID,
         digest: FIRST_ACME_RELEASE_DIGEST,

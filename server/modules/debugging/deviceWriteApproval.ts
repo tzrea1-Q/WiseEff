@@ -1,6 +1,7 @@
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { getAgentApproval, getAgentToolCall } from "../agent/repository";
 
 /** Reserved Agent tool name for a device node write. Not in the Xiaoze catalog yet. */
@@ -77,6 +78,7 @@ export async function assertApprovedDeviceWrite(
   if (!writeIdentityMatches(toolCall.payload, write)) {
     throw new ApiError("VALIDATION_FAILED", WRITE_INVALID, { approvalId, reason: "write-mismatch" });
   }
+  return toolCall;
 }
 
 export async function assertApprovedDeviceRollback(
@@ -95,6 +97,7 @@ export async function assertApprovedDeviceRollback(
   if (payloadString(toolCall.payload, "snapshotId") !== snapshotId) {
     throw new ApiError("VALIDATION_FAILED", ROLLBACK_INVALID, { approvalId, reason: "write-mismatch" });
   }
+  return toolCall;
 }
 
 export async function assertDeviceWriteAuthorization(
@@ -109,28 +112,38 @@ export async function assertDeviceWriteAuthorization(
     confirmationToken?: string;
     approvalId?: string;
   }
-) {
+): Promise<TrustedInvocationContext> {
   const approvalId = input.approvalId?.trim();
   if (approvalId) {
-    await assertApprovedDeviceWrite(db, auth, approvalId, input);
-    return;
+    const toolCall = await assertApprovedDeviceWrite(db, auth, approvalId, input);
+    return createAgentInvocation(auth, {
+      sessionId: toolCall.sessionId,
+      toolCallId: toolCall.id,
+      approval: { required: true, approvalId }
+    });
   }
   if (input.risk === "High" && input.confirmationToken !== "confirm-high-risk-write") {
     throw new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.");
   }
+  return createUserInvocation(auth);
 }
 
 export async function assertDeviceRollbackAuthorization(
   db: Queryable,
   auth: AuthContext,
   input: { snapshotId: string; confirmationToken?: string; approvalId?: string }
-) {
+): Promise<TrustedInvocationContext> {
   const approvalId = input.approvalId?.trim();
   if (approvalId) {
-    await assertApprovedDeviceRollback(db, auth, approvalId, input.snapshotId);
-    return;
+    const toolCall = await assertApprovedDeviceRollback(db, auth, approvalId, input.snapshotId);
+    return createAgentInvocation(auth, {
+      sessionId: toolCall.sessionId,
+      toolCallId: toolCall.id,
+      approval: { required: true, approvalId }
+    });
   }
   if (input.confirmationToken !== "confirm-rollback") {
     throw new ApiError("VALIDATION_FAILED", "Rollback confirmation is required.");
   }
+  return createUserInvocation(auth);
 }

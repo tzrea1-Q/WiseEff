@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -37,7 +38,7 @@ function requireParameterFileView(auth: AuthContext) {
 
 async function writeConfigSetAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     action: "created" | "updated" | "member_changed";
     projectId: string | null;
@@ -47,7 +48,7 @@ async function writeConfigSetAudit(
   context: ConfigSetServiceContext = {}
 ) {
   // requestId fallback survives only until config-set contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "config-set",
     action: input.action,
@@ -91,7 +92,7 @@ export async function createConfigSet(
 
     await writeConfigSetAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         action: "created",
         projectId: configSet.projectId,
@@ -160,7 +161,7 @@ export async function ensureDefaultConfigSetInTx(
 
   await writeConfigSetAudit(
     db,
-    auth,
+    createUserInvocation(auth),
     {
       action: "created",
       projectId: configSet.projectId,
@@ -233,7 +234,7 @@ export async function addConfigSetFile(
 
     await writeConfigSetAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         action: "member_changed",
         projectId: configSet.projectId,
@@ -271,7 +272,7 @@ export async function removeConfigSetFile(
 
     await writeConfigSetAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         action: "member_changed",
         projectId: membership.projectId,
@@ -333,7 +334,7 @@ export async function updateConfigSet(
 
     await writeConfigSetAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         action: "updated",
         projectId: updated.projectId,

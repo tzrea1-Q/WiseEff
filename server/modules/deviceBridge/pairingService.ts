@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 
+import { createSystemInvocation } from "../auth/trustedInvocation";
+import { buildTrustedAuditEventInput } from "../audit/trustedAudit";
+
 import { ApiError } from "../../shared/http/errors";
 import type { DeviceBridgeRepository } from "./repository";
 import { normalizeMachineLabel, pickBridgeToReuse } from "./machineIdentity";
@@ -49,21 +52,20 @@ export function createPairingService(options: PairingServiceOptions) {
     if (!options.db) {
       return;
     }
-    await writeAudit(options.db, {
+    await writeAudit(options.db, buildTrustedAuditEventInput({
       id: randomUUID(),
       organizationId: pairing.organizationId,
       projectId: null,
-      actorUserId: pairing.userId,
-      actorType: "user",
+      invocation: createSystemInvocation({ kind: "service", name: "device-bridge-pairing" }),
       app: "device-bridge",
       kind: "device-bridge-pair",
       action: "create",
       severity: "High",
       targetType: "device-bridge",
       targetId: bridgeId,
-      metadata: { platform, arch },
+      metadata: { platform, arch, pairingUserId: pairing.userId },
       traceId: randomUUID()
-    });
+    }));
   }
 
   return {

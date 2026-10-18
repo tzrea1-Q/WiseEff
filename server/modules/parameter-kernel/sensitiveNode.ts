@@ -499,8 +499,9 @@ export async function assertSensitiveNodeWriteAllowed(
      * `db` fallback only preserves behavior for the callers that already run
      * outside any transaction.
      */
-    refusalDb?: Database;
-  } = {}
+    refusalDb: Database;
+    invocation: TrustedInvocationContext;
+  } | { refusalDb?: undefined } = {}
 ) {
   const nodePath = input.nodePath.trim();
   if (!nodePath) return;
@@ -531,7 +532,11 @@ export async function assertSensitiveNodeWriteAllowed(
 
   if (input.actorType === "agent" && matched.riskTier === "critical") {
     if (deps.refusalDb) {
-      await writeRefusalAudit(deps.refusalDb, auth, { requestId: input.requestId ?? randomUUID() }, {
+      const invocation = assertTrustedInvocationMatchesAuth(auth, deps.invocation, "sensitive-node refusal audit");
+      if (invocation.initiator !== "agent") {
+        throw new TrustedInvocationContextError("sensitive-node Agent refusal requires an Agent invocation");
+      }
+      await writeRefusalAudit(deps.refusalDb, invocation, { requestId: input.requestId ?? randomUUID() }, {
         app: "parameter-management",
         kind: "parameter-sensitive-node-denied",
         action: "deny",
@@ -539,7 +544,6 @@ export async function assertSensitiveNodeWriteAllowed(
         projectId: input.projectId,
         targetType: "sensitive-node",
         targetId: matched.id,
-        actorType: "agent",
         metadata: {
           riskTier: matched.riskTier,
           requireHuman: true,

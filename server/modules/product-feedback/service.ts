@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { notifyUsers } from "../notifications/service";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -118,7 +119,7 @@ function decodeAndValidateAttachments(attachments: ProductFeedbackAttachmentInpu
 
 async function createProductFeedbackAudit(
   tx: AuditTx,
-  auth: AuthContext,
+  invocation: TrustedInvocationContext,
   input: {
     kind: "product-feedback-create" | "product-feedback-update" | "product-feedback-submit";
     action: "create" | "update";
@@ -128,7 +129,7 @@ async function createProductFeedbackAudit(
   context: ProductFeedbackServiceContext = {}
 ) {
   // requestId fallback survives only until feedback contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeAuditEventInTx(tx, invocation, { requestId: context.requestId ?? randomUUID() }, {
     app: "product-feedback",
     kind: input.kind,
     action: input.action,
@@ -192,7 +193,7 @@ export async function createProductFeedback(
     const item = (await getFeedbackById(tx, auth, feedback.id)) ?? { ...feedback, attachments: insertedAttachments };
     await createProductFeedbackAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "product-feedback-create",
         action: "create",
@@ -324,7 +325,7 @@ export async function updateProductFeedback(
     }
     await createProductFeedbackAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "product-feedback-update",
         action: "update",
@@ -582,7 +583,7 @@ export async function submitProductFeedbackDraft(
 
     await createProductFeedbackAudit(
       asAuditTx(tx),
-      auth,
+      createUserInvocation(auth),
       {
         kind: "product-feedback-submit",
         action: "create",
@@ -702,7 +703,7 @@ export async function appendProductFeedbackProgress(
       });
     }
 
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "product-feedback",
       kind: "product-feedback-progress",
       action: "update",
@@ -807,7 +808,7 @@ export async function replyToProductFeedback(
       kind: input.reopen ? "reopened" : "progress",
       fromStatus: existing.status, toStatus: nextStatus, resolutionCode, publicMessage: message
     });
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeAuditEventInTx(asAuditTx(tx), createUserInvocation(auth), { requestId: context.requestId ?? randomUUID() }, {
       app: "product-feedback", kind: "product-feedback-reply", action: "update", severity: "Medium",
       projectId: null, targetType: "product-feedback", targetId: feedbackId,
       metadata: { previousStatus: existing.status, nextStatus, attachmentCount: decoded.length }
