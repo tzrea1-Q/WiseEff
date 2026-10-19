@@ -10,6 +10,7 @@ import type {
 } from "@/domain/logs/types";
 
 export type LogEvidenceDto = {
+  decodedFields?: LogEvidence["decodedFields"];
   filePath?: string | null;
   id: string;
   stageId: LogEvidence["stageId"];

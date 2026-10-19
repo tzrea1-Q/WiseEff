@@ -61,6 +61,7 @@ type LogRecordRow = RevisionRow & {
 };
 
 type EvidenceRow = {
+  decoded_fields?: import("./parsing/spec").DecodedEvent[] | null;
   id: string;
   stage: LogStage;
   line_numbers: number[];
@@ -143,6 +144,7 @@ export type CreateLogRecordWithRunAndJobInput = {
 };
 
 export type LogWorkerRunSnapshot = {
+  parsing?: LogSkillSpec["parsing"];
   jobId: string;
   organizationId: string;
   skillRevisionId: string | null;
@@ -273,6 +275,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
 
 function toEvidenceDto(row: EvidenceRow): LogRecordDto["evidence"][number] {
   return {
+    ...(row.decoded_fields ? { decodedFields: row.decoded_fields } : {}),
     id: row.id,
     stageId: row.stage,
     lineNumbers: row.line_numbers,
@@ -301,6 +304,7 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     jobId: row.job_id,
     skillRevisionId: row.skill_revision_id,
     signalRules: row.skill_revision_spec?.signalRules,
+    parsing: row.skill_revision_spec?.parsing,
     organizationId: row.organization_id,
     runId: row.run_id,
     logId: row.log_id,
@@ -664,7 +668,7 @@ export async function getLogDetail(db: Queryable, auth: AuthContext, logId: stri
 
   const evidenceResult = await db.query<EvidenceRow>(
     `
-    select id, stage, line_numbers, inference, suggested_action, rule_hit, file_path
+    select id, stage, line_numbers, inference, suggested_action, rule_hit, file_path, decoded_fields
     from log_evidence
     where organization_id = $1
       and log_record_id = $2
@@ -809,6 +813,25 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
   return result.rows[0] ? toWorkerLogRunSnapshot(result.rows[0]) : null;
 }
 
+export async function persistLogDecodedArtifact(db: Database, input: {
+  organizationId: string; runId: string; jobId: string; leaseOwner: string;
+  objectKey: string | null; counts: import("./parsing/spec").DecodeCounts;
+}) {
+  return db.transaction(async (tx) => {
+    // Lock the current lease before touching run metadata, as report completion does.
+    if (!await updateJobProgress(tx, { ...input, progress: 10, currentStage: "parse" })) return false;
+    const result = await tx.query(`update log_analysis_runs run
+      set decoded_events_object_key = $3, decoded_event_counts = $4::jsonb
+      where run.organization_id = $1 and run.id = $2
+        and exists (select 1 from jobs job where job.organization_id = run.organization_id
+          and job.id = $5 and job.target_id = run.id)
+        and exists (select 1 from log_records lr where lr.id = run.log_record_id
+          and lr.organization_id = run.organization_id and lr.current_run_id = run.id)`,
+    [input.organizationId, input.runId, input.objectKey, jsonb(input.counts), input.jobId]);
+    return result.rowCount === 1;
+  });
+}
+
 export async function persistLogAnalysisReport(db: Database, input: PersistLogAnalysisReportInput) {
   await db.transaction(async (tx) => {
     await tx.query(
@@ -861,9 +884,9 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         `
         insert into log_evidence (
           id, organization_id, log_record_id, run_id, stage, line_numbers,
-          inference, suggested_action, rule_hit, file_path
+          inference, suggested_action, rule_hit, file_path, decoded_fields
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
         `,
         [
           `evidence-${input.runId}-${index}`,
@@ -875,7 +898,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
           evidence.inference,
           evidence.suggestedAction,
           evidence.ruleHit ?? null,
-          evidence.filePath ?? null
+          evidence.filePath ?? null,
+          evidence.decodedFields ? jsonb(evidence.decodedFields) : null
         ]
       );
     }
@@ -946,9 +970,9 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           `
           insert into log_evidence (
             id, organization_id, log_record_id, run_id, stage, line_numbers,
-            inference, suggested_action, rule_hit, file_path
+            inference, suggested_action, rule_hit, file_path, decoded_fields
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
           `,
           [
             `evidence-${input.runId}-${index}`,
@@ -960,7 +984,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
             evidence.inference,
             evidence.suggestedAction,
             evidence.ruleHit ?? null,
-            evidence.filePath ?? null
+            evidence.filePath ?? null,
+            evidence.decodedFields ? jsonb(evidence.decodedFields) : null
           ]
         );
       }

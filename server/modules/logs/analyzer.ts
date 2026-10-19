@@ -13,6 +13,7 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type AnalyzeLogInput = {
+  decoding?: { spec: import("./parsing/spec").ParsingSpec; events: import("./parsing/spec").DecodedEvent[]; counts: import("./parsing/spec").DecodeCounts };
   files?: Array<import("./filesRepository").LogFileDto & { parsed?: Extract<ParseResult, { ok: true }> }>;
   filePath?: string;
   signalRules?: SignalRuleSet;
@@ -39,6 +40,7 @@ export type AnalyzeLogInput = {
 };
 
 export type AnalyzeLogEvidence = {
+  decodedFields?: import("./parsing/spec").DecodedEvent[];
   filePath?: string | null;
   stageId: LogAnalysisStageId;
   lineNumbers: number[];

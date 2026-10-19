@@ -314,6 +314,23 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 ## 6. Logs
 
+### 解码事件与内部工具
+
+`skill/v1` 新增可选 `parsing: {schemaVersion: "parsing/v1", extractors}`，保存、发布和回滚均校验，错误为带路径的 `400`。严格规范、时间格式子集、上限和事件外壳见[解析参考](log-parsing-v1.md)。worker 只使用钉住版本，有抽取器的运行在解析完成后按当前任务租约保护写入迁移 0190 的产物键及 `{total, byExtractor, errors}`，provider 重试时仍保留；无抽取器保持旧行为。
+
+证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+
+以下是 ADR-0022 内部只读工具，不是 HTTP 端点，仅在钉住版本有抽取器时注册，沿用步数和 token 预算。
+
+| 工具 | 契约 |
+| --- | --- |
+| `describe_event_schema({})` | 返回 `{extractors: [{id, fields: Record<name, FieldSpec>, count}], counts}`，包括零事件抽取器的字段名称和类型。元数据不代表已观察行。 |
+| `query_events({extractor, file?, where?, limit?, cursor?})` | 返回 `{events: DecodedEvent[], nextCursor: string \| null}`。抽取器和可选文件精确匹配，limit 默认/最多 50。where 为 AND 条件列表 `{field, op: eq\|ne\|lt\|lte\|gt\|gte\|in, value}`，等值按类型值、枚举标签或 bytes 的 `{hex,length}` 比较；大小比较支持数字和字符串（时间使用规范化 UTC ISO 值），in 使用数组。缺失或失败字段不匹配；未知字段/抽取器、错误游标均拒绝。后续请求沿确定性运行事件顺序使用返回的续页字符串。 |
+
+grounding 只认可 query 工具自身 `events[].file/line`。endLine 范围、字段内嵌引用、结构元数据和非白名单工具返回的引用不能建立观察记录。
+
+`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值最多 1 KiB；超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
+
 M2 日志合同锁定为组织级作用域（迁移 `0037` 移除 `projectId`）：
 
 ```text
@@ -333,6 +350,7 @@ GET  /api/v1/log-skills/:skillId/sample
 PUT  /api/v1/log-skills/:skillId/sample
 DELETE /api/v1/log-skills/:skillId/sample
 GET  /api/v1/log-skills/:skillId
+POST /api/v1/log-skills/:skillId/parse-preview
 POST /api/v1/log-skills
 PUT  /api/v1/log-skills/:skillId/draft
 DELETE /api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId
@@ -362,7 +380,8 @@ GET  /api/v1/jobs/:jobId/events
 | `PUT` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`。`{ fileName, contentBase64 }` 替换技能唯一且不版本化的文本样例；base64 解码后的原文件最多 2 MiB，复用 bundle intake 的 UTF-8／带 BOM 的 UTF-16 检测。二进制或压缩包返回 `400` 与中文原因。返回 `{ item: metadata }`，同事务写入 `log-skill-sample-replace` 审计。对象名称独立；替换后保留旧对象。 |
 | `GET` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:view`。返回 `{ item: metadata & { content, truncated } \| null }`；无样例为 null，技能不可访问为 `404`。正文统一 LF、最多前 5000 行，`lineCount` 保留总行数。元数据包含 `id`、`skillId`、`fileName`、原始 `sizeBytes`、`sha256`、`encoding`、`lineCount`、可空 `uploadedByUserId`、`createdAt`、`updatedAt`，不暴露存储键。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`，按组织隔离，幂等返回 `204`；同事务写入 `log-skill-sample-delete`，保留对象与技能版本。 |
-| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。省略信号规则时沿用平台充电规则。 |
+| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules?, parsing?, procedure? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。省略信号规则时沿用平台充电规则。 |
+| `POST` | `/api/v1/log-skills/:skillId/parse-preview` | 需 `logs:admin-domains`，按组织查找技能。请求 `{parsing, sampleText, fileName?}` 校验未保存的 `parsing/v1`；响应 `{valid, issues: [{path, message}], events, counts: {total, byExtractor, errors}, unmatchedLineCount, truncated, reason?}`。规范错误为 `200`、`valid: false` 和问题路径；样例超过 UTF-8 1 MiB 或请求体错误为 `400`。固定 100 ms 校验/解码硬超时、最多处理 5000 行及返回 500 事件，受限时返回部分结果及 `truncated: true`、`reason: time_cap \| line_cap \| event_cap`；计数描述已完成工作，未处理行计入未匹配。校验超时返回 `valid: false`、问题及相同时间上限标记。跨组织或不存在为 `404`，无权限为 `403`。只读，不写审计，不存样例。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId` | 必填查询参数 `draftRevisionId` 是编辑器看到的草稿 id。技能锁内若现有草稿 id 不同，返回 `409 LOG_SKILL_DRAFT_CONFLICT`；草稿匹配或已不存在时幂等返回 `204`。成功时写入 `log-skill-draft-discard` 审计，包括草稿已不存在的情况。 |
 | `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` 原子发布草稿并将前版置为 superseded；草稿缺失或过期返回 `409 LOG_SKILL_DRAFT_CONFLICT`；同步身份行的描述、基础格式和模型覆盖；成功返回 `{ item: skill }`。 |
 | `POST` | `/api/v1/log-skills/:skillId/revisions/:revisionId/restore` | 将所选历史 spec 发布为下一编号的新版本，不改写历史内容；返回 `{ item: skill }`。技能锁内若存在草稿则返回 `409 LOG_SKILL_DRAFT_EXISTS`；来源不存在、跨组织或为草稿则返回 `404`。同一发布事务写入 `log-skill-restore`，元数据 `{ fromRevisionId, newRevisionId }`。 |

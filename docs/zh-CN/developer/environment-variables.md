@@ -183,6 +183,8 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_BUNDLE_MAX_UNPACKED_BYTES` | `104857600` | 日志包接入 | 文件原始字节总量；中间解压容器也受限，默认 100 MiB。 |
 | `LOG_BUNDLE_MAX_FILES` | `2000` | 日志包接入 | 非目录叶文件数上限，包含跳过文件。 |
 | `LOG_BUNDLE_MAX_FILE_BYTES` | `104857600` | 日志包接入 | 单文件原始字节上限，默认 100 MiB；解压还受 200 倍压缩比及 1 MiB 最低预算限制。 |
+| `LOG_DECODE_MAX_EVENTS` | `50000` | worker 解码 | 每运行跨文件、抽取器保留的事件上限，超出匹配计 `event_cap`。须为正安全整数；格式错误、零或负值使用默认值。 |
+| `LOG_DECODE_MAX_MS` | `15000` | worker 解码 | 解码耗时预算（毫秒），大于 `20000` 时取上限；worker 不续租，实际最多用剩余租约的四分之一。每行、组提交和编译前检查，约每 8 ms 或 2000 个检查点让出调度。超时保留已完成事件、丢弃未完成组、计一次 `time_cap` 并继续。须为正安全整数；格式错误、零或负值使用默认值。 |
 | `LOG_ANALYSIS_JUDGE_API_BASE_URL` | 空 | 效果层评测 judge | `npm run logs:eval:quality` 真模型模式下 LLM-as-judge 的 OpenAI-compatible 端点；未配置时使用确定性 rubric 桩。 |
 | `LOG_ANALYSIS_JUDGE_MODEL` | 空 | 效果层评测 judge | judge 模型名，写入质量报告。 |
 | `LOG_ANALYSIS_JUDGE_API_KEY` | 空 | 效果层评测 judge | secret。 |
@@ -190,6 +192,8 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge 校准 | `docs/generated/log-analysis-judge-sample.md` 人工复核清单的确定性抽样率（0..1）；至少抽 1 条已评分案例。 |
 
 日志包默认值按 `ops/self-hosted/compose.yaml` 中 512 MiB API / 384 MiB worker 容器的内存预算设置，沿用原单文件 100 MiB 上限。流式接入（#1234）落地前，提高这些限制必须同时增加容器内存。`npx tsx scripts/log-bundle-memory-probe.ts`（3 个文件、总计 95 MiB，含逐文件存储与压缩包构造）在独立进程中测得峰值 RSS 357 MiB。
+
+解码默认值面向同一标准 384 MiB worker：保留 50,000 个事件，解码耗时预算 15,000 ms。提高事件上限前须检查内存；耗时始终受 20,000 ms 和剩余租约四分之一限制。模式最多 512 个 UTF-16 单元、计数重复上限 100；输入每行最多 6144 个单元、每组最多 16,384。预览独立使用 100 ms 校验/解码硬超时，最多处理 5000 行、返回 500 事件，以 `truncated`/`reason` 标识部分结果。worker 流式 gzip，但仍保留解析输入和事件对象；顺序数组支持游标，证据索引共享对象。产物失败记录 `artifact_error` 和空键，不提供解码事件并继续分析。可在测试之外运行 `npx tsx scripts/log-decode-memory-probe.ts`，对三个总计 95 MiB 的文件执行解码、压缩和索引，输出耗时、事件数、峰值 RSS、堆内存和 interval 漂移停顿。本次变更未运行该探针，不能据此声称标准容器已验收。
 
 ## 日志分析结果 Webhook
 

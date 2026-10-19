@@ -1,4 +1,5 @@
 import { Archive, ExternalLink, FileDown, RefreshCw, Sparkles, ThumbsUp, TriangleAlert } from "lucide-react";
+import { DecodedFields } from "@/features/log-analysis/DecodedFields";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -255,6 +256,7 @@ export function LogRecordDrawer({
                     <span className="text-foreground">{STAGE_LABELS[evidence.stageId]}</span>
                     <span>{evidence.filePath ? evidence.lineNumbers.map((line) => `${evidence.filePath}:${line}`).join(", ") : `L${evidence.lineNumbers.join(", L")}`}</span>
                   </div>
+                  <DecodedFields events={evidence.decodedFields} />
                   <p>{evidence.inference}</p>
                   <p className="text-foreground">{evidence.suggestedAction}</p>
                 </li>

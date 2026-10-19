@@ -1,4 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
+import { DecodedFields } from "./DecodedFields";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -99,6 +100,8 @@ function createEmptyLogRecord(): LogRecord {
 
 export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
   const knowledgeRepository = runtime?.knowledgeRepository;
+  const logRepository = runtime?.logAnalysisRepository;
+  const [selectedLogDetail, setSelectedLogDetail] = useState<{ summary: LogRecord; record: LogRecord } | null>(null);
   const [selectedLogId, setSelectedLogId] = useState(() => {
     // Deep link: /logs?logId=<id> (the target of 复制链接) restores the selection.
     const requested = new URLSearchParams(window.location.search).get("logId");
@@ -125,6 +128,20 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const prevLogCount = useRef(state.logs.length);
   const emptyLogRecord = useMemo(() => createEmptyLogRecord(), []);
   const selectedLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
+
+  // The list contains summaries with empty evidence/raw lines. Hydrate only
+  // the selected record; a list refresh or job update invalidates this detail.
+  useEffect(() => {
+    if (!logRepository || !selectedLog || selectedLog.status === "Processing") return;
+    let cancelled = false;
+    logRepository.getLog(selectedLog.id).then((record) => {
+      if (!cancelled && record?.id === selectedLog.id && record.status === selectedLog.status
+        && record.updatedAtIso >= selectedLog.updatedAtIso) setSelectedLogDetail({ summary: selectedLog, record });
+    }, (error: unknown) => {
+      if (!cancelled) dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "日志详情加载失败，请稍后重试。") });
+    });
+    return () => { cancelled = true; };
+  }, [logRepository, selectedLog, dispatch]);
 
   // API mode hydrates logs after mount, so a deep-linked id may not exist yet
   // at first render; consume it once the record arrives.
@@ -158,7 +175,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
   }, [selectedLogId]);
   const hasActiveLog = Boolean(selectedLog);
-  const activeLog = selectedLog ?? emptyLogRecord;
+  const activeLog = selectedLogDetail && selectedLogDetail.summary === selectedLog ? selectedLogDetail.record : selectedLog ?? emptyLogRecord;
   const rawFilePath = activeLog.files?.find((file) => file.status === "analyzed")?.path ?? activeLog.fileName;
   const relatedParameterUnlocated = Boolean(logActions && activeLog.relatedParameterId && !activeLog.relatedParameterProjectId);
   const evidenceByLine = useMemo(() => {
@@ -1385,7 +1402,10 @@ function EvidenceCard({
         <strong>{STAGE_LABELS[evidence.stageId]}</strong>
       </header>
       <div className="evidence-card__body">
-        <code>{evidence.lineNumbers.map((lineNumber) => evidence.filePath ? `${evidence.filePath}:${lineNumber}` : `#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`).join("\n")}</code>
+        {evidence.lineNumbers.map((lineNumber) => <div key={lineNumber}>
+          <code>{evidence.filePath ? `${evidence.filePath}:${lineNumber}` : `#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`}</code>
+          <DecodedFields events={evidence.decodedFields?.filter((event) => event.line === lineNumber)} />
+        </div>)}
         <p>{evidence.inference}</p>
         {evidence.ruleHit ? <small>命中规则：{evidence.ruleHit}</small> : null}
       </div>

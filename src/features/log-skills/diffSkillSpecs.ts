@@ -25,7 +25,13 @@ export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
   });
   const signalSettings = fields({ mode: a.signalRules ? "custom" : "default", noHit: a.signalRules?.noHit, hitDefaults: a.signalRules?.hitDefaults, rulesOrder: a.signalRules?.rules.map((r) => r.id) },
     { mode: b.signalRules ? "custom" : "default", noHit: b.signalRules?.noHit, hitDefaults: b.signalRules?.hitDefaults, rulesOrder: b.signalRules?.rules.map((r) => r.id) });
-  return { overview, format, rules, signalSettings, counts: {
+  const parsingBefore = new Map(a.parsing?.extractors?.map((extractor) => [extractor.id, extractor]));
+  const parsingAfter = new Map(b.parsing?.extractors?.map((extractor) => [extractor.id, extractor]));
+  const parsing = [...new Set([...parsingBefore.keys(), ...parsingAfter.keys()])].flatMap((id) => {
+    const left = parsingBefore.get(id), right = parsingAfter.get(id), changes = fields(left ?? {}, right ?? {});
+    return changes.length ? [{ id, kind: !left ? "added" as const : !right ? "removed" as const : "changed" as const, fields: changes }] : [];
+  });
+  return { overview, format, rules, signalSettings, parsing, counts: {
     overview: overview.length, format: format.filter((line) => line.kind !== "equal").length,
     added: rules.filter((rule) => rule.kind === "added").length,
     changed: rules.filter((rule) => rule.kind === "changed").length,

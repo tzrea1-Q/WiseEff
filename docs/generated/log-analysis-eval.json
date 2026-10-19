@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-19T07:34:31.394Z",
+  "generatedAt": "2026-10-19T09:11:41.068Z",
   "promptVersion": "2026-10-18.bundle.1",
-  "loopPromptVersion": "2026-10-18.loop.bundle.1",
+  "loopPromptVersion": "2026-10-19.loop.decoding.2",
   "total": 20,
   "passed": 20,
   "failed": 0,
@@ -348,14 +348,14 @@
         {
           "expectation": {
             "type": "expectsPromptVersionRecorded",
-            "promptVersion": "2026-10-18.loop.bundle.1"
+            "promptVersion": "2026-10-19.loop.decoding.2"
           },
           "pass": true
         }
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -404,7 +404,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -446,7 +446,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -487,7 +487,7 @@
       "runResult": {
         "analysisSource": "rules-fallback",
         "degradedReason": "token-budget-exhausted",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -551,7 +551,7 @@
       "runResult": {
         "analysisSource": "agent",
         "degradedReason": "token-budget-exhausted",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -606,7 +606,7 @@
       "runResult": {
         "analysisSource": "agent",
         "degradedReason": "token-budget-exhausted",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -661,7 +661,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -713,7 +713,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -740,7 +740,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "domain-override-model-x",
         "evidenceLineNumbers": [
           [
@@ -766,7 +766,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-18.loop.bundle.1",
+        "promptVersion": "2026-10-19.loop.decoding.2",
         "model": "deterministic",
         "evidenceLineNumbers": [
           [

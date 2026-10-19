@@ -12,6 +12,10 @@
 .skill-section > section { display: grid; gap: var(--space-3); }
 .skill-section label { display: grid; gap: var(--space-2); }
 .skill-section textarea { min-height: calc(var(--space-8) * 4); resize: vertical; }
+.skill-yaml-editor { display: flex; min-width: 0; border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.skill-yaml-editor pre, .skill-yaml-editor textarea { margin: 0; padding: var(--space-3); font: 400 var(--text-sm) / var(--leading-base) var(--font-mono); height: calc(var(--space-8) * 8); }
+.skill-yaml-editor pre { overflow: hidden; color: var(--text-muted); background: var(--surface-sunken); text-align: right; flex-shrink: 0; }
+.skill-yaml-editor textarea { flex: 1; min-width: 0; border: 0; border-radius: 0; resize: none; overflow: auto; }
 .skill-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0; }
 .skill-section .skill-facts dt, .skill-section .skill-facts dd { margin: 0; font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
 .skill-facts dt { color: var(--text-muted); }

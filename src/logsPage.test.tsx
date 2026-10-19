@@ -16,6 +16,9 @@ vi.mock("@copilotkit/react-core/v2", () => ({
 import App from "./App";
 import { initialState } from "./mockData";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
+import { createApiClient } from "@/infrastructure/http/apiClient";
+import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
+import { renderApp } from "@/test/harness";
 
 const userState = { ...initialState, activeRoleId: "user" };
 
@@ -41,6 +44,44 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it.each(["selection", "deep link"])("hydrates a completed kernel report from detail on %s and renders decoded evidence", async (entry) => {
+    const evidence = [{
+      decodedFields: [{ v: 1, file: "kernel.log", line: 1, fields: {
+        ibus: { raw: "1450", value: 1450 }, temp: { raw: "71", value: 71 }, vbus: { raw: "9012", value: 9012 }
+      }, source: "declarative", extractor: "thermal" }],
+      id: "evidence-…-0", stageId: "rootcause", lineNumbers: [1, 3, 4],
+      inference: "Thermal protection reduced charging output.", suggestedAction: "…", filePath: "kernel.log", ruleHit: "thermal-foldback"
+    }];
+    const summary = { id: "kernel-report", reportId: "RPT-KERNEL", fileName: "kernel.log", source: "upload", fileSizeBytes: 200,
+      status: "complete", archiveState: "active", stage: "report", confidence: 0.9,
+      conclusion: "Thermal protection reduced charging output.", impact: "Reduced current", evidence: [],
+      suggestedActions: [], severity: "Warning", rawLines: [], submittedBy: "API User",
+      capturedAt: "2026-10-19T00:00:00.000Z", updatedAt: "2026-10-19T00:01:00.000Z" };
+    const other = { ...summary, id: "other-report", fileName: "other.log" };
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/api/v1/logs") return new Response(JSON.stringify({ items: [other, summary] }));
+      if (path === "/api/v1/logs/kernel-report") return new Response(JSON.stringify({ item: { ...summary, evidence,
+        rawLines: ["ibus=1450 temp=71 vbus=9012", "INFO waiting", "WARN thermal", "INFO reduced"] } }));
+      if (path === "/api/v1/logs/other-report") return new Response(JSON.stringify({ item: other }));
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const repository = createHttpLogAnalysisRepository({ baseUrl: "http://localhost",
+      apiClient: createApiClient({ baseUrl: "http://localhost", fetchImpl: fetchMock }) });
+    renderApp({ path: entry === "deep link" ? "/logs?logId=kernel-report" : "/logs", runtimeMode: "api",
+      initialAppState: { ...userState, logs: [] }, ports: { logAnalysisRepository: repository } });
+    const button = await screen.findByRole("button", { name: /kernel\.log/ });
+    if (entry === "selection") await userEvent.click(button);
+    const chain = screen.getByRole("region", { name: "日志分析证据链" });
+    expect(await within(chain).findByText("kernel.log:1")).toBeInTheDocument();
+    const fields = within(chain).getByRole("group", { name: "解码字段" });
+    expect(fields).toHaveTextContent("ibus = 1450");
+    expect(fields).toHaveTextContent("temp = 71");
+    expect(fields).toHaveTextContent("vbus = 9012");
+    expect(chain.querySelectorAll(".evidence-card")).toHaveLength(1);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/logs/kernel-report"))).toBe(true);
+  });
+
   it("renders the file inventory tab with analyzed, skipped and lossy files", async () => {
     const log = { ...initialState.logs[0], files: [
       { path: "device/a.log", sizeBytes: 1024, lineCount: 12, encoding: "utf-8" as const, lossy: true, status: "analyzed" as const, skipReason: null },

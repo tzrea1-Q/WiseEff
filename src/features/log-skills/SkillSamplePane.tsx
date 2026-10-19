@@ -6,8 +6,9 @@ import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 import { formatBytes } from "@/domain/format/formatBytes";
 import type { SkillAuthoringRepository, SkillSample } from "./types";
 
-export function SkillSamplePane({ skillId, repository, apiMode, canEdit }: {
+export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampleChange }: {
   skillId: string; repository?: Partial<SkillAuthoringRepository>; apiMode: boolean; canEdit: boolean;
+  onSampleChange?: (sample: SkillSample | null) => void;
 }) {
   const [sample, setSample] = useState<SkillSample | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +28,9 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit }: {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [skillId, repository, apiMode, attempt]);
+  useEffect(() => {
+    if (!loading && !loadError) onSampleChange?.(sample);
+  }, [sample, loading, loadError, onSampleChange]);
   const upload = async (file: File) => {
     if (disabled) return;
     if (file.size > 2 * 1024 * 1024) { setError("样例日志不能超过 2 MiB。"); return; }

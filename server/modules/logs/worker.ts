@@ -1,4 +1,7 @@
 import { loadLogFiles } from "./filesRepository";
+import { createHash } from "node:crypto";
+import { decodeLogFilesCooperatively, gzipDecodedEvents, indexDecodedEvents, logDecodeLimits } from "./parsing/workerDecoding";
+import type { DecodeCounts } from "./parsing/spec";
 import { claimJobById, claimNextJob, failJob, getJobSnapshot, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "../jobs/repository";
 import type { ClaimedLogAnalysisJobDto } from "../jobs/types";
 import type { Database } from "../../shared/database/client";
@@ -8,10 +11,11 @@ import type { TracingBoundary } from "../../observability/tracing";
 import { createRuleBasedLogAnalyzer, type AnalyzeLogInput, type AnalyzeLogOutput, type LogAnalysisAdapter } from "./analyzer";
 import { LogAnalysisProviderError, LOG_ANALYSIS_PROMPT_VERSION } from "./analyzer/llmAnalyzer";
 import { readStoredLogFormatProfile } from "./formatProfile";
-import type { ObjectStore } from "./objectStore";
+import { sanitizeFileName, sanitizePathSegment, type ObjectStore } from "./objectStore";
 import { parseLogText } from "./parser";
 import {
   completeLogAnalysisJobWithReport,
+  persistLogDecodedArtifact,
   failRun,
   getLogWorkerRunSnapshot as getActiveLogWorkerRunSnapshot,
   updateRunStageProgress
@@ -295,7 +299,7 @@ async function processClaimedLogAnalysisJob(
     if (inventory.length) {
       const analyzed = files.filter((file) => file.parsed);
       if (!analyzed.length) throw new Error("日志包中没有可分析的文本文件");
-      // ponytail: parsed bundle lives for one analysis; offset-backed lazy reads are a later phase.
+      // Parsed files live for one analysis; offset-backed lazy reads are a later phase.
       parsed = { ok: true, rawLines: analyzed.flatMap((file) => file.parsed!.rawLines), entries: analyzed.flatMap((file) => file.parsed!.entries) };
     } else {
       const bytes = await objectStore.get(snapshot.storageKey);
@@ -305,6 +309,46 @@ async function processClaimedLogAnalysisJob(
       parsed = legacy;
     }
     currentFailureReason = "unknown";
+
+    let decoding: AnalyzeLogInput["decoding"];
+    let decodedArtifact: { objectKey: string | null; counts: DecodeCounts } | undefined;
+    if (snapshot.parsing?.extractors.length) {
+      const expiresAt = Date.parse(job.leaseExpiresAt ?? "");
+      const remainingLeaseMs = Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now().getTime()) : 0;
+      // There is no lease renewal in this worker. Reserve at least three quarters
+      // of the remaining lease for compression, storage and analysis.
+      const maxMs = Math.min(logDecodeLimits().maxMs, Math.floor(remainingLeaseMs / 4));
+      decodedArtifact = { objectKey: null, counts: { total: 0,
+        byExtractor: Object.fromEntries(snapshot.parsing.extractors.map(({ id }) => [id, 0])), errors: {} } };
+      let cleanupKey: string | undefined;
+      let failureCode = "decode_error";
+      try {
+        decoding = { spec: snapshot.parsing, ...await decodeLogFilesCooperatively(snapshot.parsing,
+          inventory.length ? files.filter((file) => file.parsed).map((file) => ({ file: file.path, lines: file.parsed!.rawLines }))
+            : [{ file: snapshot.fileName, lines: parsed.rawLines }], { maxMs }) };
+        decodedArtifact.counts = decoding.counts;
+        failureCode = "artifact_error";
+        const bytes = await gzipDecodedEvents(decoding.events);
+        const fileName = sanitizeFileName(`${snapshot.runId}-decoded-events.jsonl.gz`);
+        // Shipped local/S3 stores use this content-addressed key. Retain it before
+        // the write so even an upload with a lost response can be cleaned up.
+        cleanupKey = `${sanitizePathSegment(snapshot.organizationId, "organization id")}/${createHash("sha256").update(bytes).digest("hex")}-${fileName}`;
+        decodedArtifact.objectKey = (await objectStore.put({ organizationId: snapshot.organizationId, fileName,
+          contentType: "application/gzip", bytes })).storageKey;
+      } catch {
+        decodedArtifact.counts.errors[failureCode] = (decodedArtifact.counts.errors[failureCode] ?? 0) + 1;
+        decoding = undefined;
+        if (cleanupKey) await objectStore.delete?.(cleanupKey).catch(() => undefined);
+      }
+    }
+
+    if (decodedArtifact) assertActiveJobLease(await persistLogDecodedArtifact(db, {
+      ...decodedArtifact, organizationId: snapshot.organizationId, runId: snapshot.runId, jobId: snapshot.jobId, leaseOwner
+    }));
+
+    // Query cursors require extractor/completion order; evidence needs direct file/line lookup.
+    // The array and index share event objects (no field/raw-value copies).
+    const eventsByLine = indexDecodedEvents(decoding?.events ?? []);
 
     await markProgress(options, {
       organizationId: snapshot.organizationId,
@@ -361,6 +405,7 @@ async function processClaimedLogAnalysisJob(
     const analysis = await analyzeWithDegradation({
       analyzer,
       analyzeInput: {
+        decoding,
         files: inventory.length ? files : undefined,
         filePath: inventory.length ? files.find((file) => file.parsed)?.path : snapshot.fileName,
         signalRules: snapshot.signalRules,
@@ -446,7 +491,11 @@ async function processClaimedLogAnalysisJob(
         promptVersion: analysis.promptVersion,
         model: analysis.model
       },
-      evidence: analysis.evidence
+      evidence: analysis.evidence.map((evidence) => {
+        const file = evidence.filePath ?? files.find((file) => file.parsed)?.path ?? snapshot.fileName;
+        const decodedFields = [...new Set(evidence.lineNumbers)].flatMap((line) => eventsByLine.get(JSON.stringify([file, line])) ?? []);
+        return { ...evidence, decodedFields: decodedFields.length ? decodedFields : undefined };
+      })
     });
     if (!completed) return { status: "idle" };
 

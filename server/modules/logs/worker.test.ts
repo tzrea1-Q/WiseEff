@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as workerDecoding from "./parsing/workerDecoding";
+import { parsingSpecSchema, type ParsingSpec, type DecodeCounts } from "./parsing/spec";
 import { claimNextJob } from "../jobs/repository";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
@@ -22,6 +24,8 @@ type JobRow = {
 };
 
 type Fixture = {
+  parsing?: ParsingSpec;
+  decoded?: { objectKey: string | null; counts: DecodeCounts };
   job: JobRow;
   run: {
     id: string;
@@ -245,11 +249,15 @@ function createFakeWorkerDb(fixture = createFixture()) {
               log_domain_name: fixture.log.log_domain?.name ?? null,
               log_domain_description: null,
               skill_revision_id: fixture.log.log_domain ? "revision-1" : null,
-              skill_revision_spec: fixture.log.log_domain ? { schemaVersion: "skill/v1", modelOverride: fixture.log.log_domain.model_override ?? undefined } : null
+              skill_revision_spec: fixture.log.log_domain ? { schemaVersion: "skill/v1", parsing: fixture.parsing, modelOverride: fixture.log.log_domain.model_override ?? undefined } : null
             } as Row
           ],
           rowCount: 1
         };
+      }
+      if (normalized.startsWith("update log_analysis_runs run set decoded_events_object_key")) {
+        fixture.decoded = { objectKey: values[2] as string | null, counts: JSON.parse(values[3] as string) };
+        return { rows: [], rowCount: 1 };
       }
       if (normalized.startsWith("update log_analysis_runs set status = 'complete'")) {
         fixture.run.status = "complete";
@@ -412,7 +420,46 @@ function createFakeWorkerDb(fixture = createFixture()) {
   };
 }
 
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+
 describe("log worker", () => {
+  const parsing = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "current", pattern: "(?P<value>.+)", fields: { value: { type: "string" } } }] });
+  it("keeps a deadline-limited decode within the lease and finishes with partial events", async () => {
+    const { db, fixture } = createFakeWorkerDb();
+    fixture.parsing = parsing;
+    fixture.log.log_domain = { id: "skill-1", name: "Parsing" };
+    vi.stubEnv("LOG_DECODE_MAX_MS", "60000");
+    let elapsed = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => (elapsed += 0.75));
+    const objectStore = createObjectStore(Buffer.from(Array(6000).fill("value").join("\n")));
+    objectStore.put = async (input) => ({ storageKey: "decoded.gz", fileName: input.fileName, contentType: input.contentType, fileSizeBytes: input.bytes.length, checksumSha256: "checksum" });
+    const analyze = vi.fn(createRuleBasedLogAnalyzer().analyze);
+    expect(await processNextLogAnalysisJob({ db, objectStore, analyzer: { analyze },
+      now: () => new Date(Date.parse("2026-05-25T02:00:00.000Z") + elapsed) })).toBe("processed");
+    expect(fixture.log.status).toBe("complete");
+    expect(fixture.decoded?.counts.errors).toEqual({ time_cap: 1 });
+    expect(fixture.decoded!.counts.total).toBeGreaterThan(0);
+    expect(fixture.decoded!.counts.total).toBeLessThan(6000);
+    expect(elapsed).toBeLessThan(20_000);
+    expect(analyze.mock.calls[0][0].decoding?.counts.errors.time_cap).toBe(1);
+  });
+  it.each(["compression", "upload", "legacy pattern"])("continues analysis without decoding when %s fails", async (failure) => {
+    const { db, fixture } = createFakeWorkerDb();
+    fixture.parsing = parsing;
+    if (failure === "legacy pattern") fixture.parsing = { ...parsing, extractors: [{ ...parsing.extractors[0], pattern: "(?P<value>a{101})" }] };
+    fixture.log.log_domain = { id: "skill-1", name: "Parsing" };
+    const objectStore = createObjectStore(Buffer.from("WARN thermal foldback"));
+    objectStore.put = vi.fn().mockRejectedValue(new Error("Object store unavailable"));
+    objectStore.delete = vi.fn().mockRejectedValue(new Error("Cleanup also unavailable"));
+    if (failure === "compression") vi.spyOn(workerDecoding, "gzipDecodedEvents").mockRejectedValueOnce(new Error("Compression failed"));
+    const analyze = vi.fn(createRuleBasedLogAnalyzer().analyze);
+    expect(await processNextLogAnalysisJob({ db, objectStore, analyzer: { analyze }, now: () => new Date("2026-05-25T02:00:00.000Z") })).toBe("processed");
+    expect(fixture.log.status).toBe("complete");
+    expect(fixture.decoded?.objectKey).toBeNull();
+    expect(fixture.decoded?.counts.errors[failure === "legacy pattern" ? "decode_error" : "artifact_error"]).toBe(1);
+    expect(analyze.mock.calls[0][0].decoding).toBeUndefined();
+    expect(objectStore.delete).toHaveBeenCalledTimes(failure === "upload" ? 1 : 0);
+  });
   it("loads analyzed inventory per file, preserving local line numbers and hiding object keys from the analyzer", async () => {
     const { db } = createFakeWorkerDb();
     const originalQuery = db.query.bind(db);

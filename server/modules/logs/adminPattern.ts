@@ -11,6 +11,8 @@ export class LogPatternError extends Error {
 }
 
 export type LogPattern = {
+  groupNames: string[];
+  groupCount: number;
   test(input: string): boolean;
   exec(input: string): RegExpExecArray | null;
 };
@@ -21,7 +23,7 @@ export type LogPattern = {
  * Limits count UTF-16 code units. Over-long inputs yield no match, rather than
  * truncating and inventing end-of-line matches; callers retain the original text.
  */
-export function compileLogPattern(pattern: string, flags = ""): LogPattern {
+export function compileLogPattern(pattern: string, flags = "", maxInputLength = MAX_LOG_PATTERN_INPUT_LENGTH): LogPattern {
   if (pattern.length > MAX_LOG_PATTERN_LENGTH) {
     throw new LogPatternError(`Pattern exceeds ${MAX_LOG_PATTERN_LENGTH} UTF-16 code units.`);
   }
@@ -46,8 +48,17 @@ export function compileLogPattern(pattern: string, flags = ""): LogPattern {
     throw new LogPatternError(error instanceof Error ? error.message : String(error));
   }
   return {
-    test: (input) => input.length <= MAX_LOG_PATTERN_INPUT_LENGTH && compiled.test(input),
+    groupNames: Object.keys(compiled.namedGroups()),
+    groupCount: compiled.groupCount(),
+    test: (input) => input.length <= maxInputLength && compiled.test(input),
     // RE2JS returns index/input/groups at runtime but declares only any[].
-    exec: (input) => input.length <= MAX_LOG_PATTERN_INPUT_LENGTH ? compiled.exec(input) as RegExpExecArray | null : null
+    exec: (input) => input.length <= maxInputLength ? compiled.exec(input) as RegExpExecArray | null : null
   };
+}
+
+/** Case-sensitive path globs; all other characters remain literal. */
+export function compileFileGlob(glob: string): LogPattern {
+  const source = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\/|\*\*|\*|\?/g,
+    (token) => token === "**/" ? "(?:.*/)?" : token === "**" ? ".*" : token === "*" ? "[^/]*" : "[^/]");
+  return compileLogPattern(`^${source}$`);
 }

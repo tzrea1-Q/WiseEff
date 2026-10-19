@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { itemEnvelopeSchema, itemsEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
 import { logSkillSpecSchema } from "../../logs/skillSpec";
+import { decodedEventSchema } from "../../logs/parsing/spec";
+export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "../../logs/parsing/spec";
 
 export const skillRevisionPinSchema = z.object({ id: z.string(), number: z.number().int().positive() });
 
@@ -19,6 +21,7 @@ export const logFileDtoSchema = z.object({
   lossy: z.boolean(), status: z.enum(["analyzed", "skipped"]), skipReason: z.string().nullable()
 });
 export const logEvidenceDtoSchema = z.object({
+  decodedFields: z.array(decodedEventSchema).optional(),
   filePath: z.string().nullable().optional(),
   id: z.string(),
   stageId: logStageSchema,

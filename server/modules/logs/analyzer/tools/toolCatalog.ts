@@ -1,7 +1,7 @@
 import { runLogPrefilter } from "../../prefilter";
 import { z } from "zod";
 
-import { compileLogPattern, type LogPattern } from "../../adminPattern";
+import { compileFileGlob, compileLogPattern, type LogPattern } from "../../adminPattern";
 import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolContext";
 
 /**
@@ -13,6 +13,8 @@ export const LOG_ANALYSIS_TOOL_NAMES = [
   "search_log_lines",
   "search_lines",
   "list_files",
+  "describe_event_schema",
+  "query_events",
   "read_line_range",
   "get_prefilter_findings",
   "read_domain_knowledge",
@@ -60,8 +62,7 @@ export function searchLogLines(
 
   let fileMatcher: LogPattern | undefined;
   if (params.file) {
-    const glob = params.file.split("**").map((part) => part.split("*").map((piece) => piece.split("?").map((literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]")).join("[^/]*")).join(".*");
-    fileMatcher = compileLogPattern(`^${glob}$`);
+    fileMatcher = compileFileGlob(params.file);
   }
   const files = context.files?.filter((file) => file.parsed) ?? [{ path: context.filePath, parsed: context.parsed }];
   let totalMatches = 0, returnedMatches = 0;
@@ -240,7 +241,83 @@ type ToolDefinition = {
   execute: (context: LogAnalysisToolContext, params: unknown) => Promise<LogAnalysisToolOutcome> | LogAnalysisToolOutcome;
 };
 
+const queryScalar = z.union([z.string().max(8192), z.number().finite(), z.boolean(), z.null(), z.object({ hex: z.string().max(8192), length: z.number().int().min(0).max(4096) }).strict()]);
+export const queryEventsParamsSchema = z.object({ extractor: z.string().min(1).max(100), file: z.string().max(1024).optional(),
+  where: z.array(z.object({ field: z.string().max(512), op: z.enum(["eq", "ne", "lt", "lte", "gt", "gte", "in"]),
+    value: z.union([queryScalar, z.array(queryScalar).max(100)]) }).strict()).max(20).default([]),
+  limit: z.number().int().min(1).max(50).default(50), cursor: z.string().regex(/^\d{1,6}$/).optional() }).strict();
+
+export const MAX_QUERY_EVENTS_BYTES = 16 * 1024;
+export const MAX_QUERY_FIELD_BYTES = 1024;
+
+export function availableLogAnalysisTools(context: Pick<LogAnalysisToolContext, "decoding">) {
+  return LOG_ANALYSIS_TOOL_NAMES.filter((name) => context.decoding?.spec.extractors.length || (name !== "query_events" && name !== "describe_event_schema"));
+}
+
+export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typeof queryEventsParamsSchema>): LogAnalysisToolOutcome {
+  const decoding = context.decoding;
+  const extractor = decoding?.spec.extractors.find((item) => item.id === params.extractor);
+  if (!decoding || !extractor) return { ok: false, error: "Unknown extractor" };
+  for (const condition of params.where) {
+    if (!Object.hasOwn(extractor.fields, condition.field)) return { ok: false, error: `Unknown field ${condition.field}` };
+    if ((condition.op === "in") !== Array.isArray(condition.value)) return { ok: false, error: "Only in requires an array value" };
+  }
+  const events: typeof decoding.events = [];
+  let truncated = false;
+  const outcome = (cursor: number) => ({ ok: true as const, result: { events,
+    nextCursor: cursor < decoding.events.length ? String(cursor) : null, truncated } });
+  const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
+  let index = Number(params.cursor ?? 0);
+  for (; index < decoding.events.length; index++) {
+    const event = decoding.events[index];
+    if (event.extractor !== params.extractor || params.file && event.file !== params.file) continue;
+    const matches = params.where.every(({ field, op, value: expected }) => {
+      const decoded = event.fields[field];
+      const value = decoded && typeof decoded === "object" && "value" in decoded ? decoded.value : decoded;
+      if (value === undefined) return false;
+      const equal = (other: unknown) => value === other || !!(value && other && typeof value === "object" && typeof other === "object"
+        && "hex" in value && "hex" in other && "length" in other && value.hex === other.hex && value.length === other.length);
+      if (op === "in") return (expected as unknown[]).some(equal);
+      if (op === "eq") return equal(expected);
+      if (op === "ne") return !equal(expected);
+      if (!(typeof value === "number" && typeof expected === "number" || typeof value === "string" && typeof expected === "string")) return false;
+      return op === "lt" ? value < expected : op === "lte" ? value <= expected : op === "gt" ? value > expected : value >= expected;
+    });
+    if (matches) {
+      const bounded = { ...event, fields: Object.create(null) as typeof event.fields };
+      for (const [field, value] of Object.entries(event.fields)) {
+        const serialized = JSON.stringify(value);
+        // A string preview also bounds escaped control characters and UTF-8.
+        const preview = size(value) > MAX_QUERY_FIELD_BYTES ? `${serialized.slice(0, 128)}… [truncated]` : value;
+        if (preview !== value) truncated = true;
+        bounded.fields[field] = preview;
+        if (size(bounded) > MAX_QUERY_EVENTS_BYTES - 1024) { delete bounded.fields[field]; truncated = true; break; }
+      }
+      events.push(bounded);
+      if (size(outcome(index + 1)) > MAX_QUERY_EVENTS_BYTES) {
+        events.pop(); truncated = true;
+        if (!events.length) return { ok: false, error: "Decoded event metadata exceeds the 16 KiB query output cap" };
+        break;
+      }
+    }
+    if (events.length === params.limit) { index++; break; }
+  }
+  truncated ||= index < decoding.events.length;
+  return outcome(index);
+}
+
 export const logAnalysisToolCatalog: Record<LogAnalysisToolName, ToolDefinition> = {
+  describe_event_schema: {
+    description: 'Describe decoded extractors, field names/types and per-extractor event counts. Args: {}.',
+    paramsSchema: z.object({}).strict(),
+    execute: (context) => ({ ok: true, result: { extractors: context.decoding?.spec.extractors.map(({ id, fields }) => ({ id,
+      fields, count: context.decoding!.counts.byExtractor[id] ?? 0 })), counts: context.decoding?.counts } })
+  },
+  query_events: {
+    description: 'Query decoded events with file/line anchors. Args: {extractor, file?, where?: [{field, op: eq|ne|lt|lte|gt|gte|in, value}], limit?: 1-50, cursor?: string}. Equality uses original typed values or enum labels; bytes compare {hex,length}. Ordering uses numbers or strings (timestamps are UTC ISO strings). Output is capped at 16 KiB and each field at 1 KiB; oversized fields become marked string previews and truncated is true. Follow nextCursor for more events. Returned event lines can be cited.',
+    paramsSchema: queryEventsParamsSchema,
+    execute: (context, params) => queryEvents(context, params as z.infer<typeof queryEventsParamsSchema>)
+  },
   list_files: {
     description: 'List file inventory, including skipped files. Args: {"offset"?: number, "limit"?: 1-200}.',
     paramsSchema: z.object({ offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(200).default(100) }),
@@ -300,18 +377,20 @@ export async function executeLogAnalysisTool(
   args: unknown,
   context: LogAnalysisToolContext
 ): Promise<LogAnalysisToolOutcome> {
-  if (!isLogAnalysisToolName(name)) {
-    return { ok: false, error: `Unknown tool "${name}". Available tools: ${LOG_ANALYSIS_TOOL_NAMES.join(", ")}.` };
+  const failure = (error: string): LogAnalysisToolOutcome => ({ ok: false,
+    error: name === "query_events" && error.length > 1000 ? `${error.slice(0, 1000)}… [truncated]` : error });
+  if (!isLogAnalysisToolName(name) || !availableLogAnalysisTools(context).includes(name)) {
+    return failure(`Unknown tool "${name}". Available tools: ${availableLogAnalysisTools(context).join(", ")}.`);
   }
   const definition = logAnalysisToolCatalog[name];
   const parsed = definition.paramsSchema.safeParse(args ?? {});
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
-    return { ok: false, error: `Invalid arguments for tool "${name}": ${issues}` };
+    return failure(`Invalid arguments for tool "${name}": ${issues}`);
   }
   try {
     return await definition.execute(context, parsed.data);
   } catch (error) {
-    return { ok: false, error: `Tool "${name}" failed: ${error instanceof Error ? error.message : String(error)}` };
+    return failure(`Tool "${name}" failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

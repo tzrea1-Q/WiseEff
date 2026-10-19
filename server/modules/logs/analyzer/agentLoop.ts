@@ -18,7 +18,7 @@ import {
   type LogAnalysisChatModel,
   type LogAnalysisLlmTelemetry
 } from "./llmAnalyzer";
-import { executeLogAnalysisTool, LOG_ANALYSIS_TOOL_NAMES, logAnalysisToolCatalog } from "./tools/toolCatalog";
+import { availableLogAnalysisTools, executeLogAnalysisTool, logAnalysisToolCatalog } from "./tools/toolCatalog";
 import type { LogAnalysisToolContext } from "./tools/toolContext";
 
 /**
@@ -26,8 +26,8 @@ import type { LogAnalysisToolContext } from "./tools/toolContext";
  * the P1 single shot, so it carries its own version string on every report and in
  * both eval layers. Bump on any wording change.
  */
-export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-18.loop.bundle.1";
-export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-18.loop.bundle.related-parameter.1";
+export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.decoding.2";
+export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.decoding.related-parameter.2";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot
@@ -73,8 +73,8 @@ function parseLoopStep(content: string): LoopStep | undefined {
   return result.success ? result.data : undefined;
 }
 
-function buildLoopSystemPrompt(maxSteps: number, hasRelatedParameter: boolean): string {
-  const toolLines = LOG_ANALYSIS_TOOL_NAMES.map((name) => `- ${name}: ${logAnalysisToolCatalog[name].description}`);
+function buildLoopSystemPrompt(maxSteps: number, hasRelatedParameter: boolean, context: LogAnalysisToolContext): string {
+  const toolLines = availableLogAnalysisTools(context).map((name) => `- ${name}: ${logAnalysisToolCatalog[name].description}`);
   return [
     `You are the WiseEff log analysis agent (prompt version ${hasRelatedParameter ? LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION : LOG_ANALYSIS_LOOP_PROMPT_VERSION}).`,
     "You analyze one uploaded device/business log bundle through a bounded read-only tool loop and produce an advisory, evidence-grounded report.",
@@ -140,7 +140,7 @@ export type CreateAgentLoopAnalyzerOptions = {
 
 /**
  * The P2 log analysis agent: a plain bounded for-loop (ADR-0022 — no LangGraph, no
- * checkpointer, no ToolRegistry) over five read-only tools. Every step the model
+ * checkpointer, no ToolRegistry) over run-scoped read-only tools. Every step the model
  * emits strict JSON: either one tool call or the final conclusion. Illegal tool
  * names/arguments get a corrective message and count toward a consecutive-invalid
  * threshold; exhausted steps or token budget trigger one early-convergence attempt
@@ -168,6 +168,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
     async analyze(input) {
       const findings = runLogPrefilter(input.files?.find((file) => file.parsed)?.parsed?.entries ?? input.parsed.entries, input.signalRules);
       const toolContext: LogAnalysisToolContext = {
+        decoding: input.decoding,
         files: input.files,
         filePath: input.filePath,
         signalRules: input.signalRules,
@@ -211,6 +212,13 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
             const line = item as Record<string, unknown>;
             observeLines(line.file, [line.lineNumber]);
           }
+        } else if (tool === "query_events") {
+          if (!Array.isArray(result.events)) return;
+          for (const item of result.events) {
+            if (!item || typeof item !== "object") continue;
+            const event = item as Record<string, unknown>;
+            observeLines(event.file, [event.line]);
+          }
         } else if (tool === "get_prefilter_findings") {
           if (!Array.isArray(result.files)) { observePrefilter(result, defaultFile); return; }
           for (const item of result.files) {
@@ -224,7 +232,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       };
 
       const messages: LogAnalysisChatMessage[] = [
-        { role: "system", content: buildLoopSystemPrompt(maxSteps, Boolean(input.relatedParameterSnapshot)) },
+        { role: "system", content: buildLoopSystemPrompt(maxSteps, Boolean(input.relatedParameterSnapshot), toolContext) },
         { role: "user", content: buildLoopMissionMessage(input, formatPrefilterFindings(findings, input.files, input.signalRules)) }
       ];
 

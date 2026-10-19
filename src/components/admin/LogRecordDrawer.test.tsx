@@ -47,6 +47,14 @@ const record: LogRecord = {
 };
 
 describe("LogRecordDrawer", () => {
+  it("shows enum labels and typed decoded chips under the evidence anchor", () => {
+    const evidence = { ...record.evidence[0], filePath: "device.log", decodedFields: [{ v: 1 as const, source: "declarative" as const, file: "device.log", line: 20, extractor: "state", fields: { state: { raw: "2", value: "thermal" }, current: { raw: "0x10", value: 16 } } }] };
+    render(<LogRecordDrawer record={{ ...record, evidence: [evidence] }} open onClose={vi.fn()} onNavigateToWorkbench={vi.fn()} onReanalyze={vi.fn()} onArchive={vi.fn()} onSubmitHelpfulFeedback={vi.fn()} canAct />);
+    const chips = screen.getByLabelText("解码字段");
+    expect(chips).toHaveTextContent("state = thermal");
+    expect(chips).toHaveTextContent("current = 16");
+    expect(screen.getByText("device.log:20").closest("li")).toContainElement(chips);
+  });
   const handlers = {
     onClose: vi.fn(),
     onNavigateToWorkbench: vi.fn(),

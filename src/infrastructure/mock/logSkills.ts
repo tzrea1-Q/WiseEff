@@ -24,6 +24,8 @@ export function mockSkillWorkspace(id: string): AnalysisSkill | null {
   if (!skill) return null;
   return { id: skill.id, name: skill.name, description: skill.description, status: skill.status, createdAt: skill.createdAt, updatedAt: skill.updatedAt,
     currentRevision: { id: "skill-charging-v1", skillId: id, number: 1, status: "published",
-    spec: { schemaVersion: "skill/v1", description: skill.description }, contentHash: "seed", createdByUserId: null,
+    spec: { schemaVersion: "skill/v1", description: skill.description, parsing: { schemaVersion: "parsing/v1", extractors: [
+      { id: "charge_current", pattern: "charge_current_ma=(?P<current>\\d+)", fields: { current: { type: "uint" } } }
+    ] } }, contentHash: "seed", createdByUserId: null,
     publishedByUserId: null, createdAt: skill.createdAt, publishedAt: skill.currentRevision!.publishedAt }, draft: null };
 }

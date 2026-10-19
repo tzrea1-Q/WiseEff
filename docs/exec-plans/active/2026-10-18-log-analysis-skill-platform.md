@@ -252,6 +252,8 @@ Each phase PR walks its rows above in a real browser at 1440x900 and shows the s
 
 ## Phase S3 — structured extraction and decoding
 
+Issue #1237 delivers the extraction core and code view; the sample-line extractor builder and form editing follow in #1240.
+
 1. `parsing/v1` schema (zod) with path-precise validation errors; decoder engine as pure, bounded functions.
 2. Parse stage runs extractors and decoders, applies signal rules over decoded values, and stores decoded events as a per-run artifact (object store, line-anchored) plus per-extractor counts and signal hits in the database; reports persist cited events only.
 3. Tools `query_events` (extractor, field filters, line/time range, limit) and `describe_event_schema`; an event in a tool result counts as seeing its line for grounding.

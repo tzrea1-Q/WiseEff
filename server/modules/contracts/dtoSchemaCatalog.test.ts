@@ -31,6 +31,15 @@ describe("DTO schema catalog coverage", () => {
     for (const id of ["logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample"])
       expect(dtoSchemaCoveredRouteIds).toContain(id);
   });
+  it("documents parsing preview and preserves the versioned decoded evidence contract", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths).toHaveProperty("/api/v1/log-skills/{skillId}/parse-preview");
+    expect(dtoSchemaCoveredRouteIds).toContain("logs.parsePreview");
+    const event = { v: 1, source: "declarative", extractor: "current", file: "a.log", line: 2, fields: { current: { raw: "0x10", value: 16 } } };
+    expect(dtoSchemaCatalog.LogParsePreviewResponse.safeParse({ valid: true, issues: [], events: [event], counts: { total: 1, byExtractor: { current: 1 }, errors: {} }, unmatchedLineCount: 0 }).success).toBe(true);
+    expect(dtoSchemaCatalog.LogParsePreviewResponse.safeParse({ valid: true, issues: [], events: [{ ...event, source: "script" }], counts: { total: 1, byExtractor: {}, errors: {} }, unmatchedLineCount: 0 }).success).toBe(false);
+    expect(dtoSchemaCatalog.LogSkillDraftRequest.safeParse({ spec: { schemaVersion: "skill/v1", parsing: { schemaVersion: "parsing/v1", extractors: [] } }, baseDraftRevisionId: null, basePublishedRevisionId: "published" }).success).toBe(true);
+  });
   it("documents draft concurrency and bodyless discard without losing restore coverage", () => {
     const document = buildOpenApiDocument();
     const request = dtoSchemaCatalog.LogSkillDraftRequest;

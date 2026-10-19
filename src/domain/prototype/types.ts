@@ -65,6 +65,7 @@ export type DebugDeviceTransport = "simulator" | "hdc" | "adb" | "multi";
 export type TimeWindow = "today" | "7d" | "30d";
 
 export type LogEvidence = {
+  decodedFields?: import("../logs/types").LogEvidence["decodedFields"];
   filePath?: string | null;
   id: string;
   stageId: LogStageId;
