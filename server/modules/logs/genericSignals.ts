@@ -1,4 +1,4 @@
-import { compileLogPattern } from "./adminPattern";
+import { compileLogPattern, createLogPatternCache } from "./adminPattern";
 import { setImmediate } from "node:timers/promises";
 import type { ParsedLogEntry, ParseResult } from "./parser";
 import type { LogFileReader } from "./fileReader";
@@ -69,6 +69,7 @@ function* extractLogSignalSteps(
   evaluation = createSignalEvaluationBudget()
 ): Generator<SignalStep, LogSignalSummary, SignalLine | undefined> {
   const summary = emptySummary();
+  const cache = createLogPatternCache();
   yield summary;
   const signals = new Map<string, LogSignal>();
   // ponytail: retain the first 200 templates; use a bounded heavy-hitter sketch if later templates must compete for the top list.
@@ -89,7 +90,7 @@ function* extractLogSignalSteps(
   };
   for (const [fileIndex, file] of files.entries()) {
     if (!file.parsed && !file.reader) continue;
-    const rules = signalRules ? compileSignalRules(signalRules, evaluation) : [];
+    const rules = signalRules ? compileSignalRules(signalRules, evaluation, cache) : [];
     let entryIndex = 0;
     let previous: { time: number; clock: "wall" | "boot"; anchor: LogSignalAnchor } | undefined;
     let firstError = true, lastBurstError = 0;

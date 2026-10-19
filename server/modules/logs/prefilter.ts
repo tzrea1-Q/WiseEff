@@ -2,6 +2,7 @@ import type { AnalyzeLogEvidence, LogRuleHit } from "./analyzer";
 import type { ParsedLogEntry } from "./parser";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import { checkSignalEvaluationBudget, compileSignalRules, createSignalEvaluationBudget, SignalRuleBudgetError, type SignalRuleSet } from "./signalRules";
+import { createLogPatternCache } from "./adminPattern";
 
 /**
  * Deterministic prefilter (glossary: Prefilter findings): the legacy rule matching
@@ -25,6 +26,7 @@ export function createPrefilterBudget(evaluation = createSignalEvaluationBudget(
 export async function prefilterLogStream(entries: AsyncIterable<ParsedLogEntry>, ruleSet: SignalRuleSet = defaultChargingRuleSet, budget = createPrefilterBudget()): Promise<PrefilterFindings> {
   const refs = 2000;
   let evidence: Array<ReturnType<typeof compileSignalRules>[number] & { lines: number[] }> = [];
+  const cache = createLogPatternCache();
   const severityCounts = { error: 0, warn: 0, info: 0 };
   const anomalyLines = new Set<number>();
   const codes = new Map<string, { count: number; lineNumbers: number[] }>();
@@ -36,7 +38,7 @@ export async function prefilterLogStream(entries: AsyncIterable<ParsedLogEntry>,
     else truncated = true;
   };
   try {
-    evidence = compileSignalRules(ruleSet, budget.evaluation).map((item) => ({ ...item, lines: [] }));
+    evidence = compileSignalRules(ruleSet, budget.evaluation, cache).map((item) => ({ ...item, lines: [] }));
     for await (const entry of entries) {
       checkSignalEvaluationBudget(budget.evaluation);
       severityCounts[entry.severity]++;
@@ -76,7 +78,8 @@ export function collectRuleEvidence(
   entries: ParsedLogEntry[],
   ruleSet: SignalRuleSet = defaultChargingRuleSet
 ): AnalyzeLogEvidence[] {
-  return compileSignalRules(ruleSet).flatMap(({ rule, matches: conditions }) => {
+  const cache = createLogPatternCache();
+  return compileSignalRules(ruleSet, undefined, cache).flatMap(({ rule, matches: conditions }) => {
     const lineNumbers = entries
       .filter((entry) => conditions.map((matches) => matches(entry)).some(Boolean))
       .map((entry) => entry.lineNumber);

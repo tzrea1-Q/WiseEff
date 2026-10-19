@@ -11,7 +11,7 @@ import { compileSignalRules, createSignalEvaluationBudget, SIGNAL_RULE_LIMITS, S
 import { parseLogText } from "./parser";
 import { decodeLogFilesCooperatively, indexDecodedEvents } from "./parsing/workerDecoding";
 import { LOG_SIGNAL_LIMITS } from "./genericSignals";
-import { MAX_LOG_PATTERN_INPUT_LENGTH } from "./adminPattern";
+import { createLogPatternCache, MAX_LOG_PATTERN_INPUT_LENGTH } from "./adminPattern";
 export { signalPreviewRequestSchema, signalPreviewResponseSchema } from "./signalRules";
 
 export const SIGNAL_PREVIEW_LIMITS = { maxMs: 100, lines: 5000, hits: 500 } as const;
@@ -41,7 +41,8 @@ export async function previewSignalRules(input: { signalRules?: unknown; parsing
     const events = indexDecodedEvents(decoded?.events ?? []);
     const parsed: ReturnType<typeof parseLogText> = runInNewContext("parse()", { parse: () => parseLogText({ fileName: "sample.log", content: lines.join("\n") }, { profile: spec.formatProfile }) }, { timeout: Math.max(1, Math.ceil(deadline - now())) });
     if (!parsed.ok) throw new ApiError("VALIDATION_FAILED", parsed.reason);
-    const compile = () => compileSignalRules(spec.signalRules!, createSignalEvaluationBudget(deadline, Math.min(options.maxEvaluations ?? SIGNAL_RULE_LIMITS.evaluations, SIGNAL_RULE_LIMITS.evaluations), now));
+    const cache = createLogPatternCache();
+    const compile = () => compileSignalRules(spec.signalRules!, createSignalEvaluationBudget(deadline, Math.min(options.maxEvaluations ?? SIGNAL_RULE_LIMITS.evaluations, SIGNAL_RULE_LIMITS.evaluations), now), cache);
     const rules: ReturnType<typeof compile> = runInNewContext("compile()", { compile }, { timeout: Math.max(1, Math.ceil(deadline - now())) });
     let index = 0, reason: "time_cap" | "hit_cap" | undefined;
     const advance = () => {

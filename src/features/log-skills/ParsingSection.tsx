@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { parseDocument } from "yaml";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { parseDocument, stringify } from "yaml";
+import { parsingSpecSchema } from "@wiseeff/dto-schemas";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { ViewSwitch } from "@/components/ui/view-switch";
+import { TabPanel } from "@/components/ui/tab-panel";
+import { ExtractorBuilder } from "./ExtractorBuilder";
+import { FormatProfileForm } from "./FormatProfileForm";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { decodedValueText } from "@/features/log-analysis/DecodedFields";
-import type { ParsePreview, SkillWorkspaceRepository, SkillSample } from "./types";
+import type { ParsePreview, SkillWorkspaceRepository, SkillSample, SkillSpec } from "./types";
 
 export function parseParsingYaml(text: string): { value?: unknown; error?: string } {
   const document = parseDocument(text, { uniqueKeys: true });
@@ -21,10 +26,14 @@ export function boundedSamplePreview(content: string) {
   return { content: prefix.slice(0, Math.max(0, prefix.lastIndexOf("\n"))), truncated: true };
 }
 
-export function ParsingSection({ skillId, yaml, onChange, disabled, repository, sample }: {
+export function ParsingSection({ skillId, yaml, onChange, disabled, repository, sample, selectedLine, onLineSelect, profile, onProfileChange, onProfileValidityChange }: {
   skillId: string; yaml: string; onChange: (text: string) => void; disabled: boolean; repository?: Partial<SkillWorkspaceRepository>;
   sample?: SkillSample | null;
+  selectedLine?: number | null; onLineSelect?: (line: number) => void;
+  profile?: SkillSpec["formatProfile"]; onProfileChange?: (profile: SkillSpec["formatProfile"]) => void; onProfileValidityChange?: (valid: boolean) => void;
 }) {
+  const id = useId();
+  const [view, setView] = useState("form");
   const [sampleText, setSampleText] = useState("");
   const [fileName, setFileName] = useState("sample.log");
   const [result, setResult] = useState<ParsePreview | null>(null);
@@ -33,6 +42,7 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
   const sampleEdited = useRef(false);
   const generation = useRef(0);
   const parsed = parseParsingYaml(yaml);
+  const validation = parsingSpecSchema.safeParse(parsed.value);
   const storedPreview = useMemo(() => boundedSamplePreview(sample?.content ?? ""), [sample]);
   useEffect(() => {
     // The workspace owns the shared pane's sample; standalone callers can still
@@ -47,7 +57,17 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
   useEffect(() => { generation.current++; setResult(null); setPending(false); }, [sample]);
   const invalidate = () => { generation.current++; setResult(null); setPending(false); };
   return <section className="skill-section" aria-label="样例与解析"><h2>样例与解析</h2>
-    <p>代码视图编辑解析规则；从样例行创建抽取规则的表单将在后续提供。</p>
+    <ViewSwitch variant="tabs" ariaLabel="解析视图" value={view} onValueChange={setView} items={[
+      { value: "form", label: "表单", id: `${id}-form`, panelId: `${id}-form-panel` },
+      { value: "code", label: "代码视图", id: `${id}-code`, panelId: `${id}-code-panel` }
+    ]} />
+    <TabPanel id={`${id}-form-panel`} aria-labelledby={`${id}-form`} hidden={view !== "form"}>
+      {onProfileChange ? <FormatProfileForm skillId={skillId} profile={profile} onChange={onProfileChange} disabled={disabled} repository={repository} sample={sample}
+        onValidityChange={onProfileValidityChange} /> : null}
+      <ExtractorBuilder skillId={skillId} parsing={validation.success ? validation.data : null} onChange={(value) => { invalidate(); onChange(stringify(value)); }}
+        disabled={disabled} repository={repository} sampleText={sample ? storedPreview.content : sampleText} selectedLine={selectedLine} onLineSelect={onLineSelect} timestampPattern={profile?.timestampPattern} />
+    </TabPanel>
+    <TabPanel id={`${id}-code-panel`} aria-labelledby={`${id}-code`} hidden={view !== "code"}>
     <label htmlFor="parsing-yaml">代码视图 · YAML</label>
     <div className="skill-yaml-editor">
       <pre aria-hidden="true">{yaml.split("\n").map((_, i) => i + 1).join("\n")}</pre>
@@ -56,6 +76,7 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
           const gutter = event.currentTarget.previousElementSibling; if (gutter) gutter.scrollTop = event.currentTarget.scrollTop;
         }} onChange={(event) => { invalidate(); onChange(event.target.value); }} />
     </div>
+    </TabPanel>
     {parsed.error ? <p id="parsing-yaml-error" role="alert">{parsed.error}</p> : null}
     <section aria-label="预览"><h3>预览</h3>
       {sample ? <p>使用右侧样例日志：{sample.fileName}{storedPreview.truncated ? "；仅预览 1 MiB 内的完整行。" : ""}</p> : <>

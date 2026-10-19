@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 import type { ParsedLogEntry } from "./parser";
-import { compileLogPattern, type LogPattern } from "./adminPattern";
+import { compileLogPattern, createLogPatternCache, type LogPattern, type LogPatternCache } from "./adminPattern";
+import { withLogPatternBudget } from "./patternBudget";
 import type { DecodedEvent } from "./parsing/spec";
 
 export const SIGNAL_RULE_LIMITS = { rules: 64, conditions: 16, windows: 16, windowTimestamps: 160_000, evaluations: 2_000_000 } as const;
@@ -18,8 +19,8 @@ export function checkSignalEvaluationBudget(budget: SignalEvaluationBudget) {
 }
 
 /** The single compilation seam for signal-rule patterns. */
-export function compileSignalPattern(pattern: string, flags?: string): LogPattern {
-  return compileLogPattern(pattern, flags);
+export function compileSignalPattern(pattern: string, flags?: string, cache?: LogPatternCache): LogPattern {
+  return compileLogPattern(pattern, flags, undefined, cache);
 }
 
 const textConditionSchema = z.object({
@@ -112,7 +113,7 @@ const defaultsSchema = z.object({
   suggestedActions: z.array(textSchema)
 }).strict();
 
-export const signalRuleSetSchema = z.object({
+export const signalRuleSetSchema = withLogPatternBudget(z.object({
   rules: z.array(z.object({
     id: textSchema,
     name: z.string().min(1).max(200).optional(),
@@ -145,7 +146,7 @@ export const signalRuleSetSchema = z.object({
     }
     ids.add(rule.id);
   });
-});
+}), "signals");
 
 export type SignalRuleSet = z.infer<typeof signalRuleSetSchema>;
 export type SignalCondition = z.infer<typeof signalConditionSchema>;
@@ -158,23 +159,23 @@ export const signalPreviewResponseSchema = z.object({
 });
 
 /** Each file/pass owns its rings; evaluations and the deadline are shared across passes. */
-export function compileSignalRules(ruleSet: SignalRuleSet, budget = createSignalEvaluationBudget()) {
+export function compileSignalRules(ruleSet: SignalRuleSet, budget = createSignalEvaluationBudget(), cache = createLogPatternCache()) {
   const state = { windows: 0, slots: 0 };
   if (ruleSet.rules.length > SIGNAL_RULE_LIMITS.rules) throw new SignalRuleBudgetError("evaluation_cap");
   return ruleSet.rules.map((rule) => {
     checkSignalEvaluationBudget(budget);
     if (rule.anyOf.length > SIGNAL_RULE_LIMITS.conditions) throw new SignalRuleBudgetError("evaluation_cap");
-    return { rule, matches: rule.anyOf.map((condition) => compileSignalCondition(condition, undefined, budget, state)) };
+    return { rule, matches: rule.anyOf.map((condition) => compileSignalCondition(condition, undefined, budget, cache, state)) };
   });
 }
 
 /** Compile once per evidence collection, never once per log line. */
-export function compileSignalCondition(condition: SignalCondition, maxInputChars?: number, budget = createSignalEvaluationBudget(), state = { windows: 0, slots: 0 }): (entry: ParsedLogEntry) => boolean {
+export function compileSignalCondition(condition: SignalCondition, maxInputChars?: number, budget = createSignalEvaluationBudget(), cache = createLogPatternCache(), state = { windows: 0, slots: 0 }): (entry: ParsedLogEntry) => boolean {
   checkSignalEvaluationBudget(budget);
-  const test = compileCondition(condition, maxInputChars, budget, state);
+  const test = compileCondition(condition, maxInputChars, budget, cache, state);
   return (entry) => { checkSignalEvaluationBudget(budget); return test(entry); };
 }
-function compileCondition(condition: SignalCondition, maxInputChars: number | undefined, budget: SignalEvaluationBudget, state: { windows: number; slots: number }): (entry: ParsedLogEntry) => boolean {
+function compileCondition(condition: SignalCondition, maxInputChars: number | undefined, budget: SignalEvaluationBudget, cache: LogPatternCache, state: { windows: number; slots: number }): (entry: ParsedLogEntry) => boolean {
   switch (condition.type) {
     case "field":
       return (entry) => {
@@ -187,7 +188,7 @@ function compileCondition(condition: SignalCondition, maxInputChars: number | un
     case "window": {
       state.windows++; state.slots += condition.count;
       if (state.windows > SIGNAL_RULE_LIMITS.windows || !Number.isSafeInteger(condition.count) || condition.count <= 0 || state.slots > SIGNAL_RULE_LIMITS.windowTimestamps) throw new SignalRuleBudgetError("evaluation_cap");
-      const matches = compileSignalCondition(condition.condition, maxInputChars, budget, state);
+      const matches = compileSignalCondition(condition.condition, maxInputChars, budget, cache, state);
       const times = new Float64Array(condition.count);
       let size = 0, next = 0;
       let previous = -Infinity;
@@ -204,7 +205,7 @@ function compileCondition(condition: SignalCondition, maxInputChars: number | un
       };
     }
     case "text": {
-      const pattern = compileSignalPattern(condition.pattern, condition.flags);
+      const pattern = compileSignalPattern(condition.pattern, condition.flags, cache);
       return (entry) => {
         if (maxInputChars !== undefined) {
           let searchable = entry.message.slice(0, maxInputChars);

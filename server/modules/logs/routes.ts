@@ -36,9 +36,11 @@ import type { LogWebhookDeliverer } from "./webhookDelivery";
 import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, listLogSkillSourceVersions, listLogSkillTemplates, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
 import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "./skillSamplesService";
 import { logSkillSpecSchema } from "./skillSpec";
-import { previewLogSkillParsing } from "./skillsService";
 import { previewLogSkillSignals, signalPreviewRequestSchema } from "./signalPreview";
+import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat } from "./skillsService";
 import { parsePreviewRequestSchema } from "./parsing/spec";
+import { extractorPreviewRequestSchema } from "./parsing/extractorBuilder";
+import { formatPreviewRequestSchema } from "./formatProfile";
 import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
 import { sourceSnapshotUploadSchema } from "./schemas";
 import type { LogAnalysisAdapter } from "./analyzer";
@@ -397,6 +399,18 @@ export function registerLogRoutes(
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(signalPreviewRequestSchema, request.body);
     return { status: 200, body: await previewLogSkillSignals(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId, body) };
+  });
+  router.post("/api/v1/log-skills/:skillId/extractor-preview", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const body = parseWithSchema(extractorPreviewRequestSchema, request.body);
+    return { status: 200, body: await previewLogSkillExtractor(requireDb(options.db), auth, skillId, body) };
+  });
+  router.post("/api/v1/log-skills/:skillId/format-preview", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const body = parseWithSchema(formatPreviewRequestSchema, request.body);
+    return { status: 200, body: await previewLogSkillFormat(requireDb(options.db), auth, skillId, body) };
   });
   router.get("/api/v1/log-skills/:skillId", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

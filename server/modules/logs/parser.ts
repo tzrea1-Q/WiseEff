@@ -1,6 +1,6 @@
 import { TextDecoder } from "node:util";
 
-import { compileLogPattern, type LogPattern } from "./adminPattern";
+import { compileLogPattern, createLogPatternCache, type LogPattern, type LogPatternCache } from "./adminPattern";
 import type { LogFormatProfile } from "./formatProfile";
 import { supportedLogExtensions } from "./status";
 import { isSupportedStoredLogFileName, supportedLogArchiveExtensions } from "./unpack";
@@ -24,6 +24,7 @@ export type ParseLogTextInput = {
 export type ParseLogTextOptions = {
   /** Declarative log-domain format profile; absent = generic parsing (uncategorized log domain). */
   profile?: LogFormatProfile;
+  patternCache?: LogPatternCache;
 };
 
 export type ParseResult =
@@ -51,7 +52,7 @@ export function parseLogText(input: ParseLogTextInput, options: ParseLogTextOpti
   const rawLines = decoded.text.split(/\r\n|\n|\r/);
   if (rawLines.at(-1) === "") rawLines.pop();
   const profile = options.profile;
-  const entries = profile ? parseEntriesWithProfile(rawLines, profile) : parseEntriesGeneric(rawLines);
+  const entries = profile ? parseEntriesWithProfile(rawLines, profile, options.patternCache ?? createLogPatternCache()) : parseEntriesGeneric(rawLines);
 
   return { ok: true, rawLines, entries };
 }
@@ -67,10 +68,10 @@ function parseEntriesGeneric(rawLines: string[]): ParsedLogEntry[] {
   });
 }
 
-function parseEntriesWithProfile(rawLines: string[], profile: LogFormatProfile): ParsedLogEntry[] {
-  const timestampRegex = compileProfileRegex(profile.timestampPattern);
-  const startRegex = compileProfileRegex(profile.multiline?.startPattern);
-  const severityMatchers = compileSeverityMatchers(profile);
+function parseEntriesWithProfile(rawLines: string[], profile: LogFormatProfile, cache: LogPatternCache): ParsedLogEntry[] {
+  const timestampRegex = compileProfileRegex(profile.timestampPattern, cache);
+  const startRegex = compileProfileRegex(profile.multiline?.startPattern, cache);
+  const severityMatchers = compileSeverityMatchers(profile, cache);
   const entries: ParsedLogEntry[] = [];
 
   for (const [index, rawLine] of rawLines.entries()) {
@@ -96,9 +97,10 @@ function parseEntriesWithProfile(rawLines: string[], profile: LogFormatProfile):
 
 /** Same parsing rules with only the current multiline entry retained. */
 export async function* parseLogLines(lines: AsyncIterable<{ lineNumber: number; content: string }>, profile?: LogFormatProfile): AsyncGenerator<ParsedLogEntry> {
-  const timestampRegex = compileProfileRegex(profile?.timestampPattern);
-  const startRegex = compileProfileRegex(profile?.multiline?.startPattern);
-  const severityMatchers = profile ? compileSeverityMatchers(profile) : [];
+  const cache = createLogPatternCache();
+  const timestampRegex = compileProfileRegex(profile?.timestampPattern, cache);
+  const startRegex = compileProfileRegex(profile?.multiline?.startPattern, cache);
+  const severityMatchers = profile ? compileSeverityMatchers(profile, cache) : [];
   let previous: ParsedLogEntry | undefined;
   for await (const { lineNumber, content } of lines) {
     const trimmed = content.trim();
@@ -118,12 +120,12 @@ export async function* parseLogLines(lines: AsyncIterable<{ lineNumber: number; 
   if (previous) yield previous;
 }
 
-function compileProfileRegex(pattern: string | undefined): LogPattern | undefined {
+function compileProfileRegex(pattern: string | undefined, cache: LogPatternCache): LogPattern | undefined {
   if (!pattern) {
     return undefined;
   }
   try {
-    return compileLogPattern(pattern);
+    return compileLogPattern(pattern, "", undefined, cache);
   } catch {
     // Stored profiles are validated on save; an uncompilable pattern degrades to generic behavior.
     return undefined;
@@ -132,11 +134,11 @@ function compileProfileRegex(pattern: string | undefined): LogPattern | undefine
 
 type SeverityMatchers = Array<{ severity: ParsedLogSeverity; regexes: LogPattern[] }>;
 
-function compileSeverityMatchers(profile: LogFormatProfile): SeverityMatchers {
+function compileSeverityMatchers(profile: LogFormatProfile, cache: LogPatternCache): SeverityMatchers {
   const matchers: SeverityMatchers = [];
   for (const severity of ["error", "warn", "info"] as const) {
     const regexes = (profile.severityMap?.[severity] ?? [])
-      .map((pattern) => compileProfileRegex(pattern))
+      .map((pattern) => compileProfileRegex(pattern, cache))
       .filter((regex): regex is LogPattern => regex !== undefined);
     if (regexes.length > 0) {
       matchers.push({ severity, regexes });

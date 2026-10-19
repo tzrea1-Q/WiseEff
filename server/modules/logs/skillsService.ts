@@ -14,11 +14,31 @@ import { logSkillTemplates } from "./skillTemplates";
 import { parsingSpecSchema } from "./parsing/spec";
 import { decodeLogFilesCooperatively } from "./parsing/workerDecoding";
 import { MAX_DECODE_EVENTS } from "./parsing/engine";
+import { generateExtractorPattern, type ExtractorPatternInput } from "./parsing/extractorBuilder";
+import { previewLogFormat } from "./formatPreview";
 import { validateDefaultSourceSnapshot } from "./sourceSnapshots";
 import { validateSkillKnowledge } from "./skillKnowledge";
 
 export const PARSE_PREVIEW_MAX_MS = 100;
 export const PARSE_PREVIEW_MAX_LINES = 5000;
+
+export async function previewLogSkillExtractor(db: Queryable, auth: AuthContext, skillId: string, input: ExtractorPatternInput) {
+  await requirePreviewSkill(db, auth, skillId);
+  try { return runInNewContext("preview()", { preview: () => generateExtractorPattern(input) }, { timeout: PARSE_PREVIEW_MAX_MS }) as ReturnType<typeof generateExtractorPattern>; }
+  catch (error) { throw new ApiError("VALIDATION_FAILED", error instanceof Error ? error.message : String(error)); }
+}
+
+export async function previewLogSkillFormat(db: Queryable, auth: AuthContext, skillId: string, input: Parameters<typeof previewLogFormat>[0]) {
+  await requirePreviewSkill(db, auth, skillId);
+  try { return runInNewContext("preview()", { preview: () => previewLogFormat(input) }, { timeout: PARSE_PREVIEW_MAX_MS }) as ReturnType<typeof previewLogFormat>; }
+  catch (error) { throw new ApiError("VALIDATION_FAILED", error instanceof Error ? error.message : String(error)); }
+}
+
+async function requirePreviewSkill(db: Queryable, auth: AuthContext, skillId: string) {
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+}
 
 export function listLogSkillTemplates(auth: AuthContext) {
   requireOrganization(auth);
@@ -183,9 +203,7 @@ export async function publishLogSkill(db: Database, auth: AuthContext, skillId: 
 
 export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, skillId: string,
   input: { parsing?: unknown; sampleText: string; fileName?: string }) {
-  requireOrganization(auth);
-  requireLogAdminDomains(auth);
-  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  await requirePreviewSkill(db, auth, skillId);
   const lines = input.sampleText === "" ? [] : input.sampleText.split(/\r\n|\n|\r/);
   if (Buffer.byteLength(input.sampleText, "utf8") > 1024 * 1024) throw new ApiError("VALIDATION_FAILED", "Sample exceeds 1 MiB.");
   const started = performance.now();

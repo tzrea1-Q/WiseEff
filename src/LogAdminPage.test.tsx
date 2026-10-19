@@ -726,7 +726,7 @@ describe("LogAdminPage 分析技能治理", () => {
     expect(within(table).queryByText("charging-power")).not.toBeInTheDocument();
   });
 
-  it("retains legacy editing with a valid profile JSON", async () => {
+  it("retains legacy editing with the basic format form", async () => {
     const logActions = createLogActions({
       listLogDomains: vi.fn().mockResolvedValue([chargingDomain]),
       updateLogDomain: vi.fn().mockResolvedValue(chargingDomain)
@@ -738,10 +738,10 @@ describe("LogAdminPage 分析技能治理", () => {
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
     await userEvent.clear(screen.getByLabelText(/描述/));
     await userEvent.type(screen.getByLabelText(/描述/), "充电域");
-    const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    const profileInput = screen.getByLabelText("时间戳模式");
     await userEvent.clear(profileInput);
     await userEvent.click(profileInput);
-    await userEvent.paste('{"timestampPattern": "^x"}');
+    await userEvent.paste("^x");
     await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
     await waitFor(() =>
@@ -760,13 +760,14 @@ describe("LogAdminPage 分析技能治理", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "编辑" }));
     await userEvent.type(screen.getByLabelText(/名称/), "broken");
-    const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    await userEvent.click(screen.getByRole("button", { name: "基础格式代码视图" }));
+    const profileInput = screen.getByLabelText("基础格式 JSON");
     await userEvent.clear(profileInput);
     await userEvent.click(profileInput);
     await userEvent.paste("{not json");
     await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/画像 JSON 无法解析/);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/基础格式 JSON 无法解析/);
     expect(logActions.updateLogDomain).not.toHaveBeenCalled();
   });
 
@@ -786,14 +787,15 @@ describe("LogAdminPage 分析技能治理", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "编辑" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
-    const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    await userEvent.click(screen.getByRole("button", { name: "基础格式代码视图" }));
+    const profileInput = screen.getByLabelText("基础格式 JSON");
     await userEvent.clear(profileInput);
     await userEvent.click(profileInput);
-    await userEvent.paste('{"timestampPattern":"(["}');
+    await userEvent.paste('{"timestampPattern":"^valid"}');
     await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("timestampPattern 不是合法正则表达式。");
-    expect(screen.getByLabelText(/格式画像 JSON/)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("基础格式 JSON")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByRole("form", { name: "编辑分析技能" })).toBeInTheDocument();
   });
 

@@ -354,7 +354,13 @@ export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
 /** Draft configuration only; signal previews load the stored sample on the server. */
 export const LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 512 * 1024;
 
+/** A 1 MiB sample can expand sixfold in JSON; retain headroom for unsaved rules. */
+export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
+
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+(?:parse|extractor|format)-preview\/*$/.test(path)) {
+    return LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
+  }
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+signals-preview\/*$/.test(path)) {
     return LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
   }
