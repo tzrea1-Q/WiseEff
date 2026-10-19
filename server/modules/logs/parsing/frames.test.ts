@@ -220,6 +220,24 @@ describe("parsing/v1 frame engine interface", () => {
     if (!result.success) expect(result.error.issues.map(({ path }) => path)).toContainEqual(["frames", "main", "fields", 1, "length"]);
   });
 
+  it("bounds shared F0–F7 references during validation and zero-byte decoding", async () => {
+    const candidate = { schemaVersion: "parsing/v1", frames: Object.fromEntries(Array.from({ length: 8 }, (_, level) => [`F${level}`, {
+      fields: level === 7 ? [] : Array.from({ length: 64 }, (_, index) => ({ name: `part${index}`, type: "frame", frame: `F${level + 1}` }))
+    }])), extractors: [{ id: "shared", pattern: "(?P<payload>.*)", fields: { payload: { type: "hex", decode: { frame: "F0" } } } }] };
+    const spec: ParsingSpec = runInNewContext("validate()", { validate: () => parsingSpecSchema.parse(candidate) }, { timeout: 1000 });
+    const result: ReturnType<typeof decodeLogFiles> = runInNewContext("decode()", { decode: () => decode(spec, "") }, { timeout: 1000 });
+    expect(result).toMatchObject({ counts: { total: 1, errors: { frame_elements: 1 } }, events: [{ errors: [{
+      code: "frame_elements", message: "Frame total element count exceeds 1024 per event"
+    }] }] });
+    const cyclic = { ...candidate, frames: { ...candidate.frames, F7: { fields: [{ name: "loop", type: "frame", frame: "F0" }] } } };
+    const invalid: ReturnType<typeof parsingSpecSchema.safeParse> = runInNewContext("validate()", { validate: () => parsingSpecSchema.safeParse(cyclic) }, { timeout: 1000 });
+    expect(invalid.success).toBe(false);
+    if (!invalid.success) expect(invalid.error.issues.map(({ path }) => path)).toContainEqual(["frames", "F7", "fields", 0, "frame"]);
+    let ticks = 0;
+    const interrupted = await decodeLogFilesCooperatively(spec, [{ file: "wire.log", lines: [""] }], { maxMs: 100, now: () => ticks++, hardTimeout: false });
+    expect(interrupted).toMatchObject({ events: [], counts: { total: 0, errors: { time_cap: 1 } }, unmatchedLineCount: 1 });
+  });
+
   it("bounds frame input length, repeat counts, total repeat elements and TLV items with event diagnostics", () => {
     const large = specFor({ fields: [] });
     large.extractors[0].fields.payload = { type: "base64bytes", decode: { frame: "main" } };

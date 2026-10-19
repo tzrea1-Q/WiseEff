@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { parse, stringify } from "yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -8,6 +9,7 @@ import { DecodingSection } from "./DecodingSection";
 import { FrameEditor, frameOffsets, renameFrameReferences } from "./FrameEditor";
 import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 import type { ParsePreview, SkillSpec } from "./types";
+import { decodeLogFiles } from "../../../server/modules/logs/parsing/engine";
 
 afterEach(cleanup);
 type Parsing = NonNullable<SkillSpec["parsing"]>;
@@ -20,6 +22,15 @@ const preview: ParsePreview = { valid: true, truncated: false, issues: [], count
     size: { raw: "02", value: 2, byteOffset: 0, byteLength: 1 }, payload: { raw: "A0B0", value: { hex: "A0B0", length: 2 }, byteOffset: 1, byteLength: 2 },
     status: { raw: "03", value: 3, byteOffset: 3, byteLength: 1 }, sum: { raw: "55", value: 85, byteOffset: 4, byteLength: 1, checksum: { expected: 85, actual: 85, ok: true } }
   } } } }] };
+const pdSpec: Parsing = { schemaVersion: "parsing/v1", registers: {
+  header: { width: 16, fields: [{ name: "messageType", bits: [4, 0], enum: { "1": "Source_Capabilities" } }, { name: "count", bits: [14, 12] }] },
+  pdo: { width: 32, fields: [{ name: "voltage", bits: [19, 10], scale: 50, unit: "mV" }, { name: "current", bits: [9, 0], scale: 10, unit: "mA" }] }
+}, frames: {
+  pdo: { fields: [{ name: "pdo", type: "uint", length: 4, endian: "little", register: "pdo" }] },
+  message: { fields: [{ name: "hdr", type: "uint", length: 2, endian: "little", register: "header" }, { name: "objects", type: "repeat", frame: "pdo", count: "hdr.count" }] }
+}, extractors: [{ id: "usb", pattern: "usbpd: rx frame=(?<frame>[0-9A-Fa-f]+)", fields: { frame: { type: "hex", decode: { frame: "message" } } } }] };
+const pdSample = { ...mockSkillSample, content: "usbpd: rx frame=61212C9101082CD10200\nusbpd: rx frame=6121", lineCount: 2 };
+const pdPreview: ParsePreview = { ...decodeLogFiles(parsingSpecSchema.parse(pdSpec), [{ file: pdSample.fileName, lines: pdSample.content.split("\n") }]), valid: true, issues: [], truncated: false };
 
 function editor(events = preview.events, initial = spec, disabled = false) {
   function Harness() {
@@ -30,6 +41,86 @@ function editor(events = preview.events, initial = spec, disabled = false) {
 }
 
 describe("frame workspace", () => {
+  it("renders the exact F0–F7 shared-reference graph quickly with one length calculation per definition", () => {
+    const reads: Record<string, number> = {};
+    const frames: NonNullable<Parsing["frames"]> = Object.fromEntries(Array.from({ length: 8 }, (_, level) => {
+      const id = `F${level}`, fields: NonNullable<Parsing["frames"]>[string]["fields"] = level === 7 ? [] : Array.from({ length: 64 }, (_, index) => ({ name: `f${index}`, type: "frame", frame: `F${level + 1}` }));
+      return [id, { get fields() { reads[id] = (reads[id] ?? 0) + 1; if (reads[id] > 100) throw new Error("Unbounded frame expansion"); return fields; } }];
+    }));
+    const initial: Parsing = { schemaVersion: "parsing/v1", frames, extractors: [{ id: "shared", pattern: "(?<frame>.+)", fields: { frame: { type: "hex", decode: { frame: "F0" } } } }] };
+    expect(parsingSpecSchema.safeParse(initial).success).toBe(true);
+    for (const key of Object.keys(reads)) reads[key] = 0;
+    const started = performance.now();
+    const markup = renderToStaticMarkup(<FrameEditor spec={initial} onChange={() => {}} disabled={false} events={[]} selectedLine={1} pending={false} />);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(markup.match(/aria-label="帧字段 \d+ 名称"/g)).toHaveLength(64);
+    for (let level = 1; level < 8; level++) expect(reads[`F${level}`]).toBe(1);
+  });
+
+  it("defaults to the decoded top-level USB-PD frame and selects whole repeat and individual item ranges", async () => {
+    editor(pdPreview.events.filter((event) => event.line === 1), pdSpec);
+    expect(screen.getByRole("combobox", { name: "选择帧" })).toHaveTextContent("message");
+    const hex = screen.getByRole("group", { name: "帧十六进制视图" });
+    expect(within(hex).getAllByRole("button")).toHaveLength(10);
+    expect(screen.getByLabelText("hdr 解码值")).toHaveTextContent("8545");
+    expect(screen.getByLabelText("objects 解码值")).toHaveTextContent("2c9101082cd10200");
+    await userEvent.click(screen.getByRole("button", { name: "选择帧字段 objects" }));
+    expect(within(hex).getAllByRole("button", { pressed: true })).toHaveLength(8);
+    await userEvent.click(screen.getByRole("button", { name: "选择重复项 objects › 0" }));
+    expect(within(hex).getAllByRole("button", { pressed: true })).toHaveLength(4);
+    await userEvent.click(within(hex).getByRole("button", { name: "字节 6：2C，字段 objects，重复项 1" }));
+    expect(screen.getByRole("button", { name: "选择重复项 objects › 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(hex).getAllByRole("button", { pressed: true }).map((item) => item.getAttribute("aria-label"))).toEqual([
+      "字节 6：2C，字段 objects，重复项 1", "字节 7：D1，字段 objects，重复项 1", "字节 8：02，字段 objects，重复项 1", "字节 9：00，字段 objects，重复项 1"
+    ]);
+    expect(screen.getByRole("button", { name: "选择帧字段 objects" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("finds both nested PDO registers, shows their paths and lets the author choose an occurrence", async () => {
+    const repository = { parsePreview: vi.fn(async () => pdPreview) };
+    render(<DecodingSection skillId={pdSample.skillId} yaml={stringify(pdSpec)} onChange={() => {}} disabled={false} repository={repository} sample={pdSample} selectedLine={1} />);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "选择帧" })).toHaveTextContent("message"));
+    await userEvent.click(screen.getByRole("combobox", { name: "选择寄存器" }));
+    await userEvent.click(screen.getByRole("option", { name: "pdo" }));
+    const bitbar = screen.getByRole("group", { name: "寄存器位条 · 32 位，高位到低位" });
+    expect(within(bitbar).getByLabelText("voltage 的值（非零）")).toHaveTextContent("5000 mV");
+    expect(screen.getByLabelText("寄存器样例路径")).toHaveTextContent("frame › objects › 0 › pdo");
+    expect(screen.queryByText(/此行未产生该寄存器/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "寄存器解码位置" }));
+    await userEvent.click(screen.getByRole("option", { name: "frame › objects › 1 › pdo" }));
+    expect(within(bitbar).getByLabelText("voltage 的值（非零）")).toHaveTextContent("9000 mV");
+    expect(screen.getByLabelText("寄存器样例路径")).toHaveTextContent("frame › objects › 1 › pdo");
+  });
+
+  it("prefers a decoded top-level payload over a failed capture of the same frame", () => {
+    const initial = structuredClone(pdSpec), failed = structuredClone(pdPreview.events[1]);
+    initial.extractors.unshift({ ...initial.extractors[0], id: "failed" });
+    failed.extractor = "failed"; failed.line = 1;
+    editor([failed, pdPreview.events[0]], initial);
+    expect(within(screen.getByRole("group", { name: "帧十六进制视图" })).getAllByRole("button")).toHaveLength(10);
+    expect(screen.getByLabelText("hdr 解码值")).toHaveTextContent("8545");
+  });
+
+  it("resets the frame default on sample selection and localizes a truncated PDO warning with raw details", async () => {
+    function Harness() {
+      const [line, setLine] = useState(1);
+      return <><button onClick={() => setLine(2)}>选择截断行</button><FrameEditor spec={pdSpec} onChange={() => {}} disabled={false} events={pdPreview.events.filter((event) => event.line === line)} selectedLine={line} pending={false} /></>;
+    }
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "选择重复项 objects › 1" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "选择帧" }));
+    await userEvent.click(screen.getByRole("option", { name: "pdo" }));
+    await userEvent.click(screen.getByRole("button", { name: "选择截断行" }));
+    expect(screen.getByRole("combobox", { name: "选择帧" })).toHaveTextContent("message");
+    expect(screen.queryByText(/^已选字段：/)).not.toBeInTheDocument();
+    const warning = screen.getByRole("alert");
+    expect(warning).toHaveTextContent("字段 pdo 需要 4 个字节（偏移 0），仅剩 0 个字节");
+    expect(warning).toHaveAttribute("title", "frame_range: Field pdo requires 4 bytes at offset 0; only 0 remain");
+    expect(warning).toHaveClass("skill-register-unmatched");
+    expect(warning.querySelector("svg")).not.toBeNull();
+    expect(within(screen.getByRole("group", { name: "帧十六进制视图" })).getAllByRole("button")).toHaveLength(2);
+  });
+
   it("computes fixed and relative offsets, including nested frames and constant repeats", () => {
     expect(frameOffsets(spec.frames!.packet, spec.frames!)).toEqual([{ offset: "0", length: 1 }, { offset: "1", length: undefined }, { offset: "+0 after payload", length: 1 }, { offset: "+1 after payload", length: 1 }]);
     const frames = { word: { fields: [{ name: "word", type: "uint" as const, length: 2 as const }] } };
@@ -37,6 +128,8 @@ describe("frame workspace", () => {
       .toEqual([{ offset: "0", length: 12 }, { offset: "12", length: 1 }]);
     expect(frameOffsets({ fields: [{ name: "child", type: "frame", frame: "word", length: "size" }, { name: "end", type: "uint", length: 1 }] }, frames))
       .toEqual([{ offset: "0", length: undefined }, { offset: "+0 after child", length: 1 }]);
+    expect(frameOffsets({ fields: [{ name: "choice", type: "switch", on: "size", cases: {}, length: 2 }, { name: "tags", type: "tlv", tagSize: 1, lengthSize: 1, cases: {}, length: 2 }, { name: "end", type: "uint", length: 1 }] }, frames))
+      .toEqual([{ offset: "0", length: undefined }, { offset: "+0 after choice", length: undefined }, { offset: "+0 after tags", length: 1 }]);
   });
 
   it("links field selection to bytes and byte selection to the field with text and pressed states", async () => {

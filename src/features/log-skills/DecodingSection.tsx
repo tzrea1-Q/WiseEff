@@ -14,6 +14,7 @@ import { decodedValueText } from "@/features/log-analysis/DecodedFields";
 import { boundedSamplePreview, parseParsingYaml } from "./ParsingSection";
 import { parseRegisterBits, parseRegisterTable, registerPasteIssue, type Register } from "./registerTable";
 import { FrameEditor, renameFrameReferences } from "./FrameEditor";
+import { decodedOccurrences } from "./decodedOccurrences";
 import type { ParsePreview, SkillSpec, SkillWorkspaceRepository, SkillSample } from "./types";
 
 type Parsing = NonNullable<SkillSpec["parsing"]>;
@@ -102,6 +103,7 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
   const id = useId();
   const [view, setView] = useState("form");
   const [registerId, setRegisterId] = useState("");
+  const [occurrence, setOccurrence] = useState<{ register: string; line: typeof selectedLine; key: string } | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [paste, setPaste] = useState("");
   const deferredPaste = useDeferredValue(paste);
@@ -135,18 +137,9 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
     return () => { active = false; };
   }, [skillId, yaml, sample, selectedLine, repository, validation.success, parsed.value, storedPreview.content]);
   const selectedEvents = preview?.events.filter((event) => selectedLine && event.line <= selectedLine && (event.endLine ?? event.line) >= selectedLine) ?? [];
-  const matchingValue = selectedEvents.flatMap((event) => Object.entries(event.fields).filter(([name]) => {
-    const binding = spec?.extractors.find((extractor) => extractor.id === event.extractor)?.fields[name];
-    if (!binding || !("decode" in binding) || !binding.decode) return false;
-    if ("register" in binding.decode) return binding.decode.register === activeId;
-    if (!("registerMap" in binding.decode)) return false;
-    const map = spec?.registerMaps?.[binding.decode.registerMap];
-    if (!map) return false;
-    const selected = event.fields[map.selectBy];
-    const scalar = selected && typeof selected === "object" && "value" in selected ? selected.value : selected;
-    const target = Object.entries(map.cases).find(([key]) => registerCaseKey(key) === registerCaseKey(String(scalar)))?.[1] ?? map.default;
-    return target === activeId;
-  }).map(([, value]) => value))[0];
+  const occurrences = spec ? decodedOccurrences(spec, selectedEvents).filter((item) => "register" in item.decoder && item.decoder.register === activeId) : [];
+  const matching = (occurrence?.register === activeId && occurrence.line === selectedLine ? occurrences.find((item) => item.key === occurrence.key) : undefined) ?? occurrences[0];
+  const matchingValue = matching?.value;
   const values = matchingValue && typeof matchingValue === "object" && "fields" in matchingValue ? matchingValue.fields : undefined;
   const unmatchedMaps = [...new Set(selectedEvents.flatMap((event) => Object.values(spec?.extractors.find((extractor) => extractor.id === event.extractor)?.fields ?? {}).flatMap((binding) => {
     if (!("decode" in binding) || !binding.decode || !("registerMap" in binding.decode)) return [];
@@ -199,6 +192,9 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
               : "预览仅显示前 500 个事件；超出范围的样例行没有解码值。"}</p> : null}
             {visibleErrors.map((issue, index) => <p role="alert" key={index} title={`${issue.code}: ${issue.message}`}>{issue.field ? `${issue.field}：` : ""}{Object.hasOwn(decodingErrorMessages, issue.code) ? decodingErrorMessages[issue.code] : "解码失败，请检查字段定义和样例内容。"}</p>)}
             {preview && !matchingValue && !unmatchedMaps.length && !visibleErrors.length ? <p>此行未产生该寄存器的解码字段；请检查抽取字段绑定与映射。</p> : null}
+            {matching ? <p aria-label="寄存器样例路径">{matching.path.join(" › ")}</p> : null}
+            {occurrences.length > 1 ? <label>寄存器解码位置<SelectControl ariaLabel="寄存器解码位置" value={matching?.key ?? ""} options={occurrences.map((item) => ({ value: item.key, label: item.path.join(" › ") }))}
+              onValueChange={(key) => setOccurrence({ register: activeId, line: selectedLine, key })} /></label> : null}
             <RegisterBitBar register={register} values={values} />
             {unmatchedMaps.map((message) => <p key={message} className="skill-register-unmatched" role="status" title={unmatchedDetails || undefined}><CircleAlert aria-hidden="true" />{message}</p>)}
             <div className="skill-register-toolbar"><Button variant="outline" disabled={disabled} onClick={() => updateRegister({ ...register, fields: [...register.fields, { bits: [0, 0], name: nextId("FIELD", Object.fromEntries(register.fields.map((field) => [field.name, true]))) }] })}>新增字段</Button>
