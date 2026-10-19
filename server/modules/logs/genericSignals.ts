@@ -36,7 +36,7 @@ export function logSignalLimits(env: NodeJS.ProcessEnv = process.env) {
 function emptySummary(): LogSignalSummary {
   return { signals: [], templates: [], truncatedSignals: false, truncatedTemplates: false };
 }
-type SignalFile = { path: string; parsed?: Extract<ParseResult, { ok: true }>; reader?: Pick<LogFileReader, "lineCount" | "lines" | "entries"> };
+type SignalFile = { path: string; skillMatched?: boolean | null; parsed?: Extract<ParseResult, { ok: true }>; reader?: Pick<LogFileReader, "lineCount" | "lines" | "entries"> };
 type SignalStep = LogSignalSummary & { readLine?: { fileIndex: number; lineNumber: number } };
 type SignalLine = { rawContent: string; entry?: ParsedLogEntry };
 
@@ -90,7 +90,7 @@ function* extractLogSignalSteps(
   };
   for (const [fileIndex, file] of files.entries()) {
     if (!file.parsed && !file.reader) continue;
-    const rules = signalRules ? compileSignalRules(signalRules, evaluation, cache) : [];
+    const rules = signalRules && file.skillMatched !== false ? compileSignalRules(signalRules, evaluation, cache) : [];
     let entryIndex = 0;
     let previous: { time: number; clock: "wall" | "boot"; anchor: LogSignalAnchor } | undefined;
     let firstError = true, lastBurstError = 0;
@@ -243,7 +243,7 @@ export async function extractLogSignalsCooperatively(
 }
 
 /** Small offline/direct callers share the line and time bounds without worker scheduling. */
-export function extractLogSignals(files: Array<{ path: string; parsed?: Extract<ParseResult, { ok: true }> }>, signalRules?: SignalRuleSet): LogSignalSummary {
+export function extractLogSignals(files: SignalFile[], signalRules?: SignalRuleSet): LogSignalSummary {
   try {
     const deadline = performance.now() + logSignalLimits().maxMs;
     const steps = extractLogSignalSteps(files, signalRules);

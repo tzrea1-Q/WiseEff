@@ -69,6 +69,20 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
 }
 
 describe("skill workspace", () => {
+  it("keeps file applicability beside parsing and saves its ordered roles across sections", async () => {
+    const { repository } = setup({ section: "parsing" });
+    fireEvent.click(await screen.findByRole("button", { name: "添加文件规则" }));
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "通配模式 1" }), { target: { value: "charger/**" } });
+    fireEvent.click(screen.getByRole("button", { name: "文件规则 1 使用角色充电" }));
+    fireEvent.click(screen.getByRole("button", { name: "概览" }));
+    expect(screen.getByText("1 条规则")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "样例与解析" }));
+    expect(screen.getByRole("textbox", { name: "通配模式 1" })).toHaveValue("charger/**");
+    expect(screen.getByRole("textbox", { name: "文件角色 1" })).toHaveValue("充电");
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ files: [{ glob: "charger/**", role: "充电" }] }), null, "current"));
+  });
   it("preserves invalid register inputs across sections and blocks saving or publishing an older value", async () => {
     setup({ section: "decoding" });
     fireEvent.click(await screen.findByRole("button", { name: "新增寄存器" }));

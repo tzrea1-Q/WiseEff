@@ -1,13 +1,17 @@
 import { z } from "zod";
 import { fileGlobPattern, logPatternProgramCost, MAX_LOG_PATTERN_TOTAL_SIZE } from "./adminPattern";
+import { MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_FILE_GLOBS, skillFileGlobPattern } from "../../../src/domain/logs/fileApplicability";
 
-type PatternSource = { source: string; path: (string | number)[] };
+type PatternSource = { source: string; path: (string | number)[]; skillFileGlob?: boolean };
 type BudgetKind = "skill" | "parsing" | "signals" | "format";
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 /** Walk only pattern-bearing fields in the closed spec, before nested schemas compile them. */
 function* patterns(value: unknown, kind: BudgetKind): Generator<PatternSource> {
   const root = object(value);
+  if (kind === "skill" && Array.isArray(root.files)) for (const [index, file] of root.files.entries()) {
+    if (typeof object(file).glob === "string") yield { source: object(file).glob as string, path: ["files", index, "glob"], skillFileGlob: true };
+  }
   if (kind === "skill" || kind === "format") {
     const profile = kind === "format" ? root : object(root.formatProfile), severity = object(profile.severityMap);
     const prefix = kind === "format" ? [] : ["formatProfile"];
@@ -57,10 +61,21 @@ function* patterns(value: unknown, kind: BudgetKind): Generator<PatternSource> {
 
 /** Declaration totals are conservative: even duplicate patterns consume the spec budget. */
 export function logPatternBudgetIssues(value: unknown, kind: BudgetKind) {
+  // Reject the whole applicability batch before translating or compiling any pattern.
+  const files = kind === "skill" ? object(value).files : undefined;
+  if (Array.isArray(files)) {
+    if (files.length > MAX_SKILL_FILE_GLOBS) return [{ path: ["files"], message: `At most ${MAX_SKILL_FILE_GLOBS} file globs are allowed` }];
+    for (const [index, file] of files.entries()) {
+      for (const [key, limit] of [["glob", MAX_FILE_GLOB_LENGTH], ["role", MAX_FILE_ROLE_LENGTH]] as const) {
+        const field = object(file)[key];
+        if (typeof field === "string" && field.length > limit) return [{ path: ["files", index, key], message: `String must contain at most ${limit} character(s)` }];
+      }
+    }
+  }
   let total = 0;
-  for (const { source, path } of patterns(value, kind)) {
+  for (const { source, path, skillFileGlob } of patterns(value, kind)) {
     try {
-      total += logPatternProgramCost(source);
+      total += logPatternProgramCost(skillFileGlob ? skillFileGlobPattern(source) : source);
       if (total > MAX_LOG_PATTERN_TOTAL_SIZE) throw new Error(`Total pattern program budget exceeds ${MAX_LOG_PATTERN_TOTAL_SIZE} instructions`);
     } catch (error) {
       return [{ path, message: error instanceof Error ? error.message : String(error) }];

@@ -11,9 +11,9 @@ import "./format-profile-form.css";
 const levels = ["error", "warn", "info"] as const;
 const levelNames = { error: "错误", warn: "警告", info: "信息" };
 
-export function FormatProfileForm({ skillId, profile, onChange, disabled = false, repository, sample, onValidityChange, externalError }: {
+export function FormatProfileForm({ skillId, profile, onChange, disabled = false, repository, sample, previewEnabled = true, onValidityChange, externalError }: {
   skillId: string; profile: SkillSpec["formatProfile"]; onChange: (profile: SkillSpec["formatProfile"]) => void; disabled?: boolean;
-  repository?: Partial<SkillWorkspaceRepository>; sample?: SkillSample | null; onValidityChange?: (valid: boolean) => void; externalError?: string | null;
+  repository?: Partial<SkillWorkspaceRepository>; sample?: SkillSample | null; previewEnabled?: boolean; onValidityChange?: (valid: boolean) => void; externalError?: string | null;
 }) {
   const id = useId();
   const [codeView, setCodeView] = useState(false);
@@ -34,7 +34,7 @@ export function FormatProfileForm({ skillId, profile, onChange, disabled = false
   useEffect(() => {
     let active = true;
     setPreview(null); setPreviewError("");
-    if (!valid || !repository?.previewFormat) { setPending(false); return; }
+    if (!previewEnabled || !valid || !repository?.previewFormat) { setPending(false); return; }
     setPending(true);
     const timer = setTimeout(() => {
       const lines: string[] = []; let bytes = 0;
@@ -49,7 +49,7 @@ export function FormatProfileForm({ skillId, profile, onChange, disabled = false
         .finally(() => { if (active) setPending(false); });
     }, 200);
     return () => { active = false; clearTimeout(timer); };
-  }, [code, valid, repository, skillId, sample, sampleText]); // Code is the live draft, including invalid input.
+  }, [code, valid, repository, skillId, sample, sampleText, previewEnabled]); // Code is the live draft, including invalid input.
   const updateCode = (next: string) => {
     setCode(next); setPreview(null);
     const result = parseFormatProfileCode(next);
@@ -89,7 +89,7 @@ export function FormatProfileForm({ skillId, profile, onChange, disabled = false
       {formProfile.multiline?.mode === "start-pattern" ? <label>条目起始模式<Input value={formProfile.multiline.startPattern ?? ""} disabled={disabled} aria-invalid={!valid} onChange={(event) => update({ ...formProfile, multiline: { mode: "start-pattern", startPattern: event.target.value } })} /></label> : null}
     </>}
     {parsed.error || externalError ? <p id={`${id}-error`} role="alert">{parsed.error || externalError}</p> : null}
-    {!sample ? <label>基础格式样例<Textarea value={sampleText} maxLength={1024 * 1024} placeholder="粘贴日志，实时查看时间戳、级别与多行分组。" onChange={(event) => setSampleText(event.target.value)} /></label> : <p>实时预览样例：{sample.fileName}</p>}
+    {!sample ? <label>基础格式样例<Textarea value={sampleText} maxLength={1024 * 1024} placeholder="粘贴日志，实时查看时间戳、级别与多行分组。" onChange={(event) => setSampleText(event.target.value)} /></label> : <p>实时预览样例：{sample.contentFilePath ?? sample.fileName}{!previewEnabled ? " · 未匹配技能，不运行基础格式预览。" : ""}</p>}
     {repository?.previewFormat ? <p>实时预览限前 500 行、1 MiB；单行最多 6144 字符。</p> : null}
     {pending ? <p role="status">基础格式预览中…</p> : null}
     {previewError ? <p role="alert">{previewError}</p> : null}

@@ -28,6 +28,8 @@ import { parsingSpecSchema, logSkillSpecSchema } from "@wiseeff/dto-schemas";
 import { SignalsSection } from "./SignalsSection";
 import { DecodingSection } from "./DecodingSection";
 import { SourceSnapshots } from "./SourceSnapshots";
+import { FileApplicabilitySection } from "./FileApplicabilitySection";
+import { matchSkillFile } from "@/domain/logs/fileApplicability";
 import { SkillDryRunDrawer } from "./SkillDryRunDrawer";
 import { KnowledgeSection } from "./KnowledgeSection";
 import "./skill-workspace.css";
@@ -47,16 +49,17 @@ const time = (value: string | null) => value ? new Date(value).toLocaleString("z
 const status = { published: "当前", draft: "草稿", superseded: "已替代" };
 
 function Parsing({ skill, spec, setSpec, parsingYaml, onParsingYamlChange, disabled, repository, sample, selectedLine, onLineSelect, onProfileValidityChange }: SectionProps) {
-  return <ParsingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample}
+  return <><FileApplicabilitySection spec={spec} onChange={setSpec} disabled={disabled} sample={sample} />
+    <ParsingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} files={spec.files}
     selectedLine={selectedLine} onLineSelect={onLineSelect} profile={spec.formatProfile} onProfileValidityChange={onProfileValidityChange}
-    onProfileChange={(formatProfile) => { const next = { ...spec }; if (formatProfile === undefined) delete next.formatProfile; else next.formatProfile = formatProfile; setSpec(next); }} />;
+    onProfileChange={(formatProfile) => { const next = { ...spec }; if (formatProfile === undefined) delete next.formatProfile; else next.formatProfile = formatProfile; setSpec(next); }} /></>;
 }
 
 function Signals({ skill, spec, setSpec, disabled, repository, sample, onSignalHit }: SectionProps) {
   return <SignalsSection skillId={skill.id} spec={spec} onChange={setSpec} disabled={disabled} repository={repository} sample={sample} onHit={onSignalHit} />;
 }
-function Decoding({ skill, parsingYaml, onParsingYamlChange, disabled, repository, sample, selectedLine }: SectionProps) {
-  return <DecodingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} selectedLine={selectedLine} />;
+function Decoding({ skill, spec, parsingYaml, onParsingYamlChange, disabled, repository, sample, selectedLine }: SectionProps) {
+  return <DecodingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} files={spec.files} selectedLine={selectedLine} />;
 }
 
 const procedureOutline = ["适用场景", "先检查什么", "根因判定", "常见误判", "建议动作"]
@@ -99,6 +102,7 @@ function Overview({ skill, spec, setSpec, disabled, stats }: SectionProps) {
       onChange={(event) => { const next = { ...spec }; if (event.target.value) next.modelOverride = event.target.value; else delete next.modelOverride; setSpec(next); }} /></label>
     <section aria-label="已配置内容"><h3>已配置内容</h3><dl className="skill-facts">
       <dt>基础格式</dt><dd>{spec.formatProfile ? "已配置" : "未配置"}</dd>
+      <dt>适用文件</dt><dd>{spec.files?.length ? `${spec.files.length} 条规则` : "全部文件"}</dd>
       <dt>信号规则</dt><dd>{spec.signalRules ? `${spec.signalRules.rules.length} 条` : "平台通用信号"}</dd>
     </dl></section>
   </section>;
@@ -173,18 +177,20 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     const result = parsingSpecSchema.safeParse(parsed.value);
     return !parsed.error && result.success ? result.data : null;
   }, [parsingYaml]);
-  const [highlightOutcome, setHighlightOutcome] = useState<{ yaml: string; sample: SkillSample; preview?: ParsePreview; error?: string } | null>(null);
-  const currentHighlights = highlightOutcome?.yaml === parsingYaml && highlightOutcome.sample === sample ? highlightOutcome : null;
+  const sampleSkillMatched = !!sample && logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", files: spec.files }).success
+    && matchSkillFile(spec.files, sample.contentFilePath ?? sample.fileName).skillMatched;
+  const [highlightOutcome, setHighlightOutcome] = useState<{ yaml: string; sample: SkillSample; files: SkillSpec["files"]; preview?: ParsePreview; error?: string } | null>(null);
+  const currentHighlights = sampleSkillMatched && highlightOutcome?.yaml === parsingYaml && highlightOutcome.sample === sample && highlightOutcome.files === spec.files ? highlightOutcome : null;
   useEffect(() => {
-    if (!apiMode || !sample || !highlightSpec?.extractors.length || !repository?.parsePreview) return;
+    if (!apiMode || !sample || !sampleSkillMatched || !highlightSpec?.extractors.length || !repository?.parsePreview) return;
     let active = true;
     const timer = setTimeout(() => {
-      void repository.parsePreview!(skillId, { parsing: highlightSpec, sampleText: boundedSamplePreview(sample.content).content, fileName: sample.fileName })
-        .then((preview) => { if (active) setHighlightOutcome({ yaml: parsingYaml, sample, preview }); })
-        .catch(() => { if (active) setHighlightOutcome({ yaml: parsingYaml, sample, error: "无法高亮匹配行，请检查解析规则后重试。" }); });
+      void repository.parsePreview!(skillId, { parsing: highlightSpec, sampleText: boundedSamplePreview(sample.content).content, fileName: sample.contentFilePath ?? sample.fileName })
+        .then((preview) => { if (active) setHighlightOutcome({ yaml: parsingYaml, sample, files: spec.files, preview }); })
+        .catch(() => { if (active) setHighlightOutcome({ yaml: parsingYaml, sample, files: spec.files, error: "无法高亮匹配行，请检查解析规则后重试。" }); });
     }, 200);
     return () => { active = false; clearTimeout(timer); };
-  }, [apiMode, skillId, sample, highlightSpec, parsingYaml, repository]);
+  }, [apiMode, skillId, sample, sampleSkillMatched, spec.files, highlightSpec, parsingYaml, repository]);
   const loadGeneration = useRef(0);
   const refresh = useCallback(async () => {
     const generation = ++loadGeneration.current;

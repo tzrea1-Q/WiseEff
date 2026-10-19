@@ -28,7 +28,7 @@ export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSou
 export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
 export interface SkillWorkspaceRepository {
-  signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"] }): Promise<SignalPreview>;
+  signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"]; files?: SkillSpec["files"] }): Promise<SignalPreview>;
   generateExtractorPattern?(id: string, input: ExtractorPatternInput): Promise<ExtractorPatternPreview>;
   previewFormat?(id: string, input: { sampleText: string; formatProfile: unknown }): Promise<FormatPreview>;
   startSkillDryRun?(id: string): Promise<SkillDryRun>;

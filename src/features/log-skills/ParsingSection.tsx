@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { parseDocument, stringify } from "yaml";
-import { parsingSpecSchema } from "@wiseeff/dto-schemas";
+import { parsingSpecSchema, logSkillSpecSchema } from "@wiseeff/dto-schemas";
+import { matchSkillFile } from "@/domain/logs/fileApplicability";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -26,9 +27,9 @@ export function boundedSamplePreview(content: string) {
   return { content: prefix.slice(0, Math.max(0, prefix.lastIndexOf("\n"))), truncated: true };
 }
 
-export function ParsingSection({ skillId, yaml, onChange, disabled, repository, sample, selectedLine, onLineSelect, profile, onProfileChange, onProfileValidityChange }: {
+export function ParsingSection({ skillId, yaml, onChange, disabled, repository, sample, files, selectedLine, onLineSelect, profile, onProfileChange, onProfileValidityChange }: {
   skillId: string; yaml: string; onChange: (text: string) => void; disabled: boolean; repository?: Partial<SkillWorkspaceRepository>;
-  sample?: SkillSample | null;
+  sample?: SkillSample | null; files?: SkillSpec["files"];
   selectedLine?: number | null; onLineSelect?: (line: number) => void;
   profile?: SkillSpec["formatProfile"]; onProfileChange?: (profile: SkillSpec["formatProfile"]) => void; onProfileValidityChange?: (valid: boolean) => void;
 }) {
@@ -42,6 +43,9 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
   const sampleEdited = useRef(false);
   const generation = useRef(0);
   const parsed = parseParsingYaml(yaml);
+  const previewPath = sample?.contentFilePath ?? sample?.fileName ?? fileName;
+  const filesValid = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", files }).success;
+  const skillMatched = filesValid && matchSkillFile(files, previewPath).skillMatched;
   const validation = parsingSpecSchema.safeParse(parsed.value);
   const storedPreview = useMemo(() => boundedSamplePreview(sample?.content ?? ""), [sample]);
   useEffect(() => {
@@ -54,7 +58,7 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
     }).catch(() => { if (active) setError("无法读取已保存样例；可直接粘贴样例运行预览。"); });
     return () => { active = false; generation.current++; };
   }, [repository, skillId, sample]);
-  useEffect(() => { generation.current++; setResult(null); setPending(false); }, [sample]);
+  useEffect(() => { generation.current++; setResult(null); setPending(false); }, [sample, files]);
   const invalidate = () => { generation.current++; setResult(null); setPending(false); };
   return <section className="skill-section" aria-label="样例与解析"><h2>样例与解析</h2>
     <ViewSwitch variant="tabs" ariaLabel="解析视图" value={view} onValueChange={setView} items={[
@@ -63,7 +67,7 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
     ]} />
     <TabPanel id={`${id}-form-panel`} aria-labelledby={`${id}-form`} hidden={view !== "form"}>
       {onProfileChange ? <FormatProfileForm skillId={skillId} profile={profile} onChange={onProfileChange} disabled={disabled} repository={repository} sample={sample}
-        onValidityChange={onProfileValidityChange} /> : null}
+        previewEnabled={skillMatched} onValidityChange={onProfileValidityChange} /> : null}
       <ExtractorBuilder skillId={skillId} parsing={validation.success ? validation.data : null} onChange={(value) => { invalidate(); onChange(stringify(value)); }}
         disabled={disabled} repository={repository} sampleText={sample ? storedPreview.content : sampleText} selectedLine={selectedLine} onLineSelect={onLineSelect} timestampPattern={profile?.timestampPattern} />
     </TabPanel>
@@ -79,14 +83,15 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
     </TabPanel>
     {parsed.error ? <p id="parsing-yaml-error" role="alert">{parsed.error}</p> : null}
     <section aria-label="预览"><h3>预览</h3>
-      {sample ? <p>使用右侧样例日志：{sample.fileName}{storedPreview.truncated ? "；仅预览 1 MiB 内的完整行。" : ""}</p> : <>
+      {sample ? <p>使用右侧样例日志：{previewPath}{storedPreview.truncated ? "；仅预览 1 MiB 内的完整行。" : ""}</p> : <>
         <label>文件名<Input value={fileName} disabled={pending} onChange={(event) => { sampleEdited.current = true; invalidate(); setFileName(event.target.value); }} /></label>
         <label>样例文本<Textarea value={sampleText} placeholder="暂无样例；粘贴日志后运行预览。" className="font-mono" onChange={(event) => { sampleEdited.current = true; invalidate(); setSampleText(event.target.value); }} /></label>
       </>}
-      <Button disabled={disabled || pending || !!parsed.error || !repository?.parsePreview} aria-busy={pending} onClick={async () => {
+      {!filesValid ? <p>请先修正适用文件规则。</p> : !skillMatched ? <p>此文件未匹配技能，仅通用分析；不会运行技能抽取或解码。</p> : null}
+      <Button disabled={disabled || pending || !!parsed.error || !repository?.parsePreview || !skillMatched} aria-busy={pending} onClick={async () => {
         const request = ++generation.current; setPending(true); setError("");
         try { const preview = await repository!.parsePreview!(skillId, { parsing: parsed.value ?? null,
-          sampleText: sample ? storedPreview.content : sampleText, fileName: sample?.fileName ?? fileName }); if (request === generation.current) setResult(preview); }
+          sampleText: sample ? storedPreview.content : sampleText, fileName: previewPath }); if (request === generation.current) setResult(preview); }
         catch { if (request === generation.current) setError("预览失败，请检查样例不超过 1 MiB 后重试。"); }
         finally { if (request === generation.current) setPending(false); }
       }}>{pending ? "预览中…" : "运行预览"}</Button>

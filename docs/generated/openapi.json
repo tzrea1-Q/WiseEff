@@ -11787,7 +11787,7 @@
     "/api/v1/log-skills/{skillId}/sample": {
       "get": {
         "operationId": "logs.getSkillSample",
-        "summary": "Read skill sample (first 5000 lines)",
+        "summary": "Read skill sample inventory and first 5000 lines per text file",
         "tags": [
           "logs"
         ],
@@ -11822,7 +11822,7 @@
       },
       "put": {
         "operationId": "logs.replaceSkillSample",
-        "summary": "Replace skill sample (text, up to 2 MiB)",
+        "summary": "Replace skill sample (text or archive, up to 2 MiB uploaded and expanded)",
         "tags": [
           "logs"
         ],
@@ -12012,6 +12012,53 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LogSignalPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/files/preview": {
+      "post": {
+        "operationId": "logs.filesPreview",
+        "summary": "Preview draft applicability on the stored sample inventory",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogSkillFilePreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSkillFilePreviewResponse"
                 }
               }
             }
@@ -30961,6 +31008,18 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "role": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "skillMatched": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
                     "path": {
                       "type": "string"
                     },
@@ -31780,6 +31839,18 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "role": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "skillMatched": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
                     "path": {
                       "type": "string"
                     },
@@ -32470,6 +32541,18 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "role": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "skillMatched": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
                       "path": {
                         "type": "string"
                       },
@@ -34357,6 +34440,18 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "role": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "skillMatched": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
                     "path": {
                       "type": "string"
                     },
@@ -35358,6 +35453,24 @@
                         "enum": [
                           "skill/v1"
                         ]
+                      },
+                      "files": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "glob": {
+                              "type": "string"
+                            },
+                            "role": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "glob"
+                          ],
+                          "additionalProperties": false
+                        }
                       },
                       "knowledgeEntryIds": {
                         "type": "array",
@@ -36431,6 +36544,24 @@
                         "enum": [
                           "skill/v1"
                         ]
+                      },
+                      "files": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "glob": {
+                              "type": "string"
+                            },
+                            "role": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "glob"
+                          ],
+                          "additionalProperties": false
+                        }
                       },
                       "knowledgeEntryIds": {
                         "type": "array",
@@ -37518,6 +37649,24 @@
                         "skill/v1"
                       ]
                     },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "glob": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "glob"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "knowledgeEntryIds": {
                       "type": "array",
                       "items": {
@@ -38581,8 +38730,68 @@
               "content": {
                 "type": "string"
               },
+              "contentFilePath": {
+                "type": "string"
+              },
               "truncated": {
                 "type": "boolean"
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "analyzed",
+                        "skipped"
+                      ]
+                    },
+                    "skipReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "encoding": {
+                      "type": "string",
+                      "enum": [
+                        "utf-8",
+                        "utf-16le",
+                        "utf-16be"
+                      ]
+                    },
+                    "lossy": {
+                      "type": "boolean"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "sizeBytes",
+                    "lineCount",
+                    "status",
+                    "skipReason",
+                    "encoding",
+                    "lossy"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -39325,7 +39534,8 @@
         "properties": {
           "signalRules": {},
           "parsing": {},
-          "formatProfile": {}
+          "formatProfile": {},
+          "files": {}
         },
         "required": [
           "signalRules"
@@ -39413,6 +39623,84 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSignalPreviewResponse"
+      },
+      "LogSkillFilePreviewRequest": {
+        "type": "object",
+        "properties": {
+          "files": {}
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSkillFilePreviewRequest"
+      },
+      "LogSkillFilePreviewResponse": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "skillMatched": {
+                  "type": "boolean"
+                },
+                "role": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "skillMatched",
+                "role"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "valid",
+          "issues",
+          "files"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSkillFilePreviewResponse"
       },
       "LogExtractorPreviewRequest": {
         "type": "object",
@@ -39824,6 +40112,24 @@
                 "enum": [
                   "skill/v1"
                 ]
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "glob": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "glob"
+                  ],
+                  "additionalProperties": false
+                }
               },
               "knowledgeEntryIds": {
                 "type": "array",
@@ -40870,6 +41176,24 @@
                     "enum": [
                       "skill/v1"
                     ]
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "glob": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "glob"
+                      ],
+                      "additionalProperties": false
+                    }
                   },
                   "knowledgeEntryIds": {
                     "type": "array",
@@ -41965,6 +42289,24 @@
                       "enum": [
                         "skill/v1"
                       ]
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "glob": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "glob"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "knowledgeEntryIds": {
                       "type": "array",

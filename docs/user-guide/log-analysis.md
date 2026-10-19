@@ -20,6 +20,14 @@ Open a skill's Samples and parsing section. Select a line in the docked sample p
 
 The Basic format form edits the existing `formatProfile`: timestamp pattern, severity patterns for error/warn/info, and either indentation or a start pattern for multi-line entries. The live sample preview shows detected timestamps, each line's severity and the original line numbers grouped into entries. Timestamp capture group 1 is used when present; severity checks error, warn and info in that order. Patterns use RE2. Code view edits the same JSON object and round-trips without converting existing profiles. Invalid code or patterns must be corrected before saving or publishing. Form changes do not migrate profiles or change parsing semantics. Live basic-format preview is limited to the first 500 lines and 1 MiB, with at most 6,144 characters per line.
 
+## Choose applicable files and roles
+
+In the skill workspace, open Samples and parsing and use the Applicable files block beside the sample workflow. Keeping applicability here lets you check paths against the same sample bundle while editing. Add a path glob and, optionally, a short role such as `main`, `kernel`, `charging` or `config`; suggestions do not restrict custom labels. Move rows up or down to change their order, or remove them. The first matching row assigns the role, even when that row has no role. With no rows, the skill applies to every file.
+
+Globs match the complete bundle-relative path, case-sensitively. `*` stays within one directory, `**` crosses directories, `?` matches one non-slash character, and character classes such as `[0-9]` match a character. For example, `charger/**` matches `charger/charger.log`, but not `kernel/dmesg.log` or `Charger/charger.log`. You can configure at most 100 globs, each at most 256 characters, with roles at most 40 characters. Validation identifies the affected row and field.
+
+Upload a sample bundle or a single text sample to see every sample file's matched/unmatched status and assigned role as you edit. A single-file sample has one entry. Preview and analysis use the same matcher and ordered rules. Save and publish to apply the configuration to new analyses. Only matching files receive the pinned skill's signal rules, extractors and decoding; an extractor's own file filters still apply. Other analyzable files retain generic signals and remain readable by the agent.
+
 ## Author signal rules
 
 Open a skill's Signals section to add rules in the form “When a condition holds, produce a named signal with a severity.” Conditions match messages with bounded RE2 patterns, compare an extracted `extractorId.fieldName` against a scalar, numeric range or set, or count matches within a time window in one file. Multiple conditions within a rule are alternatives. Reorder or delete rules as needed. Invalid fields show their validation paths and prevent saving or publishing.
@@ -118,6 +126,10 @@ After completion, choose "Export report" to download a Markdown summary or "Copy
 ![Selected evidence card with cited log lines](images/log-analysis-evidence.png)
 
 *A selected evidence card from the freshly uploaded sample exposes cited raw lines and inference for manual checking.*
+
+## Inspect file roles
+
+Open the report's Files tab to inspect each bundle path, size, line count, role and any skip reason. Files outside the pinned skill's applicability are marked as general analysis only. This does not mean the file was skipped: supported text still receives generic analysis and can be opened in the file viewer. A matching file can have no role when its first matching row leaves the role blank. Older records may have no saved applicability assignment.
 
 ## Inspect signals and repeated lines
 

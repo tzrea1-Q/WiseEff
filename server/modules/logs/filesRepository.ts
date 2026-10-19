@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import type { BundleFile } from "./bundleIntake";
 
-export type LogFileDto = Omit<BundleFile, "sha256" | "bytes">;
+export type LogFileDto = Omit<BundleFile, "sha256" | "bytes"> & { role?: string | null; skillMatched?: boolean | null };
 export type StoredLogFile = LogFileDto & { objectKey: string | null; lineIndexKey?: string | null };
 export async function insertLogFiles(db: Queryable, organizationId: string, recordId: string,
   files: Array<BundleFile & { objectKey: string | null }>) {
@@ -15,7 +15,8 @@ export async function insertLogFiles(db: Queryable, organizationId: string, reco
 }
 export async function loadLogFiles(db: Queryable, organizationId: string, recordId: string): Promise<StoredLogFile[]> {
   const result = await db.query<StoredLogFile>(`select path, size_bytes::float8 as "sizeBytes", line_count as "lineCount",
-    encoding, lossy, status, skip_reason as "skipReason", object_key as "objectKey", line_index_key as "lineIndexKey"
+    encoding, lossy, status, skip_reason as "skipReason", object_key as "objectKey", line_index_key as "lineIndexKey",
+    role, skill_matched as "skillMatched"
     from log_files where organization_id = $1 and record_id = $2 order by path`, [organizationId, recordId]);
   return result.rows;
 }
@@ -31,6 +32,6 @@ export async function loadLegacyLogFile(db: Queryable, organizationId: string, r
   return (await loadLogFiles(db, organizationId, recordId)).find((file) => file.path === path);
 }
 export function fileInventory(files: StoredLogFile[]): LogFileDto[] {
-  return files.map(({ path, sizeBytes, lineCount, encoding, lossy, status, skipReason }) =>
-    ({ path, sizeBytes, lineCount, encoding, lossy, status, skipReason }));
+  return files.map(({ path, sizeBytes, lineCount, encoding, lossy, status, skipReason, role, skillMatched }) =>
+    ({ path, sizeBytes, lineCount, encoding, lossy, status, skipReason, role, skillMatched }));
 }

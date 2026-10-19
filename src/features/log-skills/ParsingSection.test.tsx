@@ -15,6 +15,18 @@ function setup(repository: Partial<SkillWorkspaceRepository> = { parsePreview: v
   render(<Harness />); return repository;
 }
 describe("parsing code view", () => {
+  it("uses the bundle content path for extractors and blocks skill parsing for unmatched files", async () => {
+    const parsePreview = vi.fn(async () => preview);
+    const sample = { ...mockSkillSample, fileName: "bundle.zip", contentFilePath: "charger/charger.log" };
+    const { rerender } = render(<ParsingSection skillId="s" yaml={initial} onChange={() => undefined} disabled={false} repository={{ parsePreview }} sample={sample} files={[{ glob: "charger/**" }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "运行预览" }));
+    await waitFor(() => expect(parsePreview).toHaveBeenCalledWith("s", expect.objectContaining({ fileName: "charger/charger.log" })));
+    rerender(<ParsingSection skillId="s" yaml={initial} onChange={() => undefined} disabled={false} repository={{ parsePreview }} sample={sample} files={[{ glob: "kernel/**" }]} />);
+    expect(screen.getByRole("button", { name: "运行预览" })).toBeDisabled();
+    expect(screen.getByText(/此文件未匹配技能/)).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "解析预览结果" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "抽取规则列表" })).toBeInTheDocument();
+  });
   it("bounds a stored 2 MiB sample to complete lines within the preview request's 1 MiB limit", async () => {
     const parsePreview = vi.fn(async () => preview);
     const content = "first complete line\n" + "界".repeat(400_000);

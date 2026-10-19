@@ -32,6 +32,21 @@ function setup(repository: Partial<SkillWorkspaceRepository> = { parsePreview: v
   render(<Harness />); return repository;
 }
 describe("register decoding workspace", () => {
+  it("uses the bundle content path and drops decoding previews when applicability excludes it", async () => {
+    const parsePreview = vi.fn(async () => preview);
+    const bundle = { ...sample, fileName: "bundle.zip", contentFilePath: "charger/charger.log" };
+    const repository = { parsePreview };
+    const { rerender } = render(<DecodingSection skillId="s" yaml={stringify(spec)} onChange={() => undefined} disabled={false}
+      repository={repository} sample={bundle} selectedLine={2} files={[{ glob: "charger/**" }]} />);
+    await waitFor(() => expect(parsePreview).toHaveBeenCalledWith("s", expect.objectContaining({ fileName: "charger/charger.log" })));
+    parsePreview.mockClear();
+    rerender(<DecodingSection skillId="s" yaml={stringify(spec)} onChange={() => undefined} disabled={false}
+      repository={repository} sample={bundle} selectedLine={2} files={[{ glob: "kernel/**" }]} />);
+    expect(screen.getByText(/此文件未匹配技能/)).toBeInTheDocument();
+    expect(screen.queryByText("CHRG_FAULT = 2 · thermal_shutdown")).not.toBeInTheDocument();
+    expect(parsePreview).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "新增寄存器" })).toBeEnabled();
+  });
   it.each([8, 16, 32, 64] as const)("aligns all %s ruler cells and full-width segments on one grid", (width) => {
     const register = structuredClone(spec.registers!.REG0C);
     register.width = width;

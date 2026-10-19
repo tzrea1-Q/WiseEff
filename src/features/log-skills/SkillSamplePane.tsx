@@ -56,7 +56,7 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
     if (file.size > 2 * 1024 * 1024) { setError("样例日志不能超过 2 MiB。"); return; }
     setPending(true); setError("");
     try { await repository!.replaceSkillSample!(skillId, file); setSample(await repository!.getSkillSample!(skillId)); }
-    catch { setError("上传失败，请选择不超过 2 MiB 的文本文件后重试。"); }
+    catch { setError("上传失败，请选择不超过 2 MiB 的文本文件或日志包后重试。"); }
     finally { setPending(false); }
   };
   return <div className="skill-sample-pane" aria-busy={pending}>
@@ -72,6 +72,7 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
           <div className="dialog-actions"><Button variant="outline" size="sm" disabled={disabled} onClick={() => fileRef.current?.click()}>替换样例</Button>
             <Button variant="outline" size="sm" disabled={disabled} onClick={() => { setError(""); setConfirm(true); }}>删除样例</Button></div></header>
         {sample.truncated ? <p>仅显示前 5000 行</p> : null}
+        {sample.contentFilePath && sample.contentFilePath !== sample.fileName ? <p>当前内容：{sample.contentFilePath}</p> : null}
         {extractors?.length ? <>
           <ul className="skill-extractor-legend" aria-label="抽取器高亮图例">{extractors.map((extractor, index) => <li key={extractor.id} style={extractorColor(index)}>
             <span className="skill-extractor-swatch" aria-hidden="true" /><span>{extractor.id} · {highlightPreview ? `${highlightPreview.counts.byExtractor[extractor.id] ?? 0} 次命中` : "等待预览"}</span>

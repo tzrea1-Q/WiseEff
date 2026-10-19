@@ -27,6 +27,7 @@ import type { KnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embe
 import { registerKnowledgeRoutes } from "./modules/knowledge/routes";
 import { registerLogRoutes, type LogWebhookRouteContext } from "./modules/logs/routes";
 import { MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH } from "./modules/logs/schemas";
+import { MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_FILE_GLOBS } from "../src/domain/logs/fileApplicability";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
 import { createMetricsRegistry, type MetricsRegistry } from "./observability/metrics";
@@ -353,11 +354,17 @@ export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
 /** Draft configuration only; signal previews load the stored sample on the server. */
 export const LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 512 * 1024;
+// Six bytes per UTF-16 unit covers JSON escaping, plus row envelopes and 1 KiB whitespace.
+export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
+  MAX_SKILL_FILE_GLOBS * (6 * (MAX_FILE_GLOB_LENGTH + MAX_FILE_ROLE_LENGTH) + 32) + 1024;
 
 /** A 1 MiB sample can expand sixfold in JSON; retain headroom for unsaved rules. */
 export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+files\/+preview\/*$/.test(path)) {
+    return LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES;
+  }
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+(?:parse|extractor|format)-preview\/*$/.test(path)) {
     return LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
   }

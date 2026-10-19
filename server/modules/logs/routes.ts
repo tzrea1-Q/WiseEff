@@ -35,6 +35,7 @@ import {
 import type { LogWebhookDeliverer } from "./webhookDelivery";
 import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, listLogSkillSourceVersions, listLogSkillTemplates, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
 import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "./skillSamplesService";
+import { previewLogSkillFiles, skillFilePreviewRequestSchema } from "./skillFilePreview";
 import { logSkillSpecSchema } from "./skillSpec";
 import { previewLogSkillSignals, signalPreviewRequestSchema } from "./signalPreview";
 import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat } from "./skillsService";
@@ -378,7 +379,7 @@ export function registerLogRoutes(
   router.put("/api/v1/log-skills/:skillId/sample", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId } = parseWithSchema(skillParams, request.params);
-    const body = parseWithSchema(replaceLogSkillSampleBodySchema, request.body, "请选择一个不超过 2 MiB 的文本样例日志。");
+    const body = parseWithSchema(replaceLogSkillSampleBodySchema, request.body, "请选择一个不超过 2 MiB 的文本样例或压缩包。");
     return { status: 200, body: { item: await replaceLogSkillSample(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId, body,
       createUserInvocation(auth), { requestId: request.requestId }) } };
   });
@@ -393,6 +394,12 @@ export function registerLogRoutes(
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(parsePreviewRequestSchema, request.body);
     return { status: 200, body: await previewLogSkillParsing(requireDb(options.db), auth, skillId, body) };
+  });
+  router.post("/api/v1/log-skills/:skillId/files/preview", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const body = parseWithSchema(skillFilePreviewRequestSchema, request.body);
+    return { status: 200, body: await previewLogSkillFiles(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId, body) };
   });
   router.post("/api/v1/log-skills/:skillId/signals-preview", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

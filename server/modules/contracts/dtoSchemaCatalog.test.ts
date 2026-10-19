@@ -28,7 +28,12 @@ describe("DTO schema catalog coverage", () => {
     expect(sample.get.responses["200"]).toBeDefined();
     expect(sample.put.responses["200"]).toBeDefined();
     expect(sample.delete.responses["204"]).not.toHaveProperty("content");
-    for (const id of ["logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample"])
+    expect(paths["/api/v1/log-skills/{skillId}/files/preview"].post.responses["200"]).toBeDefined();
+    expect(dtoSchemaCatalog.LogSkillFilePreviewResponse.safeParse({ valid: true, issues: [], files: [
+      { path: "charger/device.log", skillMatched: true, role: "charging" },
+      { path: "misc/notes.txt", skillMatched: false, role: null }
+    ] }).success).toBe(true);
+    for (const id of ["logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample", "logs.filesPreview"])
       expect(dtoSchemaCoveredRouteIds).toContain(id);
   });
   it("documents parsing preview and preserves the versioned decoded evidence contract", () => {

@@ -7,6 +7,13 @@ import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 afterEach(cleanup);
 const spec: SkillSpec = { schemaVersion: "skill/v1" };
 
+it("includes ordered file applicability and roles in publication differences", () => {
+  render(<SkillSpecDiff before={spec} after={{ ...spec, files: [{ glob: "charger/**", role: "充电" }] }} />);
+  expect(screen.getByRole("region", { name: "适用文件差异" })).toHaveTextContent("charger/**");
+  expect(screen.getByRole("region", { name: "适用文件差异" })).toHaveTextContent("充电");
+  expect(screen.getByLabelText("变更摘要").querySelector("p")).toHaveTextContent("适用文件 1 项");
+});
+
 it("shows only nonzero change groups and a single identical-content message", () => {
   const { rerender } = render(<SkillSpecDiff before={spec} after={{ ...spec, description: "新描述" }} />);
   const summary = screen.getByLabelText("变更摘要");
