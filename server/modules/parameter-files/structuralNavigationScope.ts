@@ -2,10 +2,12 @@ import pg from "pg";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import {
   loadPublishedCatalog,
+  loadOrganizationRegisteredSubjectSelection,
   parseCompatibles,
   resolveObservedSubject,
 } from "../parameter-bindings/catalogProjectValueSync";
-import { createGovernanceCatalogQueries, type GovernanceQueryAuthScope } from "../parameter-governance/queries";
+
+export type OrganizationNavigationAuthScope = Parameters<typeof loadOrganizationRegisteredSubjectSelection>[1];
 
 type NavigationNode = {
   nodePath: string;
@@ -27,7 +29,7 @@ const connectionCodes = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT"]);
 /** Current organization registration, with one immutable Catalog snapshot per request. */
 export async function loadOrganizationNavigationScope(
   db: Queryable,
-  authScope: GovernanceQueryAuthScope,
+  authScope: OrganizationNavigationAuthScope,
 ): Promise<OrganizationNavigationScope> {
   const pool = getRootPostgresPool(db as Database);
   if (!pool) return { status: "unavailable", reason: "catalog-unavailable" };
@@ -43,11 +45,7 @@ export async function loadOrganizationNavigationScope(
   }
   if (!snapshot) return { status: "unavailable", reason: "catalog-unavailable" };
 
-  const registration = await createGovernanceCatalogQueries(pool).selectSubjectIds({
-    organizationId: authScope.organizationId,
-    authScope,
-    registration: "active",
-  });
+  const registration = await loadOrganizationRegisteredSubjectSelection(pool, authScope);
   if (!registration.ok) return { status: "unavailable", reason: "registration-unavailable" };
   const selection = registration.value;
   const registered = new Set<string>(selection.kind === "only" ? selection.ids : []);

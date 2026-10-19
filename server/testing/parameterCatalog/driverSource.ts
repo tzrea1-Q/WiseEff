@@ -10,7 +10,8 @@ import { validCatalogReleaseBundle } from "../../modules/catalog-kernel/compiler
 import { compileCatalogRelease } from "../../modules/catalog-kernel/compiler";
 import { jsonCatalogReleaseSource } from "../../modules/catalog-kernel/interface";
 import { installPublishedRelease } from "../../modules/catalog-kernel/install/installer";
-import { CatalogSubjectId } from "../../modules/parameter-catalog-contract";
+import { CatalogSubjectId, CatalogReleaseId, CatalogReleaseDigest, SubjectRegistrationId } from "../../modules/parameter-catalog-contract";
+import { executeRegistration } from "../../modules/parameter-governance/registration/service";
 import { writeGuardedRegistration } from "../../modules/parameter-governance/registration/internalGuardedRegistrationWriter";
 import type { RegisterSubjectCommand } from "../../modules/parameter-governance/registration/command";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
@@ -109,4 +110,22 @@ export async function installDriverSourceFixture(
   }
 
   return { release: compiled.value.release, driverModuleId: driver.id };
+}
+
+/** Change registration through its owner while keeping Catalog internals in the native fixture. */
+export async function retireDriverSourceFixture(db: Database, auth: AuthContext, input: {
+  subjectId: string; release: { id: string; digest: string }; idempotencyKey: string; reason: string;
+}) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) throw new Error("Driver Catalog fixture requires native PostgreSQL");
+  const registration = (await db.query<{ id: string }>(
+    "select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2",
+    [auth.organization.id, input.subjectId],
+  )).rows[0];
+  if (!registration) throw new Error("Driver Catalog fixture registration was not found");
+  return executeRegistration(pool, {
+    kind: "retire", organizationId: auth.organization.id, registrationId: SubjectRegistrationId(registration.id),
+    expectedRelease: { id: CatalogReleaseId(input.release.id), digest: CatalogReleaseDigest(input.release.digest) },
+    idempotencyKey: input.idempotencyKey, context: { actorKind: "org-admin", principalId: auth.user.id }, reason: input.reason,
+  });
 }

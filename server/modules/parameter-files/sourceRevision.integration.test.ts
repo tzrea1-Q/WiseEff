@@ -7,14 +7,14 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
+import { captureConfigurationSourceState } from "../../testing/parameterCatalog/configurationSource";
+import {
+  advanceSourceRevisionCatalogFixture, failBeforeSourceRevisionApproval, lockSourceRevisionRegistrations,
+  readSourceRevisionBindingState, trySourceRevisionPublicationLock
+} from "../../testing/parameterCatalog/sourceRevision";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
-import { compileCatalogRelease } from "../catalog-kernel/compiler";
-import { validCatalogReleaseBundle } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import { installPublishedRelease } from "../catalog-kernel/install/installer";
-import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol";
-import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { createLocalObjectStore } from "../logs/objectStore";
 import { asValueClient, exportCanonicalBindingSource, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction, verifyCanonicalSourceReimport } from "../parameter-bindings/catalogProjectValueSync";
 import { canonicalSourceManifestSchema } from "../contracts/dtoSchemas/parameterCatalog";
@@ -168,11 +168,8 @@ describe("whole DTS source revisions (native PostgreSQL and toolchain)", { timeo
 
   it("keeps pinned Binding releases usable after publication and fences concurrent governance writes", async () => {
     const current = await loadPublishedCatalog(getRootPostgresPool(db)!);
-    const bundle = validCatalogReleaseBundle();
-    const compiled = compileCatalogRelease(bundle);
-    if (!current || !compiled.ok) throw new Error("Catalog fixture unavailable");
-    expect(await installPublishedRelease(getRootPostgresPool(db)!, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
-      expectedCurrent: current.release, expectedTargetDigest: compiled.value.aggregateDigest })).toMatchObject({ ok: true });
+    if (!current) throw new Error("Catalog fixture unavailable");
+    expect(await advanceSourceRevisionCatalogFixture(db, current.release)).toMatchObject({ ok: true });
     const staged = await candidate(base + "/* after publication */\n", "historical-binding-release");
     const preview = await previewSourceRevisionCandidate(runtime, storage, editor, { projectId: PROJECT, candidateId: staged.id });
     expect(preview.impact.parameterChanges).toBe(0);
@@ -184,18 +181,18 @@ describe("whole DTS source revisions (native PostgreSQL and toolchain)", { timeo
       await runtime.transaction(async (tx) => {
         await inspectSourceRevision(tx, storage, editor, { projectId: PROJECT, candidateId: staged.id }, published, { lock: true, snapshots });
         await observer.query("begin");
-        expect((await observer.query<{ locked: boolean }>("select pg_try_advisory_xact_lock($1::bigint) as locked", [CURRENT_POINTER_LOCK_KEY])).rows[0]!.locked).toBe(false);
-        await expect(observer.query("lock table parameter_catalog.organization_subject_registrations in row exclusive mode nowait")).rejects.toMatchObject({ code: "55P03" });
+        expect(await trySourceRevisionPublicationLock(observer)).toBe(false);
+        await expect(lockSourceRevisionRegistrations(observer)).rejects.toMatchObject({ code: "55P03" });
         await observer.query("rollback");
       });
       await observer.query("begin");
-      expect((await observer.query<{ locked: boolean }>("select pg_try_advisory_xact_lock($1::bigint) as locked", [CURRENT_POINTER_LOCK_KEY])).rows[0]!.locked).toBe(true);
-      await observer.query("lock table parameter_catalog.organization_subject_registrations in row exclusive mode nowait");
+      expect(await trySourceRevisionPublicationLock(observer)).toBe(true);
+      await lockSourceRevisionRegistrations(observer);
       await observer.query("rollback");
     } finally { await observer.query("rollback").catch(() => undefined); observer.release(); }
     const { request } = await submit(base + "/* preserve historical Binding */\n", "historical-binding-apply");
     await approve(request.requestId);
-    expect((await db.query<{ catalog_release_id: string }>("select catalog_release_id from parameter_catalog.project_parameter_bindings where id=$1", [bindingId])).rows[0]!.catalog_release_id).toBe(current.release.id);
+    expect((await readSourceRevisionBindingState(db, { organizationId: ORG, projectId: PROJECT, bindingId })).catalogReleaseId).toBe(current.release.id);
   });
 
   it("reviews bound values, unregistered properties and added nodes in one exact source revision", async () => {
@@ -213,23 +210,15 @@ describe("whole DTS source revisions (native PostgreSQL and toolchain)", { timeo
     const { request, staged } = await submit(base.replace("<36>", "<43>"), "faulted-apply");
     const catalog = await loadPublishedCatalog(getRootPostgresPool(runtime)!);
     const catalogSnapshots = await loadSourceRevisionCatalogSnapshots(runtime, PROJECT, ORG, catalog);
-    const readState = async () => (await db.query(`select
-      (select current_version_id from project_parameter_files where id=$1) as version,
-      (select count(*)::int from dts_config_revisions where config_set_id=$2) as revisions,
-      (select jsonb_agg(jsonb_build_array(id,current_value_id) order by id) from parameter_catalog.project_parameter_bindings where project_id=$3) as tips,
-      (select count(*)::int from parameter_catalog.project_value_source_pins where project_id=$3) as pins,
-      (select count(*)::int from audit_events where target_id=$4 and action='value-change-applied') as applied_audits`,
-      [fileId, configSetId, PROJECT, request.requestId])).rows;
+    const readState = () => captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT });
     const initial = await readState();
     const input = { projectId: PROJECT, requestId: request.requestId, invocation: createUserInvocation(reviewer),
       traceId: "fault-injected-apply", refusalSink: createTrustedRefusalAuditSink(db), catalogSnapshots };
     await expect(runtime.transaction((tx) => commitSourceRevision(tx, { ...storage, getBounded: async () => { throw new Error("object-store-unavailable"); } },
       reviewer, catalog, input))).rejects.toThrow("object-store-unavailable");
     expect(await readState()).toEqual(initial);
-    await expect(runtime.transaction((tx) => commitSourceRevision({ ...tx, query: async (sql, values) => {
-      if (sql.includes("set status='approved'")) throw new Error("late-apply-failure");
-      return tx.query(sql, values);
-    } }, storage, reviewer, catalog, input))).rejects.toThrow("late-apply-failure");
+    await expect(runtime.transaction((tx) => commitSourceRevision(failBeforeSourceRevisionApproval(tx, request.requestId),
+      storage, reviewer, catalog, input))).rejects.toThrow("late-apply-failure");
     expect(await readState()).toEqual(initial);
     await expect(db.transaction(async (tx) => {
       await tx.query(`update project_parameter_value_change_requests set source_revision_context=jsonb_set(source_revision_context,'{cohort}','[]'::jsonb) where id=$1`, [request.requestId]);
@@ -249,19 +238,16 @@ describe("whole DTS source revisions (native PostgreSQL and toolchain)", { timeo
   });
 
   it("removes a whole bound node using before-occurrence absence proof and keeps its history", async () => {
-    const beforeHistoryCount = (await db.query("select id from parameter_catalog.binding_history_events where binding_id=$1", [bindingId])).rows.length;
+    const beforeHistoryCount = (await readSourceRevisionBindingState(db, { organizationId: ORG, projectId: PROJECT, bindingId })).historyCount;
     const text = base.replace(' charger: charger { compatible = "acme,power"; iin_max = <36>; };\n', "");
     const { request, preview } = await submit(text, "remove-nodes");
     expect(preview.impact.nodeRemovals).toBeGreaterThan(0);
     await approve(request.requestId);
     expect(await listCatalogBindingRowsForProject(db, editor, { projectId: PROJECT })).toHaveLength(0);
-    const deleted = (await db.query<{ locator: { kind: string }; value_state: string; project_value_id: string }>(
-      `select pin.locator,value.value_state,pin.project_value_id from parameter_catalog.project_parameter_bindings binding
-       join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
-       join parameter_catalog.project_value_source_pins pin on pin.project_value_id=value.id where binding.id=$1`, [bindingId])).rows[0]!;
-    expect(deleted).toMatchObject({ value_state: "deleted", locator: { kind: "dts-source-absence" } });
-    expect((await db.query("select id from parameter_catalog.binding_history_events where binding_id=$1", [bindingId])).rows.length).toBe(beforeHistoryCount + 1);
-    const exported = await exportCanonicalBindingSource(runtime, storage, editor, { projectId: PROJECT, bindingId, projectValueId: deleted.project_value_id });
+    const deleted = await readSourceRevisionBindingState(db, { organizationId: ORG, projectId: PROJECT, bindingId });
+    expect(deleted).toMatchObject({ valueState: "deleted", locator: { kind: "dts-source-absence" } });
+    expect(deleted.historyCount).toBe(beforeHistoryCount + 1);
+    const exported = await exportCanonicalBindingSource(runtime, storage, editor, { projectId: PROJECT, bindingId, projectValueId: deleted.currentValueId });
     expect(exported).not.toBeNull();
     expect(canonicalSourceManifestSchema.safeParse(exported!.manifest).success).toBe(true);
     expect(await verifyCanonicalSourceReimport(runtime, storage, editor, { projectId: PROJECT, bindingId, source: exported! })).toEqual(exported);
@@ -278,8 +264,8 @@ describe("whole DTS source revisions (native PostgreSQL and toolchain)", { timeo
     const fresh = await candidate(base.replace("charger: charger", "new_charger: new_charger"), "new-node-after-deletion");
     expect(await previewSourceRevisionCandidate(runtime, storage, editor, { projectId: PROJECT, candidateId: fresh.id }))
       .toMatchObject({ canSubmit: true, impact: { parameterChanges: 1, nodeAdditions: 1 } });
-    expect((await db.query("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [bindingId])).rows[0])
-      .toEqual({ current_value_id: deleted.project_value_id });
+    expect((await readSourceRevisionBindingState(db, { organizationId: ORG, projectId: PROJECT, bindingId })).currentValueId)
+      .toBe(deleted.currentValueId);
   });
 
   it("rejects terminal property restoration at preview instead of creating an unapplicable request", async () => {
@@ -298,11 +284,11 @@ describe("whole DTS source revisions (native PostgreSQL and toolchain)", { timeo
   it("applies a source-only revision after deletion without changing the terminal history", async () => {
     const stored = (await db.query<{ storage_key: string }>("select storage_key from project_parameter_file_versions where id=$1", [versionId])).rows[0]!;
     const source = (await storage.get(stored.storage_key)).toString("utf8");
-    const before = (await db.query("select id,current_value_id from parameter_catalog.project_parameter_bindings where project_id=$1 order by id", [PROJECT])).rows;
+    const before = (await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).bindings;
     const { request, preview } = await submit(source + "/* source-only after terminal deletion */\n", "after-delete-comment");
     expect(preview.impact.parameterChanges).toBe(0);
     await approve(request.requestId);
-    expect((await db.query("select id,current_value_id from parameter_catalog.project_parameter_bindings where project_id=$1 order by id", [PROJECT])).rows).toEqual(before);
+    expect((await captureConfigurationSourceState(db, { organizationId: ORG, projectId: PROJECT })).bindings).toEqual(before);
   });
 
   it("retains source on stale base, invalid syntax and cross-tenant requests", async () => {

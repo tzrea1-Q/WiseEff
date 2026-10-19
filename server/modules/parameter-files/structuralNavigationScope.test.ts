@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Queryable } from "../../shared/database/client";
 import { getRootPostgresPool } from "../../shared/database/client";
-import { CapturedCatalogSnapshot } from "../catalog-kernel/runtime/currentSnapshot";
+import { createCatalogSnapshotFixture } from "../../testing/parameterCatalog";
 import { resolveDts } from "../dts";
 import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
 import { loadOrganizationNavigationScope, navigationPathsWithAncestors } from "./structuralNavigationScope";
@@ -25,7 +25,7 @@ const subjects = [
   { id: "csub_sensor", kind: "driver", canonicalKey: "driver:acme,sensor", selector: { kind: "driver-compatible", values: ["acme,sensor"] } },
   { id: "csub_battery", kind: "node-type", canonicalKey: "node-type:battery", selector: { kind: "node-type-name", value: "battery" } },
 ];
-const snapshot = () => new CapturedCatalogSnapshot({
+const snapshot = () => createCatalogSnapshotFixture({
   release,
   sequence: "1",
   publishedAt: "2026-10-19T00:00:00.000Z",
@@ -43,7 +43,7 @@ const snapshot = () => new CapturedCatalogSnapshot({
     definitionCounts: { active: 0, deprecated: 0, retired: 0 },
   })),
   definitions: [], revisions: [], facts: [],
-} as unknown as ConstructorParameters<typeof CapturedCatalogSnapshot>[0]);
+} as unknown as Parameters<typeof createCatalogSnapshotFixture>[0]);
 
 function makeDb(rows = [
   { subject_id: "csub_power", status: "active" },

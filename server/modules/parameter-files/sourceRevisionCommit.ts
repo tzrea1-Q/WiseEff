@@ -9,9 +9,10 @@ import { trustedDomainAttribution, type TrustedInvocationContext } from "../auth
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, rawTextToPayload, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
-import { appendProjectValue } from "../parameter-bindings/values";
-import { deriveHistoryEventId, loadBindingById, loadProjectValueById } from "../parameter-bindings/values/repositories";
-import { CatalogSubjectId, DefinitionRevisionId, ParameterBindingId, ParameterDefinitionId, ProjectValueId, SubjectRegistrationId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
+import { appendProjectValue, readOwnedCurrentBinding, readOwnedProjectValueIdentity,
+  lockSourceConfigurationBindings, loadCreatedSourceBindingReceipt } from "../parameter-bindings/values";
+import { deriveHistoryEventId } from "../parameter-bindings/values/repositories";
+import { ProjectValueId } from "../parameter-catalog-contract";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { getParameterFileCandidateByIdForUpdate } from "./candidateRepository";
@@ -82,10 +83,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     || request.submitter_user_id === auth.user.id || request.submitter_user_id !== visible.submitter_user_id
     || !sameSourceRevision(request.source_revision_context, frozen)) conflict("Source revision lost its pending review transition.");
   // Freeze the complete source cohort, not only parameters with changed business values.
-  await tx.query(`select binding.id from parameter_catalog.project_parameter_bindings binding
-    join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
-    where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3 order by binding.id for update of binding nowait`,
-    [auth.organization.id, input.projectId, frozen.configSetId]);
+  await lockSourceConfigurationBindings(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: frozen.configSetId });
   const candidate = await getParameterFileCandidateByIdForUpdate(tx, { organizationId: auth.organization.id,
     projectId: input.projectId, candidateId: frozen.candidateId });
   if (!candidate || candidate.status !== "ready" || !candidate.storageKey || !candidate.checksum || !storage.getBounded) conflict("Whole-source candidate is no longer immutable and ready.");
@@ -121,10 +119,14 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     const pinnedSnapshot = input.catalogSnapshots?.get(entry.catalogReleaseId)
       ?? (snapshot?.release.id === entry.catalogReleaseId ? snapshot : null);
     if (!pinnedSnapshot) conflict("Reviewed source values require their pinned Catalog.");
-    const binding = await loadBindingById(asValueClient(tx), entry.bindingId, "update");
-    const old = await loadProjectValueById(asValueClient(tx), entry.oldValueId);
-    if (!binding || !old || binding.current_value_id !== entry.oldValueId || binding.source_occurrence_id !== entry.sourceOccurrenceId
-      || binding.definition_id !== entry.definitionId || binding.effective_revision_id !== entry.effectiveRevisionId) conflict("Reviewed Binding base is stale.");
+    const current = await readOwnedCurrentBinding(tx, { organizationId: auth.organization.id,
+      projectId: input.projectId, bindingId: entry.bindingId, lock: true });
+    const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
+      projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+    if (current.status !== "current" || !old || current.binding.currentValueId !== entry.oldValueId
+      || current.binding.sourceOccurrenceId !== entry.sourceOccurrenceId || current.binding.definitionId !== entry.definitionId
+      || current.binding.effectiveRevisionId !== entry.effectiveRevisionId) conflict("Reviewed Binding base is stale.");
+    const binding = current.binding;
     const target = frozen.targets.find((row) => row.bindingId === entry.bindingId);
     const deleted = target?.action === "delete";
     const property = observed.find((row) => row.logicalNodeId === entry.logicalNodeId && row.propertyKey === entry.propertyName && row.fileId === entry.fileId);
@@ -132,13 +134,9 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     const payload = deleted ? target.payload : rawTextToPayload(property!.propertyKey, property!.rawText);
     if (target && !sameSourceRevision(target.payload, payload)) conflict("Ingested source differs from its reviewed parameter value.");
     const appended = await appendProjectValue(asValueClient(tx), {
-      snapshot: pinnedSnapshot, binding: { id: ParameterBindingId(binding.id), organizationId: binding.organization_id, projectId: binding.project_id,
-        logicalNodeId: binding.logical_node_id, sourceOccurrenceId: binding.source_occurrence_id,
-        registrationId: SubjectRegistrationId(binding.registration_id), subjectId: CatalogSubjectId(binding.subject_id),
-        definitionId: ParameterDefinitionId(binding.definition_id), effectiveRevisionId: DefinitionRevisionId(binding.effective_revision_id),
-        catalogRelease: pinnedSnapshot.release, currentValueId: ProjectValueId(binding.current_value_id) },
-      definitionRevisionId: DefinitionRevisionId(binding.effective_revision_id), expectedTip: ProjectValueId(entry.oldValueId),
-      source: { sourceRef: old.source_ref, configRevisionId: revision.id }, payload, valueState: deleted ? "deleted" : "present",
+      snapshot: pinnedSnapshot, binding: { ...binding, catalogRelease: pinnedSnapshot.release },
+      definitionRevisionId: binding.effectiveRevisionId, expectedTip: ProjectValueId(entry.oldValueId),
+      source: { sourceRef: old.value.source.sourceRef, configRevisionId: revision.id }, payload, valueState: deleted ? "deleted" : "present",
       sourceCommit: { requestId: request.id, auditRef, derived: !target }
     });
     if (!appended.ok) conflict(`Whole-source value append refused: ${appended.error.kind}`);
@@ -151,7 +149,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     const sourcePinId = randomUUID();
     const baseMember = frozen.members.find((row) => row.fileId === entry.fileId)!;
     const deletionProof = deleted ? { kind: "dts-source-absence-v1", scannerVersion: "dts-config-v1",
-      beforeValueDigest: old.value_digest.startsWith("sha256:") ? old.value_digest : `sha256:${old.value_digest}`,
+      beforeValueDigest: old.value.valueDigest.startsWith("sha256:") ? old.value.valueDigest : `sha256:${old.value.valueDigest}`,
       beforeSourceDigest: baseMember.checksum.startsWith("sha256:") ? baseMember.checksum : `sha256:${baseMember.checksum}`,
       afterSourceDigest: entry.fileId === frozen.fileId ? `sha256:${frozen.proposedDigest}` : baseMember.checksum.startsWith("sha256:") ? baseMember.checksum : `sha256:${baseMember.checksum}` } : null;
     await tx.query(`insert into parameter_catalog.project_value_source_pins
@@ -187,15 +185,9 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     await syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, { organizationId: auth.organization.id,
       projectId: input.projectId, configSetId: frozen.configSetId, configRevisionId: revision.id, propertyOccurrenceIds: selected });
     for (const planned of frozen.newProperties) {
-      const created = (await tx.query<{ bindingId: string; oldValueId: string; newValueId: string; sourcePinId: string; historyEventId: string }>(
-        `select binding.id as "bindingId",history.old_current_value_id as "oldValueId",binding.current_value_id as "newValueId",
-           pin.id as "sourcePinId",history.id as "historyEventId" from parameter_catalog.current_project_parameter_bindings binding
-         join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
-         join parameter_catalog.project_value_source_pins pin on pin.project_value_id=binding.current_value_id and pin.binding_id=binding.id
-         join parameter_catalog.binding_history_events history on history.new_current_value_id=binding.current_value_id and history.binding_id=binding.id
-         where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
-           and occurrence.file_id=$4 and binding.logical_node_id=$5 and binding.definition_id=$6 and pin.config_revision_id=$7`,
-        [auth.organization.id, input.projectId, frozen.configSetId, planned.fileId, planned.logicalNodeId, planned.definitionId, revision.id])).rows[0];
+      const created = await loadCreatedSourceBindingReceipt(tx, { organizationId: auth.organization.id,
+        projectId: input.projectId, configSetId: frozen.configSetId, fileId: planned.fileId,
+        logicalNodeId: planned.logicalNodeId, definitionId: planned.definitionId, configRevisionId: revision.id });
       if (!created) conflict("New registered source Binding has no complete owner receipt.");
       results.push({ ...created, kind: "created" });
     }

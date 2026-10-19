@@ -6,11 +6,13 @@ import type { AuthContext } from "../auth/types";
 import { getAuthContext } from "../auth/repository";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { createCatalogKernel, PropertyKey, type CatalogSnapshot } from "../catalog-kernel/interface";
-import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol";
 import { resolveDtsConfigSet } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
-import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles } from "../parameter-bindings/catalogProjectValueSync";
-import { loadDeletedSourceAnchors, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles,
+  lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
+import { loadDeletedSourceAnchors, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin,
+  loadProjectBindingCatalogReleaseIds, readOwnedCurrentBinding, readOwnedProjectValueIdentity,
+  hasDeletedSourceBinding, hasSourceConfigurationDrafts } from "../parameter-bindings/values";
 import type { ProjectValuePayload } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
 import { CatalogReleaseId, CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
@@ -91,19 +93,17 @@ async function loadSnapshot(db: Database, provided?: CatalogSnapshot): Promise<C
 export async function loadSourceRevisionCatalogSnapshots(db: Database, projectId: string,
   organizationId: string, current: CatalogSnapshot | null): Promise<ReadonlyMap<string, CatalogSnapshot>> {
   const snapshots = new Map<string, CatalogSnapshot>(current ? [[current.release.id, current]] : []);
-  const releases = (await db.query<{ catalog_release_id: string }>(
-    `select distinct catalog_release_id from parameter_catalog.current_project_parameter_bindings
-     where organization_id=$1 and project_id=$2 order by catalog_release_id`, [organizationId, projectId])).rows;
+  const releases = await loadProjectBindingCatalogReleaseIds(db, { organizationId, projectId });
   const pool = getRootPostgresPool(db);
-  for (const row of releases) {
-    if (snapshots.has(row.catalog_release_id)) continue;
+  for (const releaseId of releases) {
+    if (snapshots.has(releaseId)) continue;
     if (!pool) conflict("A pinned Catalog snapshot is unavailable.");
     const kernel = createCatalogKernel(pool);
-    const pin = await kernel.resolveCatalogReleasePin(CatalogReleaseId(row.catalog_release_id));
+    const pin = await kernel.resolveCatalogReleasePin(CatalogReleaseId(releaseId));
     if (!pin.ok) conflict("A Binding's historical Catalog release is unavailable.");
     const loaded = await kernel.loadPinnedCatalog(pin.value);
     if (!loaded.ok) conflict("A Binding's historical Catalog snapshot is unavailable.");
-    snapshots.set(row.catalog_release_id, loaded.value);
+    snapshots.set(releaseId, loaded.value);
   }
   return snapshots;
 }
@@ -134,12 +134,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   if (!["ready", "active"].includes(candidate.status) || !candidate.storageKey || !candidate.checksum
     || candidate.sizeBytes === undefined || !storage.getBounded) conflict("Whole-source candidate is incomplete.");
   if (options.lock) {
-    await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
-    // ponytail: the table fence covers new-registration phantoms across tenants;
-    // replace it with a shared per-organization governance fence if write traffic warrants it.
-    await tx.query("lock table parameter_catalog.organization_subject_registrations in share mode");
-    const current = (await tx.query<{ id: string; digest: string }>(`select state.current_catalog_release_id as id,release.release_digest as digest
-      from parameter_catalog.catalog_state state join parameter_catalog.catalog_releases release on release.id=state.current_catalog_release_id`)).rows[0];
+    const current = await lockSourceCatalogGovernance(tx);
     if (snapshot ? current?.id !== snapshot.release.id || current.digest !== snapshot.release.digest : current) {
       conflict("The published Catalog advanced while preparing this source revision.");
     }
@@ -220,9 +215,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   const continuity = await prepareReviewedSourceContinuity(tx, { organizationId: auth.organization.id,
     projectId: input.projectId, configSetId: context.configSetId, baseConfigRevisionId: revision.id,
     effectiveNodes: resolved.effective.nodesByLocator, sourceDigest: sourceRevisionDigest(bytes) });
-  const registrations = (await tx.query<{ id: string; subjectId: string }>(
-    `select id,subject_id as "subjectId" from parameter_catalog.organization_subject_registrations
-     where organization_id=$1 and status='active' order by id`, [auth.organization.id])).rows;
+  const registrations = await loadActiveOrganizationSourceRegistrations(tx, { organizationId: auth.organization.id });
   const registered = new Map(registrations.map((row) => [row.subjectId, row.id]));
   const sourceProperties: SourceRevisionNewProperty[] = [];
   if (snapshot) for (const node of resolved.effective.nodesByLocator.values()) {
@@ -254,9 +247,12 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     if (!pinnedSnapshot || !pin || pin.format !== "dts" || !pin.logicalNodeId || pin.valueState !== "present"
       || pin.configRevisionId !== revision.id || typeof pin.locator.propertyName !== "string"
       || pin.locator.kind !== "dts-property") conflict("A current source Binding has stale or unsupported provenance.");
-    const registration = (await tx.query<{ registration_id: string; subject_id: string }>(
-      "select registration_id,subject_id from parameter_catalog.project_parameter_bindings where id=$1", [entry.bindingId])).rows[0];
-    if (!registration || registered.get(registration.subject_id) !== registration.registration_id) conflict("A current source Binding's organization registration is no longer active.");
+    const currentBinding = await readOwnedCurrentBinding(tx, { organizationId: auth.organization.id,
+      projectId: input.projectId, bindingId: entry.bindingId });
+    if (currentBinding.status !== "current" || registered.get(currentBinding.binding.subjectId) !== currentBinding.binding.registrationId) {
+      conflict("A current source Binding's organization registration is no longer active.");
+    }
+    const registration = currentBinding.binding;
     const definition = pinnedSnapshot.getDefinitionRevision({ definitionId: ParameterDefinitionId(entry.definitionId), revisionId: DefinitionRevisionId(entry.effectiveRevisionId) });
     if (definition.status !== "found") conflict("A pinned parameter Definition is unavailable.");
     const logical = continuity.nodes.find((row) => row.logicalNodeId === pin.logicalNodeId);
@@ -267,11 +263,11 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name
     }) : null;
     const source = node && !node.deleted && property && !property.deleted && originMember?.fileId === pin.fileId
-      && resolvedSubject?.subjectId === registration.subject_id
+      && resolvedSubject?.subjectId === registration.subjectId
       ? { payload: rawTextToPayload(pin.locator.propertyName, property.rawText), fileId: pin.fileId, propertyName: pin.locator.propertyName }
       : null;
-    const old = (await tx.query<{ value_kind: ProjectValuePayload["kind"]; value: ContractJsonValue }>(
-      "select value_kind,value from parameter_catalog.project_parameter_values where id=$1 and binding_id=$2", [entry.oldValueId, entry.bindingId])).rows[0];
+    const old = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
+      projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     if (!old) conflict("A current source value is unavailable.");
     const frozen = { ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: pin.logicalNodeId,
       propertyName: pin.locator.propertyName, valueState: "present" as const, locator: pin.locator };
@@ -279,23 +275,19 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     if (source) {
       // Existing Bindings retain their pinned revision, never migrate to a newly selected Definition implicitly.
       assertCanonicalValueConstraints(definition.revision, source.payload, true);
-      if (!sameSourceRevision({ kind: old.value_kind, value: old.value }, source.payload)) targets.push({
+      if (!sameSourceRevision(old.value.payload, source.payload)) targets.push({
         bindingId: entry.bindingId, action: "set", payload: source.payload, afterFileId: source.fileId, propertyName: source.propertyName
       });
       const registeredIndex = sourceProperties.findIndex((row) => row.logicalNodeId === pin.logicalNodeId
         && row.fileId === pin.fileId && row.propertyName === pin.locator.propertyName);
       if (registeredIndex >= 0) sourceProperties.splice(registeredIndex, 1);
-    } else targets.push({ bindingId: entry.bindingId, action: "delete", payload: { kind: old.value_kind, value: old.value } as ProjectValuePayload,
+    } else targets.push({ bindingId: entry.bindingId, action: "delete", payload: old.value.payload,
       afterFileId: pin.fileId, propertyName: pin.locator.propertyName });
   }
   for (const property of sourceProperties) {
-    const terminal = await tx.query(`select binding.id from parameter_catalog.project_parameter_bindings binding
-      join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
-      join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
-      where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
-        and occurrence.file_id=$4 and occurrence.logical_node_id=$5 and binding.definition_id=$6 and value.value_state='deleted'`,
-      [auth.organization.id, input.projectId, context.configSetId, property.fileId, property.logicalNodeId, property.definitionId]);
-    if (terminal.rows.length) throw new ApiError("CONFLICT", `Restoring ${property.nodeLocator}/${property.propertyName} requires an explicit source identity mapping.`, {
+    const terminal = await hasDeletedSourceBinding(tx, { organizationId: auth.organization.id, projectId: input.projectId,
+      configSetId: context.configSetId, fileId: property.fileId, logicalNodeId: property.logicalNodeId, definitionId: property.definitionId });
+    if (terminal) throw new ApiError("CONFLICT", `Restoring ${property.nodeLocator}/${property.propertyName} requires an explicit source identity mapping.`, {
       reason: "source-occurrence-restoration-requires-mapping", nodePath: property.nodeLocator, propertyName: property.propertyName
     });
     const definition = snapshot!.getDefinitionRevision({ definitionId: ParameterDefinitionId(property.definitionId),
@@ -400,12 +392,9 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
         source_revision_config_set_id=$3 or batch_config_set_id=$3 or member_config_set_id=$3
         or config_revision_id=$4) limit 1`, [auth.organization.id, input.projectId, proof.configSetId, proof.baseConfigRevisionId])).rows[0];
     if (pending) throw new ApiError("CONFLICT", "This configuration already has a pending change request.", { requestId: pending.id, reason: "source-review-pending" });
-    const drafts = await tx.query(`select draft.id from public.project_parameter_value_drafts draft
-      join parameter_catalog.project_parameter_bindings binding on binding.id=draft.binding_id
-      join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
-      where draft.organization_id=$1 and draft.project_id=$2 and occurrence.config_set_id=$3 limit 1`,
-      [auth.organization.id, input.projectId, proof.configSetId]);
-    if (drafts.rows.length) conflict("Resolve existing parameter drafts before submitting a source revision.", "parameter-drafts-unresolved");
+    if (await hasSourceConfigurationDrafts(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: proof.configSetId })) {
+      conflict("Resolve existing parameter drafts before submitting a source revision.", "parameter-drafts-unresolved");
+    }
     const requestId = `pvcr_${randomUUID()}`;
     await tx.query(`update public.project_parameter_file_candidates set base_digest=$2,proposed_digest=$3,diff_digest=$4,
       frozen_member_manifest=$5::jsonb,frozen_binding_manifest=$6::jsonb where id=$1 and status='ready'`,
@@ -420,9 +409,8 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
         JSON.stringify(proof.cohort), JSON.stringify(proof), proof.configSetId, input.clientMutationId, mutationDigest]);
     for (const [ordinal, target] of proof.targets.entries()) {
       const entry = proof.cohort.find((row) => row.bindingId === target.bindingId)!;
-      const source = (await tx.query<{ source_ref: string }>(
-        "select source_ref from parameter_catalog.project_parameter_values where id=$1 and binding_id=$2",
-        [entry.oldValueId, entry.bindingId])).rows[0];
+      const source = await readOwnedProjectValueIdentity(tx, { organizationId: auth.organization.id,
+        projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
       if (!source) conflict("Reviewed target has no current source value.");
       await tx.query(`insert into public.project_parameter_value_change_targets
         (id,request_id,organization_id,project_id,ordinal,binding_id,definition_id,definition_revision_id,catalog_release_id,
@@ -430,7 +418,7 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17)`,
         [`pvct_${randomUUID()}`, requestId, auth.organization.id, input.projectId, ordinal, entry.bindingId,
           entry.definitionId, entry.effectiveRevisionId, entry.catalogReleaseId, entry.oldValueId, proof.baseConfigRevisionId,
-          source.source_ref, entry.sourcePinId, target.action, JSON.stringify(target.payload), proof.baseDigest, proof.proposedDigest]);
+          source.value.source.sourceRef, entry.sourcePinId, target.action, JSON.stringify(target.payload), proof.baseDigest, proof.proposedDigest]);
     }
     await writeTrustedAuditEventInTx(asAuditTx(tx), { invocation: security.invocation, app: "parameters",
       kind: "parameter-topology-governance", action: "value-change-submitted", severity: "Medium", projectId: input.projectId,

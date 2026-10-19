@@ -18,7 +18,9 @@ import {
   type CatalogSnapshot,
 } from "../catalog-kernel/interface";
 import { readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
+import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol";
 import { createPinCapturingCatalogRuntime } from "../catalog-publication/runtime";
+import { createGovernanceCatalogQueries } from "../parameter-governance/queries";
 import {
   CatalogReleaseDigest,
   CatalogReleaseId,
@@ -221,6 +223,34 @@ export async function loadPublishedCatalog(pool: pg.Pool): Promise<CatalogSnapsh
     pinOf(pointer.current.id, pointer.current.digest),
   );
   return loaded.ok ? loaded.value : null;
+}
+
+/** Organization navigation uses the governance owner's current active selection. */
+export function loadOrganizationRegisteredSubjectSelection(
+  pool: pg.Pool,
+  authScope: { organizationId: string; principalId: string },
+) {
+  return createGovernanceCatalogQueries(pool).selectSubjectIds({
+    organizationId: authScope.organizationId, registration: "active", authScope,
+  });
+}
+
+/** Source approval keeps publication and registration admission fenced in its own transaction. */
+export async function lockSourceCatalogGovernance(tx: Queryable) {
+  await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
+  // ponytail: the table fence covers new-registration phantoms across tenants;
+  // replace it with a shared per-organization governance fence if write traffic warrants it.
+  await tx.query("lock table parameter_catalog.organization_subject_registrations in share mode");
+  return (await tx.query<{ id: string; digest: string }>(
+    `select state.current_catalog_release_id as id,release.release_digest as digest
+     from parameter_catalog.catalog_state state join parameter_catalog.catalog_releases release on release.id=state.current_catalog_release_id`,
+  )).rows[0] ?? null;
+}
+
+export async function loadActiveOrganizationSourceRegistrations(tx: Queryable, input: { organizationId: string }) {
+  return (await tx.query<{ id: string; subjectId: string }>(
+    `select id,subject_id as "subjectId" from parameter_catalog.organization_subject_registrations
+     where organization_id=$1 and status='active' order by id`, [input.organizationId])).rows;
 }
 
 export function publishedCatalogOwnsProperty(

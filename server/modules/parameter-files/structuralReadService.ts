@@ -1,14 +1,13 @@
 import type { Queryable } from "../../shared/database/client";
 import { structuralReadResponseSchema, type StructuralReadResponse } from "./schemas";
 import { readDtsStructuralModel } from "./structuralReadRepository";
-import { loadOrganizationNavigationScope } from "./structuralNavigationScope";
-import type { GovernanceQueryAuthScope } from "../parameter-governance/queries";
+import { loadOrganizationNavigationScope, type OrganizationNavigationAuthScope } from "./structuralNavigationScope";
 
 /** Read structured DTS model for a file version from dts_* tables only. */
 export async function getParameterFileVersionStructure(
   db: Queryable,
   fileVersionId: string,
-  navigationAuthScope?: GovernanceQueryAuthScope,
+  navigationAuthScope?: OrganizationNavigationAuthScope,
 ): Promise<StructuralReadResponse> {
   const result = await readDtsStructuralModel(db, fileVersionId);
   if (!navigationAuthScope) return structuralReadResponseSchema.parse(result);

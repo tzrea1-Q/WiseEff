@@ -7,6 +7,11 @@ import { compileCatalogRelease } from "../../modules/catalog-kernel/compiler";
 import { jsonCatalogReleaseSource } from "../../modules/catalog-kernel/interface";
 import { installPublishedRelease } from "../../modules/catalog-kernel/install/installer";
 import { createRegistrationService } from "../../modules/parameter-governance/registration/index";
+import { CapturedCatalogSnapshot } from "../../modules/catalog-kernel/runtime/currentSnapshot";
+
+export function createCatalogSnapshotFixture(projection: ConstructorParameters<typeof CapturedCatalogSnapshot>[0]) {
+  return new CapturedCatalogSnapshot(projection);
+}
 
 export async function installParameterModuleRegistryProjectionFixture(pool: pg.Pool) {
   return installRegistryProjectionCatalogFixture(pool);

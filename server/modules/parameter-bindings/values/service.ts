@@ -40,6 +40,11 @@ import {
   loadDeletedSourceAnchors as queryDeletedSourceAnchors,
   loadSourceBindingCohort as querySourceBindingCohort,
   loadSourceBindingCohortReadOnly as querySourceBindingCohortReadOnly,
+  loadProjectBindingCatalogReleaseIds as queryProjectBindingCatalogReleaseIds,
+  hasDeletedSourceBinding as queryDeletedSourceBinding,
+  hasSourceConfigurationDrafts as querySourceConfigurationDrafts,
+  lockSourceConfigurationBindings as queryLockSourceConfigurationBindings,
+  loadCreatedSourceBindingReceipt as queryCreatedSourceBindingReceipt,
   loadOwnedProjectValueSourcePin as queryOwnedProjectValueSourcePin,
   isCurrentGovernedSourceValue as queryCurrentGovernedSourceValue,
   loadSourceValueReplay as querySourceValueReplay,
@@ -120,6 +125,39 @@ export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { or
   assertSourceReadScope(input);
   if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
   return querySourceBindingCohortReadOnly(tx,input);
+}
+
+export async function loadProjectBindingCatalogReleaseIds(tx: Queryable, input: { organizationId: string; projectId: string }) {
+  assertSourceReadScope(input);
+  return queryProjectBindingCatalogReleaseIds(tx, input);
+}
+
+export async function hasDeletedSourceBinding(tx: Queryable, input: Parameters<typeof queryDeletedSourceBinding>[1]) {
+  assertSourceReadScope(input);
+  if (![input.configSetId, input.fileId, input.logicalNodeId, input.definitionId].every(controlFree)) {
+    throw new ApiError("CONFLICT", "Terminal source identity is invalid.");
+  }
+  return queryDeletedSourceBinding(tx, input);
+}
+
+export async function hasSourceConfigurationDrafts(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
+  return querySourceConfigurationDrafts(tx, input);
+}
+
+export async function lockSourceConfigurationBindings(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
+  return queryLockSourceConfigurationBindings(tx, input);
+}
+
+export async function loadCreatedSourceBindingReceipt(tx: Queryable, input: Parameters<typeof queryCreatedSourceBindingReceipt>[1]) {
+  assertSourceReadScope(input);
+  if (![input.configSetId, input.fileId, input.logicalNodeId, input.definitionId, input.configRevisionId].every(controlFree)) {
+    throw new ApiError("CONFLICT", "Created source Binding identity is invalid.");
+  }
+  return queryCreatedSourceBindingReceipt(tx, input);
 }
 
 export async function hasDeletedCurrentValue(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string }) {

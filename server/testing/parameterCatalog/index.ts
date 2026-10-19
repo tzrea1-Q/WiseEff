@@ -48,6 +48,7 @@ export {
 
 export {
   knowledgeCatalogBundle,
+  createCatalogSnapshotFixture,
   installKnowledgeDefinitionReferencesCatalogFixture,
   installKnowledgeDefinitionLifecycleFixture,
 } from "./registryProjection";

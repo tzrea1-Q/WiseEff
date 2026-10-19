@@ -4,14 +4,12 @@ import { tmpdir } from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
-import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { installDriverSourceFixture, retireDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
+import { createPostgresDatabase } from "../../shared/database/client";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 import { createLocalObjectStore } from "../logs/objectStore";
-import { executeRegistration } from "../parameter-governance/registration/service";
-import { SubjectRegistrationId } from "../parameter-catalog-contract";
 import type { AuthContext } from "../auth/types";
 import { registerParameterFileRoutes } from "./routes";
 import { uploadProjectParameterFile } from "./service";
@@ -114,13 +112,8 @@ describe("organization-scoped structure with native PostgreSQL", () => {
     const current = await requestJson<StructuralReadResponse>(server(), `${structurePath(next.version.id)}?navigationScope=organization`);
     expect(historical.body.navigation).toMatchObject({ managedNodePaths: ["soc/bus@1/device@0", "soc/bus@1/device@1"] });
     expect(current.body.navigation).toMatchObject({ managedNodePaths: ["soc/bus@10/device@0", "soc/bus@10/device@1"] });
-    const registration = (await db.query<{ id: string }>(
-      "select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_power'", [org]
-    )).rows[0]!;
-    expect(await executeRegistration(getRootPostgresPool(db)!, {
-      kind: "retire", organizationId: org, registrationId: SubjectRegistrationId(registration.id),
-      expectedRelease: release as Parameters<typeof executeRegistration>[1]["expectedRelease"],
-      idempotencyKey: "navigation-retire", context: { actorKind: "org-admin", principalId: admin.user.id },
+    expect(await retireDriverSourceFixture(db, admin, {
+      subjectId: "csub_acme_power", release, idempotencyKey: "navigation-retire",
       reason: "Verify current organization navigation"
     })).toMatchObject({ ok: true });
     const retired = await requestJson<StructuralReadResponse>(server(), `${structurePath()}?navigationScope=organization`);

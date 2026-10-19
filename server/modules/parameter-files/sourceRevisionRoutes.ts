@@ -72,9 +72,12 @@ async function ownedProject(db: Database, auth: AuthContext, projectId: string):
   if (!await getProjectById(db, { organizationId: auth.organization.id, projectId })) throw new ApiError("NOT_FOUND", "Project was not found.");
 }
 async function load(db: Database, auth: AuthContext, projectId: string, requestId: string, lock = false): Promise<Row | null> {
-  return (await db.query<Row>(`${selection}
+  if (lock) return (await db.query<Row>(`${selection}
     where request.organization_id=$1 and request.project_id=$2 and request.id=$3 and request.request_kind='source_revision'
-    ${lock ? "for update of request" : ""}`, [auth.organization.id, projectId, requestId])).rows[0] ?? null;
+    for update of request`, [auth.organization.id, projectId, requestId])).rows[0] ?? null;
+  return (await db.query<Row>(`${selection}
+    where request.organization_id=$1 and request.project_id=$2 and request.id=$3 and request.request_kind='source_revision'`,
+    [auth.organization.id, projectId, requestId])).rows[0] ?? null;
 }
 function frozenProof(row: Row, auth: AuthContext): SourceRevisionProof {
   const proof = row.source_revision_context;
