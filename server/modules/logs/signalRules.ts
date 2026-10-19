@@ -1,10 +1,11 @@
 import { z } from "zod";
 
 import type { ParsedLogEntry } from "./parser";
+import { compileLogPattern, type LogPattern } from "./adminPattern";
 
 /** The single compilation seam for signal-rule patterns. */
-export function compileSignalPattern(pattern: string, flags?: string): RegExp {
-  return new RegExp(pattern, flags);
+export function compileSignalPattern(pattern: string, flags?: string): LogPattern {
+  return compileLogPattern(pattern, flags);
 }
 
 const textConditionSchema = z.object({
@@ -98,7 +99,6 @@ export function compileSignalCondition(condition: SignalCondition): (entry: Pars
         const searchable = `${entry.message} ${Object.entries(entry.tokens)
           .map(([key, value]) => `${key}=${value}`)
           .join(" ")}`;
-        pattern.lastIndex = 0;
         return pattern.test(searchable);
       };
     }

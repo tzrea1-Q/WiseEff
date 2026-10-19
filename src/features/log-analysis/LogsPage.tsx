@@ -397,7 +397,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
 
       try {
-        await logActions.upload({ file, analysisQuestion: question, logDomainId,
+        await logActions.upload({ file, analysisQuestion: question, skillId: logDomainId,
           ...(relatedParameterPin ? { relatedParameterPin } : {}) });
       } catch (error) {
         setPendingUpload(null);
@@ -750,13 +750,13 @@ function UploadLogDialog({
           <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept={accept ?? undefined} multiple onChange={handleFileChange} />
         </label>
         <label className="upload-question-field" htmlFor="upload-log-domain">
-          <span>业务域（可选）</span>
+          <span>分析技能（可选）</span>
           <SelectControl
             id="upload-log-domain"
-            ariaLabel="业务域（可选）"
+            ariaLabel="分析技能（可选）"
             value={selectedDomainId}
             onValueChange={setSelectedDomainId}
-            options={[{ value: UNCATEGORIZED_LOG_DOMAIN_VALUE, label: "未分类（通用分析）" }, ...domains.map((domain) => ({ value: domain.id, label: domain.name }))]}
+            options={[{ value: UNCATEGORIZED_LOG_DOMAIN_VALUE, label: "通用分析" }, ...domains.map((domain) => ({ value: domain.id, label: domain.name }))]}
           />
         </label>
         {parameterRepository ? (
@@ -902,7 +902,7 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
           </span>
         ) : null}
         {log.logDomainName ? (
-          <span className="analysis-provenance__badge analysis-provenance__badge--domain">业务域 · {log.logDomainName}</span>
+          <span className="analysis-provenance__badge analysis-provenance__badge--domain">技能 {log.logDomainName}{log.skillRevision ? ` · v${log.skillRevision.number}` : ""}</span>
         ) : null}
       </div>
       {degraded ? (

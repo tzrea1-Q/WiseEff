@@ -483,13 +483,22 @@ describe("createLogRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
 
-  it("returns an empty domain list in mock mode and notifies on domain mutations", async () => {
+  it("returns seeded skill revisions in mock mode and notifies on governance mutations", async () => {
     const dispatch = vi.fn();
     const actions = createLogRuntimeActions({ mode: "mock", dispatch, getState: () => initialState });
 
-    await expect(actions.listLogDomains()).resolves.toEqual([]);
+    await expect(actions.listLogDomains()).resolves.toEqual([expect.objectContaining({ id: "skill-charging",
+      currentRevision: { id: "skill-charging-v1", number: 1, publishedAt: "2026-10-18T00:00:00.000Z" } })]);
     await expect(actions.createLogDomain({ name: "x" })).resolves.toBeNull();
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+  });
+
+  it("uses the skill resource for the shared admin and upload listing action", async () => {
+    const repository = createRepository({ listLogSkills: vi.fn().mockResolvedValue([]), listLogDomains: vi.fn() });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch: vi.fn(), getState: () => initialState });
+    await expect(actions.listLogDomains({ includeArchived: true })).resolves.toEqual([]);
+    expect(repository.listLogSkills).toHaveBeenCalledWith({ includeArchived: true });
+    expect(repository.listLogDomains).not.toHaveBeenCalled();
   });
 
   it("lists, creates, updates, and archives domains through the repository in api mode", async () => {

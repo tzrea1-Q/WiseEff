@@ -190,11 +190,11 @@ describe("project-scoped canonical related-parameter analysis", () => {
     const router = createRouter();
     let requestAuth = authorizedAuth;
     const logDomainId = "log904-parameter-domain";
-    await db.query("insert into log_domains (id, organization_id, name) values ($1, $2, $3)", [
-      logDomainId,
-      fixture.organizationId,
-      "Issue 904 parameter domain"
-    ]);
+    await db.transaction(async (tx) => {
+      await tx.query("insert into log_domains (id, organization_id, name) values ($1, $2, $3)", [logDomainId, fixture.organizationId, "Issue 904 parameter domain"]);
+      await tx.query(`insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)
+        values ($1, $2, $3, 1, 'published', '{"schemaVersion":"skill/v1"}', 'fixture')`, ["log904-skill-v1", fixture.organizationId, logDomainId]);
+    });
     registerLogRoutes(router, {
       db: apiDb,
       objectStore,

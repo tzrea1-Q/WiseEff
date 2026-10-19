@@ -1,4 +1,7 @@
 import type { ZodTypeAny } from "zod";
+import { z } from "zod";
+import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema } from "../../logs/schemas";
+import { logSkillSpecSchema } from "../../logs/skillSpec";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -26,6 +29,7 @@ import {
   jobResponseSchema,
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
+  logSkillListResponseSchema, logSkillResponseSchema, logSkillRevisionResponseSchema, logSkillRevisionListResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
   logFeedbackResponseSchema,
@@ -62,6 +66,12 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  LogFileUploadRequest: createLogFileBodySchema,
+  CreateLogRecordRequest: createLogBodySchema,
+  CreateLogDomainRequest: createLogDomainBodySchema,
+  LogRerunRequest: rerunLogBodySchema,
+  LogSkillDraftRequest: z.object({ spec: logSkillSpecSchema }).strict(),
+  LogSkillPublishRequest: z.object({ draftRevisionId: z.string().min(1) }).strict(),
   ProjectListResponse: projectListResponseSchema,
   ProjectAdminListResponse: projectAdminListResponseSchema,
   ProjectAdminDetailResponse: projectAdminDetailResponseSchema,
@@ -87,6 +97,10 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogRunResponse: logRunResponseSchema,
   JobResponse: jobResponseSchema,
   LogDomainListResponse: logDomainListResponseSchema,
+  LogSkillListResponse: logSkillListResponseSchema,
+  LogSkillResponse: logSkillResponseSchema,
+  LogSkillRevisionResponse: logSkillRevisionResponseSchema,
+  LogSkillRevisionListResponse: logSkillRevisionListResponseSchema,
   LogDomainResponse: logDomainResponseSchema,
   LogDomainKnowledgeLinkListResponse: logDomainKnowledgeLinkListResponseSchema,
   LogFeedbackInsightsResponse: logFeedbackInsightsResponseSchema,
@@ -143,6 +157,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.unarchive",
   "logs.feedback",
   "logs.feedbackInsights",
+  "logs.listSkills", "logs.createSkill", "logs.getSkill", "logs.saveSkillDraft", "logs.publishSkill", "logs.listSkillRevisions", "logs.getSkillRevision",
   "logs.listDomains",
   "logs.createDomain",
   "logs.updateDomain",

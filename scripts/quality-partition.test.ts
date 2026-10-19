@@ -147,7 +147,7 @@ describe("quality partitions", () => {
     expect(titles(unfiltered).filter((title) => title.startsWith("asserts read-only UI consistency")).sort())
       .toEqual(routeTitles.sort());
     expect(titles(unfiltered)).toEqual(expect.arrayContaining([...homeTitles, ...bridgeTitles]));
-    for (const path of ["/knowledge-admin", "/log-admin", "/log-admin?tab=domains", "/log-admin?tab=quality"]) {
+    for (const path of ["/knowledge-admin", "/log-admin", "/log-admin?tab=skills", "/log-admin?tab=quality"]) {
       expect(consistencyReadOnlyRoutes.map((route) => route.path)).toContain(path);
     }
     const compact = unfiltered.filter((key) => JSON.parse(key)[0] === "compact");

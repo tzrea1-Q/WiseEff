@@ -220,6 +220,8 @@ describe.skipIf(!databaseAvailable)("log service", () => {
       "insert into log_domains (id, organization_id, name, status) values ($1, $2, $3, $4)",
       [input.id, "org-1", input.name, input.status ?? "active"]
     );
+    await db.query(`insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)
+      values ($1, 'org-1', $2, 1, 'published', '{"schemaVersion":"skill/v1"}', 'fixture')`, [`revision:${input.id}`, input.id]);
   }
 
   it("binds an active log domain on upload and stores log_domain_id", async () => {

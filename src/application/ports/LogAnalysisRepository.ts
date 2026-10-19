@@ -37,6 +37,7 @@ export type LogRelatedParameterPin = {
 };
 
 export type LogUploadInput = {
+  skillId?: string;
   file: File;
   analysisQuestion?: string;
   relatedParameterPin?: LogRelatedParameterPin;
@@ -45,6 +46,8 @@ export type LogUploadInput = {
 };
 
 export type LogRerunInput = {
+  skillId?: string;
+  revisionPolicy?: "current" | "pinned";
   logId: string;
   analysisQuestion?: string;
   logDomainId?: string;
@@ -112,6 +115,7 @@ export interface LogAnalysisRepository {
   archiveLog(logId: string): Promise<void>;
   unarchiveLog(logId: string): Promise<void>;
   submitFeedback(input: LogFeedbackInput): Promise<void>;
+  listLogSkills?(query?: LogDomainListQuery): Promise<LogDomain[]>;
   listLogDomains?(query?: LogDomainListQuery): Promise<LogDomain[]>;
   createLogDomain?(input: LogDomainCreateInput): Promise<LogDomain>;
   updateLogDomain?(input: LogDomainUpdateInput): Promise<LogDomain>;

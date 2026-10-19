@@ -20,6 +20,7 @@ import {
   logJobDtoSchema,
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
+  logSkillListResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
   logFileUploadResponseSchema,
@@ -103,14 +104,17 @@ function uploadBody(input: LogUploadInput, contentBase64: string) {
     contentBase64,
     ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {}),
     ...(input.relatedParameterPin !== undefined ? { relatedParameterPin: input.relatedParameterPin } : {}),
-    ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {})
+    ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {}),
+    ...(input.skillId !== undefined ? { skillId: input.skillId } : {})
   };
 }
 
 function rerunBody(input: LogRerunInput) {
   return {
+    ...(input.revisionPolicy !== undefined ? { revisionPolicy: input.revisionPolicy } : {}),
     ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {}),
-    ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {})
+    ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {}),
+    ...(input.skillId !== undefined ? { skillId: input.skillId } : {})
   };
 }
 
@@ -288,6 +292,11 @@ export function createHttpLogAnalysisRepository(
     },
     async submitFeedback(input: LogFeedbackInput) {
       await apiClient.post<OkEnvelope>(`${routeLogPath(input.logId)}/feedback`, feedbackBody(input));
+    },
+    async listLogSkills(query?: LogDomainListQuery) {
+      const response = parseContractDto(logSkillListResponseSchema,
+        await apiClient.get(buildLogDomainsPath(query).replace("log-domains", "log-skills")), "LogSkillListResponse");
+      return logDomainListFromDto(response);
     },
     async listLogDomains(query?: LogDomainListQuery) {
       const response = parseContractDto(

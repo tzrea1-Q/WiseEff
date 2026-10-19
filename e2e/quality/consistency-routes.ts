@@ -15,7 +15,7 @@ export const collectionPaths = ["/knowledge-admin", "/log-admin"];
 export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
   "/knowledge-admin": ["tabs"],
   "/log-admin": ["tabs", "toggle"],
-  "/log-admin?tab=domains": ["tabs"],
+  "/log-admin?tab=skills": ["tabs"],
   "/log-admin?tab=quality": ["tabs"],
   "/parameter-admin/projects/aurora/configuration?tab=conflicts": ["tabs"],
   "/organization": ["section"],

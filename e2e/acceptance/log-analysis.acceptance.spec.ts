@@ -46,8 +46,10 @@ function runNpmScript(script: string) {
   if (result.status !== 0) {
     const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
     const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const errorCode = result.error && "code" in result.error && typeof result.error.code === "string"
+      ? result.error.code : "unknown";
     const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
+      ? `child_process error: ${errorCode} ${result.error.message ?? ""}`.trimEnd()
       : "";
 
     throw new Error(
@@ -761,21 +763,21 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await cleanupAcceptanceLogs();
     await cleanupAcceptanceLogDomains();
 
-    await page.goto("/log-admin?tab=domains");
+    await page.goto("/log-admin?tab=skills");
     await prepareInteractionSurface(page);
 
     const governance = page.getByTestId("log-domain-governance");
-    await governance.getByRole("group", { name: "业务域治理操作" }).getByRole("button", { name: "新建业务域" }).click();
+    await governance.getByRole("group", { name: "分析技能治理操作" }).getByRole("button", { name: "新建分析技能" }).click();
     await page.getByLabel(/名称/).fill(acceptanceLogDomainName);
     await page.getByLabel(/描述/).fill("Acceptance charging/power subsystem log domain");
     await page.getByLabel(/格式画像 JSON/).fill('{"severityMap": {"error": ["E_THERMAL_FOLDBACK"]}}');
     const createResponsePromise = page.waitForResponse(
       (response) => response.request().method() === "POST" && response.url().includes("/api/v1/log-domains")
     );
-    await page.getByRole("button", { name: "创建业务域" }).click();
+    await page.getByRole("button", { name: "创建分析技能" }).click();
     const createResponse = await createResponsePromise;
     expect(createResponse.ok()).toBe(true);
-    await expect(governance.getByRole("table", { name: "业务域列表" }).getByText(acceptanceLogDomainName)).toBeVisible();
+    await expect(governance.getByRole("table", { name: "分析技能列表" }).getByText(acceptanceLogDomainName)).toBeVisible();
 
     const domainsResponse = await page.request.get(apiRoute("/api/v1/log-domains"), { headers: smokeHeaders() });
     expect(domainsResponse.ok()).toBe(true);
@@ -792,7 +794,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
       .toBe("complete");
     await historyItem(page, supportedFileName).click();
-    await expect(page.getByTestId("analysis-provenance")).toContainText(`业务域 · ${acceptanceLogDomainName}`);
+    await expect(page.getByTestId("analysis-provenance")).toContainText(`技能 ${acceptanceLogDomainName} · v1`);
 
     const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
     expect(auditResponse.ok()).toBe(true);
@@ -868,10 +870,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     });
     expect(createDraft.status()).toBe(201);
 
-    await page.goto("/log-admin?tab=domains");
+    await page.goto("/log-admin?tab=skills");
     await prepareInteractionSurface(page);
     const governance = page.getByTestId("log-domain-governance");
-    const domainsTable = governance.getByRole("table", { name: "业务域列表" });
+    const domainsTable = governance.getByRole("table", { name: "分析技能列表" });
     await domainsTable
       .getByRole("row")
       .filter({ hasText: acceptanceLogDomainName })
@@ -1201,12 +1203,12 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       expect(domainResponse.status()).toBe(201);
       const domain = ((await domainResponse.json()) as { item: { id: string } }).item;
 
-      await page.goto("/log-admin?tab=domains");
+      await page.goto("/log-admin?tab=skills");
       const governance = page.getByTestId("log-domain-governance");
       await expect(governance).toBeVisible();
       await prepareInteractionSurface(page);
       await governance
-        .getByRole("table", { name: "业务域列表" })
+        .getByRole("table", { name: "分析技能列表" })
         .getByRole("row")
         .filter({ hasText: acceptanceWebhookDomainName })
         .getByRole("button", { name: /：更多$/ })
@@ -1270,11 +1272,11 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
         expect.arrayContaining([expect.objectContaining({ kind: "result", status: "delivered", httpStatus: 200 })])
       );
 
-      await page.goto("/log-admin?tab=domains");
+      await page.goto("/log-admin?tab=skills");
       await expect(governance).toBeVisible();
       await prepareInteractionSurface(page);
       await governance
-        .getByRole("table", { name: "业务域列表" })
+        .getByRole("table", { name: "分析技能列表" })
         .getByRole("row")
         .filter({ hasText: acceptanceWebhookDomainName })
         .getByRole("button", { name: /：更多$/ })
@@ -1324,10 +1326,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await cleanupAcceptanceLogs();
     await cleanupAcceptanceLogDomains();
 
-    await page.goto("/log-admin?tab=domains");
+    await page.goto("/log-admin?tab=skills");
     await prepareInteractionSurface(page);
     const governance = page.getByTestId("log-domain-governance");
-    await governance.getByRole("group", { name: "业务域治理操作" }).getByRole("button", { name: "新建业务域" }).click();
+    await governance.getByRole("group", { name: "分析技能治理操作" }).getByRole("button", { name: "新建分析技能" }).click();
     await page.getByLabel(/名称/).fill(acceptanceModelDomainName);
     await page.getByLabel(/描述/).fill("Acceptance domain for the per-domain model override");
     const overrideInput = page.getByLabel(/模型覆盖/);
@@ -1340,7 +1342,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       (response) =>
         response.request().method() === "PATCH" && response.url().includes("/api/v1/log-domains/")
     );
-    await page.getByRole("button", { name: "创建业务域" }).click();
+    await page.getByRole("button", { name: "创建分析技能" }).click();
     expect((await createResponsePromise).ok()).toBe(true);
     const overridePatchResponse = await overridePatchPromise;
     expect(overridePatchResponse.ok()).toBe(true);

@@ -9,6 +9,7 @@ import { getRootPostgresPool, type Database, type Queryable } from "../../shared
 import { ApiError } from "../../shared/http/errors";
 import { enqueueLogAnalysisJob, type LogAnalysisQueue } from "./logAnalysisQueue";
 import { getActiveLogDomainForBinding } from "./domainsRepository";
+import { currentSkillRevisionId } from "./skillsRepository";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
   aggregateFeedbackInsights,
@@ -75,6 +76,7 @@ export type ListLogRecordsQuery = {
 };
 
 export type RerunLogAnalysisInput = {
+  revisionPolicy?: "current" | "pinned";
   logId: string;
   analysisQuestion?: string;
   logDomainId?: string;
@@ -482,13 +484,23 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     : undefined;
 
   const result = await db.transaction(async (tx) => {
+    await tx.query(`select id from log_records where organization_id = $1 and id = $2 for update`, [auth.organization.id, input.logId]);
     const current = await getLogDetail(tx, auth, input.logId);
     if (!current) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
     }
     const logDomainId = await requireBindableLogDomainId(tx, auth, input.logDomainId);
 
+    if (input.revisionPolicy === "pinned" && logDomainId && logDomainId !== current.logDomainId) {
+      throw new ApiError("VALIDATION_FAILED", "A pinned rerun cannot change its analysis skill.");
+    }
+    if (input.revisionPolicy === "pinned" && current.logDomainId && !current.skillRevision) {
+      throw new ApiError("CONFLICT", "This record has no previous skill revision to replay.");
+    }
+    const skillRevisionId = input.revisionPolicy === "pinned" ? current.skillRevision?.id ?? null
+      : await currentSkillRevisionId(tx, auth.organization.id, logDomainId ?? current.logDomainId);
     const job = await createRerunWithJob(tx, {
+      skillRevisionId,
       runId: randomUUID(),
       jobId: randomUUID(),
       organizationId: auth.organization.id,

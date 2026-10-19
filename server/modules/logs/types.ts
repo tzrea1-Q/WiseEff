@@ -13,6 +13,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  skillRevision: { id: string; number: number } | null;
   id: string;
   reportId: string;
   fileName: string;

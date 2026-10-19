@@ -345,9 +345,9 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
     await expect(page.locator(".api-runtime-error-banner")).toHaveCount(0, { timeout });
     if (routePath === "/log-admin") {
       const collection = new URL(page.url()).searchParams.get("tab");
-      if (collection === "domains" || collection === "quality") {
-        await expect(page.getByTestId(collection === "domains" ? "log-domain-governance" : "feedback-quality-insights")).toHaveAttribute("aria-busy", "false", { timeout });
-        await expect(page.getByRole("table", { name: collection === "domains" ? "业务域列表" : "分析质量反馈聚合" })).toBeVisible({ timeout });
+      if (collection === "skills" || collection === "quality") {
+        await expect(page.getByTestId(collection === "skills" ? "log-domain-governance" : "feedback-quality-insights")).toHaveAttribute("aria-busy", "false", { timeout });
+        await expect(page.getByRole("table", { name: collection === "skills" ? "分析技能列表" : "分析质量反馈聚合" })).toBeVisible({ timeout });
         await expect(page.getByText("正在加载反馈数据…", { exact: true })).toHaveCount(0, { timeout });
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
         return;

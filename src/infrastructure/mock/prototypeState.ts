@@ -462,6 +462,8 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     logs: [
       {
         id: "log-active",
+        logDomainId: "skill-charging", logDomainName: "充电诊断",
+        skillRevision: { id: "skill-charging-v1", number: 1 },
         reportId: "RPT-9092",
         fileName: "charging_thermal_trace_20260504.log",
         source: "Battery Thermal",
@@ -508,6 +510,8 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       },
       {
         id: "log-auth",
+        logDomainId: "skill-charging", logDomainName: "充电诊断",
+        skillRevision: { id: "skill-charging-v1", number: 1 },
         reportId: "RPT-9091",
         fileName: "usb_pd_negotiation_20260503.log",
         source: "PD Negotiation",

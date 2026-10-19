@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RelatedParameterRunSnapshot } from "../relatedParameter";
 import { parseLogText } from "../parser";
+import { defaultChargingRuleSet } from "../chargingSignalRules";
 import { analyzeWithDegradation } from "../worker";
 import {
   buildBudgetedExcerpt,
@@ -50,6 +51,15 @@ const validPayload = {
 };
 
 describe("createLlmLogAnalyzer", () => {
+  it("uses run-pinned signals in prefilter and degradation", async () => {
+    const captured: LogAnalysisChatMessage[] = [];
+    const signalRules = { ...defaultChargingRuleSet, rules: [], noHit: { ...defaultChargingRuleSet.noHit, conclusion: "Pinned fallback" } };
+    const adapter = createLlmLogAnalyzer({ model: jsonModel({}, captured), modelLabel: "test", tokenBudget: 100_000 });
+    const output = await adapter.analyze({ parsed: parseFixture(), signalRules });
+    expect(captured.find((m) => m.role === "user")?.content).toContain("- no rule hits");
+    expect(output).toMatchObject({ conclusion: "Pinned fallback", evidence: [], analysisSource: "rules-fallback" });
+  });
+
   it("returns a grounded agent analysis with prompt version and model label", async () => {
     const calls: Array<{ outcome: string }> = [];
     const captured: LogAnalysisChatMessage[] = [];

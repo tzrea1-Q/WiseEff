@@ -85,12 +85,14 @@ describe("buildLogResultWebhookPayload", () => {
   });
 
   it("stays a compact summary and never carries raw log content", () => {
-    const payload = buildLogResultWebhookPayload(resultInput());
+    const payload = buildLogResultWebhookPayload(resultInput({ skillRevisionId: "skill-v2", skillRevisionNumber: 2 }));
     expect(payload).toEqual({
       eventId: "log-result:run-1",
       event: "log-analysis.completed",
       recordId: "log-1",
       runId: "run-1",
+      skillRevisionId: "skill-v2",
+      skillRevisionNumber: 2,
       fileName: "charging.log",
       logDomainId: "domain-1",
       status: "complete",

@@ -5,6 +5,8 @@ export type LogAnalysisResultWebhookInput = {
   logDomainId: string;
   logId: string;
   runId: string;
+  skillRevisionId?: string | null;
+  skillRevisionNumber?: number | null;
   fileName: string;
   status: "complete" | "failed";
   analysisSource?: string;
@@ -32,6 +34,8 @@ export function buildLogResultWebhookPayload(input: LogAnalysisResultWebhookInpu
     event: input.status === "complete" ? "log-analysis.completed" : "log-analysis.failed",
     recordId: input.logId,
     runId: input.runId,
+    skillRevisionId: input.skillRevisionId ?? null,
+    skillRevisionNumber: input.skillRevisionNumber ?? null,
     fileName: input.fileName,
     logDomainId: input.logDomainId,
     status: input.status,

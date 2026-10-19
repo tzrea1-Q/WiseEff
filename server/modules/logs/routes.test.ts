@@ -73,6 +73,7 @@ function makeObjectStore(): ObjectStore {
 
 function logRecord(overrides: Partial<LogRecordDto> = {}): LogRecordDto {
   return {
+    skillRevision: null,
     id: "log-1",
     reportId: "",
     fileName: "charging-foldback.log",
@@ -111,6 +112,7 @@ function jobRecord() {
 
 function runRecord(overrides: Record<string, unknown> = {}) {
   return {
+    skillRevision: null,
     id: "run-1",
     logId: "log-1",
     status: "queued" as const,
@@ -416,7 +418,8 @@ describe("log routes", () => {
       makeAuth(),
       {
         logId: "log-route",
-        analysisQuestion: "Try again with charger context."
+        analysisQuestion: "Try again with charger context.",
+        revisionPolicy: "current"
       },
       { requestId: "test-request" }
     );
@@ -438,7 +441,7 @@ describe("log routes", () => {
     expect(service.rerunLogAnalysis).toHaveBeenCalledWith(
       db,
       makeAuth(),
-      { logId: "log-route" },
+      { logId: "log-route", revisionPolicy: "current" },
       { requestId: "test-request", logAnalysisQueue }
     );
   });
@@ -501,7 +504,7 @@ describe("log routes", () => {
     const insight = {
       logDomainId: "domain-1",
       logDomainName: "charging-power",
-      analysisSource: "agent",
+      analysisSource: "agent" as const,
       promptVersion: "log-analysis/v2",
       totalCount: 4,
       helpfulCount: 3,

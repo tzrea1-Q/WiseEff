@@ -42,6 +42,8 @@ describe.skipIf(!databaseAvailable)("log webhook migration runtime ACL", () => {
         await applyMigrations(db, migrationsDir, { through: "0185_log_webhook_outbox.sql" });
         await db.query(`insert into organizations (id, name) values ('wh-acl-org', 'Webhook ACL');
           insert into log_domains (id, organization_id, name) values ('wh-acl-domain', 'wh-acl-org', 'Webhook ACL');
+          insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)
+            values ('wh-acl-v1', 'wh-acl-org', 'wh-acl-domain', 1, 'published', '{"schemaVersion":"skill/v1"}', 'fixture');
           insert into log_file_objects (id, organization_id, storage_key, file_name, content_type, file_size_bytes, checksum_sha256)
             values ('wh-acl-file', 'wh-acl-org', 'wh-acl-file', 'test.log', 'text/plain', 1, 'checksum');
           insert into log_records (id, organization_id, file_object_id, file_name, source, status)

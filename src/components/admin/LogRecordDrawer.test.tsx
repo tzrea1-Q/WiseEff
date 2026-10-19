@@ -181,7 +181,8 @@ describe("LogRecordDrawer", () => {
           ...record,
           analysisSource: "rules-fallback",
           degradedReason: "provider-unavailable",
-          logDomainName: "charging-power"
+          logDomainName: "charging-power",
+          skillRevision: { id: "revision-3", number: 3 }
         }}
         open
         {...handlers}
@@ -192,7 +193,7 @@ describe("LogRecordDrawer", () => {
     const provenance = screen.getByTestId("drawer-analysis-provenance");
     expect(provenance).toHaveTextContent("降级分析 · 规则回退");
     expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
-    expect(provenance).toHaveTextContent("业务域 · charging-power");
+    expect(provenance).toHaveTextContent("技能 charging-power · v3");
     expect(screen.getByText("规则评分")).toBeInTheDocument();
     expect(screen.queryByText("模型自估")).not.toBeInTheDocument();
   });
@@ -238,6 +239,7 @@ describe("LogRecordDrawer", () => {
       ...record,
       status: "Complete",
       logDomainName: "charging-power",
+          skillRevision: { id: "revision-3", number: 3 },
       rawLines: ["10:24:01 WARN battery temperature over soft limit", "10:24:03 INFO policy foldback engaged"],
       analysisQuestion: "为什么快充降速？"
     };
