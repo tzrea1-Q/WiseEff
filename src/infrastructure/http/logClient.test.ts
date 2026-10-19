@@ -61,6 +61,16 @@ function createRepository(fetchMock: typeof fetch) {
   });
 }
 
+it("requests a bounded line range with encoded record and file identity", async () => {
+  const item = { file: "device/a b.log", startLine: 2, endLine: 3, totalLines: 3,
+    lines: [{ lineNumber: 2, content: "second" }, { lineNumber: 3, content: "last" }] };
+  const fetchMock = createFetchMock({ item });
+  await expect(createRepository(fetchMock).getLogLines!("record/id", item.file, 2, 100)).resolves.toEqual(item);
+  const url = new URL(String(fetchMock.mock.calls[0][0]));
+  expect(url.pathname).toBe("/api/v1/logs/record%2Fid/lines");
+  expect(Object.fromEntries(url.searchParams)).toEqual({ file: item.file, startLine: "2", endLine: "100" });
+});
+
 it("uses template, creation and sample contracts with encoded skill ids", async () => {
   const skill = mockSkillWorkspace("skill-charging")!;
   const fetchMock = createFetchMock({ items: mockSkillTemplates });

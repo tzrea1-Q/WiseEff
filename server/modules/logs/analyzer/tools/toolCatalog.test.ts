@@ -7,6 +7,8 @@ import { availableLogAnalysisTools, executeLogAnalysisTool, MAX_SIGNAL_TOOL_BYTE
 import { parsingSpecSchema } from "../../parsing/spec";
 import { decodeLogFiles } from "../../parsing/engine";
 import type { LogAnalysisToolContext } from "./toolContext";
+import { createLogFileReader } from "../../fileReader";
+import { createMemoryObjectStore } from "../../../../testing/objectStore";
 
 function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnalysisToolContext {
   const content = [
@@ -29,6 +31,23 @@ function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnaly
 }
 
 describe("executeLogAnalysisTool dispatch", () => {
+  it("locates source statements from indexed anchors beyond the parsed preview", async () => {
+    const context = buildContext({ sourceSnapshot: { id: "snapshot", status: "ready" },
+      locateLogStatement: async (line) => {
+        expect(line).toBe("WARN thermal foldback at EOF");
+        return { items: [], truncated: false };
+      } });
+    const store = createMemoryObjectStore();
+    const content = [...Array.from({ length: 400 }, () => "INFO healthy"), "WARN thermal foldback at EOF"].join("\r\n");
+    const object = await store.put({ organizationId: "org", fileName: "tail.log", contentType: "text/plain", bytes: Buffer.from(content) });
+    const file = { path: "tail.log", sizeBytes: content.length, encoding: "utf-8" as const, lossy: false, lineCount: 401,
+      status: "analyzed" as const, skipReason: null, objectKey: object.storageKey };
+    context.files = [{ ...file, parsed: context.parsed, reader: createLogFileReader(store, file) }];
+    expect(await executeLogAnalysisTool("locate_log_statement", { file: file.path, anchorLine: 401 }, context))
+      .toMatchObject({ ok: true, result: { items: [] } });
+    expect(await executeLogAnalysisTool("locate_log_statement", { file: file.path, anchorLine: 402 }, context)).toMatchObject({ ok: false });
+  });
+
   it("offers source location only for ready snapshots, resolves log anchors and caps returned citations", async () => {
     let observed = "";
     const context = buildContext({ filePath: "charging.log", sourceSnapshot: { id: "snapshot", status: "ready" },

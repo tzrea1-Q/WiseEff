@@ -35,10 +35,10 @@ export function createMemoryObjectStore(): MemoryObjectStore {
       }
       return Buffer.from(value);
     },
-    async getStream(storageKey) {
+    async getStream(storageKey, range) {
       const value = entries.get(storageKey);
       if (!value) throw new Error(`Missing object for storage key: ${storageKey}`);
-      return Readable.from([value]);
+      return Readable.from([range ? value.subarray(range.start, range.end === undefined ? undefined : range.end + 1) : value]);
     },
     async getBounded(storageKey, maxBytes) {
       const value = entries.get(storageKey);

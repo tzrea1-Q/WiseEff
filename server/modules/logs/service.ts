@@ -38,14 +38,16 @@ import {
 } from "./policy";
 import { loadLogBundleLimits } from "../../config/env";
 import { bundleFileUtf8Bytes, intakeLogBundle, isLogArchive, type BundleFile } from "./bundleIntake";
-import { insertLogFiles, fileInventory, loadLogFiles } from "./filesRepository";
+import { insertLogFiles, fileInventory, loadLegacyLogFile, loadLogFiles } from "./filesRepository";
+import { ensureStoredLogIndex, readStoredLogRange } from "./fileReader";
+import { logLineRangeQuerySchema } from "./schemas";
 import { supportedLogExtensions } from "./status";
 import {
   isSupportedStoredLogFileName,
   isSupportedTextLogFileName,
   supportedLogArchiveExtensions
 } from "./unpack";
-import type { LogFeedbackRating, LogRecordDto } from "./types";
+import type { LogFeedbackRating, LogLineRangeDto, LogRecordDto } from "./types";
 import {
   resolveAuthorizedRelatedParameter,
   toRelatedParameterRunSnapshot,
@@ -403,9 +405,9 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
     );
     if (sourceRecordId) {
       await tx.query(`insert into log_files(id, organization_id, record_id, path, size_bytes, sha256, encoding, lossy,
-        line_count, status, skip_reason, object_key)
+        line_count, status, skip_reason, object_key, line_index_key)
         select gen_random_uuid()::text, organization_id, $3, path, size_bytes, sha256, encoding, lossy,
-          line_count, status, skip_reason, object_key from log_files where organization_id=$1 and record_id=$2`,
+          line_count, status, skip_reason, object_key, line_index_key from log_files where organization_id=$1 and record_id=$2`,
       [auth.organization.id, sourceRecordId, result.log.id]);
       result.log.files = fileInventory(await loadLogFiles(tx, auth.organization.id, result.log.id));
     }
@@ -434,6 +436,26 @@ export async function getLogRecord(db: Queryable, auth: AuthContext, logId: stri
     throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
   }
   return log;
+}
+
+export async function getLogLineRange(db: Queryable, objectStore: ObjectStore, auth: AuthContext,
+  logId: string, input: { file: string; startLine: number; endLine: number }): Promise<LogLineRangeDto> {
+  await getLogRecord(db, auth, logId);
+  const parsed = logLineRangeQuerySchema.safeParse(input);
+  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Request an inclusive range of at most 400 lines.");
+  const inventory = await loadLogFiles(db, auth.organization.id, logId);
+  const storedFile = inventory.find((item) => item.path === input.file)
+    ?? (!inventory.length ? await loadLegacyLogFile(db, auth.organization.id, logId, input.file) : undefined);
+  if (!storedFile || storedFile.status !== "analyzed" || !storedFile.objectKey) {
+    throw new ApiError("NOT_FOUND", "Log file was not found.", { logId, file: input.file });
+  }
+  const file = await ensureStoredLogIndex(db, objectStore, auth.organization.id, logId, storedFile);
+  if (input.startLine > Math.max(1, file.lineCount)) {
+    throw new ApiError("VALIDATION_FAILED", "Start line is outside the log file.");
+  }
+  const endLine = Math.min(input.endLine, file.lineCount);
+  const lines = endLine < input.startLine ? [] : await readStoredLogRange(objectStore, file, input.startLine, endLine);
+  return { file: file.path, startLine: input.startLine, endLine, totalLines: file.lineCount, lines };
 }
 
 export async function listLogRuns(db: Queryable, auth: AuthContext, logId: string): Promise<LogRunDto[]> {

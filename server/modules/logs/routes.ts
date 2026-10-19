@@ -1,4 +1,5 @@
 import type { MultipartBody } from "../../shared/http/server";
+import { MAX_LOG_JSON_UPLOAD_BYTES } from "./bundleIntake";
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -11,6 +12,7 @@ import {
   archiveLogRecord,
   createLogFromFile,
   getLogRecord,
+  getLogLineRange,
   listLogFeedbackInsights,
   listLogRecords,
   listLogRuns,
@@ -47,6 +49,7 @@ import {
   feedbackInsightsQuerySchema,
   listLogDomainsQuerySchema,
   listLogsQuerySchema,
+  logLineRangeQuerySchema,
   logFeedbackBodySchema,
   rerunLogBodySchema,
   setLogDomainKnowledgeLinksBodySchema,
@@ -170,6 +173,10 @@ export function registerLogRoutes(
     const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
     const files = multipart?.files.filter((file) => file.fieldName === "file");
     if (multipart && !files?.length) throw new ApiError("VALIDATION_FAILED", "请选择至少一个日志文件");
+    if (!multipart && typeof (request.body as { contentBase64?: unknown })?.contentBase64 === "string"
+      && (request.body as { contentBase64: string }).contentBase64.length > 4 * Math.ceil(MAX_LOG_JSON_UPLOAD_BYTES / 3)) {
+      throw new ApiError("PAYLOAD_TOO_LARGE", "JSON log uploads are limited to 32 MiB; use multipart/form-data for larger bundles.");
+    }
     let fields: Record<string, unknown> = multipart?.fields ?? {};
     if (multipart?.fields.relatedParameterPin) {
       try { fields = { ...fields, relatedParameterPin: JSON.parse(multipart.fields.relatedParameterPin) }; }
@@ -254,6 +261,16 @@ export function registerLogRoutes(
     const items = await listLogRuns(db, auth, params.logId);
 
     return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v1/logs/:logId/lines", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    requireLocalOrganization(auth);
+    const params = parseWithSchema(paramsWithLogIdSchema, request.params);
+    const query = parseWithSchema(logLineRangeQuerySchema, request.query);
+    const item = await getLogLineRange(db, requireObjectStore(options.objectStore), auth, params.logId, query);
+    return { status: 200, body: { item } };
   });
 
   router.post("/api/v1/logs/:logId/rerun", async (request) => {

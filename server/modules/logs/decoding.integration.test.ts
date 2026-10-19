@@ -11,7 +11,7 @@ import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 import { registerLogRoutes } from "./routes";
-import { createLogSkill, saveLogSkillDraft, publishLogSkill } from "./skillsService";
+import { createLogSkill, saveLogSkillDraft, publishLogSkill, PARSE_PREVIEW_MAX_MS } from "./skillsService";
 import { getLogRecord, uploadLogFile } from "./service";
 import { processLogAnalysisJobById } from "./worker";
 import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
@@ -21,6 +21,8 @@ import { createRuleBasedLogAnalyzer } from "./analyzer";
 import { decodedEventSchema, parsingSpecSchema } from "./parsing/spec";
 import { logRecordDtoSchema } from "../contracts/dtoSchemas/logs";
 import * as workerDecoding from "./parsing/workerDecoding";
+import { loadLogFiles } from "./filesRepository";
+import { ensureStoredLogIndex } from "./fileReader";
 
 const available = await isTestDatabaseAvailable();
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
@@ -40,6 +42,10 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
       await publishLogSkill(db, auth, skill.id, draft.id, invocation, { requestId: "decode-artifact" });
       for (const failure of ["compression", "upload"]) {
         const uploaded = await uploadLogFile(db, objectStore, auth, { fileName: `${failure}.log`, contentType: "text/plain", bytes: Buffer.from("ERROR code=E_THERMAL_FOLDBACK charge_current_ma=2000"), logDomainId: skill.id });
+        // Isolate decoded-artifact failure injection from the separate line-index upload.
+        for (const file of await loadLogFiles(db, auth.organization.id, uploaded.log.id)) {
+          await ensureStoredLogIndex(db, objectStore, auth.organization.id, uploaded.log.id, file);
+        }
         const before = objectStore.entries.size;
         const originalPut = objectStore.put.bind(objectStore);
         const broken = failure === "compression" ? vi.spyOn(workerDecoding, "gzipDecodedEvents").mockRejectedValueOnce(new Error("Compression failed"))
@@ -135,6 +141,9 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
       expect(retryArtifact.decoded_event_counts.total).toBe(1);
       expect(gunzipSync(await objectStore.get(retryArtifact.decoded_events_object_key)).toString()).toContain('"file":"retry.log"');
       const plain = await uploadLogFile(db, objectStore, auth, { fileName: "plain.log", contentType: "text/plain", bytes: Buffer.from("ERROR code=E_THERMAL_FOLDBACK charge_current_ma=2000") });
+      for (const file of await loadLogFiles(db, auth.organization.id, plain.log.id)) {
+        await ensureStoredLogIndex(db, objectStore, auth.organization.id, plain.log.id, file);
+      }
       const before = objectStore.entries.size;
       await processLogAnalysisJobById({ db, objectStore, jobId: plain.job!.id });
       expect(objectStore.entries.size).toBe(before);
@@ -165,7 +174,13 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
         body: { valid: false, issues: [expect.objectContaining({ path: ["extractors", 0, "fields", "current"] })], events: [] } });
       expect(await countAudits()).toBe(before);
       for (const sampleText of ["a".repeat(1024 * 1024 + 1), "界".repeat(400_000)]) expect((await request(path, { parsing, sampleText })).status).toBe(400);
-      expect(await request(path, { parsing, sampleText: "a\n".repeat(5000) })).toMatchObject({ status: 200, body: { truncated: true, reason: "line_cap" } });
+      const decode = workerDecoding.decodeLogFilesCooperatively;
+      // Isolate the line bound from host scheduling; time/watchdog bounds have separate tests.
+      const clock = vi.spyOn(workerDecoding, "decodeLogFilesCooperatively").mockImplementationOnce((spec, files, options) =>
+        decode(spec, files, { ...options, maxMs: PARSE_PREVIEW_MAX_MS, now: () => 0, hardTimeout: false }));
+      try {
+        expect(await request(path, { parsing, sampleText: "a\n".repeat(5000) })).toMatchObject({ status: 200, body: { truncated: true, reason: "line_cap" } });
+      } finally { clock.mockRestore(); }
       auth = authFor("other-org"); expect((await request(path, { parsing, sampleText: "x" })).status).toBe(404);
       auth = authFor("decode-org", false); expect((await request(path, { parsing, sampleText: "x" })).status).toBe(403);
       auth = authFor();

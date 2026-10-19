@@ -436,6 +436,7 @@ describe("log worker", () => {
     fixture.job.lease_expires_at = "2026-05-25T02:01:00.000Z";
     vi.stubEnv("LOG_DECODE_MAX_MS", "60000");
     vi.stubEnv("LOG_SIGNAL_MAX_MS", "1000");
+    vi.stubEnv("LOG_ANALYSIS_PREPROCESS_MAX_MS", "15000");
     let elapsed = 0;
     vi.spyOn(performance, "now").mockImplementation(() => (elapsed += 0.75));
     const objectStore = createObjectStore(Buffer.from(Array(6000).fill("value").join("\n")));
@@ -447,7 +448,7 @@ describe("log worker", () => {
     expect(fixture.decoded?.counts.errors).toEqual({ time_cap: 1 });
     expect(fixture.decoded!.counts.total).toBeGreaterThan(0);
     expect(fixture.decoded!.counts.total).toBeLessThan(6000);
-    // The configured budgets together exceed this 60s lease's 15s share.
+    // Signals and decoding share one fixed 15s allowance, independent of renewals.
     // Synthetic clock increments allow only the final bounded checkpoint to overshoot.
     expect(elapsed).toBeLessThan(15_020);
     expect(analyze.mock.calls[0][0].signalSummary).toMatchObject({ truncated: true, reason: "time_cap" });

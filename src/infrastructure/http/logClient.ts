@@ -36,6 +36,7 @@ import {
   logFileUploadResponseSchema,
   logRecordListResponseSchema,
   logRecordResponseSchema,
+  logLineRangeResponseSchema,
   logRunResponseSchema,
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
@@ -180,6 +181,11 @@ export function createHttpLogAnalysisRepository(
     return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
   }
   const repository: LogAnalysisRepository = {
+    async getLogLines(logId, file, startLine, endLine) {
+      const params = new URLSearchParams({ file, startLine: String(startLine), endLine: String(endLine) });
+      return parseContractDto(logLineRangeResponseSchema,
+        await apiClient.get(appendQuery(`${routeLogPath(logId)}/lines`, params)), "LogLineRangeResponse").item;
+    },
     async parsePreview(id, input) {
       return parseContractDto(parsePreviewResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/parse-preview`, input), "LogParsePreviewResponse");
     },

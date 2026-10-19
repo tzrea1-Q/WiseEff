@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { SkillWorkspace } from "./SkillWorkspace";
 import { mockSkillWorkspace, mockSkillSample } from "@/infrastructure/mock/logSkills";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -63,6 +63,35 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
 }
 
 describe("skill workspace", () => {
+  it("keeps a model override editable and publishable when a superseded initial load finishes late", async () => {
+    const skill = structuredClone(mockSkillWorkspace("skill-charging")!);
+    let finishFirst!: (history: SkillRevision[]) => void;
+    const firstHistory = new Promise<SkillRevision[]>((resolve) => { finishFirst = resolve; });
+    const repository = {
+      getLogSkill: vi.fn(async () => structuredClone(skill)),
+      listSkillRevisions: vi.fn().mockReturnValueOnce(firstHistory).mockResolvedValue([skill.currentRevision]),
+      saveSkillDraft: vi.fn<SkillWorkspaceRepository["saveSkillDraft"]>(async (_id, spec) => {
+        skill.draft = { ...skill.currentRevision, id: "model-draft", status: "draft", spec };
+        return skill.draft;
+      }),
+      publishSkill: vi.fn<SkillWorkspaceRepository["publishSkill"]>(async () => {
+        skill.currentRevision = { ...skill.draft!, status: "published" }; skill.draft = null;
+        return structuredClone(skill);
+      })
+    };
+    render(<StrictMode><SkillWorkspace skillId={skill.id} search="" repository={repository} apiMode canEdit
+      onNavigate={() => undefined} onPublished={() => undefined} /></StrictMode>);
+    const override = await screen.findByRole("textbox", { name: "模型覆盖" });
+    fireEvent.change(override, { target: { value: "acceptance-domain-model-x" } });
+    expect(screen.getByRole("group", { name: "未发布更改" })).toBeVisible();
+    await act(async () => { finishFirst([skill.currentRevision]); });
+    expect(override).toHaveValue("acceptance-domain-model-x");
+    fireEvent.click(within(screen.getByRole("group", { name: "未发布更改" })).getByRole("button", { name: "发布" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "发布技能" })).getByRole("button", { name: "发布" }));
+    await waitFor(() => expect(repository.publishSkill).toHaveBeenCalledWith(skill.id, "model-draft"));
+    expect(repository.saveSkillDraft).toHaveBeenCalledWith(skill.id, expect.objectContaining({ modelOverride: "acceptance-domain-model-x" }), null, expect.any(String));
+  });
+
   it("prefills an absent procedure without creating an edit, and previews the five-heading outline", async () => {
     setup({ section: "procedure" });
     const editor = await screen.findByRole("textbox", { name: "诊断流程内容" });

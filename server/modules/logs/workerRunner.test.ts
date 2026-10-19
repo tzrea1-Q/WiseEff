@@ -112,6 +112,7 @@ describe("log worker runner", () => {
 
   it("uses the env-aware object store factory when starting from env", async () => {
     vi.resetModules();
+    const startLoop = vi.fn(() => vi.fn());
 
     const createObjectStoreFromEnv = vi.fn(() => ({
       put: vi.fn(),
@@ -128,12 +129,15 @@ describe("log worker runner", () => {
       OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
       OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
       OBJECT_STORAGE_ACCESS_KEY_ID: "key",
-      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret"
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      LOG_ANALYSIS_JOB_MAX_MS: 123000,
+      LOG_ANALYSIS_PREPROCESS_MAX_MS: 7000
     }));
 
     vi.doMock("../../objectStoreFactory", () => ({
       createObjectStoreFromEnv
     }));
+    vi.doMock("./worker", () => ({ startLogWorkerLoop: startLoop }));
     vi.doMock("../../config/env", () => ({
       loadServerEnv
     }));
@@ -154,6 +158,8 @@ describe("log worker runner", () => {
       OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
       OBJECT_STORAGE_ACCESS_KEY_ID: "key",
       OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      LOG_ANALYSIS_JOB_MAX_MS: "123000",
+      LOG_ANALYSIS_PREPROCESS_MAX_MS: "7000",
       LOG_WORKER_OBSERVABILITY_HOST: "0.0.0.0",
       LOG_WORKER_OBSERVABILITY_PORT: "8788"
     });
@@ -169,6 +175,8 @@ describe("log worker runner", () => {
       OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
       OBJECT_STORAGE_ACCESS_KEY_ID: "key",
       OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      LOG_ANALYSIS_JOB_MAX_MS: "123000",
+      LOG_ANALYSIS_PREPROCESS_MAX_MS: "7000",
       LOG_WORKER_OBSERVABILITY_HOST: "0.0.0.0",
       LOG_WORKER_OBSERVABILITY_PORT: "8788"
     });
@@ -186,6 +194,9 @@ describe("log worker runner", () => {
       "postgres://wiseeff_worker:wiseeff@localhost:5432/wiseeff",
       expect.objectContaining({ tracing: expect.any(Object) })
     );
+    await runtime.start()();
+    expect(startLoop).toHaveBeenCalledWith(expect.objectContaining({ maxJobMs: 123000, preprocessingMs: 7000 }), 1000);
+    vi.doUnmock("./worker");
   });
 
   it("starts the worker loop with injected dependencies and awaits retention shutdown", async () => {
@@ -285,6 +296,8 @@ describe("log worker runner", () => {
       startRetentionLoop,
       retention: { enabled: true, keepPerDomain: 10_000 },
       createDurableRuntime,
+      maxJobMs: 123000,
+      preprocessingMs: 7000,
       queueMode: "durable",
       env: {
         REDIS_URL: "redis://redis:6379",
@@ -312,6 +325,8 @@ describe("log worker runner", () => {
       objectStore,
       metrics,
       tracing: expect.any(Object),
+      maxJobMs: 123000,
+      preprocessingMs: 7000,
       workerId: "wiseeff-log-worker"
     });
     expect(startLoop).not.toHaveBeenCalled();

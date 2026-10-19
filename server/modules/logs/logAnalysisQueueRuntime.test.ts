@@ -73,6 +73,8 @@ describe("log analysis queue runtime", () => {
       metrics,
       QueueCtor: QueueCtor as never,
       WorkerCtor: WorkerCtor as never,
+      maxJobMs: 123000,
+      preprocessingMs: 7000,
       processByJobId
     });
 
@@ -98,6 +100,8 @@ describe("log analysis queue runtime", () => {
         workerId: "wiseeff-log-worker",
         maxAttempts: 5,
         retryBaseDelayMs: 2500,
+        maxJobMs: 123000,
+        preprocessingMs: 7000,
         metrics
       });
     });

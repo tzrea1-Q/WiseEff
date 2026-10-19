@@ -205,6 +205,7 @@ export type PersistLogAnalysisReportInput = {
 };
 
 type CompleteLogAnalysisJobWithReportInput = PersistLogAnalysisReportInput & {
+  signal?: AbortSignal;
   jobId: string;
   leaseOwner: string;
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
@@ -940,6 +941,7 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
 export async function completeLogAnalysisJobWithReport(db: Database, input: CompleteLogAnalysisJobWithReportInput) {
   try {
     await db.transaction(async (tx) => {
+      input.signal?.throwIfAborted();
       const progressUpdated = await updateJobProgress(tx, {
         organizationId: input.organizationId,
         jobId: input.jobId,
@@ -999,6 +1001,7 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
       );
 
       for (const [index, evidence] of input.evidence.entries()) {
+        input.signal?.throwIfAborted();
         await tx.query(
           `
           insert into log_evidence (
@@ -1074,6 +1077,7 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         [input.organizationId, input.logId, input.runId]
       );
       await enqueueTerminalLogWebhook(tx, input);
+      input.signal?.throwIfAborted();
     });
 
     return true;

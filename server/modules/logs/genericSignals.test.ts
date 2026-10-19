@@ -74,6 +74,61 @@ describe("generic log signals", () => {
     expect(extractLogSignals(input, defaultChargingRuleSet).signals).toContainEqual(expect.objectContaining({ source: "skill", kind: "skill:thermal-foldback", count: 1 }));
   });
 
+  it("streams raw lines and profile entries without changing signals, templates or file-local state", async () => {
+    const parsed = parseLogText({ fileName: "a.log", content: "2026-10-19T00:00:00Z ERROR start\n  thermal foldback\n\n2026-10-19T00:01:00Z INFO next\nkernel panic" },
+      { profile: { multiline: { mode: "indent" } } });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    const files = [{ path: "a.log", parsed }, file("b.log", "ERROR separate\nBooting")];
+    let opened = 0, closed = 0;
+    const streamed = files.map(({ path, parsed }) => ({ path, reader: { lineCount: parsed.rawLines.length,
+      async* lines() {
+        opened++;
+        try { for (const [index, content] of parsed.rawLines.entries()) yield { lineNumber: index + 1, content }; }
+        finally { closed++; }
+      },
+      async* entries() {
+        opened++;
+        try { yield* parsed.entries; }
+        finally { closed++; }
+      }
+    } }));
+    expect(await extractLogSignalsCooperatively(streamed, defaultChargingRuleSet)).toEqual(extractLogSignals(files, defaultChargingRuleSet));
+    expect(opened).toBe(4);
+    expect(closed).toBe(opened);
+  });
+
+  it("closes streaming readers at the shared deadline and retains completed signals", async () => {
+    let reads = 0, closed = 0;
+    const input = ["a.log", "b.log"].map((path) => ({ path, reader: { lineCount: 10,
+      async* lines() {
+        try { for (let lineNumber = 1; lineNumber <= 10; lineNumber++) { reads++; yield { lineNumber, content: "kernel panic" }; } }
+        finally { closed++; }
+      },
+      async* entries() { try { /* no parsed entries */ } finally { closed++; } }
+    } }));
+    const result = await extractLogSignalsCooperatively(input, undefined, { maxMs: 3, now: () => reads });
+    expect(result).toMatchObject({ truncated: true, reason: "time_cap", signals: [{ kind: "crash", count: 2 }] });
+    expect(reads).toBe(3);
+    expect(closed).toBe(2);
+    expect(result).not.toHaveProperty("readLine");
+  });
+  it("preserves signals when a reader deadline interrupts a long multiline entry", async () => {
+    let deadline: number | undefined, closed = false;
+    const reader = { lineCount: 1,
+      async* lines() { yield { lineNumber: 1, content: "unused" }; },
+      async* entries(options?: { deadline?: number }) {
+        deadline = options?.deadline;
+        try { throw Object.assign(new Error("Reader time cap"), { code: "LOG_READER_TIME_CAP" }); }
+        finally { closed = true; }
+      }
+    };
+    const result = await extractLogSignalsCooperatively([file("kept.log", "kernel panic"), { path: "slow.log", reader }]);
+    expect(result).toMatchObject({ truncated: true, reason: "time_cap", signals: [{ kind: "crash", count: 1 }] });
+    expect(Number.isFinite(deadline)).toBe(true);
+    expect(closed).toBe(true);
+    expect(result).not.toHaveProperty("readLine");
+  });
+
   it("caps signals, templates, evidence content and anchors while continuing counts for retained keys", () => {
     const signals = extractLogSignals(Array.from({ length: LOG_SIGNAL_LIMITS.signals + 5 }, (_, i) => file(`${i}.log`, "assert\nassert")));
     expect(signals.signals).toHaveLength(LOG_SIGNAL_LIMITS.signals);

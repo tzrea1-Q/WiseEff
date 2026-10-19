@@ -30,6 +30,16 @@ function createStore(transport: ObjectStorageTransport = createTransport()) {
 }
 
 describe("createS3ObjectStore", () => {
+  it("signs byte ranges and refuses servers that ignore them", async () => {
+    const fetchImpl = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(async () => new Response("second", { status: 206 }));
+    const transport = createHttpObjectStorageTransport({ endpoint: "https://storage.example.com", accessKeyId: "key", secretAccessKey: "secret", fetchImpl });
+    const chunks = [];
+    for await (const chunk of await transport.getStream!({ bucket: "bucket", key: "org/test.log", start: 6, end: 11 })) chunks.push(chunk as Buffer);
+    expect(Buffer.concat(chunks).toString()).toBe("second");
+    expect(new Headers(fetchImpl.mock.calls[0][1]?.headers).get("range")).toBe("bytes=6-11");
+    fetchImpl.mockImplementation(async () => new Response("ignored"));
+    await expect(transport.getStream!({ bucket: "bucket", key: "org/test.log", start: 6 })).rejects.toThrow("ignored");
+  });
   it("delegates streaming reads and rejects transports without streaming support", async () => {
     const transport = createTransport({ getStream: vi.fn(async () => Readable.from([Buffer.from("source")])) });
     const chunks: Buffer[] = [];

@@ -361,7 +361,10 @@ export function resolveRouteBodyLimit({ method, path, contentType }: { method: s
   }
   if (method === "POST" && /^\/+api\/+v1\/+log-files\/*$/.test(path)) {
     // Bound collection too: allow JSON base64 expansion and multipart headers.
-    return Math.ceil(loadLogBundleLimits().maxCompressedBytes * 4 / 3) + 4 * 1024 * 1024;
+    const compressed = loadLogBundleLimits().maxCompressedBytes;
+    if (contentType === "multipart/form-data") return compressed + 4 * 1024 * 1024;
+    const cap = contentType !== undefined && contentType !== "multipart/form-data" ? Math.min(compressed, MAX_LOG_JSON_UPLOAD_BYTES) : compressed;
+    return Math.ceil(cap * 4 / 3) + 4 * 1024 * 1024;
   }
   if (
     method === "POST" &&
@@ -584,3 +587,4 @@ function createVerifierFromEnv(env: ServerEnv): TokenVerifier {
     }
   });
 }
+import { MAX_LOG_JSON_UPLOAD_BYTES } from "./modules/logs/bundleIntake";

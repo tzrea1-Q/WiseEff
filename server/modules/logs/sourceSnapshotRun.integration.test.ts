@@ -84,7 +84,7 @@ describe.skipIf(!available)("pinned source snapshot run over PostgreSQL", () => 
       expect(response.status).toBe(200);
       const report = logRecordDtoSchema.parse(response.body.item);
       expect(report).toMatchObject({ status: "complete", analysisSource: "agent",
-        evidence: [{ lineNumbers: mode === "scripted" ? [] : [1, 2], sourceLocation, sourceVersionLabel: "firmware-v7" }] });
+        evidence: [{ lineNumbers: mode === "scripted" ? [] : [1], sourceLocation, sourceVersionLabel: "firmware-v7" }] });
       if (mode === "scripted") expect(scriptedModel.calls).toHaveLength(2);
       const evidenceId = report.evidence[0].id;
       const excerptPath = `/api/v1/logs/${uploaded.body.log.id}/evidence/${evidenceId}/source`;

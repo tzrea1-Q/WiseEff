@@ -9,7 +9,9 @@ import { logRecordStatuses } from "./status";
 
 const nonEmptyString = z.string().min(1);
 function validBase64(value: string) {
-  try { return Buffer.from(value, "base64").toString("base64") === value; }
+  if (value.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
+  // Check canonical padding bits without decoding/re-encoding the whole upload.
+  try { return Buffer.from(value.slice(-4), "base64").toString("base64") === value.slice(-4); }
   catch { return false; }
 }
 const base64String = nonEmptyString.refine(validBase64, { message: "Expected valid base64 content." });
@@ -80,6 +82,14 @@ export const listLogsQuerySchema = z.object({
   status: z.enum(logRecordStatuses).optional(),
   timeWindow: z.enum(["today", "7d", "30d"]).optional(),
   includeArchived: booleanQuerySchema.optional()
+});
+
+export const logLineRangeQuerySchema = z.object({
+  file: z.string().min(1).max(4096),
+  startLine: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  endLine: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+}).refine(({ startLine, endLine }) => endLine >= startLine && endLine - startLine < 400, {
+  message: "Request an inclusive range of at most 400 lines."
 });
 
 export const logFeedbackBodySchema = z.object({

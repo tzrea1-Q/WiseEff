@@ -140,19 +140,24 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const disabled = !apiMode || !canEdit || pending;
   const selected = skillSections.find((s) => s.id === new URLSearchParams(search).get("section") && s.component) ?? skillSections[0];
   const Component = selected.component!;
+  const loadGeneration = useRef(0);
   const refresh = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setLoadError(null);
     try {
       const found = apiMode ? await repository!.getLogSkill!(skillId) : mockSkillWorkspace(skillId);
-      if (!found) { setLoadError("missing"); return; }
+      if (!found) { if (generation === loadGeneration.current) setLoadError("missing"); return; }
       const [history, summaries] = apiMode ? await Promise.all([repository!.listSkillRevisions!(skillId), repository!.listLogSkills?.({ includeArchived: true })])
         : [[found.currentRevision], mockLogSkills];
+      if (generation !== loadGeneration.current) return;
       setSkill(found); setSpec(structuredClone((found.draft ?? found.currentRevision).spec)); setRevisions(history);
       setParsingYamlDraft(null);
       setStats(summaries?.find((s) => s.id === skillId)); setConflict(false); setError("");
-    } catch (cause) { setLoadError(cause instanceof WiseEffApiError && cause.code === "NOT_FOUND" ? "missing" : "error"); }
+    } catch (cause) {
+      if (generation === loadGeneration.current) setLoadError(cause instanceof WiseEffApiError && cause.code === "NOT_FOUND" ? "missing" : "error");
+    }
   }, [apiMode, repository, skillId]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); return () => { loadGeneration.current++; }; }, [refresh]);
   useLayoutEffect(() => {
     if (!dirty && !pending) return;
     const guard = (event: Event) => {

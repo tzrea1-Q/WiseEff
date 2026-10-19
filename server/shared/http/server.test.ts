@@ -1,9 +1,29 @@
 import pg from "pg";
+import { request as httpRequest } from "node:http";
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES, type MultipartBody } from "./server";
 import type { RouteRequest } from "./router";
 
 const openServers: Array<ReturnType<typeof createHttpServer>> = [];
+
+it("preserves large bounded chunked uploads across the allocation threshold without trailing bytes", async () => {
+  const baseUrl = await listen(createHttpServer({ handle: async (request) => {
+    const body = request.body as { bytes: Buffer };
+    return { status: 200, body: { size: body.bytes.length, hash: createHash("sha256").update(body.bytes).digest("hex") } };
+  } }, { maxBodyBytes: () => 12 * 1024 * 1024 }));
+  const chunk = Buffer.alloc(1024 * 1024, "x"), hash = createHash("sha256");
+  const response = await new Promise<{ size: number; hash: string }>((resolve, reject) => {
+    const req = httpRequest(`${baseUrl}/upload`, { method: "POST", headers: { "Content-Type": "application/octet-stream" } }, (res) => {
+      let text = ""; res.setEncoding("utf8"); res.on("data", (value) => { text += value; });
+      res.on("end", () => resolve(JSON.parse(text))); res.on("error", reject);
+    });
+    req.on("error", reject);
+    for (let index = 0; index < 9; index++) { hash.update(chunk); req.write(chunk); }
+    hash.update("tail"); req.end("tail");
+  });
+  expect(response).toEqual({ size: 9 * 1024 * 1024 + 4, hash: hash.digest("hex") });
+});
 
 afterEach(async () => {
   vi.restoreAllMocks();
