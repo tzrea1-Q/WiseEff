@@ -70,6 +70,12 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 
 `GET /api/v1/logs/{logId}/trace` 返回记录当前运行按序排列的 `{ steps }`。需要 `logs:admin-domains`，只有 `logs:view` 时返回 `403`，不可访问的记录返回 `404`。步骤包含有界工具参数摘要、结果字节数、返回行引用、结果状态及可用 token 数，绝不包含原始提示词或模型服务载荷。存储上限与仅管理员可用的草稿试运行端点见[轨迹与试运行契约](../design-docs/api-contract.md#分析轨迹与草稿试运行1230)。试运行使用已保存草稿与已存样例，不创建 `/logs` 记录或结果 Webhook。
 
+### 技能分析用例
+
+所有分析用例接口需要 `logs:admin-domains` 及组织内访问权限。用例归属技能身份，跨版本保留。CRUD、运行、轨迹、报告预填及 ZIP 接口见[分析用例 API 契约](../design-docs/api-contract.md#技能分析用例1246)。新上传在规范化分析文件之外单独保留原始输入字节，因此报告另存用例可携带原日志包。未保留原始上传的历史报告无法还原这些字节，另存时会明确报错。
+
+用例运行使用已配置分析器，比较已保存草稿与上一已发布版本，并独立保存测试结果。它与草稿试运行共享准入，不产生用户可见日志记录或结果 Webhook，始终不阻止发布。导入、导出使用 [`eval-cases/logs` 布局](../../../eval-cases/logs/README.zh-CN.md)，保留日志文件原字节，并提供精确到路径的校验错误。
+
 ### 获取单文件的行窗口
 
 `GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` 返回一份已分析文件的指定行窗口。需要 `logs:view`，组织范围与记录本身一致。`file` 使用记录 `files` 清单中的准确 `path`；这是日志包内路径，不是对象存储键。

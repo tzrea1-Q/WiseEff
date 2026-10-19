@@ -55,6 +55,7 @@ import { isRootDatabase, type Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import { loadLogBundleLimits } from "./config/env";
 import { getSourceSnapshotLimits } from "./modules/logs/sourceArchive";
+import { analysisCaseArchiveLimits } from "./modules/logs/analysisCaseArchive";
 import { ApiError } from "./shared/http/errors";
 import type { JsonWebKey } from "node:crypto";
 
@@ -371,6 +372,16 @@ export function resolveRouteBodyLimit({ method, path, contentType }: { method: s
   }
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+signals-preview\/*$/.test(path)) {
     return LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+analysis-cases\/+import\/*$/.test(path)) {
+    if (contentType !== undefined && contentType !== "multipart/form-data") throw new ApiError("VALIDATION_FAILED", "Case imports require multipart/form-data.");
+    return analysisCaseArchiveLimits.maxCompressedBytes + 64 * 1024;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+analysis-cases\/*$/.test(path)) {
+    return Math.ceil(analysisCaseArchiveLimits.maxCaseBytes * 4 / 3) + 2 * 1024 * 1024;
+  }
+  if (method === "PATCH" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+analysis-cases\/+[^/]+\/*$/.test(path)) {
+    return 2 * 1024 * 1024;
   }
   if (method === "PUT" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+sample\/*$/.test(path)) {
     // Base64 of one 2 MiB sample plus a bounded JSON envelope.

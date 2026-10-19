@@ -47,6 +47,7 @@ import { sourceSnapshotUploadSchema } from "./schemas";
 import type { LogAnalysisAdapter } from "./analyzer";
 import { getLogTrace, getSkillDryRun, getSkillDryRunLines, startSkillDryRun } from "./dryRuns";
 import { requireLogAdminDomains } from "./policy";
+import { createAnalysisCase, updateAnalysisCase, deleteAnalysisCase, listAnalysisCases, startAnalysisCaseRun, getAnalysisCaseRun, getAnalysisCaseTrace, getAnalysisCasePrefill, importSkillAnalysisCases, exportSkillAnalysisCases } from "./analysisCases";
 import {
   createLogBodySchema,
   createLogDomainBodySchema,
@@ -135,6 +136,60 @@ export function registerLogRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  router.get("/api/v1/logs/:logId/analysis-case-prefill", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await getAnalysisCasePrefill(requireDb(options.db), auth, request.params.logId) };
+  });
+  router.get("/api/v1/log-skills/:skillId/analysis-cases", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await listAnalysisCases(requireDb(options.db), auth, request.params.skillId) };
+  });
+  router.post("/api/v1/log-skills/:skillId/analysis-cases", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    requireLocalOrganization(auth); requireLogAdminDomains(auth);
+    const body = parseWithSchema(z.object({ name: z.string().trim().min(1).max(200), expectations: z.unknown(), sourceRecordId: z.string().min(1).optional(),
+      files: z.array(z.object({ fileName: z.string().min(1).max(1024), contentBase64: z.string().min(1).max(14 * 1024 * 1024).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/) })).min(1).max(100).optional() }).strict(), request.body);
+    const item = await createAnalysisCase(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId,
+      { ...body, expectations: body.expectations, files: body.files?.map((file) => ({ fileName: file.fileName, bytes: Buffer.from(file.contentBase64, "base64") })) }, createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 201, body: { item } };
+  });
+  router.patch("/api/v1/log-skills/:skillId/analysis-cases/:caseId", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const body = parseWithSchema(z.object({ name: z.string().trim().min(1).max(200), expectations: z.unknown() }).strict(), request.body);
+    const item = await updateAnalysisCase(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, request.params.caseId, { ...body, expectations: body.expectations }, createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 200, body: { item } };
+  });
+  router.delete("/api/v1/log-skills/:skillId/analysis-cases/:caseId", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await deleteAnalysisCase(requireDb(options.db), auth, request.params.skillId, request.params.caseId, createUserInvocation(auth), { requestId: request.requestId }) };
+  });
+  router.post("/api/v1/log-skills/:skillId/analysis-case-runs", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    requireLocalOrganization(auth); requireLogAdminDomains(auth);
+    if (!options.analyzer) throw new ApiError("INTERNAL_ERROR", "Configured log analyzer is required for case runs.");
+    const body = parseWithSchema(z.object({ caseIds: z.array(z.string().min(1)).min(1).max(20).optional() }).strict(), request.body ?? {});
+    return { status: 202, body: await startAnalysisCaseRun(requireDb(options.db), requireObjectStore(options.objectStore), options.analyzer, auth, request.params.skillId, body.caseIds, createUserInvocation(auth), { requestId: request.requestId }) };
+  });
+  router.get("/api/v1/log-skills/:skillId/analysis-case-runs/:runId", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await getAnalysisCaseRun(requireDb(options.db), auth, request.params.skillId, request.params.runId) };
+  });
+  router.get("/api/v1/log-skills/:skillId/analysis-case-runs/:runId/cases/:caseId/trace", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const query = parseWithSchema(z.object({ revision: z.enum(["draft", "published"]).default("draft") }), request.query);
+    return { status: 200, body: await getAnalysisCaseTrace(requireDb(options.db), auth, request.params.skillId, request.params.runId, request.params.caseId, query.revision ?? "draft") };
+  });
+  router.post("/api/v1/log-skills/:skillId/analysis-cases/import", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    requireLocalOrganization(auth); requireLogAdminDomains(auth);
+    const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
+    if (!multipart || multipart.files.length !== 1) throw new ApiError("VALIDATION_FAILED", "One case ZIP archive is required.");
+    return { status: 201, body: await importSkillAnalysisCases(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, multipart.files[0].bytes, createUserInvocation(auth), { requestId: request.requestId }) };
+  });
+  router.get("/api/v1/log-skills/:skillId/analysis-cases/export", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, bytes: await exportSkillAnalysisCases(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId), contentType: "application/zip", fileName: "analysis-cases.zip" };
+  });
   router.get("/api/v1/log-skills/:skillId/source-versions", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     return { status: 200, body: await listLogSkillSourceVersions(requireDb(options.db), auth, request.params.skillId) };
