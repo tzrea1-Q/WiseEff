@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { compileLogPattern } from "./adminPattern";
+
 /**
  * Declarative format profile for a log domain (glossary: Format profile).
  * Parsing stays UTF-8 text indexed by stable raw line numbers; a profile only
@@ -59,8 +61,7 @@ function collectRegexIssues(profile: LogFormatProfile): string[] {
       return;
     }
     try {
-      // eslint-disable-next-line no-new
-      new RegExp(pattern);
+      compileLogPattern(pattern);
     } catch (error) {
       issues.push(`${field} is not a valid regular expression: ${error instanceof Error ? error.message : String(error)}`);
     }

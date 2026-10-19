@@ -40,7 +40,7 @@ M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authentic
 
 ## Log Domains and Analyzer Provenance
 
-Log domains are org-scoped registrations of a business's log intake (name, description, optional declarative format profile). Governance requires `logs:admin-domains` and every mutation writes a `log-domain-*` audit event.
+Log domains are org-scoped registrations of a business's log intake (name, description, optional declarative format profile). Governance requires `logs:admin-domains` and every mutation writes a `log-domain-*` audit event. Format-profile patterns use RE2 syntax on a linear-time engine (no lookaround or backreferences; at most 4,096 characters), and lines longer than 65,536 characters are not matched by them; an unsupported pattern is rejected with `400` and its field path.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

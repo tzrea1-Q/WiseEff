@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { compileLogPattern, type LogPattern } from "../../adminPattern";
 import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolContext";
 
 /**
@@ -41,9 +42,9 @@ export function searchLogLines(
 ): LogAnalysisToolOutcome {
   let matcher: (line: string) => boolean;
   if (params.isRegex) {
-    let regex: RegExp;
+    let regex: LogPattern;
     try {
-      regex = new RegExp(params.pattern, "i");
+      regex = compileLogPattern(params.pattern, "i");
     } catch (error) {
       return { ok: false, error: `Invalid regular expression: ${error instanceof Error ? error.message : String(error)}` };
     }

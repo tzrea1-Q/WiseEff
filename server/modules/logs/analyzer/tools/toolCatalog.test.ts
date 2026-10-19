@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_LOG_PATTERN_INPUT_LENGTH } from "../../adminPattern";
 import { parseLogText } from "../../parser";
 import { runLogPrefilter } from "../../prefilter";
 import { executeLogAnalysisTool, LOG_ANALYSIS_TOOL_NAMES } from "./toolCatalog";
@@ -47,6 +48,22 @@ describe("executeLogAnalysisTool dispatch", () => {
 });
 
 describe("search_log_lines", () => {
+  it.each(["(?=ERROR)ERROR", "(ERROR)\\1"])("returns a correctable tool error for %s", async (pattern) => {
+    const outcome = await executeLogAnalysisTool("search_log_lines", { pattern, isRegex: true }, buildContext());
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toContain("Invalid regular expression:");
+  });
+
+  it("uses case-insensitive regex search and skips over-long raw lines", async () => {
+    const context = buildContext();
+    context.parsed.rawLines = [`error ${"a".repeat(MAX_LOG_PATTERN_INPUT_LENGTH)}`, "error"];
+    const outcome = await executeLogAnalysisTool(
+      "search_log_lines", { pattern: "(?<level>ERROR)", isRegex: true, neighborhood: 0 }, context
+    );
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.result).toMatchObject({ totalMatches: 1, lines: [{ lineNumber: 2 }] });
+  });
+
   it("finds keyword matches case-insensitively with neighborhood context", async () => {
     const outcome = await executeLogAnalysisTool("search_log_lines", { pattern: "THERMAL", neighborhood: 1 }, buildContext());
     expect(outcome.ok).toBe(true);
