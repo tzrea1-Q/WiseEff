@@ -22,12 +22,14 @@ import { SkillSpecDiff } from "./SkillSpecDiff";
 import { SkillSamplePane } from "./SkillSamplePane";
 import { stringify } from "yaml";
 import { ParsingSection, parseParsingYaml } from "./ParsingSection";
+import { DecodingSection } from "./DecodingSection";
 import { parsingSpecSchema } from "@wiseeff/dto-schemas";
 import { SourceSnapshots } from "./SourceSnapshots";
 import "./skill-workspace.css";
 
 type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
   sample: SkillSample | null;
+  selectedLine: number | null;
   parsingYaml: string; onParsingYamlChange: (text: string) => void;
   revisions: SkillRevision[]; onRestore: (revision: SkillRevision) => void;
   repository?: Partial<SkillWorkspaceRepository>; apiMode: boolean; canEdit: boolean; dirty: boolean;
@@ -38,6 +40,10 @@ const status = { published: "当前", draft: "草稿", superseded: "已替代" }
 
 function Parsing({ skill, parsingYaml, onParsingYamlChange, disabled, repository, sample }: SectionProps) {
   return <ParsingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} />;
+}
+
+function Decoding({ skill, parsingYaml, onParsingYamlChange, disabled, repository, sample, selectedLine }: SectionProps) {
+  return <DecodingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} selectedLine={selectedLine} />;
 }
 
 const procedureOutline = ["适用场景", "先检查什么", "根因判定", "常见误判", "建议动作"]
@@ -107,7 +113,7 @@ function Versions({ skill, revisions, disabled, onRestore }: SectionProps) {
 
 export const skillSections: Array<{ id: string; label: string; component?: ComponentType<SectionProps> }> = [
   { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程", component: Procedure },
-  { id: "parsing", label: "样例与解析", component: Parsing }, { id: "decoding", label: "解码" }, { id: "signals", label: "信号" },
+  { id: "parsing", label: "样例与解析", component: Parsing }, { id: "decoding", label: "解码", component: Decoding }, { id: "signals", label: "信号" },
   { id: "knowledge", label: "知识" }, { id: "source", label: "源码", component: SourceSnapshots }, { id: "tests", label: "测试" },
   { id: "integration", label: "集成" }, { id: "versions", label: "版本", component: Versions }
 ];
@@ -118,6 +124,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
 }) {
   const [skill, setSkill] = useState<AnalysisSkill | null>(null);
   const [sample, setSample] = useState<SkillSample | null>(null);
+  const [selectedLine, setSelectedLine] = useState<number | null>(null);
+  const onSampleChange = useCallback((next: SkillSample | null) => { setSample(next); setSelectedLine(null); }, []);
   const [spec, setSpec] = useState<SkillSpec>({ schemaVersion: "skill/v1" });
   const [parsingYamlDraft, setParsingYamlDraft] = useState<string | null>(null);
   const parsingYaml = parsingYamlDraft ?? stringify(spec.parsing ?? { schemaVersion: "parsing/v1", extractors: [] });
@@ -211,7 +219,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   return <div className="skill-workspace" aria-busy={pending}>
     <NavigatorWorkbench pageKey="log-skill-workspace" navigatorLabel="技能分区" taskLabel={selected.label}
       inspectorHidden={!["overview", "parsing", "decoding", "signals"].includes(selected.id)}
-      inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={setSample} />}
+      inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={onSampleChange}
+        selectedLine={selectedLine} onLineSelect={setSelectedLine} />}
       toolbar={<><Button variant="link" onClick={back}>返回分析技能</Button><strong>{skill.name}</strong></>}
       context={<>
         {!apiMode || !canEdit ? <p>{!apiMode ? "演示技能仅供查看；请在 API 模式下编辑。" : "仅供查看；编辑需要技能管理权限。"}</p> : null}
@@ -230,7 +239,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
         aria-current={s.id === selected.id ? "page" : undefined} title={!s.component ? "即将推出" : undefined} onClick={() => switchSection(s.id)}>
         {s.label}{!s.component ? <small>即将推出</small> : null}</Button>)}</nav>}>
       <Component key={selected.id} skill={skill} spec={spec} setSpec={setSpec} disabled={disabled} stats={stats} revisions={revisions}
-        sample={sample?.skillId === skillId ? sample : null}
+        sample={sample?.skillId === skillId ? sample : null} selectedLine={selectedLine}
         parsingYaml={parsingYaml} onParsingYamlChange={(text) => {
           setParsingYamlDraft(text);
           const parsed = parseParsingYaml(text);
