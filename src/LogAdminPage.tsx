@@ -33,7 +33,7 @@ import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
-import { SectionEmpty, SectionSkeleton } from "@/components/common/SectionState";
+import { SectionSkeleton } from "@/components/common/SectionState";
 import type { SkillAuthoringRepository } from "@/features/log-skills/types";
 
 const collectionTabs = ["records", "skills", "quality"] as const;
@@ -737,11 +737,12 @@ function LogDomainGovernanceSection({
         <>
           <AdminListPage label="分析技能治理"
             headerContent="分析技能"
-            headerActions={domains?.length || domainsLoading ? <Button size="sm" onClick={openCreateForm} disabled={pending || domainsLoading}>新建技能</Button> : undefined}
+            headerActions={<Button size="sm" onClick={openCreateForm} disabled={pending || domainsLoading}>新建技能</Button>}
             filterBar={<p className="text-sm text-muted-foreground">注册分析技能（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
             table={{ "aria-label": "分析技能列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50,
-              emptyState: <div className="flex flex-col items-center gap-3 py-4 text-center">
-                <SectionEmpty title="还没有分析技能" message="从模板创建技能，并上传样例日志开始配置。" />
+              emptyState: domainsLoading ? <SectionSkeleton label="正在加载分析技能" /> : <div className="section-empty justify-items-center text-center">
+                <strong>还没有分析技能</strong>
+                <p>从模板创建技能，并上传样例日志开始配置。</p>
                 <Button onClick={openCreateForm}>新建第一个分析技能</Button>
               </div> }}
             rowActions={(domain) => ({ label: domain.name,
@@ -754,7 +755,6 @@ function LogDomainGovernanceSection({
                   onSelect: () => archiveDomain(domain.id) }
               ] : []
             })}
-            tableState={domainsLoading ? <SectionSkeleton label="正在加载分析技能" /> : undefined}
             emptyState={{ message: "还没有分析技能", actionLabel: "新建第一个分析技能", onAction: openCreateForm }} />
 
           {createOpen ? <CreateSkillDialog repository={skillRepository} apiMode={apiMode} skills={domains ?? []}

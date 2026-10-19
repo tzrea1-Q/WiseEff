@@ -18,7 +18,7 @@ afterEach(() => {
 
 beforeEach(() => window.history.replaceState(null, "", "/log-admin"));
 
-it.each(["domains", "quality"])("keeps tabs, header, filter context and table in order on %s", async (tab) => {
+it.each(["domains", "skills", "quality"])("keeps tabs, header, filter context and table in order on %s", async (tab) => {
   window.history.replaceState(null, "", `/log-admin?tab=${tab}`);
   renderPage({ logActions: createLogActions() });
   const table = await screen.findByRole("table");
@@ -663,9 +663,29 @@ describe("LogAdminPage 分析技能治理", () => {
     expect(action).toBeEnabled();
     expect(action).toHaveAttribute("data-variant", "default");
     expect(action).toHaveAttribute("data-size", "default");
-    expect(screen.queryByRole("button", { name: "新建技能" })).not.toBeInTheDocument();
+    const list = table.closest(".admin-list-page")!;
+    const header = list.querySelector(":scope > .admin-list-page__header")!;
+    const filters = list.querySelector(":scope > .admin-list-page__filters")!;
+    expect(within(header as HTMLElement).getByRole("button", { name: "新建技能" })).toBeEnabled();
+    expect(list.querySelectorAll("table")).toHaveLength(1);
+    expect(list.querySelectorAll("td .section-empty button, td .section-empty a")).toHaveLength(1);
+    for (const [before, after] of [[header, filters], [filters, table]])
+      expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await userEvent.click(action);
     expect(screen.getByRole("dialog", { name: "新建技能" })).toBeInTheDocument();
+  });
+
+  it("keeps the skills table mounted while loading and resolves its in-table empty state", async () => {
+    const loading = deferred<[]>();
+    renderPage({ logActions: createLogActions({ listLogDomains: vi.fn().mockReturnValue(loading.promise) }) });
+    const table = screen.getByRole("table", { name: "分析技能列表" });
+    expect(within(table).getByRole("status", { name: "正在加载分析技能" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建技能" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "新建第一个分析技能" })).not.toBeInTheDocument();
+    await act(async () => { loading.resolve([]); });
+    expect(await within(table).findByRole("button", { name: "新建第一个分析技能" })).toBeEnabled();
+    expect(screen.getByRole("table", { name: "分析技能列表" })).toBe(table);
+    expect(screen.getByRole("button", { name: "新建技能" })).toBeEnabled();
   });
 
   it("sorts the domain list from the 名称 column header", async () => {
