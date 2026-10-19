@@ -498,7 +498,10 @@ describe("skill workspace", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "描述" }), { target: { value: "未保存" } });
     expect(screen.getByRole("button", { name: "解码" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "信号" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /测试/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "测试" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /集成/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "测试" }));
+    expect(screen.getByRole("table", { name: "解析测试列表" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "版本" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging?section=versions");

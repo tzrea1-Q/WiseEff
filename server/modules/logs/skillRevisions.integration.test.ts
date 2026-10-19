@@ -21,6 +21,7 @@ import type { LogSkillSpec } from "./skillSpec";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import { createLocalObjectStore } from "./objectStore";
 import { logSkillTemplates } from "./skillTemplates";
+import type { ParseTestRun } from "./parseTestSpec";
 
 const available = await isTestDatabaseAvailable();
 const auth = (organizationId = "org-skills") => makeTestAuthContext({ organizationId,
@@ -29,6 +30,43 @@ const auth = (organizationId = "org-skills") => makeTestAuthContext({ organizati
 type Skill = Awaited<ReturnType<typeof getLogSkill>>;
 
 describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
+  it("runs versioned parse tests on save, on demand and before non-blocking publication", async () => {
+    const ephemeral = await createEphemeralTestDatabase("skillparsetests");
+    const db = createPostgresDatabase(ephemeral.url);
+    try {
+      for (const organizationId of ["org-skills", "org-other"]) await seedCoreGraph(db, {
+        organization: { id: organizationId, name: organizationId }, users: [{ id: `${organizationId}-admin`, name: "Admin" }]
+      });
+      let currentAuth = auth();
+      const router = createRouter();
+      registerLogRoutes(router, { db, getCurrentAuthContext: () => currentAuth });
+      const request = <T,>(url: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), url,
+        { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const skill = (await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "Parse tests" })).body.item;
+      const base = `/api/v1/log-skills/${skill.id}`;
+      const spec: LogSkillSpec = { schemaVersion: "skill/v1", parsing: { schemaVersion: "parsing/v1", extractors: [{
+        id: "number", pattern: "value=(?P<value>\\d+)", fields: { value: { type: "uint" } }
+      }] }, parseTests: [{ id: "regression", name: "Wrong value", lines: ["value=32"], expect: { fields: { value: 16 } } }] };
+      const saved = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", {
+        spec, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id
+      });
+      expect(saved).toMatchObject({ status: 200, body: { item: { parseTestRun: { total: 1, passed: 0, failed: 1 } } } });
+      const run = await request<ParseTestRun>(`${base}/parse-tests`, "POST", { spec });
+      expect(run).toMatchObject({ status: 200, body: { total: 1, failed: 1, results: [{ diffs: [{ path: "value", expected: 16, actual: 32 }] }] } });
+      spec.parseTests![0].expect.fields!.value = 32;
+      expect(await request(`${base}/parse-tests`, "POST", { spec })).toMatchObject({ status: 200, body: { passed: 1 } });
+      expect((await request<{ item: Skill }>(base)).body.item.draft!.spec.parseTests![0].expect.fields!.value).toBe(16);
+      expect(await request(`${base}/parse-tests`, "POST", { spec: { ...spec, parseTests: [{ ...spec.parseTests![0], lines: Array(201).fill("x") }] } })).toMatchObject({ status: 400 });
+      const published = await request<{ item: Skill }>(`${base}/publish`, "POST", { draftRevisionId: saved.body.item.id });
+      expect(published).toMatchObject({ status: 200, body: { item: { parseTestRun: { total: 1, passed: 0, failed: 1 },
+        currentRevision: { spec: { parseTests: [{ expect: { fields: { value: 16 } } }] } }, draft: null } } });
+      currentAuth = makeTestAuthContext({ organizationId: "org-skills", permissions: ["logs:view"] });
+      expect((await request(`${base}/parse-tests`, "POST", { spec })).status).toBe(403);
+      currentAuth = auth("org-other");
+      expect((await request(`${base}/parse-tests`, "POST", { spec })).status).toBe(404);
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
+
   it("rejects stale discard and saves based on publications replaced by publish or restore", async () => {
     const ephemeral = await createEphemeralTestDatabase("skillconcurrency");
     const db = createPostgresDatabase(ephemeral.url);

@@ -19,6 +19,8 @@ export interface SkillAuthoringRepository {
   deleteSkillSample(id: string): Promise<void>;
 }
 export type ParsePreview = z.infer<typeof parsePreviewResponseSchema>;
+export type ParseTestRun = z.infer<typeof import("@wiseeff/dto-schemas").parseTestRunSchema>;
+export type ParseTest = NonNullable<SkillSpec["parseTests"]>[number];
 export type SignalPreview = z.infer<typeof import("@wiseeff/dto-schemas").signalPreviewResponseSchema>;
 export type ExtractorPatternInput = z.infer<typeof import("@wiseeff/dto-schemas").extractorPreviewRequestSchema>;
 export type ExtractorPatternPreview = z.infer<typeof import("@wiseeff/dto-schemas").extractorPreviewResponseSchema>;
@@ -28,6 +30,7 @@ export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSou
 export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
 export interface SkillWorkspaceRepository {
+  runSkillParseTests?(id: string, spec: SkillSpec): Promise<ParseTestRun>;
   signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"] }): Promise<SignalPreview>;
   generateExtractorPattern?(id: string, input: ExtractorPatternInput): Promise<ExtractorPatternPreview>;
   previewFormat?(id: string, input: { sampleText: string; formatProfile: unknown }): Promise<FormatPreview>;
