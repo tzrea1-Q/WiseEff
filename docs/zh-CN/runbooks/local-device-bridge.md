@@ -68,7 +68,9 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 3. 以默认选项运行安装包；会注册 `wiseeff-bridge://`、安装 Bridge，并启动 Windows 后台服务或 macOS `.pkg` postinstall 注册的 LaunchAgent。
 4. 回到 `/node-debugging`，点击 **连接本地设备**；页面生成配对码并打开 `wiseeff-bridge://connect?server=<origin>&code=<6位码>`。
 5. Bridge 本地执行 `connect`（必要时 pair，然后非阻塞启动）；30 秒内 `http://127.0.0.1:18787/health` 应出现 `connected: true`。
-6. 插入 USB 设备、授权调试，点击 **重新检测设备**。
+6. 插入 USB 设备、授权调试，点击 **重新检测**。节点调试和参数调试页面会自动探测 HDC 与 ADB，再按设备实际使用的协议建立会话、读写节点或重载参数。只有发现多台设备时才需要选择设备，页面不再提供协议切换。设备检测不会写入设备参数。
+
+当 `tools.adb.available` 与 `tools.hdc.available` 都为 false 时，设备连接步骤提示 **缺少设备调试工具**；任一种工具可用即可自动发现设备。点击 **安装调试工具** 会打开 `wiseeff-bridge://install-tools?server=<origin>&protocol=all`，无需用户选择协议。各工具版本放在 **技术信息** 中；高级 CLI 仍支持按协议排查。
 
 兜底：展开 **高级 · 命令行方式** 使用 `wiseeff-bridge connect` / `pair` / `start`，或从托盘/菜单栏启动 Bridge。
 
@@ -151,6 +153,19 @@ Bridge CLI 在本机执行 `adb` 与 `hdc`，argv、超时与 shell 转义规则
 3. 调用 `POST /api/v1/debugging/targets/detect`（`protocol=hdc` 或 `protocol=adb`），确认返回 `bridge:<bridgeId>:...` 目标 id。
 
 ## 调试执行检查
+
+节点表格显示最近一次操作结果，暂存队列单独标记：
+
+| 状态 | 含义 |
+| --- | --- |
+| 未读取 / 读取中 / 读取成功 / 读取失败 | 尚无观测值、读取未完成、已取得值或读取失败。 |
+| 写入中 / 写入已回读 | 写入未完成，或写命令已执行且已取得回读值；不代表值一致。 |
+| 回读失败 / 回读结果未知 / 写入已执行 | 写命令已执行，但回读失败、结果未知，或不可回读/未请求回读。 |
+| 写入失败 / 写入结果未知 | 写入已报告失败，或无法确定是否执行；后续读取不能证明未知写入已经执行。 |
+| 不可用 | 绑定缺失、停用，或暂不支持安全写入的只写节点。 |
+| 待写入 | 独立的目标值暂存标记，读取和重试均保留；写入已执行或结果未知后移除，避免自动重复写入。 |
+
+读取失败时保留已有值并标注为上次读取值，可打开节点详情重新读取，不执行写入。旧 Bridge 即使报告成功，只要返回已知 shell 错误也按失败处理；空值和数值零仍是有效观测值。
 
 通过 `/api/v1/debugging/*` 验证 bridge-backed 行为：
 

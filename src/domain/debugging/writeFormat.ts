@@ -1,15 +1,9 @@
-import type { DebugConnectionProtocol } from "./types";
-
 type WriteFormatSource = {
   writeFormatExample?: string;
   writeFormatHint?: string;
   targetValue?: string;
   currentValue?: string;
 };
-
-export function protocolLabel(protocol: DebugConnectionProtocol): string {
-  return protocol === "adb" ? "ADB" : "HDC";
-}
 
 export function resolveWriteFormatExample(source: WriteFormatSource): string {
   const configured = source.writeFormatExample?.trim();
@@ -32,13 +26,12 @@ export function resolveWriteFormatExample(source: WriteFormatSource): string {
 
 export function resolveWriteFormatHint(
   source: WriteFormatSource,
-  example: string,
-  protocol: DebugConnectionProtocol
+  example: string
 ): string {
   const configured = source.writeFormatHint?.trim();
   if (configured) {
     return configured;
   }
 
-  return `例如输入 ${example}，系统会通过 ${protocolLabel(protocol)} 将该值写入当前节点。`;
+  return `例如输入 ${example}，系统会将该值写入当前设备节点。`;
 }

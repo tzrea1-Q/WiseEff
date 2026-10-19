@@ -18,8 +18,8 @@ function measurement(style = signatures[0], selected = true) {
 describe("view-switch consistency", () => {
   it("enforces styles on every live switch route, including explicit project conflicts and the retired account redirect", () => {
     const auditPaths = [
-      "/debugging-admin", "/debugging-admin/nodes", "/dts-reload", "/knowledge-admin",
-      "/log-admin", "/log-admin?tab=quality", "/log-admin?tab=skills", "/logs", "/node-debugging",
+      "/debugging-admin", "/debugging-admin/nodes", "/knowledge-admin",
+      "/log-admin", "/log-admin?tab=quality", "/log-admin?tab=skills", "/logs",
       "/organization", "/organization/members", "/parameter-admin", "/parameter-admin/identity-mapping",
       "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
       "/parameter-admin/projects", "/parameter-admin/projects/aurora/configuration?tab=conflicts",
@@ -51,11 +51,11 @@ describe("view-switch consistency", () => {
     }, "/organization/members")).toThrow(`missing view-switch tiers: ${index === 0 ? "tabs" : "section"}`);
   });
 
-  it("does not let Bridge progress alone satisfy protocol tab coverage", () => {
+  it("does not let Bridge progress alone satisfy content tab coverage", () => {
     expect(() => requireViewSwitchStyles({
       viewSwitches: [{ ...measurement(), dom: "li.active", group: "ol.local-device-bridge-wizard__steps", role: "listitem" }],
       viewSwitchSignatures: signatures
-    }, "/node-debugging")).toThrow("missing view-switch tiers: tabs");
+    }, "/parameters")).toThrow("missing view-switch tiers: tabs");
   });
 
   it.each(["/organization", "/organization/members"])("rejects unrelated tiers on %s", (path) => {
@@ -65,7 +65,7 @@ describe("view-switch consistency", () => {
   });
   it.each([
     ...["/parameter-home"].map((path) => [path, "toggle"]),
-    ...["/logs", "/parameters", "/node-debugging", "/dts-reload", "/parameter-review", "/parameter-submissions",
+    ...["/logs", "/parameters", "/parameter-review", "/parameter-submissions",
       "/parameter-admin/projects/aurora/configuration?tab=conflicts"]
       .map((path) => [path, "tabs"]),
     ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
@@ -123,7 +123,7 @@ describe("view-switch consistency", () => {
     }, path)).toThrow("matched 0");
   });
 
-  it.each(["/node-debugging", "/dts-reload"])("requires local content tabs on %s", (path) => {
+  it.each(["/parameters", "/parameter-review"])("requires local content tabs on %s", (path) => {
     expect(() => requireViewSwitchStyles({
       viewSwitches: [measurement(signatures[1]), measurement(signatures[1], false)], viewSwitchSignatures: signatures
     }, path)).not.toThrow();
@@ -134,7 +134,7 @@ describe("view-switch consistency", () => {
     }
   });
   it.each([
-    "/debugging-admin", "/debugging-admin/nodes", "/node-debugging", "/dts-reload",
+    "/debugging-admin", "/debugging-admin/nodes",
     "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping",
     "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
     "/parameter-admin/identity-mapping", "/parameter-admin/spec-review", "/parameter-admin/projects",
@@ -146,14 +146,14 @@ describe("view-switch consistency", () => {
     expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
   });
 
-  it("keeps Bridge installation progress separate without exempting protocol tabs", () => {
+  it("keeps Bridge installation progress separate without exempting content tabs", () => {
     const progress = { ...measurement(), dom: "li.active", group: "ol.local-device-bridge-wizard__steps", role: "listitem", height: 36 };
     expect(() => requireViewSwitchStyles({
       viewSwitches: [measurement(signatures[1]), progress], viewSwitchSignatures: signatures
-    }, "/node-debugging")).not.toThrow();
+    }, "/parameters")).not.toThrow();
     expect(() => requireViewSwitchStyles({
       viewSwitches: [{ ...measurement(signatures[1]), height: 36 }, progress], viewSwitchSignatures: signatures
-    }, "/node-debugging")).toThrow("matched 0");
+    }, "/parameters")).toThrow("matched 0");
   });
 
   it.each(["/parameter-home", "/logs", "/parameters"])("requires migrated switch styles and measurements on %s", (path) => {

@@ -235,7 +235,7 @@ describe("createHttpDebuggingGateway", () => {
     const gateway = createGateway(fetchMock);
     const input = { sessionId: "session-1", nodePath: "/sys/current" };
 
-    await expect(gateway.readNode(input)).resolves.toMatchObject({ ok: true, value: "3000" });
+    await expect(gateway.readNode(input)).resolves.toMatchObject({ ok: true, value: "3000", operation: { id: readOperationDto.id, status: "succeeded" } });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/debugging/nodes/read",

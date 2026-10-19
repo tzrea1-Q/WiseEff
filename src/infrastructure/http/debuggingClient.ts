@@ -192,7 +192,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
         await apiClient.post<{ operation: NodeOperationDto }>("/api/v1/debugging/nodes/read", readNodeRequestBody(input)),
         "DebugNodeOperationResponse"
       );
-      return nodeReadResultFromDto(response.operation);
+      return { ...nodeReadResultFromDto(response.operation), operation: nodeOperationFromDto(response.operation) };
     },
     async writeNode(input: WriteNodeInput) {
       const response = parseContractDto(

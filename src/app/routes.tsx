@@ -252,7 +252,8 @@ export function PageRouter({
           label: target.bridgeMachineLabel?.trim()
             ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
             : target.label || target.targetRef!.trim(),
-          bridgeId: target.bridgeId
+          bridgeId: target.bridgeId,
+          protocol: target.protocol
         }));
     };
   }, [debuggingGateway]);

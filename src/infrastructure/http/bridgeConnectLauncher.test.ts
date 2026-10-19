@@ -37,11 +37,33 @@ describe("bridgeConnectLauncher", () => {
       value: { ...original, assign }
     });
 
-    launchBridgeConnect("wiseeff-bridge://connect?server=http%3A%2F%2F127.0.0.1");
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    try {
+      launchBridgeConnect("wiseeff-bridge://connect?server=http%3A%2F%2F127.0.0.1");
 
-    expect(assign).toHaveBeenCalledWith("wiseeff-bridge://connect?server=http%3A%2F%2F127.0.0.1");
+      expect(assign).toHaveBeenCalledExactlyOnceWith("wiseeff-bridge://connect?server=http%3A%2F%2F127.0.0.1");
+      expect(click).not.toHaveBeenCalled();
+      expect(document.querySelector("iframe")).toBeNull();
+    } finally {
+      click.mockRestore();
+      Object.defineProperty(window, "location", { configurable: true, value: original });
+    }
+  });
 
-    Object.defineProperty(window, "location", { configurable: true, value: original });
+  it("uses a single anchor fallback if location.assign throws", () => {
+    const original = window.location;
+    const assign = vi.fn(() => { throw new Error("Navigation unavailable"); });
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign } });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    try {
+      launchBridgeConnect("wiseeff-bridge://connect");
+      expect(assign).toHaveBeenCalledTimes(1);
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(document.querySelector("iframe, a[href^='wiseeff-bridge:']")).toBeNull();
+    } finally {
+      click.mockRestore();
+      Object.defineProperty(window, "location", { configurable: true, value: original });
+    }
   });
 
   it("builds connect URLs with server, origin, and pairing code", () => {

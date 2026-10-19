@@ -196,6 +196,16 @@ function collectMarkup(markup: string, portalMarkup = "") {
 import { collectConsistencyMeasurements } from "../e2e/quality/consistency-collector";
 import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/consistency-routes";
 
+describe("automatic device discovery workbench coverage", () => {
+  it.each(["/node-debugging", "/dts-reload"])("retains layout coverage without a retired protocol switch on %s", (path) => {
+    const required = consistencyRoutes.find((route) => route.path === path)?.required;
+    expect(required).toEqual(expect.arrayContaining(["titles", "buttons", "tableScrollports", "moduleTreeLabels", "navigatorWorkbenches", "primaryActions"]));
+    expect(required).not.toContain("viewSwitches");
+    expect(required).not.toContain("viewSwitchSignatures");
+    expect(viewSwitchStyleExpectations[path]).toBeUndefined();
+  });
+});
+
 describe("administration collection coverage", () => {
   it.each([
     "/knowledge-admin?tab=drafts", "/knowledge-admin?tab=index", "/knowledge-admin?tab=archived",

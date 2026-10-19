@@ -10,6 +10,66 @@ import {
   type NodeDebuggingSessionActions
 } from "./nodeDebuggingSession";
 
+describe("automatic protocol selection", () => {
+  it("uses the refreshed catalog before reading without waiting for a UI render", async () => {
+    const newParameter = parameter({ id: "adb-only-node", nodePath: "/device/new-node" });
+    const actions = createActions({
+      refresh: vi.fn().mockResolvedValue([newParameter]),
+      detectAndStartSession: vi.fn().mockResolvedValue({
+        session: { ...sessionSnapshot, protocol: "adb" }, target: { ...deviceTarget, protocol: "adb" }
+      })
+    });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter({ id: "old-node" })], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe, { autoDetectProtocol: true });
+    expect(session.getSnapshot().rows.map((row) => row.id)).toEqual(["adb-only-node"]);
+    expect(actions.readNode).toHaveBeenCalledWith(expect.objectContaining({
+      nodeId: "adb-only-node", sessionId: "session-1"
+    }));
+    expect(actions.readNode).not.toHaveBeenCalledWith(expect.objectContaining({ nodeId: "old-node" }));
+  });
+
+  it("retries catalog refresh after a detected protocol change fails", async () => {
+    const actions = createActions({
+      detectAndStartSession: vi.fn().mockResolvedValue({
+        session: { ...sessionSnapshot, protocol: "adb" }, target: { ...deviceTarget, protocol: "adb" }
+      }),
+      refresh: vi.fn().mockRejectedValueOnce(new Error("catalog unavailable")).mockResolvedValue(undefined)
+    });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe, { autoDetectProtocol: true });
+    expect(session.getSnapshot().activeSessionId).toBeUndefined();
+    expect(session.getSnapshot().protocol).toBe("hdc");
+    await session.detect(actions, offlineProbe, { autoDetectProtocol: true });
+    expect(actions.refresh).toHaveBeenCalledTimes(2);
+    expect(actions.refresh).toHaveBeenLastCalledWith({ protocol: "adb" });
+    expect(session.getSnapshot().protocol).toBe("adb");
+    expect(session.getSnapshot().activeSessionId).toBe("session-1");
+    expect(session.getSnapshot().detecting).toBe(false);
+  });
+
+  it("does not restore an older selected device after newer detection finishes", async () => {
+    let finishRefresh!: () => void;
+    const refreshPending = new Promise<void>((resolve) => { finishRefresh = resolve; });
+    const oldTarget = { ...deviceTarget, id: "old-target", protocol: "adb" as const };
+    const actions = createActions({
+      refresh: vi.fn().mockImplementationOnce(() => refreshPending).mockResolvedValue(undefined),
+      detectAndStartSession: vi.fn()
+        .mockResolvedValueOnce({ session: { ...sessionSnapshot, id: "old-session", protocol: "adb" }, target: oldTarget })
+        .mockResolvedValueOnce({ session: { ...sessionSnapshot, id: "new-session" }, target: deviceTarget })
+    });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    const selecting = session.selectBridgeTarget(oldTarget, actions);
+    await vi.waitFor(() => expect(actions.refresh).toHaveBeenCalled());
+    await session.detect(actions, offlineProbe, { autoDetectProtocol: true });
+    finishRefresh();
+    await selecting;
+    expect(session.getSnapshot().activeSessionId).toBe("new-session");
+    expect(session.getSnapshot().activeTargetId).toBe(deviceTarget.id);
+    expect(session.getSnapshot().protocol).toBe("hdc");
+    expect(session.getSnapshot().detecting).toBe(false);
+  });
+});
+
 const sessionSnapshot: DebugSessionSnapshot = {
   id: "session-1",
   deviceId: "device-1",
@@ -86,6 +146,76 @@ function operation(overrides: Partial<NodeOperationSnapshot> = {}): NodeOperatio
 }
 
 describe("nodeDebuggingSession", () => {
+  it.each([
+    { ok: true, value: "cat: /sys/current: Permission denied", stdout: "cat: /sys/current: Permission denied" },
+    { ok: true, value: "cat: /sys/current: Permission denied", stdout: "" },
+    { ok: true, value: "", operation: operation({ operationType: "read", status: "failed", failureReason: "read denied" }) }
+  ])("does not report automatic reads as successful when failure evidence exists: %j", async (result) => {
+    const actions = createActions({ readNode: vi.fn().mockResolvedValue(result) });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe);
+    await vi.waitFor(() => expect(session.getSnapshot().rows[0].activeOperation).toBeUndefined());
+    expect(session.getSnapshot().rows[0].runtimeStatus).toBe("读取失败");
+    expect(session.getSnapshot().rows[0].error).toBeTruthy();
+  });
+
+  it("keeps staged writes and the busy state through hydration, read failure and read retry", async () => {
+    let completeRead!: (result: { ok: boolean; error: string }) => void;
+    const actions = createActions({ readNode: vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { completeRead = resolve; }))
+      .mockResolvedValue({ ok: true, value: "3700" }) });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe);
+    session.setDraftValue(parameter().id, "3800");
+    session.stashRow(parameter().id);
+    session.syncParameters([parameter()]);
+    expect(session.getSnapshot().rows[0]).toMatchObject({ runtimeStatus: "读取中", activeOperation: "read", pendingWrite: true });
+    completeRead({ ok: false, error: "read denied" });
+    await vi.waitFor(() => expect(session.getSnapshot().rows[0].runtimeStatus).toBe("读取失败"));
+    expect(session.getSnapshot().pendingRows).toHaveLength(1);
+    await session.retryRead(parameter().id, actions);
+    expect(session.getSnapshot().rows[0]).toMatchObject({ runtimeStatus: "读取成功", pendingWrite: true, draftValue: "3800" });
+    expect(session.getSnapshot().pendingRows).toHaveLength(1);
+    expect(actions.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("keeps an earlier value explicitly stale when a later read fails, then recovers", async () => {
+    const actions = createActions();
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe);
+    await vi.waitFor(() => expect(session.getSnapshot().rows[0].runtimeStatus).toBe("读取成功"));
+    vi.mocked(actions.readNode).mockRejectedValueOnce(new Error("read timeout"));
+    await session.retryRead(parameter().id, actions);
+    expect(session.getSnapshot().rows[0]).toMatchObject({ runtimeStatus: "读取失败", lastReadValue: "3600", currentValueStale: true });
+    await session.retryRead(parameter().id, actions);
+    expect(session.getSnapshot().rows[0]).toMatchObject({ runtimeStatus: "读取成功", currentValueStale: false, error: undefined });
+  });
+
+  it.each(["", "0"])("treats the readable value %j as a successful observation", async (value) => {
+    const actions = createActions({ readNode: vi.fn().mockResolvedValue({ ok: true, value }) });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe);
+    await vi.waitFor(() => expect(session.getSnapshot().rows[0].runtimeStatus).toBe("读取成功"));
+    expect(session.getSnapshot().rows[0]).toMatchObject({ lastReadValue: value, runtimeCurrentValue: value, currentValueStale: false });
+  });
+
+  it("does not relabel a failed write as executed after a successful read", async () => {
+    const actions = createActions({ writeNode: vi.fn().mockResolvedValue({
+      ok: false, writeOutcome: "failed", readbackOutcome: "not_requested",
+      operation: operation({ status: "failed", writeOutcome: "failed", readbackOutcome: "not_requested" })
+    }) });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe);
+    await vi.waitFor(() => expect(session.getSnapshot().rows[0].runtimeStatus).toBe("读取成功"));
+    session.setDraftValue(parameter().id, "3800");
+    await session.requestWrite(parameter().id, actions);
+    expect(session.getSnapshot().rows[0].runtimeStatus).toBe("写入失败");
+    await session.retryRead(parameter().id, actions);
+    expect(session.getSnapshot().rows[0]).toMatchObject({ runtimeStatus: "读取成功", writeOutcome: "failed", readbackOutcome: "not_requested", pendingWrite: true });
+    expect(actions.readNode).toHaveBeenLastCalledWith(expect.not.objectContaining({ relatedOperationId: expect.any(String) }));
+    expect(actions.writeNode).toHaveBeenCalledOnce();
+  });
+
   it("stores the detected session id and target and passes that session id on later writes", async () => {
     const actions = createActions();
     const session = createNodeDebuggingSession({
@@ -204,7 +334,7 @@ describe("nodeDebuggingSession", () => {
     await expect(session.requestWrite("dbg-charge-input-current", actions)).resolves.toBe(true);
 
     expect(session.getSnapshot().rows[0]).toMatchObject({
-      runtimeStatus: "写入已执行",
+      runtimeStatus: "写入已回读",
       runtimeCurrentValue: "0x1",
       lastReadValue: "0x1",
       writeOutcome: "executed",
@@ -288,7 +418,7 @@ describe("nodeDebuggingSession", () => {
     await session.requestWrite("dbg-charge-input-current", actions);
 
     expect(session.getSnapshot().rows[0]).toMatchObject({
-      runtimeStatus: "写入已执行",
+      runtimeStatus: "回读失败",
       runtimeCurrentValue: "3600",
       lastReadValue: "3600",
       readbackOutcome: "failed",
@@ -343,6 +473,11 @@ describe("nodeDebuggingSession", () => {
       status: "写入结果未知",
       stderr: "写入结果未知，请升级 Device Bridge 后重新读取节点"
     });
+    await session.retryRead(parameter().id, actions);
+    expect(session.getSnapshot().rows[0]).toMatchObject({
+      runtimeStatus: "写入结果未知", writeOutcome: "unknown", readbackOutcome: "observed", currentValueStale: false
+    });
+    expect(actions.writeNode).toHaveBeenCalledOnce();
   });
 
   it("surfaces unsupported readback without turning the executed write into a failure", async () => {

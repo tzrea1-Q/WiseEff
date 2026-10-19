@@ -25,8 +25,6 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/parameters": ["tabs"],
   "/debugging-admin": ["section"],
   "/debugging-admin/nodes": ["section"],
-  "/node-debugging": ["tabs"],
-  "/dts-reload": ["tabs"],
   "/parameter-admin": ["section"],
   "/parameter-admin/specs": ["section"],
   "/parameter-admin/specs/identity-mapping": ["section"],

@@ -1,5 +1,6 @@
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
+import { remoteShellDiagnostic } from "@wiseeff/device-command-core/remoteNodeWrite";
 import type { DebugConnectionProtocol } from "./protocol";
 import type { DebugReadbackOutcome, DebugWriteOutcome, GatewayNodeResult, GatewayWriteResult } from "./gateway";
 
@@ -63,14 +64,18 @@ function parseDetectTargets(result: Record<string, unknown>): BridgeDetectTarget
   return records;
 }
 
-function readNodeResultFromBridgePayload(payload: Record<string, unknown>, durationMs: number): GatewayNodeResult {
-  const ok = payload.ok === true;
+function readNodeResultFromBridgePayload(payload: Record<string, unknown>, durationMs: number, readValue = true): GatewayNodeResult {
+  const value = typeof payload.value === "string" ? payload.value : undefined;
+  const stdout = typeof payload.stdout === "string" ? payload.stdout : undefined;
+  const stderr = typeof payload.stderr === "string" ? payload.stderr : undefined;
+  const diagnostic = remoteShellDiagnostic({ stdout: stdout || (readValue ? value ?? "" : ""), stderr: stderr ?? "" });
+  const ok = payload.ok === true && !diagnostic;
   return {
     ok,
-    value: typeof payload.value === "string" ? payload.value : undefined,
-    stdout: typeof payload.stdout === "string" ? payload.stdout : undefined,
-    stderr: typeof payload.stderr === "string" ? payload.stderr : undefined,
-    error: typeof payload.error === "string" ? payload.error : undefined,
+    value,
+    stdout,
+    stderr,
+    error: diagnostic ?? (typeof payload.error === "string" ? payload.error : undefined),
     durationMs: typeof payload.durationMs === "number" ? payload.durationMs : durationMs
   };
 }
@@ -197,7 +202,8 @@ export async function writeNodeViaBridge(input: {
     const hasNestedWriteResult = typeof result.writeResult === "object" && result.writeResult !== null;
     const writeResult = readNodeResultFromBridgePayload(
       (hasNestedWriteResult ? result.writeResult : result) as Record<string, unknown>,
-      elapsedMs
+      elapsedMs,
+      false
     );
     const readResultRaw =
       typeof result.readResult === "object" && result.readResult !== null ? (result.readResult as Record<string, unknown>) : null;
@@ -205,9 +211,13 @@ export async function writeNodeViaBridge(input: {
     const readbackValue = readResult ? deriveReadbackValue(readResult) : typeof result.value === "string" ? result.value : undefined;
     const explicitWriteOutcome = parseWriteOutcome(result.writeOutcome);
     const explicitReadbackOutcome = parseReadbackOutcome(result.readbackOutcome);
-    const writeOutcome = explicitWriteOutcome ?? (hasNestedWriteResult ? (writeResult.ok ? "executed" : "failed") : "unknown");
+    const writeOutcome = explicitWriteOutcome === "unknown"
+      ? "unknown"
+      : hasNestedWriteResult && !writeResult.ok
+        ? "failed"
+        : explicitWriteOutcome ?? (hasNestedWriteResult ? "executed" : "unknown");
     const readbackOutcome =
-      explicitReadbackOutcome ??
+      readResult && !readResult.ok ? "failed" : explicitReadbackOutcome ??
       (readResult ? (readResult.ok ? "observed" : "failed") : hasNestedWriteResult && !input.readBack ? "not_requested" : "unknown");
     const computedVerified =
       readbackOutcome === "observed" && typeof readbackValue === "string" && input.compareReadback

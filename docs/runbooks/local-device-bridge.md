@@ -70,11 +70,11 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 3. Run the installer with default options. It registers `wiseeff-bridge://`, installs Bridge under the user profile, and starts the background service (Windows) or LaunchAgent (macOS `.pkg` postinstall).
 4. Return to `/node-debugging` and click **连接本地设备**. The page creates a pairing code and opens `wiseeff-bridge://connect?server=<origin>&code=<6-digit>`.
 5. Bridge runs `connect` locally (pair if needed, then non-blocking start). Health at `http://127.0.0.1:18787/health` should report `connected: true` within 30 seconds.
-6. Insert the USB device, authorize debugging, and click **重新检测设备**.
+6. Insert the USB device, authorize debugging, and click **重新检测**. Both debugging pages automatically probe HDC and ADB, then use the detected device's protocol for sessions, node operations, and parameter reloads. Users select a device only when several are found; there is no protocol switch. Detection does not write device values.
 
 ### Tool install (Phase B)
 
-When health reports `tools.adb.available: false` or `tools.hdc.available: false`, Step ③ shows **缺少 ADB/HDC 调试工具** (not “Bridge 未安装”). Click **安装调试工具** to open `wiseeff-bridge://install-tools?server=<origin>&protocol=adb|hdc|all`. Bridge downloads pinned artifacts from `/downloads/device-bridge-tools/...` into a private directory:
+When both `tools.adb.available` and `tools.hdc.available` are false, Step ③ shows **缺少设备调试工具**. Either available tool permits automatic discovery. Click **安装调试工具** to open `wiseeff-bridge://install-tools?server=<origin>&protocol=all`; users do not need to choose a protocol. Individual tool versions remain under **技术信息**. Bridge downloads pinned artifacts from `/downloads/device-bridge-tools/...` into a private directory:
 
 - Windows: `%LOCALAPPDATA%\WiseEff\tools\`
 - macOS: `~/Library/Application Support/WiseEff/tools/`
@@ -152,6 +152,19 @@ Operator checks:
 3. Call `POST /api/v1/debugging/targets/detect` with `protocol=hdc` or `protocol=adb` and confirm bridge-prefixed target ids (`bridge:<bridgeId>:...`).
 
 ## Debugging Execution Checks
+
+The node table reports the latest operation, separately from the staged-write queue:
+
+| State | Meaning |
+| --- | --- |
+| 未读取 / 读取中 / 读取成功 / 读取失败 | No observation yet, read pending, a value obtained, or read failed. |
+| 写入中 / 写入已回读 | Write pending, or write executed and a readback value obtained; no equality claim. |
+| 回读失败 / 回读结果未知 / 写入已执行 | Write executed, but readback failed, is unknown, or was not available/requested. |
+| 写入失败 / 写入结果未知 | Write reported failure, or execution cannot be determined. A later read does not prove an unknown write executed. |
+| 不可用 | Missing/disabled binding, or a write-only node for which safe writing is unavailable. |
+| 待写入 | Independent staged-value marker; reads and retries retain it. Successful or unknown writes remove it to avoid automatic replay. |
+
+Failed reads retain any previous value with a stale-value label. Open node details to retry a read without writing. Known shell diagnostics from older Bridge results are treated as failures even if the payload claims success; empty values and numeric zero remain valid observations.
 
 Use `/api/v1/debugging/*` to verify bridge-backed behavior:
 

@@ -11,6 +11,7 @@ import type {
   RollbackSnapshotInput,
   WriteNodeInput
 } from "@/application/ports/DebuggingGateway";
+import { detectDeviceTargets } from "@/application/bridge/detectDeviceTargets";
 import type { DebugConnectionProtocol, DebugDeviceTransport } from "@/domain/debugging/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
@@ -61,9 +62,9 @@ export type DebuggingRuntimeActions = {
   refresh(
     query?: { protocol?: DebugConnectionProtocol },
     options?: { notifyOnFailure?: boolean }
-  ): Promise<void>;
+  ): Promise<DebugParameter[] | void>;
   detectAndStartSession(
-    options?: { protocol?: DebugConnectionProtocol; targetId?: string; bridgeId?: string; sessionKind?: "node" | "parameter_reload" }
+    options?: { protocol?: DebugConnectionProtocol; autoDetectProtocol?: boolean; targetId?: string; bridgeId?: string; sessionKind?: "node" | "parameter_reload" }
   ): Promise<
     | { session: DebugSessionSnapshot; target: DeviceTarget; operations?: NodeOperationSnapshot[] }
     | { candidates: DeviceTarget[] }
@@ -297,11 +298,12 @@ export function createDebuggingRuntimeActions({
         devices: devices.map(deviceFromApi),
         debugParameters
       });
+      return debugParameters;
     };
 
     // Callers such as the page-level API banner own the failure projection.
     try {
-      await load();
+      return await load();
     } catch (error) {
       if (generation !== refreshGeneration) return;
       if (options?.notifyOnFailure === false) throw error;
@@ -312,7 +314,7 @@ export function createDebuggingRuntimeActions({
   return {
     refresh,
     async detectAndStartSession(options) {
-      const protocol = options?.protocol ?? "hdc";
+      let protocol = options?.protocol ?? "hdc";
       // Without a gateway, keep the legacy prototype-reducer behavior (test doubles);
       // both runtime modes normally inject a gateway via resolveDebuggingGateway.
       if (!gateway) {
@@ -335,20 +337,13 @@ export function createDebuggingRuntimeActions({
 
       return runApi(dispatch, async () => {
         const api = requireGateway(gateway);
-        let state = getState();
-        let device = findProtocolDebugDevice(state.devices, protocol);
-        if (!device && api.listDevices) {
-          const apiDevices = (await api.listDevices()).map(deviceFromApi);
-          if (apiDevices.length > 0) {
-            state = { ...state, devices: apiDevices };
-            device = resolveDebugDevice(state, protocol);
-          }
-        }
-        device ??= resolveDebugDevice(state, protocol);
-        const detectedTargets = await api.detectTargets({
-          protocol,
+        const detect = (connectionProtocol: DebugConnectionProtocol) => api.detectTargets({
+          protocol: connectionProtocol,
           ...(options?.bridgeId ? { bridgeId: options.bridgeId } : {})
         });
+        const detectedTargets = options?.autoDetectProtocol
+          ? await detectDeviceTargets(detect)
+          : await detect(protocol);
         if (detectedTargets.length === 0) {
           throw new Error("No debug target detected.");
         }
@@ -369,11 +364,20 @@ export function createDebuggingRuntimeActions({
         if (!target) {
           throw new Error("No debug target detected.");
         }
+        protocol = target.protocol ?? protocol;
+        let deviceId = target.deviceId;
+        if (!deviceId) {
+          let devices = getState().devices;
+          if (!findProtocolDebugDevice(devices, protocol) && api.listDevices) {
+            devices = (await api.listDevices()).map(deviceFromApi);
+          }
+          deviceId = resolveDebugDeviceFromDevices(devices, protocol).id;
+        }
         if (!api.createSession) {
           throw new Error("Debug session creation is not supported by this gateway.");
         }
         const session = await api.createSession({
-          deviceId: target.deviceId ?? device.id,
+          deviceId,
           targetId: target.id,
           protocol,
           bridgeId: options?.bridgeId ?? target.bridgeId,

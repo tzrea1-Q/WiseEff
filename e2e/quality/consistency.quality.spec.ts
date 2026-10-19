@@ -146,6 +146,10 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
       await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
       const panel = page.getByRole("region", { name: "本地设备连接", exact: true });
       await expect(page.locator(".navigator-workbench__context").getByRole("region", { name: "本地设备连接", exact: true })).toBeVisible();
+      const bridgeUpToDate = readiness === "pairing" || readiness === "connected";
+      const guideTrigger = panel.getByRole("button", { name: bridgeUpToDate ? "设备连接与排查" : "安装指南", exact: true });
+      await expect(guideTrigger).toBeVisible();
+      await expect(panel.getByRole("button", { name: bridgeUpToDate ? "安装指南" : "设备连接与排查", exact: true })).toHaveCount(0);
       if (readiness === "connected") {
         await expect(panel.getByText("已连接 · 质量检查工作站", { exact: true })).toBeVisible();
         await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(0);
@@ -160,7 +164,7 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
           expect(bar!.height).toBeLessThanOrEqual(40);
         } else {
           await expect(panel.getByRole("button", { name: "连接本机", exact: true })).toBeVisible();
-          await expect(panel.getByRole("button", { name: "安装指南", exact: true })).toBeVisible();
+          if (readiness === "pairing") await expect(panel.getByText("连接本机后自动完成配对，无需手动输入配对码。", { exact: true })).toBeVisible();
           await expect(panel.getByRole("list", { name: "Bridge 连接步骤" })).toHaveCount(0);
           const bar = await panel.locator(".local-device-bridge-panel__readiness").boundingBox();
           expect(bar).not.toBeNull();
@@ -219,15 +223,18 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
         }
       }
       {
-        const trigger = panel.getByRole("button", { name: "安装指南", exact: true });
+        const trigger = guideTrigger;
         await trigger.click();
         const drawer = page.getByRole("dialog", { name: "安装与连接本地 Bridge" });
         await expect(drawer).toBeVisible();
         await expect(drawer.getByRole("list", { name: "Bridge 连接步骤" })).toBeVisible();
         await expect(page.getByRole("button", { name: "连接本机", exact: true })).toHaveCount(readiness === "connected" ? 0 : 1);
-        if (readiness !== "connected") {
+        if (!bridgeUpToDate) {
           await drawer.getByRole("button", { name: "查看插入 USB 设备步骤", exact: true }).click();
-          await expect(drawer.getByRole("region", { name: "USB 设备连接指引", exact: true })).toBeVisible();
+        }
+        await expect(drawer.getByRole("region", { name: "USB 设备连接指引", exact: true })).toBeVisible();
+        await expect(drawer.getByRole("button", { name: "查看安装 Bridge步骤", exact: true })).toBeVisible();
+        if (readiness !== "connected") {
           await expect(drawer.getByText("请先完成「连接本机」，再检测 USB 设备。", { exact: true })).toBeVisible();
         }
         await drawer.getByRole("button", { name: "查看连接本机步骤", exact: true }).click();
@@ -275,6 +282,10 @@ for (const route of consistencyReadOnlyRoutes) {
         await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
         await page.mouse.move(0, 0);
         await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+        if (routePath === "/node-debugging" || routePath === "/dts-reload") {
+          await expect(page.getByRole("tablist", { name: "连接协议", exact: true })).toHaveCount(0);
+          await expect(page.getByRole("tab", { name: /^(HDC|ADB)$/ })).toHaveCount(0);
+        }
         if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath)
           && parseParameterAdminModulesSubView(routePath, new URL(page.url()).search) === "queue") {
           const panel = page.locator(".parameter-module-mapping-panel");

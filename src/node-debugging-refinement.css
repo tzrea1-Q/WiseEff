@@ -307,3 +307,10 @@
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
+
+.node-row-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}

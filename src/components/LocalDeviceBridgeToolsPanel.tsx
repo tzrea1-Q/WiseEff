@@ -53,10 +53,11 @@ export function LocalDeviceBridgeToolsPanel({
     return null;
   }
 
-  const primary = tools[protocol];
-  const secondaryProtocol = protocol === "adb" ? "hdc" : "adb";
+  const availableProtocol = tools[protocol].available ? protocol : tools.adb.available ? "adb" : "hdc";
+  const primary = tools[availableProtocol];
+  const secondaryProtocol = availableProtocol === "adb" ? "hdc" : "adb";
   const secondary = tools[secondaryProtocol];
-  const installProtocol = panelStatus === "tools_missing" ? protocol : "all";
+  const installProtocol = "all";
   const installRunning =
     localInstalling || installing || health?.toolsInstall?.status === "running";
   const advancedInstallCommand = `wiseeff-bridge tools install --protocol ${installProtocol === "all" ? "all" : installProtocol}`;
@@ -102,14 +103,13 @@ export function LocalDeviceBridgeToolsPanel({
     <div className="local-device-bridge-tools-panel" aria-label="调试工具状态">
       <div className="local-device-bridge-tools-panel__head">
         <div>
-          <strong>{protocol.toUpperCase()} 工具</strong>
+          <strong>设备调试工具</strong>
           <p className={primary.available ? "local-device-bridge-tools-panel__ok" : "local-device-bridge-tools-panel__missing"}>
             {primary.available ? "可用" : "不可用"}
             {!primary.available && panelStatus === "tools_missing"
-              ? ` · 请先安装 ${protocol.toUpperCase()} 调试工具`
+              ? " · 请先安装设备调试工具"
               : null}
           </p>
-          <small>{formatToolDetail(primary)}</small>
         </div>
         {panelStatus === "tools_missing" ? (
           <button
@@ -128,7 +128,8 @@ export function LocalDeviceBridgeToolsPanel({
         <p className="local-device-bridge-panel__error" role="alert">{installError || health?.toolsInstall?.error}</p>
       ) : null}
       <details className="local-device-bridge-tools-panel__details">
-        <summary>其他工具</summary>
+        <summary>技术信息</summary>
+        <small>{availableProtocol.toUpperCase()}: {formatToolDetail(primary)}</small>
         <small>
           {secondaryProtocol.toUpperCase()}: {secondary.available ? "可用" : "不可用"}
           {secondary.version ? ` · ${secondary.version}` : ""}

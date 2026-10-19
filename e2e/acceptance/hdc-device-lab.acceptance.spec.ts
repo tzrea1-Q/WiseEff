@@ -449,7 +449,7 @@ function runSeedScript(script: string) {
     const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
     const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
     const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
+      ? `child_process error: ${"code" in result.error ? result.error.code : "unknown"} ${result.error.message ?? ""}`.trimEnd()
       : "";
 
     throw new Error(
@@ -681,9 +681,7 @@ async function getAuditEvents(request: APIRequestContext, userId: string) {
 
 async function expectHdcUiReady(page: Page, config: HdcSmokeConfig) {
   await page.goto("/node-debugging");
-  const hdcButton = page.getByRole("tab", { name: "HDC", exact: true });
-  await expect(hdcButton).toBeVisible({ timeout: 30_000 });
-  await expect(hdcButton).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tablist", { name: "连接协议" })).toHaveCount(0);
   const devicePill = page.locator(".topbar .device-pill").first();
   await expect(devicePill).toBeVisible({ timeout: 30_000 });
   await expect(devicePill).toContainText("已连接", { timeout: 30_000 });

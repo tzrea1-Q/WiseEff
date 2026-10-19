@@ -120,10 +120,35 @@ describe("LocalDeviceBridgeWizard", () => {
       health={{ ok: true, paired: true, connected: true, updatedAt: "2026-10-15T00:00:00Z",
         tools: { adb: { available: true }, hdc: { available: true } } }} />);
     fireEvent.click(screen.getByRole("button", { name: "设备连接与排查" }));
-    expect(screen.getByText(/在设备开启开发者模式/)).toBeInTheDocument();
-    expect(screen.getByText("HDC 工具")).toBeInTheDocument();
+    expect(screen.getByText(/在设备上开启开发者选项/)).toBeInTheDocument();
+    expect(screen.getByText("设备调试工具")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "检测 USB 设备" }));
     expect(onDetect).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["online_no_device", "bridges_with_targets", "tools_missing", "not_paired", "not_connected"] as const)(
+    "keeps only device guidance for an up-to-date installed Bridge in %s",
+    (panelStatus) => {
+      render(<LocalDeviceBridgeWizard {...baseProps} panelStatus={panelStatus}
+        recommendedVersion="0.1.1"
+        health={{ ok: true, paired: panelStatus !== "not_paired", connected: panelStatus !== "not_connected",
+          clientVersion: "0.1.1", updatedAt: "2026-10-19T00:00:00Z" }} />);
+      expect(screen.queryByRole("button", { name: "安装指南" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "设备连接与排查" }));
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByRole("list", { name: "USB 设备连接操作" })).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole("button", { name: "查看安装 Bridge步骤" }));
+      expect(within(dialog).getByText("安装 Bridge", { exact: true }).closest("li")).toHaveAttribute("aria-current", "step");
+    }
+  );
+
+  it.each([null, "0.1.0"])("keeps install guidance when the installed version is %s", (clientVersion) => {
+    render(<LocalDeviceBridgeWizard {...baseProps} panelStatus="online_no_device"
+      recommendedVersion="0.1.1"
+      health={{ ok: true, paired: true, connected: true,
+        ...(clientVersion ? { clientVersion } : {}), updatedAt: "2026-10-19T00:00:00Z" }} />);
+    expect(screen.getByRole("button", { name: "安装指南" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "设备连接与排查" })).toBeInTheDocument();
   });
 
   it("keeps portable downloads collapsed even when the Windows installer is older", async () => {

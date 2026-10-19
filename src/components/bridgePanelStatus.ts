@@ -194,9 +194,8 @@ export function deriveBridgePanelStatus(input: {
     return "not_connected";
   }
 
-  const protocol = input.protocol ?? "hdc";
-  const toolState = input.health.tools?.[protocol];
-  if (toolState && !toolState.available) {
+  const tools = input.health.tools;
+  if (tools && !tools.adb.available && !tools.hdc.available) {
     return "tools_missing";
   }
 
@@ -348,23 +347,19 @@ export function formatDetectFailureMessage(input: {
   formatError: (error: unknown) => string;
 }) {
   const message = input.formatError(input.error);
-  const toolState = input.health?.tools?.[input.protocol];
-  if (toolState && !toolState.available) {
-    return input.protocol === "adb"
-      ? "缺少 ADB 调试工具，请先安装调试工具。"
-      : "缺少 HDC 调试工具，请先安装调试工具。";
+  const tools = input.health?.tools;
+  if (tools && !tools.adb.available && !tools.hdc.available) {
+    return "缺少设备调试工具，请先安装调试工具。";
   }
   if (isToolMissingDetectError(message)) {
-    return input.protocol === "adb"
-      ? "缺少 ADB 调试工具，请先安装调试工具。"
-      : "缺少 HDC 调试工具，请先安装调试工具。";
+    return "缺少设备调试工具，请先安装调试工具。";
   }
   return message;
 }
 
 export function bridgePanelStatusHint(
   status: BridgePanelStatus,
-  protocol: DebugConnectionProtocol = "hdc",
+  _protocol: DebugConnectionProtocol = "hdc",
   options: {
     pairingStale?: boolean;
     authFailure?: boolean;
@@ -388,9 +383,7 @@ export function bridgePanelStatusHint(
     case "online_no_device":
       return "Bridge 在线，请插入 USB 设备并授权调试。";
     case "tools_missing":
-      return protocol === "adb"
-        ? "缺少 ADB 调试工具，请先安装调试工具。"
-        : "缺少 HDC 调试工具，请先安装调试工具。";
+      return "缺少设备调试工具，请先安装调试工具。";
     case "not_connected":
       return "Bridge 已配对，但尚未连接到服务器。";
     case "not_running":
