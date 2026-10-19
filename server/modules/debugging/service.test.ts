@@ -985,6 +985,42 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
   });
 
   describe("detectTargets", () => {
+    it("automatically detects only registered protocols and persists both audits under one HTTP trace", async () => {
+      const ephemeral = await createEphemeralTestDatabase("dbgauto");
+      const concurrentDb = createPostgresDatabase(ephemeral.url);
+      await db.rollback();
+      db = { ...concurrentDb, rollback: async () => {
+        await concurrentDb.close();
+        await ephemeral.drop();
+      } };
+      await seedCoreGraph(db, {
+        organization: { id: "org-1", name: "ChargeLab" },
+        users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }]
+      });
+      await seedDevice();
+      const hdc = makeGateway();
+      const adb = makeGateway({ detectTargets: vi.fn(async () => ({ ok: true, targets: [{
+        id: "adb-target", deviceId: "device-1", targetRef: "adb-serial", label: "ADB target", online: true
+      }] })) });
+      const service = createDebuggingService({ db, gatewayRegistry: createDebugDeviceGatewayRegistry({ adb, hdc }) });
+      expect((await service.detectTargets(readAuth, {}, { requestId: "dual-detection" })).map((target) => target.protocol))
+        .toEqual(["hdc", "adb"]);
+      const audits = await db.query<{ id: string; trace_id: string; protocol: string }>(
+        `select id, trace_id, metadata->>'protocol' as protocol from audit_events
+         where organization_id = 'org-1' and kind = 'debug-target-detect' order by metadata->>'protocol'`
+      );
+      expect(audits.rows.map((row) => row.protocol)).toEqual(["adb", "hdc"]);
+      expect(new Set(audits.rows.map((row) => row.id)).size).toBe(2);
+      expect(audits.rows.map((row) => row.trace_id)).toEqual(["dual-detection", "dual-detection"]);
+      expect(hdc.detectTargets).toHaveBeenCalledTimes(1);
+      expect(adb.detectTargets).toHaveBeenCalledTimes(1);
+
+      const adbOnly = createDebuggingService({ db, gatewayRegistry: createDebugDeviceGatewayRegistry({ adb }) });
+      expect(await adbOnly.detectTargets(readAuth, {})).toMatchObject([{ protocol: "adb" }]);
+      await expect(adbOnly.detectTargets(readAuth, { protocol: "hdc" })).rejects.toMatchObject({ code: "PROTOCOL_UNSUPPORTED" });
+      await expect(adbOnly.detectTargets(makeAuth(["debugging:view"]), {})).rejects.toMatchObject({ code: "FORBIDDEN" });
+    });
+
     it("requires debugging:read, calls gateway, persists targets, writes audit", async () => {
       await seedDevice();
       const gateway = makeGateway();
@@ -1096,7 +1132,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(stored.rows).toEqual([{ protocol: "adb" }]);
     });
 
-    it("commits a failed debug event when gateway detection fails", async () => {
+    it("commits a failed debug event when explicitly requested gateway detection fails", async () => {
       await seedDevice();
       const metrics = createDeviceMetricsSpy();
       const service = createDebuggingService({
@@ -1107,7 +1143,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         gatewayMode: "hdc"
       });
 
-      await expect(service.detectTargets(readAuth, { deviceId: "device-1" })).rejects.toMatchObject(
+      await expect(service.detectTargets(readAuth, { deviceId: "device-1", protocol: "hdc" })).rejects.toMatchObject(
         new ApiError("DEVICE_UNAVAILABLE", "USB bridge unavailable.")
       );
 

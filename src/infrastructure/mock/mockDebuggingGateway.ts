@@ -218,19 +218,17 @@ export function createMockDebuggingGateway(deps: MockDebuggingGatewayDeps = {}):
     },
 
     async detectTargets(input?: DetectTargetsInput): Promise<DeviceTarget[]> {
-      const protocol = input?.protocol ?? "hdc";
-      return [
-        {
-          id: `mock-target-${protocol}`,
-          deviceId: MOCK_DEBUG_DEVICE_ID,
-          bridgeId: MOCK_DEBUG_BRIDGE_ID,
-          bridgeMachineLabel: MOCK_DEBUG_BRIDGE_MACHINE_LABEL,
-          protocol,
-          label: MOCK_DEBUG_DEVICE_NAME,
-          targetRef: MOCK_DEBUG_TARGET_REF,
-          status: "detected"
-        }
-      ];
+      const protocols = input?.protocol ? [input.protocol] : ["hdc", "adb"] as const;
+      return protocols.map((protocol) => ({
+        id: `mock-target-${protocol}`,
+        deviceId: MOCK_DEBUG_DEVICE_ID,
+        bridgeId: MOCK_DEBUG_BRIDGE_ID,
+        bridgeMachineLabel: MOCK_DEBUG_BRIDGE_MACHINE_LABEL,
+        protocol,
+        label: MOCK_DEBUG_DEVICE_NAME,
+        targetRef: MOCK_DEBUG_TARGET_REF,
+        status: "detected"
+      }));
     },
 
     async createSession(input) {

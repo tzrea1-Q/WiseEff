@@ -99,7 +99,7 @@ import {
   countDebugNodesForModuleId,
   upsertDebugNodeBinding
 } from "./catalogSplitRepository";
-import { defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
+import { debugConnectionProtocols, defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
 import type { DebugAccessMode, DebugOperationType } from "./status";
 import type {
   DebugNodeBindingRecord,
@@ -114,6 +114,7 @@ import type {
   DebugSessionKind,
   DebugSessionRecord,
   DebugSnapshotEntry,
+  DebugTargetRecord,
   DebugValueMetadata,
   NodeOperationRecord
 } from "./types";
@@ -990,16 +991,15 @@ export function createDebuggingService(options: ServiceOptions) {
     return attachDebugPin(operation, input.canonicalPin ?? pinFromOperation(operation));
   }
 
-  return {
+  const service = {
     async listDevices(auth: AuthContext) {
       requireDebugView(auth);
       return listDebugDevices(db, { organizationId: organizationIdFor(auth) });
     },
 
-    async detectTargets(auth: AuthContext, input: DetectTargetsInput, context: ServiceContext = {}) {
+    async detectTargets(auth: AuthContext, input: DetectTargetsInput, context: ServiceContext = {}): Promise<DebugTargetRecord[]> {
       requireDebugRead(auth);
       const organizationId = organizationIdFor(auth);
-      const protocol = input.protocol ?? defaultDebugConnectionProtocol;
 
       if (input.deviceId) {
         const device = await getDebugDevice(db, { organizationId, deviceId: input.deviceId });
@@ -1008,6 +1008,18 @@ export function createDebuggingService(options: ServiceOptions) {
         }
       }
 
+      if (!input.protocol) {
+        const results = await Promise.allSettled(debugConnectionProtocols
+          .filter((protocol) => gatewayRegistry.hasGateway(protocol))
+          .map((protocol) => service.detectTargets(auth, { ...input, protocol }, context)));
+        return results.flatMap((result) => {
+          if (result.status === "fulfilled") return result.value;
+          if (result.reason instanceof ApiError && result.reason.code === "DEVICE_UNAVAILABLE") return [];
+          throw result.reason;
+        });
+      }
+
+      const protocol = input.protocol;
       const gateway = gatewayRegistry.requireGateway(protocol);
       const gatewayResult = await withGatewaySpan("detect", { hasDeviceFilter: Boolean(input.deviceId), protocol }, async (spanAttributes) => {
         try {
@@ -2730,4 +2742,5 @@ export function createDebuggingService(options: ServiceOptions) {
       });
     }
   };
+  return service;
 }
