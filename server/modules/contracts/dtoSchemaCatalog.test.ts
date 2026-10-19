@@ -40,6 +40,18 @@ describe("DTO schema catalog coverage", () => {
     expect(dtoSchemaCatalog.LogParsePreviewResponse.safeParse({ valid: true, issues: [], events: [{ ...event, source: "script" }], counts: { total: 1, byExtractor: {}, errors: {} }, unmatchedLineCount: 0 }).success).toBe(false);
     expect(dtoSchemaCatalog.LogSkillDraftRequest.safeParse({ spec: { schemaVersion: "skill/v1", parsing: { schemaVersion: "parsing/v1", extractors: [] } }, baseDraftRevisionId: null, basePublishedRevisionId: "published" }).success).toBe(true);
   });
+  it("documents signal preview and preserves typed condition alternatives through validation pipelines", () => {
+    const document = buildOpenApiDocument();
+    expect(document.paths).toHaveProperty("/api/v1/log-skills/{skillId}/signals-preview");
+    expect(dtoSchemaCoveredRouteIds).toContain("logs.signalPreview");
+    expect(document.components.schemas.LogSkillDraftRequest).toMatchObject({ properties: { spec: { properties: {
+      signalRules: { properties: { rules: { items: { properties: { anyOf: { items: { anyOf: expect.arrayContaining([
+        expect.objectContaining({ properties: expect.objectContaining({ type: { type: "string", enum: ["field"] } }) }),
+        expect.objectContaining({ properties: expect.objectContaining({ type: { type: "string", enum: ["window"] } }) })
+      ]) } } } } } } }
+    } } } });
+    expect(dtoSchemaCatalog.LogSignalPreviewResponse.safeParse({ valid: true, issues: [], hits: [{ ruleId: "custom", lineNumber: 2, excerpt: "alert" }], truncated: false }).success).toBe(true);
+  });
   it("documents draft concurrency and bodyless discard without losing restore coverage", () => {
     const document = buildOpenApiDocument();
     const request = dtoSchemaCatalog.LogSkillDraftRequest;
