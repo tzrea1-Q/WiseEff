@@ -25,7 +25,7 @@ function setup(spec = initial, repository: Partial<SkillWorkspaceRepository> = {
   render(<Harness />); return { onChange, onHit, repository };
 }
 async function choose(label: string, option: string) {
-  await userEvent.click(screen.getByRole("combobox", { name: label }));
+  await userEvent.click(screen.getByRole("combobox", { name: (name) => name === label || name.startsWith(`${label}：`) }));
   await userEvent.click(await screen.findByRole("option", { name: option }));
 }
 describe("signal authoring", () => {
@@ -143,12 +143,20 @@ describe("signal authoring", () => {
     render(<Harness />);
     await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
     await choose("规则 1 条件 1类型", "抽取字段");
-    await userEvent.click(screen.getByRole("combobox", { name: "规则 1 条件 1抽取字段" }));
+    await userEvent.click(screen.getByRole("combobox", { name: /^规则 1 条件 1抽取字段：/ }));
     expect(screen.getByRole("option", { name: "dump › charger" })).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByRole("option", { name: "dump.val.fields.VOLTAGE.value（mV）" })).toBeVisible();
-    await userEvent.click(screen.getByRole("option", { name: "dump.val.fields.CHRG_FAULT.meaning" }));
+    expect(screen.getByRole("option", { name: "VOLTAGE（mV） dump.val.fields.VOLTAGE.value" })).toBeVisible();
+    const meaningOption = screen.getByRole("option", { name: "CHRG_FAULT 含义 dump.val.fields.CHRG_FAULT.meaning" });
+    expect(within(meaningOption).getByText("CHRG_FAULT 含义").tagName).toBe("STRONG");
+    await userEvent.click(meaningOption);
     await choose("规则 1 条件 1值", "thermal_shutdown");
     const condition = { type: "field", field: "dump.val.fields.CHRG_FAULT.meaning", operator: "equals", value: "thermal_shutdown" };
+    const picker = screen.getByRole("combobox", { name: `规则 1 条件 1抽取字段：${condition.field}` });
+    expect(picker).toHaveAttribute("title", condition.field);
+    expect(picker).toHaveAccessibleName(`规则 1 条件 1抽取字段：${condition.field}`);
+    expect(picker).toHaveTextContent(condition.field);
+    const summary = screen.getByTitle("当 CHRG_FAULT 含义 = thermal_shutdown（dump.val） 时，产生 legacy · 警告 · 命中待预览");
+    expect(summary).toHaveTextContent("当 CHRG_FAULT 含义 = thermal_shutdown（dump.val） 时，产生 legacy");
     expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual(condition);
     expect(logSkillSpecSchema.safeParse(onChange.mock.lastCall![0]).success).toBe(true);
     await waitFor(() => expect(screen.getByText(/命中 1 次/)).toBeVisible());
@@ -164,7 +172,7 @@ describe("signal authoring", () => {
     expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual({ type: "field", field: condition.field, operator: "in", values: ["thermal_shutdown", "normal"] });
     await userEvent.click(screen.getByRole("checkbox", { name: "normal" }));
     expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0].values).toEqual(["thermal_shutdown"]);
-    await choose("规则 1 条件 1抽取字段", "dump.val.fields.VOLTAGE.value（mV）");
+    await choose("规则 1 条件 1抽取字段", "VOLTAGE（mV） dump.val.fields.VOLTAGE.value");
     await choose("规则 1 条件 1比较方式", "在范围内");
     expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual({ type: "field", field: "dump.val.fields.VOLTAGE.value", operator: "range", min: 0, max: 100 });
   });
@@ -200,7 +208,7 @@ describe("signal authoring", () => {
     expect(screen.getByRole("status")).toHaveTextContent("其余路径可在代码视图中配置");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
-    expect(screen.getByRole("combobox", { name: "规则 1 条件 1抽取字段" })).toHaveTextContent(path);
+    expect(screen.getByRole("combobox", { name: `规则 1 条件 1抽取字段：${path}` })).toHaveTextContent(path);
     await choose("规则 1 条件 1比较方式", "在范围内");
     expect(screen.getByRole("spinbutton", { name: "规则 1 条件 1最小值" })).toHaveValue(0);
   });

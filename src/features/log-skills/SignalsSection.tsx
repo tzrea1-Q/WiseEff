@@ -18,12 +18,20 @@ const parseScalar = (text: string): NonNullable<FieldCondition["value"]> => { tr
 const numberInput = (text: string) => text.trim() ? Number(text) : NaN;
 const severityLabels = { Critical: "严重", Warning: "警告", Info: "信息" };
 const comparisonLabels = { lt: "小于", lte: "小于或等于", gt: "大于", gte: "大于或等于", eq: "等于", neq: "不等于" };
+const fieldLeafLabel = (path: string) => path.split(".fields.").at(-1)!.replace(/\.meaning$/, " 含义").replace(/\.value$/, "");
+const fieldOptionLabel = (path: string, unit?: string) => <span className="skill-field-option">
+  <strong>{fieldLeafLabel(path)}{unit ? `（${unit}）` : ""}</strong>{" "}
+  <span className="skill-field-path"><bdi dir="ltr">{path}</bdi></span>
+</span>;
 
 function conditionSummary(condition: Condition): string {
   switch (condition.type) {
     case "text": return `消息匹配 ${condition.pattern || "（待填写）"}`;
-    case "field": return `${condition.field || "（待选择字段）"}${condition.operator === "range" ? ` 在 ${condition.min} 至 ${condition.max} 之间`
-      : condition.operator === "in" ? ` 属于 ${Array.isArray(condition.values) ? condition.values.map(scalarText).join("、") : "（待填写）"}` : ` 等于 ${scalarText(condition.value)}`}`;
+    case "field": {
+      const decoded = condition.field.includes(".fields.");
+      return `${decoded ? fieldLeafLabel(condition.field) : condition.field || "（待选择字段）"}${condition.operator === "range" ? ` 在 ${condition.min} 至 ${condition.max} 之间`
+        : condition.operator === "in" ? ` 属于 ${Array.isArray(condition.values) ? condition.values.map(scalarText).join("、") : "（待填写）"}` : ` ${decoded ? "=" : "等于"} ${scalarText(condition.value)}`}${decoded ? `（${condition.field.split(".fields.")[0]}）` : ""}`;
+    }
     case "window": return `${condition.seconds} 秒内 ${conditionSummary(condition.condition)} 达 ${condition.count} 次`;
     case "severityToken": return `日志级别为 ${condition.severity} 且包含 ${condition.token}`;
     case "numericComparison": return `${condition.leftTokens.join(" / ")} ${comparisonLabels[condition.operator]} ${condition.rightTokens.join(" / ")}`;
@@ -87,7 +95,7 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
       groups.get(group)!.push(field);
     }
     return [...groups].flatMap(([group, fields]) => [{ value: `group:${group}`, label: group, disabled: true },
-      ...fields.map((field) => ({ value: field.path, label: `${field.path}${field.unit ? `（${field.unit}）` : ""}` }))]);
+      ...fields.map((field) => ({ value: field.path, label: fieldOptionLabel(field.path, field.unit) }))]);
   }, [fields]);
   const newFieldCondition = (field: string, operator: FieldCondition["operator"] = "equals"): FieldCondition => {
     const definition = resolveField(field);
@@ -108,7 +116,7 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
     const field = condition.type === "field" ? resolveField(condition.field) : undefined;
     const values = condition.type === "field" && Array.isArray(condition.values) ? condition.values : [];
     return <div className={nested ? "skill-signal-subcondition" : "skill-signal-condition"}>
-      <div className="skill-condition-row">
+      <div className={`skill-condition-row${condition.type === "field" ? " skill-condition-row--field" : ""}`}>
         {legacy ? <div className="skill-condition-legacy"><span>{conditionSummary(condition)}</span><small>仅可在代码视图编辑</small></div> : <>
           <SelectControl className="skill-condition-type" ariaLabel={`${label}类型`} value={condition.type} disabled={disabled} options={[
             { value: "text", label: "消息匹配" }, { value: "field", label: "抽取字段" }, ...(!nested ? [{ value: "window", label: "时间窗内计数" }] : [])
@@ -120,8 +128,8 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
             <Input className="skill-condition-flags" aria-label={`${label}正则标记`} value={condition.flags ?? ""} disabled={disabled} placeholder="i / m / s" aria-invalid={!!pathIssues([...path, "flags"]).length}
               onChange={(event) => change({ ...condition, flags: event.target.value })} />
           </> : condition.type === "field" ? <>
-            <SelectControl className="skill-condition-value" ariaLabel={`${label}抽取字段`} value={condition.field} disabled={disabled} options={[
-              ...(!fields.some((item) => item.path === condition.field) ? [{ value: condition.field, label: condition.field || "请先配置抽取字段" }] : []), ...fieldOptions
+            <SelectControl className="skill-condition-field" title={condition.field} ariaLabel={`${label}抽取字段：${condition.field}`} value={condition.field} disabled={disabled} options={[
+              ...(!fields.some((item) => item.path === condition.field) ? [{ value: condition.field, label: fieldOptionLabel(condition.field || "请先配置抽取字段", field?.unit) }] : []), ...fieldOptions
             ]} onValueChange={(field) => change(newFieldCondition(field, condition.operator))} ariaInvalid={!!pathIssues([...path, "field"]).length} />
             <SelectControl<FieldCondition["operator"]> className="skill-condition-operator" ariaLabel={`${label}比较方式`} value={condition.operator} disabled={disabled} options={[
               { value: "equals", label: "等于" }, ...(!field || field.type === "number" || condition.operator === "range" ? [{ value: "range" as const, label: "在范围内" }] : []), { value: "in", label: "属于集合" }
@@ -143,7 +151,7 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
             {conditionEditor(condition.condition, [...path, "condition"], (sub) => change({ ...condition, condition: sub as Extract<Condition, { type: "text" | "field" }> }), undefined, true)}
           </> : null}
         </>}
-        {remove ? <Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除${label}`} title="删除条件" onClick={remove}><X /></Button> : null}
+        {remove ? <Button className="skill-condition-remove" variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除${label}`} title="删除条件" onClick={remove}><X /></Button> : null}
       </div>
       {fieldError(path)}
     </div>;
@@ -168,7 +176,7 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
       const hitLabel = hits ? `命中 ${hits.length} 次` : "命中待预览";
       const summary = `当 ${conditions} 时，产生 ${rule.name ?? rule.id} · ${severityLabels[severity]} · ${hitLabel}`;
       return <section className="skill-signal-rule" aria-label={`规则 ${index + 1}`} key={rule.id}>
-        <header className="skill-rule-header"><span className="skill-rule-summary" title={summary}><span className="skill-rule-summary-condition">当 {conditions}</span><span>时，产生</span><span className="skill-rule-summary-name">{rule.name ?? rule.id}</span><span>· {severityLabels[severity]} · {hitLabel}</span></span>
+        <header className="skill-rule-header"><span className="skill-rule-summary" title={summary}><span className="skill-rule-summary-condition">当 {conditions}</span>{" "}<span>时，产生</span>{" "}<span className="skill-rule-summary-name">{rule.name ?? rule.id}</span>{" "}<span>· {severityLabels[severity]} · {hitLabel}</span></span>
           <div className="skill-rule-actions"><Button variant="ghost" size="icon-sm" disabled={disabled || index === 0} aria-label={`上移规则 ${index + 1}`} title="上移" onClick={() => { const next = [...rules]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; update(next); }}><ArrowUp /></Button>
             <Button variant="ghost" size="icon-sm" disabled={disabled || index === rules.length - 1} aria-label={`下移规则 ${index + 1}`} title="下移" onClick={() => { const next = [...rules]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; update(next); }}><ArrowDown /></Button>
             <Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={`删除规则 ${index + 1}`} title="删除" onClick={() => update(rules.filter((_, i) => i !== index))}><Trash2 /></Button>
