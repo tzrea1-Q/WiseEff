@@ -10,6 +10,8 @@ export type AnalysisTraceStep = z.infer<typeof import("@wiseeff/dto-schemas").lo
 export type SkillDryRun = z.infer<typeof import("@wiseeff/dto-schemas").logSkillDryRunResponseSchema>["run"];
 export type SkillDryRunDetail = { run: SkillDryRun; steps: AnalysisTraceStep[] };
 export type CreateSkillInput = { name: string; description?: string; startingPoint: { templateId: string } | { copyFromSkillId: string } };
+export type IntegrationCredential = z.infer<typeof import("@wiseeff/dto-schemas").logIntegrationCredentialDtoSchema>;
+export type IntegrationCredentialSecret = { item: IntegrationCredential; token: string };
 
 export type AnalysisCaseExpectations = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCaseExpectationsSchema>;
 export type AnalysisCase = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCaseSchema>;
@@ -37,6 +39,10 @@ export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSou
 export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
 export interface SkillWorkspaceRepository {
+  listIntegrationCredentials?(): Promise<IntegrationCredential[]>;
+  issueIntegrationCredential?(input: { name: string; skillId?: string | null }): Promise<IntegrationCredentialSecret>;
+  rotateIntegrationCredential?(id: string): Promise<IntegrationCredentialSecret>;
+  revokeIntegrationCredential?(id: string): Promise<IntegrationCredential>;
   runSkillParseTests?(id: string, spec: SkillSpec): Promise<ParseTestRun>;
   signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"] }): Promise<SignalPreview>;
   generateExtractorPattern?(id: string, input: ExtractorPatternInput): Promise<ExtractorPatternPreview>;

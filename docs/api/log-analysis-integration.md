@@ -4,24 +4,32 @@
 
 How an external system pushes logs into WiseEff for analysis and consumes results through polling or a skill's **result webhook**. Inline examples cover uploads, jobs, reports, file windows and webhook signature checks without a packaged SDK.
 
-Prerequisites: [Authentication](authentication.md) (bearer token), [Errors](errors.md) (error envelope). Endpoint schemas: [API Contract](../design-docs/api-contract.md) and [openapi.json](../generated/openapi.json).
+Prerequisites: an integration credential issued by an administrator, [Authentication](authentication.md), and [Errors](errors.md). Endpoint schemas: [API Contract](../design-docs/api-contract.md) and [openapi.json](../generated/openapi.json).
+
+## Integration credentials
+
+An administrator with `logs:admin-domains` issues a credential in the skill workspace's Integration → Integration credentials subsection. The secret appears once, at issue or rotation; copy it to a secret manager and acknowledge that it is saved before closing. Use `Authorization: Bearer <integration-credential>` over TLS. Set `$WISEEFF_INTEGRATION_CREDENTIAL` from your secret manager for the examples below; never commit or log its value.
+
+A credential is an organization-scoped machine principal with no user account, roles or permissions. Its fixed scope allows uploads to `POST /api/v1/log-files` and `POST /api/v1/logs`, and reads of its own record, report and files only. It cannot list records or skills, read other credentials' or users' records, access jobs/SSE, run history, traces, source administration, `/me` or lifecycle administration. Copy the skill selector from the workspace using a user session. Bound credentials require a selector for their bound skill; a missing or conflicting selector returns `403`. Unbound credentials can select any skill in their organization or omit the selector. Existing size, rate and analysis limits apply.
+
+Rotation invalidates the old secret immediately; revocation takes effect on the next request. Archiving a skill revokes its bound credentials. Only a hash is stored; lists never return a secret. Metadata exposes `createdByCredentialId` and `createdByCredentialName`; uploading user is null, and organization users with `logs:view` retain normal visibility. Upload audits identify the integration credential. Last-used timestamps update at most once a minute.
 
 ## 1. Push a log
 
 ### Select an analysis skill by key
 
-Open a skill workspace's Integration section to copy its `skillKey`, upload URL and runnable JSON/base64 or multipart examples. Supply your bearer token through `$WISEEFF_TOKEN`; examples never contain a real credential. `skillKey` is stable across renames and publications, unique within an organization, and matches `^[a-z0-9][a-z0-9-]{1,62}$`. Administrators can edit it in that section; edits are audited and integrations must then use the new key. Creation derives a slug from the name, with a short id suffix when needed for non-ASCII names or collisions. Migration 0202 backfills existing identities.
+Open a skill workspace's Integration section to copy its `skillKey`, upload URL and JSON/base64 or multipart examples. Replace the credential placeholder before running them. `skillKey` is stable across renames and publications, unique within an organization, and matches `^[a-z0-9][a-z0-9-]{1,62}$`. Administrators can edit it in that section; edits are audited and integrations must then use the new key. Creation derives a slug from the name, with a short id suffix when needed for non-ASCII names or collisions. Migration 0202 backfills existing identities.
 
 Both `POST /api/v1/log-files` (JSON or multipart) and `POST /api/v1/logs` (stored file) accept `skillKey`. `skillId` and its compatibility alias `logDomainId` remain supported. When several selectors are supplied they must identify the same skill; conflicting selectors return `400 VALIDATION_FAILED`. Keys resolve only within the caller's organization. Unknown or foreign keys are rejected. A successful upload pins the skill's current published revision, including its model and budgets; later edits or publications do not change that run.
 
 ```bash
 curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
-  -H "Authorization: Bearer $WISEEFF_TOKEN" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   -H 'Content-Type: application/json' \
   --data '{"skillKey":"charging","fileName":"example.log","contentType":"text/plain","contentBase64":"SU5GTyBib290Cg=="}'
 
 curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
-  -H "Authorization: Bearer $WISEEFF_TOKEN" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   --form-string 'skillKey=charging' \
   -F 'file=@device.log;type=text/plain' -F 'file=@kernel.log;type=text/plain'
 ```
@@ -30,7 +38,7 @@ Replace `charging` with the copied key. The multipart example expects the named 
 
 Step budgets must be integers of at least 1. Per-revision token budgets must be integers of at least `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`. Save and publish validate these bounds with field-specific errors. An explicit per-revision token budget bounds cumulative usage reported by the provider, checked before each model call, including early convergence; it is not a token estimate or a strict per-call ceiling. One completion may take cumulative usage above the budget, but no further call is made after exhaustion. Exhausted runs without a grounded final report use the existing `rules-fallback` result with `degradedReason: "token-budget-exhausted"`. Omitting `tokenBudget` preserves the existing platform-global budget accounting and early-convergence behavior.
 
-`POST /api/v1/log-files` with base64 content. JSON uploads accept at most 32 MiB of decoded file bytes; larger bundles use multipart under the configured upload cap (100 MiB by default). Oversized transport bodies return `413` before parsing. Bind the upload to an analysis skill via `skillKey` or `skillId` (list them with `GET /api/v1/log-skills`); `logDomainId` remains a compatibility alias. Omit skill selection for platform generic analysis.
+`POST /api/v1/log-files` with base64 content. JSON uploads accept at most 32 MiB of decoded file bytes; larger bundles use multipart under the configured upload cap (100 MiB by default). Oversized transport bodies return `413` before parsing. Bind the upload to an analysis skill via `skillKey` or `skillId` (users can list them with `GET /api/v1/log-skills`); `logDomainId` remains a compatibility alias. Unbound credentials can omit skill selection for platform generic analysis.
 
 Supply an optional `sourceVersion` label (trimmed, 1–200 characters) to select the matching source snapshot belonging to the pinned skill. The worker selects a matching non-archived snapshot even while it is queued, indexing or failed; source tools are offered only when that snapshot is ready. With no matching label, or no label, it uses the pinned revision's default snapshot. An unknown label is recorded in report provenance, with a short fallback note there. The same field is accepted by JSON uploads, multipart uploads and `POST /api/v1/logs` when creating a record from a stored file. `GET /api/v1/log-skills` exposes `hasSourceSnapshots` and `readySourceVersions`, an array of ready version labels without snapshot metadata. The upload dialog offers these labels and a default-snapshot option; integration APIs continue accepting free-text labels.
 
@@ -38,7 +46,7 @@ Supply an optional `sourceVersion` label (trimmed, 1–200 characters) to select
 
 ```bash
 curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   -H "Content-Type: application/json" \
   -d "$(jq -n \
     --arg content "$(base64 < charging-foldback.log)" \
@@ -52,9 +60,9 @@ The `201` response carries `log.id` (the record) and `job.id` (the analysis job)
 
 Supported text extensions are `.log`, `.txt`, `.csv` and `.json`; bundle intake recognizes UTF-8 and BOM-marked UTF-16 text. Archives can contain several files and use `.gz`, `.zip`, `.tar`, `.tar.gz` or `.tgz`. For several loose text files in one record, send `multipart/form-data` with a repeated `file` field. Inspect the record's `files` inventory for analyzed and skipped entries. Configured compressed, unpacked, file-count and per-file limits apply; see [environment variables](../developer/environment-variables.md). Archive expansion also has a 200× ratio bound with a 1 MiB minimum budget. Rejected inputs retain a readable failure reason.
 
-## 2. Poll the job
+## 2. Poll the record
 
-`GET /api/v1/jobs/{jobId}` until `status` is `complete` or `failed`. Recommended cadence: 1s for the first ~30s, then back off to 2–5s; analysis targets p95 ≤ 3 minutes for ≤ 10MB logs. `GET /api/v1/jobs/{jobId}/events` offers the same snapshots as Server-Sent Events.
+Poll `GET /api/v1/logs/{logId}` using the credential that uploaded the record until `status` is `complete` or `failed`. Recommended cadence: 1s for the first ~30s, then back off to 2–5s; analysis targets p95 ≤ 3 minutes for ≤ 10MB logs. Job polling (`GET /api/v1/jobs/{jobId}`) and job SSE (`GET /api/v1/jobs/{jobId}/events`) require a user session and are outside credential scope.
 
 ## 3. Fetch the result
 
@@ -78,13 +86,13 @@ Case runs use the configured analyzer, compare the saved draft with its last pub
 
 ### Fetch a file's line window
 
-`GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` returns a window from one analyzed file. It requires `logs:view` and the same Organization scope as the record. Use the exact `path` from the record's `files` inventory for `file`; this is a bundle path, not an object-store key.
+`GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` returns a window from one analyzed file. It accepts the creating integration credential, or a user with `logs:view` in the record's organization. Use the exact `path` from the record's `files` inventory for `file`; this is a bundle path, not an object-store key.
 
 Both line bounds are required, positive, 1-based integers and inclusive. A request may contain at most 400 lines. The server clips `endLine` at the end of the file; a `startLine` beyond the file, reversed bounds, or a window over 400 lines returns `400 VALIDATION_FAILED`. A final newline does not add a line; actual blank lines remain addressable. An empty file returns `startLine: 1`, `endLine: 0`, `totalLines: 0` and `lines: []`. Older indexes rebuild lazily on access. A missing or skipped file returns `404 NOT_FOUND`.
 
 ```bash
 curl -sS --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   --data-urlencode "file=device/kernel.log" \
   --data-urlencode "startLine=40" \
   --data-urlencode "endLine=42"
@@ -200,6 +208,6 @@ printf '%s.' "$TIMESTAMP" | cat - "$BODY_FILE" \
 ## Error handling and retries (push side)
 
 - `400 VALIDATION_FAILED`: bad base64/fields — fix the request, do not retry as-is.
-- `401 / 403`: token or permission problem (`logs:upload`); see [Authentication](authentication.md).
+- `401 / 403`: invalid/revoked credential, disallowed route or skill binding; user uploads still require `logs:upload`. See [Authentication](authentication.md).
 - `5xx` on upload: safe to retry with backoff; each accepted upload creates a new record (no server-side dedup), so reuse a client-side idempotency guard if you retry aggressively.
-- A `failed` record carries a readable `failureReason` (unsupported format, oversized archive, exhausted attempts); rerun with `POST /api/v1/logs/{logId}/rerun` after fixing the input if appropriate.
+- A `failed` record carries a readable `failureReason` (unsupported format, oversized archive, exhausted attempts). An authorized user can rerun with `POST /api/v1/logs/{logId}/rerun`; an integration credential must submit a new upload after fixing its input.

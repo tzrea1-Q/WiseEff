@@ -39,8 +39,9 @@ describe.skipIf(!available)("workspace curl examples against the local app", () 
       const examples = buildSkillUploadExamples(`http://127.0.0.1:${address.port}`, skill.skillKey);
       for (const example of [examples.json, examples.multipart]) {
         expect(example.curl).not.toMatch(/^\+/m);
-        const { stdout } = await promisify(execFile)("/bin/sh", ["-ec", example.curl], {
-          env: { ...process.env, WISEEFF_TOKEN: "example-token" }, timeout: 15_000
+        expect(example.curl).toContain("Bearer <集成凭据>");
+        const { stdout } = await promisify(execFile)("/bin/sh", ["-ec", example.curl.replace("<集成凭据>", "example-token")], {
+          env: process.env, timeout: 15_000
         });
         const uploaded = JSON.parse(stdout);
         expect(uploaded.log.skillRevision).toEqual({ id: skill.currentRevision.id, number: skill.currentRevision.number });

@@ -40,7 +40,13 @@ export type SystemInvocationContext = {
   readonly identity: Readonly<SystemInvocationInput>;
 } & TrustedInvocationBrand;
 
-export type TrustedInvocationContext = UserInvocationContext | AgentInvocationContext | SystemInvocationContext;
+export type IntegrationInvocationContext = {
+  readonly initiator: "integration";
+  readonly credentialId: string;
+  readonly organizationId: string;
+} & TrustedInvocationBrand;
+
+export type TrustedInvocationContext = UserInvocationContext | AgentInvocationContext | SystemInvocationContext | IntegrationInvocationContext;
 
 /**
  * Projection used by #614 domain rows.  `userId` is the accountable principal
@@ -232,6 +238,13 @@ export function createSystemInvocation(input: SystemInvocationInput): SystemInvo
   return brand({ initiator: "system" as const, identity: Object.freeze(identity) });
 }
 
+/** Only the integration credential resolver constructs this after secret verification. */
+export function createIntegrationInvocation(credentialId: string, organizationId: string): IntegrationInvocationContext {
+  return brand({ initiator: "integration" as const,
+    credentialId: nonEmptyString(credentialId, "integration.credentialId"),
+    organizationId: nonEmptyString(organizationId, "integration.organizationId") });
+}
+
 function validateBrandedContext(value: unknown): TrustedInvocationContext {
   if (!isRecord(value) || (value as Record<PropertyKey, unknown>)[trustedInvocationBrand] !== true || !Object.isFrozen(value)) {
     return invalid("context must come from a server-owned constructor");
@@ -275,7 +288,14 @@ function validateBrandedContext(value: unknown): TrustedInvocationContext {
     return value as SystemInvocationContext;
   }
 
-  return invalid("initiator must be user, agent, or system");
+  if (value.initiator === "integration") {
+    nonEmptyString(value.credentialId, "integration.credentialId");
+    nonEmptyString(value.organizationId, "integration.organizationId");
+    if (Object.hasOwn(value, "principal")) return invalid("integration must not contain a user principal");
+    return value as IntegrationInvocationContext;
+  }
+
+  return invalid("initiator must be user, agent, system, or integration");
 }
 
 /** Validate the server-owned brand before a sensitive policy or write is reached. */
@@ -288,8 +308,11 @@ export function assertTrustedInvocationMatchesAuth(
   auth: AuthContext,
   value: unknown,
   operation: string
-): TrustedInvocationContext {
+): Exclude<TrustedInvocationContext, IntegrationInvocationContext> {
   const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator === "integration") {
+    throw new TrustedInvocationContextError(`${operation} requires an authenticated user principal`);
+  }
   if (
     invocation.initiator !== "system" &&
     (invocation.principal.user.id !== auth.user.id ||
@@ -318,12 +341,16 @@ export function assertTrustedMutationInvocation(
 /** Accountable authorization principal for domain rows; System has no user principal. */
 export function trustedAccountableUser(value: TrustedInvocationContext): AuthContext["user"] | null {
   const invocation = assertTrustedInvocationContext(value);
-  return invocation.initiator === "system" ? null : invocation.principal.user;
+  return invocation.initiator === "system" || invocation.initiator === "integration" ? null : invocation.principal.user;
 }
 
 /** Return the truthful domain attribution for a trusted invocation. */
 export function trustedDomainAttribution(value: TrustedInvocationContext): TrustedInvocationDomainAttribution {
   const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator === "integration") {
+    return { userId: null, principalDeleted: false, initiatorType: "integration", systemKind: null,
+      systemName: null, sessionId: null, toolCallId: null, approvalId: null };
+  }
   if (invocation.initiator === "system") {
     return {
       userId: null,
@@ -373,7 +400,7 @@ export function trustedDomainAttributionFromRow(
     // source and is null after permanent deletion.
     // System rows likewise have no user principal, even if a malformed or
     // historical caller supplies an unrelated user id alongside the row.
-    userId: principalDeleted || initiatorType === "system" ? null : userId ?? null,
+    userId: principalDeleted || initiatorType === "system" || initiatorType === "integration" ? null : userId ?? null,
     principalDeleted,
     initiatorType,
     systemKind: row.initiator_system_kind ?? null,
@@ -414,5 +441,6 @@ export function trustedPublicExecutionLabelFromAttribution(
     return userFallback;
   }
   if (attribution.initiatorType === "agent") return "WiseEff Agent";
+  if (attribution.initiatorType === "integration") return "Integration credential";
   return `WiseEff System ${attribution.systemKind ?? "service"}`;
 }

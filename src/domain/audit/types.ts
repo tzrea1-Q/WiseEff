@@ -2,7 +2,7 @@ import type { RiskLevel } from "@/domain/prototype/types";
 
 export type { AuditEvent } from "@/domain/prototype/types";
 
-export type AuditActorType = "user" | "agent" | "system";
+export type AuditActorType = "user" | "agent" | "system" | "integration";
 export type AuditSeverity = RiskLevel | "info";
 export const AUDIT_SEVERITIES: AuditSeverity[] = ["High", "Medium", "Low", "info"];
 

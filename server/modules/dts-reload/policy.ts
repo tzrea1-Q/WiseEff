@@ -97,6 +97,9 @@ export function assertDtsReloadInvocationContext(
 
   assertTrustedRefusalAuditSink(context.refusalSink);
   const invocation = assertTrustedInvocationContext(context.invocation);
+  if (invocation.initiator === "integration") {
+    throw new TrustedInvocationContextError("DTS reload requires an authenticated user or system invocation");
+  }
   if (
     invocation.initiator !== "system" &&
     (invocation.principal.user.id !== auth.user.id ||

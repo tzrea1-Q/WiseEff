@@ -48,6 +48,10 @@ const baseLogDto: LogRecordDto = {
 };
 
 describe("log http dto mappers", () => {
+  it("preserves the creating integration credential for record provenance", () => {
+    expect(logRecordFromDto({ ...baseLogDto, createdByCredentialId: "credential-1", createdByCredentialName: "Factory" }))
+      .toMatchObject({ createdByCredentialId: "credential-1", createdByCredentialName: "Factory" });
+  });
   it("maps backend complete status to frontend Complete", () => {
     expect(logRecordFromDto(baseLogDto)).toMatchObject({
       id: "log-1",

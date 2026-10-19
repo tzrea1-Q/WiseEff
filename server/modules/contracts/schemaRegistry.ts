@@ -1001,6 +1001,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     }
   },
 
+  "logs.listIntegrationCredentials": { summary: "List organization integration credentials (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialListResponse" },
+  "logs.issueIntegrationCredential": { summary: "Issue integration credential; secret returned once (logs:admin-domains)", tags: ["logs"], requestBody: "IssueLogIntegrationCredentialRequest", responseBody: "LogIntegrationCredentialSecretResponse", successStatus: 201 },
+  "logs.rotateIntegrationCredential": { summary: "Rotate integration credential immediately; secret returned once (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialSecretResponse" },
+  "logs.revokeIntegrationCredential": { summary: "Revoke integration credential (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialResponse" },
   "logs.uploadFile": {
     summary: "Upload log file",
     tags: ["logs"],

@@ -4,6 +4,7 @@ import { extname } from "node:path";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import type { IntegrationPrincipal } from "../auth/integrationPrincipal";
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
@@ -104,6 +105,24 @@ type ServiceContext = AuditCorrelationContext & {
   logAnalysisQueue?: LogAnalysisQueue;
 };
 
+type LogPrincipal = AuthContext | IntegrationPrincipal;
+
+function organizationId(auth: LogPrincipal) {
+  return "kind" in auth ? auth.organizationId : auth.organization.id;
+}
+
+function uploadingUserId(auth: LogPrincipal) {
+  return "kind" in auth ? null : auth.user.id;
+}
+
+function creatingCredentialId(auth: LogPrincipal) {
+  return "kind" in auth ? auth.credentialId : undefined;
+}
+
+function uploadInvocation(auth: LogPrincipal): TrustedInvocationContext {
+  return "kind" in auth ? auth.invocation : createUserInvocation(auth);
+}
+
 function unsupportedReason() {
   return `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")} (archives: ${supportedLogArchiveExtensions.join(", ")}).`;
 }
@@ -116,9 +135,15 @@ type ResolvedLogRelatedParameter = {
 
 async function resolveLogRelatedParameter(
   db: Database,
-  auth: AuthContext,
+  auth: LogPrincipal,
   input: { relatedParameterId?: string; relatedParameterPin?: RelatedParameterSelection }
 ): Promise<ResolvedLogRelatedParameter | undefined> {
+  if ("kind" in auth) {
+    if (input.relatedParameterId || input.relatedParameterPin) {
+      throw new ApiError("FORBIDDEN", "Integration credentials cannot select related parameters.");
+    }
+    return undefined;
+  }
   if (!input.relatedParameterPin) {
     if (input.relatedParameterId) {
       throw new ApiError(
@@ -162,13 +187,13 @@ function isAnalyzableStoredLogObject(fileObject: { storageKey: string; fileName:
  * active, otherwise the request fails with 400. Absence keeps the uncategorized
  * log domain semantics — uploads are never blocked by domain selection.
  */
-async function requireBindableLogDomainId(db: Queryable, auth: AuthContext, logDomainId: string | undefined) {
+async function requireBindableLogDomainId(db: Queryable, auth: LogPrincipal, logDomainId: string | undefined) {
   if (logDomainId === undefined) {
     return undefined;
   }
 
   const domain = await getActiveLogDomainForBinding(db, {
-    organizationId: auth.organization.id,
+    organizationId: organizationId(auth),
     domainId: logDomainId
   });
   if (!domain) {
@@ -180,15 +205,22 @@ async function requireBindableLogDomainId(db: Queryable, auth: AuthContext, logD
   return domain.id;
 }
 
-async function resolveUploadSkillId(db: Queryable, auth: AuthContext, input: {
+async function resolveUploadSkillId(db: Queryable, auth: LogPrincipal, input: {
   skillId?: string; logDomainId?: string; skillKey?: string;
 }) {
   if (input.skillId && input.logDomainId && input.skillId !== input.logDomainId) {
+    if ("kind" in auth && auth.skillId) throw new ApiError("FORBIDDEN", "Credential skill binding does not match the selected skill.");
     throw new ApiError("VALIDATION_FAILED", "skillId and logDomainId must identify the same analysis skill.");
   }
   const id = input.skillId ?? input.logDomainId;
+  if ("kind" in auth && auth.skillId && ((!id && input.skillKey === undefined) || (id && id !== auth.skillId))) {
+    throw new ApiError("FORBIDDEN", "A bound credential must select its bound skill.");
+  }
   if (input.skillKey !== undefined) {
-    const skill = await findLogDomainBySkillKey(db, { organizationId: auth.organization.id, skillKey: input.skillKey });
+    const skill = await findLogDomainBySkillKey(db, { organizationId: organizationId(auth), skillKey: input.skillKey });
+    if ("kind" in auth && auth.skillId && (!skill || skill.id !== auth.skillId)) {
+      throw new ApiError("FORBIDDEN", "Credential skill binding does not match the selected skill.");
+    }
     if (!skill || skill.status !== "active") {
       throw new ApiError("VALIDATION_FAILED", "skillKey is unknown or not active in this organization.", { fieldErrors: { skillKey: "Unknown or inactive analysis skill." } });
     }
@@ -225,29 +257,30 @@ async function createLogAudit(
 
 async function persistFileObject(
   db: Queryable,
-  auth: AuthContext,
+  auth: LogPrincipal,
   input: { stored: StoredObject }
 ): Promise<LogFileObjectDto> {
   return createFileObject(db, {
     id: randomUUID(),
-    organizationId: auth.organization.id,
+    organizationId: organizationId(auth),
     storageKey: input.stored.storageKey,
     fileName: input.stored.fileName,
     contentType: input.stored.contentType,
     fileSizeBytes: input.stored.fileSizeBytes,
     checksumSha256: input.stored.checksumSha256,
-    uploadedByUserId: auth.user.id
+    uploadedByUserId: uploadingUserId(auth),
+    createdByCredentialId: creatingCredentialId(auth)
   });
 }
 
 export async function uploadLogFile(
   db: Database,
   objectStore: ObjectStore,
-  auth: AuthContext,
+  auth: LogPrincipal,
   input: UploadLogFileInput,
   context: ServiceContext = {}
 ): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
-  requireLogUpload(auth);
+  if (!("kind" in auth)) requireLogUpload(auth);
   const logDomainId = await resolveUploadSkillId(db, auth, input);
   const relatedParameter = await resolveLogRelatedParameter(db, auth, input);
   const uploads = input.files ?? [{ fileName: input.fileName, bytes: Buffer.isBuffer(input.bytes) ? input.bytes
@@ -263,7 +296,7 @@ export async function uploadLogFile(
   let stored: StoredObject | undefined;
   for (const file of intake.ok ? intake.files : []) {
     const object = file.status === "analyzed" ? await objectStore.put({
-      organizationId: auth.organization.id,
+      organizationId: organizationId(auth),
       fileName: uploads.length === 1 && !isLogArchive(uploads[0].fileName) ? input.fileName : `${file.sha256}.log`,
       contentType: "text/plain; charset=utf-8", bytes: bundleFileUtf8Bytes(file)
     }) : undefined;
@@ -288,13 +321,14 @@ export async function uploadLogFile(
   const result = await db.transaction(async (tx) => {
     const fileObject = await persistFileObject(tx, auth, { stored: primary });
     if (failureReason) {
-      const log = await markUnsupportedLog(tx, { id: randomUUID(), organizationId: auth.organization.id,
-        fileObjectId: fileObject.id, fileName: input.fileName, source: "upload", submittedByUserId: auth.user.id,
+      const log = await markUnsupportedLog(tx, { id: randomUUID(), organizationId: organizationId(auth),
+        fileObjectId: fileObject.id, fileName: input.fileName, source: "upload", submittedByUserId: uploadingUserId(auth),
+        createdByCredentialId: creatingCredentialId(auth),
         failureReason, analysisQuestion: input.analysisQuestion, logDomainId,
         relatedParameterId: relatedParameter?.relatedParameterId, relatedParameterProjectId: relatedParameter?.relatedParameterProjectId });
       if (!log) throw new ApiError("INTERNAL_ERROR", "Log record was not created.");
-      await insertLogFiles(tx, auth.organization.id, log.id, storedFiles);
-      await createLogAudit(asAuditTx(tx), createUserInvocation(auth), {
+      await insertLogFiles(tx, organizationId(auth), log.id, storedFiles);
+      await createLogAudit(asAuditTx(tx), uploadInvocation(auth), {
         kind: "log-upload-failed", action: "upload-failed", logId: log.id, severity: "Low",
         metadata: { fileName: input.fileName, failureReason: log.failureReason }
       }, context);
@@ -306,11 +340,12 @@ export async function uploadLogFile(
         logId: randomUUID(),
         runId: randomUUID(),
         jobId: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: organizationId(auth),
         fileObjectId: fileObject.id,
         fileName: input.fileName,
         source: "upload",
-        submittedByUserId: auth.user.id,
+        submittedByUserId: uploadingUserId(auth),
+        createdByCredentialId: creatingCredentialId(auth),
         analysisQuestion: input.analysisQuestion,
         relatedParameterId: relatedParameter?.relatedParameterId,
         relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
@@ -321,7 +356,7 @@ export async function uploadLogFile(
     );
     await createLogAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      uploadInvocation(auth),
       {
         kind: "log-upload",
         action: "upload",
@@ -331,15 +366,15 @@ export async function uploadLogFile(
       context
     );
 
-    await insertLogFiles(tx, auth.organization.id, log.id, storedFiles);
+    await insertLogFiles(tx, organizationId(auth), log.id, storedFiles);
     for (const [position, upload] of originalUploads.entries()) await tx.query(`insert into log_original_uploads
       (organization_id, record_id, position, file_name, object_key, size_bytes) values ($1,$2,$3,$4,$5,$6)`,
-    [auth.organization.id, log.id, position, upload.fileName, upload.objectKey, upload.sizeBytes]);
+    [organizationId(auth), log.id, position, upload.fileName, upload.objectKey, upload.sizeBytes]);
     return { fileObject, log: { ...log, files: fileInventory(storedFiles) }, job };
   });
 
   if (result.job) await enqueueLogAnalysisJob(context.logAnalysisQueue, {
-    organizationId: auth.organization.id,
+    organizationId: organizationId(auth),
     logId: result.log.id,
     runId: result.job.runId,
     jobId: result.job.id
@@ -348,18 +383,18 @@ export async function uploadLogFile(
   return result;
 }
 
-export async function createLogFromFile(db: Database, auth: AuthContext, input: CreateLogFromFileInput, context: ServiceContext = {}) {
-  requireLogUpload(auth);
+export async function createLogFromFile(db: Database, auth: LogPrincipal, input: CreateLogFromFileInput, context: ServiceContext = {}) {
+  if (!("kind" in auth)) requireLogUpload(auth);
   const logDomainId = await resolveUploadSkillId(db, auth, input);
 
   const fileObject = await getFileObjectById(db, {
-    organizationId: auth.organization.id,
+    organizationId: organizationId(auth),
     fileObjectId: input.fileObjectId
   });
   if (!fileObject) {
     throw new ApiError("NOT_FOUND", "File object was not found.", { fileObjectId: input.fileObjectId });
   }
-  if (fileObject.uploadedByUserId !== auth.user.id) {
+  if ("kind" in auth ? fileObject.createdByCredentialId !== auth.credentialId : fileObject.uploadedByUserId !== auth.user.id) {
     throw new ApiError("FORBIDDEN", "File object ownership is required.", {
       fileObjectId: input.fileObjectId
     });
@@ -375,17 +410,18 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
   const sourceBundle = await db.query<{ id: string }>(`select lr.id from log_records lr
     where lr.organization_id=$1 and lr.file_object_id=$2
       and exists (select 1 from log_files lf where lf.record_id=lr.id and lf.organization_id=lr.organization_id and lf.status='analyzed')
-    order by lr.captured_at desc, lr.id desc limit 1`, [auth.organization.id, fileObject.id]);
+    order by lr.captured_at desc, lr.id desc limit 1`, [organizationId(auth), fileObject.id]);
   const sourceRecordId = sourceBundle.rows[0]?.id;
   if (!sourceRecordId && !isAnalyzableStoredLogObject(fileObject)) {
     return db.transaction(async (tx) => {
       const log = await markUnsupportedLog(tx, {
         id: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: organizationId(auth),
         fileObjectId: input.fileObjectId,
         fileName: fileObject.fileName,
         source: "upload",
-        submittedByUserId: auth.user.id,
+        submittedByUserId: uploadingUserId(auth),
+        createdByCredentialId: creatingCredentialId(auth),
         failureReason: unsupportedReason(),
         analysisQuestion: input.analysisQuestion,
         relatedParameterId: relatedParameter?.relatedParameterId,
@@ -395,7 +431,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
       if (!log) throw new ApiError("NOT_FOUND", "Log record was not created.");
       await createLogAudit(
         asAuditTx(tx),
-        createUserInvocation(auth),
+        uploadInvocation(auth),
         {
           kind: "log-upload-failed",
           action: "upload-failed",
@@ -416,11 +452,12 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         logId: randomUUID(),
         runId: randomUUID(),
         jobId: randomUUID(),
-        organizationId: auth.organization.id,
+        organizationId: organizationId(auth),
         fileObjectId: input.fileObjectId,
         fileName: fileObject.fileName,
         source: "upload",
-        submittedByUserId: auth.user.id,
+        submittedByUserId: uploadingUserId(auth),
+        createdByCredentialId: creatingCredentialId(auth),
         analysisQuestion: input.analysisQuestion,
         relatedParameterId: relatedParameter?.relatedParameterId,
         relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
@@ -431,7 +468,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
     );
     await createLogAudit(
       asAuditTx(tx),
-      createUserInvocation(auth),
+      uploadInvocation(auth),
       {
         kind: "log-upload",
         action: "upload",
@@ -445,17 +482,17 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         line_count, status, skip_reason, object_key, line_index_key)
         select gen_random_uuid()::text, organization_id, $3, path, size_bytes, sha256, encoding, lossy,
           line_count, status, skip_reason, object_key, line_index_key from log_files where organization_id=$1 and record_id=$2`,
-      [auth.organization.id, sourceRecordId, result.log.id]);
+      [organizationId(auth), sourceRecordId, result.log.id]);
       await tx.query(`insert into log_original_uploads (organization_id, record_id, position, file_name, object_key, size_bytes)
         select organization_id, $3, position, file_name, object_key, size_bytes from log_original_uploads
-        where organization_id = $1 and record_id = $2`, [auth.organization.id, sourceRecordId, result.log.id]);
-      result.log.files = fileInventory(await loadLogFiles(tx, auth.organization.id, result.log.id));
+        where organization_id = $1 and record_id = $2`, [organizationId(auth), sourceRecordId, result.log.id]);
+      result.log.files = fileInventory(await loadLogFiles(tx, organizationId(auth), result.log.id));
     }
     return result;
   });
 
   await enqueueLogAnalysisJob(context.logAnalysisQueue, {
-    organizationId: auth.organization.id,
+    organizationId: organizationId(auth),
     logId: result.log.id,
     runId: result.job.runId,
     jobId: result.job.id
@@ -469,8 +506,8 @@ export async function listLogRecords(db: Queryable, auth: AuthContext, query: Li
   return { items: await listLogs(db, auth, query) };
 }
 
-export async function getLogRecord(db: Queryable, auth: AuthContext, logId: string) {
-  requireLogView(auth);
+export async function getLogRecord(db: Queryable, auth: LogPrincipal, logId: string) {
+  if (!("kind" in auth)) requireLogView(auth);
   const log = await getLogDetail(db, auth, logId);
   if (!log) {
     throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
@@ -478,18 +515,18 @@ export async function getLogRecord(db: Queryable, auth: AuthContext, logId: stri
   return log;
 }
 
-export async function getLogLineRange(db: Queryable, objectStore: ObjectStore, auth: AuthContext,
+export async function getLogLineRange(db: Queryable, objectStore: ObjectStore, auth: LogPrincipal,
   logId: string, input: { file: string; startLine: number; endLine: number }): Promise<LogLineRangeDto> {
   await getLogRecord(db, auth, logId);
   const parsed = logLineRangeQuerySchema.safeParse(input);
   if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Request an inclusive range of at most 400 lines.");
-  const inventory = await loadLogFiles(db, auth.organization.id, logId);
+  const inventory = await loadLogFiles(db, organizationId(auth), logId);
   const storedFile = inventory.find((item) => item.path === input.file)
-    ?? (!inventory.length ? await loadLegacyLogFile(db, auth.organization.id, logId, input.file) : undefined);
+    ?? (!inventory.length ? await loadLegacyLogFile(db, organizationId(auth), logId, input.file) : undefined);
   if (!storedFile || storedFile.status !== "analyzed" || !storedFile.objectKey) {
     throw new ApiError("NOT_FOUND", "Log file was not found.", { logId, file: input.file });
   }
-  const file = await ensureStoredLogIndex(db, objectStore, auth.organization.id, logId, storedFile);
+  const file = await ensureStoredLogIndex(db, objectStore, organizationId(auth), logId, storedFile);
   if (input.startLine > Math.max(1, file.lineCount)) {
     throw new ApiError("VALIDATION_FAILED", "Start line is outside the log file.");
   }

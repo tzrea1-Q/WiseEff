@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+export const issueLogIntegrationCredentialBodySchema = z.object({
+  name: z.string().trim().min(1).max(120), skillId: z.string().min(1).nullable().optional()
+}).strict();
+
 export const sourceSnapshotUploadSchema = z.object({
   versionLabel: z.string().trim().min(1).max(200),
   fileName: z.string().min(1).max(255)

@@ -47,7 +47,8 @@ export type AuditPresentation = {
 const actorTypeLabel = {
   user: "用户",
   agent: "智能助手",
-  system: "系统"
+  system: "系统",
+  integration: "集成凭据"
 } as const;
 
 const parameterStatusLabels: Record<string, string> = {

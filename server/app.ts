@@ -7,6 +7,7 @@ import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
 import type { AuthContext } from "./modules/auth/types";
+import { allowsIntegrationPrincipal, isIntegrationAuthorization, resolveIntegrationCredential } from "./modules/auth/integrationCredentialResolver";
 import { createOidcVerifier } from "./modules/auth/oidcVerifier";
 import { createTokenVerifier, type TokenVerifier } from "./modules/auth/tokenVerifier";
 import { registerJobRoutes } from "./modules/jobs/routes";
@@ -119,6 +120,14 @@ export type WiseEffServerOptions = {
  */
 export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
+  const handle = router.handle;
+  router.handle = async (request) => {
+    if (isIntegrationAuthorization(request.headers.authorization)
+      && !allowsIntegrationPrincipal(request.method, router.matchRoutePattern(request.method, request.path))) {
+      throw new ApiError("FORBIDDEN", "Integration credentials cannot access this route.");
+    }
+    return handle(request);
+  };
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
   const localAuthService = options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
@@ -214,6 +223,10 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     skillBudgetCaps: {
       stepBudget: options.env?.LOG_ANALYSIS_MAX_STEPS ?? 6,
       tokenBudget: options.env?.LOG_ANALYSIS_TOKEN_BUDGET ?? 8000
+    },
+    getIntegrationPrincipal: (request) => {
+      if (!options.db) throw new ApiError("UNAUTHENTICATED", "Integration credential authentication requires a database.");
+      return resolveIntegrationCredential(options.db, request.headers.authorization);
     },
     getCurrentAuthContext: authResolver
   });
