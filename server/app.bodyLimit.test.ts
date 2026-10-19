@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveRouteBodyLimit } from "./app";
+import { LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit } from "./app";
 import { createRouter } from "./shared/http/router";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { requestJson } from "./test/testClient";
@@ -31,6 +31,38 @@ describe("skill sample transport body limit", () => {
     expect(await requestJson(server, samplePath, { method: "PUT", body: oversized })).toMatchObject({
       status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE", details: { maxBytes: sampleBodyLimit } } }
     });
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("skill authoring preview transport body limit", () => {
+  it.each(["parse", "extractor", "format"])("bounds only %s-preview POSTs, including slash aliases", (kind) => {
+    const path = `/api/v1/log-skills/skill-1/${kind}-preview`;
+    for (const alias of [path, `${path}/`, `/api//v1//log-skills//skill-1//${kind}-preview//`]) {
+      expect(resolveRouteBodyLimit({ method: "POST", path: alias })).toBe(LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES);
+    }
+    for (const input of [
+      { method: "PUT", path }, { method: "GET", path }, { method: "POST", path: `${path}/extra` },
+      { method: "POST", path: `/api/v1/log-skills/${kind}-preview` }
+    ]) expect(resolveRouteBodyLimit(input)).toBe(DEFAULT_MAX_REQUEST_BODY_BYTES);
+  });
+
+  it.each(["parse", "extractor", "format"])("admits escaped samples and rejects oversized %s-preview aliases before the handler", async (kind) => {
+    const router = createRouter();
+    const path = `/api/v1/log-skills/skill-1/${kind}-preview`;
+    const handler = vi.fn(async () => ({ status: 200, body: { ok: true } }));
+    router.post(path, handler);
+    const server = createHttpServer(router, { maxBodyBytes: resolveRouteBodyLimit });
+    const valid = JSON.stringify({ sampleText: "\u0001".repeat(1024 * 1024) });
+    expect(Buffer.byteLength(valid)).toBeLessThan(LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES);
+    expect((await requestJson(server, path, { method: "POST", body: valid })).status).toBe(200);
+    handler.mockClear();
+    const oversized = "x".repeat(LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES + 1);
+    for (const alias of [path, `${path}/`, `/api//v1//log-skills//skill-1//${kind}-preview//`]) {
+      expect(await requestJson(server, alias, { method: "POST", body: oversized })).toMatchObject({
+        status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE", details: { maxBytes: LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES } } }
+      });
+    }
     expect(handler).not.toHaveBeenCalled();
   });
 });

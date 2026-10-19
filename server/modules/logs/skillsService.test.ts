@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RE2JS } from "re2js";
 import type { Queryable } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import * as domains from "./domainsRepository";
 import * as workerDecoding from "./parsing/workerDecoding";
-import { previewLogSkillParsing, PARSE_PREVIEW_MAX_MS } from "./skillsService";
+import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat, PARSE_PREVIEW_MAX_MS } from "./skillsService";
 import { parsePreviewResponseSchema, parsingSpecSchema } from "./parsing/spec";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
@@ -11,10 +12,46 @@ const auth = makeTestAuthContext({ organizationId: "org-preview", permissions: [
 const parsing = { schemaVersion: "parsing/v1", extractors: [{ id: "value", pattern: "(?P<v>.+)", fields: { v: { type: "string" } } }] };
 const db: Queryable = { query: vi.fn(() => { throw new Error("Unexpected database access"); }) };
 function skill() {
-  return vi.spyOn(domains, "getLogDomainById").mockResolvedValue({ id: "skill", name: "Preview", status: "active", webhook: { enabled: false, secretConfigured: false }, createdAt: "2026-10-19", updatedAt: "2026-10-19" });
+  return vi.spyOn(domains, "getLogDomainById").mockResolvedValue({ id: "skill", name: "Preview", skillKey: "preview", status: "active", webhook: { enabled: false, secretConfigured: false }, createdAt: "2026-10-19", updatedAt: "2026-10-19" });
 }
 
 describe("parsing preview service bounds", () => {
+  it("requires admin permission and an organization-owned skill for authoring previews", async () => {
+    const input = { line: "n=1", segments: [{ start: 2, end: 3, name: "n", type: "uint" as const }], sampleLines: ["n=2", "x=2"] };
+    const lookup = skill();
+    expect(await previewLogSkillExtractor(db, auth, "skill", input)).toMatchObject({ matchCount: 1, coverage: 0.5 });
+    expect(lookup).toHaveBeenCalledWith(db, { organizationId: auth.organization.id, domainId: "skill" });
+    const viewer = makeTestAuthContext({ organizationId: "org-preview", permissions: ["logs:view"] });
+    await expect(previewLogSkillExtractor(db, viewer, "skill", input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(previewLogSkillFormat(db, viewer, "skill", { sampleText: "n=1", formatProfile: {} })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    lookup.mockResolvedValue(null);
+    await expect(previewLogSkillExtractor(db, auth, "foreign", input)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(previewLogSkillFormat(db, auth, "foreign", { sampleText: "n=1", formatProfile: {} })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+  it("surfaces invalid RE2 and format schema failures as validation errors", async () => {
+    skill();
+    await expect(previewLogSkillExtractor(db, auth, "skill", { line: "", segments: [], pattern: "(?=x)", sampleLines: [] })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await expect(previewLogSkillFormat(db, auth, "skill", { sampleText: "x", formatProfile: { timestampPattern: "(?=x)" } })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+  it("hard-stops format and extractor preview compilation at the request time budget", async () => {
+    skill();
+    const original = RE2JS.compile;
+    const delay = (source: string, flags?: number) => {
+      const end = performance.now() + 400;
+      while (performance.now() < end) { /* Simulate costly RE2 compilation beyond the source/program caps. */ }
+      return original(source, flags);
+    };
+    const compile = vi.spyOn(RE2JS, "compile");
+    for (const preview of [
+      () => previewLogSkillFormat(db, auth, "skill", { sampleText: "ERROR", formatProfile: { severityMap: { error: ["ERROR"] } } }),
+      () => previewLogSkillExtractor(db, auth, "skill", { line: "n=1", segments: [], pattern: "^n=(?P<n>\\d+)$", sampleLines: ["n=1"] })
+    ]) {
+      compile.mockImplementationOnce(delay);
+      const start = performance.now();
+      await expect(preview()).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringMatching(/timed out.*100ms/) });
+      expect(performance.now() - start).toBeLessThan(350);
+    }
+  });
   it("keeps preview limits independent of worker environment settings", async () => {
     skill();
     vi.stubEnv("LOG_DECODE_MAX_MS", "1");

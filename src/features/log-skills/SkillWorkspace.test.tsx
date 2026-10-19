@@ -280,6 +280,7 @@ describe("skill workspace", () => {
   });
   it("edits parsing in the shared draft, saves and publishes it, and blocks invalid YAML", async () => {
     const { repository } = setup({ section: "parsing" });
+    await userEvent.click(await screen.findByRole("tab", { name: "代码视图" }));
     const editor = await screen.findByRole("textbox", { name: "代码视图 · YAML" });
     fireEvent.change(editor, { target: { value: "schemaVersion: parsing/v1\nextractors: [" } });
     expect(screen.getByRole("group", { name: "未发布更改" })).toBeInTheDocument();
@@ -293,6 +294,20 @@ describe("skill workspace", () => {
     expect(within(dialog).getByLabelText("解析规则差异")).toHaveTextContent("current · 新增");
     fireEvent.click(within(dialog).getByRole("button", { name: "发布" }));
     await waitFor(() => expect(repository.publishSkill).toHaveBeenCalledWith("skill-charging", "saved"));
+  });
+  it("blocks saving and section changes for invalid format drafts and explicitly discards the local draft", async () => {
+    const { repository } = setup({ section: "parsing" });
+    fireEvent.change(await screen.findByRole("textbox", { name: "时间戳模式" }), { target: { value: "(?=bad)" } });
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    expect(screen.getByRole("textbox", { name: "时间戳模式" })).toHaveValue("(?=bad)");
+    expect(screen.getByText("请先修正基础格式，再切换分区。")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "放弃草稿" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "放弃草稿？" })).getByRole("button", { name: "确认" }));
+    expect(screen.getByRole("textbox", { name: "时间戳模式" })).toHaveValue("");
+    expect(screen.queryByRole("group", { name: "未发布更改" })).not.toBeInTheDocument();
+    expect(repository.saveSkillDraft).not.toHaveBeenCalled();
   });
   it("opens the source section and includes its default draft in publication review", async () => {
     const { repository } = setup();

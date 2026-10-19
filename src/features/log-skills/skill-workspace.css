@@ -111,6 +111,25 @@
 .skill-decoding [aria-label="寄存器字段表"] th:last-child { width: var(--space-16); }
 .skill-decoding [aria-label="寄存器字段表"] td { vertical-align: top; white-space: normal; }
 .skill-register-properties { display: grid; gap: var(--space-2); }
+.skill-section > [role="tabpanel"], .skill-extractors, .skill-extractor-dialog { display: grid; gap: var(--space-3); min-width: 0; }
+.skill-section > [role="tabpanel"][hidden] { display: none; }
+.skill-extractor-line { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: var(--space-3); background: var(--surface-sunken); color: var(--text); border-radius: var(--radius-md); font: 400 var(--text-sm) / var(--leading-base) var(--font-mono); }
+.skill-extractor-tokens { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.skill-extractor-tokens button { font-family: var(--font-mono); max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.skill-extractor-tokens [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.skill-extractor-dialog .skill-extractor-option { display: flex; align-items: center; gap: var(--space-2); }
+.skill-extractor-disclosure { justify-self: start; gap: var(--space-1); }
+.skill-extractor-dialog table, .skill-extractors table { table-layout: fixed; }
+.skill-extractor-dialog td, .skill-extractors td { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+.skill-extractor-dialog input { min-width: 0; }
+.skill-extractor-dialog ul { padding-left: var(--space-5); overflow-wrap: anywhere; }
+.skill-extractor-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); max-height: calc(var(--space-8) * 3); overflow: auto; flex-shrink: 0; }
+.skill-extractor-legend li { display: flex; align-items: center; gap: var(--space-1); color: var(--text); font: 400 var(--text-sm) / var(--leading-base) var(--font-sans); }
+.skill-extractor-swatch { width: var(--space-3); height: var(--space-3); flex-shrink: 0; background: var(--extractor-color); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-sm); }
+.skill-sample-line[data-extractor-match="true"] { background: color-mix(in srgb, var(--extractor-color) 16%, var(--surface)); }
+.skill-sample-line--selectable[data-extractor-match="true"][aria-pressed="true"] { box-shadow: var(--shadow-status-accent); }
+.skill-sample-line .skill-extractor-matches { display: inline-flex; gap: var(--space-1); padding-inline: var(--space-2); text-align: left; color: var(--text); }
+.skill-extractor-matches > span { border: var(--stroke-hairline) solid var(--extractor-color); background: var(--surface); padding-inline: var(--space-1); border-radius: var(--radius-sm); }
 .skill-frames { display: grid; gap: var(--space-3); min-width: 0; }
 .skill-frame-table { table-layout: fixed; min-width: calc(var(--space-16) * 9); }
 .skill-frame-table td { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }

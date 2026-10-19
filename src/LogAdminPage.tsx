@@ -33,8 +33,10 @@ import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
+import { FormatProfileForm } from "@/features/log-skills/FormatProfileForm";
+import { parseFormatProfileCode } from "@/features/log-skills/formatProfileFields";
 import { SectionSkeleton } from "@/components/common/SectionState";
-import type { SkillAuthoringRepository } from "@/features/log-skills/types";
+import type { SkillAuthoringRepository, SkillWorkspaceRepository } from "@/features/log-skills/types";
 
 const collectionTabs = ["records", "skills", "quality"] as const;
 
@@ -44,7 +46,7 @@ export type LogAdminPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   logActions?: LogRuntimeActions;
-  skillRepository?: Partial<SkillAuthoringRepository>;
+  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository>;
   apiMode?: boolean;
   /** Published-entry catalog for the domain ↔ knowledge link editor (API mode only). */
   knowledgeRepository?: KnowledgeRepository;
@@ -328,7 +330,7 @@ function LogDomainGovernanceSection({
   logActions?: LogRuntimeActions;
   knowledgeRepository?: KnowledgeRepository;
   onNavigate: (path: string) => void;
-  skillRepository?: Partial<SkillAuthoringRepository>;
+  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository>;
   apiMode: boolean;
 }) {
   const [domains, setDomains] = useState<LogDomain[] | null>(null);
@@ -337,6 +339,7 @@ function LogDomainGovernanceSection({
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileValid, setProfileValid] = useState(true);
   const [nameError, setNameError] = useState<string | null>(null);
   const [draftConflict, setDraftConflict] = useState(false);
   const [pending, setPending] = useState(false);
@@ -372,7 +375,7 @@ function LogDomainGovernanceSection({
 
   const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!logActions || !form.domainId || pending) {
+    if (!logActions || !form.domainId || pending || !profileValid) {
       return;
     }
     const parsedProfile = parseProfileText(form.profileText);
@@ -589,31 +592,10 @@ function LogDomainGovernanceSection({
               </div>
               {form.domainId ? <Button type="button" variant="link" onClick={() => onNavigate(`/log-admin/skills/${encodeURIComponent(form.domainId!)}?section=integration`)}>前往集成配置模型、预算与结果回调</Button>
                 : <p>创建后可在工作区「集成」分区配置模型、预算与结果回调。</p>}
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-profile">
-                格式画像 JSON（可选：timestampPattern / multiline / severityMap）
-                <textarea
-                  id="log-domain-profile"
-                  value={form.profileText}
-                  rows={6}
-                  aria-invalid={profileError ? true : undefined}
-                  aria-describedby={profileError ? "log-domain-profile-error" : undefined}
-                  onChange={(event) => {
-                    setProfileError(null);
-                    setForm((current) => ({ ...current, profileText: event.target.value }));
-                  }}
-                  className="rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder={'{\n  "timestampPattern": "^\\\\[(\\\\d+\\\\.\\\\d+)\\\\]",\n  "severityMap": { "error": ["<3>"] }\n}'}
-                />
-              </label>
-              {profileError ? (
-                <p
-                  id="log-domain-profile-error"
-                  role="alert"
-                  className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"
-                >
-                  {profileError}
-                </p>
-              ) : null}
+              <FormatProfileForm skillId={form.domainId ?? ""} profile={parseFormatProfileCode(form.profileText).profile}
+                repository={skillRepository} disabled={pending} onValidityChange={setProfileValid} externalError={profileError} onChange={(profile) => {
+                  setProfileError(null); setForm((current) => ({ ...current, profileText: formatProfileText(profile) }));
+                }} />
               {draftConflict && form.domainId ? <p role="alert" className="text-sm text-destructive">
                 该技能有未发布草稿，请先在技能工作区发布或放弃草稿。{" "}
                 <a className="underline" href={`/log-admin/skills/${encodeURIComponent(form.domainId)}`}
@@ -623,7 +605,7 @@ function LogDomainGovernanceSection({
                 <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setFormOpen(false)}>
                   取消
                 </Button>
-                <Button type="submit" size="sm" disabled={pending || form.name.trim() === ""} aria-busy={pending || undefined}>
+                <Button type="submit" size="sm" disabled={pending || !profileValid || form.name.trim() === ""} aria-busy={pending || undefined}>
                   保存修改
                 </Button>
               </div>

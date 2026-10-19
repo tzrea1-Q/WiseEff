@@ -19,11 +19,16 @@ export interface SkillAuthoringRepository {
   deleteSkillSample(id: string): Promise<void>;
 }
 export type ParsePreview = z.infer<typeof parsePreviewResponseSchema>;
+export type ExtractorPatternInput = z.infer<typeof import("@wiseeff/dto-schemas").extractorPreviewRequestSchema>;
+export type ExtractorPatternPreview = z.infer<typeof import("@wiseeff/dto-schemas").extractorPreviewResponseSchema>;
+export type FormatPreview = z.infer<typeof import("@wiseeff/dto-schemas").formatPreviewResponseSchema>;
 export type SourceSnapshot = z.infer<typeof logSourceSnapshotDtoSchema>;
 export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSourceExcerptDtoSchema>;
 export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
 export interface SkillWorkspaceRepository {
+  generateExtractorPattern?(id: string, input: ExtractorPatternInput): Promise<ExtractorPatternPreview>;
+  previewFormat?(id: string, input: { sampleText: string; formatProfile: unknown }): Promise<FormatPreview>;
   startSkillDryRun?(id: string): Promise<SkillDryRun>;
   getSkillDryRun?(id: string, runId: string): Promise<SkillDryRunDetail>;
   getSkillDryRunLines?(id: string, runId: string, file: string, startLine: number, endLine: number): Promise<import("@/application/ports/LogAnalysisRepository").LogLineRange>;
