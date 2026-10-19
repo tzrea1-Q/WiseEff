@@ -1378,6 +1378,6 @@
 
 @media (min-width: 640px) {
   .log-file-drawer[data-slot="sheet-content"][data-side="right"] {
-    width: min(880px, 60vw);
+    width: var(--log-file-drawer-width);
   }
 }
