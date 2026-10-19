@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema } from "../../logs/schemas";
 import { logSkillSpecSchema } from "../../logs/skillSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
+import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -73,6 +74,8 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogParsePreviewRequest: parsePreviewRequestSchema,
   LogParsePreviewResponse: parsePreviewResponseSchema,
+  LogSignalPreviewRequest: signalPreviewRequestSchema,
+  LogSignalPreviewResponse: signalPreviewResponseSchema,
   LogFileUploadRequest: createLogFileBodySchema,
   CreateLogRecordRequest: createLogBodySchema,
   CreateLogDomainRequest: createLogDomainBodySchema,
@@ -182,6 +185,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.listSkills", "logs.createSkill", "logs.getSkill", "logs.saveSkillDraft", "logs.discardSkillDraft", "logs.restoreSkillRevision", "logs.publishSkill", "logs.listSkillRevisions", "logs.getSkillRevision",
   "logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample",
   "logs.parsePreview",
+  "logs.signalPreview",
   "logs.listSourceSnapshots", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot", "logs.locateSourceStatement", "logs.sourceEvidence",
   "logs.listDomains",
   "logs.createDomain",

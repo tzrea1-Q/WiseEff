@@ -60,3 +60,27 @@
 .skill-sample-content:focus-visible { outline: calc(var(--stroke-hairline) * 2) solid var(--ring); outline-offset: var(--space-1); }
 .skill-sample-line { display: flex; gap: var(--space-3); white-space: pre; }
 .skill-sample-line > span { color: var(--text-muted); min-width: var(--space-10); text-align: right; user-select: none; }
+.skill-sample-line[data-highlighted] { background: var(--accent-soft); color: var(--accent); }
+.skill-signal-rule { display: grid; min-width: 0; border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
+.skill-rule-header { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; gap: var(--space-2); padding: var(--space-2); }
+.skill-rule-summary { display: flex; flex: 1; min-width: min-content; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.skill-rule-summary-condition { flex: 1; width: 0; min-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
+.skill-rule-summary-name { flex-shrink: 0; }
+.skill-rule-summary > span:last-child { flex-shrink: 0; }
+.skill-rule-actions { display: flex; flex-shrink: 0; gap: var(--space-1); }
+.skill-rule-body { display: grid; gap: var(--space-2); padding: var(--space-3); padding-top: 0; }
+.skill-signal-condition { display: grid; gap: var(--space-1); min-width: 0; }
+.skill-condition-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.skill-condition-type { flex: 0 0 calc(var(--space-10) * 3.5); }
+.skill-condition-value { flex: 1; min-width: var(--space-16); }
+.skill-condition-flags, .skill-condition-number { flex: 0 0 calc(var(--space-10) * 2); width: calc(var(--space-10) * 2); }
+.skill-condition-operator { flex: 0 0 calc(var(--space-10) * 2.5); }
+.skill-signal-subcondition { flex: 1 1 100%; min-width: 0; }
+.skill-condition-legacy { flex: 1; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.skill-condition-legacy small, .skill-signal-hint { color: var(--text-muted); }
+.skill-rule-output { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--space-10) * 3.5); align-items: start; gap: var(--space-3); }
+.skill-rule-add { justify-self: start; }
+.skill-rule-hits { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.skill-rule-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.skill-rule-error { color: var(--danger); overflow-wrap: anywhere; }
+.skill-signal-rule p { margin: 0; }

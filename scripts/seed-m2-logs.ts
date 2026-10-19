@@ -33,6 +33,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
   const unsupportedChecksum = checksum(unsupportedBytes);
 
   await db.transaction(async (tx) => {
+    await tx.query("select provision_charging_skill($1)", [organizationId]);
     await tx.query(
       `
       insert into log_file_objects (

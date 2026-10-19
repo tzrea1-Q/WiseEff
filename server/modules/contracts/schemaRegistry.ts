@@ -1047,6 +1047,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.sourceEvidence": { summary: "Read the bounded source excerpt cited by record evidence (logs:view)", tags: ["logs"], responseBody: "LogSourceEvidenceResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
   "logs.getSkill": { summary: "Get analysis skill", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.parsePreview": { summary: "Preview unsaved parsing rules", tags: ["logs"], requestBody: "LogParsePreviewRequest", responseBody: "LogParsePreviewResponse" },
+  "logs.signalPreview": { summary: "Preview draft signal rules on the stored sample", tags: ["logs"], requestBody: "LogSignalPreviewRequest", responseBody: "LogSignalPreviewResponse" },
   "logs.saveSkillDraft": { summary: "Save skill draft", tags: ["logs"], requestBody: "LogSkillDraftRequest", responseBody: "LogSkillRevisionResponse", additionalResponses: { "409": "ErrorResponse" } },
   "logs.discardSkillDraft": { summary: "Discard skill draft", tags: ["logs"], successStatus: 204, responseBody: "LogSkillDiscardResponse",
     requestParameters: [{ name: "draftRevisionId", in: "query", required: true, description: "The draft id observed by the editor.", schema: { type: "string" } }],

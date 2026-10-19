@@ -48,3 +48,5 @@ export * from "./canonicalBatchRollback";
 export * from "./canonicalManualSync";
 export * from "./productFeedback";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
+export { logSkillSpecSchema } from "../../logs/skillSpec";
+export { signalRuleSetSchema, signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";

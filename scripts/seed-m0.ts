@@ -19,14 +19,17 @@ const users = [
 ] as const;
 
 export async function seedM0Foundation(db: Database) {
-  await db.query(
-    `
-    insert into organizations (id, name)
-    values ($1, $2)
-    on conflict (id) do update set name = excluded.name
-    `,
-    [organizationId, "ChargeLab"]
-  );
+  await db.transaction(async (tx) => {
+    await tx.query(
+      `
+      insert into organizations (id, name)
+      values ($1, $2)
+      on conflict (id) do update set name = excluded.name
+      `,
+      [organizationId, "ChargeLab"]
+    );
+    await tx.query("select provision_charging_skill($1)", [organizationId]);
+  });
 
   for (const [id, name, email, title] of users) {
     await db.query(

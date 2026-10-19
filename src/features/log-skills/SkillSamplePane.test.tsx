@@ -6,6 +6,22 @@ import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 
 afterEach(cleanup);
 describe("skill sample pane", () => {
+  it("scrolls a repeated hit request to the already highlighted line", async () => {
+    const repository = { getSkillSample: vi.fn().mockResolvedValue(mockSkillSample) };
+    const { rerender } = render(<SkillSamplePane skillId="skill-charging" apiMode canEdit repository={repository} highlightedLine={2} highlightRequest={1} />);
+    const line = (await screen.findByText("ERROR charging timeout code=E_TIMEOUT")).parentElement!;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(line, "scrollIntoView", { value: scrollIntoView });
+    rerender(<SkillSamplePane skillId="skill-charging" apiMode canEdit repository={repository} highlightedLine={2} highlightRequest={2} />);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+    expect(line).toHaveAttribute("data-highlighted", "true");
+  });
+  it.each(["one\ntwo\n", "one\r\ntwo\r\n", "one\rtwo\r"])("omits the phantom row after a final newline in %j", async (content) => {
+    render(<SkillSamplePane skillId="skill-charging" apiMode canEdit repository={{ getSkillSample: vi.fn().mockResolvedValue({ ...mockSkillSample, content, lineCount: 2 }) }} />);
+    const pane = await screen.findByRole("region", { name: "样例内容" });
+    expect(pane.children).toHaveLength(2);
+    expect(pane.children[1]).toHaveTextContent("two");
+  });
   it.each([[0, "0 B"], [13005, "12.7 KiB"], [2097152, "2.0 MiB"]])("formats %s bytes with the shared binary units", async (sizeBytes, size) => {
     render(<SkillSamplePane skillId="skill-charging" apiMode canEdit repository={{
       getSkillSample: vi.fn().mockResolvedValue({ ...mockSkillSample, sizeBytes, lineCount: 400 })

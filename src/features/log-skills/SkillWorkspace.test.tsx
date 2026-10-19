@@ -92,6 +92,22 @@ describe("skill workspace", () => {
     expect(repository.saveSkillDraft).toHaveBeenCalledWith(skill.id, expect.objectContaining({ modelOverride: "acceptance-domain-model-x" }), null, expect.any(String));
   });
 
+  it("keeps signal edits across sections, blocks invalid fields and saves the exact skill representation", async () => {
+    const { repository } = setup({ section: "signals" });
+    fireEvent.click(await screen.findByRole("button", { name: "添加信号规则" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1名称" }), { target: { value: "Timeout" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1消息正则" }), { target: { value: "(?=invalid)" } });
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1消息正则" }), { target: { value: "timeout" } });
+    fireEvent.click(screen.getByRole("button", { name: "概览" }));
+    fireEvent.click(screen.getByRole("button", { name: "信号" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
+    expect(screen.getByRole("textbox", { name: "规则 1名称" })).toHaveValue("Timeout");
+    expect(screen.getByRole("textbox", { name: "规则 1 条件 1消息正则" })).toHaveValue("timeout");
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ signalRules: expect.objectContaining({ rules: [expect.objectContaining({ name: "Timeout", anyOf: [{ type: "text", pattern: "timeout" }] })] }) }), null, "current"));
+  });
   it("prefills an absent procedure without creating an edit, and previews the five-heading outline", async () => {
     setup({ section: "procedure" });
     const editor = await screen.findByRole("textbox", { name: "诊断流程内容" });
@@ -244,7 +260,7 @@ describe("skill workspace", () => {
     const configured = screen.getByRole("region", { name: "已配置内容" });
     expect(configured.querySelector("dl")).toHaveClass("skill-facts");
     expect(within(configured).getByText("基础格式").tagName).toBe("DT");
-    expect(within(configured).getByText("平台默认充电规则").tagName).toBe("DD");
+    expect(within(configured).getByText("平台通用信号").tagName).toBe("DD");
   });
   it("shows the legacy identity description without marking dirty and preserves an explicit clear", async () => {
     const { repository } = setup({ legacyDescription: true });

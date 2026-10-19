@@ -233,6 +233,7 @@ export async function seedM1Parameters(
   config: PowerManagementConfig
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    await tx.query("select provision_charging_skill($1)", [organizationId]);
     for (const project of config.projects) {
       await tx.query(
         `

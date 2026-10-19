@@ -16,11 +16,13 @@ export interface SkillAuthoringRepository {
   deleteSkillSample(id: string): Promise<void>;
 }
 export type ParsePreview = z.infer<typeof parsePreviewResponseSchema>;
+export type SignalPreview = z.infer<typeof import("@wiseeff/dto-schemas").signalPreviewResponseSchema>;
 export type SourceSnapshot = z.infer<typeof logSourceSnapshotDtoSchema>;
 export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSourceExcerptDtoSchema>;
 export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
 export interface SkillWorkspaceRepository {
+  signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"] }): Promise<SignalPreview>;
   parsePreview?(id: string, input: { parsing: unknown; sampleText: string; fileName?: string }): Promise<ParsePreview>;
   getSkillSampleText?(id: string): Promise<{ text: string; fileName?: string } | null>;
   getLogSkill(id: string): Promise<AnalysisSkill>;

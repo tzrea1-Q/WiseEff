@@ -202,6 +202,15 @@ describe("createHttpLogAnalysisRepository", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ item: { content: "stored", fileName: "a.log", truncated: false } }));
     await expect(repository.getSkillSampleText!("skill/a")).resolves.toEqual({ text: "stored", fileName: "a.log" });
   });
+  it("previews draft signals on the stored sample through the validated HTTP port", async () => {
+    const preview = { valid: true, issues: [], hits: [{ ruleId: "timeout", lineNumber: 2, excerpt: "ERROR timeout" }], truncated: true, reason: "hit_cap" };
+    const fetchMock = createFetchMock(preview);
+    const defaults = { conclusion: "None", impact: "Review", severity: "Info" as const, confidence: 0.5, suggestedActions: [] };
+    const input = { signalRules: { rules: [], noHit: defaults, hitDefaults: defaults } };
+    await expect(createRepository(fetchMock).signalPreview!("skill/a", input)).resolves.toEqual(preview);
+    expect(fetchMock.mock.calls[0][0]).toContain("/log-skills/skill%2Fa/signals-preview");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(input);
+  });
   it("sends repeated multipart file parts as one bundle and preserves inventory and evidence paths", async () => {
     const files = [new File(["first"], "a.log"), new File(["second"], "b.log")];
     const inventory = [{ path: "a.log", sizeBytes: 5, lineCount: 1, encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null }];

@@ -172,7 +172,7 @@ describe("generic log signals", () => {
     }
   });
 
-  it("checks its deadline between conditions inside a single large pinned rule", async () => {
+  it("rejects an oversized unchecked pinned rule before compiling its conditions", async () => {
     const signalRules = { ...defaultChargingRuleSet, rules: [{ ...defaultChargingRuleSet.rules[0],
       anyOf: Array.from({ length: 200_000 }, () => ({ type: "text" as const, pattern: "not-present" })) }] };
     const input = [file("a.log", "INFO ordinary event")];
@@ -180,7 +180,7 @@ describe("generic log signals", () => {
     const started = performance.now();
     const summary = await extractLogSignalsCooperatively(input, signalRules, { maxMs });
     expect(performance.now() - started).toBeLessThanOrEqual(maxMs + 1000);
-    expect(summary).toMatchObject({ truncated: true, reason: "time_cap" });
+    expect(summary).toMatchObject({ truncated: true, reason: "extraction_error" });
   });
 
   it("marks a synchronous extraction that crosses its deadline in the final work step", () => {

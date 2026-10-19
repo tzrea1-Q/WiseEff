@@ -380,7 +380,7 @@ GET  /api/v1/jobs/:jobId/events
 | `PUT` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`。`{ fileName, contentBase64 }` 替换技能唯一且不版本化的文本样例；base64 解码后的原文件最多 2 MiB，复用 bundle intake 的 UTF-8／带 BOM 的 UTF-16 检测。二进制或压缩包返回 `400` 与中文原因。返回 `{ item: metadata }`，同事务写入 `log-skill-sample-replace` 审计。对象名称独立；替换后保留旧对象。 |
 | `GET` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:view`。返回 `{ item: metadata & { content, truncated } \| null }`；无样例为 null，技能不可访问为 `404`。正文统一 LF、最多前 5000 行，`lineCount` 保留总行数。元数据包含 `id`、`skillId`、`fileName`、原始 `sizeBytes`、`sha256`、`encoding`、`lineCount`、可空 `uploadedByUserId`、`createdAt`、`updatedAt`，不暴露存储键。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`，按组织隔离，幂等返回 `204`；同事务写入 `log-skill-sample-delete`，保留对象与技能版本。 |
-| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules?, parsing?, procedure? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。省略信号规则时沿用平台充电规则。 |
+| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules?, parsing?, procedure? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。钉住技能省略信号规则时使用通用信号，未分类上传保留旧充电预筛。 |
 | `POST` | `/api/v1/log-skills/:skillId/parse-preview` | 需 `logs:admin-domains`，按组织查找技能。请求 `{parsing, sampleText, fileName?}` 校验未保存的 `parsing/v1`；响应 `{valid, issues: [{path, message}], events, counts: {total, byExtractor, errors}, unmatchedLineCount, truncated, reason?}`。规范错误为 `200`、`valid: false` 和问题路径；样例超过 UTF-8 1 MiB 或请求体错误为 `400`。固定 100 ms 校验/解码硬超时、最多处理 5000 行及返回 500 事件，受限时返回部分结果及 `truncated: true`、`reason: time_cap \| line_cap \| event_cap`；计数描述已完成工作，未处理行计入未匹配。校验超时返回 `valid: false`、问题及相同时间上限标记。跨组织或不存在为 `404`，无权限为 `403`。只读，不写审计，不存样例。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId` | 必填查询参数 `draftRevisionId` 是编辑器看到的草稿 id。技能锁内若现有草稿 id 不同，返回 `409 LOG_SKILL_DRAFT_CONFLICT`；草稿匹配或已不存在时幂等返回 `204`。成功时写入 `log-skill-draft-discard` 审计，包括草稿已不存在的情况。 |
 | `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` 原子发布草稿并将前版置为 superseded；草稿缺失或过期返回 `409 LOG_SKILL_DRAFT_CONFLICT`；同步身份行的描述、基础格式和模型覆盖；成功返回 `{ item: skill }`。 |
@@ -388,7 +388,17 @@ GET  /api/v1/jobs/:jobId/events
 | `GET` | `/api/v1/log-skills/:skillId/revisions` | `{ items: revision[] }`，版本号倒序。 |
 | `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`：`id`、`skillId`、`number`、`status`、`spec`、`contentHash`、创建和发布时间及用户。已发布/已替代版本内容不可变。账号删除时按既有历史保留策略清空作者/发布者引用，spec、哈希与发布事实不变。 |
 
-`skill/v1` 增加可选 `procedure`：Markdown，去除首尾空白，最多 20000 字符，无版本升级。版本差异在「概览」组显示流程内容；本切片不提供流程编辑器。
+`skill/v1` 增加可选 `procedure`：Markdown，去除首尾空白，最多 20000 字符，无版本升级。版本差异在「概览」组显示流程内容。
+
+### 技能信号规则
+
+`POST /api/v1/log-skills/:skillId/signals-preview` 需要 `logs:admin-domains` 与 `logs:view`。请求 `{signalRules, parsing?, formatProfile?}` 在技能已存样例上执行未保存规则，不接受客户端日志正文。请求体超过 512 KiB 时，在 JSON 解析前返回 `413`。响应 `{valid, issues: [{path, message}], hits: [{ruleId, lineNumber, excerpt}], truncated, reason?}`。规范错误返回 `200`、`valid: false`；路径以 `signalRules` 或 `parsing` 开始，定位规则、条件与字段。无样例或请求体错误为 `400`，跨组织或不存在为 `404`，无权限为 `403`。只读预览复用 Worker 的匹配器，校验与执行硬超时 100 ms，最多处理 5000 样例行、返回 500 命中，每条摘录最多 400 字符。`reason` 为 `time_cap`、`line_cap`、`hit_cap`、`event_cap` 或 `evaluation_cap`；只保留已完成工作的命中。解码行、输入或事件超限也标记预览不完整。不写审计，不保存草稿。
+
+`signalRules.rules` 每项保留既有 `id`、`anyOf`、`stageId`、`inference`、`suggestedAction` 与 `analysis`。可选 `name` 和 `severity`（`Critical`、`Warning`、`Info`）提供作者填写的信号名称与报告级别。回退证据保留 `inference`，显式配置的优先级结论优先于名称。句式构建器直接编辑此表示，保留条件顺序、多个备选条件及旧分析元数据。每个技能最多 64 条规则，每条最多 16 个条件，总计最多 16 个时间窗；超限项返回稳定校验路径。时间窗环形缓冲仅保留最近 N 个匹配时间戳，总上限为 160,000 个（1.28 MB）。Worker 的首轮预筛、字段精筛和信号提取共享固定预处理截止时间及两百万次操作预算；耗尽时标记结果不完整。
+
+条件保留 `text`、`numericComparison`、`severityToken`，新增 `{type: "field", field: "extractorId.fieldName", operator: "equals", value}`、`operator: "range", min, max`（闭区间数值范围）及 `operator: "in", values`。比较使用 `parsing/v1` 成功解码的标量值，严格检查类型；字节对象和未声明字段会被拒绝。`{type: "window", condition: textOrFieldCondition, count, seconds}` 在含当前行的向前时间窗内至少出现 `count` 个匹配后，对每个匹配行产生信号。计数范围 1–10000；秒数大于零且不超过 86400。只有含已解析时间戳的行参与计数；时间回退会清空窗口，各文件不共享计数。消息模式使用 RE2，保留模式 4096 字符及输入 65536 字符上限。
+
+迁移 `0196_seed_charging_skill.sql` 通过 `provision_charging_skill` 为已有的每个组织创建已发布的「充电」技能。组织 bootstrap 和 M0/M1/M2/M3 种子为之后新建的组织调用同一函数。组织行锁保证重试幂等；冻结规则数据保持原充电证据一致，重放不修改已有种子或作者技能。沿用租户复合外键，同事务写入系统审计（回填为 `migration`，初始化为 `service`）。钉住且未配置规则的技能使用通用信号，未分类上传保留旧充电预筛。草稿编辑不改变既有运行钉住的规则；规则回退同时使用钉住规则与通用信号。
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
 | `POST` | `/api/v1/logs` | 创建日志分析记录 |
 | `GET` | `/api/v1/logs` | 日志列表 |

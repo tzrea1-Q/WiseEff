@@ -14,6 +14,12 @@ In API mode, Admins with `logs:admin-domains` can open a skill in `/log-admin?ta
 
 Save the draft, review the procedure's before/after text in the publish dialog, then publish to create a revision. Discard draft deletes the saved draft and unsaved edits, restoring the current published revision. Draft edits do not change queued analyses or reruns explicitly pinned to an older revision; new uploads use the current published revision. Procedures guide the read-only agent and cannot authorize writes or replace log evidence. Rule-fallback analysis ignores them.
 
+## Author signal rules
+
+Open a skill's Signals section to add rules in the form “When a condition holds, produce a named signal with a severity.” Conditions match messages with bounded RE2 patterns, compare an extracted `extractorId.fieldName` against a scalar, numeric range or set, or count matches within a time window in one file. Multiple conditions within a rule are alternatives. Reorder or delete rules as needed. Invalid fields show their validation paths and prevent saving or publishing.
+
+Upload a sample in the persistent right pane. Valid rules preview automatically after a short pause. Each collapsed rule card shows its sentence summary and hit count; expand it to edit conditions or choose a matching line chip to highlight the sample. Legacy conditions have readable descriptions and remain editable in code. A limit notice identifies partial results. Preview uses unsaved rules on the server. Save and publish to apply the rules to new uploads; draft changes do not affect a run's pinned revision. The seeded Charging skill carries the existing charging rules, while uploads without a skill retain the legacy charging prefilter.
+
 ## Upload a log and choose its domain
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".

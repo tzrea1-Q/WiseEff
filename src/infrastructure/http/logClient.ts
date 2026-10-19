@@ -41,7 +41,7 @@ import {
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
 } from "@wiseeff/dto-schemas";
-import { parsePreviewResponseSchema } from "@wiseeff/dto-schemas";
+import { parsePreviewResponseSchema, signalPreviewResponseSchema } from "@wiseeff/dto-schemas";
 import {
   jobSnapshotFromDto,
   logDomainFromDto,
@@ -188,6 +188,9 @@ export function createHttpLogAnalysisRepository(
     },
     async parsePreview(id, input) {
       return parseContractDto(parsePreviewResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/parse-preview`, input), "LogParsePreviewResponse");
+    },
+    async signalPreview(id, input) {
+      return parseContractDto(signalPreviewResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/signals-preview`, input), "LogSignalPreviewResponse");
     },
     async getSkillSampleText(id) {
       try {

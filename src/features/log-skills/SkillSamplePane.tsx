@@ -6,9 +6,11 @@ import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 import { formatBytes } from "@/domain/format/formatBytes";
 import type { SkillAuthoringRepository, SkillSample } from "./types";
 
-export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampleChange }: {
+export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampleChange, highlightedLine, highlightRequest }: {
   skillId: string; repository?: Partial<SkillAuthoringRepository>; apiMode: boolean; canEdit: boolean;
   onSampleChange?: (sample: SkillSample | null) => void;
+  highlightedLine?: number | null;
+  highlightRequest?: number;
 }) {
   const [sample, setSample] = useState<SkillSample | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,6 +20,8 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
   const [pending, setPending] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const highlightedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { highlightedRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" }); }, [highlightedLine, highlightRequest, sample]);
   const disabled = !apiMode || !canEdit || pending;
   useEffect(() => {
     let active = true;
@@ -54,7 +58,8 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
         {sample.truncated ? <p>仅显示前 5000 行</p> : null}
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The read-only log viewer needs focus for keyboard scrolling. */}
         <div className="skill-sample-content" data-sample-scroll role="region" aria-label="样例内容" tabIndex={0}>
-          {sample.content.split("\n").map((line, index) => <div className="skill-sample-line" key={index}>
+          {(sample.content ? sample.content.replace(/(?:\r\n|\n|\r)$/, "").split(/\r\n|\n|\r/) : []).map((line, index) => <div className="skill-sample-line" key={index}
+            ref={highlightedLine === index + 1 ? highlightedRef : undefined} data-highlighted={highlightedLine === index + 1 || undefined}>
             <span aria-hidden="true">{index + 1}</span><code>{line || "\u00a0"}</code></div>)}
         </div>
       </> : <><SectionEmpty message="上传样例日志，后续解析与信号规则会用它实时预览。" />

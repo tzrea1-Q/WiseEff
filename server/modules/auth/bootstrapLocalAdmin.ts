@@ -87,6 +87,7 @@ export async function bootstrapLocalAdmin(
         [organization.id, organization.name]
       );
     }
+    await tx.query("select provision_charging_skill($1)", [organization.id]);
     await tx.query(
       `
       insert into users (id, organization_id, name, title, is_active, last_active_at)

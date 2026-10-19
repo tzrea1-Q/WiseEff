@@ -429,6 +429,15 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe("log worker", () => {
   const parsing = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "current", pattern: "(?P<value>.+)", fields: { value: { type: "string" } } }] });
+  it("includes the initial prefilter in the preprocessing deadline and preserves truncation", async () => {
+    const { db, fixture } = createFakeWorkerDb();
+    const analyze = vi.fn(createRuleBasedLogAnalyzer().analyze);
+    expect(await processNextLogAnalysisJob({ db, objectStore: createObjectStore(Buffer.from("thermal\nthermal\nthermal")),
+      preprocessingMs: 0, analyzer: { analyze } })).toBe("processed");
+    expect(fixture.log.status).toBe("complete");
+    expect(analyze.mock.calls[0][0].files?.[0].prefilter).toMatchObject({ truncated: true, evidence: [], severityCounts: { error: 0, warn: 0, info: 0 } });
+    expect(analyze.mock.calls[0][0].signalSummary).toMatchObject({ truncated: true, reason: "time_cap" });
+  });
   it("keeps a deadline-limited decode within the lease and finishes with partial events", async () => {
     const { db, fixture } = createFakeWorkerDb();
     fixture.parsing = parsing;
@@ -438,7 +447,8 @@ describe("log worker", () => {
     vi.stubEnv("LOG_SIGNAL_MAX_MS", "1000");
     vi.stubEnv("LOG_ANALYSIS_PREPROCESS_MAX_MS", "15000");
     let elapsed = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => (elapsed += 0.75));
+    // Include initial prefilter work while leaving enough allowance for partial decoding.
+    vi.spyOn(performance, "now").mockImplementation(() => (elapsed += 0.5));
     const objectStore = createObjectStore(Buffer.from(Array(6000).fill("value").join("\n")));
     objectStore.put = async (input) => ({ storageKey: "decoded.gz", fileName: input.fileName, contentType: input.contentType, fileSizeBytes: input.bytes.length, checksumSha256: "checksum" });
     const analyze = vi.fn(createRuleBasedLogAnalyzer().analyze);

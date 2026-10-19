@@ -125,6 +125,7 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       `,
       [organizationId, "ChargeLab"]
     );
+    await tx.query("select provision_charging_skill($1)", [organizationId]);
 
     await tx.query(
       `
