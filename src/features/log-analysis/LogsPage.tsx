@@ -15,6 +15,7 @@ import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructur
 import type { LogDomain } from "@/domain/logs/types";
 import { isSupportedLogUploadFileName, mockLogUploadAccept, supportedTextLogExtensions } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
+import { formatBytes } from "@/domain/format/formatBytes";
 import { classifyAnalysisDegradation } from "@/domain/logs/analysisProvenance";
 import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
@@ -728,7 +729,7 @@ function UploadLogDialog({
         </label>
         {selectedFiles.length ? <ul aria-label="已选文件" className="space-y-2">
           {selectedFiles.map((file, index) => <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 text-sm">
-            <span className="min-w-0 break-all">{file.name} · {(file.size / 1024).toFixed(1)} KiB</span>
+            <span className="min-w-0 break-all">{file.name} · {formatBytes(file.size)}</span>
             <button className="button subtle" type="button" disabled={uploading} aria-label={`移除 ${file.name}`}
               onClick={() => selectFiles(selectedFiles.filter((_, at) => at !== index))}>移除</button>
           </li>)}
@@ -1412,7 +1413,7 @@ function LogFilesTable({ log }: { log: LogRecord }) {
     <table className="w-full text-left text-sm">
       <thead><tr>{["路径", "大小", "行数", "编码", "状态"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
       <tbody>{log.files.map((file) => <tr key={file.path} className="border-t border-border">
-        <td className="p-3 break-all">{file.path}</td><td className="p-3">{(file.sizeBytes / 1024).toFixed(1)} KiB</td>
+        <td className="p-3 break-all">{file.path}</td><td className="p-3">{formatBytes(file.sizeBytes)}</td>
         <td className="p-3">{file.lineCount}</td><td className="p-3">{file.encoding.toUpperCase()}{file.lossy ? " · 有损解码" : ""}</td>
         <td className="p-3">{file.status === "analyzed" ? "已分析" : `已跳过 · ${file.skipReason}`}</td>
       </tr>)}</tbody>

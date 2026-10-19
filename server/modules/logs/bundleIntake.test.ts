@@ -1,8 +1,15 @@
 import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { defaultBundleLimits, intakeLogBundle } from "./bundleIntake";
+import { decodeLogBundleFile, defaultBundleLimits, intakeLogBundle } from "./bundleIntake";
 import { loadLogBundleLimits } from "../../config/env";
+
+it("allows sample text extensions through the shared decoder without allowing binary input", () => {
+  const text = Buffer.from('{"level":"error"}\n');
+  expect(decodeLogBundleFile("sample.jsonl", text, false)).toMatchObject({ status: "analyzed", encoding: "utf-8", lineCount: 2 });
+  expect(decodeLogBundleFile("sample.jsonl", text)).toMatchObject({ status: "skipped", skipReason: "不支持的文件扩展名" });
+  expect(decodeLogBundleFile("sample.jsonl", Buffer.from([0, 1, 2]), false)).toMatchObject({ status: "skipped", skipReason: "二进制文件" });
+});
 
 function tar(entries: Array<{ name: string; content?: Buffer | string; type?: string; prefix?: string }>) {
   const chunks: Buffer[] = [];

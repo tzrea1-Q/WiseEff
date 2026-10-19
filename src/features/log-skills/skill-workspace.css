@@ -29,3 +29,30 @@
 .skill-diff [data-change="remove"] { background: var(--danger-soft); }
 .skill-publish-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5); max-height: calc(100dvh - var(--space-8)); overflow: auto; box-shadow: var(--shadow-3); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
 .skill-publish-dialog .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.skill-authoring-dialog { background: var(--surface); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5); max-height: calc(100dvh - var(--space-8)); overflow: auto; box-shadow: var(--shadow-3); }
+.skill-authoring-dialog form, .skill-authoring-dialog fieldset { display: grid; gap: var(--space-2); }
+.skill-authoring-dialog form { gap: var(--space-3); }
+.skill-authoring-dialog fieldset { border: 0; padding: 0; margin: 0; }
+.skill-authoring-dialog legend { margin-bottom: var(--space-2); }
+.skill-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.skill-authoring-dialog h2, .skill-sample-pane h2 { margin: 0; font: 600 var(--text-lg) / var(--leading-lg) var(--font-sans); }
+.skill-authoring-dialog .skill-template-choice { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
+.skill-template-choice span { display: grid; gap: var(--space-1); min-width: 0; }
+.skill-template-choice strong { font: 500 var(--text-base) / var(--leading-base) var(--font-sans); }
+.skill-template-choice small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans); }
+.skill-template-choice small, .skill-sample-pane p { color: var(--text-muted); }
+.skill-template-choice:hover, .skill-template-choice:focus-within { border-color: var(--accent); }
+.skill-template-choice:has(:checked) { background: var(--accent-soft); }
+.skill-template-choice:active { background: var(--surface-sunken); }
+.skill-template-choice:has(:disabled) { color: var(--text-muted); }
+.skill-authoring-dialog .dialog-actions, .skill-sample-pane .dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); }
+.skill-sample-pane { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; height: 100%; padding: var(--space-3); }
+.skill-workspace .navigator-workbench__inspector { height: var(--navigator-workbench-pane-height); overflow: hidden; }
+.skill-sample-pane header { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); overflow-wrap: anywhere; }
+.skill-sample-file { flex: 1 1 auto; min-width: 0; max-width: 100%; }
+.skill-sample-file p { margin: var(--space-1) 0 0; }
+.skill-sample-pane header .dialog-actions { margin-left: auto; flex-shrink: 0; flex-wrap: nowrap; }
+.skill-sample-content { flex: 1; min-height: 0; overflow: auto; background: var(--surface-sunken); font: 400 var(--text-sm) / var(--leading-base) var(--font-mono); }
+.skill-sample-content:focus-visible { outline: calc(var(--stroke-hairline) * 2) solid var(--ring); outline-offset: var(--space-1); }
+.skill-sample-line { display: flex; gap: var(--space-3); white-space: pre; }
+.skill-sample-line > span { color: var(--text-muted); min-width: var(--space-10); text-align: right; user-select: none; }

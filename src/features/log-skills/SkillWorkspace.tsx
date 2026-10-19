@@ -16,6 +16,7 @@ import { formatPercent } from "@/domain/format/formatPercent";
 import type { AnalysisSkill, SkillRevision, SkillSpec, SkillWorkspaceRepository } from "./types";
 import { specJson } from "./diffSkillSpecs";
 import { SkillSpecDiff } from "./SkillSpecDiff";
+import { SkillSamplePane } from "./SkillSamplePane";
 import "./skill-workspace.css";
 
 type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
@@ -73,7 +74,7 @@ export const skillSections: Array<{ id: string; label: string; component?: Compo
 ];
 
 export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, onNavigate, onPublished }: {
-  skillId: string; search: string; repository?: Pick<LogAnalysisRepository, keyof SkillWorkspaceRepository | "listLogSkills">; apiMode: boolean; canEdit: boolean;
+  skillId: string; search: string; repository?: Pick<LogAnalysisRepository, keyof SkillWorkspaceRepository | "listLogSkills" | "getSkillSample" | "replaceSkillSample" | "deleteSkillSample">; apiMode: boolean; canEdit: boolean;
   onNavigate: (path: string) => void; onPublished: (message: string) => void;
 }) {
   const [skill, setSkill] = useState<AnalysisSkill | null>(null);
@@ -155,6 +156,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   if (!skill) return <SectionSkeleton label="正在加载分析技能" />;
   return <div className="skill-workspace" aria-busy={pending}>
     <NavigatorWorkbench pageKey="log-skill-workspace" navigatorLabel="技能分区" taskLabel={selected.label}
+      inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} />}
       toolbar={<><Button variant="link" onClick={back}>返回分析技能</Button><strong>{skill.name}</strong></>}
       context={<>
         {!apiMode || !canEdit ? <p>{!apiMode ? "演示技能仅供查看；请在 API 模式下编辑。" : "仅供查看；编辑需要技能管理权限。"}</p> : null}

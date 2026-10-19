@@ -1025,7 +1025,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "LogFeedbackInsightsResponse"
   },
   "logs.listSkills": { summary: "List analysis skills", tags: ["logs"], responseBody: "LogSkillListResponse" },
-  "logs.createSkill": { summary: "Create analysis skill", tags: ["logs"], requestBody: "CreateLogDomainRequest", responseBody: "LogSkillResponse", successStatus: 201 },
+  "logs.createSkill": { summary: "Create analysis skill", tags: ["logs"], requestBody: "CreateLogSkillRequest", responseBody: "LogSkillResponse", successStatus: 201 },
+  "logs.listSkillTemplates": { summary: "List skill templates", tags: ["logs"], responseBody: "LogSkillTemplateListResponse" },
+  "logs.getSkillSample": { summary: "Read skill sample (first 5000 lines)", tags: ["logs"], responseBody: "LogSkillSampleResponse" },
+  "logs.replaceSkillSample": { summary: "Replace skill sample (text, up to 2 MiB)", tags: ["logs"], requestBody: "ReplaceLogSkillSampleRequest", responseBody: "LogSkillSampleReplaceResponse" },
+  "logs.deleteSkillSample": { summary: "Delete skill sample", tags: ["logs"], successStatus: 204, responseBody: "LogSkillDiscardResponse" },
   "logs.getSkill": { summary: "Get analysis skill", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.saveSkillDraft": { summary: "Save skill draft", tags: ["logs"], requestBody: "LogSkillDraftRequest", responseBody: "LogSkillRevisionResponse", additionalResponses: { "409": "ErrorResponse" } },
   "logs.discardSkillDraft": { summary: "Discard skill draft", tags: ["logs"], successStatus: 204, responseBody: "LogSkillDiscardResponse",

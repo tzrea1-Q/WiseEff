@@ -1,5 +1,16 @@
 import type { LogDomain } from "@/domain/logs/types";
-import type { AnalysisSkill } from "@/features/log-skills/types";
+import type { AnalysisSkill, SkillSample, SkillTemplate } from "@/features/log-skills/types";
+
+export const mockSkillTemplates: SkillTemplate[] = [
+  ["generic-text", "通用文本日志"], ["linux-dmesg", "Linux 内核 dmesg"],
+  ["android-logcat", "Android logcat"], ["json-lines", "JSON Lines"]
+].map(([id, label]) => ({ id, label, description: "演示模式仅供查看。", spec: { schemaVersion: "skill/v1" } }));
+
+const sampleContent = "INFO charging started\nERROR charging timeout code=E_TIMEOUT";
+export const mockSkillSample: SkillSample = { id: "sample-charging", skillId: "skill-charging", fileName: "charging.log",
+  sizeBytes: sampleContent.length, sha256: "seed", encoding: "utf-8", lineCount: 2, uploadedByUserId: null,
+  createdAt: "2026-10-18T00:00:00.000Z", updatedAt: "2026-10-18T00:00:00.000Z",
+  content: sampleContent, truncated: false };
 
 export const mockLogSkills: LogDomain[] = [{
   id: "skill-charging", name: "充电诊断", description: "充电链路日志分析", status: "active",

@@ -7,6 +7,10 @@ const defaults = { conclusion: "结论", impact: "影响", severity: "Info" as c
 const rule = (id: string, inference = "推断") => ({ id, inference, stageId: "pattern" as const, suggestedAction: "检查",
   anyOf: [{ type: "text" as const, pattern: "ERROR" }], analysis: { suggestedActions: [] } });
 describe("diffSkillSpecs", () => {
+  it("shows stored template procedures in the overview diff", () => {
+    expect(diffSkillSpecs(base, { ...base, procedure: "## Steps\nCheck context." }).overview)
+      .toContainEqual({ field: "procedure", before: undefined, after: "## Steps\nCheck context." });
+  });
   it("reports overview and pretty-printed format line changes without mutating input", () => {
     const after = { ...base, description: "诊断", modelOverride: "m", formatProfile: { severityMap: { error: ["ALERT"] } } };
     const saved = structuredClone(after);

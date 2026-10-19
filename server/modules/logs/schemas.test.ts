@@ -1,14 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createLogBodySchema,
   createLogFileBodySchema,
   listLogsQuerySchema,
   logFeedbackBodySchema,
+  replaceLogSkillSampleBodySchema,
   scopedRelatedParameterId
 } from "./schemas";
 
 describe("log schemas", () => {
+  it("rejects an oversized sample before decoding base64", () => {
+    const contentBase64 = "A".repeat(Math.ceil(2 * 1024 * 1024 * 4 / 3) + 5);
+    const decode = vi.spyOn(Buffer, "from");
+    try {
+      const result = replaceLogSkillSampleBodySchema.safeParse({ fileName: "sample.log", contentBase64 });
+      expect(result.success).toBe(false);
+      expect(decode).not.toHaveBeenCalled();
+    } finally { decode.mockRestore(); }
+  });
+
+  it("accepts a 2 MiB sample and rejects empty, malformed or noncanonical base64", () => {
+    const parse = (contentBase64: string) => replaceLogSkillSampleBodySchema.safeParse({ fileName: "sample.log", contentBase64 });
+    expect(parse(Buffer.alloc(2 * 1024 * 1024, 65).toString("base64")).success).toBe(true);
+    for (const value of ["", "not base64!!!", "YQ=", "YR=="])
+      expect(parse(value).success).toBe(false);
+  });
   it("accepts valid base64 log file content", () => {
     const result = createLogFileBodySchema.safeParse({
       fileName: "pack-controller.log",

@@ -133,6 +133,18 @@ export const logSkillResponseSchema = itemEnvelopeSchema(logSkillDtoSchema);
 export const logSkillRevisionResponseSchema = itemEnvelopeSchema(logSkillRevisionDtoSchema);
 export const logSkillRevisionListResponseSchema = itemsEnvelopeSchema(logSkillRevisionDtoSchema);
 
+export const logSkillTemplateListResponseSchema = itemsEnvelopeSchema(z.object({
+  id: z.string(), label: z.string(), description: z.string(), spec: logSkillSpecSchema
+}).strict());
+export const logSkillSampleMetadataSchema = z.object({
+  id: z.string(), skillId: z.string(), fileName: z.string(), sizeBytes: z.number().int().nonnegative(),
+  sha256: z.string(), encoding: z.enum(["utf-8", "utf-16le", "utf-16be"]), lineCount: z.number().int().nonnegative(),
+  uploadedByUserId: z.string().nullable(), createdAt: z.string(), updatedAt: z.string()
+}).strict();
+export const logSkillSampleDtoSchema = logSkillSampleMetadataSchema.extend({ content: z.string(), truncated: z.boolean() });
+export const logSkillSampleResponseSchema = itemEnvelopeSchema(logSkillSampleDtoSchema.nullable());
+export const logSkillSampleReplaceResponseSchema = itemEnvelopeSchema(logSkillSampleMetadataSchema);
+
 export const logDomainKnowledgeLinkDtoSchema = z.object({
   id: z.string(),
   logDomainId: z.string(),

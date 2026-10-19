@@ -31,12 +31,15 @@ import {
   updateLogDomainRecord
 } from "./domainsService";
 import type { LogWebhookDeliverer } from "./webhookDelivery";
-import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
+import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, listLogSkillTemplates, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
+import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "./skillSamplesService";
 import { logSkillSpecSchema } from "./skillSpec";
 import {
   createLogBodySchema,
   createLogDomainBodySchema,
   createLogFileBodySchema,
+  createLogSkillBodySchema,
+  replaceLogSkillSampleBodySchema,
   feedbackInsightsQuerySchema,
   listLogDomainsQuerySchema,
   listLogsQuerySchema,
@@ -262,12 +265,33 @@ export function registerLogRoutes(
     const query = parseWithSchema(listLogDomainsQuerySchema, request.query);
     return { status: 200, body: await listLogSkills(requireDb(options.db), auth, typeof query.includeArchived === "boolean" ? query.includeArchived : undefined) };
   });
+  router.get("/api/v1/log-skill-templates", async (request) => ({
+    status: 200, body: listLogSkillTemplates(await getAuth(options.getCurrentAuthContext, request))
+  }));
   router.post("/api/v1/log-skills", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
-    const body = parseWithSchema(createLogDomainBodySchema, request.body);
+    const body = parseWithSchema(createLogSkillBodySchema, request.body);
     return { status: 201, body: { item: await createLogSkill(requireDb(options.db), auth, body, createUserInvocation(auth), { requestId: request.requestId }) } };
   });
   const skillParams = z.object({ skillId: z.string().min(1) });
+  router.get("/api/v1/log-skills/:skillId/sample", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    return { status: 200, body: { item: await getLogSkillSample(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId) } };
+  });
+  router.put("/api/v1/log-skills/:skillId/sample", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const body = parseWithSchema(replaceLogSkillSampleBodySchema, request.body, "请选择一个不超过 2 MiB 的文本样例日志。");
+    return { status: 200, body: { item: await replaceLogSkillSample(requireDb(options.db), requireObjectStore(options.objectStore), auth, skillId, body,
+      createUserInvocation(auth), { requestId: request.requestId }) } };
+  });
+  router.delete("/api/v1/log-skills/:skillId/sample", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    await deleteLogSkillSample(requireDb(options.db), auth, skillId, createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 204, body: undefined };
+  });
   router.get("/api/v1/log-skills/:skillId", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId } = parseWithSchema(skillParams, request.params);
