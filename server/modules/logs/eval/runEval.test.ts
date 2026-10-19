@@ -30,6 +30,20 @@ describe("log analysis behavior eval harness", () => {
       "loop-source-wrong-path-rejected",
       "loop-source-context-line-not-cited-rejected"
     ]);
+    expect(report.scenarios.filter((scenario) => scenario.category === "source-tools").map((scenario) => scenario.name)).toEqual([
+      "loop-source-search-timeout-preserves-log-analysis",
+      "loop-source-search-literal-legal-and-grounded",
+      "loop-source-search-full-text-legal-and-grounded",
+      "loop-source-search-result-and-excerpt-caps",
+      "loop-source-search-byte-caps",
+      "loop-source-range-clamped-to-80-and-grounded",
+      "loop-source-range-unseen-line-rejected",
+      "loop-source-tools-unavailable-queued",
+      "loop-source-tools-unavailable-indexing",
+      "loop-source-tools-unavailable-failed",
+      "loop-source-tools-unavailable-archived",
+      "loop-source-tools-unavailable-no-snapshot"
+    ]);
     expect(report.scenarios.filter((scenario) => scenario.category.startsWith("procedure-")).map((scenario) => scenario.name)).toEqual([
       "procedure-benign-single-shot-order",
       "procedure-fabricated-single-shot-evidence-rejected",
@@ -69,6 +83,21 @@ describe("log analysis behavior eval harness", () => {
     expect(evaluateLogEvalExpectation({ type: "expectsGroundedEvidence" }, {
       ...result, returnedSourceLocations: [sourceLocation]
     }).pass).toBe(true);
+  });
+
+  it("rejects source results that exceed byte, excerpt or numbered-range bounds", () => {
+    for (const [tool, output, constraints] of [
+      ["search_source", { items: [{ excerpt: "x".repeat(401) }], truncated: true }, { maxExcerptChars: 400 }],
+      ["search_source", { items: [{ excerpt: "x".repeat(16384) }], truncated: true }, {}],
+      ["read_source_range", { startLine: 1, endLine: 81, lines: Array.from({ length: 81 }, (_, index) => ({ line: index + 1 })), truncated: true }, { expectedLines: 80, endLine: 80 }],
+      ["read_source_range", { startLine: 1, endLine: 2, lines: [{ line: 2 }, { line: 2 }], truncated: true }, { expectedLines: 2, endLine: 2 }]
+    ] as const) {
+      const result = evaluateLogEvalExpectation({ type: "expectsSourceToolBounds", tool, maxBytes: 16384, truncated: true, ...constraints }, {
+        ...META_HALLUCINATED_AGENT_RESULT,
+        promptMessages: [{ role: "user", content: `Tool result for ${tool}:\n${JSON.stringify(output)}` }]
+      });
+      expect(result.pass).toBe(false);
+    }
   });
 
   it("meta checks flag known-bad results, including loop-specific bad behaviors", () => {

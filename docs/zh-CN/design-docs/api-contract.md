@@ -318,7 +318,9 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 `skill/v1` 新增可选 `parsing: {schemaVersion: "parsing/v1", extractors}`，保存、发布和回滚均校验，错误为带路径的 `400`。严格规范、时间格式子集、上限和事件外壳见[解析参考](log-parsing-v1.md)。worker 只使用钉住版本，有抽取器的运行在解析完成后按当前任务租约保护写入迁移 0190 的产物键及 `{total, byExtractor, errors}`，provider 重试时仍保留；无抽取器保持旧行为。
 
-证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。寄存器节点另含嵌套 `fields`、可选枚举含义 `meaning` 和单位 `unit`，父节点仍保留原始寄存器值；不安全整数使用十进制字符串，树深度最多 8。报告在引用行下展示此树。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+
+`parsing` 还接受可选 `registers: Record<id, {width: 8|16|32|64, fields: {bits: [hi,lo], name, enum?, scale?, offset?, unit?, signed?, description?}[]}>` 和 `registerMaps: Record<id, {selectBy, cases: Record<地址或消息id, registerId>, default?}>`。抽取器的 `int`/`uint`/`hex` 字段配置 `decode: {register: id}` 或 `decode: {registerMap: id}`。保存、发布及既有未保存草稿预览均校验位重叠、越界、重名和引用，返回精确路径。映射无匹配分支或默认项时，事件记录 `unmatched_register`，不使运行失败。寄存器工作共享既有执行预算。参见 [BQ25890 示例与数值规则](log-parsing-v1.md#寄存器与寄存器映射)。
 
 以下是 ADR-0022 内部只读工具，不是 HTTP 端点，仅在钉住版本有抽取器时注册，沿用步数和 token 预算。
 
@@ -329,7 +331,7 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 grounding 只认可 query 工具自身 `events[].file/line`。endLine 范围、字段内嵌引用、结构元数据和非白名单工具返回的引用不能建立观察记录。
 
-`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值最多 1 KiB；超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
+`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值（包含嵌套寄存器树）最多 1 KiB；限额内完整返回子字段与含义，超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
 
 M2 日志合同锁定为组织级作用域（迁移 `0037` 移除 `projectId`）：
 
@@ -479,7 +481,13 @@ GET  /api/v1/jobs/:jobId/events
 
 必填 `versionLabel` 去首尾空白后为 1–200 字符，在技能的未归档快照中唯一，冲突返回 `409`。压缩包支持 `.tar.gz`、`.tgz` 和 `.zip`，默认压缩上限 100 MiB。路由请求体另加 64 KiB multipart 封装预算，过大的 `Content-Length` 在缓冲前拒绝，实际请求字节同样受限，超限返回 `413`；文件字节共享请求缓冲，不支持 JSON/base64 上传。上传和索引由 `LOG_SOURCE_*` 配置，白名单和安全规则见[环境变量](../developer/environment-variables.md#日志分析-llm)及[运行手册](../runbooks/log-analysis-llm.md#源码快照1243)。技能与快照查询必须匹配组织和技能，跨范围 id 返回 `404`。已归档快照不能被新选为默认值，返回 `409`；保存、发布和恢复可保留不变的已有归档默认值，所有引用仍须属于同一组织和技能。上传、默认设置和归档分别在数据库写入事务内记录 `log-source-snapshot-upload`、`log-source-snapshot-default` 和 `log-source-snapshot-archive` 审计。
 
-快照元数据含 `id`、`skillId`、`versionLabel`、`status`（`queued`、`indexing`、`ready`、`failed`、`archived`）、`filesProcessed`、`filesTotal`、`fileCount`、`skippedCount`、`skippedFiles: [{ path, reason }]`（最多 200 条）、可空 `error` 和 `createdAt`。不提供公开源码文件或内容路由。运行从其不可变固定版本解析默认快照，持久化 `source_snapshot_id`/`source_snapshot_status`；快照未就绪或已归档不使运行失败，报告持久化中文不可用提示。本切片只暴露内部 `{ id, status }` 上下文，源码工具、语句索引、源码证据及上传 `sourceVersion` 选择留给 #1244/#1245。
+快照元数据含 `id`、`skillId`、`versionLabel`、`status`（`queued`、`indexing`、`ready`、`failed`、`archived`）、`filesProcessed`、`filesTotal`、`fileCount`、`skippedCount`、`skippedFiles: [{ path, reason }]`（最多 200 条）、可空 `error` 和 `createdAt`。上传可选传入 `sourceVersion`（去除首尾空白后 1–200 字符）。Worker 在钉住版本所属组织和技能内匹配未归档快照，不要求就绪；否则使用该版本的默认快照。记录和运行返回 `sourceSnapshot: { id, status }`、`sourceSnapshotSelection`（`matched_version`、`default`、`none`）及可选 `requestedSourceVersion`。标签未匹配时附加回退说明。快照未就绪或已归档不会使分析失败，报告会说明源码不可用。
+
+只有快照就绪的运行才提供 `locate_log_statement`、`search_source` 和 `read_source_range`。检索接收 `pathGlob`、`query`、可选 `mode`（`literal`、`full_text`）及 `limit`（1–20）。字面量查询至少含三个连续字母或数字，不得含换行。全文与三元组索引最多选取 200 个分块，另有有界查询覆盖最多 200 个行内分块边界。排序命中返回快照、路径、行号和最多 400 字符的摘录。范围读取须传入运行的 `snapshotId`、`path`、`startLine` 和 `endLine`，限制为 80 行、每行 1,000 字符，返回带行号的内容。两个工具均限制总输出为 16 KiB，并标记截断。源码证据必须引用工具实际返回的位置，相邻行和省略行不算已看到。报告查看者只能读取已持久化引用周围的有界摘录，没有通用源码浏览端点。
+
+检索在评分前最多接纳 201 个匹配分块 id，额外的一个仅用于检测截断；只对前 200 个候选评分排序，不对整个快照排序。所有查询至少需要三个字符。没有字面路径前缀且匹配超过 200 个分块时，工具拒绝查询并提示缩小通配路径或细化查询。每次检索语句在事务内设置一秒 PostgreSQL 超时；超时回滚该事务范围，返回 `{ items: [], truncated: true, reason: "statement_timeout" }`。成功时恢复外层事务原有的超时设置。源码检索超时不会使日志分析失败。
+
+字面量排序只对匹配附近的 400 字符评分。单行分块复用已索引的全文匹配结果，不再重新解析该行。调用方设置了更短的非零数据库超时时，保留该上限。
 
 ## 7. Product Feedback
 

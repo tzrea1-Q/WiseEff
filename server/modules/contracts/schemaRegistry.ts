@@ -1048,6 +1048,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.replaceSkillSample": { summary: "Replace skill sample (text, up to 2 MiB)", tags: ["logs"], requestBody: "ReplaceLogSkillSampleRequest", responseBody: "LogSkillSampleReplaceResponse" },
   "logs.deleteSkillSample": { summary: "Delete skill sample", tags: ["logs"], successStatus: 204, responseBody: "LogSkillDiscardResponse" },
   "logs.listSourceSnapshots": { summary: "List source snapshot metadata", tags: ["logs"], responseBody: "LogSourceSnapshotListResponse" },
+  "logs.listSourceVersions": { summary: "List ready source version labels (logs:view or logs:upload)", tags: ["logs"], responseBody: "LogSourceVersionListResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
   "logs.uploadSourceSnapshot": { summary: "Upload a version-labelled source archive", tags: ["logs"], requestBody: "LogSourceSnapshotUploadRequest", responseBody: "LogSourceSnapshotResponse", successStatus: 201 },
   "logs.defaultSourceSnapshot": { summary: "Set the skill draft default source snapshot", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.archiveSourceSnapshot": { summary: "Archive a source snapshot", tags: ["logs"], responseBody: "LogSourceSnapshotResponse" },

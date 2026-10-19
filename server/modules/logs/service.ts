@@ -56,6 +56,7 @@ import {
 } from "./relatedParameter";
 
 export type UploadLogFileInput = {
+  sourceVersion?: string;
   fileName: string;
   contentType: string;
   bytes: Buffer | Uint8Array;
@@ -67,6 +68,7 @@ export type UploadLogFileInput = {
 };
 
 export type CreateLogFromFileInput = {
+  sourceVersion?: string;
   fileObjectId: string;
   fileName: string;
   analysisQuestion?: string;
@@ -283,6 +285,7 @@ export async function uploadLogFile(
         relatedParameterId: relatedParameter?.relatedParameterId,
         relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
         relatedParameterSnapshot: relatedParameter?.relatedParameterSnapshot,
+        sourceVersion: input.sourceVersion,
         logDomainId
       }
     );
@@ -389,6 +392,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         relatedParameterId: relatedParameter?.relatedParameterId,
         relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
         relatedParameterSnapshot: relatedParameter?.relatedParameterSnapshot,
+        sourceVersion: input.sourceVersion,
         logDomainId
       }
     );

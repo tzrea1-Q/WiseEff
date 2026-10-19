@@ -6,6 +6,8 @@
 
 ## 使用方式
 
+`LOG-REGISTER-001`（P1，`coverage: future`）：Admin 在 `/log-admin/skills/:skillId?section=decoding` 编辑寄存器字段与映射，预览并导入数据手册表格，往返 YAML，并选择样例行检查位条。组件与真实 PostgreSQL 集成覆盖已提供；协调者浏览器走查与专属自动化覆盖分别记录，后者尚待补充。
+
 `PCAT-REGISTRATION-INITIALIZE-001`（P1，`coverage: future`）：组织管理员在 `/parameter-admin/modules` 明确选择业务父分类和目标名称，确认原子创建目标并登记主体。组件测试及原生 PostgreSQL 覆盖租户、发布、重试并发和失败回滚；专属浏览器写入与审计回执仍待补。
 
 `PROJ-ARCHIVE-001`（P1，`coverage: future`）：Admin 在 `/parameter-admin/projects` 确认归档或恢复为在研。默认隐藏已归档项目，状态筛选可查；保留规范历史，不改变现有读写权限。focused 组件/客户端用例：`src/components/admin/ProjectAdminTable.test.tsx`、`src/components/parameter-admin-next/ProjectsOperationsPanel.test.tsx`、`src/infrastructure/http/parameterAdminClient.test.ts`；原有服务端状态/鉴权/审计契约：`server/modules/parameters/projectAdminMutations.test.ts`。归档专属浏览器、数据库与审计验收尚未完成。

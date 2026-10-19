@@ -6,7 +6,7 @@ import { withAuditedWrite, type AuditedWriteContext, type AuditSpec } from "../a
 import type { AuthContext } from "../auth/types";
 import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { findLogDomainByName, getLogDomainById, insertLogDomain, listLogDomains, updateLogDomainRow } from "./domainsRepository";
-import { requireLogAdminDomains, requireLogView } from "./policy";
+import { requireLogAdminDomains, requireLogUpload, requireLogView } from "./policy";
 import { aggregateFeedbackInsights, relatedParameterVisibilityValues } from "./repository";
 import { logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
 import { insertSkillRevision, listSkillRevisions, lockSkill, publishSkillRevision } from "./skillsRepository";
@@ -69,17 +69,35 @@ export async function listLogSkills(db: Queryable, auth: AuthContext, includeArc
         and exists (select 1 from projects p where p.id = lr.related_parameter_project_id and p.organization_id = lr.organization_id)
         and ($2::boolean or lr.related_parameter_project_id = any($3::text[]))))
     group by s.skill_id`, [auth.organization.id, organizationWide, projectIds]);
-  const heads = await db.query<{ id: string; skill_id: string; revision_number: number; published_at: Date | null; status: string }>(
-    `select id, skill_id, revision_number, published_at, status from log_skill_revisions
-      where organization_id = $1 and status in ('published', 'draft')`, [auth.organization.id]);
+  const heads = await db.query<{ id: string; skill_id: string; revision_number: number; published_at: Date | null; status: string; has_source_snapshots: boolean; ready_source_versions: string[] }>(
+    `select id, skill_id, revision_number, published_at, status,
+      exists (select 1 from log_source_snapshots ss where ss.organization_id = sr.organization_id
+        and ss.skill_id = sr.skill_id and ss.status <> 'archived') as has_source_snapshots,
+      array(select ss.version_label from log_source_snapshots ss where ss.organization_id = sr.organization_id
+        and ss.skill_id = sr.skill_id and ss.status = 'ready' order by ss.version_label) as ready_source_versions
+      from log_skill_revisions sr where organization_id = $1 and status in ('published', 'draft')`, [auth.organization.id]);
   return { items: identities.map((identity) => {
     const current = heads.rows.find((r) => r.skill_id === identity.id && r.status === "published")!;
     const feedback = insights.filter((r) => r.logDomainId === identity.id);
     const total = feedback.reduce((sum, r) => sum + r.totalCount, 0);
     return { ...identity, currentRevision: { id: current.id, number: current.revision_number, publishedAt: current.published_at?.toISOString() ?? null },
+      hasSourceSnapshots: current.has_source_snapshots,
+      readySourceVersions: current.ready_source_versions,
       hasDraft: heads.rows.some((r) => r.skill_id === identity.id && r.status === "draft"), analyses7d: counts.rows.find((r) => r.skill_id === identity.id)?.count ?? 0,
       helpfulRate7d: total ? feedback.reduce((sum, r) => sum + r.helpfulCount, 0) / total : null };
   }) };
+}
+
+export async function listLogSkillSourceVersions(db: Queryable, auth: AuthContext, skillId: string) {
+  requireOrganization(auth);
+  if (auth.permissions.includes("logs:view")) requireLogView(auth);
+  else requireLogUpload(auth);
+  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) {
+    throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  }
+  const result = await db.query<{ version_label: string }>(`select version_label from log_source_snapshots
+    where organization_id = $1 and skill_id = $2 and status = 'ready' order by version_label`, [auth.organization.id, skillId]);
+  return { items: result.rows.map((row) => row.version_label) };
 }
 
 export async function createLogSkill(db: Database, auth: AuthContext, input: {
@@ -180,8 +198,8 @@ export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, s
     events: [], counts: { total: 0, byExtractor: {}, errors: {} }, unmatchedLineCount: lines.length, truncated: false };
   const decoded = await decodeLogFilesCooperatively(result.data, [{ file: input.fileName ?? "sample.log", lines: lines.slice(0, PARSE_PREVIEW_MAX_LINES) }],
     { maxMs: Math.max(0, PARSE_PREVIEW_MAX_MS - (performance.now() - started)), maxEvents: MAX_DECODE_EVENTS, hardTimeout: true });
-  const reason = decoded.counts.errors.time_cap ? "time_cap" as const : lines.length > PARSE_PREVIEW_MAX_LINES ? "line_cap" as const
-    : decoded.events.length > 500 ? "event_cap" as const : undefined;
+  const reason = decoded.reason ?? (decoded.counts.errors.time_cap ? "time_cap" as const : lines.length > PARSE_PREVIEW_MAX_LINES ? "line_cap" as const
+    : decoded.events.length > 500 ? "event_cap" as const : undefined);
   return { valid: true, issues: [], ...decoded, unmatchedLineCount: decoded.unmatchedLineCount + Math.max(0, lines.length - PARSE_PREVIEW_MAX_LINES),
     events: decoded.events.slice(0, 500), truncated: !!reason, ...(reason ? { reason } : {}) };
 }

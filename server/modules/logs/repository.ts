@@ -30,7 +30,14 @@ type LogFileObjectRow = {
   created_at: string | Date;
 };
 
-type RevisionRow = { skill_revision_id?: string | null; skill_revision_number?: number | null };
+type RevisionRow = {
+  skill_revision_id?: string | null; skill_revision_number?: number | null;
+  source_snapshot_id?: string | null;
+  source_snapshot_version_label?: string | null;
+  source_snapshot_status?: NonNullable<AnalyzeLogInput["sourceSnapshot"]>["status"] | null;
+  source_snapshot_selection?: "matched_version" | "default" | "none" | null;
+  requested_source_version?: string | null;
+};
 
 type LogRecordRow = RevisionRow & {
   signal_summary?: import("./genericSignals").LogSignalSummary | null;
@@ -109,7 +116,10 @@ type WorkerLogRunSnapshotRow = {
   skill_revision_id: string | null;
   skill_revision_spec: LogSkillSpec | null;
   source_snapshot_id: string | null;
+  source_snapshot_version_label: string | null;
   source_snapshot_status: NonNullable<AnalyzeLogInput["sourceSnapshot"]>["status"] | null;
+  source_snapshot_selection: "matched_version" | "default" | "none";
+  requested_source_version: string | null;
 };
 
 export type LogFileObjectDto = {
@@ -125,6 +135,9 @@ export type LogFileObjectDto = {
 };
 
 export type LogRunDto = {
+  sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
+  sourceSnapshotSelection?: "matched_version" | "default" | "none";
+  requestedSourceVersion?: string;
   skillRevision: { id: string; number: number } | null;
   id: string;
   logId: string;
@@ -136,6 +149,7 @@ export type LogRunDto = {
 };
 
 export type CreateLogRecordWithRunAndJobInput = {
+  sourceVersion?: string;
   logId: string;
   runId: string;
   jobId: string;
@@ -152,6 +166,8 @@ export type CreateLogRecordWithRunAndJobInput = {
 };
 
 export type LogWorkerRunSnapshot = {
+  sourceSnapshotSelection: "matched_version" | "default" | "none";
+  requestedSourceVersion?: string;
   procedure?: LogSkillSpec["procedure"];
   parsing?: LogSkillSpec["parsing"];
   sourceSnapshot: AnalyzeLogInput["sourceSnapshot"];
@@ -206,6 +222,7 @@ export type PersistLogAnalysisReportInput = {
 
 type CompleteLogAnalysisJobWithReportInput = PersistLogAnalysisReportInput & {
   signal?: AbortSignal;
+  sourceSnapshotSelection?: "matched_version" | "default" | "none";
   jobId: string;
   leaseOwner: string;
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
@@ -255,6 +272,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
   const status = row.status;
 
   return {
+    ...sourceProvenance(row),
     files: [],
     signalSummary: row.signal_summary ?? undefined,
     id: row.id,
@@ -304,8 +322,19 @@ function toEvidenceDto(row: EvidenceRow): LogRecordDto["evidence"][number] {
   };
 }
 
+function sourceProvenance(row: RevisionRow) {
+  return {
+    sourceSnapshot: row.source_snapshot_id && row.source_snapshot_status
+      ? { id: row.source_snapshot_id, status: row.source_snapshot_status,
+        ...(row.source_snapshot_version_label ? { versionLabel: row.source_snapshot_version_label } : {}) } : undefined,
+    sourceSnapshotSelection: row.source_snapshot_selection ?? undefined,
+    requestedSourceVersion: row.requested_source_version ?? undefined
+  };
+}
+
 function toRunDto(row: RunRow): LogRunDto {
   return {
+    ...sourceProvenance(row),
     id: row.id,
     logId: row.log_record_id,
     skillRevision: row.skill_revision_id && row.skill_revision_number ? { id: row.skill_revision_id, number: row.skill_revision_number } : null,
@@ -319,8 +348,11 @@ function toRunDto(row: RunRow): LogRunDto {
 
 function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnapshot {
   return {
+    sourceSnapshotSelection: row.source_snapshot_selection,
+    requestedSourceVersion: row.requested_source_version ?? undefined,
     sourceSnapshot: row.source_snapshot_id && row.source_snapshot_status
-      ? { id: row.source_snapshot_id, status: row.source_snapshot_status } : null,
+      ? { id: row.source_snapshot_id, status: row.source_snapshot_status,
+        ...(row.source_snapshot_version_label ? { versionLabel: row.source_snapshot_version_label } : {}) } : null,
     jobId: row.job_id,
     skillRevisionId: row.skill_revision_id,
     procedure: row.skill_revision_spec?.procedure,
@@ -381,11 +413,14 @@ const logSelect = `
     lr.analysis_question,
     lr.log_domain_id,
     ld.name as log_domain_name,
-    lar.skill_revision_id, sr.revision_number as skill_revision_number
+    lar.skill_revision_id, sr.revision_number as skill_revision_number,
+    lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
+    source.version_label as source_snapshot_version_label
   from log_records lr
   inner join log_file_objects lfo on lfo.id = lr.file_object_id
   left join log_analysis_runs lar on lar.id = lr.current_run_id
   left join log_skill_revisions sr on sr.id = lar.skill_revision_id and sr.organization_id = lr.organization_id
+  left join log_source_snapshots source on source.id = lar.source_snapshot_id and source.organization_id = lr.organization_id
   left join log_analysis_reports report on report.run_id = lr.current_run_id
   left join users on users.id = lr.submitted_by_user_id
   left join log_domains ld on ld.id = lr.log_domain_id
@@ -486,12 +521,12 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
     await tx.query<RunRow>(
       `
       insert into log_analysis_runs (
-        id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id
+        id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id, requested_source_version
       )
-      values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5)
+      values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5, $6)
       returning id, log_record_id, status, current_stage, progress, error_message, updated_at
       `,
-      [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null, skillRevisionId]
+      [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null, skillRevisionId, input.sourceVersion ?? null]
     );
     const job = await createLogAnalysisJob(tx, {
       id: input.jobId,
@@ -708,9 +743,12 @@ export async function getLogDetail(db: Queryable, auth: AuthContext, logId: stri
 export async function listRuns(db: Queryable, auth: AuthContext, logId: string) {
   const result = await db.query<RunRow>(
     `
-    select lar.id, lar.log_record_id, lar.status, lar.current_stage, lar.progress, lar.error_message, lar.updated_at, lar.skill_revision_id, sr.revision_number as skill_revision_number
+    select lar.id, lar.log_record_id, lar.status, lar.current_stage, lar.progress, lar.error_message, lar.updated_at, lar.skill_revision_id, sr.revision_number as skill_revision_number,
+      lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
+      source.version_label as source_snapshot_version_label
     from log_analysis_runs lar
     left join log_skill_revisions sr on sr.id = lar.skill_revision_id and sr.organization_id = lar.organization_id
+    left join log_source_snapshots source on source.id = lar.source_snapshot_id and source.organization_id = lar.organization_id
     inner join log_records lr on lr.id = lar.log_record_id
     where lar.organization_id = $1
       and lr.organization_id = $1
@@ -813,7 +851,9 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       ld.name as log_domain_name,
       ld.description as log_domain_description,
       run.skill_revision_id, sr.spec as skill_revision_spec,
-      source.id as source_snapshot_id, source.status as source_snapshot_status
+      source.id as source_snapshot_id, source.status as source_snapshot_status, source.version_label as source_snapshot_version_label,
+      run.requested_source_version,
+      case when matched.id is not null then 'matched_version' when source.id is not null then 'default' else 'none' end as source_snapshot_selection
     from jobs job
     inner join log_analysis_runs run
       on run.id = job.target_id
@@ -826,7 +866,13 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       on lfo.id = lr.file_object_id
       and lfo.organization_id = job.organization_id
     left join log_skill_revisions sr on sr.id = run.skill_revision_id and sr.organization_id = run.organization_id
-    left join log_source_snapshots source on source.id = sr.spec->>'defaultSourceSnapshotId'
+    left join lateral (
+      select s.id from log_source_snapshots s
+      where s.organization_id = run.organization_id and s.skill_id = sr.skill_id
+        and s.version_label = run.requested_source_version and s.status <> 'archived'
+      limit 1
+    ) matched on true
+    left join log_source_snapshots source on source.id = coalesce(matched.id, sr.spec->>'defaultSourceSnapshotId')
       and source.organization_id = run.organization_id and source.skill_id = sr.skill_id
     left join log_domains ld
       on ld.id = lr.log_domain_id
@@ -1056,6 +1102,7 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           current_stage = $4,
           source_snapshot_id = $5,
           source_snapshot_status = $6,
+          source_snapshot_selection = $7,
           progress = 100,
           completed_at = now(),
           updated_at = now()
@@ -1063,7 +1110,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           and id = $2
           and log_record_id = $3
         `,
-        [input.organizationId, input.runId, input.logId, "report", input.sourceSnapshot?.id ?? null, input.sourceSnapshot?.status ?? null]
+        [input.organizationId, input.runId, input.logId, "report", input.sourceSnapshot?.id ?? null, input.sourceSnapshot?.status ?? null,
+          input.sourceSnapshotSelection ?? (input.sourceSnapshot ? "default" : "none")]
       );
       await tx.query(
         `
@@ -1310,9 +1358,12 @@ export async function createRerunWithJob(
   await db.query<RunRow>(
     `
     insert into log_analysis_runs (
-      id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id
+      id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id, requested_source_version
     )
-    values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5)
+    values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5,
+      (select prior.requested_source_version from log_records lr join log_analysis_runs prior
+        on prior.id = lr.current_run_id and prior.organization_id = lr.organization_id
+        where lr.id = $3 and lr.organization_id = $2))
     returning id, log_record_id, status, current_stage, progress, error_message, updated_at
     `,
     [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null, input.skillRevisionId]

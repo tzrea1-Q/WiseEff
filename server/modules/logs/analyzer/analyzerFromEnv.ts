@@ -1,7 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
 
 import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
-import type { Queryable } from "../../../shared/database/client";
+import type { Database } from "../../../shared/database/client";
 import type { LogAnalysisAdapter } from "../analyzer";
 import { createAgentLoopLogAnalyzer } from "./agentLoop";
 import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel } from "./deterministicModel";
@@ -93,7 +93,7 @@ export type CreateLogAnalyzerFromEnvOptions = {
    * (`read_domain_knowledge`, `get_related_parameter_context`). Absent (offline
    * eval, unit tests) the two tools honestly report themselves unavailable.
    */
-  db?: Queryable;
+  db?: Database;
   /** Embedding client for hybrid domain-knowledge retrieval; absent = FTS-only. */
   embeddingClient?: KnowledgeEmbeddingClient;
 };

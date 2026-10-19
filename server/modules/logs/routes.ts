@@ -33,7 +33,7 @@ import {
   updateLogDomainRecord
 } from "./domainsService";
 import type { LogWebhookDeliverer } from "./webhookDelivery";
-import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, listLogSkillTemplates, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
+import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, listLogSkillSourceVersions, listLogSkillTemplates, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
 import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "./skillSamplesService";
 import { logSkillSpecSchema } from "./skillSpec";
 import { previewLogSkillParsing } from "./skillsService";
@@ -126,6 +126,10 @@ export function registerLogRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  router.get("/api/v1/log-skills/:skillId/source-versions", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await listLogSkillSourceVersions(requireDb(options.db), auth, request.params.skillId) };
+  });
   router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const body = parseWithSchema(z.object({ line: z.string().trim().min(1).max(4000) }).strict(), request.body);
@@ -195,6 +199,7 @@ export function registerLogRoutes(
       analysisQuestion: body.analysisQuestion,
       relatedParameterId: body.relatedParameterId,
       relatedParameterPin: body.relatedParameterPin,
+      sourceVersion: body.sourceVersion,
       logDomainId: body.skillId ?? body.logDomainId
     }, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
 
@@ -214,6 +219,7 @@ export function registerLogRoutes(
         analysisQuestion: body.analysisQuestion,
         relatedParameterId: body.relatedParameterId,
         relatedParameterPin: body.relatedParameterPin,
+        sourceVersion: body.sourceVersion,
         logDomainId: body.skillId ?? body.logDomainId
       },
       { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue }

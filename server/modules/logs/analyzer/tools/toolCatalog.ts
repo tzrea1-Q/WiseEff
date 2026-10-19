@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { compileFileGlob, compileLogPattern, type LogPattern } from "../../adminPattern";
 import { extractLogSignals } from "../../genericSignals";
+import { MAX_SOURCE_EXCERPT_CHARS, MAX_SOURCE_LINE_CHARS, MAX_SOURCE_RANGE_LINES, MAX_SOURCE_SEARCH_RESULTS, MAX_SOURCE_TOOL_BYTES,
+  type SourceRangeParams, type SourceSearchParams } from "../../sourceSearchRepository";
 import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolContext";
 
 /**
@@ -12,6 +14,8 @@ import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolConte
  */
 export const LOG_ANALYSIS_TOOL_NAMES = [
   "locate_log_statement",
+  "search_source",
+  "read_source_range",
   "search_log_lines",
   "search_lines",
   "list_files",
@@ -350,9 +354,10 @@ export const queryEventsParamsSchema = z.object({ extractor: z.string().min(1).m
 export const MAX_QUERY_EVENTS_BYTES = 16 * 1024;
 export const MAX_QUERY_FIELD_BYTES = 1024;
 
-export function availableLogAnalysisTools(context: Pick<LogAnalysisToolContext, "decoding" | "sourceSnapshot" | "locateLogStatement">) {
-  return LOG_ANALYSIS_TOOL_NAMES.filter((name) => name === "locate_log_statement"
-    ? context.sourceSnapshot?.status === "ready" && !!context.locateLogStatement
+export function availableLogAnalysisTools(context: Pick<LogAnalysisToolContext, "decoding" | "sourceSnapshot" | "locateLogStatement" | "searchSource" | "readSourceRange">) {
+  const sourceBackends = { locate_log_statement: context.locateLogStatement, search_source: context.searchSource, read_source_range: context.readSourceRange };
+  return LOG_ANALYSIS_TOOL_NAMES.filter((name) => Object.hasOwn(sourceBackends, name)
+    ? context.sourceSnapshot?.status === "ready" && !!sourceBackends[name as keyof typeof sourceBackends]
     : context.decoding?.spec.extractors.length || (name !== "query_events" && name !== "describe_event_schema"));
 }
 
@@ -365,9 +370,10 @@ export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typ
     if ((condition.op === "in") !== Array.isArray(condition.value)) return { ok: false, error: "Only in requires an array value" };
   }
   const events: typeof decoding.events = [];
-  let truncated = false;
+  let truncated = !!decoding.counts.truncated;
   const outcome = (cursor: number) => ({ ok: true as const, result: { events,
-    nextCursor: cursor < decoding.events.length ? String(cursor) : null, truncated } });
+    nextCursor: cursor < decoding.events.length ? String(cursor) : null, truncated,
+    ...(decoding.counts.reason ? { reason: decoding.counts.reason } : {}) } });
   const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
   let index = Number(params.cursor ?? 0);
   for (; index < decoding.events.length; index++) {
@@ -409,6 +415,51 @@ export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typ
 }
 
 export const logAnalysisToolCatalog: Record<LogAnalysisToolName, ToolDefinition> = {
+  search_source: {
+    description: 'Search the pinned ready source snapshot by case-sensitive path glob and literal or full-text query. Args: {pathGlob: string (e.g. drivers/power/**/*.c), query: string (3-200 characters), mode?: literal|full_text (default literal), limit?: 1-20 (default 8)}. Literal queries need three consecutive letters/numbers and no newlines. Common queries require a literal path prefix; narrow pathGlob or query if rejected. Scores at most 200 admitted indexed chunks and 200 split-line boundary windows, with a 1-second database deadline. Timeout returns truncated with reason statement_timeout. Returns ranked snapshotId/path/line/excerpt hits; max 20 hits, 400 characters per excerpt and 16 KiB total; truncated marks caps. Only returned hit locations can be source evidence.',
+    paramsSchema: z.object({ pathGlob: z.string().min(1).max(1024), query: z.string().trim().min(3).max(200),
+      mode: z.enum(["literal", "full_text"]).default("literal"), limit: z.number().int().min(1).max(MAX_SOURCE_SEARCH_RESULTS).default(8) }).strict()
+      .refine((args) => args.mode !== "literal" || /[\p{L}\p{N}]{3}/u.test(args.query) && !/[\r\n]/.test(args.query),
+        "Literal queries require at least three consecutive letters or numbers and no newlines."),
+    execute: async (context, args) => {
+      const params = args as SourceSearchParams;
+      const result = await context.searchSource!(params);
+      const items = [] as typeof result.items;
+      let truncated = result.truncated;
+      const outcome = () => ({ ok: true as const, result: { items, truncated, ...(result.reason ? { reason: result.reason } : {}) } });
+      for (const item of result.items.slice(0, params.limit)) {
+        truncated ||= item.excerpt.length > MAX_SOURCE_EXCERPT_CHARS;
+        items.push({ ...item, excerpt: item.excerpt.slice(0, MAX_SOURCE_EXCERPT_CHARS) });
+        if (Buffer.byteLength(JSON.stringify(outcome()), "utf8") > MAX_SOURCE_TOOL_BYTES) { items.pop(); truncated = true; break; }
+      }
+      truncated ||= result.items.length > items.length;
+      return outcome();
+    }
+  },
+  read_source_range: {
+    description: 'Read numbered source lines from the run\'s pinned ready snapshot. Args: {snapshotId: string, path: string, startLine: positive integer, endLine: positive integer}. Range clamped to 80 lines, each line to 1000 characters, total output to 16 KiB; truncated marks caps. Only returned numbered lines can be source evidence; a different snapshot is rejected.',
+    paramsSchema: z.object({ snapshotId: z.string().min(1).max(200), path: z.string().min(1).max(1024),
+      startLine: z.number().int().safe().positive(), endLine: z.number().int().safe().positive() }).strict()
+      .refine((args) => args.endLine >= args.startLine, "endLine must be greater than or equal to startLine."),
+    execute: async (context, args) => {
+      const params = args as SourceRangeParams;
+      if (params.snapshotId !== context.sourceSnapshot?.id) return { ok: false, error: "Source snapshot does not match this run." };
+      const cappedEnd = Math.min(params.endLine, params.startLine + MAX_SOURCE_RANGE_LINES - 1);
+      const result = await context.readSourceRange!({ ...params, endLine: cappedEnd });
+      if (!result) return { ok: false, error: "Source file or range unavailable." };
+      const lines = [] as typeof result.lines;
+      let truncated = result.truncated || cappedEnd < params.endLine;
+      const outcome = () => ({ ok: true as const, result: { ...result, snapshotId: params.snapshotId, path: params.path,
+        startLine: params.startLine, endLine: lines.at(-1)?.line ?? params.startLine, lines, truncated } });
+      for (const item of result.lines.filter((line) => line.line >= params.startLine && line.line <= cappedEnd).slice(0, MAX_SOURCE_RANGE_LINES)) {
+        truncated ||= item.content.length > MAX_SOURCE_LINE_CHARS;
+        lines.push({ ...item, content: item.content.slice(0, MAX_SOURCE_LINE_CHARS) });
+        if (Buffer.byteLength(JSON.stringify(outcome()), "utf8") > MAX_SOURCE_TOOL_BYTES) { lines.pop(); truncated = true; break; }
+      }
+      truncated ||= result.lines.length > lines.length;
+      return outcome();
+    }
+  },
   locate_log_statement: {
     description: 'Locate output statements in the pinned ready source snapshot. Args: {line?: string (max 4000 characters), file?: string, anchorLine?: positive integer, limit?: 1-20}. Supply line OR file+anchorLine. Returns candidate snapshotId/path/line, confidence and an untrusted ±3-line excerpt, capped at 16 KiB. Only the returned statement locations can be source evidence.',
     paramsSchema: z.object({ line: z.string().min(1).max(4000).optional(), file: z.string().min(1).max(1024).optional(),

@@ -10,6 +10,10 @@ Prerequisites: [Authentication](authentication.md) (bearer token), [Errors](erro
 
 `POST /api/v1/log-files` with base64 content. JSON uploads accept at most 32 MiB of decoded file bytes; larger bundles use multipart under the configured upload cap (100 MiB by default). Oversized transport bodies return `413` before parsing. Bind the upload to a registered log domain via `logDomainId` (list them with `GET /api/v1/log-domains`); omit it to fall back to the built-in uncategorized domain — uploads are never blocked by domain selection.
 
+Supply an optional `sourceVersion` label (trimmed, 1–200 characters) to select the matching source snapshot belonging to the pinned skill. The worker selects a matching non-archived snapshot even while it is queued, indexing or failed; source tools are offered only when that snapshot is ready. With no matching label, or no label, it uses the pinned revision's default snapshot. An unknown label is recorded in report provenance, with a short fallback note there. The same field is accepted by JSON uploads, multipart uploads and `POST /api/v1/logs` when creating a record from a stored file. `GET /api/v1/log-skills` exposes `hasSourceSnapshots` and `readySourceVersions`, an array of ready version labels without snapshot metadata. The upload dialog offers these labels and a default-snapshot option; integration APIs continue accepting free-text labels.
+
+`GET /api/v1/log-skills/{skillId}/source-versions` returns only `{ "items": ["v2.4.0"] }` for ready snapshots in the skill's organization. It permits `logs:view` or active users with `logs:upload`, including upload-only clients; foreign-organization skills return `404`. It exposes no snapshot ids, status, file inventory or source content.
+
 ```bash
 curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
   -H "Authorization: Bearer $TOKEN" \
@@ -18,7 +22,7 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
     --arg content "$(base64 < charging-foldback.log)" \
     --arg domain "$LOG_DOMAIN_ID" \
     '{fileName: "charging-foldback.log", contentType: "text/plain",
-      contentBase64: $content, logDomainId: $domain,
+      contentBase64: $content, logDomainId: $domain, sourceVersion: "firmware-v7",
       analysisQuestion: "Why did fast charging fold back?"}')"
 ```
 
@@ -33,6 +37,8 @@ Supported text extensions are `.log`, `.txt`, `.csv` and `.json`; bundle intake 
 ## 3. Fetch the result
 
 `GET /api/v1/logs/{logId}` returns the conclusion, impact, severity, confidence, evidence (with line anchors), suggested actions, and the provenance fields `analysisSource` / `degradedReason` — a `rules-fallback` report is a degraded analysis and never impersonates a full agent analysis.
+
+Source provenance appears on the record and its runs (`GET /api/v1/logs/{logId}/runs`): `sourceSnapshot: { id, versionLabel, status }` identifies the selected snapshot, `sourceSnapshotSelection` is `matched_version`, `default` or `none`, and `requestedSourceVersion` preserves the requested label when supplied. A `default` or `none` result with a requested label means that label was not found. Selection notes belong only to provenance, never the report conclusion. Source evidence locations must have appeared in tool results; `search_source` returns bounded ranked excerpts and `read_source_range` returns at most 80 numbered lines from the selected snapshot.
 
 The record also exposes optional `signalSummary: { signals, templates, truncatedSignals, truncatedTemplates }` for its current run. Generic signals are produced without selecting a skill; a pinned skill contributes its own signal hits. Signals carry kind, severity, source, occurrence count and bounded `file:line` anchors with excerpts. Templates carry normalized text, count and first/last anchors. Check the truncation flags before treating a summary as complete. Older records can omit this field. Rule fallback uses generic and pinned-skill signals while retaining the degraded marker and confidence caps. See the [signal contract](../design-docs/api-contract.md#generic-signals) for field shapes and the internal agent tools; the tools do not add REST endpoints.
 
