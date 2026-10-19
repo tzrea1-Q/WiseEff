@@ -4,7 +4,8 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { hashIntegrationSecret } from "../auth/integrationCredentialResolver";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { requireUserInitiatedInvocation } from "../auth/trustedInvocationPolicy";
 import { withAuditedWrite, type AuditedWriteContext, type AuditSpec } from "../audit/auditedWrite";
 import { requireLogAdminDomains } from "./policy";
 import { lockSkill } from "./skillsRepository";
@@ -50,11 +51,13 @@ export async function listIntegrationCredentials(db: Queryable, auth: AuthContex
 }
 
 export async function issueIntegrationCredential(db: Database, auth: AuthContext,
-  input: z.infer<typeof issueLogIntegrationCredentialBodySchema>, context: AuditedWriteContext) {
+  input: z.infer<typeof issueLogIntegrationCredentialBodySchema>, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  requireUserInitiatedInvocation(invocation);
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Issue integration credential");
   requireLogAdminDomains(auth);
   const id = randomUUID();
   const secret = randomBytes(32).toString("base64url");
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  return withAuditedWrite(db, invocation, context, async (tx) => {
     if (input.skillId) {
       // Same row lock as archive/key edits: issuance cannot race a skill archive.
       await lockSkill(tx, auth.organization.id, input.skillId);
@@ -68,10 +71,12 @@ export async function issueIntegrationCredential(db: Database, auth: AuthContext
   });
 }
 
-export async function rotateIntegrationCredential(db: Database, auth: AuthContext, id: string, context: AuditedWriteContext) {
+export async function rotateIntegrationCredential(db: Database, auth: AuthContext, id: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  requireUserInitiatedInvocation(invocation);
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Rotate integration credential");
   requireLogAdminDomains(auth);
   const secret = randomBytes(32).toString("base64url");
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  return withAuditedWrite(db, invocation, context, async (tx) => {
     const updated = await tx.query(`update log_integration_credentials set secret_hash=$3,rotated_at=clock_timestamp()
       where organization_id=$1 and id=$2 and status='active' returning id`, [auth.organization.id, id, hashIntegrationSecret(secret)]);
     if (!updated.rows.length) throw new ApiError("NOT_FOUND", "Active integration credential was not found.");
@@ -80,9 +85,11 @@ export async function rotateIntegrationCredential(db: Database, auth: AuthContex
   });
 }
 
-export async function revokeIntegrationCredential(db: Database, auth: AuthContext, id: string, context: AuditedWriteContext) {
+export async function revokeIntegrationCredential(db: Database, auth: AuthContext, id: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  requireUserInitiatedInvocation(invocation);
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Revoke integration credential");
   requireLogAdminDomains(auth);
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  return withAuditedWrite(db, invocation, context, async (tx) => {
     const updated = await tx.query(`update log_integration_credentials set status='revoked',revoked_at=clock_timestamp()
       where organization_id=$1 and id=$2 and status='active' returning id`, [auth.organization.id, id]);
     const item = await readCredential(tx, auth.organization.id, id);

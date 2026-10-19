@@ -16,6 +16,7 @@ import { seedCoreGraph } from "../../testing/fixtures";
 import type { LogAnalysisQueue } from "./logAnalysisQueue";
 import { completeRun, createFileObject, persistLogAnalysisReport } from "./repository";
 import { issueIntegrationCredential } from "./integrationCredentials";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import { insertLogDomain } from "./domainsRepository";
 import { insertSkillRevision } from "./skillsRepository";
 import {
@@ -137,8 +138,9 @@ describe.skipIf(!databaseAvailable)("log service", () => {
   }
 
   async function integration(skillId?: string) {
-    const issued = await issueIntegrationCredential(db, makeAuth({ permissions: ["logs:admin-domains"] }),
-      { name: "Build upload", skillId }, { requestId: "test-integration-service" });
+    const auth = makeAuth({ permissions: ["logs:admin-domains"] });
+    const issued = await issueIntegrationCredential(db, auth,
+      { name: "Build upload", skillId }, createUserInvocation(auth), { requestId: "test-integration-service" });
     return resolveIntegrationCredential(db, `Bearer ${issued.token}`);
   }
 

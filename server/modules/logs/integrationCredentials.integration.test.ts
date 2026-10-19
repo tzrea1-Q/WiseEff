@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { format } from "node:util";
 import type { Server } from "node:http";
-import type { PoolClient } from "pg";
+import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildWiseEffRouter, createWiseEffServer } from "../../app";
-import { createPostgresDatabase, createSavepointDatabase, getRootPostgresPool, type Database, type RootDatabase } from "../../shared/database/client";
+import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { createTracingBoundary } from "../../observability/tracing";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { createMemoryObjectStore } from "../../testing/objectStore";
 import { applyMigrations, migrationsDir, resolveTestDatabaseUrl } from "../../testing/tempDatabase";
-import { createSerializedTestQueryable } from "../../testing/testDatabase";
+import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../testing/testDatabase";
 import type { LogRecordDto } from "./types";
 import { processLogAnalysisJobById } from "./worker";
 
@@ -22,8 +22,7 @@ type Upload = { log: LogRecordDto; fileObject: { id: string }; job: { id: string
 
 describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("integration credential HTTP acceptance over PostgreSQL (#1248)", () => {
   let root: RootDatabase;
-  let client: PoolClient;
-  let db: Database;
+  let db: InMemoryTestDatabase;
   let server: Server;
   let baseUrl: string;
   const objectStore = createMemoryObjectStore();
@@ -33,7 +32,7 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
   const plaintext: string[] = [];
   const logged: string[] = [];
   const traces: unknown[] = [];
-  const sql: Array<{ text: string; values: unknown[] }> = [];
+  const queries = vi.spyOn(pg.Client.prototype, "query");
   const verifier = vi.fn(async (authorization: string | string[] | undefined) => {
     const auth = users.find((_, index) => authorization === `Bearer user-${index}`);
     if (!auth) throw new ApiError("UNAUTHENTICATED", "Unknown test user.");
@@ -76,13 +75,7 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     }
     root = createPostgresDatabase(resolveTestDatabaseUrl());
     await applyMigrations(root, migrationsDir);
-    client = await getRootPostgresPool(root)!.connect();
-    await client.query("begin");
-    db = createSavepointDatabase(createSerializedTestQueryable(async (text, values = []) => {
-      sql.push({ text, values });
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }));
+    db = await createInMemoryTestDatabase(resolveTestDatabaseUrl());
     for (const auth of users) {
       await seedCoreGraph(db, { organization: { id: auth.organization.id }, users: [{ id: auth.user.id }] });
       await db.query(`insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
@@ -100,7 +93,7 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
-    if (client) { await client.query("rollback"); client.release(); }
+    await db?.rollback();
     await root?.close();
     vi.restoreAllMocks();
   });
@@ -214,14 +207,14 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     expect(forbidden.length).toBeGreaterThan(20);
     for (const { method, pattern } of forbidden) {
       const path = pattern.replace(/:[^/]+/g, "boundary-probe");
-      const before = sql.length;
+      const before = queries.mock.calls.length;
       verifier.mockClear();
       const body = method === "GET" || method === "DELETE" ? undefined
         : pattern.endsWith("/source-snapshots") && method === "POST" ? new FormData() : {};
       if (body instanceof FormData) body.set("versionLabel", "boundary-probe");
       const response = await request(method, path, body, credential.token);
       expect([401, 403], `${method} ${pattern}`).toContain(response.status);
-      expect(sql.slice(before), `${method} ${pattern} reached the database`).toEqual([]);
+      expect(queries.mock.calls.slice(before), `${method} ${pattern} reached the database`).toEqual([]);
       expect(verifier, `${method} ${pattern} reached a user resolver`).not.toHaveBeenCalled();
     }
   }, 120_000);
@@ -233,7 +226,7 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     expect(rows.rows.length).toBeGreaterThan(0);
     expect(plaintext.length).toBeGreaterThanOrEqual(4);
     const persisted = JSON.stringify(rows.rows);
-    const emitted = JSON.stringify({ logged, traces, parameters: sql.map((query) => query.values) });
+    const emitted = JSON.stringify({ logged, traces, parameters: queries.mock.calls.map((call) => call[1]) });
     for (const secret of plaintext) {
       expect(persisted.includes(secret), "Persisted plaintext secret").toBe(false);
       expect(emitted.includes(secret), "Logged plaintext secret").toBe(false);

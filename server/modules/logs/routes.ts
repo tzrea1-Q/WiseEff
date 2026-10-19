@@ -209,15 +209,15 @@ export function registerLogRoutes(
   router.post("/api/v1/log-integration-credentials", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const body = parseWithSchema(issueLogIntegrationCredentialBodySchema, request.body);
-    return { status: 201, headers: { "Cache-Control": "no-store" }, body: await issueIntegrationCredential(requireDb(options.db), auth, body, { requestId: request.requestId }) };
+    return { status: 201, headers: { "Cache-Control": "no-store" }, body: await issueIntegrationCredential(requireDb(options.db), auth, body, createUserInvocation(auth), { requestId: request.requestId }) };
   });
   router.post("/api/v1/log-integration-credentials/:credentialId/rotate", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
-    return { status: 200, headers: { "Cache-Control": "no-store" }, body: await rotateIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, { requestId: request.requestId }) };
+    return { status: 200, headers: { "Cache-Control": "no-store" }, body: await rotateIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, createUserInvocation(auth), { requestId: request.requestId }) };
   });
   router.post("/api/v1/log-integration-credentials/:credentialId/revoke", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
-    return { status: 200, body: await revokeIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, { requestId: request.requestId }) };
+    return { status: 200, body: await revokeIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, createUserInvocation(auth), { requestId: request.requestId }) };
   });
   router.get("/api/v1/log-skills/:skillId/source-versions", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
