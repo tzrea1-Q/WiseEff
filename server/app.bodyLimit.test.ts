@@ -1,7 +1,7 @@
 import { request, type IncomingMessage, type Server } from "node:http";
 import { json } from "node:stream/consumers";
 import { describe, expect, it, vi } from "vitest";
-import { LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit } from "./app";
+import { LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit, LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } from "./app";
 import { MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_FILE_GLOBS } from "../src/domain/logs/fileApplicability";
 import { createRouter } from "./shared/http/router";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
@@ -51,6 +51,35 @@ describe("skill sample transport body limit", () => {
     handler.mockClear();
     expect(await requestDeclaredOversize(server, samplePath, "PUT", sampleBodyLimit + 1)).toMatchObject({
       status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE", details: { maxBytes: sampleBodyLimit } } }
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("parse-test transport body limit", () => {
+  const path = "/api/v1/log-skills/skill-1/parse-tests";
+  const aliases = [path, `${path}/`, "/api//v1//log-skills//skill-1//parse-tests//"];
+  it("bounds POST bodies and their slash aliases without changing other routes", () => {
+    for (const path of aliases) expect(resolveRouteBodyLimit({ method: "POST", path })).toBe(8 * 1024 * 1024);
+    for (const input of [{ method: "GET", path }, { method: "PUT", path }, { method: "POST", path: `${path}/extra` }])
+      expect(resolveRouteBodyLimit(input)).toBe(DEFAULT_MAX_REQUEST_BODY_BYTES);
+  });
+
+  it.each(aliases)("rejects oversized declared and chunked bodies before %s reaches the handler", async (alias) => {
+    const router = createRouter();
+    const handler = vi.fn(async () => ({ status: 200, body: { ok: true } }));
+    router.post(path, handler);
+    const server = createHttpServer(router, { maxBodyBytes: resolveRouteBodyLimit });
+    const body = JSON.stringify({ spec: { procedure: "x".repeat(LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES) } });
+    expect(await requestJson(server, alias, { method: "POST", body })).toMatchObject({
+      status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE", details: { maxBytes: LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } } }
+    });
+    const chunked = new ReadableStream({ start(controller) {
+      for (let offset = 0; offset < body.length; offset += 64 * 1024) controller.enqueue(new TextEncoder().encode(body.slice(offset, offset + 64 * 1024)));
+      controller.close();
+    } });
+    expect(await requestJson(server, alias, { method: "POST", body: chunked, duplex: "half" } as RequestInit)).toMatchObject({
+      status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE" } }
     });
     expect(handler).not.toHaveBeenCalled();
   });

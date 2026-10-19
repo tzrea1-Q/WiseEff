@@ -67,6 +67,18 @@ Entries you cannot read appear with a restricted-entry label and their id; title
 
 Save and publish the skill draft to make its link set available to new analyses. A run uses the entries linked by its pinned skill revision, so later skill edits cannot change that set. Unpublished and archived knowledge is excluded from retrieval. The report's source information records the entry and revision ids actually returned during analysis, rather than treating every linked entry as used. Later knowledge edits do not rewrite that run's recorded sources.
 
+## Keep decoders correct with parse tests
+
+Test filenames, including the default `sample.log`, follow the skill's applicability rules and each extractor's globs; unmatched files use only generic parsing and signals, with a general-analysis notice in the result detail explaining why skill fields are missing.
+
+Choose Tests in the skill workspace, select a sample line in the docked sample pane, then choose Add test. The new test starts with that line and its current decoded fields; without a selected line, fill in the input yourself. Give it a name, review its input lines and optional filename, then edit or remove expectations in the field-path table. Values accept JSON or plain strings. For example, `val.fields.CHRG_FAULT.meaning` should equal `thermal_shutdown` for the BQ25890 sample above. The JSON code view edits the expectations in bulk; choose Apply expectation code to use the changes.
+
+Expected fields are a subset: extra decoded fields are allowed. A scalar expectation compares a converted field's `value`, so `val: 32` checks the numeric value of raw `0x20`; use `val.raw` when the original representation matters. Nested register fields use their full paths. Expected signals accept rule ids or names and ignore order and repeated hits. Enable exact signal matching to also fail on unexpected signals.
+
+Each draft save runs the tests. Run tests in the Tests section toolbar also checks the current edits on demand. A compact status beside it shows passed/total, failed/total, Not run or Running; the list also shows each test's status. Select a failed test to see Field path, Expected and Actual, with missing and unexpected signals beside the field differences. Editing the spec clears the displayed status until the next run. Parse tests use the worker's parsing engine and signal rules without calling a model.
+
+Tests are saved in the draft and published with its revision. A skill accepts up to 50 tests, each with up to 200 lines; the whole run is limited to 5000 lines, 1,048,576 input characters and one second. Correct invalid or oversized input before running; an execution limit or error is shown as a failed test. See the [parse-test reference](../design-docs/log-parsing-v1.md#parse-tests) for signal-rule, field, transport and output bounds. The latest run is held in the open workspace, so reloading clears its status; saving or running again recomputes it. Before publication the server reruns the tests. The top of the publish dialog shows the passed/total count and a link to failures. Its change summary lists added, changed and deleted tests by name; changed tests identify the affected parts, such as input lines or expected fields. A failed test does not disable Publish: review the differences and decide whether to publish.
+
 ## Try the draft on a sample
 
 In the skill workspace (`/log-admin/skills/:skillId`), upload the skill's sample log and choose Dry run. This action requires `logs:admin-domains` and API mode. It saves pending edits as a draft, then runs that saved draft on the stored sample with the configured analyzer, including the real model when configured; publishing is not required. Later edits or sample replacement do not change a run already started.

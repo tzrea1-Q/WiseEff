@@ -1,11 +1,11 @@
 import { z } from "zod";
 
 import type { ParsedLogEntry } from "./parser";
-import { compileLogPattern, createLogPatternCache, type LogPattern, type LogPatternCache } from "./adminPattern";
+import { compileLogPattern, createLogPatternCache, MAX_LOG_PATTERN_LENGTH, type LogPattern, type LogPatternCache } from "./adminPattern";
 import { withLogPatternBudget } from "./patternBudget";
 import type { DecodedEvent } from "./parsing/spec";
 
-export const SIGNAL_RULE_LIMITS = { rules: 64, conditions: 16, windows: 16, windowTimestamps: 160_000, evaluations: 2_000_000 } as const;
+export const SIGNAL_RULE_LIMITS = { rules: 64, conditions: 16, totalConditions: 256, windows: 16, windowTimestamps: 160_000, evaluations: 2_000_000 } as const;
 export function createSignalEvaluationBudget(deadline = performance.now() + 10_000, evaluations: number = SIGNAL_RULE_LIMITS.evaluations, now = () => performance.now()) {
   return { deadline, remaining: evaluations, now };
 }
@@ -18,6 +18,76 @@ export function checkSignalEvaluationBudget(budget: SignalEvaluationBudget) {
   if (--budget.remaining < 0) throw new SignalRuleBudgetError("evaluation_cap");
 }
 
+export const MAX_SIGNAL_RULES = SIGNAL_RULE_LIMITS.rules;
+export const MAX_SIGNAL_CONDITIONS_PER_RULE = SIGNAL_RULE_LIMITS.conditions;
+export const MAX_SIGNAL_CONDITIONS = SIGNAL_RULE_LIMITS.totalConditions;
+export const MAX_SIGNAL_TOKEN_NAMES = 16;
+export const MAX_SIGNAL_TOKEN_NAME_CHARS = 100;
+export const MAX_SIGNAL_TOTAL_PATTERN_CHARS = 64 * 1024;
+export const MAX_SIGNAL_TEXT_CHARS = 4096;
+export const MAX_SIGNAL_ACTIONS = 32;
+
+/** Reject oversized graphs before Zod visits children or compiles any pattern. */
+export function preflightSignalRules(value: unknown, ctx: z.RefinementCtx, prefix: (string | number)[] = []) {
+  if (!value || typeof value !== "object" || !("rules" in value) || !Array.isArray(value.rules)) return value;
+  const issue = (path: (string | number)[], message: string) => {
+    ctx.addIssue({ code: "custom", path: [...prefix, ...path], message, fatal: true });
+    return z.NEVER;
+  };
+  if (value.rules.length > MAX_SIGNAL_RULES) return issue(["rules"], `At most ${MAX_SIGNAL_RULES} signal rules`);
+  let conditions = 0, patternChars = 0, windows = 0;
+  for (const [index, rule] of value.rules.entries()) {
+    if (!rule || typeof rule !== "object") continue;
+    if (Array.isArray(rule.analysis?.suggestedActions) && rule.analysis.suggestedActions.length > MAX_SIGNAL_ACTIONS)
+      return issue(["rules", index, "analysis", "suggestedActions"], `At most ${MAX_SIGNAL_ACTIONS} suggested actions`);
+    if (!Array.isArray(rule.anyOf)) continue;
+    if (rule.anyOf.length > MAX_SIGNAL_CONDITIONS_PER_RULE)
+      return issue(["rules", index, "anyOf"], `At most ${MAX_SIGNAL_CONDITIONS_PER_RULE} conditions per rule`);
+    conditions += rule.anyOf.length;
+    if (conditions > MAX_SIGNAL_CONDITIONS) return issue(["rules", index, "anyOf"], `At most ${MAX_SIGNAL_CONDITIONS} signal conditions in total`);
+    for (const [conditionIndex, input] of rule.anyOf.entries()) {
+      if (!input || typeof input !== "object") continue;
+      const path = ["rules", index, "anyOf", conditionIndex];
+      if (input.type === "window") {
+        if (++windows > SIGNAL_RULE_LIMITS.windows)
+          return issue(path, `At most ${SIGNAL_RULE_LIMITS.windows} window conditions are allowed per skill`);
+        path.push("condition");
+      }
+      const condition = input.type === "window" ? input.condition : input;
+      if (!condition || typeof condition !== "object") continue;
+      if (condition.type === "field" && Array.isArray(condition.values) && condition.values.length > 256)
+        return issue([...path, "values"], "At most 256 set members");
+      if (typeof condition.pattern === "string") {
+        if (condition.pattern.length > MAX_LOG_PATTERN_LENGTH)
+          return issue([...path, "pattern"], `LogPatternError: Pattern exceeds ${MAX_LOG_PATTERN_LENGTH} UTF-16 code units.`);
+        patternChars += condition.pattern.length;
+        if (patternChars > MAX_SIGNAL_TOTAL_PATTERN_CHARS)
+          return issue([...path, "pattern"], `Signal patterns exceed ${MAX_SIGNAL_TOTAL_PATTERN_CHARS} UTF-16 code units in total`);
+      }
+      if (typeof condition.flags === "string" && condition.flags.length > 3)
+        return issue([...path, "flags"], "LogPatternError: At most three regular expression flags (i/m/s)");
+      if (typeof condition.token === "string" && condition.token.length > MAX_SIGNAL_TOKEN_NAME_CHARS)
+        return issue([...path, "token"], `Token names must not exceed ${MAX_SIGNAL_TOKEN_NAME_CHARS} characters`);
+      for (const side of ["leftTokens", "rightTokens"] as const) {
+        if (!Array.isArray(condition[side])) continue;
+        if (condition[side].length > MAX_SIGNAL_TOKEN_NAMES)
+          return issue([...path, side], `At most ${MAX_SIGNAL_TOKEN_NAMES} token names`);
+        for (const [tokenIndex, token] of condition[side].entries()) {
+          if (typeof token === "string" && token.length > MAX_SIGNAL_TOKEN_NAME_CHARS)
+            return issue([...path, side, tokenIndex], `Token names must not exceed ${MAX_SIGNAL_TOKEN_NAME_CHARS} characters`);
+        }
+      }
+    }
+  }
+  for (const name of ["noHit", "hitDefaults"] as const) {
+    const defaults = (value as Record<string, unknown>)[name];
+    if (defaults && typeof defaults === "object" && "suggestedActions" in defaults && Array.isArray(defaults.suggestedActions)
+      && defaults.suggestedActions.length > MAX_SIGNAL_ACTIONS)
+      return issue([name, "suggestedActions"], `At most ${MAX_SIGNAL_ACTIONS} suggested actions`);
+  }
+  return value;
+}
+
 /** The single compilation seam for signal-rule patterns. */
 export function compileSignalPattern(pattern: string, flags?: string, cache?: LogPatternCache): LogPattern {
   return compileLogPattern(pattern, flags, undefined, cache);
@@ -25,8 +95,8 @@ export function compileSignalPattern(pattern: string, flags?: string, cache?: Lo
 
 const textConditionSchema = z.object({
   type: z.literal("text"),
-  pattern: z.string(),
-  flags: z.string().optional()
+  pattern: z.string().max(MAX_LOG_PATTERN_LENGTH),
+  flags: z.string().max(3).optional()
 }).strict().superRefine((condition, ctx) => {
   try {
     compileSignalPattern("", condition.flags);
@@ -41,7 +111,7 @@ const textConditionSchema = z.object({
   }
 });
 
-const tokenNamesSchema = z.array(z.string().min(1)).min(1);
+const tokenNamesSchema = z.array(z.string().min(1).max(MAX_SIGNAL_TOKEN_NAME_CHARS)).min(1).max(MAX_SIGNAL_TOKEN_NAMES);
 const scalarSchema = z.union([z.string(), z.number().finite(), z.boolean()]);
 const fieldConditionSchema = z.object({
   type: z.literal("field"), field: z.string().min(1).max(256),
@@ -82,7 +152,7 @@ const conditionSchemas = [
   z.object({
     type: z.literal("severityToken"),
     severity: z.enum(["error", "warn", "info"]),
-    token: z.string().min(1)
+    token: z.string().min(1).max(MAX_SIGNAL_TOKEN_NAME_CHARS)
   }).strict()
 ] as const;
 export const signalConditionSchema = z.unknown().transform((input, ctx) => {
@@ -104,18 +174,18 @@ const ranked = <T extends z.ZodTypeAny>(value: T) => z.object({
 }).strict();
 const severitySchema = z.enum(["Critical", "Warning", "Info"]);
 const confidenceSchema = z.number().min(0).max(1);
-const textSchema = z.string().min(1);
+const textSchema = z.string().min(1).max(MAX_SIGNAL_TEXT_CHARS);
 const defaultsSchema = z.object({
   conclusion: textSchema,
   impact: textSchema,
   severity: severitySchema,
   confidence: confidenceSchema,
-  suggestedActions: z.array(textSchema)
+  suggestedActions: z.array(textSchema).max(MAX_SIGNAL_ACTIONS)
 }).strict();
 
-export const signalRuleSetSchema = withLogPatternBudget(z.object({
+export const signalRuleSetSchema = z.preprocess(preflightSignalRules, withLogPatternBudget(z.object({
   rules: z.array(z.object({
-    id: textSchema,
+    id: textSchema.max(200),
     name: z.string().min(1).max(200).optional(),
     severity: severitySchema.optional(),
     anyOf: z.array(signalConditionSchema).min(1).max(SIGNAL_RULE_LIMITS.conditions),
@@ -127,7 +197,7 @@ export const signalRuleSetSchema = withLogPatternBudget(z.object({
       impact: ranked(textSchema).optional(),
       severity: ranked(severitySchema).optional(),
       confidence: ranked(confidenceSchema).optional(),
-      suggestedActions: z.array(ranked(textSchema))
+      suggestedActions: z.array(ranked(textSchema)).max(MAX_SIGNAL_ACTIONS)
     }).strict()
   }).strict()).max(SIGNAL_RULE_LIMITS.rules),
   noHit: defaultsSchema,
@@ -138,7 +208,7 @@ export const signalRuleSetSchema = withLogPatternBudget(z.object({
   ruleSet.rules.forEach((rule, index) => {
     rule.anyOf.forEach((condition, conditionIndex) => {
       if (condition.type === "window" && ++windows > SIGNAL_RULE_LIMITS.windows) ctx.addIssue({
-        code: z.ZodIssueCode.custom, path: ["rules", index, "anyOf", conditionIndex], message: "At most 16 window conditions are allowed per skill"
+        code: z.ZodIssueCode.custom, path: ["rules", index, "anyOf", conditionIndex], message: `At most ${SIGNAL_RULE_LIMITS.windows} window conditions are allowed per skill`
       });
     });
     if (ids.has(rule.id)) {
@@ -146,7 +216,7 @@ export const signalRuleSetSchema = withLogPatternBudget(z.object({
     }
     ids.add(rule.id);
   });
-}), "signals");
+}), "signals"));
 
 export type SignalRuleSet = z.infer<typeof signalRuleSetSchema>;
 export type SignalCondition = z.infer<typeof signalConditionSchema>;
@@ -161,7 +231,9 @@ export const signalPreviewResponseSchema = z.object({
 /** Each file/pass owns its rings; evaluations and the deadline are shared across passes. */
 export function compileSignalRules(ruleSet: SignalRuleSet, budget = createSignalEvaluationBudget(), cache = createLogPatternCache()) {
   const state = { windows: 0, slots: 0 };
-  if (ruleSet.rules.length > SIGNAL_RULE_LIMITS.rules) throw new SignalRuleBudgetError("evaluation_cap");
+  if (ruleSet.rules.length > SIGNAL_RULE_LIMITS.rules
+    || ruleSet.rules.reduce((total, rule) => total + rule.anyOf.length, 0) > SIGNAL_RULE_LIMITS.totalConditions)
+    throw new SignalRuleBudgetError("evaluation_cap");
   return ruleSet.rules.map((rule) => {
     checkSignalEvaluationBudget(budget);
     if (rule.anyOf.length > SIGNAL_RULE_LIMITS.conditions) throw new SignalRuleBudgetError("evaluation_cap");

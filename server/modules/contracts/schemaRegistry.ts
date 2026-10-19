@@ -1065,6 +1065,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.sourceEvidence": { summary: "Read the bounded source excerpt cited by record evidence (logs:view)", tags: ["logs"], responseBody: "LogSourceEvidenceResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
   "logs.getSkill": { summary: "Get analysis skill", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.parsePreview": { summary: "Preview unsaved parsing rules", tags: ["logs"], requestBody: "LogParsePreviewRequest", responseBody: "LogParsePreviewResponse" },
+  "logs.parseTests": { summary: "Run parse tests against an unsaved skill draft", tags: ["logs"], requestBody: "LogParseTestRequest", responseBody: "LogParseTestRun" },
   "logs.signalPreview": { summary: "Preview draft signal rules on the stored sample", tags: ["logs"], requestBody: "LogSignalPreviewRequest", responseBody: "LogSignalPreviewResponse" },
   "logs.filesPreview": { summary: "Preview draft applicability on the stored sample inventory", tags: ["logs"], requestBody: "LogSkillFilePreviewRequest", responseBody: "LogSkillFilePreviewResponse" },
   "logs.extractorPreview": { summary: "Generate and preview an extractor pattern", tags: ["logs"], requestBody: "LogExtractorPreviewRequest", responseBody: "LogExtractorPreviewResponse" },

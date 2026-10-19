@@ -85,6 +85,51 @@ Register work uses the existing line, event and elapsed-time budgets, with a che
 
 The paste-table dialog accepts at most 64 KiB UTF-8 and 512 input lines. Oversized input shows an error and cannot be imported. Preview distinguishes valid and rejected rows with text and icons, retains source line numbers and reasons, and shows the valid/rejected counts. The confirmation explicitly replaces all fields of the selected register with the valid rows; it does not append to the existing table.
 
+## Parse tests
+
+`skill/v1` accepts optional `parseTests` alongside `parsing` and `signalRules`. Tests are part of the draft's existing spec JSON and immutable published revision; no migration or test-result table is required. For the register configuration above, a test can be written as:
+
+```yaml
+parseTests:
+  - id: charger-thermal
+    name: Charger thermal shutdown
+    fileName: kernel.log
+    lines: ["addr=0x0C val=0x20"]
+    expect:
+      fields:
+        addr: 12
+        val: 32
+        val.fields.CHRG_FAULT.meaning: thermal_shutdown
+      signals: []
+      exactSignals: false
+```
+
+`id` is unique within the spec (1–100 characters); `name` is nonblank (at most 200 characters). `fileName` is optional (1–1024 characters), defaults to `sample.log`, and participates in extractor file-glob matching. Each `lines` item is one raw line, without CR or LF. The strict `expect` object accepts optional `fields`, `signals` and `exactSignals`.
+
+`fileName` also follows skill applicability (including default `sample.log`): unmatched files use generic parsing and signals without skill extraction or decoding, while evaluated results expose `applicability: {skillMatched, role}` and matching files still obey extractor globs.
+
+`expect.fields` maps dot-separated field paths to JSON values. Paths start at the event's `fields`, so nested register expectations use `val.fields.CHRG_FAULT.meaning`. Paths contain identifier segments and cannot contain prototype-access keys. Expected objects match recursively as subsets; all expectations must match the same decoded event. With multiple events, any fully matching event passes; on failure, the event with the fewest differences supplies the diff. A scalar expectation unwraps a converted field's `value` and normalizes numeric strings, including hexadecimal, against numbers. Explicit `.raw` expectations compare the original representation. Arrays compare as complete values. Missing values are reported as `actual: null, missing: true` with their field path, distinguishing an absent field from a present null.
+
+`expect.signals` lists expected rule ids, generic signal kinds or signal titles. Repeated hits and order do not matter. By default, extra signals are permitted; `exactSignals: true` also reports unexpected signals. Omitted field or signal expectations do not assert their absence; an empty signal list with exact mode asserts no signals.
+
+| Bound | Limit |
+| --- | --- |
+| Tests per skill | 50, with unique ids |
+| Input per test | 1–200 lines, at most 6144 UTF-16 code units per line |
+| Input across a run | 5000 lines and 1,048,576 UTF-16 code units |
+| Expectations per test | 200 field paths, each at most 1024 characters; 200 signals, each at most 200 characters; 65,536 serialized JSON code units; JSON nesting depth at most 12 |
+| Signal-rule graph | 64 rules, 16 conditions per rule, 256 conditions in total; each text pattern at most 4096 UTF-16 code units and all signal patterns at most 65,536 units; the shared program-size budget also applies: 16,384 instructions per pattern and 65,536 across all patterns in the spec/request. Both structural and program limits must hold; only distinct `i`, `m`, `s` flags |
+| Signal-rule values | 16 token names per comparison side, each at most 100 characters; rule ids at most 200 characters, prose at most 4096 characters, 32 suggested actions per list |
+| Execution | 1000 ms for validation, decoding, signal extraction and comparison across all tests |
+| Decoded output across a run | Existing engine caps: 50,000 events, 4 MiB serialized output and 32,768 fields, plus per-event and per-line caps |
+| On-demand HTTP body | 8 MiB for parse-test POSTs, including repeated/trailing-slash route aliases; reject excess bytes with HTTP 413 during body collection, before JSON parsing |
+
+Signal-rule limits live in the shared schema, so draft saves, publication and on-demand runs validate the same graph. Preflight checks reject oversized graphs before child validation or pattern compilation. Patterns still use the shared RE2 engine without a native-regex fallback. The on-demand endpoint validates under a hard 1000 ms deadline and passes only the remaining time to execution. Invalid input, including a validation timeout, returns HTTP 400 (`VALIDATION_FAILED`); it does not create a test run.
+
+One server runner uses the worker's cooperative decoder and signal extractor, including its format-profile parsing and real signal rules. It returns `{total, passed, failed, results, truncated}`. Each result contains `id`, `name`, `passed`, `diffs: [{path, expected, actual, missing?}]`, `missingSignals`, `unexpectedSignals`, actual `events` and signal ids, and an optional execution error. After validation succeeds, an execution deadline, decoding error or exhausted output cap marks the affected test failed with `truncated: true` rather than rejecting the request or claiming complete success.
+
+Draft save and publication return a fresh optional `parseTestRun`. `POST /api/v1/log-skills/:skillId/parse-tests` accepts `{spec}` to test current edits on demand under the same skill-administration permission and organization scope. Results are response data held only in the open workspace and matched to the tested spec, not persisted: recomputing bounded deterministic tests avoids storing a stale result or adding a migration. The Tests section uses field-path forms with a code-view fallback and an inline diff table; its toolbar owns Run tests and a compact passed/failed count, Not run or Running status. The publish dialog puts passed/total and a failure link at the top, followed by named per-test additions, changes and deletions with changed parts identified. Failed results never block publication.
+
 ## Byte-layout frames
 
 `frames` maps definition ids to `{endian?: "big" | "little", fields: FrameField[]}`, with at most 32 frames and 64 fields per frame. Each switch/TLV map has at most 256 cases. Fields consume bytes in array order; offsets are computed rather than authored. The frame default is big-endian. A field's `endian` overrides its frame's default for integer, tag, length and checksum storage. An extractor attaches `decode: {frame: "packet"}` to a `hex`, `bytes`, `hexbytes` or `base64bytes` capture; frame hex input accepts optional `0x` and whitespace. Decoding preserves raw bytes and nests the decoded fields below the capture.

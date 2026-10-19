@@ -352,6 +352,7 @@ export const DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES = DEBUG_CATALOG_MAX_DOCUMENT_BY
 /** Encoded 2 MiB source plus bounded JSON field and proof-token headroom. */
 export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
+export const LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 /** Draft configuration only; signal previews load the stored sample on the server. */
 export const LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 512 * 1024;
 // Six bytes per UTF-16 unit covers JSON escaping, plus row envelopes and 1 KiB whitespace.
@@ -367,6 +368,9 @@ export function resolveRouteBodyLimit({ method, path, contentType }: { method: s
   }
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+(?:parse|extractor|format)-preview\/*$/.test(path)) {
     return LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+parse-tests\/*$/.test(path)) {
+    return LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES;
   }
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+signals-preview\/*$/.test(path)) {
     return LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES;

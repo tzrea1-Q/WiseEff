@@ -11978,6 +11978,53 @@
         }
       }
     },
+    "/api/v1/log-skills/{skillId}/parse-tests": {
+      "post": {
+        "operationId": "logs.parseTests",
+        "summary": "Run parse tests against an unsaved skill draft",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogParseTestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogParseTestRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skills/{skillId}/signals-preview": {
       "post": {
         "operationId": "logs.signalPreview",
@@ -35425,9 +35472,609 @@
               "updatedAt": {
                 "type": "string"
               },
+              "parseTestRun": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "passed": {
+                    "type": "number"
+                  },
+                  "failed": {
+                    "type": "number"
+                  },
+                  "results": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "passed": {
+                          "type": "boolean"
+                        },
+                        "applicability": {
+                          "type": "object",
+                          "properties": {
+                            "skillMatched": {
+                              "type": "boolean"
+                            },
+                            "role": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "skillMatched",
+                            "role"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "diffs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string"
+                              },
+                              "expected": {},
+                              "actual": {},
+                              "missing": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "expected",
+                              "actual"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "missingSignals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "unexpectedSignals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "events": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "v": {
+                                "type": "number",
+                                "enum": [
+                                  1
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "declarative"
+                                ]
+                              },
+                              "extractor": {
+                                "type": "string"
+                              },
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "endLine": {
+                                "type": "number"
+                              },
+                              "fields": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "hex": {
+                                              "type": "string"
+                                            },
+                                            "length": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "hex",
+                                            "length"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "raw": {
+                                          "type": "string"
+                                        },
+                                        "value": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {
+                                              "type": "null"
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "hex": {
+                                                  "type": "string"
+                                                },
+                                                "length": {
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "hex",
+                                                "length"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        },
+                                        "meaning": {
+                                          "type": "string"
+                                        },
+                                        "unit": {
+                                          "type": "string"
+                                        },
+                                        "byteOffset": {
+                                          "type": "number"
+                                        },
+                                        "byteLength": {
+                                          "type": "number"
+                                        },
+                                        "checksum": {
+                                          "type": "object",
+                                          "properties": {
+                                            "expected": {
+                                              "type": "number"
+                                            },
+                                            "actual": {
+                                              "type": "number"
+                                            },
+                                            "ok": {
+                                              "type": "boolean"
+                                            }
+                                          },
+                                          "required": [
+                                            "expected",
+                                            "actual",
+                                            "ok"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "fields": {
+                                          "type": "object",
+                                          "additionalProperties": {
+                                            "type": "object"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "raw",
+                                        "value"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              },
+                              "errors": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "code": {
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "code",
+                                    "message"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "v",
+                              "source",
+                              "extractor",
+                              "file",
+                              "line",
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "signals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "passed",
+                        "diffs",
+                        "missingSignals",
+                        "unexpectedSignals",
+                        "events",
+                        "signals"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "total",
+                  "passed",
+                  "failed",
+                  "results",
+                  "truncated"
+                ],
+                "additionalProperties": false
+              },
               "currentRevision": {
                 "type": "object",
                 "properties": {
+                  "parseTestRun": {
+                    "type": "object",
+                    "properties": {
+                      "total": {
+                        "type": "number"
+                      },
+                      "passed": {
+                        "type": "number"
+                      },
+                      "failed": {
+                        "type": "number"
+                      },
+                      "results": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "passed": {
+                              "type": "boolean"
+                            },
+                            "applicability": {
+                              "type": "object",
+                              "properties": {
+                                "skillMatched": {
+                                  "type": "boolean"
+                                },
+                                "role": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "skillMatched",
+                                "role"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "diffs": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "expected": {},
+                                  "actual": {},
+                                  "missing": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "expected",
+                                  "actual"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "missingSignals": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "unexpectedSignals": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "events": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "v": {
+                                    "type": "number",
+                                    "enum": [
+                                      1
+                                    ]
+                                  },
+                                  "source": {
+                                    "type": "string",
+                                    "enum": [
+                                      "declarative"
+                                    ]
+                                  },
+                                  "extractor": {
+                                    "type": "string"
+                                  },
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  },
+                                  "endLine": {
+                                    "type": "number"
+                                  },
+                                  "fields": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "anyOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {
+                                              "type": "null"
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "hex": {
+                                                  "type": "string"
+                                                },
+                                                "length": {
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "hex",
+                                                "length"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "raw": {
+                                              "type": "string"
+                                            },
+                                            "value": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "boolean"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "hex": {
+                                                      "type": "string"
+                                                    },
+                                                    "length": {
+                                                      "type": "number"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "hex",
+                                                    "length"
+                                                  ],
+                                                  "additionalProperties": false
+                                                }
+                                              ]
+                                            },
+                                            "meaning": {
+                                              "type": "string"
+                                            },
+                                            "unit": {
+                                              "type": "string"
+                                            },
+                                            "byteOffset": {
+                                              "type": "number"
+                                            },
+                                            "byteLength": {
+                                              "type": "number"
+                                            },
+                                            "checksum": {
+                                              "type": "object",
+                                              "properties": {
+                                                "expected": {
+                                                  "type": "number"
+                                                },
+                                                "actual": {
+                                                  "type": "number"
+                                                },
+                                                "ok": {
+                                                  "type": "boolean"
+                                                }
+                                              },
+                                              "required": [
+                                                "expected",
+                                                "actual",
+                                                "ok"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            "fields": {
+                                              "type": "object",
+                                              "additionalProperties": {
+                                                "type": "object"
+                                              }
+                                            }
+                                          },
+                                          "required": [
+                                            "raw",
+                                            "value"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "errors": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "field": {
+                                          "type": "string"
+                                        },
+                                        "code": {
+                                          "type": "string"
+                                        },
+                                        "message": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "code",
+                                        "message"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "v",
+                                  "source",
+                                  "extractor",
+                                  "file",
+                                  "line",
+                                  "fields"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "signals": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "error": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "passed",
+                            "diffs",
+                            "missingSignals",
+                            "unexpectedSignals",
+                            "events",
+                            "signals"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "truncated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "total",
+                      "passed",
+                      "failed",
+                      "results",
+                      "truncated"
+                    ],
+                    "additionalProperties": false
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -35872,6 +36519,55 @@
                           "extractors"
                         ],
                         "additionalProperties": false
+                      },
+                      "parseTests": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "lines": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "fileName": {
+                              "type": "string"
+                            },
+                            "expect": {
+                              "type": "object",
+                              "properties": {
+                                "fields": {
+                                  "type": "object",
+                                  "additionalProperties": {}
+                                },
+                                "signals": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "exactSignals": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "lines",
+                            "expect"
+                          ],
+                          "additionalProperties": false
+                        }
                       },
                       "description": {
                         "type": "string"
@@ -36519,6 +37215,306 @@
                   "null"
                 ],
                 "properties": {
+                  "parseTestRun": {
+                    "type": "object",
+                    "properties": {
+                      "total": {
+                        "type": "number"
+                      },
+                      "passed": {
+                        "type": "number"
+                      },
+                      "failed": {
+                        "type": "number"
+                      },
+                      "results": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "passed": {
+                              "type": "boolean"
+                            },
+                            "applicability": {
+                              "type": "object",
+                              "properties": {
+                                "skillMatched": {
+                                  "type": "boolean"
+                                },
+                                "role": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "skillMatched",
+                                "role"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "diffs": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "expected": {},
+                                  "actual": {},
+                                  "missing": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "expected",
+                                  "actual"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "missingSignals": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "unexpectedSignals": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "events": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "v": {
+                                    "type": "number",
+                                    "enum": [
+                                      1
+                                    ]
+                                  },
+                                  "source": {
+                                    "type": "string",
+                                    "enum": [
+                                      "declarative"
+                                    ]
+                                  },
+                                  "extractor": {
+                                    "type": "string"
+                                  },
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  },
+                                  "endLine": {
+                                    "type": "number"
+                                  },
+                                  "fields": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "anyOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {
+                                              "type": "null"
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "hex": {
+                                                  "type": "string"
+                                                },
+                                                "length": {
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "hex",
+                                                "length"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "raw": {
+                                              "type": "string"
+                                            },
+                                            "value": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "boolean"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "hex": {
+                                                      "type": "string"
+                                                    },
+                                                    "length": {
+                                                      "type": "number"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "hex",
+                                                    "length"
+                                                  ],
+                                                  "additionalProperties": false
+                                                }
+                                              ]
+                                            },
+                                            "meaning": {
+                                              "type": "string"
+                                            },
+                                            "unit": {
+                                              "type": "string"
+                                            },
+                                            "byteOffset": {
+                                              "type": "number"
+                                            },
+                                            "byteLength": {
+                                              "type": "number"
+                                            },
+                                            "checksum": {
+                                              "type": "object",
+                                              "properties": {
+                                                "expected": {
+                                                  "type": "number"
+                                                },
+                                                "actual": {
+                                                  "type": "number"
+                                                },
+                                                "ok": {
+                                                  "type": "boolean"
+                                                }
+                                              },
+                                              "required": [
+                                                "expected",
+                                                "actual",
+                                                "ok"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            "fields": {
+                                              "type": "object",
+                                              "additionalProperties": {
+                                                "type": "object"
+                                              }
+                                            }
+                                          },
+                                          "required": [
+                                            "raw",
+                                            "value"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "errors": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "field": {
+                                          "type": "string"
+                                        },
+                                        "code": {
+                                          "type": "string"
+                                        },
+                                        "message": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "code",
+                                        "message"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "v",
+                                  "source",
+                                  "extractor",
+                                  "file",
+                                  "line",
+                                  "fields"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "signals": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "error": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "passed",
+                            "diffs",
+                            "missingSignals",
+                            "unexpectedSignals",
+                            "events",
+                            "signals"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "truncated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "total",
+                      "passed",
+                      "failed",
+                      "results",
+                      "truncated"
+                    ],
+                    "additionalProperties": false
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -36963,6 +37959,55 @@
                           "extractors"
                         ],
                         "additionalProperties": false
+                      },
+                      "parseTests": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "lines": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "fileName": {
+                              "type": "string"
+                            },
+                            "expect": {
+                              "type": "object",
+                              "properties": {
+                                "fields": {
+                                  "type": "object",
+                                  "additionalProperties": {}
+                                },
+                                "signals": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "exactSignals": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "lines",
+                            "expect"
+                          ],
+                          "additionalProperties": false
+                        }
                       },
                       "description": {
                         "type": "string"
@@ -38067,6 +39112,55 @@
                         "extractors"
                       ],
                       "additionalProperties": false
+                    },
+                    "parseTests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "lines": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "fileName": {
+                            "type": "string"
+                          },
+                          "expect": {
+                            "type": "object",
+                            "properties": {
+                              "fields": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              },
+                              "signals": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "exactSignals": {
+                                "type": "boolean"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "lines",
+                          "expect"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "description": {
                       "type": "string"
@@ -39529,6 +40623,1389 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "LogParsePreviewResponse"
       },
+      "LogParseTestRequest": {
+        "type": "object",
+        "properties": {
+          "spec": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "string",
+                "enum": [
+                  "skill/v1"
+                ]
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "glob": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "glob"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "knowledgeEntryIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "parsing": {
+                "type": "object",
+                "properties": {
+                  "schemaVersion": {
+                    "type": "string",
+                    "enum": [
+                      "parsing/v1"
+                    ]
+                  },
+                  "registers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "width": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "enum": [
+                                8
+                              ]
+                            },
+                            {
+                              "type": "number",
+                              "enum": [
+                                16
+                              ]
+                            },
+                            {
+                              "type": "number",
+                              "enum": [
+                                32
+                              ]
+                            },
+                            {
+                              "type": "number",
+                              "enum": [
+                                64
+                              ]
+                            }
+                          ]
+                        },
+                        "fields": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bits": {
+                                "type": "object"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "enum": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string"
+                                }
+                              },
+                              "scale": {
+                                "type": "number"
+                              },
+                              "offset": {
+                                "type": "number"
+                              },
+                              "unit": {
+                                "type": "string"
+                              },
+                              "signed": {
+                                "type": "boolean"
+                              },
+                              "description": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "bits",
+                              "name"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "width",
+                        "fields"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "registerMaps": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "selectBy": {
+                          "type": "string"
+                        },
+                        "cases": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "default": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "selectBy",
+                        "cases"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "frames": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "endian": {
+                          "type": "string",
+                          "enum": [
+                            "big",
+                            "little"
+                          ]
+                        },
+                        "fields": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "required": [
+                        "fields"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "extractors": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "pattern": {
+                          "type": "string"
+                        },
+                        "fields": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "int",
+                                      "uint"
+                                    ]
+                                  },
+                                  "decode": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "register": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "register"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "registerMap": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "registerMap"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "hex"
+                                    ]
+                                  },
+                                  "decode": {
+                                    "anyOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "register": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "register"
+                                            ],
+                                            "additionalProperties": false
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "registerMap": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "registerMap"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "frame": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "frame"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "bytes",
+                                      "hexbytes",
+                                      "base64bytes"
+                                    ]
+                                  },
+                                  "decode": {
+                                    "type": "object",
+                                    "properties": {
+                                      "frame": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "frame"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "float",
+                                      "bool",
+                                      "string"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "enum"
+                                    ]
+                                  },
+                                  "values": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "values"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "timestamp"
+                                    ]
+                                  },
+                                  "format": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "format"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        },
+                        "multiline": {
+                          "type": "object",
+                          "properties": {
+                            "start": {
+                              "type": "string"
+                            },
+                            "continue": {
+                              "type": "string"
+                            },
+                            "end": {
+                              "type": "string"
+                            },
+                            "keyField": {
+                              "type": "string"
+                            },
+                            "maxLines": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "start",
+                            "maxLines"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "pattern",
+                        "fields"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "extractors"
+                ],
+                "additionalProperties": false
+              },
+              "parseTests": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "expect": {
+                      "type": "object",
+                      "properties": {
+                        "fields": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        },
+                        "signals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "exactSignals": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "lines",
+                    "expect"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "description": {
+                "type": "string"
+              },
+              "procedure": {
+                "type": "string"
+              },
+              "formatProfile": {
+                "type": "object",
+                "properties": {
+                  "timestampPattern": {
+                    "type": "string"
+                  },
+                  "multiline": {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "start-pattern",
+                          "indent"
+                        ]
+                      },
+                      "startPattern": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "severityMap": {
+                    "type": "object",
+                    "properties": {
+                      "error": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "warn": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "info": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "modelOverride": {
+                "type": "string"
+              },
+              "defaultSourceSnapshotId": {
+                "type": "string"
+              },
+              "source": {
+                "type": "object",
+                "properties": {
+                  "statementPatterns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "signalRules": {
+                "type": "object",
+                "properties": {
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "type": "string",
+                          "enum": [
+                            "Critical",
+                            "Warning",
+                            "Info"
+                          ]
+                        },
+                        "anyOf": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "text"
+                                    ]
+                                  },
+                                  "pattern": {
+                                    "type": "string"
+                                  },
+                                  "flags": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "pattern"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "field"
+                                    ]
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "equals",
+                                      "range",
+                                      "in"
+                                    ]
+                                  },
+                                  "value": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      }
+                                    ]
+                                  },
+                                  "min": {
+                                    "type": "number"
+                                  },
+                                  "max": {
+                                    "type": "number"
+                                  },
+                                  "values": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "field",
+                                  "operator"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "window"
+                                    ]
+                                  },
+                                  "condition": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
+                                              "text"
+                                            ]
+                                          },
+                                          "pattern": {
+                                            "type": "string"
+                                          },
+                                          "flags": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "type",
+                                          "pattern"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
+                                              "field"
+                                            ]
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          },
+                                          "operator": {
+                                            "type": "string",
+                                            "enum": [
+                                              "equals",
+                                              "range",
+                                              "in"
+                                            ]
+                                          },
+                                          "value": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "number"
+                                              },
+                                              {
+                                                "type": "boolean"
+                                              }
+                                            ]
+                                          },
+                                          "min": {
+                                            "type": "number"
+                                          },
+                                          "max": {
+                                            "type": "number"
+                                          },
+                                          "values": {
+                                            "type": "array",
+                                            "items": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "number"
+                                                },
+                                                {
+                                                  "type": "boolean"
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        "required": [
+                                          "type",
+                                          "field",
+                                          "operator"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  },
+                                  "count": {
+                                    "type": "number"
+                                  },
+                                  "seconds": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "condition",
+                                  "count",
+                                  "seconds"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "numericComparison"
+                                    ]
+                                  },
+                                  "leftTokens": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "lt",
+                                      "lte",
+                                      "eq",
+                                      "neq",
+                                      "gte",
+                                      "gt"
+                                    ]
+                                  },
+                                  "rightTokens": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "leftTokens",
+                                  "operator",
+                                  "rightTokens"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "severityToken"
+                                    ]
+                                  },
+                                  "severity": {
+                                    "type": "string",
+                                    "enum": [
+                                      "error",
+                                      "warn",
+                                      "info"
+                                    ]
+                                  },
+                                  "token": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "severity",
+                                  "token"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        },
+                        "stageId": {
+                          "type": "string",
+                          "enum": [
+                            "pattern",
+                            "rootcause"
+                          ]
+                        },
+                        "inference": {
+                          "type": "string"
+                        },
+                        "suggestedAction": {
+                          "type": "string"
+                        },
+                        "analysis": {
+                          "type": "object",
+                          "properties": {
+                            "conclusion": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "string"
+                                },
+                                "priority": {
+                                  "type": "number"
+                                },
+                                "requiresErrorEvidence": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "value",
+                                "priority"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "impact": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "string"
+                                },
+                                "priority": {
+                                  "type": "number"
+                                },
+                                "requiresErrorEvidence": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "value",
+                                "priority"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "severity": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "string",
+                                  "enum": [
+                                    "Critical",
+                                    "Warning",
+                                    "Info"
+                                  ]
+                                },
+                                "priority": {
+                                  "type": "number"
+                                },
+                                "requiresErrorEvidence": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "value",
+                                "priority"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "confidence": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "number"
+                                },
+                                "priority": {
+                                  "type": "number"
+                                },
+                                "requiresErrorEvidence": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "value",
+                                "priority"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "suggestedActions": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "value": {
+                                    "type": "string"
+                                  },
+                                  "priority": {
+                                    "type": "number"
+                                  },
+                                  "requiresErrorEvidence": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "value",
+                                  "priority"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "suggestedActions"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "anyOf",
+                        "stageId",
+                        "inference",
+                        "suggestedAction",
+                        "analysis"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "noHit": {
+                    "type": "object",
+                    "properties": {
+                      "conclusion": {
+                        "type": "string"
+                      },
+                      "impact": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string",
+                        "enum": [
+                          "Critical",
+                          "Warning",
+                          "Info"
+                        ]
+                      },
+                      "confidence": {
+                        "type": "number"
+                      },
+                      "suggestedActions": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "conclusion",
+                      "impact",
+                      "severity",
+                      "confidence",
+                      "suggestedActions"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "hitDefaults": {
+                    "type": "object",
+                    "properties": {
+                      "conclusion": {
+                        "type": "string"
+                      },
+                      "impact": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string",
+                        "enum": [
+                          "Critical",
+                          "Warning",
+                          "Info"
+                        ]
+                      },
+                      "confidence": {
+                        "type": "number"
+                      },
+                      "suggestedActions": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "conclusion",
+                      "impact",
+                      "severity",
+                      "confidence",
+                      "suggestedActions"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "rules",
+                  "noHit",
+                  "hitDefaults"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "schemaVersion"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "spec"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogParseTestRequest"
+      },
+      "LogParseTestRun": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "passed": {
+            "type": "number"
+          },
+          "failed": {
+            "type": "number"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "passed": {
+                  "type": "boolean"
+                },
+                "applicability": {
+                  "type": "object",
+                  "properties": {
+                    "skillMatched": {
+                      "type": "boolean"
+                    },
+                    "role": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "skillMatched",
+                    "role"
+                  ],
+                  "additionalProperties": false
+                },
+                "diffs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "expected": {},
+                      "actual": {},
+                      "missing": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "expected",
+                      "actual"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "missingSignals": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "unexpectedSignals": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "events": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "v": {
+                        "type": "number",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "declarative"
+                        ]
+                      },
+                      "extractor": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "number"
+                      },
+                      "endLine": {
+                        "type": "number"
+                      },
+                      "fields": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "hex": {
+                                      "type": "string"
+                                    },
+                                    "length": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "hex",
+                                    "length"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "raw": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "hex": {
+                                          "type": "string"
+                                        },
+                                        "length": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "required": [
+                                        "hex",
+                                        "length"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                },
+                                "meaning": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "byteOffset": {
+                                  "type": "number"
+                                },
+                                "byteLength": {
+                                  "type": "number"
+                                },
+                                "checksum": {
+                                  "type": "object",
+                                  "properties": {
+                                    "expected": {
+                                      "type": "number"
+                                    },
+                                    "actual": {
+                                      "type": "number"
+                                    },
+                                    "ok": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "expected",
+                                    "actual",
+                                    "ok"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "fields": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "object"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "raw",
+                                "value"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "errors": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            },
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "v",
+                      "source",
+                      "extractor",
+                      "file",
+                      "line",
+                      "fields"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "signals": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "passed",
+                "diffs",
+                "missingSignals",
+                "unexpectedSignals",
+                "events",
+                "signals"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "total",
+          "passed",
+          "failed",
+          "results",
+          "truncated"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogParseTestRun"
+      },
       "LogSignalPreviewRequest": {
         "type": "object",
         "properties": {
@@ -40532,6 +43009,55 @@
                 ],
                 "additionalProperties": false
               },
+              "parseTests": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "expect": {
+                      "type": "object",
+                      "properties": {
+                        "fields": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        },
+                        "signals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "exactSignals": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "lines",
+                    "expect"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "description": {
                 "type": "string"
               },
@@ -41151,6 +43677,306 @@
           "item": {
             "type": "object",
             "properties": {
+              "parseTestRun": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "passed": {
+                    "type": "number"
+                  },
+                  "failed": {
+                    "type": "number"
+                  },
+                  "results": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "passed": {
+                          "type": "boolean"
+                        },
+                        "applicability": {
+                          "type": "object",
+                          "properties": {
+                            "skillMatched": {
+                              "type": "boolean"
+                            },
+                            "role": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "skillMatched",
+                            "role"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "diffs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string"
+                              },
+                              "expected": {},
+                              "actual": {},
+                              "missing": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "expected",
+                              "actual"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "missingSignals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "unexpectedSignals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "events": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "v": {
+                                "type": "number",
+                                "enum": [
+                                  1
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "declarative"
+                                ]
+                              },
+                              "extractor": {
+                                "type": "string"
+                              },
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "endLine": {
+                                "type": "number"
+                              },
+                              "fields": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "hex": {
+                                              "type": "string"
+                                            },
+                                            "length": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "hex",
+                                            "length"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "raw": {
+                                          "type": "string"
+                                        },
+                                        "value": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {
+                                              "type": "null"
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "hex": {
+                                                  "type": "string"
+                                                },
+                                                "length": {
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "hex",
+                                                "length"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        },
+                                        "meaning": {
+                                          "type": "string"
+                                        },
+                                        "unit": {
+                                          "type": "string"
+                                        },
+                                        "byteOffset": {
+                                          "type": "number"
+                                        },
+                                        "byteLength": {
+                                          "type": "number"
+                                        },
+                                        "checksum": {
+                                          "type": "object",
+                                          "properties": {
+                                            "expected": {
+                                              "type": "number"
+                                            },
+                                            "actual": {
+                                              "type": "number"
+                                            },
+                                            "ok": {
+                                              "type": "boolean"
+                                            }
+                                          },
+                                          "required": [
+                                            "expected",
+                                            "actual",
+                                            "ok"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "fields": {
+                                          "type": "object",
+                                          "additionalProperties": {
+                                            "type": "object"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "raw",
+                                        "value"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              },
+                              "errors": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "code": {
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "code",
+                                    "message"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "v",
+                              "source",
+                              "extractor",
+                              "file",
+                              "line",
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "signals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "passed",
+                        "diffs",
+                        "missingSignals",
+                        "unexpectedSignals",
+                        "events",
+                        "signals"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "total",
+                  "passed",
+                  "failed",
+                  "results",
+                  "truncated"
+                ],
+                "additionalProperties": false
+              },
               "id": {
                 "type": "string"
               },
@@ -41595,6 +44421,55 @@
                       "extractors"
                     ],
                     "additionalProperties": false
+                  },
+                  "parseTests": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "lines": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "expect": {
+                          "type": "object",
+                          "properties": {
+                            "fields": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            },
+                            "signals": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "exactSignals": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "lines",
+                        "expect"
+                      ],
+                      "additionalProperties": false
+                    }
                   },
                   "description": {
                     "type": "string"
@@ -42264,6 +45139,306 @@
             "items": {
               "type": "object",
               "properties": {
+                "parseTestRun": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "number"
+                    },
+                    "passed": {
+                      "type": "number"
+                    },
+                    "failed": {
+                      "type": "number"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "passed": {
+                            "type": "boolean"
+                          },
+                          "applicability": {
+                            "type": "object",
+                            "properties": {
+                              "skillMatched": {
+                                "type": "boolean"
+                              },
+                              "role": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "skillMatched",
+                              "role"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "diffs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "path": {
+                                  "type": "string"
+                                },
+                                "expected": {},
+                                "actual": {},
+                                "missing": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "path",
+                                "expected",
+                                "actual"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "missingSignals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "unexpectedSignals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "events": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "v": {
+                                  "type": "number",
+                                  "enum": [
+                                    1
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "declarative"
+                                  ]
+                                },
+                                "extractor": {
+                                  "type": "string"
+                                },
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                },
+                                "endLine": {
+                                  "type": "number"
+                                },
+                                "fields": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "anyOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "boolean"
+                                          },
+                                          {
+                                            "type": "null"
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "hex": {
+                                                "type": "string"
+                                              },
+                                              "length": {
+                                                "type": "number"
+                                              }
+                                            },
+                                            "required": [
+                                              "hex",
+                                              "length"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "raw": {
+                                            "type": "string"
+                                          },
+                                          "value": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "number"
+                                              },
+                                              {
+                                                "type": "boolean"
+                                              },
+                                              {
+                                                "type": "null"
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "hex": {
+                                                    "type": "string"
+                                                  },
+                                                  "length": {
+                                                    "type": "number"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "hex",
+                                                  "length"
+                                                ],
+                                                "additionalProperties": false
+                                              }
+                                            ]
+                                          },
+                                          "meaning": {
+                                            "type": "string"
+                                          },
+                                          "unit": {
+                                            "type": "string"
+                                          },
+                                          "byteOffset": {
+                                            "type": "number"
+                                          },
+                                          "byteLength": {
+                                            "type": "number"
+                                          },
+                                          "checksum": {
+                                            "type": "object",
+                                            "properties": {
+                                              "expected": {
+                                                "type": "number"
+                                              },
+                                              "actual": {
+                                                "type": "number"
+                                              },
+                                              "ok": {
+                                                "type": "boolean"
+                                              }
+                                            },
+                                            "required": [
+                                              "expected",
+                                              "actual",
+                                              "ok"
+                                            ],
+                                            "additionalProperties": false
+                                          },
+                                          "fields": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                              "type": "object"
+                                            }
+                                          }
+                                        },
+                                        "required": [
+                                          "raw",
+                                          "value"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  }
+                                },
+                                "errors": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "field": {
+                                        "type": "string"
+                                      },
+                                      "code": {
+                                        "type": "string"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "code",
+                                      "message"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "v",
+                                "source",
+                                "extractor",
+                                "file",
+                                "line",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "signals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "passed",
+                          "diffs",
+                          "missingSignals",
+                          "unexpectedSignals",
+                          "events",
+                          "signals"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "total",
+                    "passed",
+                    "failed",
+                    "results",
+                    "truncated"
+                  ],
+                  "additionalProperties": false
+                },
                 "id": {
                   "type": "string"
                 },
@@ -42708,6 +45883,55 @@
                         "extractors"
                       ],
                       "additionalProperties": false
+                    },
+                    "parseTests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "lines": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "fileName": {
+                            "type": "string"
+                          },
+                          "expect": {
+                            "type": "object",
+                            "properties": {
+                              "fields": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              },
+                              "signals": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "exactSignals": {
+                                "type": "boolean"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "lines",
+                          "expect"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "description": {
                       "type": "string"

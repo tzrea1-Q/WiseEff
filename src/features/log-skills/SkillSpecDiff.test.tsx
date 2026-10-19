@@ -27,6 +27,22 @@ it("shows only nonzero change groups and a single identical-content message", ()
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
 
+it("summarizes added, changed and deleted parse tests with translated facets instead of raw test JSON", () => {
+  const original = { id: "changed", name: "2", lines: ["private sample before"], expect: { fields: { field: "private expected before" } } };
+  const removed = { ...original, id: "removed", name: "Removed case" };
+  const added = { ...original, id: "added", name: "Added case" };
+  render(<SkillSpecDiff before={{ ...spec, parseTests: [original, removed] }} after={{ ...spec, parseTests: [
+    { ...original, lines: ["private sample after"], expect: { fields: { field: "private expected after" } } }, added
+  ] }} />);
+  expect(screen.getByLabelText("变更摘要").querySelector("p")).toHaveTextContent("新增解析测试 1 · 修改解析测试 1 · 删除解析测试 1");
+  const tests = screen.getByRole("region", { name: "解析测试差异" });
+  expect(tests).toHaveTextContent("修改 2：样例行、期望字段");
+  expect(tests).toHaveTextContent("新增 Added case");
+  expect(tests).toHaveTextContent("删除 Removed case");
+  expect(tests).not.toHaveTextContent(/private sample|private expected|"lines"|"expect"/);
+  expect(tests.querySelector("pre")).toBeNull();
+});
+
 it("keeps facts on the body scale and portal diff styling independent of the workspace", () => {
   const css = readStylesheet("src/features/log-skills/skill-workspace.css");
   expect(declarationsFor(css, ".skill-section .skill-facts dd").font).toContain("var(--text-base) / var(--leading-base)");

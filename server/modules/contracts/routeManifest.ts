@@ -775,6 +775,7 @@ export const routeManifest = [
   { id: "logs.deleteSkillSample", method: "DELETE", path: "/api/v1/log-skills/:skillId/sample", module: "logs", stability: "mvp" },
   { id: "logs.getSkill", method: "GET", path: "/api/v1/log-skills/:skillId", module: "logs", stability: "mvp" },
   { id: "logs.parsePreview", method: "POST", path: "/api/v1/log-skills/:skillId/parse-preview", module: "logs", stability: "mvp" },
+  { id: "logs.parseTests", method: "POST", path: "/api/v1/log-skills/:skillId/parse-tests", module: "logs", stability: "mvp" },
   { id: "logs.signalPreview", method: "POST", path: "/api/v1/log-skills/:skillId/signals-preview", module: "logs", stability: "mvp" },
   { id: "logs.filesPreview", method: "POST", path: "/api/v1/log-skills/:skillId/files/preview", module: "logs", stability: "mvp" },
   { id: "logs.extractorPreview", method: "POST", path: "/api/v1/log-skills/:skillId/extractor-preview", module: "logs", stability: "mvp" },
