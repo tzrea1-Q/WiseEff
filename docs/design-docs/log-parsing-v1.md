@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese reference](../zh-CN/design-docs/log-parsing-v1.md)
 
-`skill/v1` accepts optional `parsing`. The decoding core implements extraction, typed conversion, registers, register maps and byte-layout frames. Lookups, decoded-value signals and scripts are later additions. The construct set is closed: unknown keys are rejected on draft save and publication with issue paths.
+`skill/v1` accepts optional `parsing`. The decoding core implements extraction, typed conversion, registers, register maps, byte-layout frames and decoded-value signals. Lookups and scripts are later additions. The construct set is closed: unknown keys are rejected on draft save and publication with issue paths.
 
 ```yaml
 schemaVersion: parsing/v1
@@ -180,6 +180,25 @@ frames:
 `hdr=0x2161 data=2C9101082CD10200` yields header message type 1 with meaning `Source_Capabilities` and count 2. The payload yields two fixed PDOs: 5000 mV / 3000 mA and 9000 mV / 3000 mA. The logged header is already an integer; when the header is part of wire bytes, a 2-byte little-endian register field reads `61 21` as `0x2161`.
 
 Frame, register and register-map bindings share the limit of eight decoded captures per extractor.
+
+## Signal field paths
+
+Signal field conditions use `extractorId.captureName` followed by zero or more `.fields.NAME` segments and an optional scalar `.value` or enum `.meaning` suffix (at most 256 characters). Omitting `.value` compares the node's scalar value, preserving existing extracted-field rules. Byte buffers and container nodes are not scalar leaves. Paths resolve only through that capture's declared decoder, including register-map cases/defaults and frame switch/TLV cases. Missing branches or errored fields do not match; a valid sibling can still match.
+
+Repeated frame and TLV elements use `.fields.*` for **any-element** semantics, rather than numeric indexes. For example, `pd.pdo.fields.pdos.fields.*.fields.voltage.value` matches if any PDO voltage satisfies the comparison. Each condition evaluates independently; separate conditions do not bind to the same element. An empty collection never matches. This avoids one rule per repetition and keeps the picker independent of a sample's element count.
+
+Numeric leaves accept numeric `equals`, inclusive `range` and numeric `in`; meanings accept string `equals`/`in`. Boolean and string captures retain typed equality/set comparisons. Units label numeric choices; thresholds use the decoder's scaled value and unit. No implicit string/number coercion occurs, including decimal strings emitted for integers outside the safe numeric range. Save, publish and preview share validation: unknown paths report `signalRules.rules.<rule>.anyOf.<condition>.field`; type errors report `.value`, `.values` or `.operator`, with `.condition` inserted for window subconditions. Enum meanings appear as selectable values in the sentence builder.
+
+With the BQ25890 map above, `addr=0x0C val=0x20` produces `CHRG_FAULT.meaning = thermal_shutdown`. A signal rule condition is:
+
+```yaml
+type: field
+field: charger.val.fields.CHRG_FAULT.meaning
+operator: equals
+value: thermal_shutdown
+```
+
+The signal appears in the run's signal list and line-grounded evidence, and the pinned rule participates in rules-only analysis and provider fallback like other signals. Sample hits use the same evaluator and line highlighting. Paths compile once; each event, decoded node and wildcard element consumes the existing shared evaluation/time budget. Pattern caching and all decoding/signal limits remain unchanged. Eager picker enumeration stops at 4,096 paths or 16,384 traversal steps and displays a code-view notice; exact path validation remains complete beyond that display limit.
 
 ## Multiline assembly
 
