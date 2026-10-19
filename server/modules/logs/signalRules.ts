@@ -1,7 +1,68 @@
 import { z } from "zod";
 
 import type { ParsedLogEntry } from "./parser";
-import { compileLogPattern, type LogPattern } from "./adminPattern";
+import { compileLogPattern, MAX_LOG_PATTERN_LENGTH, type LogPattern } from "./adminPattern";
+
+export const MAX_SIGNAL_RULES = 64;
+export const MAX_SIGNAL_CONDITIONS_PER_RULE = 16;
+export const MAX_SIGNAL_CONDITIONS = 256;
+export const MAX_SIGNAL_TOKEN_NAMES = 16;
+export const MAX_SIGNAL_TOKEN_NAME_CHARS = 100;
+export const MAX_SIGNAL_TOTAL_PATTERN_CHARS = 64 * 1024;
+export const MAX_SIGNAL_TEXT_CHARS = 4096;
+export const MAX_SIGNAL_ACTIONS = 32;
+
+/** Reject oversized graphs before Zod visits children or compiles any pattern. */
+function preflightSignalRules(value: unknown, ctx: z.RefinementCtx) {
+  if (!value || typeof value !== "object" || !("rules" in value) || !Array.isArray(value.rules)) return value;
+  const issue = (path: (string | number)[], message: string) => {
+    ctx.addIssue({ code: "custom", path, message, fatal: true });
+    return z.NEVER;
+  };
+  if (value.rules.length > MAX_SIGNAL_RULES) return issue(["rules"], `At most ${MAX_SIGNAL_RULES} signal rules`);
+  let conditions = 0, patternChars = 0;
+  for (const [index, rule] of value.rules.entries()) {
+    if (!rule || typeof rule !== "object") continue;
+    if (Array.isArray(rule.analysis?.suggestedActions) && rule.analysis.suggestedActions.length > MAX_SIGNAL_ACTIONS)
+      return issue(["rules", index, "analysis", "suggestedActions"], `At most ${MAX_SIGNAL_ACTIONS} suggested actions`);
+    if (!Array.isArray(rule.anyOf)) continue;
+    if (rule.anyOf.length > MAX_SIGNAL_CONDITIONS_PER_RULE)
+      return issue(["rules", index, "anyOf"], `At most ${MAX_SIGNAL_CONDITIONS_PER_RULE} conditions per rule`);
+    conditions += rule.anyOf.length;
+    if (conditions > MAX_SIGNAL_CONDITIONS) return issue(["rules", index, "anyOf"], `At most ${MAX_SIGNAL_CONDITIONS} signal conditions in total`);
+    for (const [conditionIndex, condition] of rule.anyOf.entries()) {
+      if (!condition || typeof condition !== "object") continue;
+      const path = ["rules", index, "anyOf", conditionIndex];
+      if (typeof condition.pattern === "string") {
+        if (condition.pattern.length > MAX_LOG_PATTERN_LENGTH)
+          return issue([...path, "pattern"], `LogPatternError: Pattern exceeds ${MAX_LOG_PATTERN_LENGTH} UTF-16 code units.`);
+        patternChars += condition.pattern.length;
+        if (patternChars > MAX_SIGNAL_TOTAL_PATTERN_CHARS)
+          return issue([...path, "pattern"], `Signal patterns exceed ${MAX_SIGNAL_TOTAL_PATTERN_CHARS} UTF-16 code units in total`);
+      }
+      if (typeof condition.flags === "string" && condition.flags.length > 3)
+        return issue([...path, "flags"], "LogPatternError: At most three regular expression flags (i/m/s)");
+      if (typeof condition.token === "string" && condition.token.length > MAX_SIGNAL_TOKEN_NAME_CHARS)
+        return issue([...path, "token"], `Token names must not exceed ${MAX_SIGNAL_TOKEN_NAME_CHARS} characters`);
+      for (const side of ["leftTokens", "rightTokens"] as const) {
+        if (!Array.isArray(condition[side])) continue;
+        if (condition[side].length > MAX_SIGNAL_TOKEN_NAMES)
+          return issue([...path, side], `At most ${MAX_SIGNAL_TOKEN_NAMES} token names`);
+        for (const [tokenIndex, token] of condition[side].entries()) {
+          if (typeof token === "string" && token.length > MAX_SIGNAL_TOKEN_NAME_CHARS)
+            return issue([...path, side, tokenIndex], `Token names must not exceed ${MAX_SIGNAL_TOKEN_NAME_CHARS} characters`);
+        }
+      }
+    }
+  }
+  for (const name of ["noHit", "hitDefaults"] as const) {
+    const defaults = (value as Record<string, unknown>)[name];
+    if (defaults && typeof defaults === "object" && "suggestedActions" in defaults && Array.isArray(defaults.suggestedActions)
+      && defaults.suggestedActions.length > MAX_SIGNAL_ACTIONS)
+      return issue([name, "suggestedActions"], `At most ${MAX_SIGNAL_ACTIONS} suggested actions`);
+  }
+  return value;
+}
 
 /** The single compilation seam for signal-rule patterns. */
 export function compileSignalPattern(pattern: string, flags?: string): LogPattern {
@@ -10,8 +71,8 @@ export function compileSignalPattern(pattern: string, flags?: string): LogPatter
 
 const textConditionSchema = z.object({
   type: z.literal("text"),
-  pattern: z.string(),
-  flags: z.string().optional()
+  pattern: z.string().max(MAX_LOG_PATTERN_LENGTH),
+  flags: z.string().max(3).optional()
 }).strict().superRefine((condition, ctx) => {
   try {
     compileSignalPattern("", condition.flags);
@@ -26,7 +87,7 @@ const textConditionSchema = z.object({
   }
 });
 
-const tokenNamesSchema = z.array(z.string().min(1)).min(1);
+const tokenNamesSchema = z.array(z.string().min(1).max(MAX_SIGNAL_TOKEN_NAME_CHARS)).min(1).max(MAX_SIGNAL_TOKEN_NAMES);
 export const signalConditionSchema = z.union([
   textConditionSchema,
   z.object({
@@ -38,7 +99,7 @@ export const signalConditionSchema = z.union([
   z.object({
     type: z.literal("severityToken"),
     severity: z.enum(["error", "warn", "info"]),
-    token: z.string().min(1)
+    token: z.string().min(1).max(MAX_SIGNAL_TOKEN_NAME_CHARS)
   }).strict()
 ]);
 
@@ -51,19 +112,19 @@ const ranked = <T extends z.ZodTypeAny>(value: T) => z.object({
 }).strict();
 const severitySchema = z.enum(["Critical", "Warning", "Info"]);
 const confidenceSchema = z.number().min(0).max(1);
-const textSchema = z.string().min(1);
+const textSchema = z.string().min(1).max(MAX_SIGNAL_TEXT_CHARS);
 const defaultsSchema = z.object({
   conclusion: textSchema,
   impact: textSchema,
   severity: severitySchema,
   confidence: confidenceSchema,
-  suggestedActions: z.array(textSchema)
+  suggestedActions: z.array(textSchema).max(MAX_SIGNAL_ACTIONS)
 }).strict();
 
-export const signalRuleSetSchema = z.object({
+export const signalRuleSetSchema = z.preprocess(preflightSignalRules, z.object({
   rules: z.array(z.object({
-    id: textSchema,
-    anyOf: z.array(signalConditionSchema).min(1),
+    id: textSchema.max(200),
+    anyOf: z.array(signalConditionSchema).min(1).max(MAX_SIGNAL_CONDITIONS_PER_RULE),
     stageId: z.enum(["pattern", "rootcause"]),
     inference: textSchema,
     suggestedAction: textSchema,
@@ -72,9 +133,9 @@ export const signalRuleSetSchema = z.object({
       impact: ranked(textSchema).optional(),
       severity: ranked(severitySchema).optional(),
       confidence: ranked(confidenceSchema).optional(),
-      suggestedActions: z.array(ranked(textSchema))
+      suggestedActions: z.array(ranked(textSchema)).max(MAX_SIGNAL_ACTIONS)
     }).strict()
-  }).strict()),
+  }).strict()).max(MAX_SIGNAL_RULES),
   noHit: defaultsSchema,
   hitDefaults: defaultsSchema
 }).strict().superRefine((ruleSet, ctx) => {
@@ -85,7 +146,7 @@ export const signalRuleSetSchema = z.object({
     }
     ids.add(rule.id);
   });
-});
+}));
 
 export type SignalRuleSet = z.infer<typeof signalRuleSetSchema>;
 export type SignalCondition = z.infer<typeof signalConditionSchema>;

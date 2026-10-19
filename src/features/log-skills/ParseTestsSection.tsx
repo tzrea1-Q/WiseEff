@@ -4,6 +4,7 @@ import { SectionEmpty } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { MAX_PARSE_TESTS, MAX_PARSE_TEST_LINES, MAX_PARSE_TEST_RUN_LINES, parseTestCaseSchema, parseTestsSchema } from "@wiseeff/dto-schemas";
 import type { ParseTest, ParseTestRun, SkillSample, SkillSpec, SkillWorkspaceRepository } from "./types";
 
@@ -41,7 +42,7 @@ function Expectations({ test, onChange, disabled, onValidityChange }: { test: Pa
     setError(checked.success ? "" : "字段路径或期望值无效，请检查后重试。");
   };
   return <section aria-label="期望字段"><h3>期望字段</h3><p>按字段路径匹配；数值默认比较 value，校验原始文本时请明确填写 .raw。可删除不需要的期望。</p>
-    <DataTable ariaLabel="期望字段表" rows={rows.map((row, index) => ({ ...row, index }))} rowKey={(row) => String(row.index)} pageSize={200} columns={[
+    <DataTable fluid tableClassName="table-fixed" ariaLabel="期望字段表" rows={rows.map((row, index) => ({ ...row, index }))} rowKey={(row) => String(row.index)} pageSize={200} columns={[
       { key: "path", header: "字段路径", render: (row) => <Input aria-label={`期望字段 ${row.index + 1} 路径`} disabled={disabled} value={row.path}
         onChange={(event) => updateRows(rows.map((item, index) => index === row.index ? { ...item, path: event.target.value } : item))} /> },
       { key: "value", header: "期望", render: (row) => <Input aria-label={`期望字段 ${row.index + 1} 值`} disabled={disabled} value={row.value}
@@ -64,9 +65,10 @@ function Expectations({ test, onChange, disabled, onValidityChange }: { test: Pa
   </section>;
 }
 
-export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository, sample, selectedLine, result, onRun, onBusyChange, onValidityChange }: {
+export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository, sample, selectedLine, result, running = false, runDisabled = false, runError, onRun, onBusyChange, onValidityChange }: {
   skillId: string; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean; repository?: Partial<SkillWorkspaceRepository>;
   sample: SkillSample | null; selectedLine: number | null; result: ParseTestRun | null; onRun: () => void;
+  running?: boolean; runDisabled?: boolean; runError?: string;
   onBusyChange: (busy: boolean) => void; onValidityChange: (invalid: boolean) => void;
 }) {
   const tests = spec.parseTests ?? [];
@@ -99,15 +101,19 @@ export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository
   };
   return <section className="skill-section skill-parse-tests" aria-label="测试"><h2>测试</h2>
     <p>样例行与期望字段、信号随版本保存。保存草稿和发布前运行；失败不会阻止发布。</p>
-    <div className="skill-register-toolbar"><Button disabled={disabled || adding || tests.length >= MAX_PARSE_TESTS} aria-busy={adding} onClick={() => void add()}>新增测试</Button>
-      <Button variant="outline" disabled={disabled || adding || !validation.success || !repository?.runSkillParseTests} onClick={onRun}>运行测试</Button>
+    <div className="skill-parse-test-toolbar"><Button disabled={disabled || adding || tests.length >= MAX_PARSE_TESTS} aria-busy={adding} onClick={() => void add()}>新增测试</Button>
+      <Button variant="outline" disabled={disabled || adding || running || runDisabled || !validation.success || !repository?.runSkillParseTests} aria-busy={running} onClick={onRun}>运行测试</Button>
+      <span className="skill-parse-test-run-status" role="status" aria-label="解析测试运行状态">{running ? "运行中…" : result ? result.failed ? `失败 ${result.failed} / ${result.total}` : `通过 ${result.passed} / ${result.total}` : "未运行"}</span>
       <span>{tests.length} / {MAX_PARSE_TESTS} 个测试{sample && selectedLine ? ` · 使用样例第 ${selectedLine} 行` : ""}</span></div>
+    {runError ? <p role="alert">{runError}</p> : null}
     {error ? <p role="alert">{error}</p> : null}
     {!validation.success ? <p role="alert">测试配置无效：请检查名称、字段路径及样例行数、字符上限后保存。</p> : null}
-    <DataTable ariaLabel="解析测试列表" rows={tests} rowKey={(item) => item.id} selectedRowKey={test?.id} onRowClick={(item) => setSelectedId(item.id)} columns={[
+    <DataTable fluid tableClassName="table-fixed" ariaLabel="解析测试列表" rows={tests} rowKey={(item) => item.id} selectedRowKey={test?.id} onRowClick={(item) => setSelectedId(item.id)} columns={[
       { key: "name", header: "测试", render: (item) => <Button variant="link" onClick={() => setSelectedId(item.id)}>{item.name}</Button> },
       { key: "lines", header: "样例行", render: (item) => `${item.lines.length} 行` },
-      { key: "status", header: "状态", render: (item) => { const run = result?.results.find((entry) => entry.id === item.id); return run ? run.passed ? "通过" : "失败" : "未运行"; } }
+      { key: "status", header: "状态", render: (item) => { const run = result?.results.find((entry) => entry.id === item.id);
+        return <Badge className="skill-parse-test-status" variant={running || !run ? "secondary" : run.passed ? "outline" : "destructive"}
+          data-status={running ? "running" : !run ? "unrun" : run.passed ? "passed" : "failed"}>{running ? "运行中…" : run ? run.passed ? "通过" : "失败" : "未运行"}</Badge>; } }
     ]} emptyState={<SectionEmpty message="添加解析测试，检查规则更改是否影响预期字段和信号。" />} />
     {test ? <section aria-label={`编辑测试 ${test.name}`} key={test.id}>
       <label>测试名称<Input disabled={disabled} maxLength={200} value={test.name} onChange={(event) => update({ ...test, name: event.target.value })} /></label>
@@ -118,7 +124,7 @@ export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository
       <Button variant="outline" disabled={disabled} onClick={() => { setSpec({ ...spec, parseTests: tests.filter((item) => item.id !== test.id) }); setSelectedId(null); }}>删除测试</Button>
       {outcome ? <section aria-label="测试结果"><h3>{outcome.passed ? "通过" : "失败"}</h3>
         {outcome.error ? <p role="alert">{outcome.error}</p> : null}
-        {outcome.diffs.length ? <DataTable ariaLabel="解析测试差异" rows={outcome.diffs.map((diff, index) => ({ ...diff, index }))} rowKey={(diff) => String(diff.index)} columns={[
+        {outcome.diffs.length ? <DataTable fluid tableClassName="table-fixed" ariaLabel="解析测试差异" rows={outcome.diffs.map((diff, index) => ({ ...diff, index }))} rowKey={(diff) => String(diff.index)} columns={[
           { key: "path", header: "字段路径", render: (diff) => <code>{diff.path}</code> },
           { key: "expected", header: "期望", render: (diff) => <code>{displayValue(diff.expected)}</code> },
           { key: "actual", header: "实际", render: (diff) => <code>{diff.missing ? "字段缺失" : displayValue(diff.actual)}</code> }

@@ -349,8 +349,12 @@ export const DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES = DEBUG_CATALOG_MAX_DOCUMENT_BY
 /** Encoded 2 MiB source plus bounded JSON field and proof-token headroom. */
 export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
+export const LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+parse-tests\/*$/.test(path)) {
+    return LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES;
+  }
   if (method === "PUT" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+sample\/*$/.test(path)) {
     // Base64 of one 2 MiB sample plus a bounded JSON envelope.
     return MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH + 64 * 1024;

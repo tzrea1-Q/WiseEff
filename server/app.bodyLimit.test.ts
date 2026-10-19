@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveRouteBodyLimit } from "./app";
+import { resolveRouteBodyLimit, LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } from "./app";
 import { createRouter } from "./shared/http/router";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { requestJson } from "./test/testClient";
@@ -30,6 +30,35 @@ describe("skill sample transport body limit", () => {
     const oversized = JSON.stringify({ fileName: "sample.log", contentBase64: "A".repeat(sampleBodyLimit + 1) });
     expect(await requestJson(server, samplePath, { method: "PUT", body: oversized })).toMatchObject({
       status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE", details: { maxBytes: sampleBodyLimit } } }
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("parse-test transport body limit", () => {
+  const path = "/api/v1/log-skills/skill-1/parse-tests";
+  const aliases = [path, `${path}/`, "/api//v1//log-skills//skill-1//parse-tests//"];
+  it("bounds POST bodies and their slash aliases without changing other routes", () => {
+    for (const path of aliases) expect(resolveRouteBodyLimit({ method: "POST", path })).toBe(8 * 1024 * 1024);
+    for (const input of [{ method: "GET", path }, { method: "PUT", path }, { method: "POST", path: `${path}/extra` }])
+      expect(resolveRouteBodyLimit(input)).toBe(DEFAULT_MAX_REQUEST_BODY_BYTES);
+  });
+
+  it.each(aliases)("rejects oversized declared and chunked bodies before %s reaches the handler", async (alias) => {
+    const router = createRouter();
+    const handler = vi.fn(async () => ({ status: 200, body: { ok: true } }));
+    router.post(path, handler);
+    const server = createHttpServer(router, { maxBodyBytes: resolveRouteBodyLimit });
+    const body = JSON.stringify({ spec: { procedure: "x".repeat(LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES) } });
+    expect(await requestJson(server, alias, { method: "POST", body })).toMatchObject({
+      status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE", details: { maxBytes: LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } } }
+    });
+    const chunked = new ReadableStream({ start(controller) {
+      for (let offset = 0; offset < body.length; offset += 64 * 1024) controller.enqueue(new TextEncoder().encode(body.slice(offset, offset + 64 * 1024)));
+      controller.close();
+    } });
+    expect(await requestJson(server, alias, { method: "POST", body: chunked, duplex: "half" } as RequestInit)).toMatchObject({
+      status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE" } }
     });
     expect(handler).not.toHaveBeenCalled();
   });

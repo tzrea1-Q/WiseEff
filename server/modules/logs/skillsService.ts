@@ -16,7 +16,7 @@ import { decodeLogFilesCooperatively } from "./parsing/workerDecoding";
 import { MAX_DECODE_EVENTS } from "./parsing/engine";
 import { validateDefaultSourceSnapshot } from "./sourceSnapshots";
 import { validateSkillKnowledge } from "./skillKnowledge";
-import { runParseTests } from "./parseTests";
+import { runParseTests, PARSE_TEST_MAX_MS } from "./parseTests";
 import type { ParseTestRun } from "./parseTestSpec";
 
 export const PARSE_PREVIEW_MAX_MS = 100;
@@ -218,7 +218,15 @@ export async function runLogSkillParseTests(db: Queryable, auth: AuthContext, sk
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
-  return runParseTests(parseSpec(spec));
+  const started = performance.now();
+  let parsed: LogSkillSpec;
+  try {
+    parsed = runInNewContext("validate()", { validate: () => parseSpec(spec) }, { timeout: PARSE_TEST_MAX_MS });
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT")) throw error;
+    throw new ApiError("VALIDATION_FAILED", "Skill validation exceeded the 1000 ms parse test budget.");
+  }
+  return runParseTests(parsed, { maxMs: Math.max(0, PARSE_TEST_MAX_MS - (performance.now() - started)) });
 }
 
 export async function readLogSkillRevisions(db: Queryable, auth: AuthContext, skillId: string) {

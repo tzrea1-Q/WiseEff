@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createRuleBasedLogAnalyzer } from "./analyzer";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import type { ParsedLogEntry } from "./parser";
 import { collectRuleEvidence, runLogPrefilter } from "./prefilter";
-import { compileSignalCondition, signalRuleSetSchema, type SignalRuleSet } from "./signalRules";
+import { compileSignalCondition, signalRuleSetSchema, MAX_SIGNAL_RULES, MAX_SIGNAL_CONDITIONS_PER_RULE,
+  MAX_SIGNAL_CONDITIONS, MAX_SIGNAL_TOKEN_NAMES, MAX_SIGNAL_TOTAL_PATTERN_CHARS, type SignalRuleSet } from "./signalRules";
+import * as adminPattern from "./adminPattern";
+import { logSkillSpecSchema } from "./skillSpec";
+
+afterEach(() => vi.restoreAllMocks());
 
 const entry = (overrides: Partial<ParsedLogEntry> = {}): ParsedLogEntry => ({
   lineNumber: 1, severity: "info", message: "nominal", tokens: {}, ...overrides
@@ -86,6 +91,37 @@ describe("signal conditions", () => {
 });
 
 describe("signal rule schema", () => {
+  it("rejects oversized rule graphs at exact paths before compiling any child pattern", () => {
+    const base = structuredClone(defaultChargingRuleSet), rule = base.rules[0];
+    const text = { type: "text" as const, pattern: "never-compiled" };
+    const cases: Array<{ rules: unknown[]; path: (string | number)[] }> = [
+      { rules: Array(MAX_SIGNAL_RULES + 1).fill(rule), path: ["rules"] },
+      { rules: [{ ...rule, anyOf: Array(500_000).fill(text) }], path: ["rules", 0, "anyOf"] },
+      { rules: Array.from({ length: MAX_SIGNAL_CONDITIONS / MAX_SIGNAL_CONDITIONS_PER_RULE + 1 }, (_, index) => ({
+        ...rule, id: `rule-${index}`, anyOf: Array(MAX_SIGNAL_CONDITIONS_PER_RULE).fill(text)
+      })), path: ["rules", MAX_SIGNAL_CONDITIONS / MAX_SIGNAL_CONDITIONS_PER_RULE, "anyOf"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "numericComparison", leftTokens: Array(500_000).fill("a"), operator: "lt", rightTokens: ["b"] }] }],
+        path: ["rules", 0, "anyOf", 1, "leftTokens"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "severityToken", severity: "error", token: "x".repeat(101) }] }], path: ["rules", 0, "anyOf", 1, "token"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "text", pattern: "x".repeat(4097) }] }], path: ["rules", 0, "anyOf", 1, "pattern"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "numericComparison", leftTokens: ["x".repeat(101)], operator: "lt", rightTokens: ["b"] }] }],
+        path: ["rules", 0, "anyOf", 1, "leftTokens", 0] },
+      { rules: [{ ...rule, anyOf: [text], analysis: { suggestedActions: Array(33).fill({ value: "a", priority: 1 }) } }],
+        path: ["rules", 0, "analysis", "suggestedActions"] },
+      { rules: Array.from({ length: 2 }, (_, index) => ({ ...rule, id: `rule-${index}`, anyOf: Array(MAX_SIGNAL_CONDITIONS_PER_RULE)
+        .fill({ type: "text", pattern: "x".repeat(4096) }) })), path: ["rules", 1, "anyOf", 0, "pattern"] }
+    ];
+    const compile = vi.spyOn(adminPattern, "compileLogPattern");
+    for (const { rules, path } of cases) {
+      const result = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", signalRules: { ...base, rules } });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["signalRules", ...path] }));
+      expect(compile).not.toHaveBeenCalled();
+    }
+    expect(MAX_SIGNAL_TOTAL_PATTERN_CHARS).toBe(16 * 4096);
+    expect(MAX_SIGNAL_TOKEN_NAMES).toBe(16);
+  });
+
   it("round-trips the charging data through JSON and zod", () => {
     expect(signalRuleSetSchema.parse(JSON.parse(JSON.stringify(defaultChargingRuleSet)))).toEqual(defaultChargingRuleSet);
   });

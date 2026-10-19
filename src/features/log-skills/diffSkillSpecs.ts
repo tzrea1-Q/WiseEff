@@ -17,7 +17,19 @@ export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
     { description: b.description, modelOverride: b.modelOverride });
   const procedure = fields({ procedure: a.procedure }, { procedure: b.procedure });
   const knowledge = fields({ knowledgeEntryIds: a.knowledgeEntryIds ?? [] }, { knowledgeEntryIds: b.knowledgeEntryIds ?? [] });
-  const tests = fields({ parseTests: a.parseTests }, { parseTests: b.parseTests });
+  const testsBefore = new Map(a.parseTests?.map((test) => [test.id, test]));
+  const testsAfter = new Map(b.parseTests?.map((test) => [test.id, test]));
+  const testFacets = (test: NonNullable<SkillSpec["parseTests"]>[number] | undefined) => test ? {
+    name: test.name, lines: test.lines, fileName: test.fileName, expectFields: test.expect.fields,
+    expectSignals: test.expect.signals, exactSignals: test.expect.exactSignals
+  } : {};
+  const tests = [...new Set([...testsBefore.keys(), ...testsAfter.keys()])].flatMap((id) => {
+    const left = testsBefore.get(id), right = testsAfter.get(id);
+    const changes = fields(testFacets(left), testFacets(right));
+    return changes.length ? [{ id, name: right?.name ?? left!.name,
+      kind: !left ? "added" as const : !right ? "removed" as const : "changed" as const,
+      facets: Object.keys(testFacets(right ?? left)).filter((field) => changes.some((change) => change.field === field)) }] : [];
+  });
   const source = fields({ defaultSourceSnapshotId: a.defaultSourceSnapshotId, statementPatterns: a.source?.statementPatterns },
     { defaultSourceSnapshotId: b.defaultSourceSnapshotId, statementPatterns: b.source?.statementPatterns });
   const format = buildTextDiffLines(specJson(a.formatProfile), specJson(b.formatProfile));
