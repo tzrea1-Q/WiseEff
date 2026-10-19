@@ -13,6 +13,7 @@ import { TabPanel } from "@/components/ui/tab-panel";
 import { decodedValueText } from "@/features/log-analysis/DecodedFields";
 import { boundedSamplePreview, parseParsingYaml } from "./ParsingSection";
 import { parseRegisterBits, parseRegisterTable, registerPasteIssue, type Register } from "./registerTable";
+import { FrameEditor, renameFrameReferences } from "./FrameEditor";
 import type { ParsePreview, SkillSpec, SkillWorkspaceRepository, SkillSample } from "./types";
 
 type Parsing = NonNullable<SkillSpec["parsing"]>;
@@ -37,7 +38,9 @@ function formSpec(value: unknown): value is Parsing {
       && Object.values(extractor.fields).every((field) => field && typeof field.type === "string"))
     && (!spec.registers || Object.values(spec.registers).every((register) => register && [8, 16, 32, 64].includes(register.width) && Array.isArray(register.fields)
       && register.fields.every((field) => field && typeof field.name === "string" && (typeof field.bits === "string" || Array.isArray(field.bits) && field.bits.length === 2 && field.bits.every(Number.isInteger)))))
-    && (!spec.registerMaps || Object.values(spec.registerMaps).every((map) => map && typeof map.selectBy === "string" && map.cases && typeof map.cases === "object"));
+    && (!spec.registerMaps || Object.values(spec.registerMaps).every((map) => map && typeof map.selectBy === "string" && map.cases && typeof map.cases === "object"))
+    && (!spec.frames || Object.values(spec.frames).every((frame) => frame && Array.isArray(frame.fields) && frame.fields.every((field) => field && typeof field.name === "string" && typeof field.type === "string"
+      && (field.type !== "checksum" || Array.isArray(field.range) && field.range.length === 2 && field.range.every(Number.isFinite)))));
 }
 
 export function RegisterBitBar({ register, values }: { register: Register; values?: Record<string, Decoded> }) {
@@ -136,6 +139,7 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
     const binding = spec?.extractors.find((extractor) => extractor.id === event.extractor)?.fields[name];
     if (!binding || !("decode" in binding) || !binding.decode) return false;
     if ("register" in binding.decode) return binding.decode.register === activeId;
+    if (!("registerMap" in binding.decode)) return false;
     const map = spec?.registerMaps?.[binding.decode.registerMap];
     if (!map) return false;
     const selected = event.fields[map.selectBy];
@@ -181,8 +185,7 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
               const next = { ...registers }; delete next[activeId]; next[key] = register;
               const registerMaps = spec.registerMaps && Object.fromEntries(Object.entries(spec.registerMaps).map(([mapId, map]) => [mapId, { ...map,
                 cases: Object.fromEntries(Object.entries(map.cases).map(([address, target]) => [address, target === activeId ? key : target])), ...(map.default === activeId ? { default: key } : {}) }]));
-              write({ ...spec, registers: next, ...(registerMaps ? { registerMaps } : {}), extractors: spec.extractors.map((extractor) => ({ ...extractor,
-                fields: Object.fromEntries(Object.entries(extractor.fields).map(([name, field]) => [name, "decode" in field && field.decode && "register" in field.decode && field.decode.register === activeId ? { ...field, decode: { register: key } } : field])) })) }); setRegisterId(key);
+              write(renameFrameReferences({ ...spec, registers: next, ...(registerMaps ? { registerMaps } : {}) }, "register", activeId, key)); setRegisterId(key);
             }} /></label><label>位宽<SelectControl ariaLabel="寄存器位宽" disabled={disabled} value={String(register.width)} onValueChange={(value) => updateRegister({ ...register, width: Number(value) as Register["width"] })}
               options={[8, 16, 32, 64].map((width) => ({ value: String(width), label: `${width} 位` }))} /></label></div>
             <p>{selectedLine ? `样例第 ${selectedLine} 行${pending ? " · 解码中…" : ""}` : "选择右侧样例行，查看位段的解码值。"}</p>
@@ -236,12 +239,14 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
             <Button variant="ghost" disabled={disabled} onClick={() => { const registerMaps = { ...spec.registerMaps }; delete registerMaps[mapId]; write({ ...spec, registerMaps }); }}>删除映射 {mapId}</Button>
           </fieldset>)}
         </section>
+        <FrameEditor spec={spec} onChange={write} disabled={disabled} events={selectedEvents} selectedLine={selectedLine} pending={pending} error={error} />
         <section aria-label="抽取字段绑定"><h3>抽取字段绑定</h3>
-          {spec.extractors.flatMap((extractor, index) => Object.entries(extractor.fields).filter(([, field]) => ["int", "uint", "hex"].includes(field.type)).map(([name, field]) => <label key={`${index}-${name}`}>{extractor.id}.{name}
-            <SelectControl ariaLabel={`${extractor.id}.${name} 解码器`} disabled={disabled} value={"decode" in field && field.decode ? "register" in field.decode ? `register:${field.decode.register}` : `registerMap:${field.decode.registerMap}` : ""}
-              options={[{ value: "", label: "无解码器" }, ...Object.keys(registers).map((value) => ({ value: `register:${value}`, label: `寄存器 · ${value}` })), ...Object.keys(spec.registerMaps ?? {}).map((value) => ({ value: `registerMap:${value}`, label: `映射 · ${value}` }))]}
+          {spec.extractors.flatMap((extractor, index) => Object.entries(extractor.fields).filter(([, field]) => ["int", "uint", "hex", "bytes", "hexbytes", "base64bytes"].includes(field.type)).map(([name, field]) => <label key={`${index}-${name}`}>{extractor.id}.{name}
+            <SelectControl ariaLabel={`${extractor.id}.${name} 解码器`} disabled={disabled} value={"decode" in field && field.decode ? "register" in field.decode ? `register:${field.decode.register}` : "frame" in field.decode ? `frame:${field.decode.frame}` : `registerMap:${field.decode.registerMap}` : ""}
+              options={[{ value: "", label: "无解码器" }, ...(["int", "uint", "hex"].includes(field.type) ? [...Object.keys(registers).map((value) => ({ value: `register:${value}`, label: `寄存器 · ${value}` })), ...Object.keys(spec.registerMaps ?? {}).map((value) => ({ value: `registerMap:${value}`, label: `映射 · ${value}` }))] : []), ...(["hex", "bytes", "hexbytes", "base64bytes"].includes(field.type) ? Object.keys(spec.frames ?? {}).map((value) => ({ value: `frame:${value}`, label: `帧 · ${value}` })) : [])]}
               onValueChange={(value) => { const [kind, target] = value.split(":"); const next = { ...field }; if ("decode" in next) delete next.decode;
-                write({ ...spec, extractors: spec.extractors.map((item, i) => i === index ? { ...item, fields: { ...item.fields, [name]: { ...next, ...(target ? { decode: kind === "register" ? { register: target } : { registerMap: target } } : {}) } } } : item) }); }} />
+                const bound = { ...next, ...(target ? { decode: kind === "register" ? { register: target } : kind === "frame" ? { frame: target } : { registerMap: target } } : {}) } as typeof field;
+                write({ ...spec, extractors: spec.extractors.map((item, i) => i === index ? { ...item, fields: { ...item.fields, [name]: bound } } : item) }); }} />
           </label>))}
           {!spec.extractors.length ? <p>先在“样例与解析”添加数值抽取字段，再绑定寄存器或映射。</p> : null}
         </section>
