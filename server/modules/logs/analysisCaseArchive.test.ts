@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { stringify as stringifyYaml } from "yaml";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AnalysisCaseArchiveError, analysisCaseArchiveLimits, exportAnalysisCaseArchive, importAnalysisCaseArchive
 } from "./analysisCaseArchive";
@@ -20,6 +20,92 @@ async function zip(entries: Record<string, Buffer | string>, compression: "STORE
 }
 
 describe("analysis case archive", () => {
+  it.each(["traversal", "duplicate", "directory-alias", "long-name", "local-name-length", "declared-total", "declared-file", "encrypted", "entry-zip64", "extra-fields",
+    "unicode-traversal", "unicode-long", "unicode-alias"])("bounds %s metadata before JSZip parsing", async (attack) => {
+    let bytes = await zip({ "generic/case/a.log": "12345678", "generic/case/b.log": "12345678" });
+    const limits = { ...analysisCaseArchiveLimits };
+    if (attack === "traversal") bytes = await zip({ "../escape.log": "ERROR" });
+    if (attack === "directory-alias") bytes = await zip({ "generic/case/log.txt": "ERROR", "generic/case/log.txt/": "" });
+    if (attack === "long-name") bytes = await zip({ ["generic/case/" + "a".repeat(1024)]: "ERROR" });
+    if (attack.startsWith("unicode-")) {
+      const name = attack === "unicode-traversal" ? "../中文.log" : attack === "unicode-long" ? "generic/case/" + "中".repeat(400) : "generic/case/中文.log";
+      bytes = await new JSZip().file(name, "ERROR", { createFolders: false }).generateAsync({ type: "nodebuffer",
+        encodeFileName: (value) => value ? "generic/case/safe.log" : "" });
+    }
+    const start = bytes.readUInt32LE(bytes.length - 6);
+    if (attack === "duplicate") {
+      const length = bytes.readUInt16LE(start + 28), second = start + 46 + length;
+      const local = bytes.readUInt32LE(second + 42);
+      bytes.copy(bytes, second + 46, start + 46, start + 46 + length);
+      bytes.copy(bytes, local + 30, start + 46, start + 46 + length);
+    }
+    if (attack === "local-name-length") bytes.writeUInt16LE(0xffff, 26);
+    if (attack === "declared-total") limits.maxUnpackedBytes = 15;
+    if (attack === "declared-file") limits.maxFileBytes = 7;
+    if (attack === "encrypted") { bytes.writeUInt16LE(1, start + 8); bytes.writeUInt16LE(1, 6); }
+    if (attack === "entry-zip64") bytes.writeUInt32LE(0xffffffff, start + 24);
+    if (attack === "extra-fields") {
+      const extra = Buffer.alloc(34 * 4);
+      for (let index = 0; index < 34; index++) extra.writeUInt16LE(0xa000 + index, index * 4);
+      const insertion = start + 46 + bytes.readUInt16LE(start + 28), size = bytes.readUInt32LE(bytes.length - 10);
+      bytes.writeUInt16LE(extra.length, start + 30);
+      bytes = Buffer.concat([bytes.subarray(0, insertion), extra, bytes.subarray(insertion)]);
+      bytes.writeUInt32LE(size + extra.length, bytes.length - 10);
+    }
+    const parse = vi.spyOn(JSZip, "loadAsync");
+    try {
+      await expect(importAnalysisCaseArchive(bytes, limits)).rejects.toBeInstanceOf(AnalysisCaseArchiveError);
+      expect(parse.mock.calls.length).toBe(0);
+    } finally { parse.mockRestore(); }
+  });
+
+  it.each([true, false])("preserves UTF-8 Chinese fixture names with the UTF-8 flag set to %s", async (utf8) => {
+    const entries = { "generic/unicode/case.yaml": stringifyYaml({ ...annotation, bundleFiles: ["fixtures/设备.log"], keyEvidence: [{ file: "设备.log", line: 1 }] }),
+      "generic/unicode/log.txt": "ERROR crash\n", "generic/unicode/fixtures/设备.log": "ERROR crash\r\n" };
+    const bytes = await zip(entries);
+    if (!utf8) {
+      for (let at = bytes.readUInt32LE(bytes.length - 6); at < bytes.length - 22;) {
+        bytes.writeUInt16LE(bytes.readUInt16LE(at + 8) & ~0x800, at + 8);
+        const local = bytes.readUInt32LE(at + 42);
+        bytes.writeUInt16LE(bytes.readUInt16LE(local + 6) & ~0x800, local + 6);
+        at += 46 + bytes.readUInt16LE(at + 28) + bytes.readUInt16LE(at + 30) + bytes.readUInt16LE(at + 32);
+      }
+    }
+    const [item] = await importAnalysisCaseArchive(bytes);
+    expect(item.files.find((file) => file.path === "fixtures/设备.log")?.bytes.toString()).toBe(entries["generic/unicode/fixtures/设备.log"]);
+  });
+
+  it.each(["declared", "underreported", "directories", "file-limit"])("rejects %s excessive ZIP entries before JSZip parsing", async (count) => {
+    const bytes = await zip(Object.fromEntries(Array.from({ length: count === "file-limit" ? 3 : 5 }, (_, index) => [
+      count === "directories" ? `directory-${index}/` : `generic/case/file-${index}.log`, ""
+    ])));
+    if (count === "underreported" || count === "directories") {
+      bytes.writeUInt16LE(1, bytes.length - 22 + 8);
+      bytes.writeUInt16LE(1, bytes.length - 22 + 10);
+    }
+    const parse = vi.spyOn(JSZip, "loadAsync");
+    try {
+      await expect(importAnalysisCaseArchive(bytes, { ...analysisCaseArchiveLimits, maxFiles: 2 })).rejects.toBeInstanceOf(AnalysisCaseArchiveError);
+      expect(parse.mock.calls.length).toBe(0);
+    } finally { parse.mockRestore(); }
+  });
+
+  it.each(["missing-eocd", "ambiguous-eocd", "zip64", "directory-size", "entry-length", "entry-count"])("rejects %s ZIP directory metadata before JSZip parsing", async (corruption) => {
+    let bytes = await zip({ "generic/case/log.txt": "ERROR crash" });
+    const end = bytes.length - 22, start = bytes.readUInt32LE(end + 16);
+    if (corruption === "missing-eocd") bytes = bytes.subarray(0, end);
+    if (corruption === "ambiguous-eocd") { bytes.writeUInt16LE(4, end + 20); bytes = Buffer.concat([bytes, Buffer.from([0x50, 0x4b, 0x05, 0x06])]); }
+    if (corruption === "zip64") bytes.writeUInt16LE(0xffff, end + 10);
+    if (corruption === "directory-size") bytes.writeUInt32LE(1, end + 12);
+    if (corruption === "entry-length") bytes.writeUInt16LE(0xffff, start + 28);
+    if (corruption === "entry-count") { bytes.writeUInt16LE(2, end + 8); bytes.writeUInt16LE(2, end + 10); }
+    const parse = vi.spyOn(JSZip, "loadAsync");
+    try {
+      await expect(importAnalysisCaseArchive(bytes)).rejects.toBeInstanceOf(AnalysisCaseArchiveError);
+      expect(parse.mock.calls.length).toBe(0);
+    } finally { parse.mockRestore(); }
+  });
+
   it("round-trips every real repository annotation and fixture byte identically", async () => {
     const entries: Record<string, Buffer> = {};
     const root = join(process.cwd(), "eval-cases/logs");

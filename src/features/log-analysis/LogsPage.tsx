@@ -575,7 +575,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         ) : null}
       </div> : <LogMetadata log={activeLog} />}
       </NavigatorWorkbench>
-      {casePrefill ? <AnalysisCaseDialog title="存为测试用例" initial={casePrefill} onClose={() => setCasePrefill(null)} onSave={async (input) => {
+      {casePrefill ? <AnalysisCaseDialog title="存为测试用例" initial={casePrefill} availableFiles={casePrefill.files}
+        originalUploads={casePrefill.originalUploads} sourceDegradation={casePrefill.sourceDegradation} onClose={() => setCasePrefill(null)} onSave={async (input) => {
         await logRepository!.createAnalysisCase!(casePrefill.skillId, { ...input, sourceRecordId: casePrefill.sourceRecordId });
         dispatch({ type: "ADD_NOTIFICATION", message: "已保存为分析测试用例" });
       }} /> : null}

@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { crc32 } from "node:zlib";
 import JSZip from "jszip";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
@@ -47,6 +48,90 @@ function safePath(path: string): boolean {
     && posix.normalize(path) === path;
 }
 
+function checkedZipPath(bytes: Buffer): string {
+  if (bytes.length > 1025) throw new AnalysisCaseArchiveError(["archive.zip: entry path exceeds 1024 bytes"]);
+  let name: string;
+  try { name = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
+  catch { throw new AnalysisCaseArchiveError(["archive.zip: entry path is not valid UTF-8"]); }
+  if (!safePath(name.replace(/\/$/, ""))) throw new AnalysisCaseArchiveError([`${name}: unsafe archive path`]);
+  return name;
+}
+
+function checkZipPathExtras(extra: Buffer, rawName: Buffer, name: string): void {
+  let fields = 0;
+  for (let at = 0; at < extra.length;) {
+    if (++fields > 32) throw new AnalysisCaseArchiveError([`${name}: more than 32 ZIP extra fields`]);
+    if (at + 4 > extra.length) throw new AnalysisCaseArchiveError([`${name}: invalid ZIP extra fields`]);
+    const id = extra.readUInt16LE(at), size = extra.readUInt16LE(at + 2), end = at + 4 + size;
+    if (end > extra.length) throw new AnalysisCaseArchiveError([`${name}: invalid ZIP extra fields`]);
+    if (id === 0x0001) throw new AnalysisCaseArchiveError([`${name}: ZIP64 is unsupported`]);
+    if (id === 0x7075) {
+      if (size < 5 || size > 1030) throw new AnalysisCaseArchiveError([`${name}: invalid or oversized Unicode ZIP path`]);
+      if (extra[at + 4] === 1 && extra.readUInt32LE(at + 5) === crc32(rawName)) {
+        // JSZip can override the raw name with this field, while bundle intake uses the raw name.
+        const unicodeName = checkedZipPath(extra.subarray(at + 9, end));
+        if (unicodeName !== name) throw new AnalysisCaseArchiveError([`${name}: Unicode ZIP path must match the raw entry path`]);
+      }
+    }
+    at = end;
+  }
+}
+
+/** Bound metadata allocation before JSZip constructs an object for every directory entry. */
+function preflightZipDirectory(bytes: Buffer, limits: typeof analysisCaseArchiveLimits): void {
+  // Match the bounded EOCD search and non-ZIP64 layout accepted by bundle intake.
+  let end = -1;
+  for (let at = bytes.length - 22; at >= Math.max(0, bytes.length - 65557); at--) {
+    if (bytes.readUInt32LE(at) === 0x06054b50 && at + 22 + bytes.readUInt16LE(at + 20) === bytes.length) { end = at; break; }
+  }
+  if (end < 0) throw new AnalysisCaseArchiveError(["archive.zip: missing ZIP end-of-central-directory record"]);
+  // JSZip selects the last signature even inside a comment; both readers must use this EOCD.
+  if (bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) !== end) throw new AnalysisCaseArchiveError(["archive.zip: ambiguous ZIP end-of-central-directory record"]);
+  const count = bytes.readUInt16LE(end + 10), size = bytes.readUInt32LE(end + 12), start = bytes.readUInt32LE(end + 16);
+  if (count === 0xffff || size === 0xffffffff || start === 0xffffffff) throw new AnalysisCaseArchiveError(["archive.zip: ZIP64 is unsupported"]);
+  if (bytes.readUInt16LE(end + 4) || bytes.readUInt16LE(end + 6) || bytes.readUInt16LE(end + 8) !== count || start + size !== end) {
+    throw new AnalysisCaseArchiveError(["archive.zip: invalid ZIP central directory"]);
+  }
+  const maxEntries = 2 * limits.maxFiles;
+  if (count > maxEntries) throw new AnalysisCaseArchiveError([`archive.zip: entry count exceeds ${maxEntries} including directories`]);
+  let entries = 0, files = 0, totalBytes = 0, at = start;
+  const paths = new Set<string>();
+  // Count actual records too: an attacker can underreport the EOCD entry count.
+  while (at < end) {
+    if (++entries > maxEntries) throw new AnalysisCaseArchiveError([`archive.zip: entry count exceeds ${maxEntries} including directories`]);
+    if (at + 46 > end || bytes.readUInt32LE(at) !== 0x02014b50) throw new AnalysisCaseArchiveError(["archive.zip: invalid ZIP central directory"]);
+    const nameLength = bytes.readUInt16LE(at + 28), extraLength = bytes.readUInt16LE(at + 30);
+    const next = at + 46 + nameLength + extraLength + bytes.readUInt16LE(at + 32);
+    if (next > end) throw new AnalysisCaseArchiveError(["archive.zip: invalid ZIP central directory"]);
+    const rawName = bytes.subarray(at + 46, at + 46 + nameLength), name = checkedZipPath(rawName);
+    const path = name.replace(/\/$/, "");
+    if (paths.has(path)) throw new AnalysisCaseArchiveError([`${path}: duplicate archive path`]);
+    paths.add(path);
+    const compressed = bytes.readUInt32LE(at + 20), unpacked = bytes.readUInt32LE(at + 24), local = bytes.readUInt32LE(at + 42);
+    if (compressed === 0xffffffff || unpacked === 0xffffffff || local === 0xffffffff) throw new AnalysisCaseArchiveError([`${name}: ZIP64 is unsupported`]);
+    if (unpacked > limits.maxFileBytes) throw new AnalysisCaseArchiveError([`${name}: declared file size exceeds ${limits.maxFileBytes}`]);
+    totalBytes += unpacked;
+    if (totalBytes > limits.maxUnpackedBytes) throw new AnalysisCaseArchiveError([`${name}: declared unpacked size exceeds ${limits.maxUnpackedBytes}`]);
+    const flags = bytes.readUInt16LE(at + 8), method = bytes.readUInt16LE(at + 10);
+    if (flags & 0x41) throw new AnalysisCaseArchiveError([`${name}: encrypted ZIP entries are unsupported`]);
+    if (method !== 0 && method !== 8) throw new AnalysisCaseArchiveError([`${name}: unsupported ZIP compression`]);
+    if (local + 30 > start || bytes.readUInt32LE(local) !== 0x04034b50) throw new AnalysisCaseArchiveError([`${name}: invalid ZIP local header`]);
+    const localNameLength = bytes.readUInt16LE(local + 26), localExtraLength = bytes.readUInt16LE(local + 28);
+    const data = local + 30 + localNameLength + localExtraLength;
+    if (localNameLength !== nameLength || data + compressed > start || bytes.readUInt16LE(local + 6) !== flags
+      || bytes.readUInt16LE(local + 8) !== method || !bytes.subarray(local + 30, local + 30 + localNameLength).equals(rawName)) {
+      throw new AnalysisCaseArchiveError([`${name}: local ZIP entry does not match its central directory`]);
+    }
+    checkZipPathExtras(bytes.subarray(at + 46 + nameLength, at + 46 + nameLength + extraLength), rawName, name);
+    checkZipPathExtras(bytes.subarray(local + 30 + localNameLength, data), rawName, name);
+    const directory = nameLength > 0 && bytes[at + 46 + nameLength - 1] === 0x2f
+      || (bytes.readUInt32LE(at + 38) >>> 16 & 0xf000) === 0x4000;
+    if (!directory && ++files > limits.maxFiles) throw new AnalysisCaseArchiveError([`archive.zip: file count exceeds ${limits.maxFiles}`]);
+    at = next;
+  }
+  if (entries !== count) throw new AnalysisCaseArchiveError(["archive.zip: central directory entry count does not match EOCD"]);
+}
+
 /** Validate the complete archive before callers persist any cases or fixture bytes. */
 export async function importAnalysisCaseArchive(
   bytes: Buffer,
@@ -54,6 +139,7 @@ export async function importAnalysisCaseArchive(
 ): Promise<ArchivedAnalysisCase[]> {
   if (bytes.length > limits.maxCompressedBytes) throw new AnalysisCaseArchiveError(["archive.zip: compressed size limit exceeded"]);
   if (bytes.length < 4 || bytes.readUInt32LE(0) !== 0x04034b50) throw new AnalysisCaseArchiveError(["archive.zip: expected a ZIP archive"]);
+  preflightZipDirectory(bytes, limits);
   // JSZip exposes original names before its traversal normalization, without inflating entries.
   let zip: JSZip;
   try { zip = await JSZip.loadAsync(bytes); }

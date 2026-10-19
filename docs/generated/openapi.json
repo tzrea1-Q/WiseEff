@@ -36647,6 +36647,99 @@
               "summary"
             ],
             "additionalProperties": false
+          },
+          "originalUploads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileName": {
+                  "type": "string"
+                },
+                "sizeBytes": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "fileName",
+                "sizeBytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "sizeBytes": {
+                  "type": "number"
+                },
+                "lineCount": {
+                  "type": "number"
+                },
+                "encoding": {
+                  "type": "string",
+                  "enum": [
+                    "utf-8",
+                    "utf-16le",
+                    "utf-16be"
+                  ]
+                },
+                "lossy": {
+                  "type": "boolean"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "analyzed",
+                    "skipped"
+                  ]
+                },
+                "skipReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "sizeBytes",
+                "lineCount",
+                "encoding",
+                "lossy",
+                "status",
+                "skipReason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "sourceDegradation": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "provider-unavailable",
+                  "token-budget-exhausted"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "agent",
+                  "rules-fallback"
+                ]
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

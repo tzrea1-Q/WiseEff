@@ -67,7 +67,9 @@ function parseExpectations(value: unknown) {
   }
   for (const [index, anchor] of (result.keyEvidence ?? []).entries()) {
     if (!anchor.line && !anchor.pattern) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}] requires line or pattern.`);
-    if (anchor.pattern) try { compileLogPattern(anchor.pattern); } catch { throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}].pattern: invalid or oversized pattern.`); }
+    if (anchor.pattern) try { compileLogPattern(anchor.pattern); } catch { throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}].pattern: invalid or oversized pattern.`, {
+      issues: [{ path: ["expectations", "keyEvidence", index, "pattern"], message: "Invalid or oversized pattern." }]
+    }); }
   }
   return result;
 }
@@ -88,9 +90,13 @@ function validateAnchors(expectations: Expectations, files: BundleFile[]) {
   };
   for (const [index, anchor] of (expectations.keyEvidence ?? []).entries()) {
     const file = files.find((item) => item.path === anchor.file) ?? files.find((item) => `fixtures/${item.path}` === anchor.file);
-    if (!file || file.status !== "analyzed" || anchor.line && anchor.line > file.lineCount) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}]: file or line does not exist.`);
+    if (!file || file.status !== "analyzed" || anchor.line && anchor.line > file.lineCount) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}]: file or line does not exist.`, {
+      issues: [{ path: ["expectations", "keyEvidence", index, !file || file.status !== "analyzed" ? "file" : "line"], message: "File or line does not exist." }]
+    });
     const lines = readLines(file);
-    if (anchor.line && !lines[anchor.line - 1]?.trim()) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}].line: selected line is blank or missing.`);
+    if (anchor.line && !lines[anchor.line - 1]?.trim()) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}].line: selected line is blank or missing.`, {
+      issues: [{ path: ["expectations", "keyEvidence", index, "line"], message: "Selected line is blank or missing." }]
+    });
     if (anchor.pattern) {
       const pattern = compileLogPattern(anchor.pattern);
       const matched = anchor.line ? pattern.test(lines[anchor.line - 1]) : lines.some((line) => line.trim() && pattern.test(line));
@@ -135,12 +141,18 @@ export async function getAnalysisCasePrefill(db: Database, auth: AuthContext, lo
   requireAdmin(auth);
   const report = await getLogRecord(db, auth, logId);
   if (report.status !== "complete" || !report.logDomainId) throw new ApiError("CONFLICT", "Only completed reports bound to a skill can be saved as cases.");
-  return { skillId: report.logDomainId, name: report.fileName.slice(0, 200), expectations: logAnalysisCaseExpectationsSchema.parse({
+  const originalUploads = (await db.query<{ fileName: string; sizeBytes: number }>(`select file_name as "fileName", size_bytes::float8 as "sizeBytes"
+    from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [auth.organization.id, logId])).rows;
+  const expectRefusal = report.analysisSource === "agent" && !report.degradedReason && report.confidence <= 0.5
+    && /insufficient evidence|evidence (?:is |was )?insufficient|not enough evidence|inconclusive|(?:cannot|unable to) (?:determine|diagnose)|证据不足|信息不足|无法(?:判断|确定|诊断)|不足以(?:判断|确定|诊断)/i.test(report.conclusion);
+  return { skillId: report.logDomainId, name: report.fileName.slice(0, 200), originalUploads,
+    files: (report.files ?? []).filter((file) => file.status === "analyzed"),
+    ...(report.degradedReason ? { sourceDegradation: { reason: report.degradedReason, source: report.analysisSource } } : {}), expectations: logAnalysisCaseExpectationsSchema.parse({
     domain: "generic", summary: report.conclusion.slice(0, 2000) || report.fileName, realLog: false,
-    rootCauseCategory: "software-fault", rootCausePoints: report.conclusion ? [report.conclusion] : [],
+    rootCauseCategory: expectRefusal ? "insufficient-evidence" : "software-fault", rootCausePoints: report.conclusion ? [report.conclusion] : [],
     keyEvidenceLines: report.evidence.flatMap((e) => e.lineNumbers),
     keyEvidence: report.evidence.flatMap((e) => e.lineNumbers.map((line) => ({ file: e.filePath ?? report.files?.[0]?.path ?? report.fileName, line }))),
-    expectedActions: report.suggestedActions, expectRefusal: report.confidence <= 0.5, expectedDegradedReason: report.degradedReason,
+    expectedActions: report.suggestedActions, expectRefusal,
     analysisQuestion: report.analysisQuestion
   }) };
 }
@@ -361,7 +373,14 @@ async function executeCaseRun(db: Database, store: ObjectStore, analyzer: LogAna
       const published = admitted.published ? await analyzeCase(db, store, analyzer, organizationId, skillId, admitted.id, item, uploads, admitted.published.spec, "published", controller.signal) : null;
       controller.signal.throwIfAborted();
       results.push({ caseId: item.id, name: item.name, draft, published, delta: published ? Math.round((draft.score - published.score) * 100) / 100 : null });
-      await db.query(`update log_skill_analysis_case_runs set results = $3::jsonb, progress = $4 where organization_id = $1 and id = $2 and status = 'processing' and deadline_at > now()`, [organizationId, admitted.id, JSON.stringify(results), Math.floor(results.length / admitted.cases.length * 95)]);
+      await withAuditedWrite(db, invocation, context, async (tx) => {
+        const updated = await tx.query(`update log_skill_analysis_case_runs set results = $3::jsonb, progress = $4
+          where organization_id = $1 and id = $2 and status = 'processing' and deadline_at > now() returning id`,
+        [organizationId, admitted.id, JSON.stringify(results), Math.floor(results.length / admitted.cases.length * 95)]);
+        return { result: null, audit: updated.rows.length ? audit(skillId, "log-analysis-case-run-progress", {
+          runId: admitted.id, completedCases: results.length, totalCases: admitted.cases.length
+        }) : null };
+      });
     }
     return results;
   };
@@ -455,15 +474,30 @@ async function analyzeCase(db: Database, store: ObjectStore, analyzer: LogAnalys
   const citedExisting = new Set(report.evidence.flatMap((evidence) => evidence.lineNumbers.filter((line) => Boolean(rawByFile.get(evidence.filePath ?? first.path)?.[line - 1]?.trim()))));
   const quality = evaluateQualityCaseOutput(golden, report, { latencyMs: performance.now() - started, judge: judged, parsedLineNumbers: citedExisting });
   const anchors = expectations.keyEvidence;
-  const recall = anchors?.length ? anchors.filter((anchor) => {
-    const file = rawByFile.has(anchor.file) ? anchor.file : anchor.file.replace(/^fixtures\//, "");
-    return report.evidence.some((evidence) => evidence.filePath === file && evidence.lineNumbers.some((line) =>
-      (!anchor.line || line === anchor.line) && (!anchor.pattern || compileLogPattern(anchor.pattern).test(rawByFile.get(file)?.[line - 1] ?? ""))));
-  }).length / anchors.length : quality.evidence?.recall ?? 1;
+  const citations = [...new Map(report.evidence.flatMap((evidence) => evidence.lineNumbers.map((line) => {
+    const file = evidence.filePath ?? first.path;
+    return [JSON.stringify([file, line]), { file, line }] as const;
+  }))).values()];
+  const anchorMatchers = anchors?.map((anchor) => ({ anchor,
+    file: rawByFile.has(anchor.file) ? anchor.file : anchor.file.replace(/^fixtures\//, ""),
+    pattern: anchor.pattern ? compileLogPattern(anchor.pattern) : undefined
+  }));
+  const matchesAnchor = (expected: NonNullable<typeof anchorMatchers>[number], cited: { file: string; line: number }) => {
+    const content = rawByFile.get(cited.file)?.[cited.line - 1];
+    return expected.file === cited.file && Boolean(content?.trim()) && (!expected.anchor.line || cited.line === expected.anchor.line)
+      && (!expected.pattern || expected.pattern.test(content!));
+  };
+  const anchorHits = anchorMatchers?.filter((expected) => citations.some((cited) => matchesAnchor(expected, cited))).map(({ anchor }) => anchor);
+  const recall = anchors?.length ? anchorHits!.length / anchors.length : quality.evidence?.recall ?? 1;
+  const precision = citations.length ? citations.filter((cited) => anchorMatchers?.some((expected) => matchesAnchor(expected, cited))).length / citations.length : 0;
+  const hallucinatedLines = citations.filter(({ file, line }) => !rawByFile.get(file)?.[line - 1]?.trim());
   const grounded = report.evidence.every((evidence) => evidence.lineNumbers.every((line) => line >= 1 && line <= (rawByFile.get(evidence.filePath ?? first.path)?.length ?? 0)));
   const factors = expectations.expectRefusal ? [quality.refusal.appropriate ? 1 : 0] : [judged?.rootCauseScore ?? 0, judged?.actionsScore ?? 0, recall];
   if (expectations.expectedDegradedReason) factors.push(report.degradedReason === expectations.expectedDegradedReason ? 1 : 0);
   const score = grounded ? Math.round(factors.reduce((sum, value) => sum + value, 0) / factors.length * 10000) / 100 : 0;
-  return { score, passed: grounded && factors.every((value) => value >= 0.8), report: logDryRunReportSchema.parse(report), quality,
+  return { score, passed: grounded && factors.every((value) => value >= 0.8), report: logDryRunReportSchema.parse(report),
+    quality: anchors?.length ? { ...quality, anchorEvidence: { precision, recall, hits: anchorHits,
+      hallucinatedLines, hallucinationRate: citations.length ? hallucinatedLines.length / citations.length : 0,
+      misses: anchors.filter((anchor) => !anchorHits!.includes(anchor)) } } : quality,
     traceReference: `/api/v1/log-skills/${skillId}/analysis-case-runs/${runId}/cases/${item.id}/trace?revision=${revision}`, steps };
 }

@@ -14,10 +14,12 @@ import { requestJson } from "../../test/testClient";
 import { registerLogRoutes } from "./routes";
 import { createLogSkill, saveLogSkillDraft } from "./skillsService";
 import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
+import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
+import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import { processLogAnalysisJobById } from "./worker";
 import { createLogFromFile, getLogRecord, uploadLogFile } from "./service";
-import { createAnalysisCase, exportSkillAnalysisCases, getAnalysisCasePrefill, getAnalysisCaseRun, importSkillAnalysisCases, listAnalysisCases, startAnalysisCaseRun, readAnalysisCases, updateAnalysisCase, deleteAnalysisCase } from "./analysisCases";
+import { createAnalysisCase, exportSkillAnalysisCases, getAnalysisCasePrefill, getAnalysisCaseRun, getAnalysisCaseTrace, importSkillAnalysisCases, listAnalysisCases, startAnalysisCaseRun, readAnalysisCases, updateAnalysisCase, deleteAnalysisCase } from "./analysisCases";
 import { startSkillDryRun } from "./dryRuns";
 import { replaceLogSkillSample } from "./skillSamplesService";
 import type { LogAnalysisAdapter } from "./analyzer";
@@ -49,6 +51,24 @@ async function harness() {
 }
 
 describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
+  it("rolls back case results and traces when the corresponding run audit cannot be written", async () => {
+    const h = await harness();
+    try {
+      const item = await createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: "Audited result", expectations,
+        files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal foldback\n") }] }, h.invocation, h.context);
+      await h.db.query(`create function reject_case_result_audit() returns trigger language plpgsql as $$ begin
+        if new.kind in ('log-analysis-case-run-progress', 'log-analysis-case-run-complete') then raise exception 'result audit unavailable'; end if; return new; end $$;
+        create trigger reject_case_result_audit before insert on audit_events for each row execute function reject_case_result_audit()`);
+      const started = await startAnalysisCaseRun(h.db, h.store, h.analyzer, h.auth, h.skill.id, undefined, h.invocation, h.context);
+      const run = await h.wait(started.run.id);
+      expect(run.status).toBe("failed");
+      expect(run.results).toEqual([]);
+      await expect(getAnalysisCaseTrace(h.db, h.auth, h.skill.id, run.id, item.id, "draft")).rejects.toMatchObject({ code: "NOT_FOUND" });
+      expect((await h.db.query("select kind from audit_events where kind in ('log-analysis-case-run-progress','log-analysis-case-run-complete')")).rows).toEqual([]);
+      expect((await h.db.query("select kind from audit_events where kind = 'log-analysis-case-run-failed'")).rows).toHaveLength(1);
+    } finally { await h.close(); }
+  }, 120_000);
+
   it("runs real deterministic loop against pinned draft and published specs, persists comparison and trace, isolates tenants and keeps user records untouched", async () => {
     const h = await harness();
     try {
@@ -92,6 +112,8 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       expect(run).toMatchObject({ status: "complete", progress: 100, skillRevisionId: h.draft.id, publishedRevisionId: h.skill.currentRevision.id });
       expect(run.results).toHaveLength(1);
       expect(run.results[0]).toMatchObject({ caseId: created.body.item.id, draft: { passed: true, score: 100, report: { analysisSource: "agent" } }, published: { passed: false } });
+      expect(run.results[0].draft.quality).toMatchObject({ anchorEvidence: { precision: 1, recall: 1,
+        hits: [{ file: "fixtures/thermal.log", pattern: "thermal" }], misses: [] } });
       expect(run.results[0].delta).toBeGreaterThan(0);
       const trace = await h.request<{ steps: unknown[] }>(run.results[0].draft.traceReference);
       expect(trace.status).toBe(200); expect(trace.body.steps.length).toBeGreaterThan(0);
@@ -132,7 +154,10 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       expect(prefill.expectations.rootCausePoints).toEqual([report.conclusion]);
       expect(prefill.expectations.expectedActions).toEqual(report.suggestedActions);
       expect(prefill.expectations.keyEvidence).toEqual(report.evidence.flatMap((e) => e.lineNumbers.map((line) => ({ file: e.filePath, line }))));
-      const saved = await createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { ...prefill, sourceRecordId: report.id }, h.invocation, h.context);
+      expect(prefill.originalUploads).toEqual([{ fileName: "device.zip", sizeBytes: original.length }]);
+      expect(prefill.files).toMatchObject([{ path: "device/thermal.log", status: "analyzed", lineCount: 1 }]);
+      expect(prefill.files).toHaveLength(1);
+      const saved = await createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: prefill.name, expectations: prefill.expectations, sourceRecordId: report.id }, h.invocation, h.context);
       const stored = (await readAnalysisCases(h.db, h.auth.organization.id, h.skill.id)).find((entry) => entry.id === saved.id)!;
       expect(stored.uploads).toHaveLength(1); expect(stored.files.map((file) => file.path)).toEqual(["device/thermal.log", "device/raw.bin"]);
       expect(await h.store.get(stored.uploads[0].objectKey)).toEqual(original);
@@ -144,11 +169,11 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       const cloned = await createLogFromFile(h.db, h.auth, { fileObjectId: upload.fileObject.id, fileName: upload.fileObject.fileName, logDomainId: h.skill.id }, h.context);
       expect(await processLogAnalysisJobById({ db: h.db, objectStore: h.store, jobId: cloned.job!.id, analyzer: h.analyzer })).toEqual({ status: "processed" });
       const clonedPrefill = await getAnalysisCasePrefill(h.db, h.auth, cloned.log.id);
-      const clonedCase = await createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { ...clonedPrefill, sourceRecordId: cloned.log.id }, h.invocation, h.context);
+      const clonedCase = await createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: clonedPrefill.name, expectations: clonedPrefill.expectations, sourceRecordId: cloned.log.id }, h.invocation, h.context);
       const clonedStored = (await readAnalysisCases(h.db, h.auth.organization.id, h.skill.id)).find((entry) => entry.id === clonedCase.id)!;
       expect(await h.store.get(clonedStored.uploads[0].objectKey)).toEqual(original);
       await deleteAnalysisCase(h.db, h.auth, h.skill.id, clonedCase.id, h.invocation, h.context);
-      await expect(createAnalysisCase(h.db, h.store, h.other, h.skill.id, { ...prefill, sourceRecordId: report.id }, createUserInvocation(h.other), h.context)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(createAnalysisCase(h.db, h.store, h.other, h.skill.id, { name: prefill.name, expectations: prefill.expectations, sourceRecordId: report.id }, createUserInvocation(h.other), h.context)).rejects.toMatchObject({ code: "NOT_FOUND" });
       await deleteAnalysisCase(h.db, h.auth, h.skill.id, saved.id, h.invocation, h.context);
       const importedSaved = await importSkillAnalysisCases(h.db, h.store, h.auth, h.skill.id, savedExport, h.invocation, h.context);
       expect(importedSaved.items[0].name).toBe(saved.name);
@@ -172,6 +197,62 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       const exported = await JSZip.loadAsync(await exportSkillAnalysisCases(h.db, h.store, h.auth, h.skill.id));
       expect(Object.keys(exported.files).sort()).toEqual(Object.keys(expected).sort());
       for (const [path, bytes] of Object.entries(expected)) expect(await exported.file(path)!.async("nodebuffer"), path).toEqual(bytes);
+    } finally { await h.close(); }
+  }, 120_000);
+
+  it("scores file-aware precision over distinct cited positions while retaining anchor recall", async () => {
+    const h = await harness();
+    let includeHallucinatedFile = false;
+    const analyzer: LogAnalysisAdapter = { analyze: async (input) => {
+      const report = await h.analyzer.analyze(input);
+      return { ...report, evidence: [...report.evidence, { stageId: "pattern", filePath: "thermal.log", lineNumbers: [1, 2, 2],
+        inference: "Additional cited context", suggestedAction: "Review cited lines" },
+        ...(includeHallucinatedFile ? [{ stageId: "pattern" as const, filePath: "missing.log", lineNumbers: [1],
+          inference: "A citation whose line exists only in the other file", suggestedAction: "Inspect the source" }] : [])] };
+    } };
+    try {
+      await createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: "Precision", expectations: { ...expectations, keyEvidenceLines: [], keyEvidence: [{ file: "thermal.log", line: 1 }] },
+        files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal foldback\nINFO unrelated event\n") }] }, h.invocation, h.context);
+      const started = await startAnalysisCaseRun(h.db, h.store, analyzer, h.auth, h.skill.id, undefined, h.invocation, h.context);
+      const run = await h.wait(started.run.id);
+      expect(run.status).toBe("complete");
+      expect(run.results[0].draft.quality).toMatchObject({ anchorEvidence: { precision: 0.5, recall: 1,
+        hits: [{ file: "thermal.log", line: 1 }], misses: [], hallucinatedLines: [], hallucinationRate: 0 } });
+      includeHallucinatedFile = true;
+      const hallucinated = await startAnalysisCaseRun(h.db, h.store, analyzer, h.auth, h.skill.id, undefined, h.invocation, h.context);
+      const second = await h.wait(hallucinated.run.id);
+      expect(second.status).toBe("complete");
+      expect(second.results[0].draft.quality).toMatchObject({ anchorEvidence: { precision: 1 / 3, recall: 1,
+        hallucinatedLines: [{ file: "missing.log", line: 1 }], hallucinationRate: 1 / 3 } });
+    } finally { await h.close(); }
+  }, 120_000);
+
+  it("prefills content refusals separately from source provider and budget degradation", async () => {
+    const h = await harness();
+    const scripted = (conclusion: string, maxSteps = 4) => createAgentLoopLogAnalyzer({ model: createScriptedLogAnalysisModel([
+      { content: { action: "tool", tool: "read_line_range", args: { file: "prefill.log", startLine: 1, endLine: 1 } } },
+      { content: { action: "final", conclusion, impact: "Investigate the device", confidence: 0.4, severity: "Warning",
+        suggestedActions: ["Inspect the device"], evidence: [{ filePath: "prefill.log", lineNumbers: [1], inference: "The recorded event is grounded", suggestedAction: "Inspect the device" }] } }
+    ]), modelLabel: "scripted", maxSteps, tokenBudget: 100_000 });
+    const budgetAnalyzer = createLogAnalyzerFromEnv({ LOG_ANALYSIS_DETERMINISTIC: true, LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_API_TIMEOUT_MS: 1000,
+      LOG_ANALYSIS_TOKEN_BUDGET: 1, LOG_ANALYSIS_MAX_STEPS: 8 }, { db: h.db });
+    try {
+      for (const scenario of [
+        { analyzer: h.analyzer, content: "INFO WISEEFF_SIMULATE_LLM_PROVIDER_DOWN\n", reason: "provider-unavailable", refused: false, source: "rules-fallback" },
+        { analyzer: budgetAnalyzer, content: "INFO device event\n", reason: "token-budget-exhausted", refused: false, source: "rules-fallback" },
+        { analyzer: scripted("Insufficient evidence to determine a root cause.", 1), content: "INFO device event\n", reason: "token-budget-exhausted", refused: false, source: "agent" },
+        { analyzer: scripted("The thermal sensor failed."), content: "INFO device event\n", reason: undefined, refused: false, source: "agent" },
+        { analyzer: scripted("Insufficient evidence to determine a root cause."), content: "INFO device event\n", reason: undefined, refused: true, source: "agent" }
+      ]) {
+        const uploaded = await uploadLogFile(h.db, h.store, h.auth, { fileName: "prefill.log", contentType: "text/plain", bytes: Buffer.from(scenario.content), logDomainId: h.skill.id }, h.context);
+        expect(await processLogAnalysisJobById({ db: h.db, objectStore: h.store, jobId: uploaded.job!.id, analyzer: scenario.analyzer, maxAttempts: 1 })).toEqual({ status: "processed" });
+        expect((await getLogRecord(h.db, h.auth, uploaded.log.id)).analysisSource).toBe(scenario.source);
+        const prefill = await getAnalysisCasePrefill(h.db, h.auth, uploaded.log.id);
+        expect(prefill.expectations.expectRefusal).toBe(scenario.refused);
+        expect(prefill.expectations.expectedDegradedReason).toBeUndefined();
+        expect(prefill.sourceDegradation).toEqual(scenario.reason ? { reason: scenario.reason, source: scenario.source } : undefined);
+        expect(prefill.originalUploads).toEqual([{ fileName: "prefill.log", sizeBytes: Buffer.byteLength(scenario.content) }]);
+      }
     } finally { await h.close(); }
   }, 120_000);
 

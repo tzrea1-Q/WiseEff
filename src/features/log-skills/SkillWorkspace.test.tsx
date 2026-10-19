@@ -43,6 +43,9 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
       progress: 0, report: null, error: null, createdAt: skill.createdAt })),
     getSkillDryRun: vi.fn(async () => ({ run: { id: "dry-run", skillRevisionId: skill.draft!.id, status: "complete" as const,
       progress: 100, report: null, error: null, createdAt: skill.createdAt }, steps: [] })),
+    listAnalysisCases: vi.fn<NonNullable<SkillWorkspaceRepository["listAnalysisCases"]>>(async () => ({ items: [], latestRun: null, current: false })),
+    startAnalysisCaseRun: vi.fn<NonNullable<SkillWorkspaceRepository["startAnalysisCaseRun"]>>(async () => ({ id: "case-run", skillRevisionId: skill.draft!.id,
+      publishedRevisionId: "current", status: "processing", progress: 0, results: [], error: null, createdAt: skill.createdAt })),
     listSourceSnapshots: vi.fn(async () => [{ id: "source-default", skillId: skill.id, versionLabel: "source-v1", status: "ready" as const,
       fileCount: 1, filesProcessed: 1, filesTotal: 1, skippedCount: 0, skippedFiles: [], error: null, createdAt: skill.createdAt }]),
     setDefaultSourceSnapshot: vi.fn<SkillWorkspaceRepository["setDefaultSourceSnapshot"]>(async (_id, snapshotId) => {
@@ -115,6 +118,39 @@ describe("skill workspace", () => {
     await screen.findByRole("dialog", { name: "试运行" });
     expect(repository.saveSkillDraft).not.toHaveBeenCalled();
     expect(repository.startSkillDryRun).toHaveBeenCalledOnce();
+  });
+
+  it.each(["success", "conflict"])("locks workspace editing and navigation while the case run saves the draft (%s)", async (outcome) => {
+    const { repository, skill } = setup();
+    repository.listAnalysisCases.mockResolvedValue({ items: [{ id: "case", name: "Case", expectations: { domain: "generic", summary: "Case", realLog: false,
+      rootCauseCategory: "software-fault", rootCausePoints: ["fault"], keyEvidenceLines: [1], expectedActions: ["inspect"], expectRefusal: false },
+      files: [], createdAt: skill.createdAt, updatedAt: skill.createdAt }], latestRun: null, current: false });
+    let finishSave!: (revision: SkillRevision) => void;
+    let rejectSave!: (error: Error) => void;
+    repository.saveSkillDraft.mockImplementationOnce(() => new Promise((resolve, reject) => { finishSave = resolve; rejectSave = reject; }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "描述" }), { target: { value: "Draft to run" } });
+    await userEvent.click(screen.getByRole("button", { name: "测试" }));
+    fireEvent.click(await screen.findByRole("button", { name: "运行全部用例" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledOnce());
+    expect(screen.getByRole("button", { name: "概览" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(requestSettingsLeave()).toBe(false);
+    expect(repository.startAnalysisCaseRun).not.toHaveBeenCalled();
+    if (outcome === "conflict") {
+      await act(async () => { rejectSave(conflictError()); });
+      expect(await screen.findByText("草稿已被其他人更新")).toBeVisible();
+      expect(repository.startAnalysisCaseRun).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole("button", { name: "概览" }));
+      expect(await screen.findByRole("textbox", { name: "描述" })).toHaveValue("Draft to run");
+      return;
+    }
+    await act(async () => {
+      skill.draft = { ...skill.currentRevision, id: "saved", number: 3, status: "draft", spec: { ...skill.currentRevision.spec, description: "Draft to run" } };
+      finishSave(skill.draft);
+    });
+    await waitFor(() => expect(repository.startAnalysisCaseRun).toHaveBeenCalledOnce());
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    expect(await screen.findByRole("textbox", { name: "描述" })).toHaveValue("Draft to run");
   });
 
   it("hides dry run from users without skill administration permission", async () => {

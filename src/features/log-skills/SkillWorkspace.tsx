@@ -251,11 +251,12 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   }, [dirty, pending]);
   const run = async (action: () => Promise<void>) => {
     setPending(true); setError("");
-    try { await action(); } catch (cause) {
+    try { await action(); return true; } catch (cause) {
       setPublishOpen(false);
       if (cause instanceof WiseEffApiError && cause.code === "LOG_SKILL_DRAFT_CONFLICT") setConflict(true);
       else setError(cause instanceof WiseEffApiError && Array.isArray(cause.details.issues) ? cause.details.issues.map((item: { path?: string[]; message?: string }) => `${item.path?.join(".")}：${item.message}`).join("；")
         : cause instanceof WiseEffApiError && cause.code === "LOG_SKILL_DRAFT_EXISTS" ? "请先发布或放弃现有草稿，再回滚版本。" : "操作失败，请重试。");
+      return false;
     } finally { setPending(false); }
   };
   const save = async () => {
@@ -339,7 +340,10 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
           if (!parsed.error && validated.success) setSpec({ ...spec, parsing: validated.data });
         }}
         repository={repository} apiMode={apiMode} canEdit={canEdit} dirty={dirty} onBusyChange={setPending}
-        beforeCaseRun={async () => { if (yamlInvalid || conflict) throw new Error("请先修正草稿错误再运行用例。"); if (dirty || !skill.draft) return save(); }}
+        beforeCaseRun={async () => {
+          if (pending || yamlInvalid || conflict) throw new Error("请先修正草稿错误再运行用例。");
+          if ((dirty || !skill.draft) && !await run(async () => { await save(); })) throw new Error("草稿保存失败，请重试后再运行用例。");
+        }}
         knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
         onSkillUpdated={(updated) => { setSkill(updated); setSpec(structuredClone((updated.draft ?? updated.currentRevision).spec));
           setRevisions((history) => [...(updated.draft ? [updated.draft] : []), ...history.filter((revision) => revision.status !== "draft")]); }}

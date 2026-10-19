@@ -320,4 +320,7 @@ export const logAnalysisCaseListResponseSchema = z.object({ items: z.array(logAn
   lastResults: z.array(z.object({ runId: z.string(), result: logAnalysisCaseResultSchema })).optional() });
 export const logAnalysisCaseResponseSchema = z.object({ item: logAnalysisCaseSchema });
 export const logAnalysisCaseRunResponseSchema = z.object({ run: logAnalysisCaseRunSchema });
-export const logAnalysisCasePrefillResponseSchema = z.object({ skillId: z.string(), name: z.string(), expectations: logAnalysisCaseExpectationsSchema });
+export const logAnalysisCasePrefillResponseSchema = z.object({ skillId: z.string(), name: z.string(), expectations: logAnalysisCaseExpectationsSchema,
+  originalUploads: z.array(z.object({ fileName: z.string(), sizeBytes: z.number().nonnegative() })).optional(),
+  files: z.array(logFileDtoSchema).optional(), sourceDegradation: z.object({ reason: logDegradedReasonSchema, source: logAnalysisSourceSchema.optional() }).optional()
+});
