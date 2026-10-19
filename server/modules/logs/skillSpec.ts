@@ -2,7 +2,7 @@ import { z } from "zod";
 import { validatedLogFormatProfileSchema } from "./formatProfile";
 import { withLogPatternBudget } from "./patternBudget";
 import { preflightSignalRules, signalRuleSetSchema } from "./signalRules";
-import { parsingSpecSchema, type FieldSpec } from "./parsing/spec";
+import { parsingSpecSchema } from "./parsing/spec";
 import { listSignalFields } from "./parsing/signalFields";
 import { MAX_LOG_PATTERN_LENGTH } from "./adminPattern";
 import { compileSourceStatementPattern, MAX_STATEMENT_PATTERNS } from "./sourceStatements";
