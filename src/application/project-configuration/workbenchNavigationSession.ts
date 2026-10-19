@@ -1,6 +1,7 @@
 import type {
   DtsConfigSet,
   DtsConfigSetMemberFile,
+  DtsNavigationScope,
   DtsSearchHit,
   DtsStructuralNode,
   DtsStructuredRepository
@@ -99,7 +100,8 @@ export type WorkbenchNavigationSession = WorkbenchNavigationSnapshot & {
   ): string;
   runSearch(
     projectId: string,
-    repo: Pick<DtsStructuredRepository, "search">
+    repo: Pick<DtsStructuredRepository, "search">,
+    options?: DtsNavigationScope
   ): Promise<void>;
   selectSearchHit(
     projectId: string,
@@ -370,7 +372,7 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
         version: input.versionId
       });
     },
-    async runSearch(projectId, repo) {
+    async runSearch(projectId, repo, options) {
       const generation = ++searchGeneration;
       const q = searchDraft.trim();
       searchQuery = null;
@@ -386,7 +388,7 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
       searchError = "";
       scheduleEmit();
       try {
-        const result = await repo.search(projectId, { q });
+        const result = await repo.search(projectId, { q, ...options });
         if (generation !== searchGeneration) return;
         searchHits = result.hits;
         searchQuery = q;

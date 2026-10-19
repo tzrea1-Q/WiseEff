@@ -111,7 +111,7 @@ const structureBody = {
       labels: ["demo_bool"],
       properties: [{
         name: "weak_source_sleep_enabled",
-        valueType: "bool",
+        valueType: "bool" as const,
         rawText: "",
         normalizedValue: "true",
         source: {
@@ -190,6 +190,50 @@ describe("structured read routes", () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(structuralReadService.getParameterFileVersionStructure).not.toHaveBeenCalled();
+  });
+
+  it("passes the authenticated organization and principal for scoped navigation", async () => {
+    const db = makeDb();
+    vi.mocked(repository.getProjectParameterFileById).mockResolvedValue(file);
+    vi.mocked(repository.getFileVersionById).mockResolvedValue(version);
+    const body = { ...structureBody, navigation: { status: "ready" as const, catalogReleaseId: "crel_1", managedNodePaths: [] } };
+    vi.mocked(structuralReadService.getParameterFileVersionStructure).mockResolvedValue(body);
+    const response = await requestJson<typeof body>(makeServer({ db, auth: makeViewOnlyAuth() }),
+      "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/structure?navigationScope=organization&organizationId=other-org");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(body);
+    expect(structuralReadService.getParameterFileVersionStructure).toHaveBeenCalledWith(db, "ver-1", {
+      organizationId: "org-1", principalId: "user-1",
+    });
+  });
+
+  it("rejects invalid scope and mismatched file versions before structure reads", async () => {
+    const db = makeDb();
+    const invalid = await requestJson(makeServer({ db }),
+      "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/structure?navigationScope=all");
+    expect(invalid.status).toBe(400);
+    expect(structuralReadService.getParameterFileVersionStructure).not.toHaveBeenCalled();
+    vi.mocked(repository.getProjectParameterFileById).mockResolvedValue(file);
+    vi.mocked(repository.getFileVersionById).mockResolvedValue({ ...version, fileId: "other-file" });
+    const mismatch = await requestJson(makeServer({ db }),
+      "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/structure?navigationScope=organization");
+    expect(mismatch.status).toBe(404);
+    expect(structuralReadService.getParameterFileVersionStructure).not.toHaveBeenCalled();
+  });
+
+  it("keeps permission and tenant guards for scoped navigation", async () => {
+    const db = makeDb();
+    const forbidden = await requestJson(makeServer({ db, auth: makeNoViewAuth() }),
+      "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/structure?navigationScope=organization");
+    expect(forbidden.status).toBe(403);
+    vi.mocked(repository.getProjectParameterFileById).mockResolvedValue(null);
+    const missing = await requestJson(makeServer({ db, auth: makeViewOnlyAuth() }),
+      "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/structure?navigationScope=organization");
+    expect(missing.status).toBe(404);
+    expect(repository.getProjectParameterFileById).toHaveBeenCalledWith(db, {
+      organizationId: "org-1", fileId: "file-1",
+    });
     expect(structuralReadService.getParameterFileVersionStructure).not.toHaveBeenCalled();
   });
 });

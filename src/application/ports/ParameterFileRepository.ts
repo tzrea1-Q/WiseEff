@@ -204,6 +204,8 @@ export type ParameterFileCandidateDiagnostic = {
   code: string;
   message: string;
   line?: number;
+  file?: string;
+  column?: number;
 };
 
 export type ParameterFileCandidateBlocker = {
@@ -266,6 +268,10 @@ export type CreateParameterFileCandidateInput = {
   fileName: string;
   contentBase64: string;
   fileId?: string;
+  intent?: "source_revision";
+  expectedCurrentVersionId?: string;
+  expectedConfigRevisionId?: string;
+  clientMutationId?: string;
 };
 
 export type ActivateParameterFileCandidateInput = {
@@ -298,7 +304,7 @@ export type ParameterFileSourceWorkflow = {
 };
 
 export type ParameterFileSourcePreview = {
-  kind: "legacy" | "canonical";
+  kind: "legacy" | "canonical" | "source_revision";
   canSubmit: boolean;
   reason?: string;
   candidateId: string;
@@ -313,6 +319,10 @@ export type ParameterFileSourcePreview = {
   locator?: string;
   baseDigest?: string;
   proposedDigest?: string;
+  configSetId?: string;
+  diagnostics?: ParameterFileCandidateDiagnostic[];
+  impact?: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number };
+  reviewers?: Array<{ userId: string; name: string }>;
   /** Server-frozen cohort/source-pin proof; present for canonical previews. */
   proofToken?: string;
   cohortProofToken?: string;
@@ -335,7 +345,7 @@ export type ParameterFileSourcePreview = {
   request?: {
     id: string;
     status: ParameterFileSourceReviewStatus;
-    kind: "single" | "batch";
+    kind: "single" | "batch" | "source_revision";
   };
 };
 
@@ -351,6 +361,32 @@ export type SubmitParameterFileSourceReviewInput = {
   expectedWorkflowProofToken?: string;
   assignedToUserId?: string;
   reason: string;
+  clientMutationId?: string;
+};
+
+export type SourceRevisionRequest = {
+  id: string;
+  projectId: string;
+  candidateId: string;
+  fileId: string;
+  fileName: string;
+  configSetId: string;
+  status: ParameterFileSourceReviewStatus;
+  reason: string;
+  submitterUserId: string | null;
+  assignedToUserId: string | null;
+  reviewerUserId: string | null;
+  submitterName?: string | null;
+  assignedToName?: string | null;
+  reviewerName?: string | null;
+  reviewerNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  proofDigest: string;
+  impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number };
+  before?: string;
+  after?: string;
+  appliedSourceResult?: { configRevisionId: string; fileVersionId: string } | null;
 };
 
 export type RollbackParameterFileSourceReviewInput = {
@@ -362,6 +398,12 @@ export type RollbackParameterFileSourceReviewInput = {
 
 
 export interface ParameterFileRepository {
+  listSourceRevisionRequests?(projectId: string, query?: { mine?: boolean; status?: string }): Promise<SourceRevisionRequest[]>;
+  getSourceRevisionRequest?(projectId: string, requestId: string): Promise<SourceRevisionRequest>;
+  reviewSourceRevisionRequest?(projectId: string, requestId: string, input: {
+    decision: "approve" | "reject"; proofDigest: string; note?: string;
+  }): Promise<SourceRevisionRequest>;
+  withdrawSourceRevisionRequest?(projectId: string, requestId: string): Promise<SourceRevisionRequest>;
   listFiles(projectId: string): Promise<ProjectParameterFile[]>;
   uploadFile(projectId: string, input: UploadParameterFileInput): Promise<UploadParameterFileResult>;
   uploadVersion(

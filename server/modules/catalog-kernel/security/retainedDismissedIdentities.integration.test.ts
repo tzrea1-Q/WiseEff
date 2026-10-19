@@ -5,7 +5,7 @@ import pg from "pg";
 import { describe, expect, it } from "vitest";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
 import { withTestClusterRoleCatalogLock } from "../../../testing/testDatabase";
-import { readCanonicalSchemaFingerprint, S2_SCH_0181_FINGERPRINT, S2_SCH_LIVE_FINGERPRINT } from "../../../testing/parameterCatalog";
+import { readCanonicalSchemaFingerprint, S2_SCH_0181_FINGERPRINT, S2_SCH_0182_FINGERPRINT, S2_SCH_LIVE_FINGERPRINT } from "../../../testing/parameterCatalog";
 import { readRetainedDismissedCompatibleIdentities } from "./retainedDismissedIdentities";
 
 const capability = "catalog_legacy_identity_reader_role";
@@ -56,7 +56,7 @@ describe("retained historical identity owner / PostgreSQL capability", () => {
       })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
       expect((await db.query("select name, checksum from schema_migrations where name < '0182' order by name")).rows).toEqual(oldReceipts);
       expect(await snapshot()).toEqual(before);
-      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0182_FINGERPRINT);
       const historical = (await db.query("select name, checksum from schema_migrations order by name")).rows;
       const files = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
       expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));

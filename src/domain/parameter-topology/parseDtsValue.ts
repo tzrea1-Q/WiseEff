@@ -23,7 +23,7 @@ export function parseDtsValue(propertyName: string, rawText: string): DtsValuePa
   }
 
   const trimmed = rawText.trim();
-  if (isByteLiteral(trimmed)) {
+  if (trimmed.startsWith("[")) {
     return { value: parseByteLiteral(trimmed), rawText };
   }
 
@@ -53,10 +53,12 @@ function splitTopLevelItems(rawText: string): string[] {
     }
     if (ch === "<") {
       depth += 1;
+      if (depth > 1) throw new SyntaxError("Nested DTS cell groups are not supported");
       continue;
     }
     if (ch === ">") {
       depth -= 1;
+      if (depth < 0) throw new SyntaxError("Unexpected closing DTS cell bracket");
       continue;
     }
     if (ch === "," && depth === 0) {
@@ -64,6 +66,8 @@ function splitTopLevelItems(rawText: string): string[] {
       start = i + 1;
     }
   }
+  if (inString) throw new SyntaxError("Unterminated DTS string");
+  if (depth !== 0) throw new SyntaxError("Unterminated DTS cell group");
   items.push(rawText.slice(start));
   return items;
 }
@@ -93,7 +97,7 @@ function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
     return { type: "cells", bits, cells: parseCellsGroup(bitsMatch[2]!, bits) };
   }
 
-  if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+  if (/^<[^<>]*>$/.test(trimmed)) {
     return { type: "cells", bits: 32, cells: parseCellsGroup(trimmed.slice(1, -1), 32) };
   }
 
@@ -103,8 +107,20 @@ function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
 const CELL_TOKEN_RE = /&[A-Za-z_][A-Za-z0-9_]*|\(-(?:0[xX][0-9A-Fa-f]+|\d+)\)|-?0[xX][0-9A-Fa-f]+|-?\d+/g;
 
 function parseCellsGroup(inner: string, width: CellWidth): DtsCell[] {
-  const tokens = inner.match(CELL_TOKEN_RE) ?? [];
-  return tokens.map((token) => parseCellToken(token, width));
+  const cells: DtsCell[] = [];
+  let cursor = 0;
+  for (const match of inner.matchAll(CELL_TOKEN_RE)) {
+    const start = match.index!;
+    if (inner.slice(cursor, start).trim() !== "" || (cursor > 0 && start === cursor)) {
+      throw new SyntaxError(`Invalid DTS cell token at position ${cursor + 1}`);
+    }
+    cells.push(parseCellToken(match[0], width));
+    cursor = start + match[0].length;
+  }
+  if (inner.slice(cursor).trim() !== "") {
+    throw new SyntaxError(`Invalid DTS cell token at position ${cursor + 1}`);
+  }
+  return cells;
 }
 
 function parseCellToken(token: string, width: CellWidth): DtsCell {
@@ -152,11 +168,10 @@ function combineItems(items: ParsedItem[]): DtsValue {
   return { kind: "mixed", segments };
 }
 
-function isByteLiteral(trimmed: string): boolean {
-  return /^\[[0-9A-Fa-f\s]+\]$/.test(trimmed);
-}
-
 function parseByteLiteral(trimmed: string): DtsValue {
+  if (!/^\[(?:\s*[0-9A-Fa-f]{2})*\s*\]$/.test(trimmed)) {
+    throw new SyntaxError("Byte arrays require complete pairs of hexadecimal digits: [00 ff …]");
+  }
   const inner = trimmed.slice(1, -1);
   const values = (inner.match(/[0-9A-Fa-f]{2}/g) ?? []).map((hex) => Number.parseInt(hex, 16));
   return { kind: "bytes", values };

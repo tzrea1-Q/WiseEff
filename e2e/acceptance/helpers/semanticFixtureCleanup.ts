@@ -147,7 +147,12 @@ async function withoutCanonicalConfigSets(client: Client, configSetIds: string[]
   const pinned = await client.query<{ config_set_id: string }>(
     `select distinct config_set_id
      from parameter_catalog.project_parameter_source_occurrences
-     where config_set_id = any($1::text[])`,
+     where config_set_id = any($1::text[])
+     union
+     select source_revision_config_set_id as config_set_id
+     from project_parameter_value_change_requests
+     where request_kind = 'source_revision'
+       and source_revision_config_set_id = any($1::text[])`,
     [configSetIds]
   );
   const retained = new Set(pinned.rows.map((row) => row.config_set_id));
@@ -159,7 +164,13 @@ async function withoutCanonicalFiles(client: Client, fileIds: string[]): Promise
   const pinned = await client.query<{ file_id: string }>(
     `select distinct file_id
      from parameter_catalog.project_parameter_source_occurrences
-     where file_id = any($1::text[])`,
+     where file_id = any($1::text[])
+     union
+     select member->>'fileId' as file_id
+     from project_parameter_value_change_requests request
+     cross join lateral jsonb_array_elements(request.source_revision_context->'members') member
+     where request.request_kind = 'source_revision'
+       and member->>'fileId' = any($1::text[])`,
     [fileIds]
   );
   const retained = new Set(pinned.rows.map((row) => row.file_id));
@@ -176,10 +187,10 @@ export async function cleanupSemanticAcceptanceArtifacts(
   await withPgClient(async (client) => {
     await client.query("begin");
     try {
-    // Canonical source history (source occurrences, pins, tombstones) is immutable by
-    // design, so a pinned ConfigSet/file is never fixture garbage that cleanup may
-    // delete. Only legacy-only fixtures are removed; pinned ones stay for the
-    // disposable runtime's own disposal.
+    // Canonical source history (occurrences, pins, tombstones, source-only review
+    // receipts) is immutable, so a referenced ConfigSet/file is never fixture
+    // garbage that cleanup may delete. Only legacy-only fixtures are removed;
+    // referenced ones stay for the disposable runtime's own disposal.
     const resolvedConfigSetIds = await resolveConfigSetIds(
       client,
       scope.organizationId,

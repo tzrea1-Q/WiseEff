@@ -25,6 +25,11 @@ async function startSession(gateway: DebuggingGateway, protocol: "hdc" | "adb" =
 }
 
 describe("createMockDebuggingGateway (DebuggingGateway contract)", () => {
+  it("discovers both transports in HDC-first order when protocol is omitted", async () => {
+    const gateway = createGateway();
+    expect((await gateway.detectTargets()).map((target) => target.protocol)).toEqual(["hdc", "adb"]);
+    expect((await gateway.detectTargets({ bridgeId: MOCK_DEBUG_BRIDGE_ID })).map((target) => target.protocol)).toEqual(["hdc", "adb"]);
+  });
   it("serves a bridge-backed, non-placeholder target for both protocols and starts sessions with a detect event", async () => {
     const gateway = createGateway();
 

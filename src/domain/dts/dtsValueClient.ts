@@ -1,5 +1,7 @@
 import type { DtsValueType } from "@/application/ports/DtsStructuredRepository";
 import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
+import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
+import type { DtsCell, DtsValue } from "@/domain/parameter-topology/types";
 
 export type ClassifiedDtsValue = {
   valueType: DtsValueType;
@@ -11,47 +13,42 @@ export type ValidatedDtsValue = ClassifiedDtsValue & {
   error?: string;
 };
 
-const EMPTY_PROPERTY_NAMES = new Set(["ranges", "dma-ranges"]);
-
 /** Classify a property RHS and produce a type-aware normalized comparison string. */
 export function classifyDtsValue(rawText: string, propertyName: string): ClassifiedDtsValue {
-  const trimmed = rawText.trim();
-  if (trimmed === "") {
-    if (EMPTY_PROPERTY_NAMES.has(propertyName)) {
-      return { valueType: "empty", normalizedValue: "empty" };
+  try {
+    return classifyParsedValue(parseDtsValue(propertyName, rawText).value, rawText);
+  } catch {
+    return { valueType: "mixed", normalizedValue: rawText.trim() };
+  }
+}
+
+function normalizeCells(cells: readonly DtsCell[]): string {
+  return cells.map((cell) => cell.kind === "phandle" ? `&${cell.label}` : normalizeCellToken(cell.raw)).join(" ");
+}
+
+function classifyParsedValue(value: DtsValue, rawText: string): ClassifiedDtsValue {
+  switch (value.kind) {
+    case "boolean": return { valueType: "bool", normalizedValue: "true" };
+    case "empty": return { valueType: "empty", normalizedValue: "empty" };
+    case "strings": return { valueType: "string-list", normalizedValue: value.values.map((part) => `"${part}"`).join(", ") };
+    case "bytes": return { valueType: "bytes", normalizedValue: `[${value.values.map((part) => part.toString(16).padStart(2, "0")).join(" ")}]` };
+    case "mixed": return {
+      valueType: "mixed",
+      normalizedValue: value.segments.map((segment) => segment.kind === "string"
+        ? segment.raw
+        : `${segment.bits === 32 ? "" : `/bits/ ${segment.bits} `}<${normalizeCells(segment.cells)}>`).join(", "),
+    };
+    case "cells": {
+      const cells = value.groups.flat();
+      const hasRef = cells.some((cell) => cell.kind === "phandle");
+      const hasInteger = cells.some((cell) => cell.kind === "integer");
+      if (!hasRef && (value.bits !== 32 || rawText.trim().startsWith("/bits/"))) {
+        return { valueType: "bytes", normalizedValue: value.groups.map((group) => `/bits/ ${value.bits} <${normalizeCells(group)}>`).join(", ") };
+      }
+      const valueType = value.groups.length > 1 || (hasRef && hasInteger) ? "mixed" : hasRef ? "phandle-list" : "u32-array";
+      return { valueType, normalizedValue: `<${normalizeCells(cells)}>` };
     }
-    return { valueType: "bool", normalizedValue: "true" };
   }
-
-  if (trimmed.startsWith("/bits/")) {
-    return { valueType: "bytes", normalizedValue: normalizeBits(trimmed) };
-  }
-
-  if (trimmed.includes('"')) {
-    return { valueType: "string-list", normalizedValue: normalizeStringList(trimmed) };
-  }
-
-  const groups = splitAngleGroups(trimmed);
-  if (groups.length === 0) {
-    return { valueType: "mixed", normalizedValue: trimmed };
-  }
-
-  const tokens = groups.flatMap(tokenizeGroup);
-  const hasRef = tokens.some((t) => t.startsWith("&"));
-  const hasCell = tokens.some((t) => !t.startsWith("&"));
-  const multiGroup = groups.length > 1;
-
-  let valueType: DtsValueType;
-  if (multiGroup || (hasRef && hasCell)) {
-    valueType = "mixed";
-  } else if (hasRef && !hasCell) {
-    valueType = "phandle-list";
-  } else {
-    valueType = "u32-array";
-  }
-
-  const normalizedCells = tokens.map(normalizeCellToken).join(" ");
-  return { valueType, normalizedValue: `<${normalizedCells}>` };
 }
 
 /**
@@ -63,10 +60,19 @@ export function validateDtsValue(
   propertyName: string,
   declaredType?: DtsValueType,
 ): ValidatedDtsValue {
-  const classified = classifyDtsValue(rawText, propertyName);
-  const syntaxError = findSyntaxError(rawText, classified.valueType);
-  if (syntaxError) {
-    return { ...classified, valid: false, error: syntaxError };
+  let value: DtsValue;
+  try {
+    value = parseDtsValue(propertyName, rawText).value;
+  } catch (error) {
+    return {
+      ...classifyDtsValue(rawText, propertyName),
+      valid: false,
+      error: `DTS 取值无效：${error instanceof Error ? error.message : "无法解析输入"}`,
+    };
+  }
+  const classified = classifyParsedValue(value, rawText);
+  if (value.kind === "cells" && value.groups.some((group) => group.length === 0)) {
+    return { ...classified, valid: false, error: "数值组不能为空" };
   }
 
   if (declaredType && classified.valueType !== declaredType) {
@@ -89,99 +95,6 @@ export function validateDtsValue(
   }
 
   return { ...classified, valid: true };
-}
-
-function findSyntaxError(rawText: string, valueType: DtsValueType): string | undefined {
-  const trimmed = rawText.trim();
-  if (trimmed === "") return undefined;
-
-  if (valueType === "bytes") {
-    const match = trimmed.match(/^\/bits\/\s+(\d+)\s+<([^>]*)>\s*$/i);
-    if (!match) return "字节数组语法无效，期望 /bits/ N <…>";
-    const inner = match[2];
-    if (!cellsFullyTokenized(inner, { allowEmpty: false })) {
-      return "字节数组含有非法数值";
-    }
-    return undefined;
-  }
-
-  if (valueType === "string-list") {
-    if (!trimmed.includes('"')) return "字符串列表缺少引号字符串";
-    // Remaining non-whitespace/comma outside quotes is allowed loosely; require at least one string.
-    if (normalizeStringList(trimmed) === "") return "字符串列表缺少有效字符串";
-    return undefined;
-  }
-
-  if (valueType === "u32-array" || valueType === "phandle-list" || valueType === "mixed") {
-    const groups = splitAngleGroups(trimmed);
-    if (groups.length === 0) {
-      if (valueType === "mixed") return undefined;
-      return "期望 <…> 数值组";
-    }
-    for (const group of groups) {
-      const allowEmpty = false;
-      if (valueType === "u32-array" || valueType === "phandle-list") {
-        if (!cellsFullyTokenized(group, { allowEmpty })) {
-          return valueType === "phandle-list" ? "句柄引用含有非法标签" : "整数数组含有非法数值";
-        }
-        if (valueType === "phandle-list") {
-          const tokens = tokenizeGroup(group);
-          if (tokens.length === 0 || tokens.some((t) => !t.startsWith("&"))) {
-            return "句柄引用仅允许 &label 形式";
-          }
-        }
-        if (valueType === "u32-array") {
-          const tokens = tokenizeGroup(group);
-          if (tokens.length === 0 || tokens.some((t) => t.startsWith("&"))) {
-            return "整数数组仅允许数值";
-          }
-        }
-      } else if (!cellsFullyTokenized(group, { allowEmpty: true }) && group.trim() !== "") {
-        // mixed: allow empty groups? keep loose — only flag leftover junk when tokens present
-        if (tokenizeGroup(group).length > 0 && !cellsFullyTokenized(group, { allowEmpty: true })) {
-          return "混合类型含有非法数值";
-        }
-        if (tokenizeGroup(group).length === 0 && /[^\s,]/.test(group)) {
-          return "混合类型含有非法数值";
-        }
-      }
-    }
-    return undefined;
-  }
-
-  return undefined;
-}
-
-function cellsFullyTokenized(inner: string, options: { allowEmpty: boolean }): boolean {
-  const trimmed = inner.trim();
-  if (trimmed === "") return options.allowEmpty;
-  const tokens = tokenizeGroup(trimmed);
-  if (tokens.length === 0) return false;
-  let rest = trimmed;
-  for (const token of tokens) {
-    const idx = rest.indexOf(token);
-    if (idx < 0) return false;
-    rest = `${rest.slice(0, idx)}${rest.slice(idx + token.length)}`;
-  }
-  return rest.trim() === "";
-}
-
-function normalizeBits(trimmed: string): string {
-  const match = trimmed.match(/^\/bits\/\s+(\d+)\s+<([^>]*)>\s*$/i);
-  if (!match) return trimmed;
-  const width = match[1];
-  const cells = tokenizeGroup(match[2]).map(normalizeCellToken).join(" ");
-  return `/bits/ ${width} <${cells}>`;
-}
-
-function normalizeStringList(trimmed: string): string {
-  const parts: string[] = [];
-  const re = /"((?:\\.|[^"\\])*)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(trimmed)) !== null) {
-    parts.push(`"${m[1]}"`);
-  }
-  return parts.join(", ");
 }
 
 /** Split top-level `<...>` groups separated by commas. */
@@ -207,16 +120,6 @@ function splitAngleGroups(trimmed: string): string[] {
   return groups;
 }
 
-function tokenizeGroup(inner: string): string[] {
-  const tokens: string[] = [];
-  const re = /&[A-Za-z_][A-Za-z0-9_]*|-?0[xX][0-9A-Fa-f]+|-?\d+/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(inner)) !== null) {
-    tokens.push(m[0]);
-  }
-  return tokens;
-}
-
 function normalizeCellToken(token: string): string {
   if (token.startsWith("&")) return token;
   if (/^-?0[xX][0-9A-Fa-f]+$/.test(token)) {
@@ -239,10 +142,15 @@ export function parseU32Cells(rawText: string): string[] {
   return splitDraftCells(match[1]);
 }
 
-export function parseBytesValue(rawText: string): { width: number; bytes: string[] } {
+export function parseBytesValue(rawText: string): { kind: "bytes" | "cells"; width: number; bytes: string[] } {
+  const trimmed = rawText.trim();
+  if (/^\[(?:\s*[0-9A-Fa-f]{2})*\s*\]$/.test(trimmed)) {
+    return { kind: "bytes", width: 8, bytes: trimmed.slice(1, -1).match(/[0-9A-Fa-f]{2}/g) ?? [] };
+  }
   const match = rawText.trim().match(/^\/bits\/\s+(\d+)\s+<([^>]*)>\s*$/i);
-  if (!match) return { width: 8, bytes: [] };
+  if (!match) return { kind: "cells", width: 8, bytes: [] };
   return {
+    kind: "cells",
     width: Number(match[1]),
     bytes: splitDraftCells(match[2]),
   };
@@ -255,13 +163,31 @@ function splitDraftCells(inner: string): string[] {
 }
 
 export function parseStringListValues(rawText: string): string[] {
-  const parts: string[] = [];
-  const re = /"((?:\\.|[^"\\])*)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(rawText)) !== null) {
-    parts.push(m[1]);
+  if (rawText.trim() === "") return [""];
+  try {
+    const value = parseDtsValue("string-list", rawText).value;
+    return value.kind === "strings" ? value.values.map(decodeDtsString) : [];
+  } catch {
+    return [];
   }
-  return parts.length > 0 ? parts : [""];
+}
+
+/** AST string values retain source escapes; input controls edit decoded text. */
+export function decodeDtsString(value: string): string {
+  const escapes: Record<string, string> = { a: "\x07", b: "\b", t: "\t", n: "\n", v: "\v", f: "\f", r: "\r", '"': '"', "\\": "\\", "?": "?" };
+  return value.replace(/\\(x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|[\s\S])/g, (raw: string, token: string) => {
+    if (token.startsWith("x") && token.length > 1) return String.fromCharCode(Number.parseInt(token.slice(1), 16));
+    if (/^[0-7]+$/.test(token)) return String.fromCharCode(Number.parseInt(token, 8));
+    return escapes[token] ?? raw;
+  });
+}
+
+export function encodeDtsString(value: string): string {
+  const escapes: Record<string, string> = { "\x07": "\\a", "\b": "\\b", "\t": "\\t", "\n": "\\n", "\v": "\\v", "\f": "\\f", "\r": "\\r", '"': '\\"', "\\": "\\\\" };
+  return Array.from(value, (character) => escapes[character]
+    ?? (character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127
+      ? `\\${character.charCodeAt(0).toString(8).padStart(3, "0")}`
+      : character)).join("");
 }
 
 export function parsePhandleLabels(rawText: string): string[] {
@@ -278,8 +204,24 @@ export function formatBytes(width: number, bytes: readonly string[]): string {
   return `/bits/ ${width} <${bytes.join(" ")}>`;
 }
 
-export function formatStringList(values: readonly string[]): string {
-  return values.map((v) => `"${v}"`).join(", ");
+export function formatByteLiteral(values: readonly string[]): string {
+  return `[${values.join(" ")}]`;
+}
+
+export function formatStringList(values: readonly string[], previousRawText?: string): string {
+  if (previousRawText !== undefined) {
+    try {
+      const previous = parseDtsValue("string-list", previousRawText).value;
+      if (previous.kind === "strings" && previous.items && previous.values.length === values.length) {
+        return previous.items.map((item, index) => decodeDtsString(item.value) === values[index]
+          ? item.raw
+          : item.raw.replace(/"(?:\\.|[^"\\])*"/, () => `"${encodeDtsString(values[index]!)}"`)).join(",");
+      }
+    } catch {
+      // A newly typed or unsupported source value has no reusable string spans.
+    }
+  }
+  return values.map((value) => `"${encodeDtsString(value)}"`).join(", ");
 }
 
 export function formatPhandleList(labels: readonly string[]): string {

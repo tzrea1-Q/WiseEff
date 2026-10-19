@@ -3,6 +3,11 @@ import { classifyDtsValue } from "./valueTyping";
 import { parseDts } from "./parser";
 
 describe("classifyDtsValue", () => {
+  it("preserves mixed segments and only classifies complete string lists", () => {
+    expect(classifyDtsValue('"a", <1>', "mixed")).toEqual({ valueType: "mixed", normalizedValue: '"a", <1>' });
+    expect(classifyDtsValue('[00 ff]', "bytes")).toEqual({ valueType: "bytes", normalizedValue: "[00 ff]" });
+    expect(classifyDtsValue('"a" junk', "invalid")).toEqual({ valueType: "mixed", normalizedValue: '"a" junk' });
+  });
   it("normalizes hex case and whitespace for u32-array", () => {
     const a = classifyDtsValue("<0xB 0x4b>", "reg");
     const b = classifyDtsValue("<0xb 0x4B>", "reg");

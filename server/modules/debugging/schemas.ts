@@ -59,7 +59,7 @@ export const listDebuggingParametersQuerySchema = z.object({
 export const detectTargetsBodySchema = z.object({
   deviceId: nonEmptyString.optional(),
   bridgeId: nonEmptyString.optional(),
-  protocol: protocolSchema
+  protocol: z.enum(debugConnectionProtocols).optional()
 });
 
 export const createDebugSessionBodySchema = z.object({

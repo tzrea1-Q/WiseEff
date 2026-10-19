@@ -154,7 +154,7 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
   await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i);
 
   const evidenceCard = page.locator(".evidence-card").filter({ hasText: /thermal|foldback/i }).first();
-  await evidenceCard.click();
+  await evidenceCard.locator(".evidence-card__body > p").click();
   await expect
     .poll(async () =>
       page.evaluate(() =>

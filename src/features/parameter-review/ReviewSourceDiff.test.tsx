@@ -1,8 +1,24 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ReviewSourceDiff, reviewLocator } from "./ReviewSourceDiff";
 
+vi.mock("@/components/project-configuration-workbench/WorkbenchDtsEditor", () => ({
+  WorkbenchDtsEditor: ({ text, readOnly, ariaLabel }: { text: string; readOnly: boolean; ariaLabel: string }) =>
+    <textarea aria-label={ariaLabel} value={text} readOnly={readOnly} />
+}));
+
 describe("frozen source comparison", () => {
+  it("uses the readonly viewport editor for large source reviews and keeps complete snapshots", async () => {
+    const before = `${"// unchanged\n".repeat(8_000)}old;\n`;
+    const after = before.replace("old;", "new;");
+    const view = render(<ReviewSourceDiff before={before} after={after} virtualized />);
+    const editor = await screen.findByRole("textbox", { name: "固定源差异源码" });
+    expect(editor).toHaveAttribute("readonly");
+    expect((editor as HTMLTextAreaElement).value).toContain("+new;");
+    expect(view.container.querySelectorAll(".submission-preview-diff-row")).toHaveLength(0);
+    expect(screen.getByLabelText("固定源变更前").textContent).toBe(before);
+    expect(screen.getByLabelText("固定源变更后").textContent).toBe(after);
+  });
   it("aligns multiple inserted and removed lines, collapses distant unchanged content and preserves complete source", () => {
     const lines = Array.from({ length: 100 }, (_, index) => `line ${index}`);
     const after = [...lines];

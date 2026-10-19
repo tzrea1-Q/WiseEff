@@ -1,4 +1,5 @@
 import type { SessionPropertyDraft } from "./sessionDrafts";
+import { readStructuredEditorState } from "@/domain/dts/structuredEditorState";
 
 export const SESSION_DRAFT_STORAGE_KEY = "wiseeff.pcw.sessionDrafts.v1";
 
@@ -67,12 +68,15 @@ function parseBucket(value: unknown): PersistedSessionDraftBucket | null {
   const drafts: Record<string, SessionPropertyDraft> = {};
   for (const [key, draft] of Object.entries(value.drafts)) {
     if (!isPropertyDraft(draft)) return null;
+    const editorState = draft.editorState === undefined ? undefined : readStructuredEditorState(draft.editorState);
+    if (editorState === null) return null;
     drafts[key] = {
       rawText: draft.rawText,
       normalizedValue: draft.normalizedValue,
       ...(typeof draft.valid === "boolean" ? { valid: draft.valid } : {}),
       ...(typeof draft.error === "string" ? { error: draft.error } : {}),
-      ...(typeof draft.present === "boolean" ? { present: draft.present } : {})
+      ...(typeof draft.present === "boolean" ? { present: draft.present } : {}),
+      ...(editorState ? { editorState } : {})
     };
   }
   return {
@@ -107,43 +111,49 @@ export function classifySessionDraftRecovery(
   return "compatible";
 }
 
-export function readSessionDraftStore(storage: ReadableStorage = localStorage): SessionDraftStoreSnapshot {
+function readStore(storage: ReadableStorage): { snapshot: SessionDraftStoreSnapshot; readable: boolean } {
   try {
     const raw = storage.getItem(SESSION_DRAFT_STORAGE_KEY);
-    if (!raw) return createEmptyStore();
+    if (!raw) return { snapshot: createEmptyStore(), readable: true };
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.buckets)) {
-      return createEmptyStore();
+      return { snapshot: createEmptyStore(), readable: true };
     }
     const buckets = parsed.buckets
       .map(parseBucket)
       .filter((bucket): bucket is PersistedSessionDraftBucket => bucket !== null);
-    return { version: 1, buckets };
+    return { snapshot: { version: 1, buckets }, readable: true };
   } catch {
-    return createEmptyStore();
+    return { snapshot: createEmptyStore(), readable: false };
   }
+}
+
+export function readSessionDraftStore(storage: ReadableStorage = localStorage): SessionDraftStoreSnapshot {
+  return readStore(storage).snapshot;
 }
 
 export function writeSessionDraftStore(
   snapshot: SessionDraftStoreSnapshot,
   storage: WritableStorage = localStorage
-): void {
+): boolean {
   try {
     if (snapshot.buckets.length === 0) {
       storage.removeItem(SESSION_DRAFT_STORAGE_KEY);
-      return;
+      return true;
     }
     storage.setItem(SESSION_DRAFT_STORAGE_KEY, JSON.stringify({ version: 1, buckets: snapshot.buckets }));
+    return true;
   } catch {
-    // Ignore storage failures; in-memory session state still works for the current tab.
+    return false;
   }
 }
 
 export function upsertSessionDraftBucket(
   bucket: PersistedSessionDraftBucket,
   storage: WritableStorage = localStorage
-): void {
-  const store = readSessionDraftStore(storage);
+): boolean {
+  const { snapshot: store, readable } = readStore(storage);
+  if (!readable) return false;
   const key = identityKey(bucket.scope);
   const nextBuckets = store.buckets.filter((item) => identityKey(item.scope) !== key);
   if (Object.keys(bucket.drafts).length > 0) {
@@ -155,16 +165,17 @@ export function upsertSessionDraftBucket(
       updatedAt: bucket.updatedAt
     });
   }
-  writeSessionDraftStore({ version: 1, buckets: nextBuckets }, storage);
+  return writeSessionDraftStore({ version: 1, buckets: nextBuckets }, storage);
 }
 
 export function removeSessionDraftBucket(
   scope: Pick<SessionDraftScope, "userId" | "organizationId" | "projectId" | "configSetId" | "fileId">,
   storage: WritableStorage = localStorage
-): void {
-  const store = readSessionDraftStore(storage);
+): boolean {
+  const { snapshot: store, readable } = readStore(storage);
+  if (!readable) return false;
   const key = identityKey(scope);
-  writeSessionDraftStore(
+  return writeSessionDraftStore(
     {
       version: 1,
       buckets: store.buckets.filter((item) => identityKey(item.scope) !== key)
@@ -186,13 +197,14 @@ export function findRecoverableSessionDraft(
   return { classification, bucket };
 }
 
-export function clearSessionDraftsForLogout(storage: WritableStorage = localStorage): void {
-  writeSessionDraftStore(createEmptyStore(), storage);
+export function clearSessionDraftsForLogout(storage: WritableStorage = localStorage): boolean {
+  return writeSessionDraftStore(createEmptyStore(), storage);
 }
 
 export function formatSessionDraftCopyText(bucket: PersistedSessionDraftBucket): string {
   const lines = Object.entries(bucket.drafts).map(([key, draft]) => {
-    return `${key}: ${draft.rawText}${draft.normalizedValue ? ` (${draft.normalizedValue})` : ""}`;
+    return `${key}: ${draft.rawText}${draft.normalizedValue ? ` (${draft.normalizedValue})` : ""}`
+      + (draft.editorState ? `\n  editorState: ${JSON.stringify(draft.editorState)}` : "");
   });
   return [
     `scope: ${bucket.scope.projectId}/${bucket.scope.configSetId}/${bucket.scope.fileId}@${bucket.scope.baseVersionId}`,
