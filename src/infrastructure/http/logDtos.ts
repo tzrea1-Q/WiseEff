@@ -66,6 +66,7 @@ export type LogRecordDto = {
 };
 
 export type LogDomainDto = {
+  skillKey?: string;
   hasSourceSnapshots?: boolean;
   readySourceVersions?: string[];
   currentRevision?: { id: string; number: number; publishedAt: string | null };
@@ -154,6 +155,7 @@ export function logListFromDto(response: { items: LogRecordDto[] }): LogRecord[]
 
 export function logDomainFromDto(dto: LogDomainDto): LogDomain {
   return {
+    skillKey: dto.skillKey,
     id: dto.id,
     name: dto.name,
     description: dto.description,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AnalyzeLogInput } from "../analyzer";
-import { genericSignalRuleSet } from "../analyzer";
+import { createRuleBasedLogAnalyzer, genericSignalRuleSet } from "../analyzer";
 import type { RelatedParameterRunSnapshot } from "../relatedParameter";
 import { parseLogText } from "../parser";
 import { defaultChargingRuleSet } from "../chargingSignalRules";
@@ -390,24 +390,39 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(output.evidence.length).toBeGreaterThan(0);
   });
 
-  it("stops looping once the token budget is spent and converges early", async () => {
-    const usage = { inputTokens: 600, outputTokens: 30 };
+  it.each([
+    { tokenBudget: 1, content: { action: "tool", tool: "get_prefilter_findings", args: {} } },
+    { tokenBudget: 2537, content: { action: "tool", tool: "unknown", args: {} } },
+    { tokenBudget: 1, content: "invalid JSON" },
+    { tokenBudget: 1, content: finalPayload }
+  ])("makes no further call after reported usage exhausts the budget ($tokenBudget, $content)", async ({ tokenBudget, content }) => {
+    const usage = { inputTokens: 2500, outputTokens: 37 };
     const { model, adapter } = analyzer(
       [
-        { content: { action: "tool", tool: "get_prefilter_findings", args: {} }, usage },
+        { content, usage },
         { content: { ...finalPayload, confidence: 0.9 } }
       ],
-      { maxSteps: 6, tokenBudget: 500 }
+      { maxSteps: 6, tokenBudget }
     );
 
     const output = await adapter.analyze(buildInput());
 
-    // One loop call burns the budget; the second call is the convergence attempt.
-    expect(model.calls).toHaveLength(2);
-    expect(model.calls[1].at(-1)?.content).toContain("Budget exhausted");
-    expect(output.analysisSource).toBe("agent");
+    expect(model.calls).toHaveLength(1);
+    expect(output.analysisSource).toBe("rules-fallback");
     expect(output.degradedReason).toBe("token-budget-exhausted");
-    expect(output.confidence).toBeLessThanOrEqual(0.5);
+    expect(output.confidence).toBe((await createRuleBasedLogAnalyzer().analyze(buildInput())).confidence);
+  });
+
+  it("counts cumulative reported usage without estimating missing usage", async () => {
+    const tool = { action: "tool", tool: "get_prefilter_findings", args: {} };
+    const { model, adapter } = analyzer([
+      { content: tool },
+      { content: tool, usage: { inputTokens: 2500, outputTokens: 37 } },
+      { content: tool, usage: { inputTokens: 1500, outputTokens: 59 } },
+      { content: finalPayload }
+    ], { maxSteps: 4, tokenBudget: 4096 });
+    expect(await adapter.analyze(buildInput())).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "token-budget-exhausted" });
+    expect(model.calls).toHaveLength(3);
   });
 
   it("falls back to rules when even the convergence attempt stays ungrounded", async () => {

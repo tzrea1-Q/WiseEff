@@ -8,6 +8,7 @@ export const sourceSnapshotUploadSchema = z.object({
 import { logRecordStatuses } from "./status";
 
 const nonEmptyString = z.string().min(1);
+export const skillKeySchema = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/, "Use 2–63 lowercase letters, digits or hyphens, starting with a letter or digit.");
 function validBase64(value: string) {
   if (value.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
   // Check canonical padding bits without decoding/re-encoding the whole upload.
@@ -56,7 +57,8 @@ export const createLogFileBodySchema = z
     relatedParameterPin: relatedParameterPinSchema.optional(),
     logDomainId: nonEmptyString.optional(),
     sourceVersion: z.string().trim().min(1).max(200).optional(),
-    skillId: nonEmptyString.optional()
+    skillId: nonEmptyString.optional(),
+    skillKey: skillKeySchema.optional()
   })
   .superRefine(rejectMismatchedRelatedParameterPin);
 
@@ -69,7 +71,8 @@ export const createLogBodySchema = z
     relatedParameterPin: relatedParameterPinSchema.optional(),
     logDomainId: nonEmptyString.optional(),
     sourceVersion: z.string().trim().min(1).max(200).optional(),
-    skillId: nonEmptyString.optional()
+    skillId: nonEmptyString.optional(),
+    skillKey: skillKeySchema.optional()
   })
   .superRefine(rejectMismatchedRelatedParameterPin);
 
@@ -144,6 +147,7 @@ export const replaceLogSkillSampleBodySchema = z.object({
 }).strict();
 
 export const updateLogDomainBodySchema = z.object({
+  skillKey: skillKeySchema.optional(),
   name: nonEmptyString.max(120).optional(),
   description: z.string().max(2000).nullable().optional(),
   formatProfile: z.unknown().optional(),

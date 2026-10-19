@@ -16,7 +16,7 @@ const auth = makeTestAuthContext({ organizationId: "org-preview", permissions: [
 const parsing = { schemaVersion: "parsing/v1", extractors: [{ id: "value", pattern: "(?P<v>.+)", fields: { v: { type: "string" } } }] };
 const db: Queryable = { query: vi.fn(() => { throw new Error("Unexpected database access"); }) };
 function skill() {
-  return vi.spyOn(domains, "getLogDomainById").mockResolvedValue({ id: "skill", name: "Preview", status: "active", webhook: { enabled: false, secretConfigured: false }, createdAt: "2026-10-19", updatedAt: "2026-10-19" });
+  return vi.spyOn(domains, "getLogDomainById").mockResolvedValue({ id: "skill", name: "Preview", skillKey: "preview", status: "active", webhook: { enabled: false, secretConfigured: false }, createdAt: "2026-10-19", updatedAt: "2026-10-19" });
 }
 
 describe("parsing preview service bounds", () => {

@@ -2,13 +2,35 @@
 
 > English: [English](../../api/log-analysis-integration.md)
 
-外部系统如何把日志推入 WiseEff 分析并消费结果——轮询或订阅域级**结果 Webhook**。本指南通过内联示例说明上传、任务、报告、文件行窗口和 Webhook 签名校验，不提供打包 SDK。
+外部系统如何把日志推入 WiseEff 分析并通过轮询或技能的**结果 Webhook** 消费结果。本指南通过内联示例说明上传、任务、报告、文件行窗口和 Webhook 签名校验，不提供打包 SDK。
 
 前置阅读:[认证](authentication.md)(Bearer Token)、[错误](errors.md)(错误信封)。端点契约见 [API Contract](../../design-docs/api-contract.md) 与 [openapi.json](../../generated/openapi.json)。
 
 ## 1. 推送日志
 
-`POST /api/v1/log-files`,内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。通过 `logDomainId` 绑定已注册业务域(`GET /api/v1/log-domains` 可列出);不传则回落到内置未分类域——域选择永远不会阻塞上传。
+### 通过 skillKey 选择分析技能
+
+在分析技能工作区的「集成」分区复制 `skillKey`、上传地址及可直接执行的 JSON/base64 或 multipart 示例。通过 `$WISEEFF_TOKEN` 提供 bearer token；示例不会包含真实凭据。`skillKey` 在组织内唯一，满足 `^[a-z0-9][a-z0-9-]{1,62}$`，重命名和发布不会改变它。管理员可在此编辑 key，修改会审计；集成方之后需使用新 key。创建时从名称生成 slug，非 ASCII 名称或碰撞时补充短 id 后缀；迁移 0202 为已有身份回填。
+
+`POST /api/v1/log-files`（JSON 或 multipart）和 `POST /api/v1/logs`（已有文件）均接受 `skillKey`，继续支持 `skillId` 及兼容别名 `logDomainId`。同时提供多个选择字段时必须指向同一技能；冲突返回 `400 VALIDATION_FAILED`。key 只在调用方组织内解析，未知或跨组织 key 会被拒绝。上传成功后钉住技能当前已发布版本，包含模型和预算；后续修改、发布不影响该运行。
+
+```bash
+curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
+  -H "Authorization: Bearer $WISEEFF_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"skillKey":"charging","fileName":"example.log","contentType":"text/plain","contentBase64":"SU5GTyBib290Cg=="}'
+
+curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
+  -H "Authorization: Bearer $WISEEFF_TOKEN" \
+  --form-string 'skillKey=charging' \
+  -F 'file=@device.log;type=text/plain' -F 'file=@kernel.log;type=text/plain'
+```
+
+将 `charging` 替换为复制的 key；multipart 示例要求对应本地文件已存在。模型覆盖及可选步数/token 预算保存在草稿，发布后影响新运行；省略预算使用平台默认值。超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值以字段错误拒绝。Webhook 配置和 key 仍为即时生效的身份设置，不依赖发布。
+
+步骤预算须为至少 1 的整数；版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含提前收敛调用；不做 token 估算，也不承诺单次调用的严格限额。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。没有得到已接地最终报告时，耗尽运行沿用 `rules-fallback` 结果及 `degradedReason: "token-budget-exhausted"`。省略 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
+
+`POST /api/v1/log-files`，内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。通过 `skillKey` 或 `skillId` 绑定分析技能（`GET /api/v1/log-skills` 可列出），保留 `logDomainId` 兼容别名；不选技能则使用平台通用分析。
 
 可选字段 `sourceVersion` 为源码快照版本标签（去除首尾空白后 1–200 字符），用于选择钉住技能所属的匹配快照。匹配快照即使仍在排队、索引中或索引失败，也会被选中；只有快照就绪时才向 Agent 提供源码工具。没有匹配标签或未传标签时，使用钉住版本的默认快照。未知标签会记录在报告来源中，并在该处附上简短回退说明。JSON 上传、multipart 上传以及从已有文件创建记录的 `POST /api/v1/logs` 均接受此字段。`GET /api/v1/log-skills` 返回 `hasSourceSnapshots` 和 `readySourceVersions`；后者是就绪快照版本标签数组，不含快照元数据。上传对话框提供这些标签及默认快照选项；集成 API 仍接受自由填写的版本标签。
 
@@ -84,7 +106,7 @@ curl -sS --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
 
 ## 4. 或消费结果 Webhook
 
-Admin 在 `/log-admin`(业务域治理 → 结果回调)按域配置:HTTPS URL、签名密钥、启用开关。该域的分析到达终态(完成——含降级——或失败)后,WiseEff 会 POST 一份精简 JSON 摘要。**绝不外发**原始日志内容或证据全文;需要细节时用 `recordId` 走 API 获取。
+管理员在技能工作区的「集成」分区配置 HTTPS URL、只写签名密钥（设置或轮换）及启用开关，也可发送测试投递、查看近期投递尝试。旧管理页链接到此工作区。技能分析到达终态（完成，含降级，或失败）后，WiseEff 会 POST 精简 JSON 摘要。**绝不外发**原始日志内容或证据全文；需要细节时用 `recordId` 走 API 获取。
 
 ```json
 {
@@ -92,6 +114,10 @@ Admin 在 `/log-admin`(业务域治理 → 结果回调)按域配置:HTTPS URL�
   "eventId": "log-result:run-...",
   "recordId": "log-...",
   "runId": "run-...",
+  "skillRevisionId": "revision-...",
+  "skillRevisionNumber": 2,
+  "skill": { "id": "domain-...", "key": "charging", "revisionId": "revision-...", "revisionNumber": 2 },
+  "degraded": false,
   "fileName": "charging-foldback.log",
   "logDomainId": "domain-...",
   "status": "complete",
@@ -107,9 +133,11 @@ Admin 在 `/log-admin`(业务域治理 → 结果回调)按域配置:HTTPS URL�
 
 `event` 取值:`log-analysis.completed`、`log-analysis.failed`、`log-analysis.test`(管理员测试按钮)。
 
+结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。规则回退或存在降级原因时 `degraded` 为 true；有原因时保留 `degradedReason`。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
+
 ### 投递语义
 
-- 有界重试下的至少一次投递：终态事务在确认完成前持久化 outbox 事件。worker 通过租约和 `FOR UPDATE SKIP LOCKED` 领取到期事件；发送或退避期间崩溃后，可在租约过期后恢复。失败按指数退避重试（默认 3 次），耗尽后保留失败状态；已记录的每次尝试都在 `/log-admin` → 最近投递中可见，REST API 仍是事实来源。
+- 有界重试下的至少一次投递：终态事务在确认完成前持久化 outbox 事件。worker 通过租约和 `FOR UPDATE SKIP LOCKED` 领取到期事件；发送或退避期间崩溃后，可在租约过期后恢复。失败按指数退避重试（默认 3 次），耗尽后保留失败状态；已记录的每次尝试都在技能工作区的「集成」分区可见，REST API 仍是事实来源。
 - 投递尝试历史按日志业务域分别设上界。worker 默认按 `created_at DESC, id DESC` 保留最近 10,000 行；清理失败只记录脱敏 warning，并在下一个 60 秒周期重试，不会中断投递。运维方可通过 `LOG_WEBHOOK_DELIVERY_RETENTION_*` 调整上界或停止未来裁剪，但已删除记录只能从数据库备份恢复。 投递尝试历史与终态 outbox（`delivered` / `failed`）分别按同一设置、同一排序独立保留最近 N 行；每张表每周期最多清理十批、每批 1,000 行。`pending`、`processing`、`retry` 事件不参与裁剪。
 - 尽快返回 `2xx`(耗时处理请异步化)。发送端不跟随重定向、丢弃响应体。
 - 接收方可能已接受请求，而发送方在记录成功前崩溃。结果事件请按稳定的 `eventId`（或现有 `runId`）去重；重试保留原 payload 与事件 ID。管理员测试端点仍同步发送一次。

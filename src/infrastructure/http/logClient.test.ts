@@ -247,7 +247,7 @@ describe("createHttpLogAnalysisRepository", () => {
     expect(result.log.files).toEqual(inventory); expect(result.log.evidence[0].filePath).toBe("a.log");
   });
   it("reads skill publication summaries and preserves the run revision pin", async () => {
-    const skill = { id: "skill-1", name: "设备诊断", status: "active", createdAt: "2026-10-18", updatedAt: "2026-10-18",
+    const skill = { id: "skill-1", skillKey: "device-diagnostics", name: "设备诊断", status: "active", createdAt: "2026-10-18", updatedAt: "2026-10-18",
       currentRevision: { id: "skill-v2", number: 2, publishedAt: "2026-10-18" }, hasDraft: true, hasSourceSnapshots: true,
       readySourceVersions: ["v7"], analyses7d: 4, helpfulRate7d: 0.75 };
     const fetchMock = createFetchMock({ items: [skill] });

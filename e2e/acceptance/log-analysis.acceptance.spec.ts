@@ -48,6 +48,7 @@ async function createSkillThroughUi(page: Page, name: string, description: strin
   expect(response.request().postDataJSON()).toMatchObject({ name, description, startingPoint: { templateId: "generic-text" } });
   const skill = ((await response.json()) as { item: AnalysisSkill }).item;
   await expect(page).toHaveURL(new RegExp(`/log-admin/skills/${skill.id}$`));
+  await page.goto(`/log-admin/skills/${skill.id}?section=integration`);
   await expect(page.getByLabel("模型覆盖", { exact: true })).toBeVisible();
   return { response, skill };
 }
@@ -66,6 +67,7 @@ async function publishSkillThroughUi(page: Page, skillId: string) {
   expect(skill.currentRevision.status).toBe("published");
   expect(skill.draft).toBeNull();
   await expect(page.getByRole("dialog", { name: "发布技能", exact: true })).toBeHidden();
+  await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "概览", exact: true }).click();
   await expect(page.locator(".skill-section")).toContainText("v2");
   return { response, skill };
 }
@@ -1383,9 +1385,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       (response) =>
         response.request().method() === "PUT" && new URL(response.url()).pathname === `/api/v1/log-skills/${skill.id}/draft`
     );
-    const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id);
+    await page.getByRole("group", { name: "未发布更改" }).getByRole("button", { name: "保存草稿", exact: true }).click();
     const overrideDraftResponse = await overrideDraftPromise;
     expect(overrideDraftResponse.ok()).toBe(true);
+    const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id);
     expect(publishedSkill.currentRevision.spec.modelOverride).toBe(acceptanceModelOverride);
     await page.getByRole("button", { name: "返回分析技能", exact: true }).click();
 
