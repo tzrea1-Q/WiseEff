@@ -15,6 +15,7 @@ import { parsingSpecSchema } from "./parsing/spec";
 import { decodeLogFilesCooperatively } from "./parsing/workerDecoding";
 import { MAX_DECODE_EVENTS } from "./parsing/engine";
 import { validateDefaultSourceSnapshot } from "./sourceSnapshots";
+import { validateSkillKnowledge } from "./skillKnowledge";
 
 export const PARSE_PREVIEW_MAX_MS = 100;
 export const PARSE_PREVIEW_MAX_LINES = 5000;
@@ -106,6 +107,7 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
       source = start || input.formatProfile == null ? template.spec : { schemaVersion: "skill/v1", formatProfile: input.formatProfile } as LogSkillSpec;
     }
     const spec = parseSpec({ ...source, ...(input.description !== undefined ? { description: input.description } : {}) });
+    await validateSkillKnowledge(tx, auth, spec, source);
     if (await findLogDomainByName(tx, { organizationId: auth.organization.id, name })) {
       throw new ApiError("CONFLICT", "An analysis skill with this name already exists.");
     }
@@ -127,6 +129,7 @@ export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId
     await lockSkill(tx, auth.organization.id, skillId);
     const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
     const baseSpec = (revisions.find((r) => r.status === "draft") ?? revisions.find((r) => r.status === "published"))?.spec;
+    await validateSkillKnowledge(tx, auth, spec, baseSpec);
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, spec, spec.defaultSourceSnapshotId === baseSpec?.defaultSourceSnapshotId);
     if (revisions.find((r) => r.status === "published")?.id !== basePublishedRevisionId) {
       throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill publication has changed.");
@@ -153,6 +156,7 @@ export async function publishLogSkill(db: Database, auth: AuthContext, skillId: 
     // exact draft id, and restore refuses drafts, so no extra publish token is needed.
     const draft = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((revision) => revision.id === draftId && revision.status === "draft");
     if (draft) parseSpec(draft.spec);
+    if (draft) await validateSkillKnowledge(tx, auth, draft.spec, draft.spec);
     if (draft) await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, draft.spec, true);
     await publishSkillRevision(tx, auth.organization.id, skillId, draftId, auth.user.id);
     return { result: await readSkill(tx, auth.organization.id, skillId), audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
@@ -214,6 +218,7 @@ export async function restoreLogSkillRevision(db: Database, auth: AuthContext, s
     const source = revisions.find((r) => r.id === revisionId && r.status !== "draft");
     if (!source) throw new ApiError("NOT_FOUND", "Skill revision was not found.");
     parseSpec(source.spec);
+    await validateSkillKnowledge(tx, auth, source.spec, source.spec);
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, source.spec, true);
     if (revisions.some((r) => r.status === "draft")) throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the draft first.");
     const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec: source.spec, userId: auth.user.id });

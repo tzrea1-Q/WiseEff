@@ -77,6 +77,7 @@
 - `PFB-AUTHZ-001`：Hardware User 访问产品反馈管理 API 和 `/feedback-admin` 时被拒绝，断言覆盖 UI、API、DB 和截图证据。
 - `LOG-DOMAIN-001`：Admin 在 `/log-admin` 业务域治理区注册业务域并在 `/logs` 上传时绑定该域，断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-DOMAIN-KNOWLEDGE-001`：Admin 在 `/log-admin` 业务域治理区为业务域关联已发布知识条目（只列已发布条目、整组替换保存），断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
+- `LOG-SKILL-KNOWLEDGE-001`：技能工作区查看/取消知识链接、搜索已发布条目、多文件 Markdown 创建知识草稿与链接，以及缺少知识编辑权限的禁用原因。必需的 1440×900 浏览器证据仍待完成：`e2e/acceptance/log-skill-knowledge.acceptance.spec.ts` 已编写，但原生 Chromium 启动因 MachPortRendezvous PermissionDenied 失败，CUA 来源授权被用户明确拒绝，未取得浏览器交互或截图证据。组件测试为 `src/features/log-skills/KnowledgeSection.test.tsx`；实际检索修订来源由 PostgreSQL 集成测试断言，不是确定性浏览器模型证据（`coverage: future`）。
 - `LOG-DEGRADED-001`：上传含确定性故障标记的日志触发 provider 故障，分析降级为规则回退并在 UI 显著标注来源与原因，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-FEEDBACK-INSIGHTS-001`：Admin 提交日志反馈后在 `/log-admin`「分析质量」区看到按业务域 × 分析来源 × Prompt 版本聚合的有帮助率，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-EVAL-DRAFT-001`：Admin 在 `/log-admin` 已完成记录抽屉中导出评测案例草稿（脱敏清单弹层 + case.yaml/log.txt 下载内容校验），断言覆盖 UI（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。

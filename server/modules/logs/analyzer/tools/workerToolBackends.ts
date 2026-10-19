@@ -1,7 +1,6 @@
 import type { KnowledgeEmbeddingClient } from "../../../knowledge/indexing/embeddingClient";
 import { searchPublishedKnowledgeForLogAnalysis } from "../../../knowledge/logDomainRetrieval";
 import type { Queryable } from "../../../../shared/database/client";
-import { listLogDomainKnowledgeLinkEntryIds } from "../../domainsRepository";
 import type { RelatedParameterRunSnapshot } from "../../relatedParameter";
 import type { LogAnalysisToolContext, RelatedParameterContext } from "./toolContext";
 import { locateLogStatements } from "../../sourceStatementRepository";
@@ -14,6 +13,8 @@ export function createWorkerLogAnalysisToolBackends(input: {
   db: Queryable;
   organizationId: string;
   logDomainId?: string;
+  knowledgeEntryIds?: string[];
+  onKnowledgeRetrieved?: import("../../analyzer").AnalyzeLogInput["onKnowledgeRetrieved"];
   relatedParameterId?: string;
   relatedParameterSnapshot?: RelatedParameterRunSnapshot;
   sourceSnapshot?: import("../../analyzer").AnalyzeLogInput["sourceSnapshot"];
@@ -56,18 +57,15 @@ export function createWorkerLogAnalysisToolBackends(input: {
       })
     } : {}),
     searchDomainKnowledge: async (query: string) => {
-      const linkedEntryIds = input.logDomainId
-        ? await listLogDomainKnowledgeLinkEntryIds(input.db, {
-            organizationId: input.organizationId,
-            domainId: input.logDomainId
-          })
-        : [];
-      return searchPublishedKnowledgeForLogAnalysis(input.db, {
+      const result = await searchPublishedKnowledgeForLogAnalysis(input.db, {
         organizationId: input.organizationId,
         query,
-        linkedEntryIds,
+        linkedEntryIds: input.knowledgeEntryIds,
         embeddingClient: input.embeddingClient
       });
+      input.onKnowledgeRetrieved?.(result.items.flatMap((item) => item.revisionId
+        ? [{ entryId: item.entryId, revisionId: item.revisionId }] : []));
+      return result;
     },
     ...(relatedParameterContext
       ? {

@@ -924,7 +924,7 @@ function ConfidenceBar({
 
 function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
   const degraded = classifyAnalysisDegradation(log);
-  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName) {
+  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName && !log.knowledgeRevisions?.length) {
     return null;
   }
 
@@ -946,6 +946,12 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
           <span className="analysis-provenance__badge analysis-provenance__badge--domain">技能 {log.logDomainName}{log.skillRevision ? ` · v${log.skillRevision.number}` : ""}</span>
         ) : null}
       </div>
+      {log.knowledgeRevisions?.length ? <details className="analysis-provenance__reason">
+        <summary>实际检索的知识修订（{log.knowledgeRevisions.length}）</summary>
+        <ul>{log.knowledgeRevisions.map(({ entryId, revisionId }) => <li key={`${entryId}:${revisionId}`}>
+          {revisionId ? `条目 ${entryId} · 修订 ${revisionId}` : `无权查看的条目 · ${entryId}`}
+        </li>)}</ul>
+      </details> : null}
       {degraded ? (
         <p className="analysis-provenance__reason">{degraded.reason}</p>
       ) : null}

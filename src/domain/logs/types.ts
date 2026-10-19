@@ -67,7 +67,7 @@ export type LogDomainKnowledgeLink = {
   logDomainId: string;
   knowledgeEntryId: string;
   entryTitle: string;
-  entryStatus: "draft" | "published" | "archived";
+  entryStatus?: "draft" | "published" | "archived";
   entryTags: string[];
   linkedAt: string;
 };
@@ -128,6 +128,7 @@ export type LogSignalSummary = {
 };
 
 export type LogRecord = {
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
   signalSummary?: LogSignalSummary;
   files?: LogFile[];
   skillRevision?: { id: string; number: number } | null;

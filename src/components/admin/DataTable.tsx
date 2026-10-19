@@ -53,6 +53,8 @@ export type DataTableProps<TData> = {
   renderRowActions?: (row: TData) => ReactNode;
   className?: string;
   tableClassName?: string;
+  /** Fit the available width instead of enforcing the default 720px minimum. */
+  fluid?: boolean;
   visibleScrollRail?: boolean;
   compactControls?: boolean;
 };
@@ -98,6 +100,7 @@ export function DataTable<TData>({
   renderRowActions,
   className,
   tableClassName,
+  fluid = false,
   visibleScrollRail = false,
   compactControls = false
 }: DataTableProps<TData>) {
@@ -237,7 +240,7 @@ export function DataTable<TData>({
   return (
     <div className={cn("overflow-hidden rounded-lg border border-border bg-card", className)}>
       {toolbar ? <div className="border-b border-border p-3">{toolbar}</div> : null}
-      <HorizontalDragScroll className="data-table-scroll" visibleRail={visibleScrollRail}>
+      <HorizontalDragScroll className={cn("data-table-scroll", fluid && "data-table-scroll--fluid")} visibleRail={visibleScrollRail}>
         {/* M7 note: narrow screens use horizontal overflow; card-style row folding belongs in a later dedicated spec. */}
         <table aria-label={tableLabel} className={cn("w-full min-w-[720px] border-collapse text-sm", tableClassName)}>
           <thead>

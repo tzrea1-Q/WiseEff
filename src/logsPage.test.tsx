@@ -383,6 +383,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
           id: "log-agent",
           reportId: "RPT-AGENT",
           fileName: "agent_analysis.log",
+          knowledgeRevisions: [{ entryId: "retrieved-entry", revisionId: "retrieved-revision" }],
           analysisSource: "agent" as const
         },
         ...userState.logs
@@ -393,6 +394,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
 
     const provenance = screen.getByTestId("analysis-provenance");
     expect(provenance).toHaveTextContent("Agent 分析");
+    expect(provenance).toHaveTextContent("实际检索的知识修订（1）");
+    expect(provenance).toHaveTextContent("条目 retrieved-entry · 修订 retrieved-revision");
     expect(provenance).not.toHaveTextContent("降级分析");
     expect(screen.getByText("模型自估")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();

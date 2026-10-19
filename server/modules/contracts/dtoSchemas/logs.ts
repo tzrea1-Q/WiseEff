@@ -6,6 +6,7 @@ import { decodedEventSchema } from "../../logs/parsing/spec";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "../../logs/parsing/spec";
 
 export const skillRevisionPinSchema = z.object({ id: z.string(), number: z.number().int().positive() });
+const knowledgeRevisionSchema = z.object({ entryId: z.string().uuid(), revisionId: z.string().uuid().optional() });
 
 export const logStageSchema = z.enum(["parse", "pattern", "rootcause", "report"]);
 export const logRecordStatusSchema = z.enum(["uploaded", "processing", "complete", "failed"]);
@@ -49,6 +50,7 @@ export const logEvidenceDtoSchema = z.object({
 });
 
 export const logRecordDtoSchema = z.object({
+  knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
   signalSummary: logSignalSummarySchema.optional(),
   files: z.array(logFileDtoSchema).optional(),
   skillRevision: skillRevisionPinSchema.nullable().optional(),
@@ -95,6 +97,7 @@ export const logJobDtoSchema = z.object({
 });
 
 export const logRunDtoSchema = z.object({
+  knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
   skillRevision: skillRevisionPinSchema.nullable().optional(),
   id: z.string(),
   logId: z.string(),
@@ -190,7 +193,7 @@ export const logDomainKnowledgeLinkDtoSchema = z.object({
   logDomainId: z.string(),
   knowledgeEntryId: z.string(),
   entryTitle: z.string(),
-  entryStatus: z.enum(["draft", "published", "archived"]),
+  entryStatus: z.enum(["draft", "published", "archived"]).optional(),
   entryTags: z.array(z.string()),
   linkedAt: z.string()
 });

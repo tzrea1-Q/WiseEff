@@ -235,7 +235,7 @@ describe.skipIf(!databaseAvailable)("log domains service", () => {
       // Archive after linking: the stale link stays visible with the CURRENT status.
       await db.query(`update knowledge_entries set status = 'archived' where id = $1::uuid`, [ENTRY_PUBLISHED]);
 
-      const result = await listLogDomainKnowledgeLinkRecords(db, adminAuth, domain.id);
+      const result = await listLogDomainKnowledgeLinkRecords(db, makeAuth([...adminAuth.permissions, "knowledge:view"]), domain.id);
 
       expect(result.items).toEqual([
         expect.objectContaining({
@@ -305,7 +305,7 @@ describe.skipIf(!databaseAvailable)("log domains service", () => {
       await expect(
         setLogDomainKnowledgeLinkRecords(
           db,
-          adminAuth,
+          makeAuth([...adminAuth.permissions, "knowledge:view"]),
           { domainId: domain.id, knowledgeEntryIds: [ENTRY_DRAFT] },
           context
         )

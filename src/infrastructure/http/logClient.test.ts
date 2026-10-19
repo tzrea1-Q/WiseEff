@@ -220,8 +220,9 @@ describe("createHttpLogAnalysisRepository", () => {
     const repository = createRepository(fetchMock);
     await expect(repository.listLogSkills?.({ includeArchived: true })).resolves.toEqual([skill]);
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills?includeArchived=true");
-    fetchMock.mockResolvedValue(jsonResponse({ item: { ...baseLogDto, skillRevision: { id: "skill-v2", number: 2 } } }));
-    await expect(repository.getLog("log-1")).resolves.toMatchObject({ skillRevision: { id: "skill-v2", number: 2 } });
+    const knowledgeRevisions = [{ entryId: "6bd19f72-6710-4bbc-9d04-0a30bf151043", revisionId: "11e090bc-c5ef-4544-9900-01adcb20f558" }];
+    fetchMock.mockResolvedValue(jsonResponse({ item: { ...baseLogDto, knowledgeRevisions, skillRevision: { id: "skill-v2", number: 2 } } }));
+    await expect(repository.getLog("log-1")).resolves.toMatchObject({ knowledgeRevisions, skillRevision: { id: "skill-v2", number: 2 } });
   });
 
   it("sends skillId on upload and preserves explicit pinned rerun policy", async () => {

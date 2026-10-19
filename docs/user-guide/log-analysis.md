@@ -14,6 +14,19 @@ In API mode, Admins with `logs:admin-domains` can open a skill in `/log-admin?ta
 
 Save the draft, review the procedure's before/after text in the publish dialog, then publish to create a revision. Discard draft deletes the saved draft and unsaved edits, restoring the current published revision. Draft edits do not change queued analyses or reruns explicitly pinned to an older revision; new uploads use the current published revision. Procedures guide the read-only agent and cannot authorize writes or replace log evidence. Rule-fallback analysis ignores them.
 
+## Link knowledge to a skill
+
+Open a skill in `/log-admin?tab=skills` and choose Knowledge. The list shows each linked entry's title, publication status, current revision and update time. Choose Unlink to remove an entry from the skill draft; this does not delete the knowledge entry.
+
+Entries you cannot read appear with a restricted-entry label and their id; titles, tags, status, revision and update time remain hidden. Log administration does not grant knowledge access. Report sources also hide revision ids for unreadable entries while retaining the recorded entry ids.
+
+- Choose Link existing entry to search published entries in your Organization and add them to the draft. Entries from another Organization cannot be linked.
+- Choose Upload Markdown, or drop several `.md` files into the upload area, to create knowledge-base drafts and link them to the skill draft. This uses the normal knowledge creation workflow and audit. Review and publish each entry in Knowledge base before analysis can retrieve it; uploading does not publish it automatically.
+- Review each pending file's size and validation message, and remove unwanted files before submitting. Each file must be `.md`, at most 20 MiB and 200,000 characters. If some files fail, the dialog keeps their reasons and the successful results; retrying creates only the failed files.
+- Upload requires `knowledge:edit` in addition to skill-administration permission. Without it, the disabled action explains the missing permission. Linking existing published entries does not grant knowledge-editing permission.
+
+Save and publish the skill draft to make its link set available to new analyses. A run uses the entries linked by its pinned skill revision, so later skill edits cannot change that set. Unpublished and archived knowledge is excluded from retrieval. The report's source information records the entry and revision ids actually returned during analysis, rather than treating every linked entry as used. Later knowledge edits do not rewrite that run's recorded sources.
+
 ## Upload a log and choose its domain
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".

@@ -7,6 +7,7 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { getEntryById as getKnowledgeEntryById } from "../knowledge/repository";
+import { canReadEntry } from "../knowledge/policy";
 import {
   findLogDomainByName,
   getLogDomainById,
@@ -261,7 +262,7 @@ export async function listLogDomainKnowledgeLinkRecords(
   if (!domain) {
     throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
   }
-  return { items: await listLogDomainKnowledgeLinks(db, { organizationId: auth.organization.id, domainId }) };
+  return { items: await listLogDomainKnowledgeLinks(db, auth, domainId) };
 }
 
 /**
@@ -281,6 +282,11 @@ export async function setLogDomainKnowledgeLinkRecords(
   const knowledgeEntryIds = [...new Set(input.knowledgeEntryIds)];
 
   const items = await withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+    await lockSkill(tx, auth.organization.id, input.domainId);
+    const revisions = await listSkillRevisions(tx, auth.organization.id, input.domainId);
+    if (revisions.some((revision) => revision.status === "draft")) {
+      throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the skill draft before editing legacy knowledge links.");
+    }
     const domain = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!domain) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
@@ -288,7 +294,7 @@ export async function setLogDomainKnowledgeLinkRecords(
 
     for (const entryId of knowledgeEntryIds) {
       const entry = await getKnowledgeEntryById(tx, auth, entryId);
-      if (!entry) {
+      if (!entry || (entry.status !== "published" && !canReadEntry(auth, entry))) {
         throw new ApiError("NOT_FOUND", "Knowledge entry was not found.", { knowledgeEntryId: entryId });
       }
       if (entry.status !== "published") {
@@ -299,7 +305,9 @@ export async function setLogDomainKnowledgeLinkRecords(
       }
     }
 
-    const { added, removed } = await replaceLogDomainKnowledgeLinks(tx, {
+    const current = revisions.find((revision) => revision.status === "published")!;
+    const previousIds = current.spec.knowledgeEntryIds ?? [];
+    await replaceLogDomainKnowledgeLinks(tx, {
       organizationId: auth.organization.id,
       domainId: input.domainId,
       knowledgeEntryIds,
@@ -307,8 +315,13 @@ export async function setLogDomainKnowledgeLinkRecords(
       newLinkId: () => randomUUID()
     });
 
+    await tx.query(`update log_skill_revisions set status = 'superseded'
+      where organization_id = $1 and skill_id = $2 and status = 'published'`, [auth.organization.id, input.domainId]);
+    await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: input.domainId,
+      spec: { ...current.spec, knowledgeEntryIds }, userId: auth.user.id, published: true });
+
     return {
-      result: await listLogDomainKnowledgeLinks(tx, { organizationId: auth.organization.id, domainId: input.domainId }),
+      result: await listLogDomainKnowledgeLinks(tx, auth, input.domainId),
       audit: logDomainAudit({
         kind: "log-domain-knowledge-links-update",
         action: "update-knowledge-links",
@@ -316,8 +329,8 @@ export async function setLogDomainKnowledgeLinkRecords(
         metadata: {
           name: domain.name,
           linkedCount: knowledgeEntryIds.length,
-          addedCount: added.length,
-          removedCount: removed.length
+          addedCount: knowledgeEntryIds.filter((id) => !previousIds.includes(id)).length,
+          removedCount: previousIds.filter((id) => !knowledgeEntryIds.includes(id)).length
         }
       })
     };

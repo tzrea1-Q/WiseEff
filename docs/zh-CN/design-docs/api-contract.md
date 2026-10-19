@@ -380,7 +380,7 @@ GET  /api/v1/jobs/:jobId/events
 | `PUT` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`。`{ fileName, contentBase64 }` 替换技能唯一且不版本化的文本样例；base64 解码后的原文件最多 2 MiB，复用 bundle intake 的 UTF-8／带 BOM 的 UTF-16 检测。二进制或压缩包返回 `400` 与中文原因。返回 `{ item: metadata }`，同事务写入 `log-skill-sample-replace` 审计。对象名称独立；替换后保留旧对象。 |
 | `GET` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:view`。返回 `{ item: metadata & { content, truncated } \| null }`；无样例为 null，技能不可访问为 `404`。正文统一 LF、最多前 5000 行，`lineCount` 保留总行数。元数据包含 `id`、`skillId`、`fileName`、原始 `sizeBytes`、`sha256`、`encoding`、`lineCount`、可空 `uploadedByUserId`、`createdAt`、`updatedAt`，不暴露存储键。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`，按组织隔离，幂等返回 `204`；同事务写入 `log-skill-sample-delete`，保留对象与技能版本。 |
-| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules?, parsing?, procedure? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。省略信号规则时沿用平台充电规则。 |
+| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules?, parsing?, procedure?, knowledgeEntryIds? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。省略信号规则时沿用平台充电规则。 |
 | `POST` | `/api/v1/log-skills/:skillId/parse-preview` | 需 `logs:admin-domains`，按组织查找技能。请求 `{parsing, sampleText, fileName?}` 校验未保存的 `parsing/v1`；响应 `{valid, issues: [{path, message}], events, counts: {total, byExtractor, errors}, unmatchedLineCount, truncated, reason?}`。规范错误为 `200`、`valid: false` 和问题路径；样例超过 UTF-8 1 MiB 或请求体错误为 `400`。固定 100 ms 校验/解码硬超时、最多处理 5000 行及返回 500 事件，受限时返回部分结果及 `truncated: true`、`reason: time_cap \| line_cap \| event_cap`；计数描述已完成工作，未处理行计入未匹配。校验超时返回 `valid: false`、问题及相同时间上限标记。跨组织或不存在为 `404`，无权限为 `403`。只读，不写审计，不存样例。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId` | 必填查询参数 `draftRevisionId` 是编辑器看到的草稿 id。技能锁内若现有草稿 id 不同，返回 `409 LOG_SKILL_DRAFT_CONFLICT`；草稿匹配或已不存在时幂等返回 `204`。成功时写入 `log-skill-draft-discard` 审计，包括草稿已不存在的情况。 |
 | `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` 原子发布草稿并将前版置为 superseded；草稿缺失或过期返回 `409 LOG_SKILL_DRAFT_CONFLICT`；同步身份行的描述、基础格式和模型覆盖；成功返回 `{ item: skill }`。 |
@@ -389,6 +389,13 @@ GET  /api/v1/jobs/:jobId/events
 | `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`：`id`、`skillId`、`number`、`status`、`spec`、`contentHash`、创建和发布时间及用户。已发布/已替代版本内容不可变。账号删除时按既有历史保留策略清空作者/发布者引用，spec、哈希与发布事实不变。 |
 
 `skill/v1` 增加可选 `procedure`：Markdown，去除首尾空白，最多 20000 字符，无版本升级。版本差异在「概览」组显示流程内容；本切片不提供流程编辑器。
+
+`skill/v1.knowledgeEntryIds?: uuid[]` 将知识条目链接保存在技能草稿和不可变已发布版本中。服务端校验组织范围，拒绝跨组织条目 id。工作区通过正常的 `GET /api/v1/knowledge/entries?status=published&q=...` 搜索已有条目，上传则调用 `POST /api/v1/knowledge/entries` 并传入 Markdown 内容。上传创建知识草稿，需要 `knowledge:edit` 并保留正常知识审计，单有技能管理权限不足。新建草稿可以链接，但仍需单独发布后才能参与检索。取消链接不删除条目。
+
+`read_domain_knowledge` 使用运行钉住的技能版本所携带的条目 id，不读取实时身份链接集合。保留仅已发布可检索的行为，包括未配置链接时的全组织检索。报告/记录和运行 DTO 返回 `knowledgeRevisions: [{ entryId, revisionId }]`，保存该次运行实际返回的去重知识修订。链接但未检索到的条目不在其中。后续编辑或新知识修订不改写既有来源；未检索和历史未知来源均返回 `[]`。迁移 `0197` 在将既有业务域链接回填到当前已发布技能版本之前，先冻结旧运行的链接范围，不为历史报告补造来源。
+
+链接条目的元数据遵循知识模块的 `canReadEntry` 策略，日志管理权限不能代替知识读取权限。技能 spec 只携带条目 id。知识选择器需要 `knowledge:view`，仅列出已发布条目。旧链接接口对不可读条目返回「无权查看的条目」、空标签并省略 `entryStatus`；旧接口替换链接时，对不可读的未发布条目返回 `404`，不披露状态。报告、日志列表和运行来源保留 `entryId`，但省略不可读条目的 `revisionId`。这种读取时的投影不会改写已存储的来源。
+
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
 | `POST` | `/api/v1/logs` | 创建日志分析记录 |
 | `GET` | `/api/v1/logs` | 日志列表 |
@@ -403,8 +410,8 @@ GET  /api/v1/jobs/:jobId/events
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`；画像中的模式使用线性时间引擎上的 RE2 语法，不支持环视与反向引用，长度 ≤ 4,096 字符，超过 65,536 字符的行不参与匹配，不支持的模式返回 `400` 并给出字段路径） |
 | `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态/模型覆盖（`formatProfile: null` 清空画像；`modelOverride: null` 清空回全局 `LOG_ANALYSIS_MODEL`）。传入描述、格式画像或模型覆盖会立即发布新版本；技能锁内若已有工作区草稿，返回 `409 LOG_SKILL_DRAFT_EXISTS`（`Publish or discard the skill draft first.`）。仅修改名称/状态、归档和 Webhook 更新仍可用。 |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | 归档业务域；既有日志记录保留绑定 |
-| `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：列出业务域的知识条目关联及各条目当前状态（`logs:admin-domains`） |
-| `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：整组替换关联集合（`{ knowledgeEntryIds: uuid[] }`）。只接受本组织**已发布**知识条目（草稿/已归档 `400`，未知条目 `404`）；写 `log-domain-knowledge-links-update` 审计 |
+| `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | 列出当前已发布技能版本的知识条目链接及各条目当前状态（`logs:admin-domains`） |
+| `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | 立即发布新技能版本以整组替换链接集合（`{ knowledgeEntryIds: uuid[] }`），保留旧接口即时生效的行为。存在工作区草稿时返回 `409 LOG_SKILL_DRAFT_EXISTS`，须先发布或丢弃草稿。只接受本组织**已发布**知识条目（草稿/已归档 `400`，未知或跨组织条目 `404`）；写 `log-domain-knowledge-links-update` 审计。旧运行保留其钉住的链接范围。 |
 | `PUT` | `/api/v1/log-domains/:domainId/webhook` | P3b：整组替换结果 Webhook 配置（`{ url: string\|null, enabled: boolean, secret?: string\|null }`；省略 `secret` 保持现有密钥）。URL 必须通过 SSRF 策略（仅 https、禁止内嵌凭据、禁止私网/环回/元数据地址——`400` 带 `reason` 码 `webhook-url-scheme` / `webhook-url-private-address` / `webhook-url-required` / `webhook-secret-required`）。写 `log-domain-webhook-config` 审计；密钥绝不回显 |
 | `GET` | `/api/v1/log-domains/:domainId/webhook-deliveries` | P3b：最近投递尝试（`limit` 1..50，默认 10）——每次尝试一行，含 `kind`（`result`/`test`）、`attempt`、`status`（`delivered`/`retrying`/`failed`）、`httpStatus?`、`error?` |
 | `POST` | `/api/v1/log-domains/:domainId/webhook-test` | P3b：经同一 SSRF 防护的签名发送端发出单次测试投递；返回 `{ outcome: { status, attempts, httpStatus?, error? } }`，写 `log-domain-webhook-test` 审计 |

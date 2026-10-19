@@ -162,6 +162,8 @@ export function createLogAnalyzerFromEnv(
               db,
               organizationId: input.organizationId,
               logDomainId: input.logDomainId,
+              knowledgeEntryIds: input.knowledgeEntryIds,
+              onKnowledgeRetrieved: input.onKnowledgeRetrieved,
               relatedParameterId: input.relatedParameterId,
               relatedParameterSnapshot: input.relatedParameterSnapshot,
               sourceSnapshot: input.sourceSnapshot,

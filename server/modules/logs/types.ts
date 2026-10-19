@@ -25,6 +25,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
   signalSummary?: import("./genericSignals").LogSignalSummary;
   files?: import("./filesRepository").LogFileDto[];
   skillRevision: { id: string; number: number } | null;

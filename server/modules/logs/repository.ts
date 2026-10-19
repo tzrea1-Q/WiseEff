@@ -14,6 +14,7 @@ import type {
 import type { LogFormatProfile } from "./formatProfile";
 import type { LogSkillSpec } from "./skillSpec";
 import { currentSkillRevisionId } from "./skillsRepository";
+import { readableKnowledgeEntryIds } from "./skillKnowledge";
 import type { LogArchiveState, LogFeedbackRating, LogRecordDto } from "./types";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
@@ -30,7 +31,8 @@ type LogFileObjectRow = {
   created_at: string | Date;
 };
 
-type RevisionRow = { skill_revision_id?: string | null; skill_revision_number?: number | null };
+type RevisionRow = { skill_revision_id?: string | null; skill_revision_number?: number | null;
+  knowledge_revisions?: Array<{ entryId: string; revisionId: string }> };
 
 type LogRecordRow = RevisionRow & {
   signal_summary?: import("./genericSignals").LogSignalSummary | null;
@@ -108,6 +110,7 @@ type WorkerLogRunSnapshotRow = {
   log_domain_description: string | null;
   skill_revision_id: string | null;
   skill_revision_spec: LogSkillSpec | null;
+  legacy_knowledge_entry_ids: string[] | null;
   source_snapshot_id: string | null;
   source_snapshot_status: NonNullable<AnalyzeLogInput["sourceSnapshot"]>["status"] | null;
 };
@@ -125,6 +128,7 @@ export type LogFileObjectDto = {
 };
 
 export type LogRunDto = {
+  knowledgeRevisions: Array<{ entryId: string; revisionId?: string }>;
   skillRevision: { id: string; number: number } | null;
   id: string;
   logId: string;
@@ -152,6 +156,7 @@ export type CreateLogRecordWithRunAndJobInput = {
 };
 
 export type LogWorkerRunSnapshot = {
+  knowledgeEntryIds: string[];
   procedure?: LogSkillSpec["procedure"];
   parsing?: LogSkillSpec["parsing"];
   sourceSnapshot: AnalyzeLogInput["sourceSnapshot"];
@@ -189,6 +194,7 @@ export type PersistLogAnalysisReportInput = {
   logId: string;
   runId: string;
   report: {
+    knowledgeRevisions?: Array<{ entryId: string; revisionId: string }>;
     signalSummary?: import("./genericSignals").LogSignalSummary;
     confidence: number;
     conclusion: string;
@@ -251,7 +257,7 @@ function defaultImpact(status: LogRecordStatus) {
   return "Analysis results will be available after processing completes.";
 }
 
-function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]): LogRecordDto {
+function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], readableKnowledgeIds = new Set<string>()): LogRecordDto {
   const status = row.status;
 
   return {
@@ -280,6 +286,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
     failureReason: row.failure_reason ?? undefined,
     analysisQuestion: row.analysis_question ?? undefined,
     skillRevision: row.skill_revision_id && row.skill_revision_number ? { id: row.skill_revision_id, number: row.skill_revision_number } : null,
+    knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId }) => ({ entryId, ...(readableKnowledgeIds.has(entryId) ? { revisionId } : {}) })),
     logDomainId: row.log_domain_id ?? undefined,
     logDomainName: row.log_domain_name ?? undefined,
     analysisSource: row.analysis_source ?? undefined,
@@ -304,8 +311,9 @@ function toEvidenceDto(row: EvidenceRow): LogRecordDto["evidence"][number] {
   };
 }
 
-function toRunDto(row: RunRow): LogRunDto {
+function toRunDto(row: RunRow, readableKnowledgeIds: Set<string>): LogRunDto {
   return {
+    knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId }) => ({ entryId, ...(readableKnowledgeIds.has(entryId) ? { revisionId } : {}) })),
     id: row.id,
     logId: row.log_record_id,
     skillRevision: row.skill_revision_id && row.skill_revision_number ? { id: row.skill_revision_id, number: row.skill_revision_number } : null,
@@ -319,6 +327,7 @@ function toRunDto(row: RunRow): LogRunDto {
 
 function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnapshot {
   return {
+    knowledgeEntryIds: row.legacy_knowledge_entry_ids ?? row.skill_revision_spec?.knowledgeEntryIds ?? [],
     sourceSnapshot: row.source_snapshot_id && row.source_snapshot_status
       ? { id: row.source_snapshot_id, status: row.source_snapshot_status } : null,
     jobId: row.job_id,
@@ -381,7 +390,7 @@ const logSelect = `
     lr.analysis_question,
     lr.log_domain_id,
     ld.name as log_domain_name,
-    lar.skill_revision_id, sr.revision_number as skill_revision_number
+    lar.skill_revision_id, sr.revision_number as skill_revision_number, lar.knowledge_revisions
   from log_records lr
   inner join log_file_objects lfo on lfo.id = lr.file_object_id
   left join log_analysis_runs lar on lar.id = lr.current_run_id
@@ -659,7 +668,8 @@ export async function listLogs(
     values
   );
 
-  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
+  const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, result.rows.flatMap((row) => (row.knowledge_revisions ?? []).map((revision) => revision.entryId)));
+  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
 }
 
 export async function getLogDetail(db: Queryable, auth: AuthContext, logId: string) {
@@ -702,13 +712,14 @@ export async function getLogDetail(db: Queryable, auth: AuthContext, logId: stri
     [auth.organization.id, logId, row.current_run_id ?? null]
   );
 
-  return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto)), files: fileInventory(await loadLogFiles(db, auth.organization.id, logId)) };
+  const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, (row.knowledge_revisions ?? []).map((revision) => revision.entryId));
+  return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto), readableKnowledgeIds), files: fileInventory(await loadLogFiles(db, auth.organization.id, logId)) };
 }
 
 export async function listRuns(db: Queryable, auth: AuthContext, logId: string) {
   const result = await db.query<RunRow>(
     `
-    select lar.id, lar.log_record_id, lar.status, lar.current_stage, lar.progress, lar.error_message, lar.updated_at, lar.skill_revision_id, sr.revision_number as skill_revision_number
+    select lar.id, lar.log_record_id, lar.status, lar.current_stage, lar.progress, lar.error_message, lar.updated_at, lar.skill_revision_id, sr.revision_number as skill_revision_number, lar.knowledge_revisions
     from log_analysis_runs lar
     left join log_skill_revisions sr on sr.id = lar.skill_revision_id and sr.organization_id = lar.organization_id
     inner join log_records lr on lr.id = lar.log_record_id
@@ -720,7 +731,8 @@ export async function listRuns(db: Queryable, auth: AuthContext, logId: string) 
     [auth.organization.id, logId]
   );
 
-  return result.rows.map(toRunDto);
+  const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, result.rows.flatMap((row) => (row.knowledge_revisions ?? []).map((revision) => revision.entryId)));
+  return result.rows.map((row) => toRunDto(row, readableKnowledgeIds));
 }
 
 export async function updateRunProgress(
@@ -812,7 +824,7 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       lr.log_domain_id,
       ld.name as log_domain_name,
       ld.description as log_domain_description,
-      run.skill_revision_id, sr.spec as skill_revision_spec,
+      run.skill_revision_id, sr.spec as skill_revision_spec, run.legacy_knowledge_entry_ids,
       source.id as source_snapshot_id, source.status as source_snapshot_status
     from jobs job
     inner join log_analysis_runs run
@@ -861,6 +873,8 @@ export async function persistLogDecodedArtifact(db: Database, input: {
 
 export async function persistLogAnalysisReport(db: Database, input: PersistLogAnalysisReportInput) {
   await db.transaction(async (tx) => {
+    await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb where organization_id = $1 and id = $2`,
+      [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? [])]);
     await tx.query(
       `
       insert into log_analysis_reports (
@@ -952,6 +966,9 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
       if (!progressUpdated) {
         throw new LogJobLeaseLostError();
       }
+
+      await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb where organization_id = $1 and id = $2`,
+        [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? [])]);
 
       await tx.query(
         `
@@ -1304,18 +1321,23 @@ export async function createRerunWithJob(
     analysisQuestion?: string;
     logDomainId?: string;
     skillRevisionId: string | null;
+    preserveLegacyKnowledgeScope?: boolean;
     relatedParameterSnapshot?: RelatedParameterRunSnapshot;
   }
 ): Promise<LogAnalysisJobDto> {
   await db.query<RunRow>(
     `
     insert into log_analysis_runs (
-      id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id
+      id, organization_id, log_record_id, status, current_stage, progress, related_parameter_snapshot, skill_revision_id, legacy_knowledge_entry_ids
     )
-    values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5)
+    values ($1, $2, $3, 'queued', 'parse', 0, $4::jsonb, $5,
+      case when $6::boolean then (select old.legacy_knowledge_entry_ids from log_records record
+        join log_analysis_runs old on old.id = record.current_run_id and old.organization_id = record.organization_id
+        where record.organization_id = $2 and record.id = $3) end)
     returning id, log_record_id, status, current_stage, progress, error_message, updated_at
     `,
-    [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null, input.skillRevisionId]
+    [input.runId, input.organizationId, input.logId, input.relatedParameterSnapshot ? jsonb(input.relatedParameterSnapshot) : null, input.skillRevisionId,
+      Boolean(input.preserveLegacyKnowledgeScope)]
   );
   const job = await createLogAnalysisJob(db, {
     id: input.jobId,
