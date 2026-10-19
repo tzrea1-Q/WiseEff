@@ -52,7 +52,8 @@ export const createLogFileBodySchema = z
     analysisQuestion: z.string().optional(),
     relatedParameterId: nonEmptyString.optional(),
     relatedParameterPin: relatedParameterPinSchema.optional(),
-    logDomainId: nonEmptyString.optional()
+    logDomainId: nonEmptyString.optional(),
+    skillId: nonEmptyString.optional()
   })
   .superRefine(rejectMismatchedRelatedParameterPin);
 
@@ -63,7 +64,8 @@ export const createLogBodySchema = z
     analysisQuestion: z.string().optional(),
     relatedParameterId: nonEmptyString.optional(),
     relatedParameterPin: relatedParameterPinSchema.optional(),
-    logDomainId: nonEmptyString.optional()
+    logDomainId: nonEmptyString.optional(),
+    skillId: nonEmptyString.optional()
   })
   .superRefine(rejectMismatchedRelatedParameterPin);
 
@@ -91,7 +93,9 @@ export const feedbackInsightsQuerySchema = z.object({
 
 export const rerunLogBodySchema = z.object({
   analysisQuestion: z.string().optional(),
-  logDomainId: nonEmptyString.optional()
+  logDomainId: nonEmptyString.optional(),
+  skillId: nonEmptyString.optional(),
+  revisionPolicy: z.enum(["current", "pinned"]).default("current")
 });
 
 export const listLogDomainsQuerySchema = z.object({

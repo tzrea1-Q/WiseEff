@@ -277,6 +277,7 @@ async function processClaimedLogAnalysisJob(
     currentFailureReason = "object_store_error";
     const bytes = await objectStore.get(snapshot.storageKey);
     currentFailureReason = "parse_error";
+    if (snapshot.logDomain && !snapshot.skillRevisionId) throw new Error("Analysis skill run has no pinned revision.");
     const formatProfile = readStoredLogFormatProfile(snapshot.logDomain?.formatProfile ?? undefined);
     const parsed = parseLogText({ fileName: snapshot.fileName, content: bytes }, { profile: formatProfile });
     if (!parsed.ok) {
@@ -339,6 +340,7 @@ async function processClaimedLogAnalysisJob(
     const analysis = await analyzeWithDegradation({
       analyzer,
       analyzeInput: {
+        signalRules: snapshot.signalRules,
         parsed,
         analysisQuestion: snapshot.analysisQuestion ?? undefined,
         logDomain: snapshot.logDomain

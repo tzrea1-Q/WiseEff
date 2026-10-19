@@ -199,7 +199,7 @@ import { consistencyRoutes, viewSwitchStyleExpectations } from "../e2e/quality/c
 describe("administration collection coverage", () => {
   it.each([
     "/knowledge-admin?tab=drafts", "/knowledge-admin?tab=index", "/knowledge-admin?tab=archived",
-    "/log-admin?tab=records", "/log-admin?tab=domains", "/log-admin?tab=quality"
+    "/log-admin?tab=records", "/log-admin?tab=skills", "/log-admin?tab=quality"
   ])("measures template geometry, scrollports and tab styles on %s", (path) => {
     expect(consistencyRoutes.find((route) => route.path === path)?.required)
       .toEqual(expect.arrayContaining(["adminLists", "viewSwitches", "viewSwitchSignatures", "tableScrollports"]));

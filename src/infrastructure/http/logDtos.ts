@@ -19,6 +19,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  skillRevision?: { id: string; number: number } | null;
   id: string;
   reportId: string;
   fileName: string;
@@ -55,6 +56,10 @@ export type LogRecordDto = {
 };
 
 export type LogDomainDto = {
+  currentRevision?: { id: string; number: number; publishedAt: string | null };
+  hasDraft?: boolean;
+  analyses7d?: number;
+  helpfulRate7d?: number | null;
   id: string;
   name: string;
   description?: string;
@@ -95,6 +100,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
   return {
     id: dto.id,
     reportId: dto.reportId,
+    skillRevision: dto.skillRevision ?? null,
     fileName: dto.fileName,
     source: dto.source,
     fileSizeMB: Math.round((dto.fileSizeBytes / 1024 / 1024) * 10) / 10,
@@ -134,6 +140,10 @@ export function logDomainFromDto(dto: LogDomainDto): LogDomain {
     name: dto.name,
     description: dto.description,
     status: dto.status,
+    currentRevision: dto.currentRevision,
+    hasDraft: dto.hasDraft,
+    analyses7d: dto.analyses7d,
+    helpfulRate7d: dto.helpfulRate7d,
     formatProfile: dto.formatProfile,
     modelOverride: dto.modelOverride,
     webhook: dto.webhook,

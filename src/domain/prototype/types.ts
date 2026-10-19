@@ -201,6 +201,7 @@ export type ParameterSubmissionRound = {
 };
 
 export type LogRecord = {
+  skillRevision?: { id: string; number: number } | null;
   id: string;
   reportId: string;
   fileName: string;

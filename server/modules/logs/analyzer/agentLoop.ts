@@ -164,7 +164,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
 
   return {
     async analyze(input) {
-      const findings = runLogPrefilter(input.parsed.entries);
+      const findings = runLogPrefilter(input.parsed.entries, input.signalRules);
       const toolContext: LogAnalysisToolContext = {
         parsed: input.parsed,
         prefilter: findings,

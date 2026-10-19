@@ -327,6 +327,13 @@ POST /api/v1/logs/:logId/archive
 POST /api/v1/logs/:logId/unarchive
 POST /api/v1/logs/:logId/feedback
 GET  /api/v1/logs/feedback-insights
+GET  /api/v1/log-skills
+GET  /api/v1/log-skills/:skillId
+POST /api/v1/log-skills
+PUT  /api/v1/log-skills/:skillId/draft
+POST /api/v1/log-skills/:skillId/publish
+GET  /api/v1/log-skills/:skillId/revisions
+GET  /api/v1/log-skills/:skillId/revisions/:revisionId
 GET  /api/v1/log-domains
 POST /api/v1/log-domains
 PATCH /api/v1/log-domains/:domainId
@@ -342,6 +349,13 @@ GET  /api/v1/jobs/:jobId/events
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| `GET` | `/api/v1/log-skills` | `{ items }`：技能身份、`currentRevision: { id, number, publishedAt }`、`hasDraft`、`analyses7d`（近七天创建的运行数）、`helpfulRate7d`（0..1，无反馈为 null；归因语义同反馈洞察）。`includeArchived=true` 包含归档技能。 |
+| `GET` | `/api/v1/log-skills/:skillId` | `{ item }`：技能身份、完整 `currentRevision` 与可空 `draft`。 |
+| `POST` | `/api/v1/log-skills` | `{ name, description?, formatProfile? }` 创建身份与已发布 v1；返回 `201 { item }`；校验同旧创建接口。 |
+| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", formatProfile?, modelOverride?, signalRules? } }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。省略信号规则时沿用平台充电规则。 |
+| `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` 原子发布草稿并将前版置为 superseded；草稿缺失或过期返回 `409`；成功返回 `{ item: skill }`。 |
+| `GET` | `/api/v1/log-skills/:skillId/revisions` | `{ items: revision[] }`，版本号倒序。 |
+| `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`：`id`、`skillId`、`number`、`status`、`spec`、`contentHash`、创建和发布时间及用户。已发布/已替代版本内容不可变。账号删除时按既有历史保留策略清空作者/发布者引用，spec、哈希与发布事实不变。 |
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
 | `POST` | `/api/v1/logs` | 创建日志分析记录 |
 | `GET` | `/api/v1/logs` | 日志列表 |
@@ -365,6 +379,10 @@ GET  /api/v1/jobs/:jobId/events
 业务域 DTO 携带 `modelOverride?` 与 Webhook 摘要 `{ enabled, url?, secretConfigured, secretLastFour? }`——签名密钥本身只写不读。出站结果 Webhook 的载荷与签名方案（`X-WiseEff-Signature` = 对 `timestamp.rawBody` 的 HMAC-SHA256,`X-WiseEff-Timestamp` 重放窗口）见 [`docs/zh-CN/api/log-analysis-integration.md`](../api/log-analysis-integration.md);投递尽力而为,绝不阻塞分析。
 
 `POST /api/v1/log-files` 在 M2 接受 JSON base64 内容，后续可替换为签名上传凭证而不改变 `POST /api/v1/logs` 的分析合同。
+
+分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，写入要求 `logs:admin-domains`；每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save` 或 `log-skill-publish` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、描述、状态、知识关联和 Webhook 配置仍属于身份。
+
+上传、创建与 rerun 接受 `skillId`，`logDomainId` 继续作为别名。rerun 接受 `revisionPolicy: "current" | "pinned"`，默认 `current` 使用当前发布版本；`pinned` 复用前一次运行版本，不能同时更换技能。未分类运行保持 null 钉住值并使用平台默认配置。记录和运行 DTO 暴露 `skillRevision: { id, number } | null`；结果 Webhook 增加可空 `skillRevisionId`、`skillRevisionNumber`。Worker 只从所钉版本读取格式画像、模型覆盖和信号规则。
 
 上传、创建与 rerun 接受可选 `logDomainId`：必须属于本组织且为 `active`，否则 `400`；缺省即内建未分类域语义（通用分析，上传绝不因域选择被阻塞）。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
 

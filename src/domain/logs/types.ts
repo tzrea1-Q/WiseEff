@@ -41,6 +41,10 @@ export type LogWebhookDelivery = {
 
 /** Org-scoped log domain registration (业务域); absence on a record = 未分类域. */
 export type LogDomain = {
+  currentRevision?: { id: string; number: number; publishedAt: string | null };
+  hasDraft?: boolean;
+  analyses7d?: number;
+  helpfulRate7d?: number | null;
   id: string;
   name: string;
   description?: string;
@@ -96,6 +100,7 @@ export type LogEvidence = {
 };
 
 export type LogRecord = {
+  skillRevision?: { id: string; number: number } | null;
   id: string;
   reportId: string;
   fileName: string;

@@ -244,8 +244,8 @@ function createFakeWorkerDb(fixture = createFixture()) {
               log_domain_id: fixture.log.log_domain?.id ?? null,
               log_domain_name: fixture.log.log_domain?.name ?? null,
               log_domain_description: null,
-              log_domain_format_profile: null,
-              log_domain_model_override: fixture.log.log_domain?.model_override ?? null
+              skill_revision_id: fixture.log.log_domain ? "revision-1" : null,
+              skill_revision_spec: fixture.log.log_domain ? { schemaVersion: "skill/v1", modelOverride: fixture.log.log_domain.model_override ?? undefined } : null
             } as Row
           ],
           rowCount: 1

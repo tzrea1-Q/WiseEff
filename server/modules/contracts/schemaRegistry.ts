@@ -1010,7 +1010,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.list": { summary: "List log records", tags: ["logs"], responseBody: "LogRecordListResponse" },
   "logs.get": { summary: "Get log record", tags: ["logs"], responseBody: "LogRecordResponse" },
   "logs.listRuns": { summary: "List log analysis runs", tags: ["logs"], responseBody: "LogRunListResponse" },
-  "logs.rerun": { summary: "Rerun log analysis", tags: ["logs"], responseBody: "LogRunResponse" },
+  "logs.rerun": { summary: "Rerun log analysis", tags: ["logs"], requestBody: "LogRerunRequest", responseBody: "LogRunResponse" },
   "logs.archive": { summary: "Archive log record", tags: ["logs"], responseBody: "LogRecordResponse" },
   "logs.unarchive": { summary: "Unarchive log record", tags: ["logs"], responseBody: "LogRecordResponse" },
   "logs.feedback": {
@@ -1024,6 +1024,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["logs"],
     responseBody: "LogFeedbackInsightsResponse"
   },
+  "logs.listSkills": { summary: "List analysis skills", tags: ["logs"], responseBody: "LogSkillListResponse" },
+  "logs.createSkill": { summary: "Create analysis skill", tags: ["logs"], requestBody: "CreateLogDomainRequest", responseBody: "LogSkillResponse", successStatus: 201 },
+  "logs.getSkill": { summary: "Get analysis skill", tags: ["logs"], responseBody: "LogSkillResponse" },
+  "logs.saveSkillDraft": { summary: "Save skill draft", tags: ["logs"], requestBody: "LogSkillDraftRequest", responseBody: "LogSkillRevisionResponse" },
+  "logs.publishSkill": { summary: "Publish skill revision", tags: ["logs"], requestBody: "LogSkillPublishRequest", responseBody: "LogSkillResponse", additionalResponses: { "409": "ErrorResponse" } },
+  "logs.listSkillRevisions": { summary: "List skill revisions", tags: ["logs"], responseBody: "LogSkillRevisionListResponse" },
+  "logs.getSkillRevision": { summary: "Get skill revision", tags: ["logs"], responseBody: "LogSkillRevisionResponse" },
   "logs.listDomains": {
     summary: "List log domains",
     tags: ["logs"],

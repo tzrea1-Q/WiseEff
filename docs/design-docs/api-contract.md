@@ -38,7 +38,23 @@ Rules:
 
 M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authenticated `organization_id`. A new log association requires `relatedParameterPin: { kind: "canonical-pin", projectId, bindingId, definitionId?, definitionRevisionId? }`; the server authorizes that exact project Binding and freezes its canonical Value, DefinitionRevision, and source pin for each analysis run. Rerun resolves the current Binding again; prior run snapshots and reports remain historical. `relatedParameterId` alone is not accepted for new uploads, and legacy stored links without a verified project scope cannot be treated as current. Unassociated log uploads and debugging APIs do not accept a top-level `projectId` field.
 
-## Log Domains and Analyzer Provenance
+## Analysis Skills, Revisions and Analyzer Provenance
+
+Analysis skills retain their `log_domains` identities and ids. Reads require `logs:view`; writes require `logs:admin-domains`. New-resource writes commit `log-skill-create`, `log-skill-draft-save` or `log-skill-publish` audit events in the same transaction. All lookups are organization-scoped; foreign identities/revisions return `404`.
+
+| Method | Path | Shape |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-skills` | `{ items }`: identity, `currentRevision: { id, number, publishedAt }`, `hasDraft`, `analyses7d` (runs created in seven days), `helpfulRate7d` (0..1, null without feedback; same attribution semantics as feedback insights). `includeArchived=true` includes archived skills. |
+| `GET` | `/api/v1/log-skills/:skillId` | `{ item }`: identity, full `currentRevision`, nullable `draft`. |
+| `POST` | `/api/v1/log-skills` | `{ name, description?, formatProfile? }` creates identity + published v1; `201 { item }`. Same validation as legacy create. |
+| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", formatProfile?, modelOverride?, signalRules? } }` replaces the draft, returning `{ item: revision }` with a fresh draft id. Absent signal rules use the platform charging defaults. |
+| `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` atomically publishes that draft and supersedes the previous publication; missing/stale draft returns `409`. Returns `{ item: skill }`. |
+| `GET` | `/api/v1/log-skills/:skillId/revisions` | `{ items: revision[] }`, newest revision number first. |
+| `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`; revisions contain `id`, `skillId`, `number`, `status`, `spec`, `contentHash`, creation and publication times/users. Published/superseded content is immutable. Account deletion clears author/publisher references under the existing history-retention policy; spec, hash and publication facts remain unchanged. |
+
+Upload/create/rerun accept `skillId`; `logDomainId` remains an alias. Rerun accepts `revisionPolicy: "current" | "pinned"` (default `current`): `current` pins the current publication; `pinned` reuses the preceding run's revision and cannot change its skill. Uncategorized runs retain a null pin and platform defaults. Records/runs expose `skillRevision: { id, number } | null`; result webhook payloads add nullable `skillRevisionId` and `skillRevisionNumber`. Workers read format profile, model override and signal rules solely from the pinned revision.
+
+All legacy endpoints below remain supported. Domain creation also publishes v1. A PATCH containing `formatProfile` or `modelOverride` immediately publishes a new revision, preserves any separate draft and leaves old run pins unchanged. Name, description, status, knowledge links and webhook configuration stay on the identity.
 
 Log domains are org-scoped registrations of a business's log intake (name, description, optional declarative format profile). Governance requires `logs:admin-domains` and every mutation writes a `log-domain-*` audit event. Format-profile patterns use RE2 syntax on a linear-time engine (no lookaround or backreferences; at most 4,096 characters), and lines longer than 65,536 characters are not matched by them; an unsupported pattern is rejected with `400` and its field path.
 

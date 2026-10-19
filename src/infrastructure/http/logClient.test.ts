@@ -61,6 +61,30 @@ function createRepository(fetchMock: typeof fetch) {
 }
 
 describe("createHttpLogAnalysisRepository", () => {
+  it("reads skill publication summaries and preserves the run revision pin", async () => {
+    const skill = { id: "skill-1", name: "设备诊断", status: "active", createdAt: "2026-10-18", updatedAt: "2026-10-18",
+      currentRevision: { id: "skill-v2", number: 2, publishedAt: "2026-10-18" }, hasDraft: true, analyses7d: 4, helpfulRate7d: 0.75 };
+    const fetchMock = createFetchMock({ items: [skill] });
+    const repository = createRepository(fetchMock);
+    await expect(repository.listLogSkills?.({ includeArchived: true })).resolves.toEqual([skill]);
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills?includeArchived=true");
+    fetchMock.mockResolvedValue(jsonResponse({ item: { ...baseLogDto, skillRevision: { id: "skill-v2", number: 2 } } }));
+    await expect(repository.getLog("log-1")).resolves.toMatchObject({ skillRevision: { id: "skill-v2", number: 2 } });
+  });
+
+  it("sends skillId on upload and preserves explicit pinned rerun policy", async () => {
+    const fetchMock = createFetchMock({ fileObject: { id: "file-1" }, log: baseLogDto, job: baseJobDto }, 201);
+    const repository = createRepository(fetchMock);
+    const file = new File(["INFO ok"], "device.log", { type: "text/plain" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new TextEncoder().encode("INFO ok").buffer });
+    await repository.uploadLog({ file, skillId: "skill-1" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ fileName: "device.log", contentType: "text/plain",
+      contentBase64: btoa("INFO ok"), skillId: "skill-1" });
+    fetchMock.mockResolvedValue(jsonResponse({ log: baseLogDto, job: baseJobDto }));
+    await repository.rerunLog({ logId: "log-1", revisionPolicy: "pinned" });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ revisionPolicy: "pinned" });
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();

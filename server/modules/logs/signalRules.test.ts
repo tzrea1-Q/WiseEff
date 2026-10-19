@@ -18,12 +18,18 @@ function analyze(entries: ParsedLogEntry[], ruleSet?: SignalRuleSet) {
 
 describe("signal conditions", () => {
   it("matches the message and key=value tokens with flags, without state leaking between lines", () => {
-    const matches = compileSignalCondition({ type: "text", pattern: "ALERT|state=failed", flags: "gi" });
+    const matches = compileSignalCondition({ type: "text", pattern: "ALERT|state=failed", flags: "i" });
     expect(matches(entry({ message: "alert" }))).toBe(true);
     expect(matches(entry({ message: "alert" }))).toBe(true);
     expect(matches(entry({ tokens: { state: "failed" } }))).toBe(true);
     expect(matches(entry())).toBe(false);
     expect(compileSignalCondition({ type: "text", pattern: "ALERT" })(entry({ message: "alert" }))).toBe(false);
+  });
+
+  it("supports the RE2 multiline and dotall flags", () => {
+    const matches = compileSignalCondition({ type: "text", pattern: "^ALERT.*FAIL$", flags: "ims" });
+    expect(matches(entry({ message: "prefix\nalert\nfail\nsuffix" }))).toBe(true);
+    expect(compileSignalCondition({ type: "text", pattern: "^ALERT.*FAIL$", flags: "im" })(entry({ message: "prefix\nalert\nfail\nsuffix" }))).toBe(false);
   });
 
   it.each([
@@ -77,7 +83,9 @@ describe("signal rule schema", () => {
   });
 
   it.each([
-    ["pattern", "["], ["flags", "ii"], ["flags", "invalid"]
+    ["pattern", "["], ["pattern", "(?=a)a"], ["pattern", "(?!a)b"],
+    ["pattern", "(?<=a)b"], ["pattern", "(?<!a)b"], ["pattern", "(a)\\1"], ["pattern", "(?<a>x)\\k<a>"],
+    ["flags", "g"], ["flags", "y"], ["flags", "u"], ["flags", "v"], ["flags", "d"], ["flags", "ii"], ["flags", "invalid"]
   ])("rejects invalid %s at the exact condition path", (field, value) => {
     const data = structuredClone(defaultChargingRuleSet);
     data.rules[0].anyOf[0] = { type: "text", pattern: "valid", [field]: value };
@@ -85,7 +93,7 @@ describe("signal rule schema", () => {
     expect(result.success).toBe(false);
     if (result.success) throw new Error("Expected invalid pattern/flags");
     expect(result.error.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: ["rules", 0, "anyOf", 0, field], message: expect.stringMatching(/SyntaxError/) })
+      expect.objectContaining({ path: ["rules", 0, "anyOf", 0, field], message: expect.stringMatching(/LogPatternError/) })
     ]));
   });
 

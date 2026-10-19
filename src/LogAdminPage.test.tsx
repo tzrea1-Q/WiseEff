@@ -36,7 +36,7 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
   const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {
     setActions(nextActions);
   }, []);
-  const contextValue = useMemo(() => ({ setActions: setStableActions }), [setStableActions]);
+  const contextValue = useMemo(() => ({ setActions: setStableActions, setLeadingActions: () => undefined }), [setStableActions]);
 
   return (
     <TopBarActionsContext.Provider value={contextValue}>
@@ -102,7 +102,7 @@ describe("LogAdminPage M3 skeleton", () => {
       window.history.replaceState(null, "", "/log-admin?tab=domains");
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
-    expect(screen.getByRole("tab", { name: "业务域治理" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "分析技能" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getAllByRole("table")).toHaveLength(1);
   });
   it("moves page actions into the topbar instead of rendering a page header", () => {
@@ -586,13 +586,13 @@ describe("LogAdminPage · page header actions", () => {
   });
 });
 
-describe("LogAdminPage 业务域治理", () => {
+describe("LogAdminPage 分析技能治理", () => {
   beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=domains"));
 
   it("confirms domain archival from overflow before writing", async () => {
     const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([chargingDomain]) });
     renderPage({ logActions });
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: "charging-power：更多" }));
     await userEvent.click(screen.getByRole("menuitem", { name: "归档" }));
     expect(logActions.archiveLogDomain).not.toHaveBeenCalled();
@@ -602,15 +602,17 @@ describe("LogAdminPage 业务域治理", () => {
 
   it("preserves domain edits while visiting another collection", async () => {
     renderPage({ logActions: createLogActions() });
-    await userEvent.click(within(screen.getByRole("group", { name: "业务域治理操作" })).getByRole("button", { name: "新建业务域" }));
-    await userEvent.type(screen.getByLabelText(/名称/), "未保存业务域");
+    await userEvent.click(within(screen.getByRole("group", { name: "分析技能治理操作" })).getByRole("button", { name: "新建分析技能" }));
+    await userEvent.type(screen.getByLabelText(/名称/), "未保存分析技能");
     await userEvent.click(screen.getByRole("tab", { name: "日志分析记录" }));
-    expect(screen.queryByRole("form", { name: "新建业务域" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("tab", { name: "业务域治理" }));
-    expect(screen.getByLabelText(/名称/)).toHaveValue("未保存业务域");
+    expect(screen.queryByRole("form", { name: "新建分析技能" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "分析技能" }));
+    expect(screen.getByLabelText(/名称/)).toHaveValue("未保存分析技能");
   });
   const chargingDomain = {
     id: "domain-charging",
+    currentRevision: { id: "revision-2", number: 2, publishedAt: "2026-10-18T00:00:00.000Z" },
+    helpfulRate7d: 0.75,
     name: "charging-power",
     description: "充电/电源子系统内核日志",
     status: "active" as const,
@@ -626,8 +628,12 @@ describe("LogAdminPage 业务域治理", () => {
     renderPage({ logActions });
 
     await waitFor(() => expect(logActions.listLogDomains).toHaveBeenCalledWith({ includeArchived: true }));
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     expect(within(table).getByText("charging-power")).toBeInTheDocument();
+    expect(within(table).getAllByText("v2")).toHaveLength(2);
+    expect(within(table).getAllByText("75%")).toHaveLength(2);
+    expect(within(table).getByRole("columnheader", { name: /当前版本/ })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /近 7 天有用率/ })).toBeInTheDocument();
     expect(within(table).getByText("legacy")).toBeInTheDocument();
     expect(within(table).getByText("已归档")).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: /名称/ })).toHaveAttribute("aria-sort", "none");
@@ -639,8 +645,8 @@ describe("LogAdminPage 业务域治理", () => {
     const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([]) });
     renderPage({ logActions });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
-    expect(within(table).getByText("暂无业务域；未分类域始终可用（通用分析）。")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
+    expect(within(table).getByText("暂无分析技能；未分类域始终可用（通用分析）。")).toBeInTheDocument();
   });
 
   it("sorts the domain list from the 名称 column header", async () => {
@@ -652,7 +658,7 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     const nameHeader = within(table).getByRole("columnheader", { name: /名称/ });
     await userEvent.click(within(nameHeader).getByRole("button", { name: /名称/ }));
 
@@ -671,7 +677,7 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     const statusHeader = within(table).getByRole("columnheader", { name: /状态/ });
     await userEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
     await userEvent.click(within(statusHeader).getByRole("checkbox", { name: "已归档" }));
@@ -688,13 +694,13 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    await userEvent.click(await within(screen.getByRole("group", { name: "业务域治理操作" })).findByRole("button", { name: "新建业务域" }));
+    await userEvent.click(await within(screen.getByRole("group", { name: "分析技能治理操作" })).findByRole("button", { name: "新建分析技能" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
     await userEvent.type(screen.getByLabelText(/描述/), "充电域");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
     await userEvent.click(profileInput);
     await userEvent.paste('{"timestampPattern": "^x"}');
-    await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
+    await userEvent.click(screen.getByRole("button", { name: "创建分析技能" }));
 
     await waitFor(() =>
       expect(logActions.createLogDomain).toHaveBeenCalledWith({
@@ -709,12 +715,12 @@ describe("LogAdminPage 业务域治理", () => {
     const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([]) });
     renderPage({ logActions });
 
-    await userEvent.click(await within(screen.getByRole("group", { name: "业务域治理操作" })).findByRole("button", { name: "新建业务域" }));
+    await userEvent.click(await within(screen.getByRole("group", { name: "分析技能治理操作" })).findByRole("button", { name: "新建分析技能" }));
     await userEvent.type(screen.getByLabelText(/名称/), "broken");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
     await userEvent.click(profileInput);
     await userEvent.paste("{not json");
-    await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
+    await userEvent.click(screen.getByRole("button", { name: "创建分析技能" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/画像 JSON 无法解析/);
     expect(logActions.createLogDomain).not.toHaveBeenCalled();
@@ -734,16 +740,16 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    await userEvent.click(await within(screen.getByRole("group", { name: "业务域治理操作" })).findByRole("button", { name: "新建业务域" }));
+    await userEvent.click(await within(screen.getByRole("group", { name: "分析技能治理操作" })).findByRole("button", { name: "新建分析技能" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
     await userEvent.click(profileInput);
     await userEvent.paste('{"timestampPattern":"(["}');
-    await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
+    await userEvent.click(screen.getByRole("button", { name: "创建分析技能" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("timestampPattern 不是合法正则表达式。");
     expect(screen.getByLabelText(/格式画像 JSON/)).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByRole("form", { name: "新建业务域" })).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "新建分析技能" })).toBeInTheDocument();
   });
 
   it("shows an inline name error when creating a duplicate domain", async () => {
@@ -760,11 +766,11 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    await userEvent.click(await within(screen.getByRole("group", { name: "业务域治理操作" })).findByRole("button", { name: "新建业务域" }));
+    await userEvent.click(await within(screen.getByRole("group", { name: "分析技能治理操作" })).findByRole("button", { name: "新建分析技能" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
-    await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
+    await userEvent.click(screen.getByRole("button", { name: "创建分析技能" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("该业务域名称已存在，请换一个名称。");
+    expect(await screen.findByRole("alert")).toHaveTextContent("该分析技能名称已存在，请换一个名称。");
     expect(screen.getByLabelText(/名称/)).toHaveAttribute("aria-invalid", "true");
   });
 
@@ -775,7 +781,7 @@ describe("LogAdminPage 业务域治理", () => {
     });
     renderPage({ logActions });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "归档" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "归档" }));
@@ -786,7 +792,7 @@ describe("LogAdminPage 业务域治理", () => {
   it("shows the mock-mode hint without runtime actions", () => {
     renderPage();
 
-    expect(screen.getByTestId("log-domain-governance")).toHaveTextContent(/业务域治理需在 API 模式下使用/);
+    expect(screen.getByTestId("log-domain-governance")).toHaveTextContent(/分析技能治理需在 API 模式下使用/);
   });
 
   it("gates governance behind the admin role", () => {
@@ -799,11 +805,11 @@ describe("LogAdminPage 业务域治理", () => {
     );
 
     expect(screen.getByTestId("log-domain-governance")).toHaveTextContent(/需要 Admin 权限/);
-    expect(screen.queryByRole("button", { name: "新建业务域" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建分析技能" })).not.toBeInTheDocument();
   });
 });
 
-describe("LogAdminPage 业务域知识条目关联", () => {
+describe("LogAdminPage 分析技能知识条目关联", () => {
   beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=domains"));
   const chargingDomain = {
     id: "domain-charging",
@@ -825,6 +831,8 @@ describe("LogAdminPage 业务域知识条目关联", () => {
       sourceType: "human",
       sourceSessionId: null,
       sourceLogId: null,
+      sourceReloadRunId: null,
+      parameterReferences: [],
       createdByUserId: "u-1",
       headRevisionNumber: 1,
       createdAt: "2026-08-12T00:00:00.000Z",
@@ -862,7 +870,7 @@ describe("LogAdminPage 业务域知识条目关联", () => {
     const knowledgeRepository = makeKnowledgeRepository([makePublishedEntry()]);
     renderPage({ logActions, knowledgeRepository });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "知识条目" }));
 
@@ -909,7 +917,7 @@ describe("LogAdminPage 业务域知识条目关联", () => {
     });
     renderPage({ logActions, knowledgeRepository: makeKnowledgeRepository([makePublishedEntry()]) });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "知识条目" }));
     const editor = await screen.findByTestId("domain-knowledge-links-editor");
@@ -926,7 +934,7 @@ describe("LogAdminPage 业务域知识条目关联", () => {
   });
 });
 
-describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
+describe("LogAdminPage 分析技能结果回调与模型覆盖", () => {
   beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=domains"));
   const webhookDomain = {
     id: "domain-charging",
@@ -949,7 +957,7 @@ describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
     const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([webhookDomain]) });
     renderPage({ logActions });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     expect(within(table).getByTestId("domain-model-domain-charging")).toHaveTextContent("gpt-4o");
     expect(within(table).getByTestId("domain-webhook-state-domain-charging")).toHaveTextContent("已启用");
   });
@@ -961,7 +969,7 @@ describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
     });
     renderPage({ logActions });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: "编辑" }));
     const overrideInput = screen.getByLabelText(/模型覆盖/);
     expect(overrideInput).toHaveValue("gpt-4o");
@@ -1005,7 +1013,7 @@ describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
     });
     renderPage({ logActions });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "结果回调" }));
 
@@ -1041,7 +1049,7 @@ describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
     });
     renderPage({ logActions });
 
-    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "结果回调" }));
     const editor = await screen.findByTestId("domain-webhook-editor");

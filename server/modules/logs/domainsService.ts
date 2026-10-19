@@ -25,6 +25,7 @@ import { requireLogAdminDomains, requireLogView } from "./policy";
 import { listRecentLogWebhookDeliveries, type LogWebhookDeliveryDto } from "./webhookRepository";
 import type { LogWebhookDeliverer, LogWebhookDeliveryOutcome } from "./webhookDelivery";
 import { validateWebhookUrl } from "./webhookSecurity";
+import { insertSkillRevision, listSkillRevisions, lockSkill } from "./skillsRepository";
 
 export type CreateLogDomainInput = {
   name: string;
@@ -120,6 +121,8 @@ export async function createLogDomainRecord(
       description: input.description,
       formatProfile
     });
+    await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: domain.id,
+      spec: { schemaVersion: "skill/v1", ...(formatProfile ? { formatProfile } : {}) }, userId: auth.user.id, published: true });
 
     return {
       result: domain,
@@ -145,6 +148,7 @@ export async function updateLogDomainRecord(
     input.formatProfile === undefined ? undefined : input.formatProfile === null ? null : parseFormatProfileOrThrow(input.formatProfile);
 
   return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+    await lockSkill(tx, auth.organization.id, input.domainId);
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
@@ -169,6 +173,24 @@ export async function updateLogDomainRecord(
     });
     if (!domain) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+    }
+
+    if (input.formatProfile !== undefined || input.modelOverride !== undefined) {
+      const current = (await listSkillRevisions(tx, auth.organization.id, domain.id)).find((r) => r.status === "published")!;
+      const spec = { ...current.spec };
+      if (input.formatProfile !== undefined) {
+        if (formatProfile) spec.formatProfile = formatProfile;
+        else delete spec.formatProfile;
+      }
+      if (input.modelOverride !== undefined) {
+        if (domain.modelOverride) spec.modelOverride = domain.modelOverride;
+        else delete spec.modelOverride;
+      }
+      // Leave any authored draft intact. The compatibility API publishes its
+      // own revision immediately rather than overwriting unpublished work.
+      await tx.query(`update log_skill_revisions set status = 'superseded'
+        where organization_id = $1 and skill_id = $2 and status = 'published'`, [auth.organization.id, domain.id]);
+      await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: domain.id, spec, userId: auth.user.id, published: true });
     }
 
     return {

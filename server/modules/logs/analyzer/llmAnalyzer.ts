@@ -279,7 +279,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
 
   return {
     async analyze(input) {
-      const findings = runLogPrefilter(input.parsed.entries);
+      const findings = runLogPrefilter(input.parsed.entries, input.signalRules);
       const excerptCharBudget = Math.max(1_000, Math.floor(options.tokenBudget * CHARS_PER_TOKEN * 0.6));
       const excerpt = buildBudgetedExcerpt({
         rawLines: input.parsed.rawLines,

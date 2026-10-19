@@ -236,6 +236,7 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
   it("listRuns returns the newest run first after a rerun", async () => {
     const { logId } = await seedUploadedLog("reruns");
     await createRerunWithJob(db, {
+      skillRevisionId: null,
       runId: "run-reruns-2",
       jobId: "job-reruns-2",
       organizationId: "org-1",
@@ -273,6 +274,8 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
 
   it("aggregateFeedbackInsights groups by domain, analysis source, and prompt version with org isolation and time window", async () => {
     await insertLogDomain(db, { id: "domain-charging", organizationId: "org-1", name: "charging-power" });
+    await db.query(`insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)
+      values ('revision-charging', 'org-1', 'domain-charging', 1, 'published', '{"schemaVersion":"skill/v1"}', 'fixture')`);
 
     async function seedAnalyzedLog(
       suffix: string,
@@ -422,6 +425,7 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
     await appendFeedback(db, auth(), { id: "fb-run-a", logId, rating: "helpful" });
 
     await createRerunWithJob(db, {
+      skillRevisionId: null,
       runId: "run-insight-stamped-run-b",
       jobId: "job-insight-stamped-run-b",
       organizationId: "org-1",
@@ -498,6 +502,7 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
   it("completeRun only updates the log when the run is still current", async () => {
     const { logId, runId: staleRunId } = await seedUploadedLog("complete-guard");
     await createRerunWithJob(db, {
+      skillRevisionId: null,
       runId: "run-complete-guard-2",
       jobId: "job-complete-guard-2",
       organizationId: "org-1",
@@ -519,6 +524,7 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
   it("failRun only marks the log failed when the run is still current", async () => {
     const { logId, runId: staleRunId } = await seedUploadedLog("fail-guard");
     await createRerunWithJob(db, {
+      skillRevisionId: null,
       runId: "run-fail-guard-2",
       jobId: "job-fail-guard-2",
       organizationId: "org-1",

@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 import { itemEnvelopeSchema, itemsEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
+import { logSkillSpecSchema } from "../../logs/skillSpec";
+
+export const skillRevisionPinSchema = z.object({ id: z.string(), number: z.number().int().positive() });
 
 export const logStageSchema = z.enum(["parse", "pattern", "rootcause", "report"]);
 export const logRecordStatusSchema = z.enum(["uploaded", "processing", "complete", "failed"]);
@@ -21,6 +24,7 @@ export const logEvidenceDtoSchema = z.object({
 });
 
 export const logRecordDtoSchema = z.object({
+  skillRevision: skillRevisionPinSchema.nullable().optional(),
   id: z.string(),
   reportId: z.string(),
   fileName: z.string(),
@@ -64,6 +68,7 @@ export const logJobDtoSchema = z.object({
 });
 
 export const logRunDtoSchema = z.object({
+  skillRevision: skillRevisionPinSchema.nullable().optional(),
   id: z.string(),
   logId: z.string(),
   status: logRunStatusSchema,
@@ -103,6 +108,24 @@ export const logDomainDtoSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string()
 });
+
+export const logSkillRevisionDtoSchema = z.object({
+  id: z.string(), skillId: z.string(), number: z.number().int().positive(),
+  status: z.enum(["draft", "published", "superseded"]), spec: logSkillSpecSchema,
+  contentHash: z.string(), createdByUserId: z.string().nullable(), createdAt: z.string(),
+  publishedAt: z.string().nullable(), publishedByUserId: z.string().nullable()
+});
+export const logSkillListItemSchema = logDomainDtoSchema.extend({
+  currentRevision: skillRevisionPinSchema.extend({ publishedAt: z.string().nullable() }),
+  hasDraft: z.boolean(), analyses7d: z.number(), helpfulRate7d: z.number().nullable()
+});
+export const logSkillDtoSchema = logDomainDtoSchema.extend({
+  currentRevision: logSkillRevisionDtoSchema, draft: logSkillRevisionDtoSchema.nullable()
+});
+export const logSkillListResponseSchema = itemsEnvelopeSchema(logSkillListItemSchema);
+export const logSkillResponseSchema = itemEnvelopeSchema(logSkillDtoSchema);
+export const logSkillRevisionResponseSchema = itemEnvelopeSchema(logSkillRevisionDtoSchema);
+export const logSkillRevisionListResponseSchema = itemsEnvelopeSchema(logSkillRevisionDtoSchema);
 
 export const logDomainKnowledgeLinkDtoSchema = z.object({
   id: z.string(),

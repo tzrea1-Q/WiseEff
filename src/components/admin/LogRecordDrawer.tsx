@@ -42,7 +42,7 @@ function DrawerProvenanceBadges({ record }: { record: LogRecord }) {
         ) : null}
         {record.logDomainName ? (
           <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-            业务域 · {record.logDomainName}
+            技能 {record.logDomainName}{record.skillRevision ? ` · v${record.skillRevision.number}` : ""}
           </span>
         ) : null}
       </div>

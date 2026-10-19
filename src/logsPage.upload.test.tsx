@@ -186,7 +186,7 @@ describe("LogsPage api upload wiring", () => {
     expect(screen.getByRole("tab", { name: "报告" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("lists log domains in the upload dialog and passes the selected logDomainId", async () => {
+  it("lists analysis skills in the upload dialog and passes the selected skillId", async () => {
     const chargingDomain = {
       id: "domain-charging",
       name: "charging-power",
@@ -202,9 +202,9 @@ describe("LogsPage api upload wiring", () => {
 
     openUploadDialog();
     await waitFor(() => expect(repository.listLogDomains).toHaveBeenCalled());
-    const domainSelect = await screen.findByLabelText(/业务域/);
+    const domainSelect = await screen.findByLabelText(/分析技能/);
     await userEvent.click(domainSelect);
-    expect(screen.getByRole("option", { name: /未分类/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /通用分析/ })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("option", { name: "charging-power" }));
 
     vi.useFakeTimers();
@@ -214,7 +214,7 @@ describe("LogsPage api upload wiring", () => {
     expect(repository.uploadLog).toHaveBeenCalledWith(
       expect.objectContaining({
         file,
-        logDomainId: "domain-charging"
+        skillId: "domain-charging"
       })
     );
   });

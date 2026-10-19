@@ -13,6 +13,7 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type AnalyzeLogInput = {
+  signalRules?: SignalRuleSet;
   parsed: Extract<ParseResult, { ok: true }>;
   analysisQuestion?: string;
   logDomain?: {
@@ -70,14 +71,15 @@ export interface LogAnalysisAdapter {
 export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultChargingRuleSet): LogAnalysisAdapter {
   return {
     async analyze(input) {
-      const evidence = collectRuleEvidence(input.parsed.entries, ruleSet);
+      const activeRules = input.signalRules ?? ruleSet;
+      const evidence = collectRuleEvidence(input.parsed.entries, activeRules);
       const ruleHits = new Set(
         evidence.map((item) => item.ruleHit).filter((ruleHit): ruleHit is LogRuleHit => ruleHit !== undefined)
       );
       const hasErrorEvidence = input.parsed.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence, entry));
 
-      const matchedRules = ruleSet.rules.filter((rule) => ruleHits.has(rule.id));
-      const defaults = matchedRules.length === 0 ? ruleSet.noHit : ruleSet.hitDefaults;
+      const matchedRules = activeRules.rules.filter((rule) => ruleHits.has(rule.id));
+      const defaults = matchedRules.length === 0 ? activeRules.noHit : activeRules.hitDefaults;
       const eligible = <T extends { priority: number; requiresErrorEvidence?: boolean }>(items: T[]) =>
         items.filter((item) => !item.requiresErrorEvidence || hasErrorEvidence)
           .sort((left, right) => left.priority - right.priority);

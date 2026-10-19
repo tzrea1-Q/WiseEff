@@ -42,7 +42,7 @@ afterEach(() => {
 
 describe("LogsPage · Header", () => {
   it("keeps upload available without presenting an empty installation as a failed analysis", () => {
-    render(<LogsPage state={{ ...userState, logs: [] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    render(<LogsPage search="" state={{ ...userState, logs: [] }} dispatch={() => undefined} onNavigate={() => undefined} />);
     const task = screen.getByRole("region", { name: "日志任务区" });
     expect(within(task).getByText("暂无日志记录，请上传日志。")).toBeInTheDocument();
     expect(within(task).queryByRole("alert")).not.toBeInTheDocument();
@@ -52,23 +52,23 @@ describe("LogsPage · Header", () => {
   it.each(["Complete", "Processing", "Failed"] as const)("keeps %s records in the navigator and their report in the task area", async (status) => {
     const log = initialState.logs.find((record) => record.status === status)!;
     window.history.replaceState(null, "", `/logs?logId=${log.id}`);
-    render(<LogsPage state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
+    render(<LogsPage search="" state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
     const navigator = screen.getByRole("region", { name: "模块导航" });
     const task = screen.getByRole("region", { name: "日志任务区" });
     expect(within(navigator).getByRole("button", { name: new RegExp(log.fileName) })).toHaveAttribute("aria-pressed", "true");
     expect(within(task).getByRole(status === "Failed" ? "alert" : "heading", { ...(status === "Failed" ? {} : { name: status === "Processing" ? "AI 正在分析..." : log.conclusion }) })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传新日志" })).toBeEnabled();
-    await userEvent.click(screen.getByRole("button", { name: "收起模块导航", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
     expect(within(task).getByRole(status === "Failed" ? "alert" : "heading", { ...(status === "Failed" ? {} : { name: status === "Processing" ? "AI 正在分析..." : log.conclusion }) })).toBeInTheDocument();
     expect(new URLSearchParams(window.location.search).get("logId")).toBe(log.id);
-    await userEvent.click(screen.getByRole("button", { name: "展开模块导航", exact: true }));
+    await userEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
   });
 
   it("moves focus between auxiliary tabs before activation without changing the selected log", async () => {
     const user = userEvent.setup();
     const log = initialState.logs[1];
     window.history.replaceState(null, "", `/logs?logId=${log.id}`);
-    render(<LogsPage state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
+    render(<LogsPage search="" state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
     const tabs = screen.getByRole("tablist", { name: "日志辅助信息" });
     const history = within(tabs).getByRole("tab", { name: "报告" });
     const metadata = within(tabs).getByRole("tab", { name: "元数据" });
@@ -174,7 +174,7 @@ describe("LogsPage · Header", () => {
     };
     const completedLog = initialState.logs.find((log) => log.status === "Complete")!;
     window.history.replaceState(null, "", "/logs");
-    render(<LogsPage state={{ ...userState, logs: [failedLog, completedLog] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    render(<LogsPage search="" state={{ ...userState, logs: [failedLog, completedLog] }} dispatch={() => undefined} onNavigate={() => undefined} />);
 
     const summary = screen.getByRole("alert");
     expect(summary).toHaveTextContent("在 根因推断 阶段失败");
@@ -191,7 +191,7 @@ describe("LogsPage · Header", () => {
       ...initialState.logs.find((log) => log.status === "Failed")!,
       failureReason: "请导出 .log 文本日志。"
     };
-    render(<LogsPage state={{ ...userState, logs: [failedLog] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    render(<LogsPage search="" state={{ ...userState, logs: [failedLog] }} dispatch={() => undefined} onNavigate={() => undefined} />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(".log / .txt / .csv / .json");
   });
@@ -286,7 +286,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
           fileName: "degraded_fallback.log",
           analysisSource: "rules-fallback" as const,
           degradedReason: "provider-unavailable" as const,
-          logDomainName: "charging-power"
+          logDomainName: "charging-power",
+          skillRevision: { id: "revision-3", number: 3 }
         },
         ...userState.logs
       ]
@@ -297,7 +298,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
     const provenance = screen.getByTestId("analysis-provenance");
     expect(within(provenance).getByRole("status")).toHaveTextContent("降级分析 · 规则回退");
     expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
-    expect(provenance).toHaveTextContent("业务域 · charging-power");
+    expect(provenance).toHaveTextContent("技能 charging-power · v3");
     expect(screen.getByText("规则评分")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();
   });
@@ -332,7 +333,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
     const legacyState = {
       ...userState,
       logs: [
-        { ...completedTemplate, id: "log-legacy", reportId: "RPT-LEGACY", fileName: "legacy.log" },
+        { ...completedTemplate, id: "log-legacy", reportId: "RPT-LEGACY", fileName: "legacy.log",
+          logDomainId: undefined, logDomainName: undefined, skillRevision: null },
         ...userState.logs
       ]
     };

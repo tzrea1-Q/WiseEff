@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AnalyzeLogInput } from "../analyzer";
 import type { RelatedParameterRunSnapshot } from "../relatedParameter";
 import { parseLogText } from "../parser";
+import { defaultChargingRuleSet } from "../chargingSignalRules";
 import {
   createAgentLoopLogAnalyzer,
   LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION,
@@ -61,6 +62,19 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it("uses run-pinned signals in tools and rule fallback", async () => {
+    const { model, adapter } = analyzer([
+      { content: { action: "tool", tool: "get_prefilter_findings", args: {} } },
+      ...Array.from({ length: 4 }, () => ({ content: {} }))
+    ]);
+    const output = await adapter.analyze(buildInput({ signalRules: { ...defaultChargingRuleSet, rules: [],
+      noHit: { ...defaultChargingRuleSet.noHit, conclusion: "Pinned loop fallback" } } }));
+    const toolResult = model.calls.flat().find((m) => m.content.startsWith("Tool result for get_prefilter_findings:"));
+    expect(toolResult).toBeDefined();
+    expect(toolResult?.content).not.toContain("thermal-foldback");
+    expect(output).toMatchObject({ conclusion: "Pinned loop fallback", evidence: [], analysisSource: "rules-fallback" });
+  });
+
   it("runs tool calls then returns a grounded agent conclusion with the loop prompt version", async () => {
     const { model, adapter } = analyzer([
       { content: { action: "tool", tool: "get_prefilter_findings", args: {} } },

@@ -1,3 +1,4 @@
+import { mockLogSkills } from "@/infrastructure/mock/logSkills";
 import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 import { mapLogDomainGovernanceError } from "./logDomainGovernanceError";
 import type {
@@ -22,7 +23,7 @@ import type { PrototypeState } from "@/domain/prototype/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 export const logRuntimeFailureNotification = "日志操作未完成，请稍后重试。";
-export const logDomainMockModeNotification = "业务域治理需在 API 模式下使用。";
+export const logDomainMockModeNotification = "分析技能治理需在 API 模式下使用。";
 
 export type HydrateLogRuntimeAction = {
   type: "HYDRATE_LOG_RUNTIME";
@@ -345,12 +346,12 @@ export function createLogRuntimeActions({
     },
     async listLogDomains(query) {
       if (mode !== "api") {
-        return [];
+        return mockLogSkills.filter((skill) => query?.includeArchived || skill.status === "active");
       }
 
       try {
         const api = requireRepository(repository);
-        return (await api.listLogDomains?.(query)) ?? [];
+        return (await (api.listLogSkills ?? api.listLogDomains)?.(query)) ?? [];
       } catch {
         // Domain listing must never block the upload flow; the selector just falls back to 未分类.
         return [];

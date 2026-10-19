@@ -31,7 +31,7 @@ import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
-const collectionTabs = ["records", "domains", "quality"] as const;
+const collectionTabs = ["records", "skills", "quality"] as const;
 
 export type LogAdminPageProps = {
   state: PrototypeState;
@@ -250,7 +250,7 @@ function DomainWebhookEditor({
     <div
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
       role="group"
-      aria-label={`业务域 ${domain.name} 的结果回调配置`}
+      aria-label={`分析技能 ${domain.name} 的结果回调配置`}
       data-testid="domain-webhook-editor"
     >
       <div className="flex items-center justify-between gap-2">
@@ -440,7 +440,7 @@ function DomainKnowledgeLinksEditor({
     <div
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
       role="group"
-      aria-label={`业务域 ${domain.name} 的知识条目关联`}
+      aria-label={`分析技能 ${domain.name} 的知识条目关联`}
       data-testid="domain-knowledge-links-editor"
     >
       <div className="flex items-center justify-between gap-2">
@@ -611,7 +611,7 @@ function LogDomainGovernanceSection({
         return;
       }
       if (mapped?.field === "name") {
-        setNameError(mapped.message);
+        setNameError(mapped.message.replaceAll("业务域", "分析技能"));
         return;
       }
       // Unexpected failures are already toasted by the runtime; keep the form open.
@@ -642,6 +642,8 @@ function LogDomainGovernanceSection({
       ),
       sortAccessor: (domain) => domain.name
     },
+    { key: "currentRevision", header: "当前版本", render: (skill) => skill.currentRevision ? `v${skill.currentRevision.number}` : "—", sortAccessor: (skill) => skill.currentRevision?.number ?? 0 },
+    { key: "helpfulRate7d", header: "近 7 天有用率", render: (skill) => skill.helpfulRate7d == null ? "—" : formatPercent(skill.helpfulRate7d), sortAccessor: (skill) => skill.helpfulRate7d ?? -1 },
     {
       key: "description",
       header: "描述",
@@ -710,37 +712,37 @@ function LogDomainGovernanceSection({
   ];
 
   return (
-    <section className="flex flex-col gap-2" aria-label="日志业务域治理" data-testid="log-domain-governance" aria-busy={domainsLoading}>
+    <section className="flex flex-col gap-2" aria-label="日志分析技能治理" data-testid="log-domain-governance" aria-busy={domainsLoading}>
       {!canGovern ? (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          业务域治理需要 Admin 权限（logs:admin-domains）。
+          分析技能治理需要 Admin 权限（logs:admin-domains）。
         </p>
       ) : !logActions ? (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          业务域治理需在 API 模式下使用；mock 模式仅展示静态日志种子。
+          分析技能治理需在 API 模式下使用；mock 模式仅展示静态日志种子。
         </p>
       ) : (
         <>
-          <AdminListPage label="业务域治理"
-            headerActions={<Button size="sm" onClick={openCreateForm} disabled={pending}>新建业务域</Button>}
-            filterBar={<p className="text-sm text-muted-foreground">注册业务域（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
-            table={{ "aria-label": "业务域列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50 }}
+          <AdminListPage label="分析技能治理"
+            headerActions={<Button size="sm" onClick={openCreateForm} disabled={pending}>新建分析技能</Button>}
+            filterBar={<p className="text-sm text-muted-foreground">注册分析技能（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
+            table={{ "aria-label": "分析技能列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50 }}
             rowActions={(domain) => ({ label: domain.name,
               primaryAction: { id: "edit", label: "编辑", disabled: pending, onSelect: () => openEditForm(domain) },
               items: domain.status === "active" ? [
                 { id: "knowledge", label: "知识条目", disabled: pending, onSelect: () => setLinksDomain((current) => current?.id === domain.id ? null : domain) },
                 { id: "webhook", label: "结果回调", disabled: pending, onSelect: () => setWebhookDomain((current) => current?.id === domain.id ? null : domain) },
                 { id: "archive", label: "归档", disabled: pending, destructive: true,
-                  confirmation: { title: `归档「${domain.name}」`, description: "该业务域将被归档，不再供新日志绑定；已有日志及其分析记录保留。", confirmLabel: "归档" },
+                  confirmation: { title: `归档「${domain.name}」`, description: "该分析技能将被归档，不再供新日志绑定；已有日志及其分析记录保留。", confirmLabel: "归档" },
                   onSelect: () => archiveDomain(domain.id) }
               ] : []
             })}
-            emptyState={{ message: domainsLoading ? "正在加载业务域…" : "暂无业务域；未分类域始终可用（通用分析）。", actionLabel: "新建业务域", onAction: openCreateForm }} />
+            emptyState={{ message: domainsLoading ? "正在加载分析技能…" : "暂无分析技能；未分类域始终可用（通用分析）。", actionLabel: "新建分析技能", onAction: openCreateForm }} />
 
           {formOpen ? (
             <form
               className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
-              aria-label={form.domainId ? "编辑业务域" : "新建业务域"}
+              aria-label={form.domainId ? "编辑分析技能" : "新建分析技能"}
               onSubmit={(event) => void submitForm(event)}
             >
               <div className="grid gap-3 sm:grid-cols-2">
@@ -816,7 +818,7 @@ function LogDomainGovernanceSection({
                   取消
                 </Button>
                 <Button type="submit" size="sm" disabled={pending || form.name.trim() === ""} aria-busy={pending || undefined}>
-                  {form.domainId ? "保存修改" : "创建业务域"}
+                  {form.domainId ? "保存修改" : "创建分析技能"}
                 </Button>
               </div>
             </form>
@@ -900,7 +902,7 @@ function FeedbackQualityInsightsSection({
   const columns: Column<LogFeedbackInsight>[] = [
     {
       key: "logDomainName",
-      header: "业务域",
+      header: "分析技能",
       render: (row) => (
         <span className={cn("text-sm", row.logDomainName ? "font-medium text-foreground" : "text-muted-foreground")}>
           {row.logDomainName ?? "未分类"}
@@ -963,7 +965,7 @@ function FeedbackQualityInsightsSection({
       ) : (
         <AdminListPage label="分析质量"
           headerActions={<Button size="sm" disabled={loading} onClick={() => setRefreshCount((count) => count + 1)}>刷新反馈</Button>}
-          filterBar={<p className="text-sm text-muted-foreground">按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。</p>}
+          filterBar={<p className="text-sm text-muted-foreground">按分析技能 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。</p>}
           table={{ "aria-label": "分析质量反馈聚合", rows, rowKey: feedbackInsightRowKey, columns, pageSize: 6 }}
           emptyState={{ message: loading ? "正在加载反馈数据…" : "暂无反馈", actionLabel: "刷新", onAction: () => setRefreshCount((count) => count + 1) }} />
       )}
@@ -972,7 +974,7 @@ function FeedbackQualityInsightsSection({
 }
 
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, knowledgeRepository }: LogAdminPageProps) {
-  const [collection, selectCollection] = useCollectionTab(collectionTabs, "records");
+  const [collection, selectCollection] = useCollectionTab(collectionTabs, new URLSearchParams(window.location.search).has("tab") ? "skills" : "records");
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
@@ -1276,11 +1278,11 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       <ViewSwitch variant="tabs" ariaLabel="日志后台集合" value={collection} onValueChange={selectCollection}
         items={[
           { value: "records", label: "日志分析记录", id: "log-tab-records", panelId: "log-panel-records" },
-          { value: "domains", label: "业务域治理", id: "log-tab-domains", panelId: "log-panel-domains" },
+          { value: "skills", label: "分析技能", id: "log-tab-skills", panelId: "log-panel-skills" },
           { value: "quality", label: "分析质量", id: "log-tab-quality", panelId: "log-panel-quality" }
         ]} />
       <TabPanel id={`log-panel-${collection}`} aria-labelledby={`log-tab-${collection}`}>
-        <div hidden={collection !== "domains"}>
+        <div hidden={collection !== "skills"}>
           <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} knowledgeRepository={knowledgeRepository} />
         </div>
         <div hidden={collection !== "quality"}>
