@@ -15,6 +15,10 @@ describe.skipIf(!available)("log skill revisions migration backfill over Postgre
       const db = createPostgresDatabase(ephemeral.url);
       const writer = `logskills_writer_${randomUUID().replaceAll("-", "")}`;
       try {
+        // The migrated clone already has one charging seed per organization.
+        const seedOrganizations = (await db.query<{ id: string }>("select id from organizations order by id")).rows;
+        expect(seedOrganizations.length).toBeGreaterThan(0);
+        const seedIdentitiesBefore = (await db.query("select * from log_domains where id like 'seed-charging:%' order by id")).rows;
         // Rewind this migration's DDL on a disposable clone, then upgrade real data.
         await db.query(`drop trigger log_skill_requires_publication on log_domains;
           alter table log_analysis_runs drop column skill_revision_id;
@@ -41,17 +45,31 @@ describe.skipIf(!available)("log skill revisions migration backfill over Postgre
           values ('legacy-feedback', 'org-skills', 'legacy-record', 'legacy-run', 'org-skills-admin', 'helpful');
           insert into log_webhook_outbox (id, organization_id, log_domain_id, log_record_id, run_id, payload)
           values ('legacy-webhook', 'org-skills', 'legacy-skill', 'legacy-record', 'legacy-run', '{"old":true}');`);
-        const preservedTables = ["log_records", "log_domains", "log_feedback", "log_domain_knowledge_links", "log_webhook_outbox"];
-        const before = await Promise.all(preservedTables.map(async (table) => (await db.query(`select * from ${table} order by id`)).rows));
+        const preservedRows = [
+          ["log_records", ["legacy-record", "generic-record"]], ["log_domains", ["legacy-skill"]],
+          ["log_feedback", ["legacy-feedback"]], ["log_domain_knowledge_links", ["legacy-link"]],
+          ["log_webhook_outbox", ["legacy-webhook"]]
+        ] as const;
+        const readPreservedRows = () => Promise.all(preservedRows.map(async ([table, ids]) =>
+          (await db.query(`select * from ${table} where id = any($1::text[]) order by id`, [ids])).rows));
+        const before = await readPreservedRows();
         const migration = await readFile(new URL("../../migrations/0187_log_skill_revisions.sql", import.meta.url), "utf8");
         await db.transaction(async (tx) => { await tx.query(migration); });
         expect((await db.query(`select revision_number, status, spec from log_skill_revisions where skill_id = 'legacy-skill'`)).rows).toEqual([{
           revision_number: 1, status: "published", spec: { schemaVersion: "skill/v1", formatProfile: { severityMap: { error: ["ALERT"] } }, modelOverride: "old-model" }
         }]);
-        expect((await db.query(`select id, skill_revision_id from log_analysis_runs order by id`)).rows).toEqual([
+        expect((await db.query(`select id, skill_revision_id from log_analysis_runs
+          where id in ('generic-run', 'legacy-run') order by id`)).rows).toEqual([
           { id: "generic-run", skill_revision_id: null }, { id: "legacy-run", skill_revision_id: "skill-revision-1:legacy-skill" }
         ]);
-        expect(await Promise.all(preservedTables.map(async (table) => (await db.query(`select * from ${table} order by id`)).rows))).toEqual(before);
+        expect(await readPreservedRows()).toEqual(before);
+        expect((await db.query("select * from log_domains where id like 'seed-charging:%' order by id")).rows).toEqual(seedIdentitiesBefore);
+        // Replaying 0187 reconstructs v1 for these pre-existing seed identities too.
+        expect((await db.query(`select d.id, d.organization_id, d.name, r.id as revision_id, r.revision_number, r.status
+          from log_domains d join log_skill_revisions r on (r.skill_id, r.organization_id) = (d.id, d.organization_id)
+          where d.id like 'seed-charging:%' order by d.organization_id, r.id`)).rows)
+          .toEqual(seedOrganizations.map(({ id }) => ({ id: `seed-charging:${id}`, organization_id: id, name: "充电",
+            revision_id: `skill-revision-1:seed-charging:${id}`, revision_number: 1, status: "published" })));
         for (const privilege of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
           expect((await db.query<{ allowed: boolean }>(`select has_table_privilege($1, 'log_skill_revisions', $2) as allowed`, [writer, privilege])).rows[0].allowed).toBe(true);
         }
@@ -60,7 +78,9 @@ describe.skipIf(!available)("log skill revisions migration backfill over Postgre
           .toEqual([{ confdeltype: "n" }, { confdeltype: "n" }]);
         await db.transaction(async (tx) => {
           await tx.query(`set local role ${quoteIdent(writer)}`);
-          expect((await tx.query(`select id from log_skill_revisions`)).rows).toHaveLength(1);
+          expect((await tx.query(`select id from log_skill_revisions
+            where organization_id = 'org-skills' and skill_id = 'legacy-skill'`)).rows)
+            .toEqual([{ id: "skill-revision-1:legacy-skill" }]);
           await tx.query(`insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)
             values ('runtime-draft', 'org-skills', 'legacy-skill', 2, 'draft', '{"schemaVersion":"skill/v1"}', 'fixture');
             update log_skill_revisions set content_hash = 'updated' where id = 'runtime-draft';

@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { RE2JS } from "re2js";
 import { logSkillSpecSchema } from "./skillSpec";
 import { parsingSpecSchema } from "./parsing/spec";
-import { signalRuleSetSchema } from "./signalRules";
+import { compileSignalRules, createSignalEvaluationBudget, signalRuleSetSchema } from "./signalRules";
+import { createLogPatternCache } from "./adminPattern";
 import { validateLogFormatProfile } from "./formatProfile";
 import { previewLogFormat } from "./formatPreview";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
@@ -41,7 +42,8 @@ describe("shared log pattern budgets", () => {
       const cases = [
         [{ formatProfile: { severityMap: { error: Array(4).fill(attack) } } }, ["formatProfile", "severityMap", "error", 0]],
         [{ parsing: { schemaVersion: "parsing/v1", extractors: [{ id: "bad", pattern: "(?P<v>(?:a{100}){100}){100}", fields: { v: { type: "string" } } }] } }, ["parsing", "extractors", 0, "pattern"]],
-        [{ signalRules: { ...defaultChargingRuleSet, rules: [{ ...defaultChargingRuleSet.rules[0], anyOf: [{ type: "text", pattern: attack }] }] } }, ["signalRules", "rules", 0, "anyOf", 0, "pattern"]]
+        [{ signalRules: { ...defaultChargingRuleSet, rules: [{ ...defaultChargingRuleSet.rules[0], anyOf: [{ type: "text", pattern: attack }] }] } }, ["signalRules", "rules", 0, "anyOf", 0, "pattern"]],
+        [{ signalRules: { ...defaultChargingRuleSet, rules: [{ ...defaultChargingRuleSet.rules[0], anyOf: [{ type: "window", count: 2, seconds: 10, condition: { type: "text", pattern: attack } }] }] } }, ["signalRules", "rules", 0, "anyOf", 0, "condition", "pattern"]]
       ] as const;
       for (const [fields, path] of cases) {
         const result = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", ...fields });
@@ -63,6 +65,9 @@ describe("shared log pattern budgets", () => {
     const signal = signalRuleSetSchema.safeParse(signals);
     expect(signal.success).toBe(false);
     if (!signal.success) expect(signal.error.issues[0].path).toEqual(["rules", 0, "anyOf", 6, "pattern"]);
+    const windows = signalRuleSetSchema.safeParse({ ...signals, rules: [{ ...signals.rules[0], anyOf: signals.rules[0].anyOf.map((condition) => ({ type: "window", count: 2, seconds: 10, condition })) }] });
+    expect(windows.success).toBe(false);
+    if (!windows.success) expect(windows.error.issues[0].path).toEqual(["rules", 0, "anyOf", 6, "condition", "pattern"]);
     const skill = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", formatProfile: { severityMap: { error: profile.severityMap.error.slice(0, 3) } }, parsing: { schemaVersion: "parsing/v1", extractors: extractors.slice(0, 4) } });
     expect(skill.success).toBe(false);
     if (!skill.success) expect(skill.error.issues[0].path).toEqual(["parsing", "extractors", 3, "pattern"]);
@@ -73,6 +78,23 @@ describe("shared log pattern budgets", () => {
     try {
       previewLogFormat({ sampleText: "[12] ERROR bad\n  detail", formatProfile: { timestampPattern: "^\\[(\\d+)\\]", multiline: { mode: "start-pattern", startPattern: "^\\[" }, severityMap: { error: ["ERROR"], warn: ["WARN"] } } });
       expect(compile).toHaveBeenCalledTimes(4);
+    } finally { compile.mockRestore(); }
+  });
+  it("shares a signal program cache through window subconditions without sharing window state", () => {
+    const compile = vi.spyOn(RE2JS, "compile");
+    try {
+      const text = { type: "text" as const, pattern: "ALERT" };
+      const ruleSet = { ...defaultChargingRuleSet, rules: [{ ...defaultChargingRuleSet.rules[0], anyOf: [text,
+        { type: "window" as const, count: 2, seconds: 10, condition: text }] }] };
+      const budget = createSignalEvaluationBudget(Infinity, 100, () => 0), cache = createLogPatternCache();
+      const first = compileSignalRules(ruleSet, budget, cache)[0].matches;
+      const second = compileSignalRules(ruleSet, budget, cache)[0].matches;
+      expect(compile).toHaveBeenCalledTimes(1);
+      const entry = { lineNumber: 1, message: "ALERT", severity: "info" as const, tokens: {}, timestamp: "2026-01-01T00:00:00Z" };
+      expect(first.map((test) => test(entry))).toEqual([true, false]);
+      expect(first.map((test) => test({ ...entry, lineNumber: 2, timestamp: "2026-01-01T00:00:01Z" }))).toEqual([true, true]);
+      expect(second.map((test) => test(entry))).toEqual([true, false]);
+      expect(budget.remaining).toBeLessThan(100);
     } finally { compile.mockRestore(); }
   });
   it("rejects a Unicode-heavy aggregate before compiling any profile pattern", () => {

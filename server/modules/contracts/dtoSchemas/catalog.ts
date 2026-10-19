@@ -4,6 +4,7 @@ import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, creat
 import { logSkillSpecSchema, parseTestRequestSchema } from "../../logs/skillSpec";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
+import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
 import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
 
@@ -79,6 +80,8 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogParseTestRequest: parseTestRequestSchema,
   LogParseTestRun: parseTestRunSchema,
   LogParsePreviewResponse: parsePreviewResponseSchema,
+  LogSignalPreviewRequest: signalPreviewRequestSchema,
+  LogSignalPreviewResponse: signalPreviewResponseSchema,
   LogExtractorPreviewRequest: extractorPreviewRequestSchema,
   LogExtractorPreviewResponse: extractorPreviewResponseSchema,
   LogFormatPreviewRequest: formatPreviewRequestSchema,
@@ -197,6 +200,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample",
   "logs.parsePreview",
   "logs.parseTests",
+  "logs.signalPreview",
   "logs.extractorPreview", "logs.formatPreview",
   "logs.getTrace", "logs.startDryRun", "logs.getDryRun", "logs.getDryRunLines",
   "logs.listSourceSnapshots", "logs.listSourceVersions", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot", "logs.locateSourceStatement", "logs.sourceEvidence",

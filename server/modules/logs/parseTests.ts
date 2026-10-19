@@ -1,6 +1,6 @@
 import { runInNewContext } from "node:vm";
 import { isDeepStrictEqual } from "node:util";
-import { decodeLogFilesCooperatively } from "./parsing/workerDecoding";
+import { decodeLogFilesCooperatively, indexDecodedEvents } from "./parsing/workerDecoding";
 import { MAX_DECODE_EVENTS, MAX_DECODE_OUTPUT_BYTES, MAX_DECODE_OUTPUT_FIELDS } from "./parsing/engine";
 import { extractLogSignalsCooperatively } from "./genericSignals";
 import { genericSignalRuleSet } from "./analyzer";
@@ -8,6 +8,7 @@ import { parseLogLines } from "./parser";
 import { logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
 import type { ParseTest, ParseTestResult, ParseTestRun, ParseTestValue } from "./parseTestSpec";
 import { registerCaseKey, type DecodedEvent } from "./parsing/spec";
+import { createSignalEvaluationBudget } from "./signalRules";
 
 export const PARSE_TEST_MAX_MS = 1000;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -58,6 +59,7 @@ function outputFields(value: unknown): number {
 export async function runParseTests(value: LogSkillSpec, options: { maxMs?: number; now?: () => number } = {}): Promise<ParseTestRun> {
   const now = options.now ?? (() => performance.now());
   const deadline = now() + Math.min(PARSE_TEST_MAX_MS, Math.max(0, options.maxMs ?? PARSE_TEST_MAX_MS));
+  const evaluation = createSignalEvaluationBudget(deadline, undefined, now);
   const remaining = () => Math.max(0, deadline - now());
   const bounded = <T>(callback: () => T) => {
     if (remaining() <= 0) throw new Error("Parse test deadline exceeded");
@@ -96,7 +98,7 @@ export async function runParseTests(value: LogSkillSpec, options: { maxMs?: numb
         }
       })(), spec.formatProfile)) entries.push(entry);
       const signals = await extractLogSignalsCooperatively([{ path: file, parsed: { ok: true, rawLines: test.lines, entries } }],
-        spec.signalRules ?? genericSignalRuleSet, { maxMs: remaining(), hardTimeout: true });
+        spec.signalRules ?? genericSignalRuleSet, { maxMs: remaining(), hardTimeout: true, evaluation, eventsByLine: indexDecodedEvents(result.events) });
       if (signals.truncated || signals.truncatedSignals) result.error = signals.reason ?? "Parse test signal cap exceeded";
       const signalNames = signals.signals.map((signal) => ({ id: signal.kind.startsWith("skill:") ? signal.kind.slice(6) : signal.kind, title: signal.title }));
       result.signals = [...new Set(signalNames.map((signal) => signal.id))];

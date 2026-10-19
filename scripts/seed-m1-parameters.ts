@@ -12,6 +12,7 @@ import type { AuthContext } from "../server/modules/auth/types";
 import { buildDtsParsedIndex } from "../server/modules/parameter-files/parseIndex";
 import { ingestDtsFileVersion } from "../server/modules/parameter-files/structuralIngest";
 import type { ObjectStore } from "../server/modules/logs/objectStore";
+import { provisionChargingSkill } from "../server/modules/logs/provisionChargingSkill";
 import { ingestConfigRevisionInTransaction } from "../server/modules/parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../server/modules/parameter-topology/types";
 import { createPostgresDatabase, getRootPostgresPool, type Database, type RootDatabase } from "../server/shared/database/client";
@@ -233,6 +234,7 @@ export async function seedM1Parameters(
   config: PowerManagementConfig
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    await provisionChargingSkill(tx, organizationId);
     for (const project of config.projects) {
       await tx.query(
         `

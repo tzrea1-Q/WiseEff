@@ -13,7 +13,7 @@ function parseFixture(content: string) {
 
 describe("runLogPrefilter", () => {
   it("shares retained reference/code budgets across file streams while counting all entries", async () => {
-    const budget = { references: 10, codes: 2, codeBytes: 2048 };
+    const budget = { ...createPrefilterBudget(), references: 10, codes: 2, codeBytes: 2048 };
     const entries = parseFixture(Array.from({ length: 30 }, (_, i) => `ERROR code=${i}-${"x".repeat(1000)}`).join("\n")).entries;
     const first = await prefilterLogStream((async function* () { yield* entries; })(), undefined, budget);
     const second = await prefilterLogStream((async function* () { yield* entries; })(), undefined, budget);

@@ -106,3 +106,11 @@ export const defaultChargingRuleSet: SignalRuleSet = {
     suggestedActions: []
   }
 };
+
+/** Published seed labels extend the legacy rules without changing unclassified uploads. */
+const chargingRuleNames: Record<string, string> = {
+  "thermal-foldback": "热降额", "charge-current-reduction": "充电限流", "communication-timeout": "通信超时",
+  "device-offline": "设备离线", "error-code": "错误码"
+};
+export const seededChargingRuleSet: SignalRuleSet = { ...defaultChargingRuleSet,
+  rules: defaultChargingRuleSet.rules.map((rule) => ({ ...rule, name: chargingRuleNames[rule.id] })) };

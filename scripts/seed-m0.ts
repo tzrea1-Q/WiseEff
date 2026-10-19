@@ -5,6 +5,7 @@ import { createPostgresDatabase } from "../server/shared/database/client";
 import type { Database } from "../server/shared/database/client";
 import { seedBaselinePlatformRoles } from "../server/modules/auth/baselineCatalog";
 import { seedLocalDemoCredentials } from "../server/modules/auth/seedLocalDemoCredentials";
+import { provisionChargingSkill } from "../server/modules/logs/provisionChargingSkill";
 
 const organizationId = "org-chargelab";
 
@@ -19,14 +20,17 @@ const users = [
 ] as const;
 
 export async function seedM0Foundation(db: Database) {
-  await db.query(
-    `
-    insert into organizations (id, name)
-    values ($1, $2)
-    on conflict (id) do update set name = excluded.name
-    `,
-    [organizationId, "ChargeLab"]
-  );
+  await db.transaction(async (tx) => {
+    await tx.query(
+      `
+      insert into organizations (id, name)
+      values ($1, $2)
+      on conflict (id) do update set name = excluded.name
+      `,
+      [organizationId, "ChargeLab"]
+    );
+    await provisionChargingSkill(tx, organizationId);
+  });
 
   for (const [id, name, email, title] of users) {
     await db.query(

@@ -1066,6 +1066,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.getSkill": { summary: "Get analysis skill", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.parsePreview": { summary: "Preview unsaved parsing rules", tags: ["logs"], requestBody: "LogParsePreviewRequest", responseBody: "LogParsePreviewResponse" },
   "logs.parseTests": { summary: "Run parse tests against an unsaved skill draft", tags: ["logs"], requestBody: "LogParseTestRequest", responseBody: "LogParseTestRun" },
+  "logs.signalPreview": { summary: "Preview draft signal rules on the stored sample", tags: ["logs"], requestBody: "LogSignalPreviewRequest", responseBody: "LogSignalPreviewResponse" },
   "logs.extractorPreview": { summary: "Generate and preview an extractor pattern", tags: ["logs"], requestBody: "LogExtractorPreviewRequest", responseBody: "LogExtractorPreviewResponse" },
   "logs.formatPreview": { summary: "Preview an unsaved basic format profile", tags: ["logs"], requestBody: "LogFormatPreviewRequest", responseBody: "LogFormatPreviewResponse" },
   "logs.saveSkillDraft": { summary: "Save skill draft", tags: ["logs"], requestBody: "LogSkillDraftRequest", responseBody: "LogSkillRevisionResponse", additionalResponses: { "409": "ErrorResponse" } },

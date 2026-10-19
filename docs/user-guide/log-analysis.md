@@ -20,6 +20,12 @@ Open a skill's Samples and parsing section. Select a line in the docked sample p
 
 The Basic format form edits the existing `formatProfile`: timestamp pattern, severity patterns for error/warn/info, and either indentation or a start pattern for multi-line entries. The live sample preview shows detected timestamps, each line's severity and the original line numbers grouped into entries. Timestamp capture group 1 is used when present; severity checks error, warn and info in that order. Patterns use RE2. Code view edits the same JSON object and round-trips without converting existing profiles. Invalid code or patterns must be corrected before saving or publishing. Form changes do not migrate profiles or change parsing semantics. Live basic-format preview is limited to the first 500 lines and 1 MiB, with at most 6,144 characters per line.
 
+## Author signal rules
+
+Open a skill's Signals section to add rules in the form “When a condition holds, produce a named signal with a severity.” Conditions match messages with bounded RE2 patterns, compare an extracted `extractorId.fieldName` against a scalar, numeric range or set, or count matches within a time window in one file. Multiple conditions within a rule are alternatives. Reorder or delete rules as needed. Invalid fields show their validation paths and prevent saving or publishing.
+
+Upload a sample in the persistent right pane. Valid rules preview automatically after a short pause. Each collapsed rule card shows its sentence summary and hit count; expand it to edit conditions or choose a matching line chip to highlight the sample. Legacy conditions have readable descriptions and remain editable in code. A limit notice identifies partial results. Preview uses unsaved rules on the server. Save and publish to apply the rules to new uploads; draft changes do not affect a run's pinned revision. The seeded Charging skill carries the existing charging rules, while uploads without a skill retain the legacy charging prefilter.
+
 ## Decode registers in a skill
 
 Open a skill in `/log-admin?tab=skills` and choose Decode. Add a register, give it an id and select its width (8, 16, 32 or 64 bits). The field table edits inclusive high/low bits, name, enum labels, scale, offset, unit, signedness and description. Bits must fit the width, must not overlap and cannot share a name. The bit bar runs from high bit to low bit; field names and bit ranges identify each segment alongside its color.

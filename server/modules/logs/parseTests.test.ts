@@ -26,6 +26,27 @@ describe("parse test runner", () => {
     spec.parseTests![0].expect.fields!["val.fields.CHRG_FAULT.meaning"] = "normal";
     expect((await runParseTests(spec)).results[0]).toMatchObject({ passed: false, diffs: [{ path: "val.fields.CHRG_FAULT.meaning", expected: "normal", actual: "thermal_shutdown" }] });
   });
+  it("evaluates decoded field and window conditions with fresh window state per case within the run budget", async () => {
+    const spec = bq(), rule = spec.signalRules!.rules[0];
+    const field = { type: "field" as const, field: "charger.addr", operator: "equals" as const, value: 12 };
+    spec.signalRules!.rules = [
+      { ...rule, id: "field-fault", anyOf: [field] },
+      { ...rule, id: "repeated-fault", anyOf: [{ type: "window", condition: field, count: 2, seconds: 10 }] }
+    ];
+    spec.parseTests![0].lines = ["2026-01-01T00:00:00Z addr=0x0C val=0x20", "2026-01-01T00:00:01Z addr=0x0C val=0x20"];
+    spec.parseTests![0].expect.signals = ["field-fault", "repeated-fault"];
+    spec.parseTests!.push({ ...spec.parseTests![0], id: "isolated", name: "Isolated window", lines: [spec.parseTests![0].lines[0]],
+      expect: { signals: ["field-fault"], exactSignals: true } });
+    const started = performance.now();
+    const run = await runParseTests(spec);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(run).toMatchObject({ total: 2, passed: 2, failed: 0, truncated: false });
+    expect(run.results[0].events).toEqual(decodeLogFiles(spec.parsing!, [{ file: "charger.log", lines: spec.parseTests![0].lines }]).events);
+    expect(run.results.map((result) => result.signals)).toEqual([["field-fault", "repeated-fault"], ["field-fault"]]);
+    spec.signalRules!.rules[1].anyOf = [{ type: "window", condition: { ...field, value: 13 }, count: 2, seconds: 10 }];
+    expect((await runParseTests(spec)).results[0]).toMatchObject({ passed: false,
+      diffs: [{ path: "signals.repeated-fault", expected: true, actual: false }], missingSignals: ["repeated-fault"] });
+  });
   it("normalizes numeric values, preserves explicit raw and requires all fields on one event", async () => {
     const spec = bq(), test = spec.parseTests![0];
     test.expect.fields = { val: "0x20", "val.raw": "0x20", "val.fields.CHRG_FAULT": { value: 2, meaning: "thermal_shutdown" } };
@@ -102,10 +123,15 @@ describe("parse test runner", () => {
   });
   it("interrupts one slow signal match and never presents a half-written summary as output", async () => {
     const spec = bq();
-    vi.spyOn(signalRules, "compileSignalCondition").mockReturnValueOnce(() => {
-      const until = performance.now() + 400;
-      while (performance.now() < until) { /* simulate one expensive match */ }
-      return true;
+    const compile = signalRules.compileSignalRules;
+    vi.spyOn(signalRules, "compileSignalRules").mockImplementationOnce((...args) => {
+      const rules = compile(...args);
+      rules[0].matches = [() => {
+        const until = performance.now() + 400;
+        while (performance.now() < until) { /* simulate one expensive match */ }
+        return true;
+      }];
+      return rules;
     });
     const started = performance.now();
     const run = await runParseTests(spec, { maxMs: 100 });

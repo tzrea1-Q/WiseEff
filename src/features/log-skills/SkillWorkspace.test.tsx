@@ -153,8 +153,25 @@ describe("skill workspace", () => {
     expect(repository.saveSkillDraft).toHaveBeenCalledWith(skill.id, expect.objectContaining({ modelOverride: "acceptance-domain-model-x" }), null, expect.any(String));
   });
 
+  it("keeps signal edits across sections, blocks invalid fields and saves the exact skill representation", async () => {
+    const { repository } = setup({ section: "signals" });
+    fireEvent.click(await screen.findByRole("button", { name: "添加信号规则" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1名称" }), { target: { value: "Timeout" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1消息正则" }), { target: { value: "(?=invalid)" } });
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "试运行" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "规则 1 条件 1消息正则" }), { target: { value: "timeout" } });
+    fireEvent.click(screen.getByRole("button", { name: "概览" }));
+    fireEvent.click(screen.getByRole("button", { name: "信号" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
+    expect(screen.getByRole("textbox", { name: "规则 1名称" })).toHaveValue("Timeout");
+    expect(screen.getByRole("textbox", { name: "规则 1 条件 1消息正则" })).toHaveValue("timeout");
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ signalRules: expect.objectContaining({ rules: [expect.objectContaining({ name: "Timeout", anyOf: [{ type: "text", pattern: "timeout" }] })] }) }), null, "current"));
+  });
   it("opens the knowledge section and saves selected links through the skill draft", async () => {
-    const knowledgeRepository = { list: vi.fn(async () => ({ items: [{ id: "knowledge", title: "热管理知识", status: "published", headRevisionNumber: 1 }] })),
+    const knowledgeRepository = { list: vi.fn(async () => ({ items: [{ id: "00000000-0000-4000-8000-000000000001", title: "热管理知识", status: "published", headRevisionNumber: 1 }] })),
       get: vi.fn(async () => null) } as unknown as KnowledgeRepository;
     const { repository } = setup({ section: "knowledge", knowledgeRepository });
     await userEvent.click(await screen.findByRole("button", { name: "链接已有条目" }));
@@ -162,7 +179,7 @@ describe("skill workspace", () => {
     await userEvent.click(await within(dialog).findByRole("button", { name: "链接 热管理知识" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "完成" }));
     await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
-    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ knowledgeEntryIds: ["knowledge"] }), null, "current"));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ knowledgeEntryIds: ["00000000-0000-4000-8000-000000000001"] }), null, "current"));
   });
   it("prefills an absent procedure without creating an edit, and previews the five-heading outline", async () => {
     setup({ section: "procedure" });
@@ -300,6 +317,7 @@ describe("skill workspace", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "时间戳模式" }), { target: { value: "(?=bad)" } });
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "试运行" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "概览" }));
     expect(screen.getByRole("textbox", { name: "时间戳模式" })).toHaveValue("(?=bad)");
     expect(screen.getByText("请先修正基础格式，再切换分区。")).toBeVisible();
@@ -331,7 +349,7 @@ describe("skill workspace", () => {
     const configured = screen.getByRole("region", { name: "已配置内容" });
     expect(configured.querySelector("dl")).toHaveClass("skill-facts");
     expect(within(configured).getByText("基础格式").tagName).toBe("DT");
-    expect(within(configured).getByText("平台默认充电规则").tagName).toBe("DD");
+    expect(within(configured).getByText("平台通用信号").tagName).toBe("DD");
   });
   it("shows the legacy identity description without marking dirty and preserves an explicit clear", async () => {
     const { repository } = setup({ legacyDescription: true });
@@ -479,7 +497,11 @@ describe("skill workspace", () => {
     const { onNavigate } = setup();
     fireEvent.change(await screen.findByRole("textbox", { name: "描述" }), { target: { value: "未保存" } });
     expect(screen.getByRole("button", { name: "解码" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /信号/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "信号" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "测试" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /集成/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "测试" }));
+    expect(screen.getByRole("table", { name: "解析测试列表" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "版本" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging?section=versions");
