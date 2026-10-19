@@ -185,7 +185,7 @@ export async function hasDeletedSourceBinding(tx: Queryable, input: {
 }): Promise<boolean> {
   const result = await tx.query(`select binding.id from parameter_catalog.project_parameter_bindings binding
     join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
-    join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+    join parameter_catalog.${projectParameterValues} value on value.id=binding.current_value_id
     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
       and occurrence.file_id=$4 and occurrence.logical_node_id=$5 and binding.definition_id=$6 and value.value_state='deleted'`,
   [input.organizationId, input.projectId, input.configSetId, input.fileId, input.logicalNodeId, input.definitionId]);
