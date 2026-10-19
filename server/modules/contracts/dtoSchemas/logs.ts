@@ -113,7 +113,7 @@ export const logSkillRevisionDtoSchema = z.object({
   id: z.string(), skillId: z.string(), number: z.number().int().positive(),
   status: z.enum(["draft", "published", "superseded"]), spec: logSkillSpecSchema,
   contentHash: z.string(), createdByUserId: z.string().nullable(), createdAt: z.string(),
-  publishedAt: z.string().nullable(), publishedByUserId: z.string().nullable()
+  publishedAt: z.string().nullable(), publishedByUserId: z.string().nullable(), publishedByDisplayName: z.string().nullable().optional()
 });
 export const logSkillListItemSchema = logDomainDtoSchema.extend({
   currentRevision: skillRevisionPinSchema.extend({ publishedAt: z.string().nullable() }),

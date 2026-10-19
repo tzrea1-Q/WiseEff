@@ -759,6 +759,8 @@ export const routeManifest = [
   { id: "logs.createSkill", method: "POST", path: "/api/v1/log-skills", module: "logs", stability: "mvp" },
   { id: "logs.getSkill", method: "GET", path: "/api/v1/log-skills/:skillId", module: "logs", stability: "mvp" },
   { id: "logs.saveSkillDraft", method: "PUT", path: "/api/v1/log-skills/:skillId/draft", module: "logs", stability: "mvp" },
+  { id: "logs.discardSkillDraft", method: "DELETE", path: "/api/v1/log-skills/:skillId/draft", module: "logs", stability: "mvp" },
+  { id: "logs.restoreSkillRevision", method: "POST", path: "/api/v1/log-skills/:skillId/revisions/:revisionId/restore", module: "logs", stability: "mvp" },
   { id: "logs.publishSkill", method: "POST", path: "/api/v1/log-skills/:skillId/publish", module: "logs", stability: "mvp" },
   { id: "logs.listSkillRevisions", method: "GET", path: "/api/v1/log-skills/:skillId/revisions", module: "logs", stability: "mvp" },
   { id: "logs.getSkillRevision", method: "GET", path: "/api/v1/log-skills/:skillId/revisions/:revisionId", module: "logs", stability: "mvp" },

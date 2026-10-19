@@ -75,25 +75,33 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
   requireLogAdminDomains(auth);
   const name = input.name.trim();
   if (!name) throw new ApiError("VALIDATION_FAILED", "Analysis skill name must not be blank.");
-  const spec = parseSpec({ schemaVersion: "skill/v1", ...(input.formatProfile != null ? { formatProfile: input.formatProfile } : {}) });
+  const spec = parseSpec({ schemaVersion: "skill/v1", description: input.description, ...(input.formatProfile != null ? { formatProfile: input.formatProfile } : {}) });
   return withAuditedWrite(db, invocation, context, async (tx) => {
     if (await findLogDomainByName(tx, { organizationId: auth.organization.id, name })) {
       throw new ApiError("CONFLICT", "An analysis skill with this name already exists.");
     }
     const skill = await insertLogDomain(tx, { id: randomUUID(), organizationId: auth.organization.id, name,
-      description: input.description, formatProfile: spec.formatProfile });
+      description: spec.description, formatProfile: spec.formatProfile });
     await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: skill.id, spec, userId: auth.user.id, published: true });
     return { result: await readSkill(tx, auth.organization.id, skill.id), audit: skillAudit(skill.id, "log-skill-create") };
   });
 }
 
-export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId: string, value: unknown, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId: string, value: unknown, baseDraftRevisionId: string | null, basePublishedRevisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Save analysis skill draft");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   const spec = parseSpec(value);
   return withAuditedWrite(db, invocation, context, async (tx) => {
     await lockSkill(tx, auth.organization.id, skillId);
+    const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
+    if (revisions.find((r) => r.status === "published")?.id !== basePublishedRevisionId) {
+      throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill publication has changed.");
+    }
+    const draft = revisions.find((r) => r.status === "draft");
+    if ((draft?.id ?? null) !== baseDraftRevisionId) {
+      throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill draft has changed.");
+    }
     // A new draft id on every save makes stale publish requests detectable.
     await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);
     const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec, userId: auth.user.id });
@@ -108,6 +116,8 @@ export async function publishLogSkill(db: Database, auth: AuthContext, skillId: 
   requireLogAdminDomains(auth);
   return withAuditedWrite(db, invocation, context, async (tx) => {
     await lockSkill(tx, auth.organization.id, skillId);
+    // Workspace saves validate both heads under this lock; publish consumes that
+    // exact draft id, and restore refuses drafts, so no extra publish token is needed.
     await publishSkillRevision(tx, auth.organization.id, skillId, draftId, auth.user.id);
     return { result: await readSkill(tx, auth.organization.id, skillId), audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
   });
@@ -116,4 +126,34 @@ export async function publishLogSkill(db: Database, auth: AuthContext, skillId: 
 export async function readLogSkillRevisions(db: Queryable, auth: AuthContext, skillId: string) {
   await getLogSkill(db, auth, skillId);
   return listSkillRevisions(db, auth.organization.id, skillId);
+}
+
+export async function discardLogSkillDraft(db: Database, auth: AuthContext, skillId: string, draftRevisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Discard analysis skill draft");
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  return withAuditedWrite(db, invocation, context, async (tx) => {
+    await lockSkill(tx, auth.organization.id, skillId);
+    const draft = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((r) => r.status === "draft");
+    if (draft && draft.id !== draftRevisionId) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill draft has changed.");
+    await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft' and id = $3`, [auth.organization.id, skillId, draftRevisionId]);
+    return { result: undefined, audit: skillAudit(skillId, "log-skill-draft-discard") };
+  });
+}
+
+export async function restoreLogSkillRevision(db: Database, auth: AuthContext, skillId: string, revisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Restore analysis skill revision");
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  return withAuditedWrite(db, invocation, context, async (tx) => {
+    await lockSkill(tx, auth.organization.id, skillId);
+    const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
+    const source = revisions.find((r) => r.id === revisionId && r.status !== "draft");
+    if (!source) throw new ApiError("NOT_FOUND", "Skill revision was not found.");
+    if (revisions.some((r) => r.status === "draft")) throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the draft first.");
+    const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec: source.spec, userId: auth.user.id });
+    await publishSkillRevision(tx, auth.organization.id, skillId, id, auth.user.id);
+    return { result: await readSkill(tx, auth.organization.id, skillId),
+      audit: skillAudit(skillId, "log-skill-restore", { fromRevisionId: revisionId, newRevisionId: id }) };
+  });
 }

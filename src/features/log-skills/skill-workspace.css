@@ -1,0 +1,31 @@
+@import "../../components/common/status-banner.css";
+
+.skill-workspace { position: relative; z-index: var(--z-content-base); isolation: isolate; }
+.skill-workspace .navigator-workbench__context { position: sticky; top: 0; z-index: var(--z-content-sticky); background: var(--surface); }
+.skill-draft-bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.skill-draft-bar strong { margin-right: auto; }
+.skill-workspace nav { display: grid; padding: var(--space-2); gap: var(--space-1); }
+.skill-workspace nav button { justify-content: space-between; }
+.skill-workspace nav [aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.skill-section { padding: var(--space-4); display: grid; gap: var(--space-4); font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
+.skill-section h2, .skill-section h3, .skill-publish-dialog h2, .skill-diff h3 { margin: 0; font: 600 var(--text-lg) / var(--leading-lg) var(--font-sans); }
+.skill-section > section { display: grid; gap: var(--space-3); }
+.skill-section label { display: grid; gap: var(--space-2); }
+.skill-section textarea { min-height: calc(var(--space-8) * 4); resize: vertical; }
+.skill-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0; }
+.skill-section .skill-facts dt, .skill-section .skill-facts dd { margin: 0; font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
+.skill-facts dt { color: var(--text-muted); }
+.skill-facts dd { color: var(--text); overflow-wrap: anywhere; }
+.skill-compare-selectors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.skill-diff { display: grid; gap: var(--space-3); min-width: 0; font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
+.skill-diff section, .skill-diff [data-slot="table-container"] { min-width: 0; max-width: 100%; }
+.skill-diff [data-slot="table"] { width: 100%; min-width: 0; max-width: 100%; table-layout: fixed; border-collapse: collapse; }
+.skill-diff [data-slot="table-row"] { border-bottom: var(--stroke-hairline) solid var(--border); }
+.skill-diff p { margin: 0; }
+.skill-diff h4 { margin: var(--space-2) 0; font: 600 var(--text-md) / var(--leading-md) var(--font-sans); }
+.skill-diff [data-slot="table-cell"], .skill-diff [data-slot="table-head"] { white-space: normal; vertical-align: top; overflow-wrap: anywhere; border-bottom: 0; }
+.skill-diff pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: inherit; font-family: var(--font-mono); }
+.skill-diff [data-change="add"] { background: var(--success-soft); }
+.skill-diff [data-change="remove"] { background: var(--danger-soft); }
+.skill-publish-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5); max-height: calc(100dvh - var(--space-8)); overflow: auto; box-shadow: var(--shadow-3); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.skill-publish-dialog .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }

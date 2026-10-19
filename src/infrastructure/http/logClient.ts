@@ -21,6 +21,9 @@ import {
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
   logSkillListResponseSchema,
+  logSkillResponseSchema,
+  logSkillRevisionResponseSchema,
+  logSkillRevisionListResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
   logFileUploadResponseSchema,
@@ -297,6 +300,24 @@ export function createHttpLogAnalysisRepository(
       const response = parseContractDto(logSkillListResponseSchema,
         await apiClient.get(buildLogDomainsPath(query).replace("log-domains", "log-skills")), "LogSkillListResponse");
       return logDomainListFromDto(response);
+    },
+    async getLogSkill(id) {
+      return parseContractDto(logSkillResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}`), "LogSkillResponse").item;
+    },
+    async listSkillRevisions(id) {
+      return parseContractDto(logSkillRevisionListResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/revisions`), "LogSkillRevisionListResponse").items;
+    },
+    async saveSkillDraft(id, spec, baseDraftRevisionId, basePublishedRevisionId) {
+      return parseContractDto(logSkillRevisionResponseSchema, await apiClient.put(`/api/v1/log-skills/${encodeURIComponent(id)}/draft`, { spec, baseDraftRevisionId, basePublishedRevisionId }), "LogSkillRevisionResponse").item;
+    },
+    async discardSkillDraft(id, draftRevisionId) {
+      await apiClient.delete(`/api/v1/log-skills/${encodeURIComponent(id)}/draft?draftRevisionId=${encodeURIComponent(draftRevisionId)}`);
+    },
+    async publishSkill(id, draftRevisionId) {
+      return parseContractDto(logSkillResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/publish`, { draftRevisionId }), "LogSkillResponse").item;
+    },
+    async restoreSkillRevision(id, revisionId) {
+      return parseContractDto(logSkillResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/restore`, {}), "LogSkillResponse").item;
     },
     async listLogDomains(query?: LogDomainListQuery) {
       const response = parseContractDto(

@@ -28,6 +28,7 @@ import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepositor
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import type { LogDomainKnowledgeLink } from "@/domain/logs/types";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
@@ -521,11 +522,13 @@ function DomainKnowledgeLinksEditor({
 function LogDomainGovernanceSection({
   canGovern,
   logActions,
-  knowledgeRepository
+  knowledgeRepository,
+  onNavigate
 }: {
   canGovern: boolean;
   logActions?: LogRuntimeActions;
   knowledgeRepository?: KnowledgeRepository;
+  onNavigate: (path: string) => void;
 }) {
   const [domains, setDomains] = useState<LogDomain[] | null>(null);
   const domainsLoading = Boolean(logActions) && domains === null;
@@ -533,6 +536,7 @@ function LogDomainGovernanceSection({
   const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [draftConflict, setDraftConflict] = useState(false);
   const [pending, setPending] = useState(false);
   const [linksDomain, setLinksDomain] = useState<LogDomain | null>(null);
   const [webhookDomain, setWebhookDomain] = useState<LogDomain | null>(null);
@@ -549,6 +553,7 @@ function LogDomainGovernanceSection({
   }, [refreshDomains]);
 
   const openCreateForm = () => {
+    setDraftConflict(false);
     setForm(emptyLogDomainForm);
     setProfileError(null);
     setNameError(null);
@@ -556,6 +561,7 @@ function LogDomainGovernanceSection({
   };
 
   const openEditForm = (domain: LogDomain) => {
+    setDraftConflict(false);
     setForm({
       domainId: domain.id,
       name: domain.name,
@@ -580,15 +586,17 @@ function LogDomainGovernanceSection({
     }
     setProfileError(null);
     setNameError(null);
+    setDraftConflict(false);
     setPending(true);
     try {
+      const original = domains?.find((domain) => domain.id === form.domainId);
       let saved = form.domainId
         ? await logActions.updateLogDomain({
             domainId: form.domainId,
             name: form.name.trim(),
-            description: form.description.trim() === "" ? null : form.description.trim(),
-            formatProfile: form.profileText.trim() === "" ? null : parsedProfile.profile,
-            modelOverride: form.modelOverride.trim() === "" ? null : form.modelOverride.trim()
+            ...(form.description !== (original?.description ?? "") ? { description: form.description.trim() === "" ? null : form.description.trim() } : {}),
+            ...(form.profileText !== formatProfileText(original?.formatProfile) ? { formatProfile: form.profileText.trim() === "" ? null : parsedProfile.profile } : {}),
+            ...(form.modelOverride !== (original?.modelOverride ?? "") ? { modelOverride: form.modelOverride.trim() === "" ? null : form.modelOverride.trim() } : {})
           })
         : await logActions.createLogDomain({
             name: form.name.trim(),
@@ -605,6 +613,10 @@ function LogDomainGovernanceSection({
         await refreshDomains();
       }
     } catch (error) {
+      if (error instanceof WiseEffApiError && error.code === "LOG_SKILL_DRAFT_EXISTS") {
+        setDraftConflict(true);
+        return;
+      }
       const mapped = mapLogDomainGovernanceError(error);
       if (mapped?.field === "profile") {
         setProfileError(mapped.message);
@@ -638,7 +650,10 @@ function LogDomainGovernanceSection({
       key: "name",
       header: "名称",
       render: (domain) => (
-        <span className={cn("font-medium text-foreground", domain.status === "archived" && "opacity-60")}>{domain.name}</span>
+        <Button asChild variant="link" className={cn("font-medium", domain.status === "archived" && "opacity-60")}>
+          <a href={`/log-admin/skills/${encodeURIComponent(domain.id)}`}
+            onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); } }}>{domain.name}</a>
+        </Button>
       ),
       sortAccessor: (domain) => domain.name
     },
@@ -813,6 +828,11 @@ function LogDomainGovernanceSection({
                   {profileError}
                 </p>
               ) : null}
+              {draftConflict && form.domainId ? <p role="alert" className="text-sm text-destructive">
+                该技能有未发布草稿，请先在技能工作区发布或放弃草稿。{" "}
+                <a className="underline" href={`/log-admin/skills/${encodeURIComponent(form.domainId)}`}
+                  onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); } }}>打开技能工作区</a>
+              </p> : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setFormOpen(false)}>
                   取消
@@ -1283,7 +1303,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         ]} />
       <TabPanel id={`log-panel-${collection}`} aria-labelledby={`log-tab-${collection}`}>
         <div hidden={collection !== "skills"}>
-          <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} knowledgeRepository={knowledgeRepository} />
+          <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} knowledgeRepository={knowledgeRepository} onNavigate={onNavigate} />
         </div>
         <div hidden={collection !== "quality"}>
           <FeedbackQualityInsightsSection timeWindow={timeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} />

@@ -40,6 +40,7 @@ import { LogsPage } from "@/features/log-analysis/LogsPage";
 import { ParameterReviewPage } from "@/features/parameter-review/ParameterReviewPage";
 import { ParameterSubmissionsPage } from "@/features/parameter-review/ParameterSubmissionsPage";
 import { LogAdminPage } from "@/LogAdminPage";
+import { SkillWorkspace } from "@/features/log-skills/SkillWorkspace";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
@@ -256,7 +257,12 @@ export function PageRouter({
     };
   }, [debuggingGateway]);
 
-  if (!canAccessPage(currentRoleId, page.key)) {
+  const skillWorkspaceMatch = page.path.match(/^\/log-admin\/skills\/([^/]+)\/?$/);
+  let workspaceSkillId = skillWorkspaceMatch?.[1];
+  if (workspaceSkillId) {
+    try { workspaceSkillId = decodeURIComponent(workspaceSkillId); } catch { /* The API returns not-found for a malformed id. */ }
+  }
+  if (!canAccessPage(currentRoleId, page.key) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
       <section className="permission-denied-page" aria-label="无权访问">
@@ -395,6 +401,10 @@ export function PageRouter({
         />
       );
     case "log-admin":
+      if (workspaceSkillId) return <SkillWorkspace key={workspaceSkillId} skillId={workspaceSkillId} search={search}
+        repository={runtime?.logAnalysisRepository} apiMode={runtimeMode === "api"}
+        canEdit={runtimeMode === "api" && (sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(currentRoleId, "logs.admin-domains"))}
+        onNavigate={onNavigate} onPublished={(message) => dispatch({ type: "ADD_NOTIFICATION", message })} />;
       return (
         <LogAdminPage
           state={state}

@@ -14,11 +14,14 @@ export type LogSkillRevisionDto = {
   createdAt: string;
   publishedAt: string | null;
   publishedByUserId: string | null;
+  publishedByDisplayName?: string | null;
 };
 
 const selectRevision = `select id, skill_id as "skillId", revision_number as number, status, spec,
   content_hash as "contentHash", created_by_user_id as "createdByUserId", created_at as "createdAt",
-  published_at as "publishedAt", published_by_user_id as "publishedByUserId" from log_skill_revisions`;
+  published_at as "publishedAt", published_by_user_id as "publishedByUserId",
+  (select u.name from users u where u.id = published_by_user_id and u.organization_id = log_skill_revisions.organization_id) as "publishedByDisplayName"
+  from log_skill_revisions`;
 
 export async function listSkillRevisions(db: Queryable, organizationId: string, skillId: string): Promise<LogSkillRevisionDto[]> {
   const result = await db.query<LogSkillRevisionDto>(`${selectRevision}
@@ -50,14 +53,14 @@ export async function insertSkillRevision(db: Queryable, input: {
 export async function publishSkillRevision(db: Queryable, organizationId: string, skillId: string, draftId: string, userId: string) {
   const draft = await db.query(`select id from log_skill_revisions
     where organization_id = $1 and skill_id = $2 and id = $3 and status = 'draft'`, [organizationId, skillId, draftId]);
-  if (!draft.rows.length) throw new ApiError("CONFLICT", "Skill draft is missing or stale.");
+  if (!draft.rows.length) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill draft is missing or stale.");
   await db.query(`update log_skill_revisions set status = 'superseded'
     where organization_id = $1 and skill_id = $2 and status = 'published'`, [organizationId, skillId]);
   await db.query(`update log_skill_revisions set status = 'published', published_at = now(), published_by_user_id = $4
     where organization_id = $1 and skill_id = $2 and id = $3`, [organizationId, skillId, draftId, userId]);
   // Keep legacy GET/edit forms coherent; workers never read these columns.
   await db.query(`update log_domains d set format_profile = s.spec->'formatProfile',
-    model_override = s.spec->>'modelOverride', updated_at = now()
+    model_override = s.spec->>'modelOverride', description = coalesce(s.spec->>'description', d.description), updated_at = now()
     from log_skill_revisions s where d.organization_id = $1 and d.id = $2 and s.id = $3 and s.organization_id = $1`,
   [organizationId, skillId, draftId]);
 }

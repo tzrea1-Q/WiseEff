@@ -11161,6 +11161,97 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "logs.discardSkillDraft",
+        "summary": "Discard skill draft",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "draftRevisionId",
+            "in": "query",
+            "required": true,
+            "description": "The draft id observed by the editor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful response."
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/revisions/{revisionId}/restore": {
+      "post": {
+        "operationId": "logs.restoreSkillRevision",
+        "summary": "Restore skill as a new published revision",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revisionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSkillResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -30473,6 +30564,9 @@
                           "skill/v1"
                         ]
                       },
+                      "description": {
+                        "type": "string"
+                      },
                       "formatProfile": {
                         "type": "object",
                         "properties": {
@@ -30879,6 +30973,12 @@
                     ]
                   },
                   "publishedByUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "publishedByDisplayName": {
                     "type": [
                       "string",
                       "null"
@@ -30931,6 +31031,9 @@
                           "skill/v1"
                         ]
                       },
+                      "description": {
+                        "type": "string"
+                      },
                       "formatProfile": {
                         "type": "object",
                         "properties": {
@@ -31341,6 +31444,12 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "publishedByDisplayName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 },
                 "required": [
@@ -31387,6 +31496,9 @@
                 "enum": [
                   "skill/v1"
                 ]
+              },
+              "description": {
+                "type": "string"
               },
               "formatProfile": {
                 "type": "object",
@@ -31774,10 +31886,21 @@
               "schemaVersion"
             ],
             "additionalProperties": false
+          },
+          "baseDraftRevisionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "basePublishedRevisionId": {
+            "type": "string"
           }
         },
         "required": [
-          "spec"
+          "spec",
+          "baseDraftRevisionId",
+          "basePublishedRevisionId"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSkillDraftRequest"
@@ -31813,6 +31936,9 @@
                     "enum": [
                       "skill/v1"
                     ]
+                  },
+                  "description": {
+                    "type": "string"
                   },
                   "formatProfile": {
                     "type": "object",
@@ -32224,6 +32350,12 @@
                   "string",
                   "null"
                 ]
+              },
+              "publishedByDisplayName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -32246,6 +32378,12 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSkillRevisionResponse"
+      },
+      "LogSkillDiscardResponse": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSkillDiscardResponse"
       },
       "LogSkillPublishRequest": {
         "type": "object",
@@ -32293,6 +32431,9 @@
                       "enum": [
                         "skill/v1"
                       ]
+                    },
+                    "description": {
+                      "type": "string"
                     },
                     "formatProfile": {
                       "type": "object",
@@ -32700,6 +32841,12 @@
                   ]
                 },
                 "publishedByUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "publishedByDisplayName": {
                   "type": [
                     "string",
                     "null"

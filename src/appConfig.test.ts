@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, utilityItems } from "./appConfig";
 
 describe("WiseEff prototype configuration", () => {
+  it("keeps the skill workspace deep link under the log-admin page gate", () => {
+    expect(getPageByPath("/log-admin/skills/skill-charging")).toMatchObject({ key: "log-admin", path: "/log-admin/skills/skill-charging", title: "分析技能工作区" });
+    expect(getPageByPath("/log-admin/skills/skill-charging/extra").path).toBe("/");
+    expect(navigationItems.filter((item) => item.key === "log-admin")).toHaveLength(1);
+  });
   it("names the personal workflow for both pending and completed submissions", () => {
     expect(getPageByPath("/parameter-submissions")).toMatchObject({ label: "我的提交", title: "我的提交" });
     expect(getPageByPath("/parameter-review")).toMatchObject({ label: "变更审阅", title: "变更审阅" });

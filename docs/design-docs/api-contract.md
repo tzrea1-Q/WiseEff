@@ -40,21 +40,23 @@ M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authentic
 
 ## Analysis Skills, Revisions and Analyzer Provenance
 
-Analysis skills retain their `log_domains` identities and ids. Reads require `logs:view`; writes require `logs:admin-domains`. New-resource writes commit `log-skill-create`, `log-skill-draft-save` or `log-skill-publish` audit events in the same transaction. All lookups are organization-scoped; foreign identities/revisions return `404`.
+Analysis skills retain their `log_domains` identities and ids. Reads require `logs:view`; writes require `logs:admin-domains`. New-resource writes commit `log-skill-create`, `log-skill-draft-save`, `log-skill-publish`, `log-skill-draft-discard` or `log-skill-restore` audit events in the same transaction. All lookups are organization-scoped; foreign identities/revisions return `404`.
 
 | Method | Path | Shape |
 | --- | --- | --- |
 | `GET` | `/api/v1/log-skills` | `{ items }`: identity, `currentRevision: { id, number, publishedAt }`, `hasDraft`, `analyses7d` (runs created in seven days), `helpfulRate7d` (0..1, null without feedback; same attribution semantics as feedback insights). `includeArchived=true` includes archived skills. |
 | `GET` | `/api/v1/log-skills/:skillId` | `{ item }`: identity, full `currentRevision`, nullable `draft`. |
 | `POST` | `/api/v1/log-skills` | `{ name, description?, formatProfile? }` creates identity + published v1; `201 { item }`. Same validation as legacy create. |
-| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", formatProfile?, modelOverride?, signalRules? } }` replaces the draft, returning `{ item: revision }` with a fresh draft id. Absent signal rules use the platform charging defaults. |
-| `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` atomically publishes that draft and supersedes the previous publication; missing/stale draft returns `409`. Returns `{ item: skill }`. |
+| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` replaces the draft, returning `{ item: revision }` with a fresh draft id. Both base fields are required: the editor's starting draft id (null when no draft existed) and published revision id. A mismatch against either current revision under the skill lock returns `409 LOG_SKILL_DRAFT_CONFLICT`. `description` is optional, trimmed, at most 2000 characters, without a schema-version bump. Publish and restore retain the identity description when the field is absent; an explicit empty string clears it. Absent signal rules use the platform charging defaults. |
+| `DELETE` | `/api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId` | Required query parameter `draftRevisionId` identifies the draft observed by the editor. Under the skill lock, a different existing draft returns `409 LOG_SKILL_DRAFT_CONFLICT`; a matching or absent draft returns idempotent `204`. Audits `log-skill-draft-discard` on success, including an already-absent draft. |
+| `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` atomically publishes that draft and supersedes the previous publication; missing/stale draft returns `409 LOG_SKILL_DRAFT_CONFLICT`. Synchronizes identity description, format profile and model override. Returns `{ item: skill }`. |
+| `POST` | `/api/v1/log-skills/:skillId/revisions/:revisionId/restore` | Publishes the selected historical spec as a new revision with the next number; never rewrites historical content. Returns `{ item: skill }`. Under the skill lock, an existing draft returns `409 LOG_SKILL_DRAFT_EXISTS`; a missing/foreign/draft source returns `404`. Audits `log-skill-restore` with `{ fromRevisionId, newRevisionId }` in the publication transaction. |
 | `GET` | `/api/v1/log-skills/:skillId/revisions` | `{ items: revision[] }`, newest revision number first. |
-| `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`; revisions contain `id`, `skillId`, `number`, `status`, `spec`, `contentHash`, creation and publication times/users. Published/superseded content is immutable. Account deletion clears author/publisher references under the existing history-retention policy; spec, hash and publication facts remain unchanged. |
+| `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`; revisions contain `id`, `skillId`, `number`, `status`, `spec`, `contentHash`, creation and publication times/users, plus optional `publishedByDisplayName`. Published/superseded content is immutable. Account deletion clears author/publisher references under the existing history-retention policy; spec, hash and publication facts remain unchanged. |
 
 Upload/create/rerun accept `skillId`; `logDomainId` remains an alias. Rerun accepts `revisionPolicy: "current" | "pinned"` (default `current`): `current` pins the current publication; `pinned` reuses the preceding run's revision and cannot change its skill. Uncategorized runs retain a null pin and platform defaults. Records/runs expose `skillRevision: { id, number } | null`; result webhook payloads add nullable `skillRevisionId` and `skillRevisionNumber`. Workers read format profile, model override and signal rules solely from the pinned revision.
 
-All legacy endpoints below remain supported. Domain creation also publishes v1. A PATCH containing `formatProfile` or `modelOverride` immediately publishes a new revision, preserves any separate draft and leaves old run pins unchanged. Name, description, status, knowledge links and webhook configuration stay on the identity.
+All legacy endpoints below remain supported. Domain creation also publishes v1. A PATCH containing `formatProfile` or `modelOverride` immediately publishes a new revision, preserves any separate draft and leaves old run pins unchanged. Name, status, knowledge links and webhook configuration stay on the identity. Workspace description edits are revisioned; publication synchronizes the identity description, which legacy PATCH can still edit independently.
 
 Log domains are org-scoped registrations of a business's log intake (name, description, optional declarative format profile). Governance requires `logs:admin-domains` and every mutation writes a `log-domain-*` audit event. Format-profile patterns use RE2 syntax on a linear-time engine (no lookaround or backreferences; at most 4,096 characters), and lines longer than 65,536 characters are not matched by them; an unsupported pattern is rejected with `400` and its field path.
 
@@ -62,7 +64,7 @@ Log domains are org-scoped registrations of a business's log intake (name, descr
 | --- | --- | --- |
 | `GET` | `/api/v1/log-domains` | List domains (`logs:view`; `includeArchived=true` adds archived rows). |
 | `POST` | `/api/v1/log-domains` | Create a domain (`{ name, description?, formatProfile? }`). Duplicate name in the organization → `409`; invalid format profile → `400` with issues. Returns `201 { item }`. |
-| `PATCH` | `/api/v1/log-domains/:domainId` | Update name/description/format profile/status/model override (`formatProfile: null` clears the stored profile; `modelOverride: null` clears back to the global `LOG_ANALYSIS_MODEL`). |
+| `PATCH` | `/api/v1/log-domains/:domainId` | Update name/description/format profile/status/model override (`formatProfile: null` clears the stored profile; `modelOverride: null` clears back to the global `LOG_ANALYSIS_MODEL`). Supplying description, format profile or model override publishes a revision immediately; under the skill lock, an existing workspace draft instead returns `409 LOG_SKILL_DRAFT_EXISTS` (`Publish or discard the skill draft first.`). Name/status-only edits, archive and webhook updates remain available. |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | Archive the domain; existing log records keep their binding. |
 | `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | P2: list the domain's knowledge-entry links with each entry's current status (`logs:admin-domains`). |
 | `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | P2: replace the link set (`{ knowledgeEntryIds: uuid[] }`). Only **published** knowledge entries in the caller's organization are accepted (`400` for drafts/archived, `404` for unknown entries); audited as `log-domain-knowledge-links-update`. |
@@ -260,7 +262,7 @@ Create body:
 ```json
 {
   "pagePath": "/parameters",
-  "pageTitle": "项目参数用户工作台",
+  "pageTitle": "Project parameter workspace",
   "feedbackType": "experience",
   "description": "The submit button is hard to find on mobile.",
   "attachments": [
