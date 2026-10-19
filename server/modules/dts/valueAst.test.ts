@@ -61,6 +61,32 @@ describe("parseDtsValue / renderDtsValue", () => {
   });
 
   it.each([
+    ['< /* source comment 99, > */ 36 // 77 <\n 37>', '<36 37>'],
+    ['/* < */ /bits/ /* width */ 64 < /* 99 */ 9007199254740993>', '/bits/ 64 <9007199254740993>'],
+    ['[00 /* ff ] */ AB // 12\n cd]', '[00 AB cd]'],
+    ['"http://host/*literal*/", /* , < */ "b"', '"http://host/*literal*/", "b"'],
+  ])("parses comments as whitespace and retains their exact source: %s", (raw, plain) => {
+    const parsed = parseDtsValue("value", raw);
+    const expected = parseDtsValue("value", plain).value;
+    if (expected.kind === "strings") {
+      expect(parsed.value).toMatchObject({ kind: "strings", values: expected.values });
+    } else {
+      expect(parsed.value).toEqual(expected);
+    }
+    expect(parsed.rawText).toBe(raw);
+    expect(renderDtsValue(parsed.value, raw)).toBe(raw);
+  });
+
+  it("changes only actual tokens when comments contain numbers and delimiters", () => {
+    const cells = '< /* > 99, */ 36>, /* < 88, */ <37 // 66\n>';
+    expect(renderDtsValue(parseDtsValue("value", '<38>, <39>').value, cells))
+      .toBe('< /* > 99, */ 38>, /* < 88, */ <39 // 66\n>');
+    const bytes = '/* [ */ [00 /* ff ] */ AB] // cd';
+    expect(renderDtsValue(parseDtsValue("value", '[01 AC]').value, bytes))
+      .toBe('/* [ */ [01 /* ff ] */ ac] // cd');
+  });
+
+  it.each([
     '<1 junk 2>', '<1 2', '<0xGG>', '<1+2>', '<1-2>', '<<1>>',
     '"a" junk', '"a",', '"a', '[0 ff]', '[00 fff]', '[00] trailing',
     '/bits/ 7 <1>', '/bits/ 8 <256>', '/bits/ 16 <-32769>', '<4294967296>',
