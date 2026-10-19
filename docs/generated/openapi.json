@@ -37928,6 +37928,12 @@
                   "skill/v1"
                 ]
               },
+              "knowledgeEntryIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "parsing": {
                 "type": "object",
                 "properties": {
