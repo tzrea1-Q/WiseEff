@@ -25,6 +25,10 @@ describe("diffSkillSpecs", () => {
     expect(diffSkillSpecs(before, after).parsing).toMatchObject([{ id: "a", kind: "removed" }, { id: "b", kind: "changed" }, { id: "c", kind: "added" }]);
     expect(diffSkillSpecs(before, structuredClone(before)).parsing).toEqual([]);
   });
+  it("includes default source snapshot changes in the publication review", () => {
+    expect(diffSkillSpecs(base, { ...base, defaultSourceSnapshotId: "snapshot" }).source)
+      .toEqual([{ field: "defaultSourceSnapshotId", before: undefined, after: "snapshot" }]);
+  });
   it("reports overview and pretty-printed format line changes without mutating input", () => {
     const after = { ...base, description: "诊断", modelOverride: "m", formatProfile: { severityMap: { error: ["ALERT"] } } };
     const saved = structuredClone(after);

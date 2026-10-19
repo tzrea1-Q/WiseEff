@@ -29,6 +29,10 @@ describe("createLocalObjectStore", () => {
       });
 
       await expect(store.get(stored.storageKey)).resolves.toEqual(bytes);
+      const streamed: Buffer[] = [];
+      for await (const block of await store.getStream!(stored.storageKey)) streamed.push(block as Buffer);
+      expect(Buffer.concat(streamed)).toEqual(bytes);
+      await expect(store.getStream!("../escape")).rejects.toThrow("Unsafe storage key");
       expect(stored.storageKey).toContain("org-chargelab/");
       expect(stored.storageKey).toContain("charging-foldback.log");
     });

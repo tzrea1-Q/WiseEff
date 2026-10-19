@@ -19,6 +19,18 @@ const slots = {
 describe("NavigatorWorkbench", () => {
   beforeEach(() => localStorage.clear());
 
+  it("hides its inspector without unmounting it", () => {
+    const view = render(<NavigatorWorkbench {...slots} />);
+    const inspector = screen.getByRole("region", { name: "参数检查器" });
+    view.rerender(<NavigatorWorkbench {...slots} inspectorHidden />);
+    expect(inspector).toHaveAttribute("hidden");
+    expect(inspector).not.toBeVisible();
+    expect(screen.queryByRole("button", { name: "参数详情" })).not.toBeInTheDocument();
+    view.rerender(<NavigatorWorkbench {...slots} />);
+    expect(screen.getByRole("region", { name: "参数检查器" })).toBe(inspector);
+    expect(inspector).toBeVisible();
+  });
+
   it("keeps the named inspector in its slot when the source requires an overlay", () => {
     const view = render(<NavigatorWorkbench {...slots} inspectorOverlay />);
     expect(screen.getByRole("region", { name: "参数检查器" })).toHaveAttribute("data-overlay", "true");

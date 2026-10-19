@@ -216,6 +216,12 @@ The log analysis kernel behind `LogAnalysisAdapter` runs outside the Xiaoze stac
 - **Evidence discipline:** logs, audit, and metrics record model label, latency, token counts, degradation reason, and trace/request ids. They must never record API keys, raw prompts, raw provider payloads, or raw log content. `/health/ready` exposes `logAnalysisLlm` configuration status (mirroring `xiaozeLlm`), not credentials.
 - **Tenant isolation:** the worker reads log bytes, log-domain rows, knowledge links, and parameter context through organization-scoped repository queries; log-domain governance (including knowledge links, webhook config, and the per-domain model override) requires `logs:admin-domains` and is audited (`log-domain-*`).
 
+### Source Snapshot Storage and Provider Boundary (#1243)
+
+Source archives are organization- and skill-scoped object-store uploads. Snapshot/file/chunk rows use composite organization foreign keys; snapshot administration requires `logs:admin-domains` and upload/default/archive database writes commit with their audit events. `logs:view` can list metadata, including progress and bounded skipped-path reasons; this slice provides no public source-content or download endpoint. Archive bytes are untrusted: the streaming indexer enforces compressed/unpacked/file/count budgets, rejects unsafe paths, links, special entries and overlapping ZIP ranges, and skips vendored paths, binary/non-UTF-8 data and unsupported or oversized files. Archival prevents future default selection without rewriting historical revision specs; runs with unavailable snapshots continue with an explicit report note.
+
+This slice adds no source tools and sends no source snippets to the configured model provider. ADR-0047 accepts the future flow of capped source and log excerpts to the `LOG_ANALYSIS_*` provider when #1244/#1245 add source retrieval and evidence. Those snippets remain untrusted input under the existing read-only protocol, grounding and organization-scope controls; raw source, prompts and provider payloads must not be copied into operational logs or repository evidence.
+
 ### Log Analysis Result Webhooks (P3b)
 
 Domain result webhooks make the server issue outbound HTTP requests to admin-supplied URLs, so the URL is treated as untrusted input with hard anti-SSRF constraints:

@@ -267,6 +267,8 @@ Issue #1237 delivers the extraction core and code view; the sample-line extracto
 
 ## Phase S4 — source snapshots
 
+Implementation slice #1243 adds archive upload and audited archival, streaming asynchronous file/chunk indexing, FTS/trigram indexes, configurable limits (1 GiB unpacked, 2 MiB per file, 20,000 files, 100 MiB compressed), bounded skip details, the workspace source table/dialog and draft-only default selection. The optional `defaultSourceSnapshotId` is published with a revision; a run resolves that pinned revision and records the observed snapshot id/status. A non-ready or archived snapshot leaves analysis operational with an explicit Chinese unavailable note. Source statement indexing/evidence (#1244), source search/range tools and upload `sourceVersion` matching (#1245) remain future S4 work; the full S4 acceptance below is not satisfied by #1243 alone. No source snippets are sent to the provider in #1243. Operational details and the standalone 1 GiB RSS probe are in the [runbook](../../runbooks/log-analysis-llm.md#source-snapshots-1243).
+
 1. Upload a source archive with a version label to a skill; object store; asynchronous indexing (mirrors the knowledge indexing worker); text-file allowlist by extension, per-file and total caps (initial: 1 GB unpacked, 2 MB per file), vendored/binary paths skipped and listed.
 2. Indexes: files; chunked FTS + trigram search; log-statement index extracted with emitter patterns (defaults for C/C++ `printk`/`pr_*`/`dev_*`, Android `ALOG*`/`Log.*`, `LOG(...)`, Python `logging`, Go `log`/`slog`; skills may add patterns). Format strings are normalized into matchable skeletons.
 3. Snapshot selection: upload `sourceVersion` label → matching snapshot, else the revision's default; runs record the snapshot used.
@@ -295,7 +297,7 @@ Requires its own ADR first (QuickJS/WASM in an isolated worker vs a separate no-
 
 ## Security and privacy
 
-- Organization isolation at the repository layer and in composite foreign keys for every new table; permission `logs:admin-domains` governs skill and snapshot administration (label becomes `管理分析技能`); `logs:view` sees cited excerpts only, not snapshot browsing.
+- Organization isolation at the repository layer and in composite foreign keys for every new table; permission `logs:admin-domains` governs skill and snapshot administration (label becomes `管理分析技能`); `logs:view` can list snapshot metadata, including progress and skipped-path reasons, but has no source-file/content browsing route in #1243.
 - Procedure text, knowledge, decoded values and source are untrusted model input; the platform protocol is never overridable by a skill.
 - Administrator patterns run on a linear-time engine with caps; archives are validated before anything persists.
 - Integration credentials carry only upload and own-record read scope, are hashed at rest, and never grant administration.

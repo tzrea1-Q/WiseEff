@@ -22,6 +22,7 @@ type NavigatorWorkbenchProps = {
   panelId?: string;
   tabId?: string;
   inspector?: ReactNode;
+  inspectorHidden?: boolean;
   inspectorOverlay?: boolean;
   inspectorLabel?: string;
   children?: ReactNode;
@@ -32,7 +33,7 @@ export function NavigatorWorkbench(props: NavigatorWorkbenchProps) {
 }
 
 function WorkbenchSlots({ pageKey, toolbar, primaryAction, context, notice, navigator, navigatorLabel,
-  taskLabel, taskClassName = "", taskState, panelId, tabId, inspector, inspectorOverlay = false, inspectorLabel = "检查器", children }: NavigatorWorkbenchProps) {
+  taskLabel, taskClassName = "", taskState, panelId, tabId, inspector, inspectorHidden = false, inspectorOverlay = false, inspectorLabel = "检查器", children }: NavigatorWorkbenchProps) {
   const navigationId = useId();
   const storageKey = `wiseeff.navigator-workbench.collapsed:${pageKey}`;
   const [collapsed, setCollapsed] = useState(() => {
@@ -79,7 +80,7 @@ function WorkbenchSlots({ pageKey, toolbar, primaryAction, context, notice, navi
             : taskState?.kind === "error" ? <SectionError message={taskState.message} detail={taskState.detail} onRetry={taskState.onRetry} />
             : children}
         </TabPanel>
-        {inspector ? <section className="navigator-workbench__inspector" data-overlay={inspectorOverlay} aria-label={inspectorLabel}>{inspector}</section> : null}
+        {inspector ? <section className="navigator-workbench__inspector" hidden={inspectorHidden} data-overlay={inspectorOverlay} aria-label={inspectorLabel}>{inspector}</section> : null}
       </TabPanel>
     </div>
   );

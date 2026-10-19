@@ -407,6 +407,7 @@ async function processClaimedLogAnalysisJob(
       analyzeInput: {
         procedure: snapshot.procedure,
         decoding,
+        sourceSnapshot: snapshot.sourceSnapshot,
         files: inventory.length ? files : undefined,
         filePath: inventory.length ? files.find((file) => file.parsed)?.path : snapshot.fileName,
         signalRules: snapshot.signalRules,
@@ -449,6 +450,11 @@ async function processClaimedLogAnalysisJob(
       metrics
     });
 
+    if (snapshot.sourceSnapshot && snapshot.sourceSnapshot.status !== "ready") {
+      const reason = { queued: "仍在排队", indexing: "仍在索引", failed: "索引失败", archived: "已归档" }[snapshot.sourceSnapshot.status];
+      analysis.conclusion += `\n\n源码快照${reason}，本次分析未使用源码`;
+    }
+
     await markProgress(options, {
       organizationId: snapshot.organizationId,
       jobId: snapshot.jobId,
@@ -480,6 +486,7 @@ async function processClaimedLogAnalysisJob(
       runId: snapshot.runId,
       jobId: snapshot.jobId,
       leaseOwner,
+      sourceSnapshot: snapshot.sourceSnapshot,
       report: {
         confidence: analysis.confidence,
         conclusion: analysis.conclusion,

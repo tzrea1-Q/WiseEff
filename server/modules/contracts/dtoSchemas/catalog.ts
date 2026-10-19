@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import { z } from "zod";
-import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema } from "../../logs/schemas";
+import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema } from "../../logs/schemas";
 import { logSkillSpecSchema } from "../../logs/skillSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
 
@@ -32,6 +32,7 @@ import {
   logDomainListResponseSchema,
   logSkillListResponseSchema, logSkillResponseSchema, logSkillRevisionResponseSchema, logSkillRevisionListResponseSchema,
   logSkillTemplateListResponseSchema, logSkillSampleResponseSchema, logSkillSampleReplaceResponseSchema,
+  logSourceSnapshotListResponseSchema, logSourceSnapshotResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
   logFeedbackResponseSchema,
@@ -81,6 +82,9 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogSkillTemplateListResponse: logSkillTemplateListResponseSchema,
   LogSkillSampleResponse: logSkillSampleResponseSchema,
   LogSkillSampleReplaceResponse: logSkillSampleReplaceResponseSchema,
+  LogSourceSnapshotUploadRequest: sourceSnapshotUploadSchema,
+  LogSourceSnapshotListResponse: logSourceSnapshotListResponseSchema,
+  LogSourceSnapshotResponse: logSourceSnapshotResponseSchema,
   // No response content is emitted for 204; retain an empty shape for route coverage.
   LogSkillDiscardResponse: z.object({}).strict(),
   ProjectListResponse: projectListResponseSchema,
@@ -171,6 +175,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.listSkills", "logs.createSkill", "logs.getSkill", "logs.saveSkillDraft", "logs.discardSkillDraft", "logs.restoreSkillRevision", "logs.publishSkill", "logs.listSkillRevisions", "logs.getSkillRevision",
   "logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample",
   "logs.parsePreview",
+  "logs.listSourceSnapshots", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot",
   "logs.listDomains",
   "logs.createDomain",
   "logs.updateDomain",

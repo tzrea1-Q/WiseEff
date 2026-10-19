@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
 import type { ObjectStore } from "../modules/logs/objectStore";
 
 export type MemoryObjectStore = ObjectStore & {
@@ -33,6 +34,11 @@ export function createMemoryObjectStore(): MemoryObjectStore {
         throw new Error(`Missing object for storage key: ${storageKey}`);
       }
       return Buffer.from(value);
+    },
+    async getStream(storageKey) {
+      const value = entries.get(storageKey);
+      if (!value) throw new Error(`Missing object for storage key: ${storageKey}`);
+      return Readable.from([value]);
     },
     async getBounded(storageKey, maxBytes) {
       const value = entries.get(storageKey);

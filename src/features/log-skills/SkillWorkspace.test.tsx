@@ -37,7 +37,14 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
     restoreSkillRevision: vi.fn<SkillWorkspaceRepository["restoreSkillRevision"]>(async () => {
       skill.currentRevision = { ...old, id: "restored", number: 3, status: "published" }; return structuredClone(skill);
     }),
-    listLogSkills: vi.fn(async () => [{ ...skill, currentRevision: { id: "current", number: 2, publishedAt: skill.currentRevision.publishedAt }, analyses7d: 7, helpfulRate7d: 0.5 }])
+    listLogSkills: vi.fn(async () => [{ ...skill, currentRevision: { id: "current", number: 2, publishedAt: skill.currentRevision.publishedAt }, analyses7d: 7, helpfulRate7d: 0.5 }]),
+    listSourceSnapshots: vi.fn(async () => [{ id: "source-default", skillId: skill.id, versionLabel: "source-v1", status: "ready" as const,
+      fileCount: 1, filesProcessed: 1, filesTotal: 1, skippedCount: 0, skippedFiles: [], error: null, createdAt: skill.createdAt }]),
+    setDefaultSourceSnapshot: vi.fn<SkillWorkspaceRepository["setDefaultSourceSnapshot"]>(async (_id, snapshotId) => {
+      skill.draft = { ...skill.currentRevision, id: "source-draft", number: 3, status: "draft",
+        spec: { ...(skill.draft ?? skill.currentRevision).spec, defaultSourceSnapshotId: snapshotId } };
+      return structuredClone(skill);
+    })
   };
   const onPublished = vi.fn();
   const onNavigate = vi.fn();
@@ -146,13 +153,27 @@ describe("skill workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "运行预览" }));
     await waitFor(() => expect(repository.parsePreview).toHaveBeenLastCalledWith("skill-charging", expect.objectContaining({ sampleText: "pasted fallback", fileName: "sample.log" })));
   });
-  it("keeps the mounted sample and its scroll position across sections", async () => {
+  it("hides the mounted sample on full-width sections and preserves its scroll when returning", async () => {
     const { repository } = setup();
     const sample = await screen.findByRole("region", { name: "样例内容" });
     expect(sample).toHaveAttribute("data-sample-scroll");
     sample.scrollTop = 120;
     await userEvent.click(screen.getByRole("button", { name: "版本" }));
+    expect(screen.queryByRole("region", { name: "样例日志" })).not.toBeInTheDocument();
+    expect(sample).not.toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "源码" }));
+    expect(screen.queryByRole("region", { name: "样例日志" })).not.toBeInTheDocument();
+    expect(sample).not.toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "诊断流程" }));
+    expect(screen.queryByRole("region", { name: "样例日志" })).not.toBeInTheDocument();
+    expect(sample).not.toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "样例与解析" }));
     expect(screen.getByRole("region", { name: "样例内容" })).toBe(sample);
+    expect(sample).toBeVisible();
+    expect(sample.scrollTop).toBe(120);
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    expect(screen.getByRole("region", { name: "样例内容" })).toBe(sample);
+    expect(sample).toBeVisible();
     expect(sample.scrollTop).toBe(120);
     expect(repository.getSkillSample).toHaveBeenCalledTimes(1);
   });
@@ -171,6 +192,20 @@ describe("skill workspace", () => {
     expect(within(dialog).getByLabelText("解析规则差异")).toHaveTextContent("current · 新增");
     fireEvent.click(within(dialog).getByRole("button", { name: "发布" }));
     await waitFor(() => expect(repository.publishSkill).toHaveBeenCalledWith("skill-charging", "saved"));
+  });
+  it("opens the source section and includes its default draft in publication review", async () => {
+    const { repository } = setup();
+    await screen.findByRole("textbox", { name: "描述" });
+    await userEvent.click(screen.getByRole("button", { name: "源码" }));
+    await userEvent.click(await screen.findByRole("button", { name: "设为默认" }));
+    expect(repository.setDefaultSourceSnapshot).toHaveBeenCalledWith("skill-charging", "source-default");
+    expect(await screen.findByText("草稿默认")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "发布" }));
+    const review = within(screen.getByRole("dialog", { name: "发布技能" }));
+    expect(review.getByLabelText("源码差异")).toHaveTextContent("默认源码快照");
+    expect(review.getByLabelText("变更摘要")).toHaveTextContent("源码 1 项");
+    await userEvent.click(review.getByRole("button", { name: "发布" }));
+    await waitFor(() => expect(repository.publishSkill).toHaveBeenCalledWith("skill-charging", "source-draft"));
   });
   it("shows compact overview facts without leaking the internal skill id", async () => {
     setup();

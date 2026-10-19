@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+export const sourceSnapshotUploadSchema = z.object({
+  versionLabel: z.string().trim().min(1).max(200),
+  fileName: z.string().min(1).max(255)
+}).strict();
+
 import { logRecordStatuses } from "./status";
 
 const nonEmptyString = z.string().min(1);

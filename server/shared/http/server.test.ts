@@ -1,6 +1,6 @@
 import pg from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./server";
+import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES, type MultipartBody } from "./server";
 import type { RouteRequest } from "./router";
 
 const openServers: Array<ReturnType<typeof createHttpServer>> = [];
@@ -53,6 +53,19 @@ function echoRouter(seen: { body?: unknown }) {
 }
 
 describe("createHttpServer", () => {
+  it("preserves binary multipart bytes and boundary-like payloads without copying files", async () => {
+    const seen: { body?: unknown } = {};
+    const baseUrl = await listen(createHttpServer(echoRouter(seen), { maxBodyBytes: () => 2048 }));
+    const boundary = "source-boundary";
+    const content = Buffer.concat([Buffer.from([0, 255, 128]), Buffer.from(`\r\n--${boundary}X\r\ncontent\r\n--${boundary}--X\r\nmore`)]);
+    const body = Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="versionLabel"\r\n\r\nv1\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="source.zip"\r\n\r\n`), content, Buffer.from(`\r\n--${boundary}--\r\n`)]);
+    const response = await fetch(`${baseUrl}/upload`, { method: "POST", headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, body });
+    expect(response.status).toBe(200);
+    const parsed = seen.body as MultipartBody;
+    expect(parsed.fields.versionLabel).toBe("v1");
+    expect(parsed.files[0].bytes).toEqual(content);
+    expect(parsed.files[0].bytes.buffer.byteLength).toBeGreaterThan(parsed.files[0].bytes.byteLength);
+  });
   it("keeps idle sockets longer than Node's 5s default", () => {
     const server = createHttpServer({
       handle: async () => ({ status: 204, body: {} })

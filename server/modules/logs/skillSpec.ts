@@ -13,6 +13,7 @@ export const logSkillSpecSchema = z.object({
     if (!result.ok) for (const message of result.issues) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
   }).optional(),
   modelOverride: z.string().trim().min(1).max(200).optional(),
+  defaultSourceSnapshotId: z.string().min(1).max(200).optional(),
   signalRules: signalRuleSetSchema.optional()
 }).strict();
 

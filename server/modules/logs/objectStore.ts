@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
+import type { Readable } from "node:stream";
 import {
   mkdir as fsMkdir,
   open as fsOpen,
@@ -27,6 +29,8 @@ export type ObjectStoreHealth = {
 export interface ObjectStore {
   put(input: { organizationId: string; fileName: string; contentType: string; bytes: Buffer }): Promise<StoredObject>;
   get(storageKey: string): Promise<Buffer>;
+  /** Streaming reads for archives larger than the worker's memory budget. */
+  getStream?(storageKey: string): Promise<Readable>;
   /** Read at most maxBytes, rejecting before an oversized object is fully buffered. */
   getBounded?(storageKey: string, maxBytes: number): Promise<Buffer>;
   /**
@@ -152,6 +156,10 @@ export function createLocalObjectStore(rootDir: string, options: LocalObjectStor
     async get(storageKey) {
       const { objectPath } = resolveInsideRoot(rootDir, storageKey);
       return fsReadFile(objectPath);
+    },
+    async getStream(storageKey) {
+      const { objectPath } = resolveInsideRoot(rootDir, storageKey);
+      return createReadStream(objectPath);
     },
     async getBounded(storageKey, maxBytes) {
       const { objectPath } = resolveInsideRoot(rootDir, storageKey);

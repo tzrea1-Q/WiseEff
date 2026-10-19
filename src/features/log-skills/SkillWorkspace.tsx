@@ -23,12 +23,15 @@ import { SkillSamplePane } from "./SkillSamplePane";
 import { stringify } from "yaml";
 import { ParsingSection, parseParsingYaml } from "./ParsingSection";
 import { parsingSpecSchema } from "@wiseeff/dto-schemas";
+import { SourceSnapshots } from "./SourceSnapshots";
 import "./skill-workspace.css";
 
 type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
   sample: SkillSample | null;
-  parsingYaml: string; onParsingYamlChange: (text: string) => void; repository?: Partial<SkillWorkspaceRepository>;
+  parsingYaml: string; onParsingYamlChange: (text: string) => void;
   revisions: SkillRevision[]; onRestore: (revision: SkillRevision) => void;
+  repository?: Partial<SkillWorkspaceRepository>; apiMode: boolean; canEdit: boolean; dirty: boolean;
+  onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
   stats?: { analyses7d?: number; helpfulRate7d?: number | null } };
 const time = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未发布";
 const status = { published: "当前", draft: "草稿", superseded: "已替代" };
@@ -105,7 +108,7 @@ function Versions({ skill, revisions, disabled, onRestore }: SectionProps) {
 export const skillSections: Array<{ id: string; label: string; component?: ComponentType<SectionProps> }> = [
   { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程", component: Procedure },
   { id: "parsing", label: "样例与解析", component: Parsing }, { id: "decoding", label: "解码" }, { id: "signals", label: "信号" },
-  { id: "knowledge", label: "知识" }, { id: "source", label: "源码" }, { id: "tests", label: "测试" },
+  { id: "knowledge", label: "知识" }, { id: "source", label: "源码", component: SourceSnapshots }, { id: "tests", label: "测试" },
   { id: "integration", label: "集成" }, { id: "versions", label: "版本", component: Versions }
 ];
 
@@ -202,6 +205,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   if (!skill) return <SectionSkeleton label="正在加载分析技能" />;
   return <div className="skill-workspace" aria-busy={pending}>
     <NavigatorWorkbench pageKey="log-skill-workspace" navigatorLabel="技能分区" taskLabel={selected.label}
+      inspectorHidden={!["overview", "parsing", "decoding", "signals"].includes(selected.id)}
       inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={setSample} />}
       toolbar={<><Button variant="link" onClick={back}>返回分析技能</Button><strong>{skill.name}</strong></>}
       context={<>
@@ -222,12 +226,15 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
         {s.label}{!s.component ? <small>即将推出</small> : null}</Button>)}</nav>}>
       <Component key={selected.id} skill={skill} spec={spec} setSpec={setSpec} disabled={disabled} stats={stats} revisions={revisions}
         sample={sample?.skillId === skillId ? sample : null}
-        parsingYaml={parsingYaml} repository={repository} onParsingYamlChange={(text) => {
+        parsingYaml={parsingYaml} onParsingYamlChange={(text) => {
           setParsingYamlDraft(text);
           const parsed = parseParsingYaml(text);
           const validated = parsingSpecSchema.safeParse(parsed.value);
           if (!parsed.error && validated.success) setSpec({ ...spec, parsing: validated.data });
         }}
+        repository={repository} apiMode={apiMode} canEdit={canEdit} dirty={dirty} onBusyChange={setPending}
+        onSkillUpdated={(updated) => { setSkill(updated); setSpec(structuredClone((updated.draft ?? updated.currentRevision).spec));
+          setRevisions((history) => [...(updated.draft ? [updated.draft] : []), ...history.filter((revision) => revision.status !== "draft")]); }}
         onRestore={(revision) => { if (dirty || skill.draft) { setError("请先发布或放弃现有草稿，再回滚版本。"); return; }
           ask(`回滚到 v${revision.number}？`, "此版本将发布为新的版本，历史记录保持不变。", () => void run(async () => {
             const restored = await repository!.restoreSkillRevision!(skillId, revision.id); onPublished(`已发布 v${restored.currentRevision.number}`); await refresh();

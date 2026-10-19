@@ -36,6 +36,8 @@ type Fixture = {
     progress: number;
     error_message: string | null;
     updated_at: string;
+    source_snapshot_id?: string | null;
+    source_snapshot_status?: string | null;
   };
   log: {
     id: string;
@@ -260,6 +262,8 @@ function createFakeWorkerDb(fixture = createFixture()) {
         return { rows: [], rowCount: 1 };
       }
       if (normalized.startsWith("update log_analysis_runs set status = 'complete'")) {
+        fixture.run.source_snapshot_id = values[4] as string | null;
+        fixture.run.source_snapshot_status = values[5] as string | null;
         fixture.run.status = "complete";
         fixture.run.current_stage = values[3] as string;
         fixture.run.progress = 100;
@@ -459,6 +463,37 @@ describe("log worker", () => {
     expect(fixture.decoded?.counts.errors[failure === "legacy pattern" ? "decode_error" : "artifact_error"]).toBe(1);
     expect(analyze.mock.calls[0][0].decoding).toBeUndefined();
     expect(objectStore.delete).toHaveBeenCalledTimes(failure === "upload" ? 1 : 0);
+  });
+  it.each(["queued", "indexing", "failed", "archived", "ready", null] as const)("completes with source availability %s from the pinned revision", async (status) => {
+    const { db, fixture } = createFakeWorkerDb();
+    fixture.log.log_domain = { id: "skill-1", name: "Combined skill" };
+    const originalQuery = db.query.bind(db);
+    db.query = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      const result = await originalQuery<Row>(text, values);
+      if (text.includes("source.id as source_snapshot_id")) return {
+        ...result, rows: result.rows.map((row) => ({ ...row,
+          skill_revision_spec: { schemaVersion: "skill/v1", parsing, procedure: "先核对原始日志。" },
+          source_snapshot_id: status ? "snapshot-pinned" : null,
+          source_snapshot_status: status }))
+      };
+      return result;
+    };
+    let observed: AnalyzeLogInput["sourceSnapshot"];
+    const objectStore = createObjectStore(Buffer.from("INFO healthy\n"));
+    objectStore.put = async (input) => ({ storageKey: "decoded.gz", fileName: input.fileName, contentType: input.contentType, fileSizeBytes: input.bytes.length, checksumSha256: "checksum" });
+    expect(await processNextLogAnalysisJob({ db, objectStore, now: () => new Date("2026-05-25T02:00:00.000Z"), analyzer: {
+      async analyze(input) {
+        observed = input.sourceSnapshot;
+        expect(input.procedure).toBe("先核对原始日志。");
+        expect(input.decoding?.events).toHaveLength(1);
+        return createRuleBasedLogAnalyzer().analyze(input);
+      }
+    } })).toBe("processed");
+    expect(observed).toEqual(status ? { id: "snapshot-pinned", status } : null);
+    expect(fixture.run).toMatchObject({ status: "complete", source_snapshot_id: status ? "snapshot-pinned" : null,
+      source_snapshot_status: status });
+    if (status && status !== "ready") expect(fixture.reports[0].conclusion).toContain("本次分析未使用源码");
+    else expect(fixture.reports[0].conclusion).not.toContain("本次分析未使用源码");
   });
   it("loads analyzed inventory per file, preserving local line numbers and hiding object keys from the analyzer", async () => {
     const { db } = createFakeWorkerDb();

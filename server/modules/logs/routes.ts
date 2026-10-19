@@ -36,6 +36,8 @@ import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "
 import { logSkillSpecSchema } from "./skillSpec";
 import { previewLogSkillParsing } from "./skillsService";
 import { parsePreviewRequestSchema } from "./parsing/spec";
+import { archiveSourceSnapshot, listSourceSnapshots, setDefaultSourceSnapshot, uploadSourceSnapshot } from "./sourceSnapshots";
+import { sourceSnapshotUploadSchema } from "./schemas";
 import {
   createLogBodySchema,
   createLogDomainBodySchema,
@@ -121,6 +123,37 @@ export function registerLogRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  router.get("/api/v1/log-skills/:skillId/source-snapshots", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await listSourceSnapshots(requireDb(options.db), auth, request.params.skillId) };
+  });
+  router.post("/api/v1/log-skills/:skillId/source-snapshots", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
+    const files = multipart?.files.filter((file) => file.fieldName === "file");
+    if (!multipart || files?.length !== 1) throw new ApiError("VALIDATION_FAILED", "One multipart source archive is required.");
+    const body = parseWithSchema(sourceSnapshotUploadSchema, {
+      versionLabel: multipart.fields.versionLabel, fileName: files[0].fileName
+    });
+    const item = await uploadSourceSnapshot(requireDb(options.db), requireObjectStore(options.objectStore), auth,
+      request.params.skillId, { versionLabel: body.versionLabel, fileName: body.fileName,
+        bytes: files[0].bytes },
+      createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 201, body: { item } };
+  });
+  router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const db = requireDb(options.db);
+    await setDefaultSourceSnapshot(db, auth, request.params.skillId, request.params.snapshotId,
+      createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 200, body: { item: await getLogSkill(db, auth, request.params.skillId) } };
+  });
+  router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const item = await archiveSourceSnapshot(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId,
+      createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 200, body: { item } };
+  });
   router.post("/api/v1/log-files", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
