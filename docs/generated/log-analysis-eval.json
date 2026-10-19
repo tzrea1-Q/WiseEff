@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-10-19T15:01:59.289Z",
+  "generatedAt": "2026-10-19T19:51:20.888Z",
   "promptVersion": "2026-10-19.procedure.signals.source.1",
   "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.3",
-  "total": 48,
-  "passed": 48,
+  "total": 49,
+  "passed": 49,
   "failed": 0,
   "scenarios": [
     {
@@ -43,7 +43,11 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 1,
+        "traceKinds": [
+          "model-turn"
+        ]
       }
     },
     {
@@ -103,7 +107,13 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "degradation",
+          "rule-fallback"
+        ]
       }
     },
     {
@@ -149,7 +159,11 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 1,
+        "traceKinds": [
+          "model-turn"
+        ]
       }
     },
     {
@@ -210,7 +224,13 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "degradation",
+          "rule-fallback"
+        ]
       }
     },
     {
@@ -251,7 +271,11 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 1,
+        "traceKinds": [
+          "model-turn"
+        ]
       }
     },
     {
@@ -309,7 +333,13 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "degradation",
+          "rule-fallback"
+        ]
       }
     },
     {
@@ -360,7 +390,13 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "degradation",
+          "rule-fallback"
+        ]
       }
     },
     {
@@ -419,7 +455,11 @@
             4
           ]
         ],
-        "conclusion": "Answering 'Why did fast charging fold back?': the pack hit 52C and thermal foldback reduced the current."
+        "conclusion": "Answering 'Why did fast charging fold back?': the pack hit 52C and thermal foldback reduced the current.",
+        "traceStepCount": 1,
+        "traceKinds": [
+          "model-turn"
+        ]
       }
     },
     {
@@ -491,7 +531,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated. Source search timed out; this conclusion uses log evidence only."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated. Source search timed out; this conclusion uses log evidence only.",
+        "traceStepCount": 5,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -554,7 +599,12 @@
             "line": 4
           }
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -617,7 +667,12 @@
             "line": 4
           }
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -679,7 +734,12 @@
             "line": 1
           }
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -740,7 +800,12 @@
             "line": 1
           }
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -814,7 +879,12 @@
             "line": 80
           }
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -897,7 +967,12 @@
             "line": 80
           }
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 4,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -960,7 +1035,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 7,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1023,7 +1103,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 7,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1086,7 +1171,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 7,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1149,7 +1239,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 7,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1212,7 +1307,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 7,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1275,7 +1375,12 @@
             "line": 4
           }
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1337,7 +1442,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 4,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1399,7 +1509,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 6,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1461,7 +1576,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 6,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1523,7 +1643,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 6,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1577,7 +1702,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1631,7 +1761,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1685,7 +1820,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1749,7 +1889,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 4,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1795,7 +1940,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1866,7 +2016,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 4,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -1937,7 +2092,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 4,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -2008,7 +2168,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 4,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -2071,7 +2236,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 5,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -2080,6 +2250,16 @@
       "kernel": "loop",
       "pass": true,
       "expectations": [
+        {
+          "expectation": {
+            "type": "expectsTrace",
+            "kinds": [
+              "model-turn",
+              "tool-call"
+            ]
+          },
+          "pass": true
+        },
         {
           "expectation": {
             "type": "expectsAnalysisSource",
@@ -2124,7 +2304,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 5,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -2173,7 +2358,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 5,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -2215,7 +2405,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 5,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -2224,6 +2419,18 @@
       "kernel": "loop",
       "pass": true,
       "expectations": [
+        {
+          "expectation": {
+            "type": "expectsTrace",
+            "kinds": [
+              "model-turn",
+              "tool-call",
+              "degradation",
+              "rule-fallback"
+            ]
+          },
+          "pass": true
+        },
         {
           "expectation": {
             "type": "expectsAnalysisSource",
@@ -2266,7 +2473,14 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "traceStepCount": 8,
+        "traceKinds": [
+          "model-turn",
+          "tool-call",
+          "degradation",
+          "rule-fallback"
+        ]
       }
     },
     {
@@ -2275,6 +2489,27 @@
       "kernel": "loop",
       "pass": true,
       "expectations": [
+        {
+          "expectation": {
+            "type": "expectsTrace",
+            "kinds": [
+              "model-turn",
+              "tool-call",
+              "early-convergence"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsTraceArguments",
+            "tool": "read_line_range",
+            "arguments": {
+              "file": "charging.log"
+            }
+          },
+          "pass": true
+        },
         {
           "expectation": {
             "type": "expectsAnalysisSource",
@@ -2323,11 +2558,88 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 6,
+        "traceKinds": [
+          "model-turn",
+          "tool-call",
+          "early-convergence"
+        ]
       }
     },
     {
-      "name": "loop-token-budget-early-convergence",
+      "name": "trace-redacts-prompts-procedure-and-provider-payloads",
+      "category": "trace-privacy",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsTrace",
+            "kinds": [
+              "model-turn",
+              "tool-call"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPrivateTrace",
+            "forbidden": [
+              "TRACE_PRIVATE_PROCEDURE",
+              "You are the WiseEff",
+              "RAW_PROVIDER_PAYLOAD",
+              "skill_diagnostic_procedure"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsTraceArguments",
+            "tool": "read_domain_knowledge",
+            "arguments": {
+              "file": "[redacted]",
+              "query": "[redacted]"
+            }
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "RAW_PROVIDER_PAYLOAD: thermal foldback.",
+        "traceStepCount": 7,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
+      }
+    },
+    {
+      "name": "loop-token-budget-fallback",
       "category": "loop-convergence",
       "kernel": "loop",
       "pass": true,
@@ -2335,7 +2647,7 @@
         {
           "expectation": {
             "type": "expectsAnalysisSource",
-            "source": "agent"
+            "source": "rules-fallback"
           },
           "pass": true
         },
@@ -2349,14 +2661,14 @@
         {
           "expectation": {
             "type": "expectsConfidenceAtMost",
-            "value": 0.5
+            "value": 0.85
           },
           "pass": true
         },
         {
           "expectation": {
             "type": "expectsModelCallCount",
-            "count": 2
+            "count": 1
           },
           "pass": true
         },
@@ -2368,17 +2680,35 @@
         }
       ],
       "runResult": {
-        "analysisSource": "agent",
+        "analysisSource": "rules-fallback",
         "degradedReason": "token-budget-exhausted",
         "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
+            2,
             3,
+            4
+          ],
+          [
+            4
+          ],
+          [
+            4
+          ],
+          [
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "traceStepCount": 5,
+        "traceKinds": [
+          "model-turn",
+          "tool-call",
+          "early-convergence",
+          "degradation",
+          "rule-fallback"
+        ]
       }
     },
     {
@@ -2433,7 +2763,12 @@
             4
           ]
         ],
-        "conclusion": "The evidence is insufficient for a failure diagnosis: all reviewed lines show nominal heartbeats and a stable config checksum."
+        "conclusion": "The evidence is insufficient for a failure diagnosis: all reviewed lines show nominal heartbeats and a stable config checksum.",
+        "traceStepCount": 5,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {
@@ -2485,7 +2820,12 @@
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 4,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
       }
     },
     {

@@ -4,6 +4,7 @@ import { defaultChargingRuleSet } from "./chargingSignalRules";
 import type { SignalRuleSet } from "./signalRules";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 import { extractLogSignals, type LogSignalSummary } from "./genericSignals";
+import { emitLogTrace, withLogTrace, LOG_TRACE_MAX_LINES, type LogAnalysisTraceStep } from "./traceTypes";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
@@ -14,6 +15,7 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type AnalyzeLogInput = {
+  onTrace?: (step: LogAnalysisTraceStep) => void | Promise<void>;
   knowledgeEntryIds?: string[];
   onKnowledgeRetrieved?: (revisions: Array<{ entryId: string; revisionId: string }>) => void;
   signal?: AbortSignal;
@@ -96,6 +98,7 @@ export const genericSignalRuleSet: SignalRuleSet = {
 export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultChargingRuleSet): LogAnalysisAdapter {
   return {
     async analyze(input) {
+      input = withLogTrace(input);
       const activeRules = input.signalRules ?? ruleSet;
       const evidence = input.files
         ? input.files.flatMap((file) => (file.prefilter?.evidence ?? (file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules) : [])).map((item) => ({ ...item, filePath: file.path })))
@@ -122,7 +125,7 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
         eligible(outputs.filter((output) => output !== undefined))[0]?.value ?? fallback;
       const actions = eligible(matchedRules.flatMap((rule) => rule.analysis.suggestedActions));
 
-      return {
+      const output: AnalyzeLogOutput = {
         confidence: choose(matchedRules.map((rule) => rule.analysis.confidence), defaults.confidence),
         conclusion: choose(matchedRules.map((rule) => rule.analysis.conclusion), defaults.conclusion),
         impact: choose(matchedRules.map((rule) => rule.analysis.impact), defaults.impact),
@@ -135,6 +138,9 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
           entryCount: input.stats?.entryCount ?? input.parsed.entries.length
         }
       };
+      await emitLogTrace(input, { kind: "rule-fallback", resultBytes: Buffer.byteLength(JSON.stringify(output)),
+        lines: evidence.flatMap((item) => item.lineNumbers.map((line) => ({ file: (item.filePath ?? input.filePath ?? "").slice(0, 1024), line }))).slice(0, LOG_TRACE_MAX_LINES) });
+      return output;
     }
   };
 }

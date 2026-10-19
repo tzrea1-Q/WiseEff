@@ -16,6 +16,8 @@ import {
 import { createDeterministicLogAnalysisLoopModel } from "./deterministicModel";
 import { LogAnalysisProviderError } from "./llmAnalyzer";
 import { createScriptedLogAnalysisModel, type ScriptedModelResponse } from "./scriptedModel";
+import { summarizeTraceArguments, type LogAnalysisTraceStep } from "../traceTypes";
+import { logTraceStepSchema } from "../../contracts/dtoSchemas/logs";
 
 const chargingLog = [
   "2026-08-10T08:00:01Z INFO charge session started requested_ma=6000",
@@ -85,6 +87,81 @@ describe("createAgentLoopLogAnalyzer", () => {
         if (line === 5) expect(output.evidence).toMatchObject([{ sourceLocation: { snapshotId: "source", path: "power.c", line: 5 } }]);
       }
     }
+  });
+
+  it("shows only inventory-matched relative file arguments and keeps free text private", async () => {
+    const filePath = `bundle/${"long-directory/".repeat(10)}charging.log`;
+    const secret = "PRIVATE_PROCEDURE: never persist this text";
+    const input = buildInput({ filePath });
+    expect(summarizeTraceArguments({ file: filePath, query: secret, question: secret, pattern: "thermal", startLine: 1 }, input))
+      .toEqual({ file: filePath.slice(0, 120), query: "[redacted]", pattern: "[redacted]", startLine: 1 });
+    const files: NonNullable<AnalyzeLogInput["files"]> = [{ path: filePath, sizeBytes: 100, lineCount: 6,
+      encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null, parsed: input.parsed }];
+    expect(summarizeTraceArguments({ file: filePath, pattern: secret.repeat(10) }, { files }))
+      .toEqual({ file: filePath.slice(0, 120), pattern: "[redacted]" });
+    for (const file of [secret, "unknown.log"])
+      expect(summarizeTraceArguments({ file }, input)).toEqual({ file: "[redacted]" });
+    for (const file of ["../charging.log", "/tmp/charging.log", "C:/charging.log", "bundle\\charging.log", "a/../charging.log", "bad\ncharging.log"])
+      expect(summarizeTraceArguments({ file }, buildInput({ filePath: file }))).toEqual({ file: "[redacted]" });
+    expect(summarizeTraceArguments({ file: filePath })).toEqual({ file: "[redacted]" });
+    const steps: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { file: filePath, startLine: 2, endLine: 5 } } },
+      { content: finalPayload }
+    ]);
+    await adapter.analyze({ ...input, onTrace: (step) => { steps.push(logTraceStepSchema.parse(step)); } });
+    expect(steps.find((step) => step.kind === "tool-call")?.arguments.file).toBe(filePath.slice(0, 120));
+  });
+
+  it("bounds serialized long-path references without shortening the file identity", async () => {
+    const filePath = "界".repeat(1024);
+    const parsed = parseLogText({ fileName: "charging.log", content: Array.from({ length: 60 }, () => chargingLog).join("\n") });
+    if (!parsed.ok) throw new Error("fixture must parse");
+    const steps: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 40 } } },
+      { content: finalPayload }
+    ]);
+    await adapter.analyze({ parsed, filePath, onTrace: (step) => { steps.push(logTraceStepSchema.parse(step)); } });
+    const tool = steps.find((step) => step.kind === "tool-call")!;
+    expect(tool).toMatchObject({ outcome: "truncated", reason: "trace-line-cap" });
+    expect(tool.lines.length).toBeGreaterThan(0);
+    expect(tool.lines.length).toBeLessThanOrEqual(50);
+    expect(tool.lines.every((line) => line.file === filePath)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(tool))).toBeLessThan(131072);
+  });
+
+  it("records pinned source references without persisting the returned excerpt", async () => {
+    const steps: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([
+      { content: { action: "tool", tool: "locate_log_statement", args: { line: "thermal" } } },
+      { content: { ...finalPayload, evidence: [{ lineNumbers: [], sourceLocation: { snapshotId: "source-v1", path: "thermal.c", line: 4 },
+        inference: "Thermal source statement", suggestedAction: "Inspect cooling" }] } }
+    ], { bindToolBackends: () => ({ locateLogStatement: async () => ({ truncated: false, items: [{ snapshotId: "source-v1", path: "thermal.c", line: 4,
+      startLine: 3, excerpt: "PRIVATE_SOURCE_BEFORE\nPRIVATE_SOURCE_STATEMENT\nPRIVATE_SOURCE_AFTER", versionLabel: "v1", confidence: 1 }] }) }) });
+    await adapter.analyze(buildInput({ sourceSnapshot: { id: "source-v1", status: "ready" }, onTrace: (step) => { steps.push(logTraceStepSchema.parse(step)); } }));
+    expect(steps[1].lines).toEqual([
+      { file: "thermal.c", line: 4, snapshotId: "source-v1" },
+      { file: "thermal.c", line: 3, snapshotId: "source-v1" },
+      { file: "thermal.c", line: 5, snapshotId: "source-v1" }
+    ]);
+    expect(JSON.stringify(steps)).not.toContain("PRIVATE_SOURCE");
+  });
+
+  it("caps ordered trace steps while retaining provider-reported token counts", async () => {
+    const steps: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([
+      ...Array.from({ length: 110 }, () => ({ content: { action: "tool", tool: "get_prefilter_findings", args: {} },
+        usage: { inputTokens: 20, outputTokens: 5 } })),
+      { content: finalPayload }
+    ], { maxSteps: 110 });
+    const output = await adapter.analyze(buildInput({ filePath: "charging.log", onTrace: (step) => { steps.push(step); } }));
+    expect(output.analysisSource).toBe("agent");
+    expect(steps).toHaveLength(200);
+    expect(steps.map((step) => step.index)).toEqual(Array.from({ length: 200 }, (_, index) => index + 1));
+    expect(steps[0]).toMatchObject({ kind: "model-turn", inputTokens: 20, outputTokens: 5 });
+    expect(steps[1]).toMatchObject({ kind: "tool-call", tool: "get_prefilter_findings", outcome: "ok" });
+    expect(steps[1].lines).toContainEqual({ file: "charging.log", line: 4 });
   });
   it("grounds only the file/line anchors returned by query_events, never nested values or knowledge data", async () => {
     const input = buildInput({ filePath: "charging.log" });

@@ -10,6 +10,7 @@ import {
 } from "../analyzer";
 import { runLogPrefilter, type PrefilterFindings } from "../prefilter";
 import { appendSkillProcedure } from "./procedurePrompt";
+import { emitLogTrace, withLogTrace } from "../traceTypes";
 
 /** Versioned prompt: recorded on every report so eval baselines can gate prompt changes. */
 export const LOG_ANALYSIS_PROMPT_VERSION = "2026-10-19.procedure.signals.source.1";
@@ -313,6 +314,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
     reason: LogAnalysisDegradedReason
   ): Promise<AnalyzeLogOutput> {
     options.telemetry?.recordDegraded?.({ reason, model: options.modelLabel });
+    await emitLogTrace(input, { kind: "degradation", reason });
     const output = await fallback.analyze(input);
     return {
       ...output,
@@ -325,6 +327,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
 
   return {
     async analyze(input) {
+      input = withLogTrace(input);
       const findings = input.files?.find((file) => file.prefilter)?.prefilter ?? runLogPrefilter(input.files?.find((file) => file.parsed)?.parsed?.entries ?? input.parsed.entries, input.signalRules);
       const excerptCharBudget = Math.max(1_000, Math.floor(options.tokenBudget * CHARS_PER_TOKEN * 0.6));
       const analyzed = input.files?.filter((file) => file.parsed);
@@ -353,6 +356,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
         response = await options.model.invoke(messages, { signal: input.signal });
       } catch (error) {
         input.signal?.throwIfAborted();
+        await emitLogTrace(input, { kind: "model-turn", outcome: "error", reason: "provider-error" });
         options.telemetry?.recordLlmCall?.({
           model: options.modelLabel,
           outcome: "provider_error",
@@ -373,6 +377,10 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
       const parsedLineNumbers = new Set(input.parsed.entries.map((entry) => entry.lineNumber));
       const groundedEvidence = parsedOutput ? groundLlmEvidence(parsedOutput.evidence, parsedLineNumbers, seenFiles, analyzed?.length === 1 ? analyzed[0].path : input.filePath) : [];
       const usable = parsedOutput !== undefined && groundedEvidence.length > 0;
+      await emitLogTrace(input, { kind: "model-turn", resultBytes: Buffer.byteLength(response.content),
+        outcome: usable ? "ok" : "error", reason: usable ? null : "invalid-output",
+        ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
+        ...(response.usage?.outputTokens !== undefined ? { outputTokens: response.usage.outputTokens } : {}) });
 
       options.telemetry?.recordLlmCall?.({
         model: options.modelLabel,

@@ -543,6 +543,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
       { content: loopFinalPayload }
     ],
     expectations: [
+      { type: "expectsTrace", kinds: ["model-turn", "tool-call"] },
       { type: "expectsAnalysisSource", source: "agent" },
       { type: "expectsNoDegradation" },
       { type: "expectsGroundedEvidence" },
@@ -594,6 +595,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
       { content: { action: "tool", tool: "bogus_three", args: {} } }
     ],
     expectations: [
+      { type: "expectsTrace", kinds: ["model-turn", "tool-call", "degradation", "rule-fallback"] },
       { type: "expectsAnalysisSource", source: "rules-fallback" },
       { type: "expectsDegradedReason", reason: "token-budget-exhausted" },
       { type: "expectsGroundedEvidence" }
@@ -607,15 +609,37 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     maxSteps: 2,
     script: [
       { content: { action: "tool", tool: "get_prefilter_findings", args: {} } },
-      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 6 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { file: "charging.log", startLine: 1, endLine: 6 } } },
       { content: { ...loopFinalPayload, confidence: 0.95 } }
     ],
     expectations: [
+      { type: "expectsTrace", kinds: ["model-turn", "tool-call", "early-convergence"] },
+      { type: "expectsTraceArguments", tool: "read_line_range", arguments: { file: "charging.log" } },
       { type: "expectsAnalysisSource", source: "agent" },
       { type: "expectsDegradedReason", reason: "token-budget-exhausted" },
       { type: "expectsConfidenceAtMost", value: 0.5 },
       { type: "expectsGroundedEvidence" },
       { type: "expectsPromptContains", substrings: ["Budget exhausted"] }
+    ]
+  },
+  {
+    name: "trace-redacts-prompts-procedure-and-provider-payloads",
+    category: "trace-privacy",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    procedure: "TRACE_PRIVATE_PROCEDURE: inspect the thermal event privately.",
+    script: [
+      { content: { action: "tool", tool: "TRACE_PRIVATE_PROCEDURE", args: { debug: "RAW_PROVIDER_PAYLOAD" } } },
+      { content: { action: "tool", tool: "read_domain_knowledge", args: { file: "TRACE_PRIVATE_PROCEDURE", query: "TRACE_PRIVATE_PROCEDURE You are the WiseEff log analysis agent" } } },
+      { content: { action: "tool", tool: "get_prefilter_findings", args: {} } },
+      { content: { ...loopFinalPayload, conclusion: "RAW_PROVIDER_PAYLOAD: thermal foldback." } }
+    ],
+    expectations: [
+      { type: "expectsTrace", kinds: ["model-turn", "tool-call"] },
+      { type: "expectsPrivateTrace", forbidden: ["TRACE_PRIVATE_PROCEDURE", "You are the WiseEff", "RAW_PROVIDER_PAYLOAD", "skill_diagnostic_procedure"] },
+      { type: "expectsTraceArguments", tool: "read_domain_knowledge", arguments: { file: "[redacted]", query: "[redacted]" } },
+      { type: "expectsAnalysisSource", source: "agent" },
+      { type: "expectsGroundedEvidence" }
     ]
   },
   {

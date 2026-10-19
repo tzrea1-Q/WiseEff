@@ -66,6 +66,10 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 
 可选的 `signalSummary.truncated` 与 `reason` 说明提取不完整：`time_cap` 保留已完成结果，`line_cap` 仅按行首内容匹配，`extraction_error` 返回空摘要并继续分析。判断空摘要是否意味着没有异常前，还须同时检查这些字段和数量截断标记。
 
+### 管理员轨迹与草稿试运行
+
+`GET /api/v1/logs/{logId}/trace` 返回记录当前运行按序排列的 `{ steps }`。需要 `logs:admin-domains`，只有 `logs:view` 时返回 `403`，不可访问的记录返回 `404`。步骤包含有界工具参数摘要、结果字节数、返回行引用、结果状态及可用 token 数，绝不包含原始提示词或模型服务载荷。存储上限与仅管理员可用的草稿试运行端点见[轨迹与试运行契约](../design-docs/api-contract.md#分析轨迹与草稿试运行1230)。试运行使用已保存草稿与已存样例，不创建 `/logs` 记录或结果 Webhook。
+
 ### 获取单文件的行窗口
 
 `GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` 返回一份已分析文件的指定行窗口。需要 `logs:view`，组织范围与记录本身一致。`file` 使用记录 `files` 清单中的准确 `path`；这是日志包内路径，不是对象存储键。

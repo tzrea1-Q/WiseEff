@@ -21,7 +21,7 @@ export type ContractSchemaRef = {
   requestBody?: string;
   responseBody: string;
   responseMedia?: "json" | "binary";
-  successStatus?: 200 | 201 | 204 | 410;
+  successStatus?: 200 | 201 | 202 | 204 | 410;
   additionalSuccessResponses?: Record<string, string>;
   additionalResponses?: Record<string, string>;
   requestParameters?: readonly ContractParameterRef[];
@@ -1016,6 +1016,15 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201
   },
   "logs.list": { summary: "List log records", tags: ["logs"], responseBody: "LogRecordListResponse" },
+  "logs.getTrace": { summary: "Read current run trace (logs:admin-domains)", tags: ["logs"], responseBody: "LogTraceResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
+  "logs.startDryRun": { summary: "Run the saved draft on its stored sample (logs:admin-domains)", tags: ["logs"], responseBody: "LogSkillDryRunResponse", successStatus: 202, additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "429": "ErrorResponse" } },
+  "logs.getDryRun": { summary: "Read skill dry run and trace (logs:admin-domains)", tags: ["logs"], responseBody: "LogSkillDryRunDetailResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
+  "logs.getDryRunLines": { summary: "Read at most 400 lines from the dry run pinned sample (logs:admin-domains)", tags: ["logs"], responseBody: "LogLineRangeResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" },
+    requestParameters: [
+      { name: "file", in: "query", required: true, schema: { type: "string" } },
+      { name: "startLine", in: "query", required: true, schema: { type: "integer" } },
+      { name: "endLine", in: "query", required: true, schema: { type: "integer" } }
+    ] },
   "logs.get": { summary: "Get log record with run-owned signals and line templates", tags: ["logs"], responseBody: "LogRecordResponse" },
   "logs.getLines": {
     summary: "Read an inclusive window of at most 400 indexed log lines",

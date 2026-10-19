@@ -19,7 +19,8 @@ import {
   type LogAnalysisChatModel,
   type LogAnalysisLlmTelemetry
 } from "./llmAnalyzer";
-import { availableLogAnalysisTools, executeLogAnalysisTool, logAnalysisToolCatalog } from "./tools/toolCatalog";
+import { availableLogAnalysisTools, executeLogAnalysisTool, isLogAnalysisToolName, logAnalysisToolCatalog } from "./tools/toolCatalog";
+import { emitLogTrace, summarizeTraceArguments, traceResultLines, withLogTrace } from "../traceTypes";
 import type { LogAnalysisToolContext } from "./tools/toolContext";
 import { appendSkillProcedure } from "./procedurePrompt";
 
@@ -36,6 +37,9 @@ function promptVersionFor(input: AnalyzeLogInput) {
     ? LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION
     : LOG_ANALYSIS_LOOP_PROMPT_VERSION;
 }
+
+/** Rough OpenAI-compatible heuristic mirroring the P1 single-shot accounting. */
+const CHARS_PER_TOKEN = 4;
 
 /**
  * Consecutive protocol violations (non-JSON output, unknown tool, invalid args,
@@ -158,6 +162,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
 
   async function degradeToFallback(input: AnalyzeLogInput, reason: LogAnalysisDegradedReason): Promise<AnalyzeLogOutput> {
     options.telemetry?.recordDegraded?.({ reason, model: options.modelLabel });
+    await emitLogTrace(input, { kind: "degradation", reason });
     const output = await fallback.analyze(input);
     return {
       ...output,
@@ -170,6 +175,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
 
   return {
     async analyze(input) {
+      input = withLogTrace(input);
       const findings = input.files?.find((file) => file.prefilter)?.prefilter ?? runLogPrefilter(input.files?.find((file) => file.parsed)?.parsed?.entries ?? input.parsed.entries, input.signalRules);
       const toolContext: LogAnalysisToolContext = {
         decoding: input.decoding,
@@ -288,6 +294,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           response = await options.model.invoke(messages, { signal: input.signal });
         } catch (error) {
           input.signal?.throwIfAborted();
+          await emitLogTrace(input, { kind: "model-turn", outcome: "error", reason: "provider-error" });
           options.telemetry?.recordLlmCall?.({
             model: options.modelLabel,
             outcome: "provider_error",
@@ -304,9 +311,16 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         }
 
         const inputTokens = response.usage?.inputTokens ?? (enforceReportedBudget ? undefined
-          : Math.ceil(messages.reduce((total, message) => total + message.content.length, 0) / 4));
-        const outputTokens = response.usage?.outputTokens ?? (enforceReportedBudget ? undefined : Math.ceil(response.content.length / 4));
+          : Math.ceil(messages.reduce((total, message) => total + message.content.length, 0) / CHARS_PER_TOKEN));
+        const outputTokens = response.usage?.outputTokens ?? (enforceReportedBudget ? undefined : Math.ceil(response.content.length / CHARS_PER_TOKEN));
         usedTokens += (inputTokens ?? 0) + (outputTokens ?? 0);
+        const parsedOutput = parseLoopStep(response.content);
+        const validOutput = parsedOutput !== undefined && (parsedOutput.action === "tool"
+          || groundLlmEvidence(parsedOutput.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources).length > 0);
+        await emitLogTrace(input, { kind: "model-turn", resultBytes: Buffer.byteLength(response.content),
+          outcome: validOutput ? "ok" : "error", reason: validOutput ? null : "invalid-output",
+          ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
+          ...(response.usage?.outputTokens !== undefined ? { outputTokens: response.usage.outputTokens } : {}) });
         options.telemetry?.recordLlmCall?.({
           model: options.modelLabel,
           outcome: "ok",
@@ -362,6 +376,14 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
 
         if (parsedStep.action === "tool") {
           const outcome = await executeLogAnalysisTool(parsedStep.tool, parsedStep.args, toolContext);
+          const truncated = outcome.ok && typeof outcome.result === "object" && outcome.result !== null && "truncated" in outcome.result && outcome.result.truncated === true;
+          await emitLogTrace(input, { kind: "tool-call",
+            tool: isLogAnalysisToolName(parsedStep.tool) ? parsedStep.tool : null,
+            arguments: summarizeTraceArguments(parsedStep.args, input),
+            resultBytes: Buffer.byteLength(outcome.ok ? JSON.stringify(outcome.result) : outcome.error),
+            lines: outcome.ok ? traceResultLines(parsedStep.tool, outcome.result, input) : [],
+            outcome: outcome.ok ? truncated ? "truncated" : "ok" : "error",
+            reason: outcome.ok ? truncated ? "result-cap" : null : "tool-rejected" });
           messages.push({ role: "assistant", content });
           if (!outcome.ok) {
             invalidStreak += 1;
@@ -406,6 +428,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       // Step exhaustion allows one early-convergence call only while the reported
       // token budget remains; exhausted tokens use the existing rule fallback.
       await input.onProgress?.({ step: maxSteps, maxSteps });
+      await emitLogTrace(input, { kind: "early-convergence", reason: "token-budget-exhausted" });
       messages.push({
         role: "user",
         content:

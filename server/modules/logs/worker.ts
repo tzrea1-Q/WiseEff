@@ -28,6 +28,8 @@ import type { LogWebhookDeliverer } from "./webhookDelivery";
 import type { LogStage } from "./status";
 import { requireRelatedParameterRunSnapshot } from "./relatedParameter";
 import { JobLeaseLostError, keepLogJobLease, logJobLimits, type LogJobLease } from "./jobLease";
+import { emitLogTrace, withLogTrace } from "./traceTypes";
+import { persistLogTraceStep } from "./traceRepository";
 
 type LogWorkerMetrics = Pick<MetricsRegistry, "recordLogAnalysisJobResult"> &
   Partial<Pick<MetricsRegistry, "recordLogAnalysisDegraded">>;
@@ -143,6 +145,7 @@ export async function analyzeWithDegradation(input: {
   now: () => Date;
   metrics?: LogWorkerMetrics;
 }): Promise<AnalyzeLogOutput> {
+  input = { ...input, analyzeInput: withLogTrace(input.analyzeInput) };
   try {
     return await input.analyzer.analyze(input.analyzeInput);
   } catch (error) {
@@ -164,6 +167,7 @@ export async function analyzeWithDegradation(input: {
       reason: "provider-unavailable",
       model: error.modelLabel ?? "unknown"
     });
+    await emitLogTrace(input.analyzeInput, { kind: "degradation", reason: "provider-unavailable" });
     const fallback = await createRuleBasedLogAnalyzer().analyze(input.analyzeInput);
     return {
       ...fallback,
@@ -504,6 +508,10 @@ async function processClaimedLogAnalysisJob(
         logDomainId: snapshot.logDomain?.id,
         relatedParameterId: snapshot.relatedParameterId ?? undefined,
         relatedParameterSnapshot,
+        onTrace: (step) => lease.run(async () => {
+          lease.signal.throwIfAborted();
+          if (!await persistLogTraceStep(db, { organizationId: snapshot.organizationId, runId: snapshot.runId, step, jobId: snapshot.jobId, leaseOwner })) throw new JobLeaseLostError();
+        }),
         onProgress: async ({ step, maxSteps }) => {
           const boundedStep = Math.min(Math.max(step, 1), Math.max(maxSteps, 1));
           const progress = 65 + Math.min(14, Math.floor(((boundedStep - 1) / Math.max(maxSteps, 1)) * 15));

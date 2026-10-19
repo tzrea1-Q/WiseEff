@@ -87,7 +87,7 @@ describe("parsing/v1 engine interface", () => {
       expect.objectContaining({ path: ["extractors", 0, "fields", "value"], message: expect.stringContaining("value") })
     ]));
     for (const pattern of ["(?P<value>a)\\1", "(?P<value>a)(b)"]) expect(parsingSpecSchema.safeParse({ ...spec, extractors: [{ ...spec.extractors[0], pattern }] }).success).toBe(false);
-    expect(parsingSpecSchema.safeParse({ ...specFor({ type: "string" }), frames: {} }).success).toBe(false);
+    expect(parsingSpecSchema.safeParse({ ...specFor({ type: "string" }), scripts: {} }).success).toBe(false);
     expect(parsingSpecSchema.safeParse({ ...spec, extractors: [{ ...specFor({ type: "string" }).extractors[0], extra: true }] }).success).toBe(false);
     expect(parsingSpecSchema.safeParse({ schemaVersion: "parsing/v1", extractors: [{ ...specFor({ type: "string" }).extractors[0], fields: { value: { type: "string", decode: {} } } }] }).success).toBe(false);
     for (const format of ["%Q", "%Y%Y", "%", "%%%Q"]) expect(parsingSpecSchema.safeParse(specForTimestamp(format)).success).toBe(false);
