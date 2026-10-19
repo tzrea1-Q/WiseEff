@@ -434,7 +434,7 @@ GET  /api/v1/jobs/:jobId/events
 
 上传、创建与 rerun 接受 `skillId`，`logDomainId` 继续作为别名。rerun 接受 `revisionPolicy: "current" | "pinned"`，默认 `current` 使用当前发布版本；`pinned` 复用前一次运行版本，不能同时更换技能。未分类运行保持 null 钉住值并使用平台默认配置。记录和运行 DTO 暴露 `skillRevision: { id, number } | null`；结果 Webhook 增加可空 `skillRevisionId`、`skillRevisionNumber`。Worker 只从所钉版本读取格式画像、模型覆盖和信号规则。
 
-技能身份新增组织内唯一的 `skillKey`，满足 `^[a-z0-9][a-z0-9-]{1,62}$`。创建时按名称生成 slug，非 ASCII 名称或碰撞时添加短 id 后缀；迁移 0200 回填已有技能。改名、发布不改变 key。管理员可通过 `PATCH /api/v1/log-domains/:domainId` 修改 `skillKey`，同事务审计；非法或重复 key 返回字段错误。`POST /api/v1/log-files`（JSON/multipart）和 `POST /api/v1/logs` 均接受 `skillKey`，保留 `skillId`、`logDomainId`。选择字段仅在调用方组织内解析，同时提供时必须一致，冲突返回 `400 VALIDATION_FAILED`，未知或跨组织 key 拒绝；上传钉住当前已发布版本。
+技能身份新增组织内唯一的 `skillKey`，满足 `^[a-z0-9][a-z0-9-]{1,62}$`。创建时按名称生成 slug，非 ASCII 名称或碰撞时添加短 id 后缀；迁移 0202 回填已有技能。改名、发布不改变 key。管理员可通过 `PATCH /api/v1/log-domains/:domainId` 修改 `skillKey`，同事务审计；非法或重复 key 返回字段错误。`POST /api/v1/log-files`（JSON/multipart）和 `POST /api/v1/logs` 均接受 `skillKey`，保留 `skillId`、`logDomainId`。选择字段仅在调用方组织内解析，同时提供时必须一致，冲突返回 `400 VALIDATION_FAILED`，未知或跨组织 key 拒绝；上传钉住当前已发布版本。
 
 工作区「集成」统一编辑 key、展示上传示例、配置和测试 Webhook、查看投递记录、编辑模型及预算。「概览」保留指引，旧管理页提供工作区链接，不再重复编辑。`spec.stepBudget`、`spec.tokenBudget` 为可选正整数，随版本发布，省略时使用全局默认。服务端拒绝超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值，返回 `VALIDATION_FAILED` 字段错误；技能详情提供 `budgetCaps`。旧版本在平台上限降低后仍受运行时上限约束。Webhook 和 key 继续属于即时生效的身份设置。
 

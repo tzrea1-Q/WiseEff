@@ -10,7 +10,7 @@
 
 ### 通过 skillKey 选择分析技能
 
-在分析技能工作区的「集成」分区复制 `skillKey`、上传地址及可直接执行的 JSON/base64 或 multipart 示例。通过 `$WISEEFF_TOKEN` 提供 bearer token；示例不会包含真实凭据。`skillKey` 在组织内唯一，满足 `^[a-z0-9][a-z0-9-]{1,62}$`，重命名和发布不会改变它。管理员可在此编辑 key，修改会审计；集成方之后需使用新 key。创建时从名称生成 slug，非 ASCII 名称或碰撞时补充短 id 后缀；迁移 0200 为已有身份回填。
+在分析技能工作区的「集成」分区复制 `skillKey`、上传地址及可直接执行的 JSON/base64 或 multipart 示例。通过 `$WISEEFF_TOKEN` 提供 bearer token；示例不会包含真实凭据。`skillKey` 在组织内唯一，满足 `^[a-z0-9][a-z0-9-]{1,62}$`，重命名和发布不会改变它。管理员可在此编辑 key，修改会审计；集成方之后需使用新 key。创建时从名称生成 slug，非 ASCII 名称或碰撞时补充短 id 后缀；迁移 0202 为已有身份回填。
 
 `POST /api/v1/log-files`（JSON 或 multipart）和 `POST /api/v1/logs`（已有文件）均接受 `skillKey`，继续支持 `skillId` 及兼容别名 `logDomainId`。同时提供多个选择字段时必须指向同一技能；冲突返回 `400 VALIDATION_FAILED`。key 只在调用方组织内解析，未知或跨组织 key 会被拒绝。上传成功后钉住技能当前已发布版本，包含模型和预算；后续修改、发布不影响该运行。
 

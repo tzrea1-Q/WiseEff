@@ -48,8 +48,8 @@ describe.skipIf(!available)("analysis skill integration keys over PostgreSQL", (
       expect(unicode.skillKey).toMatch(/^skill-[a-f0-9]{8}$/);
       // Replay only this migration against identities predating skillKey.
       await db.query("alter table log_domains drop column skill_key cascade; drop function assign_log_skill_key() cascade");
-      await db.query("delete from schema_migrations where name = '0200_log_skill_keys.sql'");
-      expect(await applyMigrations(db, fileURLToPath(new URL("../../migrations", import.meta.url)))).toEqual(["0200_log_skill_keys.sql"]);
+      await db.query("delete from schema_migrations where name = '0202_log_skill_keys.sql'");
+      expect(await applyMigrations(db, fileURLToPath(new URL("../../migrations", import.meta.url)))).toEqual(["0202_log_skill_keys.sql"]);
       expect((await request<{ items: Skill[] }>("/api/v1/log-skills")).body.items.map((item) => item.skillKey).sort())
         .toEqual([skill.skillKey, collision.skillKey, unicode.skillKey].sort());
       expect((await request<{ item: Skill }>(`/api/v1/log-domains/${skill.id}`, "PATCH", { name: "Renamed Device" })).body.item.skillKey).toBe(skill.skillKey);
