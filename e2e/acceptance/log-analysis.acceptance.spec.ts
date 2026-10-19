@@ -13,6 +13,7 @@ import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { dismissXiaozeToggleHint, prepareInteractionSurface } from "./helpers/interactionSurface";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
+import type { AnalysisSkill } from "../../src/features/log-skills/types";
 
 useBrowserDiagnostics(test);
 
@@ -31,6 +32,43 @@ const acceptanceModelDomainName = "acceptance-model-override-domain";
 const acceptanceModelOverride = "acceptance-domain-model-x";
 const acceptanceWebhookSecret = "acceptance-webhook-secret-0123456789";
 const acceptanceKnowledgeTitlePrefix = "acceptance-log-domain-knowledge";
+
+async function createSkillThroughUi(page: Page, name: string, description: string) {
+  await page.getByTestId("log-domain-governance").getByRole("button", { name: "新建技能", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新建技能", exact: true });
+  await dialog.getByLabel("名称", { exact: true }).fill(name);
+  await dialog.getByLabel("描述（可选）", { exact: true }).fill(description);
+  await dialog.getByRole("radio", { name: /通用文本日志/ }).check();
+  const responsePromise = page.waitForResponse(
+    (response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/log-skills"
+  );
+  await dialog.getByRole("button", { name: "创建技能", exact: true }).click();
+  const response = await responsePromise;
+  expect(response.ok()).toBe(true);
+  expect(response.request().postDataJSON()).toMatchObject({ name, description, startingPoint: { templateId: "generic-text" } });
+  const skill = ((await response.json()) as { item: AnalysisSkill }).item;
+  await expect(page).toHaveURL(new RegExp(`/log-admin/skills/${skill.id}$`));
+  await expect(page.getByLabel("模型覆盖", { exact: true })).toBeVisible();
+  return { response, skill };
+}
+
+async function publishSkillThroughUi(page: Page, skillId: string) {
+  await page.getByRole("group", { name: "未发布更改" }).getByRole("button", { name: "发布", exact: true }).click();
+  const responsePromise = page.waitForResponse(
+    (response) => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v1/log-skills/${skillId}/publish`
+  );
+  await page.getByRole("dialog", { name: "发布技能", exact: true }).getByRole("button", { name: "发布", exact: true }).click();
+  const response = await responsePromise;
+  expect(response.ok()).toBe(true);
+  const skill = ((await response.json()) as { item: AnalysisSkill }).item;
+  // Template creation publishes v1; publishing the configured draft makes v2.
+  expect(skill.currentRevision.number).toBe(2);
+  expect(skill.currentRevision.status).toBe("published");
+  expect(skill.draft).toBeNull();
+  await expect(page.getByRole("dialog", { name: "发布技能", exact: true })).toBeHidden();
+  await expect(page.locator(".skill-section")).toContainText("v2");
+  return { response, skill };
+}
 
 function runNpmScript(script: string) {
   const invocation =
@@ -767,16 +805,20 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await prepareInteractionSurface(page);
 
     const governance = page.getByTestId("log-domain-governance");
-    await governance.getByRole("group", { name: "分析技能治理操作" }).getByRole("button", { name: "新建分析技能" }).click();
-    await page.getByLabel(/名称/).fill(acceptanceLogDomainName);
-    await page.getByLabel(/描述/).fill("Acceptance charging/power subsystem log domain");
-    await page.getByLabel(/格式画像 JSON/).fill('{"severityMap": {"error": ["E_THERMAL_FOLDBACK"]}}');
-    const createResponsePromise = page.waitForResponse(
-      (response) => response.request().method() === "POST" && response.url().includes("/api/v1/log-domains")
+    const { response: createResponse, skill } = await createSkillThroughUi(
+      page, acceptanceLogDomainName, "Acceptance charging/power subsystem log domain"
     );
-    await page.getByRole("button", { name: "创建分析技能" }).click();
-    const createResponse = await createResponsePromise;
-    expect(createResponse.ok()).toBe(true);
+    const formatProfile = { severityMap: { error: ["E_THERMAL_FOLDBACK"] } };
+    // The workspace only displays format-profile configuration, so use its public draft API to retain the severity map.
+    const draftResponse = await page.request.put(apiRoute(`/api/v1/log-skills/${skill.id}/draft`), {
+      headers: smokeHeaders(),
+      data: { spec: { ...skill.currentRevision.spec, formatProfile }, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id }
+    });
+    expect(draftResponse.ok()).toBe(true);
+    await page.reload();
+    const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id);
+    expect(publishedSkill.currentRevision.spec.formatProfile).toEqual(formatProfile);
+    await page.getByRole("button", { name: "返回分析技能", exact: true }).click();
     await expect(governance.getByRole("table", { name: "分析技能列表" }).getByText(acceptanceLogDomainName)).toBeVisible();
 
     const domainsResponse = await page.request.get(apiRoute("/api/v1/log-domains"), { headers: smokeHeaders() });
@@ -794,7 +836,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
       .toBe("complete");
     await historyItem(page, supportedFileName).click();
-    await expect(page.getByTestId("analysis-provenance")).toContainText(`技能 ${acceptanceLogDomainName} · v1`);
+    await expect(page.getByTestId("analysis-provenance")).toContainText(`技能 ${acceptanceLogDomainName} · v2`);
 
     const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
     expect(auditResponse.ok()).toBe(true);
@@ -811,7 +853,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       api: [
         summarizeApiResponse(createResponse, {
           method: "POST",
-          path: "/api/v1/log-domains",
+          path: "/api/v1/log-skills",
           responseSummary: `created domain=${createdDomain!.id}`
         }),
         summarizeApiResponse(domainsResponse, {
@@ -821,7 +863,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
         })
       ],
       db: [await logDomainDbSummary(acceptanceLogDomainName), await logRecordDbSummary(boundLog.id)],
-      audit: [auditSummaryFor(auditBody.items, { kind: "log-domain-create", targetId: createdDomain!.id })],
+      audit: [
+        auditSummaryFor(auditBody.items, { kind: "log-skill-create", targetId: createdDomain!.id }),
+        auditSummaryFor(auditBody.items, { kind: "log-skill-publish", targetId: createdDomain!.id })
+      ],
       notes: `Domain ${createdDomain!.id} was registered through /log-admin governance and upload ${boundLog.id} bound to it; the conclusion card shows the domain provenance chip.`
     });
   });
@@ -1328,24 +1373,21 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
     await page.goto("/log-admin?tab=skills");
     await prepareInteractionSurface(page);
-    const governance = page.getByTestId("log-domain-governance");
-    await governance.getByRole("group", { name: "分析技能治理操作" }).getByRole("button", { name: "新建分析技能" }).click();
-    await page.getByLabel(/名称/).fill(acceptanceModelDomainName);
-    await page.getByLabel(/描述/).fill("Acceptance domain for the per-domain model override");
+    const { skill } = await createSkillThroughUi(
+      page, acceptanceModelDomainName, "Acceptance domain for the per-domain model override"
+    );
     const overrideInput = page.getByLabel(/模型覆盖/);
-    await expect(overrideInput).toHaveAttribute("placeholder", "留空使用全局模型");
+    await expect(overrideInput).toHaveAttribute("placeholder", "使用平台默认模型");
     await overrideInput.fill(acceptanceModelOverride);
-    const createResponsePromise = page.waitForResponse(
-      (response) => response.request().method() === "POST" && response.url().includes("/api/v1/log-domains")
-    );
-    const overridePatchPromise = page.waitForResponse(
+    const overrideDraftPromise = page.waitForResponse(
       (response) =>
-        response.request().method() === "PATCH" && response.url().includes("/api/v1/log-domains/")
+        response.request().method() === "PUT" && new URL(response.url()).pathname === `/api/v1/log-skills/${skill.id}/draft`
     );
-    await page.getByRole("button", { name: "创建分析技能" }).click();
-    expect((await createResponsePromise).ok()).toBe(true);
-    const overridePatchResponse = await overridePatchPromise;
-    expect(overridePatchResponse.ok()).toBe(true);
+    const { skill: publishedSkill } = await publishSkillThroughUi(page, skill.id);
+    const overrideDraftResponse = await overrideDraftPromise;
+    expect(overrideDraftResponse.ok()).toBe(true);
+    expect(publishedSkill.currentRevision.spec.modelOverride).toBe(acceptanceModelOverride);
+    await page.getByRole("button", { name: "返回分析技能", exact: true }).click();
 
     const domainsResponse = await page.request.get(apiRoute("/api/v1/log-domains"), { headers: smokeHeaders() });
     expect(domainsResponse.ok()).toBe(true);
@@ -1361,9 +1403,13 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await uploadLogThroughUi(page, supportedFixture, analysisQuestion, acceptanceModelDomainName);
     const boundLog = await latestLogByFile(page, supportedFileName);
     expect(boundLog.logDomainId).toBe(createdDomain!.id);
+    expect(boundLog.logDomainName).toBe(acceptanceModelDomainName);
     await expect
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
       .toBe("complete");
+
+    await historyItem(page, supportedFileName).click();
+    await expect(page.getByTestId("analysis-provenance")).toContainText(`技能 ${acceptanceModelDomainName} · v2`);
 
     // The override replaces only the model NAME; the report's provenance records it.
     await expect
@@ -1376,10 +1422,11 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>;
     };
     const overrideAudit = auditBody.items.find(
+      // Publishing audits the exact revision id; the published spec above asserts its model override.
       (item) =>
-        item.kind === "log-domain-update" &&
+        item.kind === "log-skill-publish" &&
         item.targetId === createdDomain!.id &&
-        item.metadata?.modelOverride === acceptanceModelOverride
+        item.metadata?.draftRevisionId === publishedSkill.currentRevision.id
     );
     expect(overrideAudit).toBeTruthy();
 
@@ -1390,9 +1437,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       page,
       testInfo,
       api: [
-        summarizeApiResponse(overridePatchResponse, {
-          method: "PATCH",
-          path: `/api/v1/log-domains/${createdDomain!.id}`,
+        summarizeApiResponse(overrideDraftResponse, {
+          method: "PUT",
+          path: `/api/v1/log-skills/${createdDomain!.id}/draft`,
           responseSummary: `modelOverride=${acceptanceModelOverride}`
         }),
         summarizeApiResponse(domainsResponse, {
@@ -1402,8 +1449,8 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
         })
       ],
       db: [await domainWebhookConfigDbSummary(createdDomain!.id), await reportModelDbSummary(boundLog.id)],
-      audit: [auditSummaryFor(auditBody.items, { kind: "log-domain-update", targetId: createdDomain!.id })],
-      notes: `Domain ${createdDomain!.id} saved 模型覆盖=${acceptanceModelOverride} through the /log-admin form (placeholder states blank = global model); the bound analysis ${boundLog.id} recorded the override as the report's model provenance while endpoint/key/budget stayed global.`
+      audit: [auditSummaryFor(auditBody.items, { kind: "log-skill-publish", targetId: createdDomain!.id })],
+      notes: `Domain ${createdDomain!.id} saved 模型覆盖=${acceptanceModelOverride} through the workspace draft and published v2 (placeholder states the platform default model); the bound analysis ${boundLog.id} recorded the override as the report's model provenance while endpoint/key/budget stayed global.`
     });
   });
 });
