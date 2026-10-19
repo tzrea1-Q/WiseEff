@@ -18,7 +18,7 @@ import { logJobLimits } from "./jobLease";
 import { logLineRangeQuerySchema } from "./schemas";
 import { buildLogLineIndex, createLogFileReader, readStoredLogRange } from "./fileReader";
 import { createPrefilterBudget, prefilterLogStream } from "./prefilter";
-import { acquireDryRunOwner, dryRunConcurrencyLimit, LOG_DRY_RUN_OWNER_LOCK_NAMESPACE, LOG_DRY_RUN_ADMISSION_LOCK, LOG_DRY_RUN_BUSY, LOG_DRY_RUN_INTERRUPTED, recoverInterruptedDryRuns } from "./dryRunAdmission";
+import { acquireDryRunOwner, assertDryRunCapacity, activeDryRunWork, LOG_DRY_RUN_ADMISSION_LOCK, LOG_DRY_RUN_INTERRUPTED, recoverInterruptedDryRuns } from "./dryRunAdmission";
 import type { StoredLogFile } from "./filesRepository";
 import type { ObjectStore } from "./objectStore";
 import { readStoredSkillSampleBundle } from "./skillSamplesService";
@@ -30,10 +30,8 @@ import type { z } from "zod";
 export const LOG_DRY_RUN_KEEP = 10;
 export const LOG_DRY_RUN_TIMEOUT_MS = 120_000;
 // Keep counting non-cancellable tool/provider work even after its deadline or DB connection is lost.
-const activeWork = new Map<string, string>();
+const activeWork = activeDryRunWork;
 type DryRun = z.infer<typeof logSkillDryRunSchema>;
-const selectRun = `select id, skill_revision_id as "skillRevisionId", status, progress, report, error, created_at as "createdAt"
-  from log_skill_dry_runs`;
 function withSampleContents(store: ObjectStore, contents: Map<string, Buffer>): ObjectStore {
   return { ...store,
     get: async (key) => contents.get(key) ?? store.get(key),
@@ -59,7 +57,8 @@ export async function getLogTrace(db: Database, auth: AuthContext, logId: string
 export async function getSkillDryRun(db: Database, auth: AuthContext, skillId: string, id: string) {
   requireAdmin(auth);
   await recoverInterruptedDryRuns(db, auth.organization.id);
-  const row = (await db.query<DryRun>(`${selectRun} where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, id])).rows[0];
+  const row = (await db.query<DryRun>(`select id, skill_revision_id as "skillRevisionId", status, progress, report, error, created_at as "createdAt"
+    from log_skill_dry_runs where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, id])).rows[0];
   if (!row) throw new ApiError("NOT_FOUND", "Dry run was not found.");
   const run = logSkillDryRunSchema.parse({ ...row, createdAt: new Date(row.createdAt).toISOString() });
   return { run, steps: await readLogTraceSteps(db, auth.organization.id, { dryRunId: id }) };
@@ -98,16 +97,7 @@ export async function startSkillDryRun(db: Database, store: ObjectStore, analyze
       await tx.query("select pg_advisory_xact_lock($1)", [LOG_DRY_RUN_ADMISSION_LOCK]);
       await lockSkill(tx, auth.organization.id, skillId);
       await recoverInterruptedDryRuns(tx);
-      const active = (await tx.query<{ total: number; organization: number }>(`select count(*)::int as total,
-        count(*) filter (where organization_id = $1)::int as organization from log_skill_dry_runs run
-        where exists (select 1 from pg_locks owner where owner.locktype = 'advisory' and owner.granted
-          and owner.pid = run.owner_pid and owner.classid = $2::oid
-          and owner.objid = run.owner_key::oid and owner.objsubid = 2)`,
-      [auth.organization.id, LOG_DRY_RUN_OWNER_LOCK_NAMESPACE])).rows[0];
-      if (active.total >= dryRunConcurrencyLimit() || active.organization >= 1
-        || activeWork.size >= dryRunConcurrencyLimit() || [...activeWork.values()].includes(auth.organization.id)) {
-        throw new ApiError("RATE_LIMITED", LOG_DRY_RUN_BUSY);
-      }
+      await assertDryRunCapacity(tx, auth.organization.id);
       const draft = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((revision) => revision.status === "draft");
       if (!draft) throw new ApiError("CONFLICT", "Save a draft before starting a dry run.");
       const sample = (await tx.query<{ object_key: string; file_name: string; size_bytes: string; line_count: number; name: string; description: string | null }>(

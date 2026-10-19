@@ -32,6 +32,14 @@ eval-cases/logs/
 
 ## `case.yaml` schema
 
+### Product analysis cases and ZIP interchange
+
+Skill administrators can import or export this directory layout in the workspace's Tests section. A ZIP starts directly at `<domain>/<case-id>/`, without an enclosing `eval-cases/logs/` directory. Existing `case.yaml` and `log.txt` files retain their bytes, including YAML comments and original line endings, through import and export. Edit an imported case's expectations to replace its annotation; unchanged fixtures retain their bytes.
+
+Bundle cases extend the annotation with optional `bundleFiles`, a list of relative fixture paths such as `fixtures/device.zip`. These fixtures retain the original uploaded bytes, including archives and UTF-16 input. `log.txt` is a flattened UTF-8 projection for the existing command-line evaluator; `keyEvidenceLines` addresses that projection. The product uses `bundleFiles` to reconstruct the original multi-file input. Optional `keyEvidence` entries identify an unpacked file with a positive `line`, a bounded linear-time `pattern`, or both. Optional `expectedDegradedReason` names an existing degradation reason. Optional `caseName` preserves a case name independently of its summary. These fields do not change the legacy golden-case vocabulary or make synthetic cases count toward the quality baseline.
+
+Imports reject unsafe paths, duplicate entries, links, malformed annotations, missing fixtures and size/count violations before saving. Errors include the exact case path and annotation field. The product bounds a skill to 20 cases, each input bundle and its normalized text to 10 MiB each and 100 files, a run to at most 20 cases and 120 seconds, and retained history to the latest 10 runs per skill. Edited expectations are capped at 1 MiB of YAML; imported annotations at 2 MiB. The ZIP envelope is capped at 440 MiB compressed/unpacked and 2040 entries to accommodate the full bounded corpus and its projections. Runs share organization and aggregate admission with draft dry runs. They compare the saved draft against the current publication using the existing quality evaluator and configured judge, or deterministic rubric checks when no judge is configured. Scores are publishing advice and never a publication gate.
+
 Validated by `server/modules/logs/eval/goldenCases.ts` (zod). A broken case fails the quality-eval run with a per-case problem list.
 
 | Field | Required | Meaning |

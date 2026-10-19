@@ -11,6 +11,13 @@ export type SkillDryRun = z.infer<typeof import("@wiseeff/dto-schemas").logSkill
 export type SkillDryRunDetail = { run: SkillDryRun; steps: AnalysisTraceStep[] };
 export type CreateSkillInput = { name: string; description?: string; startingPoint: { templateId: string } | { copyFromSkillId: string } };
 
+export type AnalysisCaseExpectations = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCaseExpectationsSchema>;
+export type AnalysisCase = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCaseSchema>;
+export type AnalysisCaseRun = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCaseRunSchema>;
+export type AnalysisCaseList = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCaseListResponseSchema>;
+export type AnalysisCaseInput = { name: string; expectations: AnalysisCaseExpectations; files?: File[]; sourceRecordId?: string };
+export type AnalysisCasePrefill = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCasePrefillResponseSchema>;
+
 export interface SkillAuthoringRepository {
   listSkillTemplates(): Promise<SkillTemplate[]>;
   createLogSkill(input: CreateSkillInput): Promise<AnalysisSkill>;
@@ -34,6 +41,16 @@ export interface SkillWorkspaceRepository {
   signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"]; files?: SkillSpec["files"] }): Promise<SignalPreview>;
   generateExtractorPattern?(id: string, input: ExtractorPatternInput): Promise<ExtractorPatternPreview>;
   previewFormat?(id: string, input: { sampleText: string; formatProfile: unknown }): Promise<FormatPreview>;
+  listAnalysisCases?(id: string): Promise<AnalysisCaseList>;
+  createAnalysisCase?(id: string, input: AnalysisCaseInput): Promise<AnalysisCase>;
+  updateAnalysisCase?(id: string, caseId: string, input: Pick<AnalysisCaseInput, "name" | "expectations">): Promise<AnalysisCase>;
+  deleteAnalysisCase?(id: string, caseId: string): Promise<void>;
+  startAnalysisCaseRun?(id: string, caseIds?: string[]): Promise<AnalysisCaseRun>;
+  getAnalysisCaseRun?(id: string, runId: string): Promise<AnalysisCaseRun>;
+  getAnalysisCaseTrace?(id: string, runId: string, caseId: string, revision: "draft" | "published"): Promise<AnalysisTraceStep[]>;
+  getAnalysisCasePrefill?(logId: string): Promise<AnalysisCasePrefill>;
+  importAnalysisCases?(id: string, file: File): Promise<void>;
+  exportAnalysisCases?(id: string): Promise<Blob>;
   startSkillDryRun?(id: string): Promise<SkillDryRun>;
   getSkillDryRun?(id: string, runId: string): Promise<SkillDryRunDetail>;
   getSkillDryRunLines?(id: string, runId: string, file: string, startLine: number, endLine: number): Promise<import("@/application/ports/LogAnalysisRepository").LogLineRange>;

@@ -304,3 +304,33 @@ export const logSkillDryRunSchema = z.object({
 });
 export const logSkillDryRunResponseSchema = z.object({ run: logSkillDryRunSchema });
 export const logSkillDryRunDetailResponseSchema = logSkillDryRunResponseSchema.extend({ steps: z.array(logTraceStepSchema).max(200) });
+
+export const logAnalysisCaseExpectationsSchema = z.object({
+  caseName: z.string().trim().min(1).max(200).optional(),
+  domain: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).default("generic"), summary: z.string().min(1).max(2000),
+  realLog: z.boolean().default(false), deIdentified: z.boolean().optional(),
+  rootCauseCategory: z.enum(["thermal-protection", "communication-failure", "device-unavailable", "power-delivery-degradation", "configuration-error", "hardware-fault", "software-fault", "no-fault", "insufficient-evidence"]).default("software-fault"),
+  rootCausePoints: z.array(z.string().min(1).max(4000)).max(100).default([]),
+  keyEvidenceLines: z.array(z.number().int().positive()).max(500).default([]),
+  keyEvidence: z.array(z.object({ file: z.string().min(1).max(1024), line: z.number().int().positive().optional(), pattern: z.string().min(1).max(500).optional() })).max(500).optional(),
+  expectedActions: z.array(z.string().min(1).max(4000)).max(100).default([]), expectRefusal: z.boolean().default(false),
+  expectedDegradedReason: logDegradedReasonSchema.optional(), analysisQuestion: z.string().max(4000).optional(), formatProfile: z.unknown().optional(),
+  bundleFiles: z.array(z.string().min(1).max(1024)).max(100).optional()
+});
+export const logAnalysisCaseSchema = z.object({ id: z.string(), name: z.string(), expectations: logAnalysisCaseExpectationsSchema,
+  files: z.array(logFileDtoSchema), createdAt: z.string(), updatedAt: z.string() });
+export const logAnalysisCaseOutcomeSchema = z.object({ score: z.number().min(0).max(100), passed: z.boolean(), report: logDryRunReportSchema,
+  traceReference: z.string(), quality: z.unknown().optional() });
+export const logAnalysisCaseResultSchema = z.object({ caseId: z.string(), name: z.string(), draft: logAnalysisCaseOutcomeSchema,
+  published: logAnalysisCaseOutcomeSchema.nullable(), delta: z.number().nullable() });
+export const logAnalysisCaseRunSchema = z.object({ id: z.string(), skillRevisionId: z.string(), publishedRevisionId: z.string().nullable(),
+  status: z.enum(["processing", "complete", "failed"]), progress: z.number(), results: z.array(logAnalysisCaseResultSchema),
+  error: z.string().nullable(), createdAt: z.string() });
+export const logAnalysisCaseListResponseSchema = z.object({ items: z.array(logAnalysisCaseSchema), latestRun: logAnalysisCaseRunSchema.nullable(), current: z.boolean(),
+  lastResults: z.array(z.object({ runId: z.string(), result: logAnalysisCaseResultSchema })).optional() });
+export const logAnalysisCaseResponseSchema = z.object({ item: logAnalysisCaseSchema });
+export const logAnalysisCaseRunResponseSchema = z.object({ run: logAnalysisCaseRunSchema });
+export const logAnalysisCasePrefillResponseSchema = z.object({ skillId: z.string(), name: z.string(), expectations: logAnalysisCaseExpectationsSchema,
+  originalUploads: z.array(z.object({ fileName: z.string(), sizeBytes: z.number().nonnegative() })).optional(),
+  files: z.array(logFileDtoSchema).optional(), sourceDegradation: z.object({ reason: logDegradedReasonSchema, source: logAnalysisSourceSchema.optional() }).optional()
+});
