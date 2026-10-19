@@ -951,7 +951,7 @@ test.describe("ADB device-lab full-chain loop", () => {
     const config = await resolveAdbSmokeConfig({ targetRef });
     const frontendGuard = await installFrontendDebuggingApiGuard(page);
     await expectAdbUiReady(page, config);
-    expect([...frontendGuard.detectedProtocols].sort()).toEqual(["adb", "hdc"]);
+    await expect.poll(() => [...frontendGuard.detectedProtocols].sort()).toEqual(["adb", "hdc"]);
     expect(
       frontendGuard.blockedRequests,
       `Frontend UI stage attempted request-API device calls: ${frontendGuard.blockedRequests.join(", ")}`
