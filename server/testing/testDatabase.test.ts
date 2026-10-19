@@ -116,6 +116,7 @@ describe("fresh database fixture policy", () => {
       "server/modules/catalog-kernel/security/retainedDismissedIdentities.integration.test.ts": ["retainedfresh:true", "retainedids:false"],
       "server/modules/catalog-publication/persistence/schema.integration.test.ts": ["cp02pop:false"],
       "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false"],
+      "server/modules/logs/sourceIndexWorker.integration.test.ts": ["stmtupgrade:false"],
       "server/modules/parameter-bindings/binding/propertyDeleteMigration.integration.test.ts": ["deleteupgrade:false"],
       "server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts": ["src_occ_0151:false"],
       "server/modules/parameter-catalog-migration/sourceOccurrenceGuard.integration.test.ts": ["srcintegrityupgrade:false"],
