@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { ParsedLogEntry } from "./parser";
 import { compileLogPattern, createLogPatternCache, MAX_LOG_PATTERN_LENGTH, type LogPattern, type LogPatternCache } from "./adminPattern";
 import { withLogPatternBudget } from "./patternBudget";
-import type { DecodedEvent } from "./parsing/spec";
+import type { DecodedEvent, DecodedValue } from "./parsing/spec";
 
 export const SIGNAL_RULE_LIMITS = { rules: 64, conditions: 16, totalConditions: 256, windows: 16, windowTimestamps: 160_000, evaluations: 2_000_000 } as const;
 export function createSignalEvaluationBudget(deadline = performance.now() + 10_000, evaluations: number = SIGNAL_RULE_LIMITS.evaluations, now = () => performance.now()) {
@@ -249,14 +249,41 @@ export function compileSignalCondition(condition: SignalCondition, maxInputChars
 }
 function compileCondition(condition: SignalCondition, maxInputChars: number | undefined, budget: SignalEvaluationBudget, cache: LogPatternCache, state: { windows: number; slots: number }): (entry: ParsedLogEntry) => boolean {
   switch (condition.type) {
-    case "field":
-      return (entry) => {
-        const value = entry.signalFields?.[condition.field];
+    case "field": {
+      const [extractor, name, ...parts] = condition.field.split(".");
+      const compare = (value: unknown) => {
         if (value === undefined) return false;
         if (condition.operator === "equals") return value === condition.value;
-        if (condition.operator === "in") return condition.values!.includes(value);
+        if (condition.operator === "in") return condition.values!.some((member) => member === value);
         return typeof value === "number" && value >= condition.min! && value <= condition.max!;
       };
+      const matches = (node: DecodedValue | undefined, offset: number, event: DecodedEvent, errorPath: string): boolean => {
+        checkSignalEvaluationBudget(budget);
+        // Checksum diagnostics may name only the leaf; its node carries the exact validity.
+        if (node === undefined || node && typeof node === "object" && "checksum" in node && node.checksum?.ok === false
+          || event.errors?.some((error) => error.code !== "checksum_mismatch" && error.field === errorPath)) return false;
+        if (offset === parts.length) return compare(node && typeof node === "object" && "value" in node ? node.value : node);
+        if (!node || typeof node !== "object" || !("value" in node)) return false;
+        const part = parts[offset];
+        if (offset === parts.length - 1 && (part === "value" || part === "meaning")) return compare(node[part]);
+        if (part !== "fields" || !node.fields || offset + 1 >= parts.length) return false;
+        const child = parts[offset + 1];
+        if (child === "*") {
+          for (const key in node.fields) {
+            if (Object.hasOwn(node.fields, key) && matches(node.fields[key], offset + 2, event, `${errorPath}.${key}`)) return true;
+          }
+          return false;
+        }
+        return Object.hasOwn(node.fields, child) && matches(node.fields[child], offset + 2, event, `${errorPath}.${child}`);
+      };
+      return (entry) => {
+        if (!entry.signalEvents) return compare(entry.signalFields?.[condition.field]);
+        return entry.signalEvents.some((event) => {
+          checkSignalEvaluationBudget(budget);
+          return event.extractor === extractor && Object.hasOwn(event.fields, name) && matches(event.fields[name], 0, event, name);
+        });
+      };
+    }
     case "window": {
       state.windows++; state.slots += condition.count;
       if (state.windows > SIGNAL_RULE_LIMITS.windows || !Number.isSafeInteger(condition.count) || condition.count <= 0 || state.slots > SIGNAL_RULE_LIMITS.windowTimestamps) throw new SignalRuleBudgetError("evaluation_cap");
@@ -315,15 +342,9 @@ function compileCondition(condition: SignalCondition, maxInputChars: number | un
   }
 }
 
-/** Add only successfully decoded, typed fields; parser tokens are not extracted fields. */
+/** Keep the bounded event tree; predicates traverse only their compiled path under the shared budget. */
 export function withSignalFields(entry: ParsedLogEntry, events: readonly DecodedEvent[] = []): ParsedLogEntry {
-  const fields: NonNullable<ParsedLogEntry["signalFields"]> = Object.create(null);
-  for (const event of events) for (const [name, decoded] of Object.entries(event.fields)) {
-    if (event.errors?.some((error) => error.field === name)) continue;
-    const value = decoded && typeof decoded === "object" && "value" in decoded ? decoded.value : decoded;
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") fields[`${event.extractor}.${name}`] = value;
-  }
-  return { ...entry, signalFields: fields };
+  return { ...entry, signalEvents: events };
 }
 
 function numericToken(entry: ParsedLogEntry, names: string[], maxInputChars?: number): number | undefined {

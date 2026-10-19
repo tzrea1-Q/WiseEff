@@ -58,5 +58,6 @@ export * from "./productFeedback";
 export * from "./sourceRevision";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
 export { logSkillSpecSchema } from "../../logs/skillSpec";
+export { listSignalFields, type SignalField } from "../../logs/parsing/signalFields";
 export { signalRuleSetSchema, signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
 export { validatedLogFormatProfileSchema } from "../../logs/formatProfile";
