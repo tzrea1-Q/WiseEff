@@ -21,6 +21,8 @@ The strict root is `{schemaVersion: "parsing/v1", extractors: Extractor[], regis
 
 `files` is an optional list of at most 200 case-sensitive path globs, each at most 1024 characters. `*` matches within one path segment, `?` matches one non-slash character, and `**` matches across slashes; `**/` can match zero directories. Other characters are literal. Omission selects all analyzed files; an empty list selects none. Skipped files are never decoded. Paths and one-based line numbers refer to the original file inventory.
 
+The shared compiler bounds program size for format profiles, extractors, signals and source patterns. Counted bounds are at most 100. A conservative expansion check rejects nested repetition and long repeated literals before RE2 compilation; the compiled `programSize()` must also stay within 16,384 instructions. Each request cache and each spec has a 65,536-instruction budget, with spec declarations charged conservatively even when duplicated. Validation identifies the exact offending field. Format previews share one cache across validation and both parser passes; extractor previews share one across timestamp detection and generated-pattern validation.
+
 ## Field types
 
 | Type | Accepted input and output |

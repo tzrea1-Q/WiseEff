@@ -1,11 +1,12 @@
 import { z } from "zod";
 
 import type { ParsedLogEntry } from "./parser";
-import { compileLogPattern, type LogPattern } from "./adminPattern";
+import { compileLogPattern, type LogPattern, type LogPatternCache } from "./adminPattern";
+import { withLogPatternBudget } from "./patternBudget";
 
 /** The single compilation seam for signal-rule patterns. */
-export function compileSignalPattern(pattern: string, flags?: string): LogPattern {
-  return compileLogPattern(pattern, flags);
+export function compileSignalPattern(pattern: string, flags?: string, cache?: LogPatternCache): LogPattern {
+  return compileLogPattern(pattern, flags, undefined, cache);
 }
 
 const textConditionSchema = z.object({
@@ -60,7 +61,7 @@ const defaultsSchema = z.object({
   suggestedActions: z.array(textSchema)
 }).strict();
 
-export const signalRuleSetSchema = z.object({
+export const signalRuleSetSchema = withLogPatternBudget(z.object({
   rules: z.array(z.object({
     id: textSchema,
     anyOf: z.array(signalConditionSchema).min(1),
@@ -85,16 +86,16 @@ export const signalRuleSetSchema = z.object({
     }
     ids.add(rule.id);
   });
-});
+}), "signals");
 
 export type SignalRuleSet = z.infer<typeof signalRuleSetSchema>;
 export type SignalCondition = z.infer<typeof signalConditionSchema>;
 
 /** Compile once per evidence collection, never once per log line. */
-export function compileSignalCondition(condition: SignalCondition, maxInputChars?: number): (entry: ParsedLogEntry) => boolean {
+export function compileSignalCondition(condition: SignalCondition, maxInputChars?: number, cache?: LogPatternCache): (entry: ParsedLogEntry) => boolean {
   switch (condition.type) {
     case "text": {
-      const pattern = compileSignalPattern(condition.pattern, condition.flags);
+      const pattern = compileSignalPattern(condition.pattern, condition.flags, cache);
       return (entry) => {
         if (maxInputChars !== undefined) {
           let searchable = entry.message.slice(0, maxInputChars);

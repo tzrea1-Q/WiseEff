@@ -1,15 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
 import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 import { formatBytes } from "@/domain/format/formatBytes";
-import type { SkillAuthoringRepository, SkillSample } from "./types";
+import type { SkillAuthoringRepository, SkillSample, SkillSpec, ParsePreview } from "./types";
 
-export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampleChange, selectedLine, onLineSelect }: {
+function extractorColor(index: number): CSSProperties {
+  // The schema caps extractors at 200; mix adjacent categorical tokens without repeating a color.
+  return { "--extractor-color": `color-mix(in srgb, var(--chart-${index % 5 + 1}) ${50 + Math.floor(index / 5)}%, var(--chart-${(index + 1) % 5 + 1}))` } as CSSProperties;
+}
+
+export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampleChange, selectedLine, onLineSelect, extractors, highlightPreview, highlightError }: {
   skillId: string; repository?: Partial<SkillAuthoringRepository>; apiMode: boolean; canEdit: boolean;
   onSampleChange?: (sample: SkillSample | null) => void;
   selectedLine?: number | null; onLineSelect?: (line: number) => void;
+  extractors?: NonNullable<SkillSpec["parsing"]>["extractors"]; highlightPreview?: ParsePreview; highlightError?: string;
 }) {
   const [sample, setSample] = useState<SkillSample | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,6 +26,15 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
   const [confirm, setConfirm] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const disabled = !apiMode || !canEdit || pending;
+  const matches = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const event of highlightPreview?.events ?? []) {
+      for (let line = event.line; line <= (event.endLine ?? event.line); line++) {
+        const ids = map.get(line) ?? []; if (!ids.includes(event.extractor)) ids.push(event.extractor); map.set(line, ids);
+      }
+    }
+    return map;
+  }, [highlightPreview]);
   useEffect(() => {
     let active = true;
     setLoading(true); setLoadError(false);
@@ -53,12 +68,25 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
           <div className="dialog-actions"><Button variant="outline" size="sm" disabled={disabled} onClick={() => fileRef.current?.click()}>替换样例</Button>
             <Button variant="outline" size="sm" disabled={disabled} onClick={() => { setError(""); setConfirm(true); }}>删除样例</Button></div></header>
         {sample.truncated ? <p>仅显示前 5000 行</p> : null}
+        {extractors?.length ? <>
+          <ul className="skill-extractor-legend" aria-label="抽取器高亮图例">{extractors.map((extractor, index) => <li key={extractor.id} style={extractorColor(index)}>
+            <span className="skill-extractor-swatch" aria-hidden="true" /><span>{extractor.id} · {highlightPreview ? `${highlightPreview.counts.byExtractor[extractor.id] ?? 0} 次命中` : "等待预览"}</span>
+          </li>)}</ul>
+          <p>匹配行标注抽取器标识；重叠匹配显示全部标识。{highlightPreview?.truncated ? "预览已达上限，仅高亮返回的匹配行（最多 500 个事件）。" : ""}</p>
+          {highlightError ? <p role="alert">{highlightError}</p> : null}
+        </> : null}
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The read-only log viewer needs focus for keyboard scrolling. */}
         <div className="skill-sample-content" data-sample-scroll role="region" aria-label="样例内容" tabIndex={0}>
-          {sample.content.split("\n").map((line, index) => onLineSelect ? <button type="button" className="skill-sample-line skill-sample-line--selectable" key={index}
-            aria-label={`选择样例第 ${index + 1} 行：${line}`} aria-pressed={selectedLine === index + 1} onClick={() => onLineSelect(index + 1)}>
-            <span aria-hidden="true">{index + 1}</span><code>{line || "\u00a0"}</code></button> : <div className="skill-sample-line" key={index}>
-              <span aria-hidden="true">{index + 1}</span><code>{line || "\u00a0"}</code></div>)}
+          {sample.content.split("\n").map((line, index) => {
+            const ids = matches.get(index + 1) ?? [], colorIndex = extractors?.findIndex((extractor) => extractor.id === ids[0]) ?? -1;
+            const labels = ids.length ? <span className="skill-extractor-matches">{ids.map((id) => <span key={id} style={extractorColor(extractors?.findIndex((extractor) => extractor.id === id) ?? 0)}>{id}</span>)}</span> : null;
+            return onLineSelect ? <button type="button" className="skill-sample-line skill-sample-line--selectable" key={index}
+            data-extractor-match={ids.length ? "true" : undefined} style={colorIndex >= 0 ? extractorColor(colorIndex) : undefined}
+            aria-label={`选择样例第 ${index + 1} 行：${line}${ids.length ? `；匹配抽取器 ${ids.join("、")}` : ""}`} aria-pressed={selectedLine === index + 1} onClick={() => onLineSelect(index + 1)}>
+            <span aria-hidden="true">{index + 1}</span><code>{line || "\u00a0"}</code>{labels}</button> : <div className="skill-sample-line" key={index}
+              data-extractor-match={ids.length ? "true" : undefined} style={colorIndex >= 0 ? extractorColor(colorIndex) : undefined}>
+              <span aria-hidden="true">{index + 1}</span><code>{line || "\u00a0"}</code>{labels}</div>;
+          })}
         </div>
       </> : <><SectionEmpty message="上传样例日志，后续解析与信号规则会用它实时预览。" />
         <Button variant="outline" disabled={disabled} onClick={() => fileRef.current?.click()}>上传样例日志</Button></>}

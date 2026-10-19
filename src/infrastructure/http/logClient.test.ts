@@ -61,6 +61,18 @@ function createRepository(fetchMock: typeof fetch) {
   });
 }
 
+it("validates extractor and format preview responses through encoded skill endpoints", async () => {
+  const extractor = { pattern: "^n=(?P<n>\\d+)$", fields: { n: { type: "uint" } }, matchedLines: [{ line: 1, text: "n=2" }], matchCount: 1, totalLines: 1, coverage: 1 };
+  const format = { lines: [{ line: 1, text: "INFO ready", severity: "info" }], entries: [{ lineNumbers: [1], text: "INFO ready", severity: "info" }] };
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse(extractor)).mockResolvedValueOnce(jsonResponse(format));
+  const repository = createRepository(fetchMock);
+  const extractorInput = { line: "n=1", segments: [{ start: 2, end: 3, name: "n", type: "uint" as const }], sampleLines: ["n=2"] };
+  await expect(repository.generateExtractorPattern!("skill/a", extractorInput)).resolves.toEqual(extractor);
+  await expect(repository.previewFormat!("skill/a", { sampleText: "INFO ready", formatProfile: {} })).resolves.toEqual(format);
+  expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills/skill%2Fa/extractor-preview");
+  expect(fetchMock.mock.calls[1][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills/skill%2Fa/format-preview");
+});
+
 it("requests a bounded line range with encoded record and file identity", async () => {
   const item = { file: "device/a b.log", startLine: 2, endLine: 3, totalLines: 3,
     lines: [{ lineNumber: 2, content: "second" }, { lineNumber: 3, content: "last" }] };

@@ -1,6 +1,8 @@
 import type { ZodTypeAny } from "zod";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "./logs";
 export { parsingSpecSchema, registerCaseKey } from "../../logs/parsing/spec";
+export { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
+export { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
 import {
   dtoSchemaCatalog as coreDtoSchemaCatalog,
   dtoSchemaCoveredRouteIds as coreDtoSchemaCoveredRouteIds
@@ -55,3 +57,4 @@ export * from "./canonicalManualSync";
 export * from "./productFeedback";
 export * from "./sourceRevision";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
+export { validatedLogFormatProfileSchema } from "../../logs/formatProfile";
