@@ -4,6 +4,8 @@ import { crc32, gunzipSync, inflateRawSync } from "node:zlib";
 import { supportedLogExtensions } from "./status";
 
 const MiB = 1024 * 1024;
+/** JSON parsing/base64 copies have a separate envelope from multipart uploads. */
+export const MAX_LOG_JSON_UPLOAD_BYTES = 32 * MiB;
 const corruptArchiveReason = "压缩包完整性规则：压缩包损坏或格式不受支持";
 export type BundleLimits = { maxCompressedBytes: number; maxUnpackedBytes: number; maxFiles: number; maxFileBytes: number };
 export const defaultBundleLimits: BundleLimits = {
@@ -21,6 +23,19 @@ export class LogBundleIntakeError extends Error {
 export type BundleIntakeResult = { ok: true; files: BundleFile[] } | { ok: false; reason: string };
 export function isLogArchive(name: string) { return /\.(?:gz|tgz|tar|zip)$/i.test(name); }
 
+function* decodedChunks(file: BundleFile) {
+  const decoder = new TextDecoder(file.encoding);
+  for (let at = 0; at < file.bytes!.length; at += 64 * 1024) yield decoder.decode(file.bytes!.subarray(at, at + 64 * 1024), { stream: true });
+  yield decoder.decode();
+}
+
+function utf8Size(file: BundleFile) {
+  if (file.encoding === "utf-8" && !file.lossy) return file.bytes!.length;
+  let size = 0;
+  for (const text of decodedChunks(file)) size += Buffer.byteLength(text);
+  return size;
+}
+
 /** Preserve decoded-content semantics without copying clean UTF-8 or retaining strings. */
 export function bundleFileUtf8Bytes(file: BundleFile): Buffer {
   if (!file.bytes) throw new Error("Analyzable bundle file bytes are required.");
@@ -28,7 +43,10 @@ export function bundleFileUtf8Bytes(file: BundleFile): Buffer {
     return file.bytes[0] === 0xef && file.bytes[1] === 0xbb && file.bytes[2] === 0xbf
       ? file.bytes.subarray(3) : file.bytes;
   }
-  return Buffer.from(new TextDecoder(file.encoding).decode(file.bytes), "utf8");
+  const bytes = Buffer.allocUnsafe(utf8Size(file));
+  let at = 0;
+  for (const text of decodedChunks(file)) at += bytes.write(text, at);
+  return bytes;
 }
 
 function safePath(name: string, directory = false): string {
@@ -62,29 +80,35 @@ export function decodeLogBundleFile(path: string, bytes: Buffer, requireSupporte
   const utf16 = bytes.length >= 2 && ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff));
   const encoding = utf16 ? (bytes[0] === 0xff ? "utf-16le" : "utf-16be") : "utf-8";
   let lossy = false;
-  let text: string;
-  try { text = new TextDecoder(encoding, { fatal: true }).decode(bytes); }
-  catch { lossy = true; text = new TextDecoder(encoding).decode(bytes); }
-  const sample = text.slice(0, 8192);
-  const controls = [...sample].filter((c) => c.charCodeAt(0) < 32 && !"\t\n\r".includes(c)).length;
-  // UTF-16's zero octets are ordinary text; decoded U+0000 is not PostgreSQL-storable text.
-  const binary = (!utf16 && bytes.subarray(0, 8192).includes(0)) || text.includes("\0") || controls / Math.max(1, sample.length) > 0.2;
-  const extension = extname(path).toLowerCase();
-  const skipReason = binary ? "二进制文件" : requireSupportedExtension && extension && !(supportedLogExtensions as readonly string[]).includes(extension) ? "不支持的文件扩展名" : null;
-  let lineCount = binary ? 0 : 1;
-  if (!binary) {
-    // Count separators without allocating an array of every line; preserve split's trailing empty line.
+  const decoder = new TextDecoder(encoding), validator = new TextDecoder(encoding, { fatal: true });
+  let sample = "", hasNull = false, lineCount = 1, previousCr = false, lastCode: number | undefined;
+  const inspect = (text: string) => {
+    if (sample.length < 8192) sample += text.slice(0, 8192 - sample.length);
+    hasNull ||= text.includes("\0");
     for (let at = 0; at < text.length; at++) {
       const code = text.charCodeAt(at);
-      if (code === 10 || code === 13) {
-        lineCount++;
-        if (code === 13 && text.charCodeAt(at + 1) === 10) at++;
-      }
+      lastCode = code;
+      if (code === 13 || code === 10 && !previousCr) lineCount++;
+      previousCr = code === 13;
     }
+  };
+  for (let at = 0; at < bytes.length; at += 64 * 1024) {
+    const chunk = bytes.subarray(at, at + 64 * 1024);
+    if (!lossy) try { validator.decode(chunk, { stream: true }); } catch { lossy = true; }
+    inspect(decoder.decode(chunk, { stream: true }));
   }
+  if (!lossy) try { validator.decode(); } catch { lossy = true; }
+  inspect(decoder.decode());
+  if (lastCode === undefined) lineCount = 0;
+  else if (lastCode === 10 || lastCode === 13) lineCount--;
+  const controls = [...sample].filter((c) => c.charCodeAt(0) < 32 && !"\t\n\r".includes(c)).length;
+  // UTF-16's zero octets are ordinary text; decoded U+0000 is not PostgreSQL-storable text.
+  const binary = (!utf16 && bytes.subarray(0, 8192).includes(0)) || hasNull || controls / Math.max(1, sample.length) > 0.2;
+  const extension = extname(path).toLowerCase();
+  const skipReason = binary ? "二进制文件" : requireSupportedExtension && extension && !(supportedLogExtensions as readonly string[]).includes(extension) ? "不支持的文件扩展名" : null;
   return {
     path, sizeBytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), encoding, lossy,
-    lineCount,
+    lineCount: binary ? 0 : lineCount,
     status: skipReason ? "skipped" : "analyzed", skipReason, ...(skipReason ? {} : { bytes })
   };
 }
@@ -104,7 +128,7 @@ export function intakeLogBundle(
     const unpackedBudget = Math.min(limits.maxUnpackedBytes, ratioBudget);
     const files: BundleFile[] = [];
     const paths = new Set<string>();
-    let total = 0, inflatedBytes = 0, archiveEntries = 0;
+    let total = 0, textTotal = 0, inflatedBytes = 0, archiveEntries = 0;
     const countArchiveEntry = () => {
       if (++archiveEntries > 2 * limits.maxFiles) throw new LogBundleIntakeError("条目数量规则：压缩包条目总数超过 LOG_BUNDLE_MAX_FILES 的 2 倍上限（含目录）");
     };
@@ -117,7 +141,13 @@ export function intakeLogBundle(
       total += bytes.length;
       if (total > limits.maxUnpackedBytes) throw new LogBundleIntakeError("解包总大小规则：超过 LOG_BUNDLE_MAX_UNPACKED_BYTES 上限");
       if (total > ratioBudget) throw new LogBundleIntakeError("压缩比规则：解包总量超过 200 倍压缩比上限（最低预算 1 MiB）");
-      files.push(decodeLogBundleFile(path, bytes));
+      const file = decodeLogBundleFile(path, bytes);
+      if (file.status === "analyzed") {
+        const size = utf8Size(file);
+        textTotal += size;
+        if (size > limits.maxFileBytes || textTotal > limits.maxUnpackedBytes) throw new LogBundleIntakeError("解码文本大小规则：UTF-8 文本超过单文件或解包总大小上限");
+      }
+      files.push(file);
     };
     const inflate = (bytes: Buffer, gzip: boolean, container: boolean) => {
       const cap = Math.min(unpackedBudget - inflatedBytes, container ? unpackedBudget : limits.maxFileBytes, Math.max(bytes.length * 200, MiB));

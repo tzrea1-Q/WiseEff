@@ -3,6 +3,7 @@ import { DecodedFields } from "./DecodedFields";
 import { SourceEvidence } from "./SourceEvidence";
 import { Button } from "@/components/ui/button";
 import { SignalsTab } from "./SignalsTab";
+import { LogFileDrawer } from "./LogFileDrawer";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -125,6 +126,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [hoveredLine, setHoveredLine] = useState<number | null>(null);
   const [focusedSignalLine, setFocusedSignalLine] = useState<number | null>(null);
+  const [viewer, setViewer] = useState<{ file: string; lines: number[] } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [liveMessage, setLiveMessage] = useState("");
@@ -180,7 +182,15 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [selectedLogId]);
   const hasActiveLog = Boolean(selectedLog);
   const activeLog = selectedLogDetail && selectedLogDetail.summary === selectedLog ? selectedLogDetail.record : selectedLog ?? emptyLogRecord;
-  const rawFilePath = activeLog.files?.find((file) => file.status === "analyzed")?.path ?? activeLog.fileName;
+  const rawFile = activeLog.files?.find((file) => file.status === "analyzed");
+  const rawFilePath = rawFile?.path ?? activeLog.fileName;
+  const readViewerLines = useCallback(async (startLine: number, endLine: number) => {
+    const file = viewer?.file ?? rawFilePath;
+    if (logRepository?.getLogLines) return logRepository.getLogLines(activeLog.id, file, startLine, endLine);
+    if (file !== rawFilePath) throw new Error("当前日志视图未包含此文件，请连接日志服务后重试。");
+    return { file, startLine, endLine: Math.min(endLine, activeLog.rawLines.length), totalLines: activeLog.rawLines.length,
+      lines: activeLog.rawLines.slice(startLine - 1, endLine).map((content, index) => ({ lineNumber: startLine + index, content })) };
+  }, [logRepository, activeLog.id, activeLog.rawLines, rawFilePath, viewer?.file]);
   const relatedParameterUnlocated = Boolean(logActions && activeLog.relatedParameterId && !activeLog.relatedParameterProjectId);
   const evidenceByLine = useMemo(() => {
     const map = new Map<number, LogEvidence[]>();
@@ -227,6 +237,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     setFocusedEvidenceId(null);
     setHoveredLine(null);
     setFocusedSignalLine(null);
+    setViewer(null);
   }, [activeLog.id]);
 
   useEffect(() => {
@@ -481,7 +492,11 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         </aside>}
       >
       {auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length}
-        onAnchor={(anchor) => { setSearchQuery(""); setFocusedSignalLine(anchor.line); setAuxTab("report"); }} />
+        allFilesAvailable={Boolean(logRepository?.getLogLines)}
+        onAnchor={(anchor) => {
+          if (logRepository?.getLogLines) { setViewer({ file: anchor.file, lines: [anchor.line] }); return; }
+          setSearchQuery(""); setFocusedSignalLine(anchor.line); setAuxTab("report");
+        }} />
         : auxTab === "files" ? <LogFilesTable log={activeLog} /> : auxTab !== "metadata" ? <div className="logs-v2-main">
         {auxTab === "report" || activeLog.status === "Complete" ? <LogConclusionCard
           log={activeLog}
@@ -503,6 +518,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
               <PanelHeader title="分析结果" meta={logStatusLabels[activeLog.status]} />
               {(activeLog.files?.filter((file) => file.status === "analyzed").length ?? 0) > 1
                 ? <p className="px-3 text-sm text-muted-foreground">当前原始日志：{rawFilePath}；证据按各自文件与行号定位。</p> : null}
+              {rawFile && activeLog.rawLines.length < rawFile.lineCount
+                ? <p className="px-3 text-sm text-muted-foreground">原始日志预览：前 {activeLog.rawLines.length} 行，共 {rawFile.lineCount} 行。点击证据或信号查看更多上下文。</p> : null}
               <div className="logs-v2-split">
                 <RawLogViewer
                   activeMatchIndex={activeMatchIndex}
@@ -529,6 +546,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
                   rawLines={activeLog.rawLines}
                   onClickEvidence={focusEvidence}
                   onHoverEvidence={setHoveredEvidenceId}
+                  onOpenFile={(file, lines) => setViewer({ file, lines })}
                 />
               </div>
             </section>
@@ -596,6 +614,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         />
       ) : null}
       {/* Reducer notifications render through the global AppToastLayer in both runtime modes. */}
+      {viewer ? <LogFileDrawer key={`${activeLog.id}:${viewer.file}:${viewer.lines.join(",")}`} file={viewer.file} citedLines={viewer.lines}
+        readLines={readViewerLines} onClose={() => setViewer(null)} /> : null}
     </div>
   );
 }
@@ -1347,7 +1367,8 @@ function EvidenceChainPanel({
   focusedEvidenceId,
   hoveredLine,
   onHoverEvidence,
-  onClickEvidence
+  onClickEvidence,
+  onOpenFile
 }: {
   loadSourceExcerpt?: (evidenceId: string) => Promise<import("@/features/log-skills/types").SourceExcerpt>;
   evidence: LogEvidence[];
@@ -1357,6 +1378,7 @@ function EvidenceChainPanel({
   hoveredLine: number | null;
   onHoverEvidence: (id: string | null) => void;
   onClickEvidence: (id: string) => void;
+  onOpenFile: (file: string, lines: number[]) => void;
 }) {
   return (
     <section className="evidence-chain" aria-label="日志分析证据链">
@@ -1376,6 +1398,7 @@ function EvidenceChainPanel({
               rawLines={rawLines}
               onClick={() => onClickEvidence(item.id)}
               onHover={(id) => onHoverEvidence(id)}
+              onOpenFile={onOpenFile}
             />
           );
         })}
@@ -1391,7 +1414,8 @@ function EvidenceCard({
   rawLines,
   focused,
   onHover,
-  onClick
+  onClick,
+  onOpenFile
 }: {
   loadSourceExcerpt?: () => Promise<import("@/features/log-skills/types").SourceExcerpt>;
   evidence: LogEvidence;
@@ -1400,32 +1424,40 @@ function EvidenceCard({
   focused: boolean;
   onHover: (id: string | null) => void;
   onClick: () => void;
+  onOpenFile: (file: string, lines: number[]) => void;
 }) {
   const title = `证据 ${String(index + 1).padStart(2, "0")}`;
   const hasSource = !!evidence.sourceLocation;
+  const isGroup = !!evidence.filePath || hasSource;
 
   return (
     <div
       aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`}
-      aria-pressed={hasSource ? undefined : focused}
+      aria-pressed={isGroup ? undefined : focused}
       className={classNames("evidence-card", focused && "evidence-card--focused", `evidence-card--${evidence.stageId}`)}
       id={`evidence-card-${evidence.id}`}
-      role={hasSource ? "group" : "button"}
-      tabIndex={hasSource ? undefined : 0}
-      onClick={hasSource ? undefined : onClick}
-      onKeyDown={hasSource ? undefined : (event) => {
+      role={isGroup ? "group" : "button"}
+      tabIndex={isGroup ? undefined : 0}
+      onClick={(event) => {
+        if (isGroup && (event.target as Element).closest("button, a, input, select, textarea, [role='button'], [role='link']")) return;
+        onClick();
+      }}
+      onKeyDown={isGroup ? undefined : (event) => {
         if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); }
       }}
       onMouseEnter={() => onHover(evidence.id)}
       onMouseLeave={() => onHover(null)}
     >
       <header>
-        {hasSource ? <Button variant="link" size="sm" aria-pressed={focused} aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`} onClick={onClick}>{title}</Button> : <span>{title}</span>}
+        {isGroup ? <Button variant="link" size="sm" aria-pressed={focused} aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`} title="定位到原始日志" onClick={onClick}>{title}</Button> : <span>{title}</span>}
         <strong>{STAGE_LABELS[evidence.stageId]}</strong>
       </header>
       <div className="evidence-card__body">
         {evidence.lineNumbers.map((lineNumber) => <div key={lineNumber}>
-          <code>{evidence.filePath ? `${evidence.filePath}:${lineNumber}` : `#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`}</code>
+          {evidence.filePath ? <button type="button" className="text-left text-primary underline underline-offset-2"
+            onClick={() => onOpenFile(evidence.filePath!, [lineNumber, ...evidence.lineNumbers.filter((line) => line !== lineNumber)])}>
+            <code>{evidence.filePath}:{lineNumber}</code>
+          </button> : <code>{`#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`}</code>}
           <DecodedFields events={evidence.decodedFields?.filter((event) => event.line === lineNumber)} />
         </div>)}
         <p>{evidence.inference}</p>

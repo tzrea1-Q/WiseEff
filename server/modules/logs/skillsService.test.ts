@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Queryable } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import * as domains from "./domainsRepository";
-import { previewLogSkillParsing } from "./skillsService";
+import * as workerDecoding from "./parsing/workerDecoding";
+import { previewLogSkillParsing, PARSE_PREVIEW_MAX_MS } from "./skillsService";
 import { parsePreviewResponseSchema, parsingSpecSchema } from "./parsing/spec";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
@@ -45,6 +46,9 @@ describe("parsing preview service bounds", () => {
   });
   it("returns partial line-capped results and keeps the complete sample's unmatched count", async () => {
     const lookup = skill();
+    const decode = workerDecoding.decodeLogFilesCooperatively;
+    vi.spyOn(workerDecoding, "decodeLogFilesCooperatively").mockImplementationOnce((spec, files, options) =>
+      decode(spec, files, { ...options, maxMs: PARSE_PREVIEW_MAX_MS, now: () => 0, hardTimeout: false }));
     const result = await previewLogSkillParsing(db, auth, "skill", { parsing: { schemaVersion: "parsing/v1", extractors: [] }, sampleText: "x\n".repeat(5000) });
     expect(parsePreviewResponseSchema.parse(result)).toMatchObject({ valid: true, truncated: true, reason: "line_cap", unmatchedLineCount: 5001 });
     expect(lookup).toHaveBeenCalledWith(db, { organizationId: auth.organization.id, domainId: "skill" });

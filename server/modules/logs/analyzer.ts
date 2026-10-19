@@ -14,13 +14,15 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type AnalyzeLogInput = {
+  signal?: AbortSignal;
   signalSummary?: LogSignalSummary;
   /** Untrusted diagnostic guidance from this run's immutable skill revision. */
   procedure?: string;
   decoding?: { spec: import("./parsing/spec").ParsingSpec; events: import("./parsing/spec").DecodedEvent[]; counts: import("./parsing/spec").DecodeCounts };
   /** Pinned revision's source availability at worker execution; source tools bind this scope later. */
   sourceSnapshot?: { id: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" } | null;
-  files?: Array<import("./filesRepository").LogFileDto & { parsed?: Extract<ParseResult, { ok: true }> }>;
+  files?: Array<import("./filesRepository").LogFileDto & { parsed?: Extract<ParseResult, { ok: true }>; reader?: import("./fileReader").LogFileReader; prefilter?: import("./prefilter").PrefilterFindings }>;
+  stats?: { lineCount: number; entryCount: number };
   filePath?: string;
   signalRules?: SignalRuleSet;
   parsed: Extract<ParseResult, { ok: true }>;
@@ -92,10 +94,12 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
     async analyze(input) {
       const activeRules = input.signalRules ?? ruleSet;
       const evidence = input.files
-        ? input.files.flatMap((file) => file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules).map((item) => ({ ...item, filePath: file.path })) : [])
+        ? input.files.flatMap((file) => (file.prefilter?.evidence ?? (file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules) : [])).map((item) => ({ ...item, filePath: file.path })))
         : collectRuleEvidence(input.parsed.entries, activeRules).map((item) => ({ ...item, filePath: input.filePath }));
       const ruleHits = new Set(evidence.map((item) => item.ruleHit));
-      const hasErrorEvidence = input.files ? input.files.some((file) => file.parsed?.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence.filter((item) => item.filePath === file.path), entry)))
+      const hasErrorEvidence = input.files ? input.files.some((file) => file.prefilter?.hasErrorEvidence
+        || file.prefilter?.errorLineNumbers?.some((line) => evidence.some((item) => item.filePath === file.path && item.lineNumbers.includes(line)))
+        || file.parsed?.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence.filter((item) => item.filePath === file.path), entry)))
         : input.parsed.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence, entry));
       const summary = input.signalSummary ?? extractLogSignals(input.files ?? [{ path: input.filePath ?? "log", parsed: input.parsed }], input.signalRules);
       const generic = summary.signals.filter((signal) => signal.source === "generic");
@@ -123,8 +127,8 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
         suggestedActions: [...new Set([...defaults.suggestedActions, ...actions.map((action) => action.value)])],
         reportContext: {
           analysisQuestion: input.analysisQuestion,
-          lineCount: input.parsed.rawLines.length,
-          entryCount: input.parsed.entries.length
+          lineCount: input.stats?.lineCount ?? input.parsed.rawLines.length,
+          entryCount: input.stats?.entryCount ?? input.parsed.entries.length
         }
       };
     }

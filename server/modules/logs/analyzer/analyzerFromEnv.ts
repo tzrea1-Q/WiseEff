@@ -63,8 +63,8 @@ function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string): LogAnal
   });
 
   return {
-    async invoke(messages) {
-      const response = await chat.invoke(messages.map((message) => ({ role: message.role, content: message.content })));
+    async invoke(messages, options) {
+      const response = await chat.invoke(messages.map((message) => ({ role: message.role, content: message.content })), options);
       return {
         content: contentToText(response.content),
         usage: {

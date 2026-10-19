@@ -19,10 +19,10 @@ Save the draft, review the procedure's before/after text in the publish dialog, 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".
 2. Before selecting a file, set the optional "Business domain". A Log domain describes the log format, domain knowledge, and analysis focus. It is a separate concept from an Organization or an intake channel. Choose a registered domain that fits the file, or leave "Uncategorized (general analysis)" selected. If the domain you need is missing, ask an Admin to maintain it in Log administration (`/log-admin`).
 3. Optionally enter an "Analysis question", such as which events explain a temperature rise. To associate a parameter, select its project and then a current project parameter. Both selections are needed to complete the association.
-4. Select or drop one `.log`, `.txt`, `.csv`, or `.json` text log. API uploads also accept single-file `.gz` and single-entry `.zip` archives, which the server unpacks. Review the file check, then choose "Confirm upload". After the filename check passes, the server still needs to parse the contents; parsing may fail.
+4. Select or drop `.log`, `.txt`, `.csv`, or `.json` text logs. In API mode, select several text files for one analysis record, or one `.gz`, `.zip`, `.tar`, `.tar.gz`, or `.tgz` archive for the server to unpack. Review the selected files, remove any unwanted files, then choose "Confirm upload". After the filename check passes, the server still needs to parse the contents; parsing may fail.
 5. Follow the new record in "History". Select another history item to inspect its status and report.
 
-Single-file selection opens a confirmation step. Selecting or dropping several files starts their uploads without per-file confirmation, using the current options; set the domain and question first. An unsupported file can still be submitted with "Upload anyway", but this does not make its format supported.
+The selected files share the current domain and analysis question. The server's configured bundle limits apply; see [environment variables](../developer/environment-variables.md). An unsupported file can still be submitted with "Upload anyway", but this does not make its format supported.
 
 ## Follow the analysis stages
 
@@ -54,9 +54,11 @@ Older records may lack source badges, and the confidence percentage alone cannot
 ## Trace a finding back to raw lines
 
 1. In Intelligent analysis (`/logs`), read the conclusion and impact, then inspect the "Evidence chain" beside "Raw log". Each evidence card shows its stage, cited line numbers and excerpts, inference, any rule hit, and suggested action.
-2. Select a card to focus it and scroll to its first cited raw line. Hovering the card highlights its cited lines. Check surrounding events, time, and module rather than relying on the excerpt alone.
+2. Click a `file:line` chip to open that file in the log viewer drawer, including files outside the raw-log preview. The drawer scrolls to and highlights the citation, shows context and line numbers, and offers "Load above", "Load below", and a copy action for each line. Hovering a card still highlights its cited lines when present in the raw panel. Check surrounding events, time, and module rather than relying on the excerpt alone.
 3. Select a raw line number with evidence to jump back to its first corresponding card. Lines without evidence do not have this jump action.
-4. Use raw-log search and previous/next match buttons to inspect other occurrences. If a column filter hides a cited line, clear that filter before locating it.
+4. Use raw-log search and previous/next match buttons to inspect other occurrences in the preview. If a column filter hides a cited line, clear that filter before locating it. The raw panel remains available as a bounded preview: at most the first 400 lines per file, sharing a 128 KiB text budget across the run. Use the drawer for citations beyond that preview; each displayed window contains at most 400 lines.
+
+Very long lines in the drawer are limited to 64 KiB and end with `… [line truncated at 64 KiB]`; copying such a line copies its displayed prefix and marker.
 
 After completion, choose "Export report" to download a Markdown summary or "Copy link" to copy the selected record's link. Recipients still need access to the record within its Organization.
 
@@ -68,7 +70,7 @@ After completion, choose "Export report" to download a Markdown summary or "Copy
 
 On a record report in `/logs`, choose the Signals tab beside the existing report. Signals are grouped by kind and show severity, generic or skill source, occurrence count and `file:line` chips. Generic signals include crash signatures, timestamp gaps, restarts, error bursts and each file's first error; they are available even without a selected skill. Skill signals use the revision pinned to that run.
 
-The line-template table groups lines after replacing changing numbers, hexadecimal values, identifiers and paths. Compare each template's count and first/last locations to spot repetition. Click an anchor to locate and highlight its line in the raw-log view when available. A truncation notice means the stored summary reached its bound; inspect raw logs for additional occurrences. A signal is a lead to check, not a root-cause conclusion. Older reports may have no saved signals. Degraded reports keep their source warning and use generic signals together with the pinned skill's rules.
+The line-template table groups lines after replacing changing numbers, hexadecimal values, identifiers and paths. Compare each template's count and first/last locations to spot repetition. In API mode, every signal and template anchor opens the same file drawer with the cited line highlighted, even when another file appears in the raw-log preview. Load context above or below and copy individual lines there. A truncation notice means the stored summary reached its bound; inspect raw logs for additional occurrences. A signal is a lead to check, not a root-cause conclusion. Older reports may have no saved signals. Degraded reports keep their source warning and use generic signals together with the pinned skill's rules.
 
 The Signals tab also explains when extraction ran out of time, scanned only the beginning of long lines, or failed. Time-limited results keep completed signals; an extraction failure leaves an empty signal summary. The report and raw logs remain available for checking, and an incomplete summary does not establish that no anomalies exist.
 

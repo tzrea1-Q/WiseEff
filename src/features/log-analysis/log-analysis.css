@@ -1365,3 +1365,19 @@
     grid-template-columns: calc(var(--space-3) * 3) minmax(0, 1fr);
   }
 }
+
+.log-file-drawer[data-slot="sheet-content"][data-side="right"] {
+  width: 100vw;
+  max-width: none;
+  z-index: var(--z-modal-backdrop);
+}
+
+[data-slot="sheet-overlay"]:has(+ .log-file-drawer) {
+  z-index: var(--z-modal-backdrop);
+}
+
+@media (min-width: 640px) {
+  .log-file-drawer[data-slot="sheet-content"][data-side="right"] {
+    width: var(--log-file-drawer-width);
+  }
+}

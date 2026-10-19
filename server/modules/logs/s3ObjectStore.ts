@@ -21,7 +21,7 @@ export type ObjectStoragePutInput = {
 export type ObjectStorageTransport = {
   put(input: ObjectStoragePutInput): Promise<void>;
   get(input: { bucket: string; key: string }): Promise<Buffer>;
-  getStream?(input: { bucket: string; key: string }): Promise<Readable>;
+  getStream?(input: { bucket: string; key: string; start?: number; end?: number }): Promise<Readable>;
   getBounded?(input: { bucket: string; key: string; maxBytes: number }): Promise<Buffer>;
   head(input: { bucket: string; key?: string }): Promise<void | { ok: boolean; error?: string; metadata?: Record<string, string> }>;
   delete(input: { bucket: string; key: string }): Promise<void>;
@@ -108,6 +108,7 @@ function signedHeaders(input: {
   body?: Buffer;
   contentType?: string;
   metadata?: Record<string, string>;
+  extraHeaders?: Record<string, string>;
 }) {
   const bodyHash = sha256Hex(input.body ?? "");
   const now = new Date();
@@ -117,6 +118,7 @@ function signedHeaders(input: {
   const credentialScope = `${amzDate.slice(0, 8)}/${input.region ?? "us-east-1"}/s3/aws4_request`;
   const parsedUrl = new URL(input.url);
   const headers: Record<string, string> = {
+    ...input.extraHeaders,
     host: parsedUrl.host,
     "x-amz-content-sha256": bodyHash,
     "x-amz-date": amzDate
@@ -244,9 +246,11 @@ export function createHttpObjectStorageTransport(options: {
       const response = await fetchImpl(url, {
         method: "GET",
         headers: signedHeaders({ method: "GET", url, accessKeyId: options.accessKeyId,
-          secretAccessKey: options.secretAccessKey, region: options.region })
+          secretAccessKey: options.secretAccessKey, region: options.region,
+          ...(input.start !== undefined ? { extraHeaders: { range: `bytes=${input.start}-${input.end ?? ""}` } } : {}) })
       });
       await assertOk(response);
+      if (input.start !== undefined && response.status !== 206) throw new Error("Object store ignored the requested byte range.");
       return response.body ? Readable.fromWeb(response.body) : Readable.from([]);
     },
 
@@ -359,10 +363,10 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): ObjectStore 
       rejectUnsafeStorageKey(storageKey);
       return transport.get({ bucket: options.bucket, key: storageKey });
     },
-    async getStream(storageKey) {
+    async getStream(storageKey, range) {
       rejectUnsafeStorageKey(storageKey);
       if (!transport.getStream) throw new Error("Object storage transport does not support streaming reads.");
-      return transport.getStream({ bucket: options.bucket, key: storageKey });
+      return transport.getStream({ bucket: options.bucket, key: storageKey, ...range });
     },
     async getBounded(storageKey, maxBytes) {
       rejectUnsafeStorageKey(storageKey);

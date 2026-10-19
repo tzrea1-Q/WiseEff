@@ -2,13 +2,13 @@
 
 > Chinese: [Chinese](../zh-CN/api/log-analysis-integration.md)
 
-How an external system pushes logs into WiseEff for analysis and consumes results — either by polling or through the domain-level **result webhook**. Inline examples replace a packaged SDK on purpose: the surface is three REST calls plus one signature check, and the guide stays the single source of truth until a real consumer asks for more.
+How an external system pushes logs into WiseEff for analysis and consumes results — either by polling or through the domain-level **result webhook**. Inline examples cover uploads, jobs, reports, file windows and webhook signature checks without a packaged SDK.
 
 Prerequisites: [Authentication](authentication.md) (bearer token), [Errors](errors.md) (error envelope). Endpoint schemas: [API Contract](../design-docs/api-contract.md) and [openapi.json](../generated/openapi.json).
 
 ## 1. Push a log
 
-`POST /api/v1/log-files` with base64 content. Bind the upload to a registered log domain via `logDomainId` (list them with `GET /api/v1/log-domains`); omit it to fall back to the built-in uncategorized domain — uploads are never blocked by domain selection.
+`POST /api/v1/log-files` with base64 content. JSON uploads accept at most 32 MiB of decoded file bytes; larger bundles use multipart under the configured upload cap (100 MiB by default). Oversized transport bodies return `413` before parsing. Bind the upload to a registered log domain via `logDomainId` (list them with `GET /api/v1/log-domains`); omit it to fall back to the built-in uncategorized domain — uploads are never blocked by domain selection.
 
 ```bash
 curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
@@ -24,7 +24,7 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 
 The `201` response carries `log.id` (the record) and `job.id` (the analysis job).
 
-Supported formats: UTF-8 text logs with extensions `.log`, `.txt`, `.csv`, `.json`, plus compressed uploads — single-file `.gz` or single-entry `.zip` containing one such text log. Unpacked size is capped at 100MB absolute and 200× the compressed size (1MB floor); binary content, multi-entry or encrypted archives fail with a readable `failureReason` on the record.
+Supported text extensions are `.log`, `.txt`, `.csv` and `.json`; bundle intake recognizes UTF-8 and BOM-marked UTF-16 text. Archives can contain several files and use `.gz`, `.zip`, `.tar`, `.tar.gz` or `.tgz`. For several loose text files in one record, send `multipart/form-data` with a repeated `file` field. Inspect the record's `files` inventory for analyzed and skipped entries. Configured compressed, unpacked, file-count and per-file limits apply; see [environment variables](../developer/environment-variables.md). Archive expansion also has a 200× ratio bound with a 1 MiB minimum budget. Rejected inputs retain a readable failure reason.
 
 ## 2. Poll the job
 
@@ -37,6 +37,40 @@ Supported formats: UTF-8 text logs with extensions `.log`, `.txt`, `.csv`, `.jso
 The record also exposes optional `signalSummary: { signals, templates, truncatedSignals, truncatedTemplates }` for its current run. Generic signals are produced without selecting a skill; a pinned skill contributes its own signal hits. Signals carry kind, severity, source, occurrence count and bounded `file:line` anchors with excerpts. Templates carry normalized text, count and first/last anchors. Check the truncation flags before treating a summary as complete. Older records can omit this field. Rule fallback uses generic and pinned-skill signals while retaining the degraded marker and confidence caps. See the [signal contract](../design-docs/api-contract.md#generic-signals) for field shapes and the internal agent tools; the tools do not add REST endpoints.
 
 Optional `signalSummary.truncated` and `reason` describe incomplete extraction: `time_cap` retains completed results, `line_cap` limits matching to line prefixes, and `extraction_error` returns an empty summary while analysis continues. Check these fields alongside the count-cap flags before interpreting an empty summary as absence of anomalies.
+
+### Fetch a file's line window
+
+`GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` returns a window from one analyzed file. It requires `logs:view` and the same Organization scope as the record. Use the exact `path` from the record's `files` inventory for `file`; this is a bundle path, not an object-store key.
+
+Both line bounds are required, positive, 1-based integers and inclusive. A request may contain at most 400 lines. The server clips `endLine` at the end of the file; a `startLine` beyond the file, reversed bounds, or a window over 400 lines returns `400 VALIDATION_FAILED`. A final newline does not add a line; actual blank lines remain addressable. An empty file returns `startLine: 1`, `endLine: 0`, `totalLines: 0` and `lines: []`. Older indexes rebuild lazily on access. A missing or skipped file returns `404 NOT_FOUND`.
+
+```bash
+curl -sS --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "file=device/kernel.log" \
+  --data-urlencode "startLine=40" \
+  --data-urlencode "endLine=42"
+```
+
+```json
+{
+  "item": {
+    "file": "device/kernel.log",
+    "startLine": 40,
+    "endLine": 42,
+    "totalLines": 850,
+    "lines": [
+      { "lineNumber": 40, "content": "Starting diagnostic task" },
+      { "lineNumber": 41, "content": "ERROR device unavailable" },
+      { "lineNumber": 42, "content": "Retry scheduled" }
+    ]
+  }
+}
+```
+
+The reader uses the file's UTF-8 text object and line-offset index, including for UTF-16 uploads converted during intake. CRLF counts as one line break, and the final line remains addressable without a trailing newline. Each returned line is bounded to a 64 KiB prefix; longer lines end with `… [line truncated at 64 KiB]`. Consumers should preserve this marker when displaying or copying a truncated line.
+
+The record's existing raw-log panel remains a preview: at most the first 400 lines per file, with a shared 128 KiB text budget per run. In `/logs`, clicking an evidence `file:line` chip or a signal/template anchor opens the shared file drawer, scrolls to and highlights its citation, and offers context loading above and below plus line copying. Use the line-window endpoint for locations beyond the preview rather than treating `rawLines` as the complete file.
 
 ## 4. Or consume the result webhook
 

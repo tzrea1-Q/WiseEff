@@ -2,13 +2,13 @@
 
 > English: [English](../../api/log-analysis-integration.md)
 
-外部系统如何把日志推入 WiseEff 分析并消费结果——轮询或订阅域级**结果 Webhook**。我们有意用内联示例替代打包 SDK:集成面只有三个 REST 调用加一个签名校验,在真实消费方提出更多诉求之前,本指南就是唯一事实来源。
+外部系统如何把日志推入 WiseEff 分析并消费结果——轮询或订阅域级**结果 Webhook**。本指南通过内联示例说明上传、任务、报告、文件行窗口和 Webhook 签名校验，不提供打包 SDK。
 
 前置阅读:[认证](authentication.md)(Bearer Token)、[错误](errors.md)(错误信封)。端点契约见 [API Contract](../../design-docs/api-contract.md) 与 [openapi.json](../../generated/openapi.json)。
 
 ## 1. 推送日志
 
-`POST /api/v1/log-files`,内容 base64 编码。通过 `logDomainId` 绑定已注册业务域(`GET /api/v1/log-domains` 可列出);不传则回落到内置未分类域——域选择永远不会阻塞上传。
+`POST /api/v1/log-files`,内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。通过 `logDomainId` 绑定已注册业务域(`GET /api/v1/log-domains` 可列出);不传则回落到内置未分类域——域选择永远不会阻塞上传。
 
 ```bash
 curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
@@ -24,7 +24,7 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 
 `201` 响应带回 `log.id`(记录)与 `job.id`(分析任务)。
 
-支持格式:UTF-8 文本日志,扩展名 `.log`、`.txt`、`.csv`、`.json`;压缩上传支持单文件 `.gz` 与单条目 `.zip`(内含一个上述文本日志)。解压后大小上限 100MB,且不超过压缩体积的 200 倍(下限 1MB);二进制内容、多条目或加密压缩包会以可读的 `failureReason` 失败。
+支持的文本扩展名为 `.log`、`.txt`、`.csv` 和 `.json`；日志包接收支持 UTF-8 及带 BOM 的 UTF-16 文本。压缩包可包含多份文件，支持 `.gz`、`.zip`、`.tar`、`.tar.gz` 和 `.tgz`。若要将多份独立文本文件合并为一条记录，使用 `multipart/form-data` 并重复传入 `file` 字段。记录的 `files` 清单列出已分析和已跳过的条目。上传受压缩体积、解包体积、文件数和单文件大小的配置限制，参见[环境变量](../developer/environment-variables.md)。解包另有 200 倍压缩比上限，最低预算为 1 MiB。被拒绝的输入保留可读的失败原因。
 
 ## 2. 轮询任务
 
@@ -37,6 +37,40 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 记录另有当前运行的可选 `signalSummary: { signals, templates, truncatedSignals, truncatedTemplates }`。不选择技能也生成通用信号，钉住的技能另提供自身信号命中。信号带种类、严重度、来源、出现次数和有界的 `file:line` 锚点及摘录；模板带归一化文本、次数和首末锚点。判断摘要是否完整前，先检查截断标记；旧记录可以没有该字段。规则回退同时使用通用和所钉技能的信号，保留降级标记与置信度上限。字段和内部 Agent 工具见 [API 合同](../design-docs/api-contract.md)；这些工具不新增 REST 端点。
 
 可选的 `signalSummary.truncated` 与 `reason` 说明提取不完整：`time_cap` 保留已完成结果，`line_cap` 仅按行首内容匹配，`extraction_error` 返回空摘要并继续分析。判断空摘要是否意味着没有异常前，还须同时检查这些字段和数量截断标记。
+
+### 获取单文件的行窗口
+
+`GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` 返回一份已分析文件的指定行窗口。需要 `logs:view`，组织范围与记录本身一致。`file` 使用记录 `files` 清单中的准确 `path`；这是日志包内路径，不是对象存储键。
+
+两个行号参数均必填，必须为正整数，从 1 开始计数，且包含首尾行。一次最多请求 400 行。`endLine` 超过文件末尾时，服务端会裁剪到末行；`startLine` 越界、首尾颠倒或请求超过 400 行时，返回 `400 VALIDATION_FAILED`。末尾换行符不会额外增加一行，实际空行仍可读取。空文件返回 `startLine: 1`、`endLine: 0`、`totalLines: 0` 和 `lines: []`。旧索引会在访问时延迟重建。文件不存在或已跳过时，返回 `404 NOT_FOUND`。
+
+```bash
+curl -sS --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "file=device/kernel.log" \
+  --data-urlencode "startLine=40" \
+  --data-urlencode "endLine=42"
+```
+
+```json
+{
+  "item": {
+    "file": "device/kernel.log",
+    "startLine": 40,
+    "endLine": 42,
+    "totalLines": 850,
+    "lines": [
+      { "lineNumber": 40, "content": "Starting diagnostic task" },
+      { "lineNumber": 41, "content": "ERROR device unavailable" },
+      { "lineNumber": 42, "content": "Retry scheduled" }
+    ]
+  }
+}
+```
+
+读取器使用每文件的 UTF-8 文本对象和行偏移索引；UTF-16 上传也会在接收时转换后按此方式读取。CRLF 计为一个换行，末行没有换行符时也可定位。每行最多返回 64 KiB 行首内容；更长的行以 `… [line truncated at 64 KiB]` 结尾。展示或复制截断行时，应保留此标记。
+
+记录原有的原始日志面板继续作为预览：每文件最多保留前 400 行，整次运行共用 128 KiB 文本预算。在 `/logs` 点击证据的 `file:line` 标签或信号、模板锚点，会打开共用的文件抽屉，滚动到引用行并高亮，提供加载上方、下方上下文和逐行复制操作。超出预览的位置应通过行窗口端点读取，不能将 `rawLines` 当作完整文件。
 
 ## 4. 或消费结果 Webhook
 
