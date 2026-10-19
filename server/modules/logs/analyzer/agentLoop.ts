@@ -37,9 +37,6 @@ function promptVersionFor(input: AnalyzeLogInput) {
     : LOG_ANALYSIS_LOOP_PROMPT_VERSION;
 }
 
-/** Rough OpenAI-compatible heuristic mirroring the P1 single-shot accounting. */
-const CHARS_PER_TOKEN = 4;
-
 /**
  * Consecutive protocol violations (non-JSON output, unknown tool, invalid args,
  * ungrounded final) tolerated before the loop degrades honestly instead of
@@ -147,9 +144,9 @@ export type CreateAgentLoopAnalyzerOptions = {
  * checkpointer, no ToolRegistry) over run-scoped read-only tools. Every step the model
  * emits strict JSON: either one tool call or the final conclusion. Illegal tool
  * names/arguments get a corrective message and count toward a consecutive-invalid
- * threshold; exhausted steps or token budget trigger one early-convergence attempt
- * whose result is marked degraded (`token-budget-exhausted`) with capped confidence;
- * anything less lands on the deterministic rule fallback with the same honest marker.
+ * threshold. Step exhaustion permits early convergence while reported token usage
+ * remains below budget; token exhaustion skips every further model call and uses
+ * the deterministic rule fallback with the honest `token-budget-exhausted` marker.
  */
 export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptions): LogAnalysisAdapter {
   const fallback = options.fallback ?? createRuleBasedLogAnalyzer();
@@ -279,7 +276,8 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       let usedTokens = 0;
       let invalidStreak = 0;
 
-      const invokeModel = async (): Promise<string> => {
+      const invokeModel = async (): Promise<string | null> => {
+        if (usedTokens >= options.tokenBudget) return null;
         const startedAtMs = now();
         let response: Awaited<ReturnType<LogAnalysisChatModel["invoke"]>>;
         try {
@@ -302,11 +300,9 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           );
         }
 
-        const inputTokens =
-          response.usage?.inputTokens ??
-          Math.ceil(messages.reduce((total, message) => total + message.content.length, 0) / CHARS_PER_TOKEN);
-        const outputTokens = response.usage?.outputTokens ?? Math.ceil(response.content.length / CHARS_PER_TOKEN);
-        usedTokens += inputTokens + outputTokens;
+        const inputTokens = response.usage?.inputTokens;
+        const outputTokens = response.usage?.outputTokens;
+        usedTokens += (inputTokens ?? 0) + (outputTokens ?? 0);
         options.telemetry?.recordLlmCall?.({
           model: options.modelLabel,
           outcome: "ok",
@@ -343,6 +339,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         await input.onProgress?.({ step, maxSteps });
 
         const content = await invokeModel();
+        if (content === null) return degradeToFallback(input, "token-budget-exhausted");
         const parsedStep = parseLoopStep(content);
 
         if (!parsedStep) {
@@ -402,8 +399,8 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         }
       }
 
-      // Steps or budget exhausted without a grounded final: one early-convergence
-      // attempt, marked degraded on success, rule fallback otherwise.
+      // Step exhaustion allows one early-convergence call only while the reported
+      // token budget remains; exhausted tokens use the existing rule fallback.
       await input.onProgress?.({ step: maxSteps, maxSteps });
       messages.push({
         role: "user",
@@ -412,6 +409,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       });
 
       const convergenceContent = await invokeModel();
+      if (convergenceContent === null) return degradeToFallback(input, "token-budget-exhausted");
       const convergenceStep = parseLoopStep(convergenceContent);
       if (convergenceStep && convergenceStep.action === "final") {
         const grounded = groundLlmEvidence(convergenceStep.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources);

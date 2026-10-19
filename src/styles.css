@@ -111,6 +111,8 @@
   --admin-list-role-control-width: 180px;
   --admin-list-role-cell-width: 204px;
   --settings-form-max-width: 960px;
+  --skill-integration-text-width: 32rem;
+  --skill-integration-number-width: 12rem;
 
   /* ── Radius ── */
   --radius-sm: 6px;

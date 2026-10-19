@@ -154,7 +154,7 @@ export function SkillWebhookEditor({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+        <label className="skill-webhook-toggle flex cursor-pointer items-center gap-2 text-sm text-foreground">
           <input
             type="checkbox"
             disabled={disabled || saving || testing}

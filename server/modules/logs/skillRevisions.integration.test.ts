@@ -354,7 +354,7 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       expect(upload.body.log.skillRevision).toEqual({ id: skill.currentRevision.id, number: 1 });
       const logId = upload.body.log.id;
       const spec: LogSkillSpec = { schemaVersion: "skill/v1", formatProfile: { severityMap: { info: ["ALERT"] } },
-        modelOverride: "revision-two-model", stepBudget: 2, tokenBudget: 4000, signalRules: { rules: [], noHit: { ...defaultChargingRuleSet.noHit,
+        modelOverride: "revision-two-model", stepBudget: 2, tokenBudget: 4096, signalRules: { rules: [], noHit: { ...defaultChargingRuleSet.noHit,
           conclusion: "版本二规则", severity: "Info" }, hitDefaults: defaultChargingRuleSet.hitDefaults } };
       const draft = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id });
       expect(draft.status).toBe(200);
@@ -393,7 +393,7 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       } });
       expect(observed?.parsed.entries[1].severity).toBe("info");
       expect(observed?.logDomain?.modelOverride).toBe("revision-two-model");
-      expect(observed?.logDomain).toMatchObject({ stepBudget: 2, tokenBudget: 4000 });
+      expect(observed?.logDomain).toMatchObject({ stepBudget: 2, tokenBudget: 4096 });
       expect(observed?.signalRules).toEqual(spec.signalRules);
       expect((await request<{ item: LogRecordDto }>(`/api/v1/logs/${logId}`)).body.item).toMatchObject({
         conclusion: "版本二规则", evidence: [], skillRevision: { id: draft.body.item.id, number: 2 }

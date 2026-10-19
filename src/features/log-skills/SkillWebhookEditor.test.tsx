@@ -70,6 +70,12 @@ describe("workspace result webhook", () => {
     render(<SkillWebhookEditor domain={webhookDomain} logActions={logActions} onSaved={async () => undefined} />);
 
     const editor = await screen.findByTestId("domain-webhook-editor");
+    const enabled = within(editor).getByRole("checkbox", { name: "启用结果回调" });
+    expect(enabled.closest("label")).toHaveClass("skill-webhook-toggle");
+    await userEvent.click(within(editor).getByText("启用结果回调", { selector: "label" }));
+    expect(enabled).not.toBeChecked();
+    await userEvent.click(within(editor).getByText("启用结果回调", { selector: "label" }));
+    expect(enabled).toBeChecked();
     await waitFor(() => expect(logActions.listLogDomainWebhookDeliveries).toHaveBeenCalledWith("domain-charging", 10));
     // The secret never renders; only configured-state + last four characters do.
     expect(editor).toHaveTextContent("已配置 · 末四位 cdef");

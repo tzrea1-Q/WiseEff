@@ -143,6 +143,16 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const [loadError, setLoadError] = useState<"missing" | "error" | null>(null);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const budgetErrors: Record<string, string> = {};
+  for (const field of ["stepBudget", "tokenBudget"] as const) {
+    const value = spec[field];
+    const minimum = field === "tokenBudget" ? Math.min(4096, skill?.budgetCaps?.tokenBudget ?? 4096) : 1;
+    const cap = skill?.budgetCaps?.[field];
+    if (value !== undefined && (!Number.isInteger(value) || value < minimum || (cap !== undefined && value > cap))) {
+      budgetErrors[field] = `预算须为整数，最小值为 ${minimum}${cap === undefined ? "" : `，且不得超过平台上限 ${cap}`}。`;
+    }
+  }
+  const budgetInvalid = Object.keys(budgetErrors).length > 0;
   const [conflict, setConflict] = useState(false);
   const [pending, setPending] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -200,7 +210,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       if (cause instanceof WiseEffApiError && Array.isArray(cause.details.issues)) {
         setFieldErrors(Object.fromEntries(cause.details.issues.map((item: { path?: string[]; message?: string }) => {
           const field = item.path?.at(-1) ?? "";
-          return [field, field === "stepBudget" || field === "tokenBudget" ? "预算须为正整数，且不得超过平台上限。" : item.message ?? "字段无效"];
+          return [field, item.message ?? "字段无效"];
         })));
       }
       if (cause instanceof WiseEffApiError && cause.code === "LOG_SKILL_DRAFT_CONFLICT") setConflict(true);
@@ -241,8 +251,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
             if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); setParsingYamlDraft(null); return; }
             void run(async () => { await repository!.discardSkillDraft!(skillId, skill.draft!.id); await refresh(); });
           })}>放弃草稿</Button>
-          <Button variant="outline" disabled={disabled || conflict || !dirty || yamlInvalid} onClick={() => void run(async () => { await save(); })}>保存草稿</Button>
-          <Button disabled={disabled || conflict || yamlInvalid} onClick={() => setPublishOpen(true)}>发布</Button>
+          <Button variant="outline" disabled={disabled || conflict || !dirty || yamlInvalid || budgetInvalid} onClick={() => void run(async () => { await save(); })}>保存草稿</Button>
+          <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid} onClick={() => setPublishOpen(true)}>发布</Button>
         </div> : null}
       </>}
       notice={conflict ? <div className="status-banner" data-tone="warning" role="alert"><p>草稿已被其他人更新</p><Button variant="outline" disabled={pending} onClick={() => ask("重新加载草稿？", "将丢弃本地更改并加载服务器上的最新草稿。", () => void run(refresh))}>重新加载</Button></div>
@@ -250,7 +260,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       navigator={<nav aria-label="技能分区导航">{skillSections.map((s) => <Button key={s.id} variant="ghost" disabled={!s.component || pending}
         aria-current={s.id === selected.id ? "page" : undefined} title={!s.component ? "即将推出" : undefined} onClick={() => switchSection(s.id)}>
         {s.label}{!s.component ? <small>即将推出</small> : null}</Button>)}</nav>}>
-      <Component key={selected.id} skill={skill} spec={spec} setSpec={setSpec} disabled={disabled} stats={stats} revisions={revisions} fieldErrors={fieldErrors}
+      <Component key={selected.id} skill={skill} spec={spec} setSpec={(next) => { setSpec(next); setFieldErrors({}); }} disabled={disabled} stats={stats} revisions={revisions} fieldErrors={{ ...fieldErrors, ...budgetErrors }}
         sample={sample?.skillId === skillId ? sample : null} selectedLine={selectedLine}
         parsingYaml={parsingYaml} onParsingYamlChange={(text) => {
           setParsingYamlDraft(text);
@@ -271,7 +281,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       {({ titleId }) => <><h2 id={titleId}>发布技能</h2><SkillSpecDiff before={skill.currentRevision.spec} after={spec} />
         <div aria-label="发布提醒" />
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setPublishOpen(false)}>取消</Button>
-          <Button disabled={disabled || conflict || yamlInvalid} aria-busy={pending} onClick={() => void run(async () => {
+          <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid} aria-busy={pending} onClick={() => void run(async () => {
             const draft = dirty ? await save() : skill.draft!;
             const published = await repository!.publishSkill!(skillId, draft.id); setPublishOpen(false);
             onPublished(`已发布 v${published.currentRevision.number}`); await refresh();

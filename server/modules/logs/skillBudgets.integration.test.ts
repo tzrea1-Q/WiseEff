@@ -21,7 +21,8 @@ describe.skipIf(!available)("skill budgets over PostgreSQL", () => {
     try {
       await seedCoreGraph(db, { organization: { id: "org-budgets", name: "Budgets" }, users: [{ id: "budget-admin", name: "Admin" }] });
       const router = createRouter();
-      registerLogRoutes(router, { db, skillBudgetCaps: { stepBudget: 4, tokenBudget: 5000 }, getCurrentAuthContext: () => auth });
+      const caps = { stepBudget: 4, tokenBudget: 5000 };
+      registerLogRoutes(router, { db, skillBudgetCaps: caps, getCurrentAuthContext: () => auth });
       const request = <T,>(url: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), url,
         { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       type Skill = Awaited<ReturnType<typeof getLogSkill>>;
@@ -37,12 +38,38 @@ describe.skipIf(!available)("skill budgets over PostgreSQL", () => {
         { path: ["tokenBudget"], message: "Must not exceed platform cap (5000)." }
       ] } } } });
       expect((await request<{ item: Skill }>(base)).body.item.draft).toBeNull();
-      const saved = await save(3, 4000);
+      for (const tokenBudget of [1, 4095]) {
+        expect(await save(3, tokenBudget)).toMatchObject({ status: 400, body: { error: { details: { issues: [
+          { path: ["tokenBudget"], message: "Must be at least 4096." }
+        ] } } } });
+      }
+      expect(await save(0, 4096)).toMatchObject({ status: 400, body: { error: { details: { issues: [
+        { path: ["spec", "stepBudget"] }
+      ] } } } });
+      const saved = await save(3, 4096);
       expect(saved.status).toBe(200);
+      const validSpec = saved.body.item.spec;
+      // Simulate a draft stored before minimum validation was introduced.
+      for (const invalid of [{ tokenBudget: 1 }, { stepBudget: 0 }]) {
+        await db.query("update log_skill_revisions set spec=$2::jsonb where id=$1", [saved.body.item.id, JSON.stringify({ ...validSpec, ...invalid })]);
+        expect(await request(`${base}/publish`, "POST", { draftRevisionId: saved.body.item.id })).toMatchObject({ status: 400,
+          body: { error: { details: { issues: [{ path: [Object.keys(invalid)[0]] }] } } } });
+        expect((await request<{ item: Skill }>(base)).body.item.currentRevision.id).toBe(skill.currentRevision.id);
+      }
+      await db.query("update log_skill_revisions set spec=$2::jsonb where id=$1", [saved.body.item.id, JSON.stringify(validSpec)]);
       const published = await request<{ item: Skill }>(`${base}/publish`, "POST", { draftRevisionId: saved.body.item.id });
       expect(published.status).toBe(200);
-      expect(published.body.item.currentRevision.spec).toMatchObject({ stepBudget: 3, tokenBudget: 4000 });
-      expect((await request<{ item: Skill }>(base)).body.item.currentRevision.spec).toMatchObject({ stepBudget: 3, tokenBudget: 4000 });
+      expect(published.body.item.currentRevision.spec).toMatchObject({ stepBudget: 3, tokenBudget: 4096 });
+      expect((await request<{ item: Skill }>(base)).body.item.currentRevision.spec).toMatchObject({ stepBudget: 3, tokenBudget: 4096 });
+      caps.tokenBudget = 3000;
+      const lowerCapSkill = (await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "Lower platform cap" })).body.item;
+      const saveLower = (tokenBudget: number) => request(`/api/v1/log-skills/${lowerCapSkill.id}/draft`, "PUT", {
+        spec: { schemaVersion: "skill/v1", stepBudget: 1, tokenBudget }, baseDraftRevisionId: null, basePublishedRevisionId: lowerCapSkill.currentRevision.id
+      });
+      expect(await saveLower(2999)).toMatchObject({ status: 400, body: { error: { details: { issues: [
+        { path: ["tokenBudget"], message: "Must be at least 3000." }
+      ] } } } });
+      expect((await saveLower(3000)).status).toBe(200);
     } finally { await db.close(); await ephemeral.drop(); }
   }, 120_000);
 });
