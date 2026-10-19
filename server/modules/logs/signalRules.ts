@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 import type { ParsedLogEntry } from "./parser";
-import { compileLogPattern, MAX_LOG_PATTERN_LENGTH, type LogPattern } from "./adminPattern";
+import { compileLogPattern, MAX_LOG_PATTERN_LENGTH, type LogPattern, type LogPatternCache } from "./adminPattern";
+import { withLogPatternBudget } from "./patternBudget";
 
 export const MAX_SIGNAL_RULES = 64;
 export const MAX_SIGNAL_CONDITIONS_PER_RULE = 16;
@@ -13,10 +14,10 @@ export const MAX_SIGNAL_TEXT_CHARS = 4096;
 export const MAX_SIGNAL_ACTIONS = 32;
 
 /** Reject oversized graphs before Zod visits children or compiles any pattern. */
-function preflightSignalRules(value: unknown, ctx: z.RefinementCtx) {
+export function preflightSignalRules(value: unknown, ctx: z.RefinementCtx, prefix: (string | number)[] = []) {
   if (!value || typeof value !== "object" || !("rules" in value) || !Array.isArray(value.rules)) return value;
   const issue = (path: (string | number)[], message: string) => {
-    ctx.addIssue({ code: "custom", path, message, fatal: true });
+    ctx.addIssue({ code: "custom", path: [...prefix, ...path], message, fatal: true });
     return z.NEVER;
   };
   if (value.rules.length > MAX_SIGNAL_RULES) return issue(["rules"], `At most ${MAX_SIGNAL_RULES} signal rules`);
@@ -65,8 +66,8 @@ function preflightSignalRules(value: unknown, ctx: z.RefinementCtx) {
 }
 
 /** The single compilation seam for signal-rule patterns. */
-export function compileSignalPattern(pattern: string, flags?: string): LogPattern {
-  return compileLogPattern(pattern, flags);
+export function compileSignalPattern(pattern: string, flags?: string, cache?: LogPatternCache): LogPattern {
+  return compileLogPattern(pattern, flags, undefined, cache);
 }
 
 const textConditionSchema = z.object({
@@ -121,7 +122,7 @@ const defaultsSchema = z.object({
   suggestedActions: z.array(textSchema).max(MAX_SIGNAL_ACTIONS)
 }).strict();
 
-export const signalRuleSetSchema = z.preprocess(preflightSignalRules, z.object({
+export const signalRuleSetSchema = z.preprocess(preflightSignalRules, withLogPatternBudget(z.object({
   rules: z.array(z.object({
     id: textSchema.max(200),
     anyOf: z.array(signalConditionSchema).min(1).max(MAX_SIGNAL_CONDITIONS_PER_RULE),
@@ -146,16 +147,16 @@ export const signalRuleSetSchema = z.preprocess(preflightSignalRules, z.object({
     }
     ids.add(rule.id);
   });
-}));
+}), "signals"));
 
 export type SignalRuleSet = z.infer<typeof signalRuleSetSchema>;
 export type SignalCondition = z.infer<typeof signalConditionSchema>;
 
 /** Compile once per evidence collection, never once per log line. */
-export function compileSignalCondition(condition: SignalCondition, maxInputChars?: number): (entry: ParsedLogEntry) => boolean {
+export function compileSignalCondition(condition: SignalCondition, maxInputChars?: number, cache?: LogPatternCache): (entry: ParsedLogEntry) => boolean {
   switch (condition.type) {
     case "text": {
-      const pattern = compileSignalPattern(condition.pattern, condition.flags);
+      const pattern = compileSignalPattern(condition.pattern, condition.flags, cache);
       return (entry) => {
         if (maxInputChars !== undefined) {
           let searchable = entry.message.slice(0, maxInputChars);

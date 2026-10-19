@@ -353,7 +353,13 @@ export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
 export const LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
+/** A 1 MiB sample can expand sixfold in JSON; retain headroom for unsaved rules. */
+export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
+
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+(?:parse|extractor|format)-preview\/*$/.test(path)) {
+    return LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
+  }
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+parse-tests\/*$/.test(path)) {
     return LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES;
   }

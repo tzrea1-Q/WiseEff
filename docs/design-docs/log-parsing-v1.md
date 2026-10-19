@@ -21,6 +21,8 @@ The strict root is `{schemaVersion: "parsing/v1", extractors: Extractor[], regis
 
 `files` is an optional list of at most 200 case-sensitive path globs, each at most 1024 characters. `*` matches within one path segment, `?` matches one non-slash character, and `**` matches across slashes; `**/` can match zero directories. Other characters are literal. Omission selects all analyzed files; an empty list selects none. Skipped files are never decoded. Paths and one-based line numbers refer to the original file inventory.
 
+The shared compiler bounds program size for format profiles, extractors, signals and source patterns. Counted bounds are at most 100. A conservative expansion check rejects nested repetition and long repeated literals before RE2 compilation; the compiled `programSize()` must also stay within 16,384 instructions. Each request cache and each spec has a 65,536-instruction budget, with spec declarations charged conservatively even when duplicated. Validation identifies the exact offending field. Format previews share one cache across validation and both parser passes; extractor previews share one across timestamp detection and generated-pattern validation.
+
 ## Field types
 
 | Type | Accepted input and output |
@@ -106,7 +108,7 @@ parseTests:
 | Input per test | 1–200 lines, at most 6144 UTF-16 code units per line |
 | Input across a run | 5000 lines and 1,048,576 UTF-16 code units |
 | Expectations per test | 200 field paths, each at most 1024 characters; 200 signals, each at most 200 characters; 65,536 serialized JSON code units; JSON nesting depth at most 12 |
-| Signal-rule graph | 64 rules, 16 conditions per rule, 256 conditions in total; each text pattern at most 4096 UTF-16 code units and all patterns at most 65,536 units; only distinct `i`, `m`, `s` flags |
+| Signal-rule graph | 64 rules, 16 conditions per rule, 256 conditions in total; each text pattern at most 4096 UTF-16 code units and all signal patterns at most 65,536 units; the shared program-size budget also applies: 16,384 instructions per pattern and 65,536 across all patterns in the spec/request. Both structural and program limits must hold; only distinct `i`, `m`, `s` flags |
 | Signal-rule values | 16 token names per comparison side, each at most 100 characters; rule ids at most 200 characters, prose at most 4096 characters, 32 suggested actions per list |
 | Execution | 1000 ms for validation, decoding, signal extraction and comparison across all tests |
 | Decoded output across a run | Existing engine caps: 50,000 events, 4 MiB serialized output and 32,768 fields, plus per-event and per-line caps |

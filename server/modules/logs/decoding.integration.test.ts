@@ -297,6 +297,30 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
       const path = `/api/v1/log-skills/${skill.id}/parse-preview`;
       const countAudits = async () => (await db.query("select id from audit_events")).rows.length;
       const before = await countAudits();
+      const extractorPath = `/api/v1/log-skills/${skill.id}/extractor-preview`;
+      const formatPath = `/api/v1/log-skills/${skill.id}/format-preview`;
+      const extractorInput = { line: "vbus=9012", segments: [{ start: 5, end: 9, name: "voltage", type: "uint" }], sampleLines: ["vbus=5000", "ibus=5000"] };
+      const formatInput = { sampleText: "[12] ERROR bad\n  detail\n[13] INFO ready", formatProfile: { timestampPattern: "^\\[(\\d+)\\]", multiline: { mode: "indent" } } };
+      const oversizedProgram = `(?:${"a".repeat(1000)}){1000}`;
+      const unsafeProfile = { severityMap: { error: Array(4).fill(oversizedProgram) } };
+      expect(await request(formatPath, { sampleText: "a", formatProfile: unsafeProfile })).toMatchObject({ status: 400,
+        body: { error: { code: "VALIDATION_FAILED", message: expect.stringContaining("severityMap.error[0]") } } });
+      expect(await request(`/api/v1/log-skills/${skill.id}/draft`, {
+        spec: { schemaVersion: "skill/v1", formatProfile: unsafeProfile }, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id
+      }, "PUT")).toMatchObject({ status: 400,
+        body: { error: { details: { issues: [expect.objectContaining({ path: ["spec", "formatProfile", "severityMap", "error", 0] })] } } } });
+      expect(await request(extractorPath, extractorInput)).toMatchObject({ status: 200, body: {
+        pattern: "^vbus=(?P<voltage>\\d+)$", fields: { voltage: { type: "uint" } }, matchCount: 1, coverage: 0.5,
+        matchedLines: [{ line: 1, text: "vbus=5000" }]
+      } });
+      expect(await request(formatPath, formatInput)).toMatchObject({ status: 200, body: {
+        lines: [{ line: 1, timestamp: "12", severity: "error" }, { line: 2, severity: "info" }, { line: 3, timestamp: "13", severity: "info" }],
+        entries: [{ lineNumbers: [1, 2], text: "ERROR bad\ndetail" }, { lineNumbers: [3], text: "INFO ready" }]
+      } });
+      expect((await request(extractorPath, { ...extractorInput, pattern: "(?=x)" })).status).toBe(400);
+      expect((await request(extractorPath, { ...extractorInput, sampleLines: Array(501).fill("x") })).status).toBe(400);
+      expect((await request(formatPath, { ...formatInput, formatProfile: { timestampPattern: "(?=x)" } })).status).toBe(400);
+      expect((await request(formatPath, { ...formatInput, sampleText: "x\n".repeat(501) })).status).toBe(400);
       expect(await request(path, { parsing, sampleText: "charge_current_ma=2000\nunmatched", fileName: "device.log" })).toMatchObject({ status: 200, body: { valid: true,
         events: [{ file: "device.log", line: 1, fields: { current: { value: 2000 } } }], unmatchedLineCount: 1, counts: { total: 1 } } });
       expect((await request<{ events: unknown[]; counts: { total: number } }>(path, { parsing, sampleText: Array(600).fill("charge_current_ma=1").join("\n") })).body)
@@ -314,7 +338,11 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
         expect(await request(path, { parsing, sampleText: "a\n".repeat(5000) })).toMatchObject({ status: 200, body: { truncated: true, reason: "line_cap" } });
       } finally { clock.mockRestore(); }
       auth = authFor("other-org"); expect((await request(path, { parsing, sampleText: "x" })).status).toBe(404);
+      expect((await request(extractorPath, extractorInput)).status).toBe(404);
+      expect((await request(formatPath, formatInput)).status).toBe(404);
       auth = authFor("decode-org", false); expect((await request(path, { parsing, sampleText: "x" })).status).toBe(403);
+      expect((await request(extractorPath, extractorInput)).status).toBe(403);
+      expect((await request(formatPath, formatInput)).status).toBe(403);
       auth = authFor();
       const invalid = { schemaVersion: "skill/v1", parsing: { ...parsing, frames: { broken: { fields: [{ name: "bad", type: "uint", length: 3 }] } } } };
       expect(await request(`/api/v1/log-skills/${skill.id}/draft`, { spec: invalid, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id }, "PUT"))

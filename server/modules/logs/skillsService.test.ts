@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RE2JS } from "re2js";
 import type { Queryable } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import * as domains from "./domainsRepository";
 import * as workerDecoding from "./parsing/workerDecoding";
-import { previewLogSkillParsing, runLogSkillParseTests, PARSE_PREVIEW_MAX_MS } from "./skillsService";
+import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat, runLogSkillParseTests, PARSE_PREVIEW_MAX_MS } from "./skillsService";
 import { parsePreviewResponseSchema, parsingSpecSchema } from "./parsing/spec";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import { MAX_SIGNAL_RULES, MAX_SIGNAL_CONDITIONS, MAX_SIGNAL_CONDITIONS_PER_RULE } from "./signalRules";
@@ -35,14 +36,35 @@ describe("parsing preview service bounds", () => {
     skill();
     const rules = Array.from({ length: MAX_SIGNAL_RULES }, (_, index) => ({ ...defaultChargingRuleSet.rules[0], id: `rule-${index}`,
       anyOf: Array.from({ length: index < 12 ? MAX_SIGNAL_CONDITIONS_PER_RULE : index === 12 ? 13 : 1 }, () => ({
-        type: "text" as const, pattern: "x".repeat(256)
+        type: "text" as const, pattern: "x".repeat(250)
       })) }));
     expect(rules.reduce((sum, rule) => sum + rule.anyOf.length, 0)).toBe(MAX_SIGNAL_CONDITIONS);
+    expect(rules.flatMap((rule) => rule.anyOf).reduce((sum, condition) => sum + adminPattern.logPatternProgramCost(condition.pattern), 0))
+      .toBeLessThanOrEqual(adminPattern.MAX_LOG_PATTERN_TOTAL_SIZE);
     const started = performance.now();
     const run = await runLogSkillParseTests(db, auth, "skill", { schemaVersion: "skill/v1", signalRules: { ...defaultChargingRuleSet, rules },
       parseTests: [{ id: "budget", name: "Maximum graph", lines: ["nominal"], expect: { signals: [], exactSignals: true } }] });
     expect(performance.now() - started).toBeLessThan(1000);
     expect(run).toMatchObject({ total: 1, passed: 1, failed: 0, truncated: false });
+  });
+
+  it("rejects structurally allowed signal graphs over the aggregate program budget as validation errors", async () => {
+    skill();
+    const compile = vi.spyOn(adminPattern, "compileLogPattern");
+    const rules = Array.from({ length: MAX_SIGNAL_RULES }, (_, index) => ({ ...defaultChargingRuleSet.rules[0], id: `rule-${index}`,
+      anyOf: Array.from({ length: index < 12 ? MAX_SIGNAL_CONDITIONS_PER_RULE : index === 12 ? 13 : 1 }, () => ({
+        type: "text" as const, pattern: "x".repeat(256)
+      })) }));
+    expect(rules.reduce((sum, rule) => sum + rule.anyOf.length, 0)).toBe(MAX_SIGNAL_CONDITIONS);
+    expect(rules.flatMap((rule) => rule.anyOf).reduce((sum, condition) => sum + adminPattern.logPatternProgramCost(condition.pattern), 0))
+      .toBeGreaterThan(adminPattern.MAX_LOG_PATTERN_TOTAL_SIZE);
+    const started = performance.now();
+    await expect(runLogSkillParseTests(db, auth, "skill", { schemaVersion: "skill/v1", signalRules: { ...defaultChargingRuleSet, rules } }))
+      .rejects.toMatchObject({ status: 400, code: "VALIDATION_FAILED", details: { issues: [expect.objectContaining({
+        path: ["signalRules", "rules", 61, "anyOf", 0, "pattern"], message: expect.stringContaining("Total pattern program budget exceeds 65536 instructions")
+      })] } });
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(compile).not.toHaveBeenCalled();
   });
 
   it("includes initial validation in the service deadline and preserves validation 400 errors", async () => {
@@ -59,6 +81,42 @@ describe("parsing preview service bounds", () => {
     expect(performance.now() - started).toBeLessThan(1300);
   });
 
+  it("requires admin permission and an organization-owned skill for authoring previews", async () => {
+    const input = { line: "n=1", segments: [{ start: 2, end: 3, name: "n", type: "uint" as const }], sampleLines: ["n=2", "x=2"] };
+    const lookup = skill();
+    expect(await previewLogSkillExtractor(db, auth, "skill", input)).toMatchObject({ matchCount: 1, coverage: 0.5 });
+    expect(lookup).toHaveBeenCalledWith(db, { organizationId: auth.organization.id, domainId: "skill" });
+    const viewer = makeTestAuthContext({ organizationId: "org-preview", permissions: ["logs:view"] });
+    await expect(previewLogSkillExtractor(db, viewer, "skill", input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(previewLogSkillFormat(db, viewer, "skill", { sampleText: "n=1", formatProfile: {} })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    lookup.mockResolvedValue(null);
+    await expect(previewLogSkillExtractor(db, auth, "foreign", input)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(previewLogSkillFormat(db, auth, "foreign", { sampleText: "n=1", formatProfile: {} })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+  it("surfaces invalid RE2 and format schema failures as validation errors", async () => {
+    skill();
+    await expect(previewLogSkillExtractor(db, auth, "skill", { line: "", segments: [], pattern: "(?=x)", sampleLines: [] })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await expect(previewLogSkillFormat(db, auth, "skill", { sampleText: "x", formatProfile: { timestampPattern: "(?=x)" } })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+  it("hard-stops format and extractor preview compilation at the request time budget", async () => {
+    skill();
+    const original = RE2JS.compile;
+    const delay = (source: string, flags?: number) => {
+      const end = performance.now() + 400;
+      while (performance.now() < end) { /* Simulate costly RE2 compilation beyond the source/program caps. */ }
+      return original(source, flags);
+    };
+    const compile = vi.spyOn(RE2JS, "compile");
+    for (const preview of [
+      () => previewLogSkillFormat(db, auth, "skill", { sampleText: "ERROR", formatProfile: { severityMap: { error: ["ERROR"] } } }),
+      () => previewLogSkillExtractor(db, auth, "skill", { line: "n=1", segments: [], pattern: "^n=(?P<n>\\d+)$", sampleLines: ["n=1"] })
+    ]) {
+      compile.mockImplementationOnce(delay);
+      const start = performance.now();
+      await expect(preview()).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringMatching(/timed out.*100ms/) });
+      expect(performance.now() - start).toBeLessThan(350);
+    }
+  });
   it("keeps preview limits independent of worker environment settings", async () => {
     skill();
     vi.stubEnv("LOG_DECODE_MAX_MS", "1");

@@ -1,7 +1,8 @@
-import { compileFileGlob } from "../adminPattern";
+import { compileFileGlob, createLogPatternCache } from "../adminPattern";
 import type { DecodedEvent, DecodedValue, DecodeCounts, DecodeTruncationReason, FieldSpec, ParsingSpec } from "./spec";
 import { compileParsingPattern, MAX_PARSING_LINE_CHARS, MAX_PARSING_MATCH_CHARS, timestampFormat, registerCaseKey } from "./spec";
 import { decodeRegister, exactInteger, integerValue, RegisterDecodeError } from "./registers";
+export { generateExtractorPattern } from "./extractorBuilder";
 import { decodeFrame, frameBytes } from "./frames";
 
 export const MAX_DECODE_LINE_BYTES = 8192;
@@ -99,6 +100,7 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeInputFile[]
     countError(reason);
   };
   const compiled = [];
+  const cache = createLogPatternCache();
   const mapCases = new Map<string, Map<string, string>>();
   for (const [id, map] of Object.entries(spec.registerMaps ?? {})) {
     const cases = new Map<string, string>();
@@ -107,11 +109,11 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeInputFile[]
   }
   for (const extractor of spec.extractors) {
     yield result;
-    compiled.push({ extractor, pattern: compileParsingPattern(extractor.pattern, "s", MAX_PARSING_MATCH_CHARS),
-    timeFormats: new Map(Object.entries(extractor.fields).flatMap(([name, field]) => field.type === "timestamp" ? [[name, timestampFormat(field.format)] as const] : [])),
-    globs: extractor.files?.map(compileFileGlob), start: extractor.multiline && compileParsingPattern(extractor.multiline.start),
-    next: extractor.multiline?.continue ? compileParsingPattern(extractor.multiline.continue) : undefined,
-    end: extractor.multiline?.end ? compileParsingPattern(extractor.multiline.end) : undefined });
+    compiled.push({ extractor, pattern: compileParsingPattern(extractor.pattern, "s", MAX_PARSING_MATCH_CHARS, cache),
+    timeFormats: new Map(Object.entries(extractor.fields).flatMap(([name, field]) => field.type === "timestamp" ? [[name, timestampFormat(field.format, cache)] as const] : [])),
+    globs: extractor.files?.map((glob) => compileFileGlob(glob, cache)), start: extractor.multiline && compileParsingPattern(extractor.multiline.start, "", undefined, cache),
+    next: extractor.multiline?.continue ? compileParsingPattern(extractor.multiline.continue, "", undefined, cache) : undefined,
+    end: extractor.multiline?.end ? compileParsingPattern(extractor.multiline.end, "", undefined, cache) : undefined });
   }
   for (const [fileIndex, input] of files.entries()) {
     const { file } = input;

@@ -112,10 +112,18 @@ describe("signal rule schema", () => {
         .fill({ type: "text", pattern: "x".repeat(4096) }) })), path: ["rules", 1, "anyOf", 0, "pattern"] }
     ];
     const compile = vi.spyOn(adminPattern, "compileLogPattern");
+    const cost = vi.spyOn(adminPattern, "logPatternProgramCost");
     for (const { rules, path } of cases) {
-      const result = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", signalRules: { ...base, rules } });
-      expect(result.success).toBe(false);
-      if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["signalRules", ...path] }));
+      const signals = { ...base, rules };
+      for (const [result, prefix] of [
+        [signalRuleSetSchema.safeParse(signals), []],
+        [logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", signalRules: signals,
+          formatProfile: { severityMap: { error: ["never-visited"] } } }), ["signalRules"]]
+      ] as const) {
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error.issues).toEqual([expect.objectContaining({ path: [...prefix, ...path] })]);
+      }
+      expect(cost).not.toHaveBeenCalled();
       expect(compile).not.toHaveBeenCalled();
     }
     expect(MAX_SIGNAL_TOTAL_PATTERN_CHARS).toBe(16 * 4096);
