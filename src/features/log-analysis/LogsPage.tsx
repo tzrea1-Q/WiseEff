@@ -4,6 +4,8 @@ import { SourceEvidence } from "./SourceEvidence";
 import { Button } from "@/components/ui/button";
 import { SignalsTab } from "./SignalsTab";
 import { LogFileDrawer } from "./LogFileDrawer";
+import { LogTraceTab } from "./AnalysisTrace";
+import { canPerform } from "@/app/permissions";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -73,7 +75,7 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-type LogsAuxTab = "report" | "files" | "signals" | "metadata" | "related";
+type LogsAuxTab = "report" | "files" | "signals" | "trace" | "metadata" | "related";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 
 function createEmptyLogRecord(): LogRecord {
@@ -102,9 +104,10 @@ function createEmptyLogRecord(): LogRecord {
   };
 }
 
-export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
+export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability, sessionPermissions }: PageProps) {
   const knowledgeRepository = runtime?.knowledgeRepository;
   const logRepository = runtime?.logAnalysisRepository;
+  const canViewTrace = sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(state.activeRoleId, "logs.admin-domains");
   const [selectedLogDetail, setSelectedLogDetail] = useState<{ summary: LogRecord; record: LogRecord } | null>(null);
   const [selectedLogId, setSelectedLogId] = useState(() => {
     // Deep link: /logs?logId=<id> (the target of 复制链接) restores the selection.
@@ -121,7 +124,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [auxTab, setAuxTab] = useState<LogsAuxTab>("report");
+  const [selectedAuxTab, setAuxTab] = useState<LogsAuxTab>("report");
+  const auxTab = selectedAuxTab === "trace" && !canViewTrace ? "report" : selectedAuxTab;
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [hoveredLine, setHoveredLine] = useState<number | null>(null);
@@ -474,7 +478,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         tabId={`logs-aux-tab-${auxTab}`}
         toolbar={<ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
           onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
-          items={([["report", "报告"], ["files", "文件"], ["signals", "信号"], ["metadata", "元数据"], ["related", "相关"]] as const)
+          items={([["report", "报告"], ["files", "文件"], ["signals", "信号"], ["trace", "分析轨迹"], ["metadata", "元数据"], ["related", "相关"]] as const)
+            .filter(([value]) => value !== "trace" || canViewTrace)
             .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} />}
         primaryAction={<button className="button primary" type="button" onClick={openUploadDialog}>
           <Upload size={16} />上传新日志
@@ -491,7 +496,9 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           </div>
         </aside>}
       >
-      {auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length}
+      {auxTab === "trace" ? (canViewTrace ? <LogTraceTab key={`${activeLog.id}:${activeLog.updatedAtIso}`} logId={activeLog.id} analysis={activeLog} repository={logRepository}
+        onOpenLine={(file, line) => setViewer({ file, lines: [line] })} /> : null)
+        : auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length}
         allFilesAvailable={Boolean(logRepository?.getLogLines)}
         onAnchor={(anchor) => {
           if (logRepository?.getLogLines) { setViewer({ file: anchor.file, lines: [anchor.line] }); return; }

@@ -44,6 +44,10 @@ The record also exposes optional `signalSummary: { signals, templates, truncated
 
 Optional `signalSummary.truncated` and `reason` describe incomplete extraction: `time_cap` retains completed results, `line_cap` limits matching to line prefixes, and `extraction_error` returns an empty summary while analysis continues. Check these fields alongside the count-cap flags before interpreting an empty summary as absence of anomalies.
 
+### Administrator traces and draft dry runs
+
+`GET /api/v1/logs/{logId}/trace` returns ordered `{ steps }` for the record's current run. It requires `logs:admin-domains`; `logs:view` alone receives `403`, and inaccessible records return `404`. Steps contain bounded tool-argument summaries, result byte counts, returned line references, outcomes and available token counts, never raw prompts or provider payloads. See the [trace and dry-run contract](../design-docs/api-contract.md#analysis-traces-and-draft-dry-runs-1230) for storage bounds and the administrator-only draft dry-run endpoints. Dry runs use the saved draft and stored sample; they create no `/logs` records or result webhooks.
+
 ### Fetch a file's line window
 
 `GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` returns a window from one analyzed file. It requires `logs:view` and the same Organization scope as the record. Use the exact `path` from the record's `files` inventory for `file`; this is a bundle path, not an object-store key.

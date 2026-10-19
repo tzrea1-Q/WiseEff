@@ -16,7 +16,7 @@ import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation"
 import { mockLogSkills, mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import { formatPercent } from "@/domain/format/formatPercent";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
-import type { AnalysisSkill, SkillRevision, SkillSpec, SkillWorkspaceRepository, SkillSample } from "./types";
+import type { AnalysisSkill, SkillRevision, SkillSpec, SkillWorkspaceRepository, SkillSample, SkillDryRun } from "./types";
 import { specJson } from "./diffSkillSpecs";
 import { SkillSpecDiff } from "./SkillSpecDiff";
 import { SkillSamplePane } from "./SkillSamplePane";
@@ -25,6 +25,7 @@ import { ParsingSection, parseParsingYaml } from "./ParsingSection";
 import { DecodingSection } from "./DecodingSection";
 import { parsingSpecSchema } from "@wiseeff/dto-schemas";
 import { SourceSnapshots } from "./SourceSnapshots";
+import { SkillDryRunDrawer } from "./SkillDryRunDrawer";
 import "./skill-workspace.css";
 
 type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
@@ -140,6 +141,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const [conflict, setConflict] = useState(false);
   const [pending, setPending] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [dryRunOpen, setDryRunOpen] = useState(false);
+  const [dryRun, setDryRun] = useState<SkillDryRun | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; description: string; action: () => void } | null>(null);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const sectionNavigation = useRef(false);
@@ -221,7 +224,15 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       inspectorHidden={!["overview", "parsing", "decoding", "signals"].includes(selected.id)}
       inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={onSampleChange}
         selectedLine={selectedLine} onLineSelect={setSelectedLine} />}
-      toolbar={<><Button variant="link" onClick={back}>返回分析技能</Button><strong>{skill.name}</strong></>}
+      toolbar={<><Button variant="link" onClick={back}>返回分析技能</Button><strong>{skill.name}</strong>
+        {apiMode && canEdit ? <Button variant="outline" disabled={dryRun?.status === "processing" ? pending : disabled || conflict || yamlInvalid || !sample || !repository?.startSkillDryRun || !repository?.getSkillDryRun}
+          title={!sample ? "请先上传样例日志" : undefined} onClick={() => {
+            if (dryRun?.status === "processing") { setDryRunOpen(true); return; }
+            void run(async () => {
+              if (dirty || !skill.draft) await save();
+              const started = await repository!.startSkillDryRun!(skillId); setDryRun(started); setDryRunOpen(true);
+            });
+          }}>{dryRun?.status === "processing" ? "查看试运行" : "试运行"}</Button> : null}</>}
       context={<>
         {!apiMode || !canEdit ? <p>{!apiMode ? "演示技能仅供查看；请在 API 模式下编辑。" : "仅供查看；编辑需要技能管理权限。"}</p> : null}
         {skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改"><strong>未发布更改</strong>
@@ -254,6 +265,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
             const restored = await repository!.restoreSkillRevision!(skillId, revision.id); onPublished(`已发布 v${restored.currentRevision.number}`); await refresh();
           })); }} />
     </NavigatorWorkbench>
+    {dryRun && apiMode && canEdit ? <SkillDryRunDrawer key={dryRun.id} skillId={skillId} run={dryRun} repository={repository!}
+      open={dryRunOpen} onClose={() => setDryRunOpen(false)} onRunChange={setDryRun} /> : null}
     <ModalDialog open={publishOpen} onDismiss={pending ? undefined : () => setPublishOpen(false)} className="skill-publish-dialog modal-card--lg">
       {({ titleId }) => <><h2 id={titleId}>发布技能</h2><SkillSpecDiff before={skill.currentRevision.spec} after={spec} />
         <div aria-label="发布提醒" />

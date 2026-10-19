@@ -532,6 +532,30 @@ describe("createHttpLogAnalysisRepository", () => {
     await expect(repository.listLogs()).rejects.toBeInstanceOf(WiseEffApiError);
   });
 
+  it("uses the administrator trace and skill dry-run endpoints with contract validation", async () => {
+    const run = { id: "run/one", skillRevisionId: "draft", status: "processing", progress: 10, report: null, error: null, createdAt: "2026-10-19T00:00:00Z" };
+    const step = { index: 1, kind: "model-turn", tool: null, arguments: {}, resultBytes: 12, lines: [], outcome: "ok", reason: null };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ run }))
+      .mockResolvedValueOnce(jsonResponse({ run, steps: [step] }))
+      .mockResolvedValueOnce(jsonResponse({ steps: [step] }))
+      .mockResolvedValueOnce(jsonResponse({ item: { file: "sample.log", startLine: 1, endLine: 1, totalLines: 1, lines: [{ lineNumber: 1, content: "sample" }] } }))
+      .mockResolvedValueOnce(jsonResponse({ steps: [{ ...step, arguments: { query: "x".repeat(121) } }] }));
+    const repository = createRepository(fetchMock);
+    await expect(repository.startSkillDryRun!("skill/one")).resolves.toEqual(run);
+    await expect(repository.getSkillDryRun!("skill/one", run.id)).resolves.toEqual({ run, steps: [step] });
+    await expect(repository.getLogTrace!("log/one")).resolves.toEqual([step]);
+    await repository.getSkillDryRunLines!("skill/one", run.id, "sample.log", 1, 101);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "http://127.0.0.1:8787/api/v1/log-skills/skill%2Fone/dry-runs",
+      "http://127.0.0.1:8787/api/v1/log-skills/skill%2Fone/dry-runs/run%2Fone",
+      "http://127.0.0.1:8787/api/v1/logs/log%2Fone/trace",
+      "http://127.0.0.1:8787/api/v1/log-skills/skill%2Fone/dry-runs/run%2Fone/lines?file=sample.log&startLine=1&endLine=101"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    await expect(repository.getLogTrace!("log/one")).rejects.toMatchObject({ code: "INTERNAL_ERROR", details: { reason: "contract-drift" } });
+  });
+
   it("lists a domain's knowledge links", async () => {
     const fetchMock = createFetchMock({
       items: [

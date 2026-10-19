@@ -259,3 +259,29 @@ export const logWebhookTestOutcomeResponseSchema = z.object({
   outcome: logWebhookTestOutcomeSchema
 });
 export const logFeedbackResponseSchema = okEnvelopeSchema;
+
+export const logTraceStepSchema = z.object({
+  index: z.number().int().min(1).max(200),
+  kind: z.enum(["tool-call", "model-turn", "early-convergence", "rule-fallback", "degradation"]),
+  tool: z.string().max(120).nullable(),
+  arguments: z.record(z.string().max(64), z.union([z.string().max(120), z.number().finite(), z.boolean(), z.null()])),
+  resultBytes: z.number().int().nonnegative(),
+  lines: z.array(z.object({ file: z.string().max(1024), line: z.number().int().positive(), snapshotId: z.string().max(200).optional() }).strict()).max(50),
+  outcome: z.enum(["ok", "error", "truncated"]), reason: z.string().max(120).nullable(),
+  inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional()
+}).strict();
+export const logTraceResponseSchema = z.object({ steps: z.array(logTraceStepSchema).max(200) });
+export const logDryRunReportSchema = z.object({
+  confidence: z.number(), conclusion: z.string(), impact: z.string(), severity: logSeveritySchema,
+  evidence: z.array(logEvidenceDtoSchema.omit({ id: true })), suggestedActions: z.array(z.string()),
+  reportContext: z.object({ analysisQuestion: z.string().optional(), lineCount: z.number(), entryCount: z.number() }),
+  analysisSource: logAnalysisSourceSchema.optional(), degradedReason: logDegradedReasonSchema.optional(),
+  promptVersion: z.string().optional(), model: z.string().optional()
+});
+export const logSkillDryRunSchema = z.object({
+  id: z.string(), skillRevisionId: z.string(), status: z.enum(["processing", "complete", "failed"]),
+  progress: z.number().int().min(0).max(100), report: logDryRunReportSchema.nullable(),
+  error: z.string().nullable(), createdAt: z.string()
+});
+export const logSkillDryRunResponseSchema = z.object({ run: logSkillDryRunSchema });
+export const logSkillDryRunDetailResponseSchema = logSkillDryRunResponseSchema.extend({ steps: z.array(logTraceStepSchema).max(200) });
