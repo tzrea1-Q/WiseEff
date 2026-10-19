@@ -331,6 +331,8 @@ GET  /api/v1/log-skills
 GET  /api/v1/log-skills/:skillId
 POST /api/v1/log-skills
 PUT  /api/v1/log-skills/:skillId/draft
+DELETE /api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId
+POST /api/v1/log-skills/:skillId/revisions/:revisionId/restore
 POST /api/v1/log-skills/:skillId/publish
 GET  /api/v1/log-skills/:skillId/revisions
 GET  /api/v1/log-skills/:skillId/revisions/:revisionId
@@ -352,8 +354,10 @@ GET  /api/v1/jobs/:jobId/events
 | `GET` | `/api/v1/log-skills` | `{ items }`：技能身份、`currentRevision: { id, number, publishedAt }`、`hasDraft`、`analyses7d`（近七天创建的运行数）、`helpfulRate7d`（0..1，无反馈为 null；归因语义同反馈洞察）。`includeArchived=true` 包含归档技能。 |
 | `GET` | `/api/v1/log-skills/:skillId` | `{ item }`：技能身份、完整 `currentRevision` 与可空 `draft`。 |
 | `POST` | `/api/v1/log-skills` | `{ name, description?, formatProfile? }` 创建身份与已发布 v1；返回 `201 { item }`；校验同旧创建接口。 |
-| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", formatProfile?, modelOverride?, signalRules? } }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。省略信号规则时沿用平台充电规则。 |
-| `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` 原子发布草稿并将前版置为 superseded；草稿缺失或过期返回 `409`；成功返回 `{ item: skill }`。 |
+| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。省略信号规则时沿用平台充电规则。 |
+| `DELETE` | `/api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId` | 必填查询参数 `draftRevisionId` 是编辑器看到的草稿 id。技能锁内若现有草稿 id 不同，返回 `409 LOG_SKILL_DRAFT_CONFLICT`；草稿匹配或已不存在时幂等返回 `204`。成功时写入 `log-skill-draft-discard` 审计，包括草稿已不存在的情况。 |
+| `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` 原子发布草稿并将前版置为 superseded；草稿缺失或过期返回 `409 LOG_SKILL_DRAFT_CONFLICT`；同步身份行的描述、基础格式和模型覆盖；成功返回 `{ item: skill }`。 |
+| `POST` | `/api/v1/log-skills/:skillId/revisions/:revisionId/restore` | 将所选历史 spec 发布为下一编号的新版本，不改写历史内容；返回 `{ item: skill }`。技能锁内若存在草稿则返回 `409 LOG_SKILL_DRAFT_EXISTS`；来源不存在、跨组织或为草稿则返回 `404`。同一发布事务写入 `log-skill-restore`，元数据 `{ fromRevisionId, newRevisionId }`。 |
 | `GET` | `/api/v1/log-skills/:skillId/revisions` | `{ items: revision[] }`，版本号倒序。 |
 | `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`：`id`、`skillId`、`number`、`status`、`spec`、`contentHash`、创建和发布时间及用户。已发布/已替代版本内容不可变。账号删除时按既有历史保留策略清空作者/发布者引用，spec、哈希与发布事实不变。 |
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
@@ -368,7 +372,7 @@ GET  /api/v1/jobs/:jobId/events
 | `GET` | `/api/v1/logs/feedback-insights` | P3：反馈质量聚合（`logs:view`；可选 `timeWindow=today\|7d\|30d`） |
 | `GET` | `/api/v1/log-domains` | 业务域列表（`logs:view`；`includeArchived=true` 含已归档） |
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`；画像中的模式使用线性时间引擎上的 RE2 语法，不支持环视与反向引用，长度 ≤ 4,096 字符，超过 65,536 字符的行不参与匹配，不支持的模式返回 `400` 并给出字段路径） |
-| `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态/模型覆盖（`formatProfile: null` 清空画像；`modelOverride: null` 清空回全局 `LOG_ANALYSIS_MODEL`） |
+| `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态/模型覆盖（`formatProfile: null` 清空画像；`modelOverride: null` 清空回全局 `LOG_ANALYSIS_MODEL`）。传入描述、格式画像或模型覆盖会立即发布新版本；技能锁内若已有工作区草稿，返回 `409 LOG_SKILL_DRAFT_EXISTS`（`Publish or discard the skill draft first.`）。仅修改名称/状态、归档和 Webhook 更新仍可用。 |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | 归档业务域；既有日志记录保留绑定 |
 | `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：列出业务域的知识条目关联及各条目当前状态（`logs:admin-domains`） |
 | `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：整组替换关联集合（`{ knowledgeEntryIds: uuid[] }`）。只接受本组织**已发布**知识条目（草稿/已归档 `400`，未知条目 `404`）；写 `log-domain-knowledge-links-update` 审计 |
@@ -380,7 +384,7 @@ GET  /api/v1/jobs/:jobId/events
 
 `POST /api/v1/log-files` 接受 JSON base64 或 multipart 多文件内容，保持 `POST /api/v1/logs` 的分析合同。
 
-分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，写入要求 `logs:admin-domains`；每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save` 或 `log-skill-publish` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、描述、状态、知识关联和 Webhook 配置仍属于身份。
+分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，写入要求 `logs:admin-domains`；每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save`、`log-skill-publish`、`log-skill-draft-discard` 或 `log-skill-restore` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、状态、知识关联和 Webhook 配置仍属于身份。工作区描述按版本管理，发布时同步身份行描述；旧 PATCH 仍可独立编辑身份描述。版本 DTO 另有可选的 `publishedByDisplayName`，供工作区显示发布者。
 
 上传、创建与 rerun 接受 `skillId`，`logDomainId` 继续作为别名。rerun 接受 `revisionPolicy: "current" | "pinned"`，默认 `current` 使用当前发布版本；`pinned` 复用前一次运行版本，不能同时更换技能。未分类运行保持 null 钉住值并使用平台默认配置。记录和运行 DTO 暴露 `skillRevision: { id, number } | null`；结果 Webhook 增加可空 `skillRevisionId`、`skillRevisionNumber`。Worker 只从所钉版本读取格式画像、模型覆盖和信号规则。
 

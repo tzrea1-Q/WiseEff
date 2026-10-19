@@ -261,6 +261,10 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
+  if (/^\/log-admin\/skills\/[^/]+\/?$/.test(path)) {
+    return { ...navigationItems.find((item) => item.key === "log-admin")!, path, title: "分析技能工作区", subtitle: "编辑草稿、发布与查看版本" };
+  }
+
   // Project-scoped views share the single sidebar entry; keep deep-link path for in-page area switching.
   if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
     const adminNav = navigationItems.find((item) => item.key === "parameter-admin");

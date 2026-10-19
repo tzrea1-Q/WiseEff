@@ -9,6 +9,24 @@ import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("documents draft concurrency and bodyless discard without losing restore coverage", () => {
+    const document = buildOpenApiDocument();
+    const request = dtoSchemaCatalog.LogSkillDraftRequest;
+    const spec = { schemaVersion: "skill/v1", description: "描述" };
+    expect(request.safeParse({ spec }).success).toBe(false);
+    expect(request.safeParse({ spec, baseDraftRevisionId: null }).success).toBe(false);
+    expect(request.safeParse({ spec, baseDraftRevisionId: null, basePublishedRevisionId: "published" }).success).toBe(true);
+    expect(request.safeParse({ spec, baseDraftRevisionId: "draft", basePublishedRevisionId: "published" }).success).toBe(true);
+    const paths = document.paths as Record<string, Record<string, { responses: Record<string, unknown> }>>;
+    const draft = paths["/api/v1/log-skills/{skillId}/draft"];
+    expect(draft.put.responses["409"]).toBeDefined();
+    expect(draft.delete.responses["204"]).toEqual({ description: "Successful response." });
+    expect(draft.delete.responses["409"]).toBeDefined();
+    expect(schemaRegistry["logs.discardSkillDraft"].requestParameters).toContainEqual(expect.objectContaining({ name: "draftRevisionId", in: "query", required: true }));
+    expect(paths["/api/v1/log-skills/{skillId}/revisions/{revisionId}/restore"].post.responses["409"]).toBeDefined();
+    expect(dtoSchemaCoveredRouteIds).toContain("logs.discardSkillDraft");
+    expect(dtoSchemaCoveredRouteIds).toContain("logs.restoreSkillRevision");
+  });
   it("retains the optional current head display name without replacing pinned copy", () => {
     const document = buildOpenApiDocument();
     const list = document.components.schemas.ProjectParameterBindingListResponse as {

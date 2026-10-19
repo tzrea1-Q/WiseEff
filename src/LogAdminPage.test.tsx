@@ -90,6 +90,16 @@ function getLogRow(fileName: RegExp) {
 }
 
 describe("LogAdminPage M3 skeleton", () => {
+  it("opens the workspace from a skill name", async () => {
+    window.history.replaceState(null, "", "/log-admin?tab=skills");
+    const actions = createLogActions({ listLogDomains: vi.fn(async () => [{ id: "skill-charging", name: "充电诊断", status: "active" as const,
+      createdAt: "2026-10-18", updatedAt: "2026-10-18" }]) });
+    const { onNavigate } = renderPage({ logActions: actions });
+    const link = await screen.findByRole("link", { name: "充电诊断" });
+    expect(link).toHaveAttribute("href", "/log-admin/skills/skill-charging");
+    await userEvent.click(link);
+    expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging");
+  });
   it("restores URL collection tabs without showing stacked collections", async () => {
     window.history.replaceState(null, "", "/log-admin?tab=quality&keep=1");
     renderPage({ logActions: createLogActions() });
@@ -982,6 +992,39 @@ describe("LogAdminPage 分析技能结果回调与模型覆盖", () => {
         expect.objectContaining({ domainId: "domain-charging", modelOverride: null })
       )
     );
+  });
+
+  it("links to the workspace when a draft blocks a legacy configuration edit", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([webhookDomain]),
+      updateLogDomain: vi.fn().mockRejectedValue(new WiseEffApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the skill draft first.", {}, "req-draft"))
+    });
+    const { onNavigate } = renderPage({ logActions });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "编辑" }));
+    await userEvent.clear(screen.getByLabelText(/模型覆盖/));
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("该技能有未发布草稿，请先在技能工作区发布或放弃草稿。");
+    const link = within(alert).getByRole("link", { name: "打开技能工作区" });
+    expect(link).toHaveAttribute("href", "/log-admin/skills/domain-charging");
+    expect(screen.getByRole("form", { name: "编辑分析技能" })).toBeVisible();
+    await userEvent.click(link);
+    expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/domain-charging");
+  });
+
+  it("keeps name-only form edits free of revisioned fields", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([webhookDomain]),
+      updateLogDomain: vi.fn().mockResolvedValue(webhookDomain)
+    });
+    renderPage({ logActions });
+    const table = await screen.findByRole("table", { name: "分析技能列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "编辑" }));
+    await userEvent.clear(screen.getByLabelText(/名称/));
+    await userEvent.type(screen.getByLabelText(/名称/), "renamed");
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    await waitFor(() => expect(logActions.updateLogDomain).toHaveBeenCalledWith({ domainId: "domain-charging", name: "renamed" }));
   });
 
   it("opens the webhook editor, saves config without echoing the secret, and lists recent deliveries", async () => {

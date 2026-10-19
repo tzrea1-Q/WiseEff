@@ -31,7 +31,7 @@ import {
   updateLogDomainRecord
 } from "./domainsService";
 import type { LogWebhookDeliverer } from "./webhookDelivery";
-import { createLogSkill, getLogSkill, listLogSkills, publishLogSkill, readLogSkillRevisions, saveLogSkillDraft } from "./skillsService";
+import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
 import { logSkillSpecSchema } from "./skillSpec";
 import {
   createLogBodySchema,
@@ -276,8 +276,20 @@ export function registerLogRoutes(
   router.put("/api/v1/log-skills/:skillId/draft", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId } = parseWithSchema(skillParams, request.params);
-    const { spec } = parseWithSchema(z.object({ spec: logSkillSpecSchema }).strict(), request.body);
-    return { status: 200, body: { item: await saveLogSkillDraft(requireDb(options.db), auth, skillId, spec, createUserInvocation(auth), { requestId: request.requestId }) } };
+    const { spec, baseDraftRevisionId, basePublishedRevisionId } = parseWithSchema(z.object({ spec: logSkillSpecSchema, baseDraftRevisionId: z.string().min(1).nullable(), basePublishedRevisionId: z.string().min(1) }).strict(), request.body);
+    return { status: 200, body: { item: await saveLogSkillDraft(requireDb(options.db), auth, skillId, spec, baseDraftRevisionId, basePublishedRevisionId, createUserInvocation(auth), { requestId: request.requestId }) } };
+  });
+  router.delete("/api/v1/log-skills/:skillId/draft", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const { draftRevisionId } = parseWithSchema(z.object({ draftRevisionId: z.string().min(1) }).strict(), request.query);
+    await discardLogSkillDraft(requireDb(options.db), auth, skillId, draftRevisionId, createUserInvocation(auth), { requestId: request.requestId });
+    return { status: 204, body: null };
+  });
+  router.post("/api/v1/log-skills/:skillId/revisions/:revisionId/restore", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId, revisionId } = parseWithSchema(skillParams.extend({ revisionId: z.string().min(1) }), request.params);
+    return { status: 200, body: { item: await restoreLogSkillRevision(requireDb(options.db), auth, skillId, revisionId, createUserInvocation(auth), { requestId: request.requestId }) } };
   });
   router.post("/api/v1/log-skills/:skillId/publish", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

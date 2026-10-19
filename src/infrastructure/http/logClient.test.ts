@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import { createHttpLogAnalysisRepository } from "./logClient";
 import type { LogJobDto, LogRecordDto } from "./logDtos";
+import { mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 
 const baseLogDto: LogRecordDto = {
   id: "log-1",
@@ -59,6 +60,37 @@ function createRepository(fetchMock: typeof fetch) {
     baseUrl: "http://127.0.0.1:8787"
   });
 }
+
+it("uses workspace contracts, encodes ids and sends draft bases for all authoring requests", async () => {
+  const skill = mockSkillWorkspace("skill-charging")!;
+  const draft = { ...skill.currentRevision, id: "draft", status: "draft" as const };
+  const fetchMock = createFetchMock({ item: skill });
+  const repository = createRepository(fetchMock);
+  await expect(repository.getLogSkill!("skill/a")).resolves.toEqual(skill);
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/log-skills/skill%2Fa");
+  fetchMock.mockResolvedValueOnce(jsonResponse({ items: [draft] }));
+  await expect(repository.listSkillRevisions!(skill.id)).resolves.toEqual([draft]);
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: draft }));
+  await repository.saveSkillDraft!(skill.id, draft.spec, "base", skill.currentRevision.id);
+  expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({ spec: draft.spec, baseDraftRevisionId: "base", basePublishedRevisionId: skill.currentRevision.id });
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: draft }));
+  await repository.saveSkillDraft!(skill.id, draft.spec, null, skill.currentRevision.id);
+  expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body)).baseDraftRevisionId).toBeNull();
+  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+  await expect(repository.discardSkillDraft!(skill.id, "draft/a?b")).resolves.toBeUndefined();
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("http://127.0.0.1:8787/api/v1/log-skills/skill-charging/draft?draftRevisionId=draft%2Fa%3Fb");
+  expect(fetchMock.mock.calls.at(-1)?.[1]?.method).toBe("DELETE");
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: skill }));
+  await repository.publishSkill!(skill.id, "draft");
+  expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({ draftRevisionId: "draft" });
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: skill }));
+  await expect(repository.restoreSkillRevision!(skill.id, "old/id")).resolves.toEqual(skill);
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/revisions/old%2Fid/restore");
+  fetchMock.mockResolvedValueOnce(jsonResponse({ error: { code: "LOG_SKILL_DRAFT_CONFLICT" } }, 409));
+  await expect(repository.saveSkillDraft!(skill.id, draft.spec, null, skill.currentRevision.id)).rejects.toMatchObject({ code: "LOG_SKILL_DRAFT_CONFLICT" });
+  fetchMock.mockResolvedValueOnce(jsonResponse({ error: { code: "LOG_SKILL_DRAFT_CONFLICT" } }, 409));
+  await expect(repository.discardSkillDraft!(skill.id, "draft")).rejects.toMatchObject({ code: "LOG_SKILL_DRAFT_CONFLICT" });
+});
 
 describe("createHttpLogAnalysisRepository", () => {
   it("sends repeated multipart file parts as one bundle and preserves inventory and evidence paths", async () => {

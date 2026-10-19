@@ -153,6 +153,11 @@ export async function updateLogDomainRecord(
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
     }
+    const revisioned = input.formatProfile !== undefined || input.modelOverride !== undefined || input.description !== undefined;
+    const revisions = revisioned ? await listSkillRevisions(tx, auth.organization.id, input.domainId) : [];
+    if (revisions.some((revision) => revision.status === "draft")) {
+      throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the skill draft first.");
+    }
     if (name && name !== existing.name) {
       const conflicting = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
       if (conflicting && conflicting.id !== input.domainId) {
@@ -175,9 +180,10 @@ export async function updateLogDomainRecord(
       throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
     }
 
-    if (input.formatProfile !== undefined || input.modelOverride !== undefined) {
-      const current = (await listSkillRevisions(tx, auth.organization.id, domain.id)).find((r) => r.status === "published")!;
+    if (revisioned) {
+      const current = revisions.find((r) => r.status === "published")!;
       const spec = { ...current.spec };
+      if (input.description !== undefined) spec.description = domain.description ?? "";
       if (input.formatProfile !== undefined) {
         if (formatProfile) spec.formatProfile = formatProfile;
         else delete spec.formatProfile;
@@ -186,8 +192,7 @@ export async function updateLogDomainRecord(
         if (domain.modelOverride) spec.modelOverride = domain.modelOverride;
         else delete spec.modelOverride;
       }
-      // Leave any authored draft intact. The compatibility API publishes its
-      // own revision immediately rather than overwriting unpublished work.
+      // The compatibility API publishes immediately, only when no authored draft exists.
       await tx.query(`update log_skill_revisions set status = 'superseded'
         where organization_id = $1 and skill_id = $2 and status = 'published'`, [auth.organization.id, domain.id]);
       await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: domain.id, spec, userId: auth.user.id, published: true });

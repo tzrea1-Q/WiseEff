@@ -256,6 +256,8 @@ API 模式的参数指标读取 canonical Binding、值、草稿、请求和历�
 
 日志分析：
 
+点击技能名称进入 `/log-admin/skills/:skillId` 的 `NavigatorWorkbench`，返回 `/log-admin?tab=skills`。分区注册表启用「概览」「版本」，后续分区禁用并提示即将推出；`?section=overview|versions` 选择分区。概览在本地版本副本中编辑描述和模型，固定草稿栏提供保存、确认丢弃和大尺寸发布摘要对话框。版本历史支持按分区并排比较，回滚须确认并发布为新版本。草稿冲突可确认后重新加载；复用应用导航保护事件和 `beforeunload` 保护未保存更改。只读用户无法编辑；mock 保留只读种子并说明编辑需要 API 模式。HTTP 端口通过 `/api/v1/log-skills` 读写工作区。
+
 分析技能（#1225）使用 `/log-admin?tab=skills` 标签页「分析技能」，旧 `tab=domains` 或未知标签回退到技能页。列表从 `/api/v1/log-skills` 展示「当前版本」（`v{n}`）和「近 7 天有用率」。新建/编辑保留兼容域写入接口，配置修改立即发布新版本。上传选择器为「分析技能」，默认「通用分析」；结论卡与记录抽屉按运行钉住值展示「技能 {name} · v{n}」。mock 运行时保留技能种子与版本徽标。rerun 客户端可指定 `revisionPolicy: current | pinned`，默认 current。
 
 - `/logs`：上传日志、轮询任务、展示报告和证据。上传弹窗含可选「分析技能」下拉（API mode 经 `logActions.listLogDomains()` 拉取活跃域；默认「通用分析」，域选择绝不阻塞上传；mock mode 展示默认项与技能种子）。结论卡按 additive 的 `analysisSource` / `degradedReason` 渲染来源徽标：`rules-fallback` 显示醒目的琥珀色「降级分析 · 规则回退」徽标与原因说明；P2 提前收敛的 agent 结论（`analysisSource: "agent"` 且带 `degradedReason`）显示「降级分析 · 提前收敛」徽标与说明，绝不冒充完整分析；完整 `agent` 结果显示轻量「Agent 分析」徽标，绑定业务域时显示业务域标签；无来源的历史规则报告不渲染徽标。置信度**数字始终展示**（`/logs` 结论卡 `ConfidenceBar`、`/log-admin` 表格与 `LogRecordDrawer`）；文案由 `src/domain/logs/confidenceProvenance.ts` 的 `confidenceCaption` 按 `analysisSource` 映射：`agent` →「模型自估」（未校准的模型自估）、`rules-fallback` →「规则评分」（确定性规则引擎分数），无来源的历史报告保留原有文案（`/logs` 为「AI置信度」，`/log-admin` 为「置信度」）。管理表失败行仍显示 `-`。不隐藏数字，也不改成分档-only 展示；来源徽标与该文案相互独立。任务轮询改为自适应退避（1s×30 → 2s×45 → 5s，计划轮询总时长上限约 5 分钟，对齐 p95 ≤ 3min SLO 加余量），并保留按日志的 generation 守卫。「反馈分析质量」对话框在 API 模式下经 `submitFeedback`（`POST /api/v1/logs/:id/feedback`）真实落库：评级映射高→`helpful`、其余→`not_helpful`，问题描述作为 `note`；对话框带提交中/内联错误态，服务端接受后才关闭（mock 模式保留本地通知）。

@@ -16,7 +16,7 @@ import { createRuleBasedLogAnalyzer, type AnalyzeLogInput } from "./analyzer";
 import type { LogRecordDto } from "./types";
 import { currentSkillRevisionId, type LogSkillRevisionDto } from "./skillsRepository";
 import type { getLogSkill } from "./skillsService";
-import { createLogSkill, publishLogSkill, saveLogSkillDraft } from "./skillsService";
+import { createLogSkill, discardLogSkillDraft, publishLogSkill, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
 import type { LogSkillSpec } from "./skillSpec";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import { createLocalObjectStore } from "./objectStore";
@@ -28,6 +28,214 @@ const auth = (organizationId = "org-skills") => makeTestAuthContext({ organizati
 type Skill = Awaited<ReturnType<typeof getLogSkill>>;
 
 describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
+  it("rejects stale discard and saves based on publications replaced by publish or restore", async () => {
+    const ephemeral = await createEphemeralTestDatabase("skillconcurrency");
+    const db = createPostgresDatabase(ephemeral.url);
+    try {
+      await seedCoreGraph(db, { organization: { id: "org-skills", name: "技能" }, users: [{ id: "org-skills-admin", name: "管理员" }] });
+      const router = createRouter();
+      registerLogRoutes(router, { db, getCurrentAuthContext: () => auth() });
+      const request = <T,>(url: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), url,
+        { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const created = await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "并发编辑", description: "版本一" });
+      expect(created.status).toBe(201);
+      const base = `/api/v1/log-skills/${created.body.item.id}`;
+      const editorA = (await request<{ item: Skill }>(base)).body.item;
+      const editorB = (await request<{ item: Skill }>(base)).body.item;
+      const save = (description: string, baseDraftRevisionId: string | null, basePublishedRevisionId: string) =>
+        request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", {
+          spec: { schemaVersion: "skill/v1", description }, baseDraftRevisionId, basePublishedRevisionId
+        });
+      expect((await request(`${base}/draft`, "DELETE")).status).toBe(400);
+      expect((await request(`${base}/draft`, "PUT", { spec: editorA.currentRevision.spec, baseDraftRevisionId: null })).status).toBe(400);
+      const d1 = await save("草稿一", null, editorB.currentRevision.id);
+      expect(d1.status).toBe(200);
+      const d2 = await save("草稿二", d1.body.item.id, editorB.currentRevision.id);
+      expect(d2.status).toBe(200);
+      expect(await request(`${base}/draft?draftRevisionId=${d1.body.item.id}`, "DELETE")).toMatchObject({
+        status: 409, body: { error: { code: "LOG_SKILL_DRAFT_CONFLICT" } }
+      });
+      expect((await request<{ item: Skill }>(base)).body.item.draft).toEqual(d2.body.item);
+      expect((await request(`${base}/draft?draftRevisionId=${d2.body.item.id}`, "DELETE")).status).toBe(204);
+      expect((await request(`${base}/draft?draftRevisionId=${d1.body.item.id}`, "DELETE")).status).toBe(204);
+      expect((await request<{ item: Skill }>(base)).body.item.draft).toBeNull();
+
+      const draft = await save("版本二", null, editorB.currentRevision.id);
+      expect(draft.status).toBe(200);
+      const published = await request<{ item: Skill }>(`${base}/publish`, "POST", { draftRevisionId: draft.body.item.id });
+      expect(published.status).toBe(200);
+      expect(published.body.item.currentRevision.number).toBe(2);
+      expect(await save("过期编辑", null, editorA.currentRevision.id)).toMatchObject({
+        status: 409, body: { error: { code: "LOG_SKILL_DRAFT_CONFLICT" } }
+      });
+      expect((await request<{ item: Skill }>(base)).body.item).toEqual(published.body.item);
+
+      const beforeRestore = (await request<{ item: Skill }>(base)).body.item;
+      const restored = await request<{ item: Skill }>(`${base}/revisions/${editorB.currentRevision.id}/restore`, "POST", {});
+      expect(restored.status).toBe(200);
+      expect(restored.body.item.currentRevision).toMatchObject({ number: 3, spec: editorB.currentRevision.spec });
+      expect(await save("回滚前的编辑", null, beforeRestore.currentRevision.id)).toMatchObject({
+        status: 409, body: { error: { code: "LOG_SKILL_DRAFT_CONFLICT" } }
+      });
+      expect((await request<{ item: Skill }>(base)).body.item).toEqual(restored.body.item);
+      expect((await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items).toHaveLength(3);
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
+
+  it("preserves legacy descriptions on publish and restore unless explicitly cleared", async () => {
+    const ephemeral = await createEphemeralTestDatabase("skilldescription");
+    const db = createPostgresDatabase(ephemeral.url);
+    try {
+      await seedCoreGraph(db, { organization: { id: "org-skills", name: "技能" }, users: [{ id: "org-skills-admin", name: "管理员" }] });
+      const router = createRouter();
+      registerLogRoutes(router, { db, getCurrentAuthContext: () => auth() });
+      const request = <T,>(url: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), url,
+        { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const created = await request<{ item: { id: string } }>("/api/v1/log-domains", "POST", { name: "旧技能", description: "保留旧描述" });
+      expect(created.status).toBe(201);
+      const base = `/api/v1/log-skills/${created.body.item.id}`;
+      const initial = (await request<{ item: Skill }>(base)).body.item;
+      expect(initial.currentRevision.spec.description).toBeUndefined();
+      const draft = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", {
+        spec: { schemaVersion: "skill/v1", modelOverride: "next-model" }, baseDraftRevisionId: null, basePublishedRevisionId: initial.currentRevision.id
+      });
+      expect(draft.status).toBe(200);
+      const published = await request<{ item: Skill }>(`${base}/publish`, "POST", { draftRevisionId: draft.body.item.id });
+      expect(published.status).toBe(200);
+      expect(published.body.item.description).toBe("保留旧描述");
+      expect((await db.query<{ description: string }>("select description from log_domains where id = $1", [initial.id])).rows[0].description).toBe("保留旧描述");
+      const restored = await request<{ item: Skill }>(`${base}/revisions/${initial.currentRevision.id}/restore`, "POST", {});
+      expect(restored.status).toBe(200);
+      expect(restored.body.item.description).toBe("保留旧描述");
+      const cleared = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", {
+        spec: { schemaVersion: "skill/v1", description: "" }, baseDraftRevisionId: null, basePublishedRevisionId: restored.body.item.currentRevision.id
+      });
+      expect(cleared.status).toBe(200);
+      const clearPublication = await request<{ item: Skill }>(`${base}/publish`, "POST", { draftRevisionId: cleared.body.item.id });
+      expect(clearPublication.status).toBe(200);
+      expect(clearPublication.body.item.description).toBe("");
+      expect(clearPublication.body.item.currentRevision.spec.description).toBe("");
+      expect((await request(`/api/v1/log-domains/${initial.id}`, "PATCH", { description: "兼容接口描述" })).status).toBe(200);
+      const legacyDescription = (await request<{ item: Skill }>(base)).body.item;
+      expect(legacyDescription.description).toBe("兼容接口描述");
+      expect(legacyDescription.currentRevision).toMatchObject({
+        number: clearPublication.body.item.currentRevision.number + 1,
+        spec: { ...clearPublication.body.item.currentRevision.spec, description: "兼容接口描述" }
+      });
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
+
+  it("retains trusted caller provenance for discard and restore and rejects a mismatched principal", async () => {
+    const ephemeral = await createEphemeralTestDatabase("skillprovenance");
+    const db = createPostgresDatabase(ephemeral.url);
+    try {
+      await seedCoreGraph(db, { organization: { id: "org-skills", name: "技能" }, users: [{ id: "org-skills-admin", name: "管理员" }] });
+      const invocation = createAgentInvocation(auth(), {
+        sessionId: "workspace-session", toolCallId: "workspace-call", approval: { required: true, approvalId: "workspace-approval" }
+      });
+      const context = { requestId: "skill-workspace-provenance" };
+      const skill = await createLogSkill(db, auth(), { name: "调用来源" }, invocation, context);
+      const draft = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1" }, null, skill.currentRevision.id, invocation, context);
+      const wrongPrincipal = createUserInvocation(auth("org-other"));
+      await expect(discardLogSkillDraft(db, auth(), skill.id, draft.id, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
+      await expect(restoreLogSkillRevision(db, auth(), skill.id, skill.currentRevision.id, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
+      await discardLogSkillDraft(db, auth(), skill.id, draft.id, invocation, context);
+      await restoreLogSkillRevision(db, auth(), skill.id, skill.currentRevision.id, invocation, context);
+      const audits = await db.query(`select kind, actor_type, actor_user_id, metadata from audit_events
+        where target_id = $1 and kind in ('log-skill-draft-discard', 'log-skill-restore') order by kind`, [skill.id]);
+      expect(audits.rows).toEqual(["log-skill-draft-discard", "log-skill-restore"].map((kind) => ({
+        kind, actor_type: "agent", actor_user_id: "org-skills-admin", metadata: expect.objectContaining({
+          initiator: "agent", sessionId: "workspace-session", toolCallId: "workspace-call", approvalId: "workspace-approval"
+        })
+      })));
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
+
+  it("protects drafts, discards idempotently and restores immutable history with transactional audit", async () => {
+    const ephemeral = await createEphemeralTestDatabase("skillworkspace");
+    const db = createPostgresDatabase(ephemeral.url);
+    try {
+      for (const organizationId of ["org-skills", "org-other"]) await seedCoreGraph(db, {
+        organization: { id: organizationId, name: organizationId }, users: [{ id: `${organizationId}-admin`, name: "管理员" }]
+      });
+      let currentAuth = auth();
+      const router = createRouter();
+      registerLogRoutes(router, { db, getCurrentAuthContext: () => currentAuth });
+      const request = <T,>(url: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), url,
+        { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const skill = (await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "工作区", description: "初版描述" })).body.item;
+      const base = `/api/v1/log-skills/${skill.id}`;
+      const spec = { schemaVersion: "skill/v1", description: "  发布后的描述  ", modelOverride: "workspace-model" };
+      expect((await request(`${base}/draft`, "PUT", { spec })).status).toBe(400);
+      for (const description of ["x".repeat(2001), 42]) expect((await request(`${base}/draft`, "PUT", {
+        spec: { ...spec, description }, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id
+      })).status).toBe(400);
+      const first = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id });
+      expect(first.status).toBe(200);
+      const conflict = await request<{ error: { code: string } }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id });
+      expect(conflict).toMatchObject({ status: 409, body: { error: { code: "LOG_SKILL_DRAFT_CONFLICT" } } });
+      const next = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: first.body.item.id, basePublishedRevisionId: skill.currentRevision.id });
+      expect(next.status).toBe(200); expect(next.body.item.id).not.toBe(first.body.item.id);
+      expect((await request(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: first.body.item.id, basePublishedRevisionId: skill.currentRevision.id })).status).toBe(409);
+      expect((await request(`${base}/publish`, "POST", { draftRevisionId: first.body.item.id })).status).toBe(409);
+      expect((await request(`${base}/publish`, "POST", { draftRevisionId: next.body.item.id })).status).toBe(200);
+      expect((await request<{ item: Skill }>(base)).body.item).toMatchObject({ description: "发布后的描述",
+        modelOverride: "workspace-model", currentRevision: { number: 2, spec: { description: "发布后的描述" } } });
+      const history = (await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items;
+      const restorePath = `${base}/revisions/${skill.currentRevision.id}/restore`;
+      const pendingDraft = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: next.body.item.id });
+      expect(pendingDraft.status).toBe(200);
+      const beforeLegacyPatch = (await request<{ item: Skill }>(base)).body.item;
+      const revisionsBeforeLegacyPatch = (await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items;
+      for (const change of [{ formatProfile: { timestampPattern: "^legacy" } }, { modelOverride: "legacy-model" }, { description: "旧接口描述" }]) {
+        expect(await request(`/api/v1/log-domains/${skill.id}`, "PATCH", change)).toMatchObject({
+          status: 409, body: { error: { code: "LOG_SKILL_DRAFT_EXISTS", message: "Publish or discard the skill draft first." } }
+        });
+        expect((await request<{ item: Skill }>(base)).body.item).toEqual(beforeLegacyPatch);
+      }
+      expect((await request(`/api/v1/log-domains/${skill.id}`, "PATCH", { name: "重命名技能" })).status).toBe(200);
+      expect((await request<{ item: Skill }>(base)).body.item).toMatchObject({
+        name: "重命名技能", currentRevision: beforeLegacyPatch.currentRevision, draft: beforeLegacyPatch.draft
+      });
+      expect((await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items).toEqual(revisionsBeforeLegacyPatch);
+      const discardPath = `${base}/draft?draftRevisionId=${encodeURIComponent(pendingDraft.body.item.id)}`;
+      expect(await request(restorePath, "POST", {})).toMatchObject({ status: 409, body: { error: { code: "LOG_SKILL_DRAFT_EXISTS" } } });
+      currentAuth = { ...auth(), permissions: ["logs:view"] };
+      expect((await request(discardPath, "DELETE")).status).toBe(403);
+      expect((await request(restorePath, "POST", {})).status).toBe(403);
+      expect((await request(base)).status).toBe(200);
+      currentAuth = auth("org-other");
+      expect((await request(discardPath, "DELETE")).status).toBe(404);
+      expect((await request(restorePath, "POST", {})).status).toBe(404);
+      const other = (await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "其他技能" })).body.item;
+      currentAuth = auth();
+      expect((await request(discardPath, "DELETE")).status).toBe(204);
+      expect((await request(discardPath, "DELETE")).status).toBe(204);
+      expect((await request(`${base}/revisions/${other.currentRevision.id}/restore`, "POST", {})).status).toBe(404);
+      const restored = await request<{ item: Skill }>(restorePath, "POST", {});
+      expect(restored.status).toBe(200);
+      expect(restored.body.item).toMatchObject({ description: "初版描述", currentRevision: { number: 3, spec: skill.currentRevision.spec } });
+      expect(restored.body.item.modelOverride).toBeUndefined();
+      const after = (await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items;
+      expect(after.find((r) => r.id === skill.currentRevision.id)).toEqual(history.find((r) => r.id === skill.currentRevision.id));
+      expect(after.find((r) => r.id === next.body.item.id)).toEqual({ ...history.find((r) => r.id === next.body.item.id), status: "superseded" });
+      expect(after).toHaveLength(3);
+      const audits = (await db.query<{ kind: string; metadata: Record<string, unknown> }>(
+        `select kind, metadata from audit_events where target_id = $1`, [skill.id])).rows;
+      expect(audits.filter((a) => a.kind === "log-skill-draft-save")).toHaveLength(3);
+      expect(audits.filter((a) => a.kind === "log-skill-draft-discard")).toHaveLength(2);
+      expect(audits.filter((a) => a.kind === "log-skill-restore")).toEqual([expect.objectContaining({ metadata: expect.objectContaining({
+        fromRevisionId: skill.currentRevision.id, newRevisionId: restored.body.item.currentRevision.id
+      }) })]);
+      // Audit failure rolls the publication back in the same transaction (ADR-0027).
+      await db.query(`create function reject_workspace_audit() returns trigger language plpgsql as $$ begin
+        if new.kind = 'log-skill-restore' then raise exception 'audit unavailable'; end if; return new; end $$;
+        create trigger reject_workspace_audit before insert on audit_events for each row execute function reject_workspace_audit();`);
+      expect((await request(restorePath, "POST", {})).status).toBe(500);
+      expect((await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items).toEqual(after);
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
+
   it("cascades identity deletion after run cleanup without allowing direct immutable revision writes", async () => {
     const ephemeral = await createEphemeralTestDatabase("skilldelete");
     const db = createPostgresDatabase(ephemeral.url);
@@ -40,11 +248,11 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       const wrongPrincipal = createUserInvocation(auth("org-other"));
       await expect(createLogSkill(db, auth(), { name: "待删除技能" }, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
       const skill = await createLogSkill(db, auth(), { name: "待删除技能" }, invocation, context);
-      await expect(saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1" }, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
-      const published = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1", modelOverride: "next-model" }, invocation, context);
+      await expect(saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1" }, null, skill.currentRevision.id, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
+      const published = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1", modelOverride: "next-model" }, null, skill.currentRevision.id, invocation, context);
       await expect(publishLogSkill(db, auth(), skill.id, published.id, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
       await publishLogSkill(db, auth(), skill.id, published.id, invocation, context);
-      await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1" }, invocation, context);
+      await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1" }, null, published.id, invocation, context);
       const audits = await db.query(`select kind, actor_type, actor_user_id, metadata from audit_events
         where organization_id = 'org-skills' and target_id = $1 order by kind`, [skill.id]);
       expect(audits.rows).toEqual(["log-skill-create", "log-skill-draft-save", "log-skill-draft-save", "log-skill-publish"].map((kind) => ({
@@ -78,7 +286,7 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       const context = { requestId: "skill-locks" };
       const invocation = createUserInvocation(auth());
       const skill = await createLogSkill(db, auth(), { name: "并发钉住" }, invocation, context);
-      const draft = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1", modelOverride: "next-model" }, invocation, context);
+      const draft = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1", modelOverride: "next-model" }, null, skill.currentRevision.id, invocation, context);
       await db.transaction(async (firstPin) => {
         expect(await currentSkillRevisionId(firstPin, "org-skills", skill.id)).toBe(skill.currentRevision.id);
         // Separate sessions overlap their pinning transactions. An exclusive
@@ -143,7 +351,7 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       const spec: LogSkillSpec = { schemaVersion: "skill/v1", formatProfile: { severityMap: { info: ["ALERT"] } },
         modelOverride: "revision-two-model", signalRules: { rules: [], noHit: { ...defaultChargingRuleSet.noHit,
           conclusion: "版本二规则", severity: "Info" }, hitDefaults: defaultChargingRuleSet.hitDefaults } };
-      const draft = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec });
+      const draft = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id });
       expect(draft.status).toBe(200);
       expect((await request<{ item: Skill }>(base)).body.item.currentRevision.id).toBe(skill.currentRevision.id);
       await expect(processLogAnalysisJobById({ db, objectStore, jobId: upload.body.job.id })).resolves.toMatchObject({ status: "processed" });
@@ -200,12 +408,12 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
         .toMatchObject({ currentRevision: { number: 3 }, analyses7d: 4, helpfulRate7d: 0.5 });
 
       // Stale-save id, schema and permission checks use the actual route stack.
-      const saved = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec });
-      await request(`${base}/draft`, "PUT", { spec: { schemaVersion: "skill/v1" } });
+      const saved = await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: legacy.currentRevision.id });
+      expect((await request(`${base}/draft`, "PUT", { spec: { schemaVersion: "skill/v1" }, baseDraftRevisionId: saved.body.item.id, basePublishedRevisionId: legacy.currentRevision.id })).status).toBe(200);
       expect((await request(`${base}/publish`, "POST", { draftRevisionId: saved.body.item.id })).status).toBe(409);
       for (const invalid of [{ schemaVersion: "skill/v2" }, { schemaVersion: "skill/v1", formatProfile: { timestampPattern: "[" } },
         { schemaVersion: "skill/v1", signalRules: { rules: [] } }]) {
-        expect((await request(`${base}/draft`, "PUT", { spec: invalid })).status).toBe(400);
+        expect((await request(`${base}/draft`, "PUT", { spec: invalid, baseDraftRevisionId: null, basePublishedRevisionId: legacy.currentRevision.id })).status).toBe(400);
       }
       expect((await request(`/api/v1/logs/${logId}/rerun`, "POST", { revisionPolicy: "unknown" })).status).toBe(400);
       const unsupported = await request<{ log: LogRecordDto }>("/api/v1/log-files", "POST", {
@@ -216,11 +424,11 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       expect(unsupported.body.log.skillRevision).toBeNull();
       expect((await request(`/api/v1/logs/${unsupported.body.log.id}/rerun`, "POST", { revisionPolicy: "pinned" })).status).toBe(409);
       currentAuth = { ...auth(), permissions: ["logs:view"] };
-      expect((await request(`${base}/draft`, "PUT", { spec })).status).toBe(403);
+      expect((await request(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: legacy.currentRevision.id })).status).toBe(403);
       expect((await request(`${base}/publish`, "POST", { draftRevisionId: saved.body.item.id })).status).toBe(403);
       currentAuth = auth("org-other");
       for (const path of [base, `${base}/revisions`, `${base}/revisions/${skill.currentRevision.id}`]) expect((await request(path)).status).toBe(404);
-      expect((await request(`${base}/draft`, "PUT", { spec })).status).toBe(404);
+      expect((await request(`${base}/draft`, "PUT", { spec, baseDraftRevisionId: null, basePublishedRevisionId: legacy.currentRevision.id })).status).toBe(404);
       expect((await request(`${base}/publish`, "POST", { draftRevisionId: saved.body.item.id })).status).toBe(404);
       expect((await request(`/api/v1/log-domains/${skill.id}`, "PATCH", { formatProfile: {} })).status).toBe(404);
       expect((await request<{ items: unknown[] }>("/api/v1/log-skills")).body.items).toEqual([]);
