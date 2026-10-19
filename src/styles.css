@@ -4172,6 +4172,10 @@ td small {
   min-width: 720px;
 }
 
+.data-table-scroll.data-table-scroll--fluid > table {
+  min-width: 0;
+}
+
 .horizontal-drag-scroll-shell {
   display: flex;
   flex-direction: column;

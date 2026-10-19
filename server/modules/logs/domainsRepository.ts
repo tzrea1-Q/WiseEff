@@ -1,4 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
+import type { AuthContext } from "../auth/types";
+import { canReadEntry } from "../knowledge/policy";
 import type { LogFormatProfile } from "./formatProfile";
 import { encryptLogWebhookSecret } from "./webhookSecrets";
 
@@ -275,7 +277,7 @@ export type LogDomainKnowledgeLinkDto = {
   logDomainId: string;
   knowledgeEntryId: string;
   entryTitle: string;
-  entryStatus: "draft" | "published" | "archived";
+  entryStatus?: "draft" | "published" | "archived";
   entryTags: string[];
   linkedAt: string;
 };
@@ -287,50 +289,56 @@ type LogDomainKnowledgeLinkRow = {
   entry_title: string;
   entry_status: "draft" | "published" | "archived";
   entry_tags: string[];
+  created_by_user_id: string | null;
   created_at: string | Date;
 };
 
-function toLogDomainKnowledgeLinkDto(row: LogDomainKnowledgeLinkRow): LogDomainKnowledgeLinkDto {
+function toLogDomainKnowledgeLinkDto(row: LogDomainKnowledgeLinkRow, auth: AuthContext): LogDomainKnowledgeLinkDto {
+  const readable = canReadEntry(auth, { status: row.entry_status, createdByUserId: row.created_by_user_id });
   return {
     id: row.id,
     logDomainId: row.log_domain_id,
     knowledgeEntryId: row.knowledge_entry_id,
-    entryTitle: row.entry_title,
-    entryStatus: row.entry_status,
-    entryTags: row.entry_tags ?? [],
+    entryTitle: readable ? row.entry_title : "无权查看的条目",
+    ...(readable ? { entryStatus: row.entry_status } : {}),
+    entryTags: readable ? row.entry_tags ?? [] : [],
     linkedAt: dateTimeToIso(row.created_at)
   };
 }
 
 export async function listLogDomainKnowledgeLinks(
   db: Queryable,
-  query: { organizationId: string; domainId: string }
+  auth: AuthContext,
+  domainId: string
 ): Promise<LogDomainKnowledgeLinkDto[]> {
   const result = await db.query<LogDomainKnowledgeLinkRow>(
     `
     select
-      link.id,
-      link.log_domain_id,
-      link.knowledge_entry_id::text as knowledge_entry_id,
+      coalesce(link.id, entry.id::text) as id,
+      revision.skill_id as log_domain_id,
+      entry.id::text as knowledge_entry_id,
       entry.title as entry_title,
       entry.status as entry_status,
       entry.tags as entry_tags,
-      link.created_at
-    from log_domain_knowledge_links link
-    inner join knowledge_entries entry
-      on entry.id = link.knowledge_entry_id
-      and entry.organization_id = link.organization_id
-    where link.organization_id = $1
-      and link.log_domain_id = $2
-    order by entry.title asc, link.id asc
+      entry.created_by_user_id,
+      coalesce(link.created_at, revision.published_at) as created_at
+    from log_skill_revisions revision
+    cross join lateral jsonb_array_elements_text(coalesce(revision.spec->'knowledgeEntryIds', '[]'::jsonb)) linked(entry_id)
+    join knowledge_entries entry on entry.id = linked.entry_id::uuid and entry.organization_id = revision.organization_id
+    left join log_domain_knowledge_links link on link.log_domain_id = revision.skill_id
+      and link.organization_id = revision.organization_id and link.knowledge_entry_id = entry.id
+    where revision.organization_id = $1
+      and revision.skill_id = $2 and revision.status = 'published'
+    order by entry.id asc
     `,
-    [query.organizationId, query.domainId]
+    [auth.organization.id, domainId]
   );
 
-  return result.rows.map(toLogDomainKnowledgeLinkDto);
+  return result.rows.map((row) => toLogDomainKnowledgeLinkDto(row, auth))
+    .sort((a, b) => a.entryTitle.localeCompare(b.entryTitle) || a.knowledgeEntryId.localeCompare(b.knowledgeEntryId));
 }
 
-/** Worker-side lookup: the linked entry ids that bound `read_domain_knowledge` retrieval. */
+/** Legacy mirror used for compatibility writes; workers use their pinned skill revision. */
 export async function listLogDomainKnowledgeLinkEntryIds(
   db: Queryable,
   query: { organizationId: string; domainId: string }

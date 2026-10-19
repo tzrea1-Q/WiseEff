@@ -405,6 +405,7 @@ export function PageRouter({
     case "log-admin":
       if (workspaceSkillId) return <SkillWorkspace key={workspaceSkillId} skillId={workspaceSkillId} search={search}
         repository={runtime?.logAnalysisRepository} apiMode={runtimeMode === "api"}
+        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
         canEdit={runtimeMode === "api" && (sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(currentRoleId, "logs.admin-domains"))}
         onNavigate={onNavigate} onPublished={(message) => dispatch({ type: "ADD_NOTIFICATION", message })} />;
       return (

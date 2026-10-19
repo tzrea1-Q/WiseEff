@@ -943,7 +943,7 @@ function ConfidenceBar({
 
 function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
   const degraded = classifyAnalysisDegradation(log);
-  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName && !log.sourceSnapshotSelection) {
+  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName && !log.knowledgeRevisions?.length && !log.sourceSnapshotSelection) {
     return null;
   }
 
@@ -976,6 +976,12 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
       {log.requestedSourceVersion && log.sourceSnapshotSelection !== "matched_version" ? (
         <p className="analysis-provenance__reason">未找到源码版本 {log.requestedSourceVersion}；{log.sourceSnapshot ? "已使用默认快照。" : "没有可用的默认快照。"}</p>
       ) : null}
+      {log.knowledgeRevisions?.length ? <details className="analysis-provenance__reason">
+        <summary>实际检索的知识修订（{log.knowledgeRevisions.length}）</summary>
+        <ul>{log.knowledgeRevisions.map(({ entryId, revisionId }) => <li key={`${entryId}:${revisionId}`}>
+          {revisionId ? `条目 ${entryId} · 修订 ${revisionId}` : `无权查看的条目 · ${entryId}`}
+        </li>)}</ul>
+      </details> : null}
       {degraded ? (
         <p className="analysis-provenance__reason">{degraded.reason}</p>
       ) : null}

@@ -16,6 +16,8 @@ export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-e
 
 export type AnalyzeLogInput = {
   onTrace?: (step: LogAnalysisTraceStep) => void | Promise<void>;
+  knowledgeEntryIds?: string[];
+  onKnowledgeRetrieved?: (revisions: Array<{ entryId: string; revisionId: string }>) => void;
   signal?: AbortSignal;
   signalSummary?: LogSignalSummary;
   /** Untrusted diagnostic guidance from this run's immutable skill revision. */

@@ -132,6 +132,7 @@ async function searchChunksByEmbedding(
        and e.organization_id = c.organization_id
       where c.organization_id = $1
         and e.status = 'published'
+        and c.revision_id = e.head_revision_id
         and c.embedding is not null
         ${restriction}
       order by c.entry_id, c.embedding <=> $2::vector asc

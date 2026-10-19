@@ -224,6 +224,7 @@ export async function readDomainKnowledge(
       retrievalMode: search.retrievalMode,
       items: search.items.slice(0, MAX_KNOWLEDGE_ITEMS).map((item) => ({
         entryId: item.entryId,
+        revisionId: item.revisionId,
         title: item.title,
         excerpt:
           item.excerpt.length > MAX_KNOWLEDGE_EXCERPT_CHARS

@@ -205,6 +205,7 @@ export type ParameterSubmissionRound = {
 };
 
 export type LogRecord = {
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
   sourceSnapshot?: import("../logs/types").LogRecord["sourceSnapshot"];
   sourceSnapshotSelection?: import("../logs/types").LogRecord["sourceSnapshotSelection"];
   requestedSourceVersion?: string;
