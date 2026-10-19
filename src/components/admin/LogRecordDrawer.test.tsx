@@ -55,6 +55,11 @@ describe("LogRecordDrawer", () => {
     onSubmitHelpfulFeedback: vi.fn()
   };
 
+  it("shows the file path alongside evidence line numbers", () => {
+    render(<LogRecordDrawer record={{ ...record, evidence: [{ ...record.evidence[0], filePath: "device/kernel.log", lineNumbers: [20] }] }} open {...handlers} canAct />);
+    expect(screen.getByText("device/kernel.log:20")).toBeInTheDocument();
+  });
+
   it("renders nothing when record is null", () => {
     render(<LogRecordDrawer record={null} open={false} {...handlers} canAct />);
 

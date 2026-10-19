@@ -90,7 +90,12 @@ export type LogFeedbackInsight = {
   lastFeedbackAt: string;
 };
 
+export type LogFile = {
+  path: string; sizeBytes: number; lineCount: number; encoding: "utf-8" | "utf-16le" | "utf-16be";
+  lossy: boolean; status: "analyzed" | "skipped"; skipReason: string | null;
+};
 export type LogEvidence = {
+  filePath?: string | null;
   id: string;
   stageId: LogStageId;
   lineNumbers: number[];
@@ -100,6 +105,7 @@ export type LogEvidence = {
 };
 
 export type LogRecord = {
+  files?: LogFile[];
   skillRevision?: { id: string; number: number } | null;
   id: string;
   reportId: string;

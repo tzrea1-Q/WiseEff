@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { extname } from "node:path";
 
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
@@ -35,12 +36,14 @@ import {
   requireLogUpload,
   requireLogView
 } from "./policy";
+import { loadLogBundleLimits } from "../../config/env";
+import { bundleFileUtf8Bytes, intakeLogBundle, isLogArchive, type BundleFile } from "./bundleIntake";
+import { insertLogFiles, fileInventory, loadLogFiles } from "./filesRepository";
 import { supportedLogExtensions } from "./status";
 import {
   isSupportedStoredLogFileName,
   isSupportedTextLogFileName,
-  supportedLogArchiveExtensions,
-  unpackLogArchive
+  supportedLogArchiveExtensions
 } from "./unpack";
 import type { LogFeedbackRating, LogRecordDto } from "./types";
 import {
@@ -54,6 +57,7 @@ export type UploadLogFileInput = {
   fileName: string;
   contentType: string;
   bytes: Buffer | Uint8Array;
+  files?: Array<{ fileName: string; bytes: Buffer }>;
   analysisQuestion?: string;
   relatedParameterId?: string;
   relatedParameterPin?: RelatedParameterSelection;
@@ -95,10 +99,6 @@ type ServiceContext = AuditCorrelationContext & {
 function unsupportedReason() {
   return `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")} (archives: ${supportedLogArchiveExtensions.join(", ")}).`;
 }
-
-type LogUploadIntake =
-  | { supported: true; bytes: Buffer }
-  | { supported: false; failureReason: string };
 
 type ResolvedLogRelatedParameter = {
   relatedParameterId: string;
@@ -142,23 +142,6 @@ async function resolveLogRelatedParameter(
 }
 
 /**
- * Archive-aware intake (P3): `.gz` / single-entry `.zip` uploads are unpacked
- * BEFORE anything persists, so the object store always holds plain UTF-8 text
- * and unpack failures ride the existing unsupported-format failure path
- * (failed record with a readable reason, no analysis job, no worker retries).
- */
-function resolveLogUploadIntake(input: { fileName: string; bytes: Buffer }): LogUploadIntake {
-  const unpacked = unpackLogArchive(input);
-  if (!unpacked.ok) {
-    return { supported: false, failureReason: unpacked.reason };
-  }
-  if (!unpacked.unpacked && !isSupportedTextLogFileName(input.fileName)) {
-    return { supported: false, failureReason: unsupportedReason() };
-  }
-  return { supported: true, bytes: unpacked.bytes };
-}
-
-/**
  * Rejected uploads are recorded through an `inline/` pseudo storage key without
  * ever writing the object store; such file objects can never be analyzed.
  */
@@ -187,17 +170,6 @@ async function requireBindableLogDomainId(db: Queryable, auth: AuthContext, logD
   }
 
   return domain.id;
-}
-
-function storedObjectFromBytes(input: UploadLogFileInput): StoredObject {
-  const bytes = input.bytes instanceof Buffer ? input.bytes : Buffer.from(input.bytes);
-  return {
-    storageKey: `inline/${createHash("sha256").update(bytes).digest("hex")}-${input.fileName}`,
-    fileName: input.fileName,
-    contentType: input.contentType,
-    fileSizeBytes: bytes.byteLength,
-    checksumSha256: createHash("sha256").update(bytes).digest("hex")
-  };
 }
 
 async function createLogAudit(
@@ -252,57 +224,48 @@ export async function uploadLogFile(
   requireLogUpload(auth);
   const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
   const relatedParameter = await resolveLogRelatedParameter(db, auth, input);
-  const intake = resolveLogUploadIntake({
-    fileName: input.fileName,
-    bytes: input.bytes instanceof Buffer ? input.bytes : Buffer.from(input.bytes)
-  });
-  const stored = intake.supported
-    ? await objectStore.put({
-        organizationId: auth.organization.id,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        bytes: intake.bytes
-      })
-    : storedObjectFromBytes(input);
-
-  if (!intake.supported) {
-    return db.transaction(async (tx) => {
-      const fileObject = await persistFileObject(tx, auth, { stored });
-      const log = await markUnsupportedLog(tx, {
-        id: randomUUID(),
-        organizationId: auth.organization.id,
-        fileObjectId: fileObject.id,
-        fileName: input.fileName,
-        source: "upload",
-        submittedByUserId: auth.user.id,
-        failureReason: intake.failureReason,
-        analysisQuestion: input.analysisQuestion,
-        relatedParameterId: relatedParameter?.relatedParameterId,
-        relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
-        logDomainId
-      });
-      if (!log) {
-        throw new ApiError("NOT_FOUND", "Log record was not created.");
-      }
-      await createLogAudit(
-        asAuditTx(tx),
-        createUserInvocation(auth),
-        {
-          kind: "log-upload-failed",
-          action: "upload-failed",
-          logId: log.id,
-          severity: "Low",
-          metadata: { fileName: input.fileName, failureReason: log.failureReason }
-        },
-        context
-      );
-
-      return { fileObject, log, job: null };
-    });
+  const uploads = input.files ?? [{ fileName: input.fileName, bytes: Buffer.isBuffer(input.bytes) ? input.bytes
+    : Buffer.from(input.bytes.buffer, input.bytes.byteOffset, input.bytes.byteLength) }];
+  const intake = intakeLogBundle(uploads, loadLogBundleLimits());
+  const singleUnsupported = uploads.length === 1 && !isLogArchive(uploads[0].fileName)
+    && extname(uploads[0].fileName) !== ""
+    && !isSupportedTextLogFileName(uploads[0].fileName);
+  const failureReason = !intake.ok ? intake.reason : intake.files.some((file) => file.status === "analyzed")
+    ? undefined : singleUnsupported ? unsupportedReason() : "日志包中没有可分析的文本文件";
+  const storedFiles: Array<Omit<BundleFile, "bytes"> & { objectKey: string | null }> = [];
+  let stored: StoredObject | undefined;
+  for (const file of intake.ok ? intake.files : []) {
+    const object = file.status === "analyzed" ? await objectStore.put({
+      organizationId: auth.organization.id,
+      fileName: uploads.length === 1 && !isLogArchive(uploads[0].fileName) ? input.fileName : `${file.sha256}.log`,
+      contentType: "text/plain; charset=utf-8", bytes: bundleFileUtf8Bytes(file)
+    }) : undefined;
+    stored ??= object;
+    delete file.bytes;
+    storedFiles.push({ ...file, objectKey: object?.storageKey ?? null });
   }
+  const primary = stored ? { ...stored, fileName: input.fileName,
+    fileSizeBytes: storedFiles.reduce((sum, file) => sum + file.sizeBytes, 0) } : {
+    storageKey: `inline/${randomUUID()}`, fileName: input.fileName, contentType: input.contentType,
+    fileSizeBytes: uploads.reduce((sum, file) => sum + file.bytes.length, 0),
+    checksumSha256: createHash("sha256").update(input.bytes).digest("hex")
+  };
 
   const result = await db.transaction(async (tx) => {
-    const fileObject = await persistFileObject(tx, auth, { stored });
+    const fileObject = await persistFileObject(tx, auth, { stored: primary });
+    if (failureReason) {
+      const log = await markUnsupportedLog(tx, { id: randomUUID(), organizationId: auth.organization.id,
+        fileObjectId: fileObject.id, fileName: input.fileName, source: "upload", submittedByUserId: auth.user.id,
+        failureReason, analysisQuestion: input.analysisQuestion, logDomainId,
+        relatedParameterId: relatedParameter?.relatedParameterId, relatedParameterProjectId: relatedParameter?.relatedParameterProjectId });
+      if (!log) throw new ApiError("INTERNAL_ERROR", "Log record was not created.");
+      await insertLogFiles(tx, auth.organization.id, log.id, storedFiles);
+      await createLogAudit(asAuditTx(tx), createUserInvocation(auth), {
+        kind: "log-upload-failed", action: "upload-failed", logId: log.id, severity: "Low",
+        metadata: { fileName: input.fileName, failureReason: log.failureReason }
+      }, context);
+      return { fileObject, log: { ...log, files: fileInventory(storedFiles) }, job: null };
+    }
     const { log, job } = await createLogRecordWithRunAndJob(
       tx,
       {
@@ -333,10 +296,11 @@ export async function uploadLogFile(
       context
     );
 
-    return { fileObject, log, job };
+    await insertLogFiles(tx, auth.organization.id, log.id, storedFiles);
+    return { fileObject, log: { ...log, files: fileInventory(storedFiles) }, job };
   });
 
-  await enqueueLogAnalysisJob(context.logAnalysisQueue, {
+  if (result.job) await enqueueLogAnalysisJob(context.logAnalysisQueue, {
     organizationId: auth.organization.id,
     logId: result.log.id,
     runId: result.job.runId,
@@ -370,7 +334,12 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
   }
   const relatedParameter = await resolveLogRelatedParameter(db, auth, input);
 
-  if (!isAnalyzableStoredLogObject(fileObject)) {
+  const sourceBundle = await db.query<{ id: string }>(`select lr.id from log_records lr
+    where lr.organization_id=$1 and lr.file_object_id=$2
+      and exists (select 1 from log_files lf where lf.record_id=lr.id and lf.organization_id=lr.organization_id and lf.status='analyzed')
+    order by lr.captured_at desc, lr.id desc limit 1`, [auth.organization.id, fileObject.id]);
+  const sourceRecordId = sourceBundle.rows[0]?.id;
+  if (!sourceRecordId && !isAnalyzableStoredLogObject(fileObject)) {
     return db.transaction(async (tx) => {
       const log = await markUnsupportedLog(tx, {
         id: randomUUID(),
@@ -432,6 +401,14 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
       },
       context
     );
+    if (sourceRecordId) {
+      await tx.query(`insert into log_files(id, organization_id, record_id, path, size_bytes, sha256, encoding, lossy,
+        line_count, status, skip_reason, object_key)
+        select gen_random_uuid()::text, organization_id, $3, path, size_bytes, sha256, encoding, lossy,
+          line_count, status, skip_reason, object_key from log_files where organization_id=$1 and record_id=$2`,
+      [auth.organization.id, sourceRecordId, result.log.id]);
+      result.log.files = fileInventory(await loadLogFiles(tx, auth.organization.id, result.log.id));
+    }
     return result;
   });
 

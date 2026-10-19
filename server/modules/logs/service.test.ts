@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import JSZip from "jszip";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
@@ -224,6 +225,38 @@ describe.skipIf(!databaseAvailable)("log service", () => {
       values ($1, 'org-1', $2, 1, 'published', '{"schemaVersion":"skill/v1"}', 'fixture')`, [`revision:${input.id}`, input.id]);
   }
 
+  it("keeps an earlier record's shared object when an identical upload's transaction fails", async () => {
+    const objectStore = createMemoryObjectStore();
+    const bytes = Buffer.from("INFO original record");
+    const input = { fileName: "a.log", contentType: "text/plain", bytes };
+    const first = await uploadLogFile(db, objectStore, makeAuth(), input);
+    const put = vi.spyOn(objectStore, "put");
+    const remove = vi.spyOn(objectStore, "delete");
+    const failure = new Error("injected transaction failure");
+    vi.spyOn(db, "transaction").mockRejectedValueOnce(failure);
+
+    await expect(uploadLogFile(db, objectStore, makeAuth(), input)).rejects.toBe(failure);
+
+    expect(put).toHaveBeenCalledOnce();
+    expect(remove).not.toHaveBeenCalled();
+    expect(await objectStore.get(first.fileObject.storageKey)).toEqual(bytes);
+    expect(await getLogRecord(db, makeAuth(), first.log.id)).toMatchObject({ id: first.log.id, status: "processing" });
+  });
+
+  it("keeps shared bundle objects when a later object-store put fails", async () => {
+    const objectStore = createMemoryObjectStore();
+    const bytes = Buffer.from("INFO original record");
+    const archive = await new JSZip().file("a.log", bytes).generateAsync({ type: "nodebuffer" });
+    const first = await uploadLogFile(db, objectStore, makeAuth(), { fileName: "original.zip", contentType: "application/zip", bytes: archive });
+    const put = objectStore.put.bind(objectStore);
+    vi.spyOn(objectStore, "put").mockImplementationOnce(put).mockRejectedValueOnce(new Error("injected put failure"));
+    const remove = vi.spyOn(objectStore, "delete");
+    await expect(uploadLogFile(db, objectStore, makeAuth(), { fileName: "new bundle", contentType: "text/plain", bytes,
+      files: [{ fileName: "a.log", bytes }, { fileName: "b.log", bytes: Buffer.from("INFO new") }] })).rejects.toThrow("injected put failure");
+    expect(remove).not.toHaveBeenCalled();
+    expect(await objectStore.get(first.fileObject.storageKey)).toEqual(bytes);
+  });
+
   it("binds an active log domain on upload and stores log_domain_id", async () => {
     await seedLogDomain({ id: "domain-1", name: "charging-power" });
 
@@ -308,6 +341,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
 
   it("unsupported .bin creates Failed record with failureReason and no queued worker job", async () => {
     const objectStore = createMemoryObjectStore();
+    const put = vi.spyOn(objectStore, "put");
 
     const result = await uploadLogFile(db, objectStore, makeAuth(), {
       fileName: "pack-controller.bin",
@@ -316,9 +350,12 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     });
 
     expect(objectStore.entries.size).toBe(0);
+    expect(put).not.toHaveBeenCalled();
     expect(result.fileObject).toMatchObject({ fileName: "pack-controller.bin" });
+    expect(result.fileObject.storageKey).toMatch(/^inline\//);
     expect(result.log.status).toBe("failed");
-    expect(result.log.failureReason).toContain("Unsupported log format");
+    expect(result.log.failureReason).toBe("Unsupported log format. Supported extensions: .log, .txt, .csv, .json (archives: .gz, .zip).");
+    expect(result.log.files).toMatchObject([{ path: "pack-controller.bin", status: "skipped", skipReason: "二进制文件" }]);
     expect(result.job).toBeNull();
 
     const jobs = await db.query<{ count: string }>(
@@ -329,6 +366,8 @@ describe.skipIf(!databaseAvailable)("log service", () => {
 
     const events = await auditEvents();
     expect(events.map((row) => row.kind)).toContain("log-upload-failed");
+    expect((await db.query("select metadata from audit_events where target_id=$1", [result.log.id])).rows)
+      .toEqual([{ metadata: { fileName: "pack-controller.bin", failureReason: result.log.failureReason, initiator: "user" } }]);
   });
 
   it("unpacks a .gz upload before storing so the object holds plain text and analysis is queued", async () => {
@@ -348,64 +387,107 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     expect(result.fileObject.fileSizeBytes).toBe(Buffer.byteLength(logText));
   });
 
-  it("marks a multi-entry .zip upload failed with a readable reason and no job", async () => {
+  it("stores encoding variants per file with unchanged UTF-8 bytes and BOM semantics", async () => {
+    const plain = Buffer.from("INFO plain\r\n");
+    const le = Buffer.concat([Buffer.from([255, 254]), Buffer.from("INFO 你好\n", "utf16le")]);
+    const files = [
+      { fileName: "plain.log", bytes: plain },
+      { fileName: "bom.log", bytes: Buffer.from("\ufeffINFO bom\n") },
+      { fileName: "le.log", bytes: le },
+      { fileName: "be.log", bytes: Buffer.from(le).swap16() },
+      { fileName: "lossy.log", bytes: Buffer.from([0xff, 0x61]) }
+    ];
+    const objectStore = createMemoryObjectStore();
+    const put = vi.spyOn(objectStore, "put");
+    const result = await uploadLogFile(db, objectStore, makeAuth(), {
+      fileName: "encodings", contentType: "text/plain", bytes: plain, files
+    });
+    const stored = put.mock.calls.map(([input]) => input.bytes);
+    expect(stored[0]).toBe(plain);
+    expect(stored[1].buffer).toBe(files[1].bytes.buffer);
+    expect(stored[1].byteOffset).toBe(files[1].bytes.byteOffset + 3);
+    expect(stored.map((bytes) => bytes.toString("utf8"))).toEqual(["INFO plain\r\n", "INFO bom\n", "INFO 你好\n", "INFO 你好\n", "�a"]);
+    expect([...objectStore.entries.values()].map((bytes) => bytes.toString("utf8"))).toEqual(["INFO plain\r\n", "INFO bom\n", "INFO 你好\n", "INFO 你好\n", "�a"]);
+    expect(result.log.files?.map(({ encoding, lossy }) => ({ encoding, lossy }))).toEqual([
+      { encoding: "utf-8", lossy: false }, { encoding: "utf-8", lossy: false }, { encoding: "utf-16le", lossy: false },
+      { encoding: "utf-16be", lossy: false }, { encoding: "utf-8", lossy: true }
+    ]);
+    for (const file of result.log.files ?? []) { expect(file).not.toHaveProperty("bytes"); expect(file).not.toHaveProperty("text"); }
+  });
+
+  it("accepts a multi-entry zip with one job and inventory for each file", async () => {
+    const archive = new JSZip().file("a.log", "INFO a").file("b.log", "INFO b");
     const objectStore = createMemoryObjectStore();
     const { queue, enqueued } = makeQueue();
-
-    const result = await uploadLogFile(
-      db,
-      objectStore,
-      makeAuth(),
-      {
-        fileName: "bundle.zip",
-        contentType: "application/zip",
-        // Not a valid single-entry archive: plain bytes fail unpacking.
-        bytes: Buffer.from("not a zip archive")
-      },
-      { logAnalysisQueue: queue }
-    );
-
-    expect(result.log.status).toBe("failed");
-    expect(result.log.failureReason).toMatch(/Failed to read \.zip archive/);
-    expect(result.job).toBeNull();
-    expect(enqueued).toHaveLength(0);
-    expect(objectStore.entries.size).toBe(0);
-
-    const events = await auditEvents();
-    expect(events.map((row) => row.kind)).toContain("log-upload-failed");
-  });
-
-  it("stops a gzip bomb at intake with the size-limit failure reason", async () => {
-    const objectStore = createMemoryObjectStore();
-    const bomb = gzipSync(Buffer.alloc(5 * 1024 * 1024, 0x61));
-
     const result = await uploadLogFile(db, objectStore, makeAuth(), {
-      fileName: "bomb.log.gz",
-      contentType: "application/gzip",
-      bytes: bomb
-    });
-
-    expect(result.log.status).toBe("failed");
-    expect(result.log.failureReason).toMatch(/exceeds the allowed size/);
-    expect(result.job).toBeNull();
-    expect(objectStore.entries.size).toBe(0);
+      fileName: "bundle.zip", contentType: "application/zip", bytes: await archive.generateAsync({ type: "nodebuffer" })
+    }, { logAnalysisQueue: queue });
+    expect(result.log.status).toBe("processing");
+    expect(result.log.files).toMatchObject([{ path: "a.log", status: "analyzed" }, { path: "b.log", status: "analyzed" }]);
+    expect(result.job).toMatchObject({ status: "queued" });
+    expect(enqueued).toHaveLength(1);
+    expect(objectStore.entries.size).toBe(2);
+    expect((await auditEvents()).map((event) => event.kind)).toEqual(["log-upload"]);
   });
 
-  it("createLogFromFile refuses to reanalyze a rejected (never stored) upload", async () => {
+  it.each([
+    ["bundle.zip", Buffer.from("not a zip archive"), "完整性"],
+    ["bomb.log.gz", gzipSync(Buffer.alloc(5 * 1024 * 1024, 0x61)), "解压大小"]
+  ])("records rejected %s with an inline key, failure audit and no job", async (fileName, bytes, rule) => {
+    const objectStore = createMemoryObjectStore();
+    const put = vi.spyOn(objectStore, "put");
+    const { queue, enqueued } = makeQueue();
+    const result = await uploadLogFile(db, objectStore, makeAuth(), { fileName, contentType: "application/octet-stream", bytes }, { logAnalysisQueue: queue });
+    expect(result.log.status).toBe("failed");
+    expect(result.log.failureReason).toContain(rule);
+    expect(result.fileObject.storageKey).toMatch(/^inline\//);
+    expect(result.job).toBeNull();
+    expect(objectStore.entries.size).toBe(0); expect(enqueued).toHaveLength(0);
+    expect(put).not.toHaveBeenCalled();
+    expect((await db.query("select status, failure_reason from log_records where id=$1", [result.log.id])).rows)
+      .toEqual([{ status: "failed", failure_reason: result.log.failureReason }]);
+    expect((await db.query("select id from jobs where organization_id='org-1'")).rows).toHaveLength(0);
+    expect((await db.query("select kind, metadata from audit_events where target_id=$1", [result.log.id])).rows)
+      .toEqual([{ kind: "log-upload-failed", metadata: { fileName, failureReason: result.log.failureReason, initiator: "user" } }]);
+  });
+
+  it("audits a skipped-only bundle in Chinese and retains its inventory without storing objects", async () => {
+    const archive = new JSZip().file("snapshot.bin", Buffer.from([0, 1])).file("readme.pdf", "text");
+    const objectStore = createMemoryObjectStore();
+    const put = vi.spyOn(objectStore, "put");
+    const { queue, enqueued } = makeQueue();
+    const result = await uploadLogFile(db, objectStore, makeAuth(), {
+      fileName: "skipped.zip", contentType: "application/zip", bytes: await archive.generateAsync({ type: "nodebuffer" })
+    }, { logAnalysisQueue: queue });
+    expect(result.log).toMatchObject({ status: "failed", failureReason: "日志包中没有可分析的文本文件", files: [
+      { path: "snapshot.bin", status: "skipped", skipReason: "二进制文件" },
+      { path: "readme.pdf", status: "skipped", skipReason: "不支持的文件扩展名" }
+    ] });
+    expect(result.fileObject.storageKey).toMatch(/^inline\//);
+    expect(put).not.toHaveBeenCalled();
+    expect(result.job).toBeNull();
+    expect(enqueued).toEqual([]);
+    expect((await db.query("select kind, metadata from audit_events where target_id=$1", [result.log.id])).rows)
+      .toEqual([{ kind: "log-upload-failed", metadata: { fileName: "skipped.zip", failureReason: result.log.failureReason, initiator: "user" } }]);
+    expect((await db.query("select object_key from log_files where record_id=$1", [result.log.id])).rows)
+      .toEqual([{ object_key: null }, { object_key: null }]);
+  });
+
+  it("createLogFromFile refuses to reanalyze a rejected (never stored) archive on repeated replay", async () => {
     const rejected = await uploadLogFile(db, createMemoryObjectStore(), makeAuth(), {
-      fileName: "bomb.log.gz",
-      contentType: "application/gzip",
-      bytes: gzipSync(Buffer.alloc(5 * 1024 * 1024, 0x61))
+      fileName: "bomb.log.gz", contentType: "application/gzip", bytes: gzipSync(Buffer.alloc(5 * 1024 * 1024, 0x61))
     });
     expect(rejected.log.status).toBe("failed");
-
-    const replay = await createLogFromFile(db, makeAuth(), {
-      fileObjectId: rejected.fileObject.id,
-      fileName: "bomb.log.gz"
-    });
-
-    expect(replay.log.status).toBe("failed");
-    expect(replay.job).toBeNull();
+    expect(rejected.fileObject.storageKey).toMatch(/^inline\//);
+    const { queue, enqueued } = makeQueue();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const replay = await createLogFromFile(db, makeAuth(), { fileObjectId: rejected.fileObject.id, fileName: "bomb.log.gz" }, { logAnalysisQueue: queue });
+      expect(replay.log.status).toBe("failed");
+      expect(replay.job).toBeNull();
+    }
+    expect(enqueued).toEqual([]);
+    expect((await db.query("select id from jobs where organization_id='org-1'")).rows).toHaveLength(0);
+    expect((await auditEvents()).map((event) => event.kind)).toEqual(["log-upload-failed", "log-upload-failed", "log-upload-failed"]);
   });
 
   it("does not dispatch unsupported uploads to the durable queue", async () => {

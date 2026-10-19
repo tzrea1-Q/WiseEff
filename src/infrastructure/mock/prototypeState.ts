@@ -462,6 +462,11 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     logs: [
       {
         id: "log-active",
+        files: [
+          { path: "charging_thermal_trace_20260504.log", sizeBytes: 4096, lineCount: 40, encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null },
+          { path: "device/kernel.log", sizeBytes: 2048, lineCount: 12, encoding: "utf-16le", lossy: false, status: "analyzed", skipReason: null },
+          { path: "device/snapshot.bin", sizeBytes: 256, lineCount: 0, encoding: "utf-8", lossy: true, status: "skipped", skipReason: "二进制文件" }
+        ],
         logDomainId: "skill-charging", logDomainName: "充电诊断",
         skillRevision: { id: "skill-charging-v1", number: 1 },
         reportId: "RPT-9092",

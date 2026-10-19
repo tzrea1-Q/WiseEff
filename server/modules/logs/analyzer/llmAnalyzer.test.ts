@@ -51,6 +51,14 @@ const validPayload = {
 };
 
 describe("createLlmLogAnalyzer", () => {
+  it("grounds single-shot evidence in a file-specific excerpt", async () => {
+    const parsed = parseFixture();
+    const files = ["a.log", "b.log"].map((path) => ({ path, sizeBytes: 100, lineCount: parsed.rawLines.length,
+      encoding: "utf-8" as const, lossy: false, status: "analyzed" as const, skipReason: null, parsed }));
+    const analyzer = createLlmLogAnalyzer({ model: jsonModel({ ...validPayload,
+      evidence: [{ ...validPayload.evidence[0], filePath: "b.log" }] }), modelLabel: "file-aware", tokenBudget: 8000 });
+    expect(await analyzer.analyze({ parsed, files })).toMatchObject({ analysisSource: "agent", evidence: [{ filePath: "b.log", lineNumbers: [3, 4] }] });
+  });
   it("uses run-pinned signals in prefilter and degradation", async () => {
     const captured: LogAnalysisChatMessage[] = [];
     const signalRules = { ...defaultChargingRuleSet, rules: [], noHit: { ...defaultChargingRuleSet.noHit, conclusion: "Pinned fallback" } };

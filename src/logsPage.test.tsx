@@ -41,6 +41,23 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it("renders the file inventory tab with analyzed, skipped and lossy files", async () => {
+    const log = { ...initialState.logs[0], files: [
+      { path: "device/a.log", sizeBytes: 1024, lineCount: 12, encoding: "utf-8" as const, lossy: true, status: "analyzed" as const, skipReason: null },
+      { path: "image.bin", sizeBytes: 256, lineCount: 0, encoding: "utf-8" as const, lossy: false, status: "skipped" as const, skipReason: "二进制文件" }
+    ] };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    await userEvent.setup().click(screen.getByRole("tab", { name: "文件" }));
+    const inventory = screen.getByRole("region", { name: "日志文件清单" });
+    expect(inventory).toHaveTextContent("device/a.log"); expect(inventory).toHaveTextContent("1.0 KiB");
+    expect(inventory).toHaveTextContent("12"); expect(inventory).toHaveTextContent("有损解码");
+    expect(inventory).toHaveTextContent("已分析"); expect(inventory).toHaveTextContent("已跳过 · 二进制文件");
+  });
+  it("shows file:line evidence without borrowing text from a different file", () => {
+    const log = { ...initialState.logs[0], evidence: [{ ...initialState.logs[0].evidence[0], filePath: "device/b.log", lineNumbers: [2] }] };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    expect(document.querySelector(".evidence-card__body code")).toHaveTextContent("device/b.log:2");
+  });
   it("keeps upload available without presenting an empty installation as a failed analysis", () => {
     render(<LogsPage search="" state={{ ...userState, logs: [] }} dispatch={() => undefined} onNavigate={() => undefined} />);
     const task = screen.getByRole("region", { name: "日志任务区" });
@@ -72,7 +89,11 @@ describe("LogsPage · Header", () => {
     const tabs = screen.getByRole("tablist", { name: "日志辅助信息" });
     const history = within(tabs).getByRole("tab", { name: "报告" });
     const metadata = within(tabs).getByRole("tab", { name: "元数据" });
+    const files = within(tabs).getByRole("tab", { name: "文件" });
     await user.click(history);
+    await user.keyboard("{ArrowRight}");
+    expect(files).toHaveFocus();
+    expect(history).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{ArrowRight}");
     expect(metadata).toHaveFocus();
     expect(history).toHaveAttribute("aria-selected", "true");

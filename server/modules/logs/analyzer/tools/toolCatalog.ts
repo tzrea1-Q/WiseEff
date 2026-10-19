@@ -1,15 +1,18 @@
+import { runLogPrefilter } from "../../prefilter";
 import { z } from "zod";
 
 import { compileLogPattern, type LogPattern } from "../../adminPattern";
 import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolContext";
 
 /**
- * The five read-only tools of the log analysis agent (ADR-0022). Every tool
+ * The read-only tools of the log analysis agent (ADR-0022). Every tool
  * validates its arguments with zod, truncates its result to a stated bound so a
  * single call can never blow the token budget, and never writes anything.
  */
 export const LOG_ANALYSIS_TOOL_NAMES = [
   "search_log_lines",
+  "search_lines",
+  "list_files",
   "read_line_range",
   "get_prefilter_findings",
   "read_domain_knowledge",
@@ -30,6 +33,7 @@ function clipLine(content: string) {
 }
 
 export const searchLogLinesParamsSchema = z.object({
+  file: z.string().min(1).max(1024).optional(),
   pattern: z.string().min(1).max(200),
   isRegex: z.boolean().optional().default(false),
   maxMatches: z.number().int().min(1).max(MAX_MATCHES_HARD_CAP).optional().default(8),
@@ -54,44 +58,39 @@ export function searchLogLines(
     matcher = (line) => line.toLowerCase().includes(needle);
   }
 
-  const rawLines = context.parsed.rawLines;
-  const matchedLineNumbers: number[] = [];
-  for (let lineNumber = 1; lineNumber <= rawLines.length; lineNumber += 1) {
-    if (matcher(rawLines[lineNumber - 1])) {
-      matchedLineNumbers.push(lineNumber);
-    }
+  let fileMatcher: LogPattern | undefined;
+  if (params.file) {
+    const glob = params.file.split("**").map((part) => part.split("*").map((piece) => piece.split("?").map((literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]")).join("[^/]*")).join(".*");
+    fileMatcher = compileLogPattern(`^${glob}$`);
   }
-
-  const kept = matchedLineNumbers.slice(0, params.maxMatches);
-  const included = new Set<number>();
-  for (const lineNumber of kept) {
-    for (let offset = -params.neighborhood; offset <= params.neighborhood; offset += 1) {
-      const neighbor = lineNumber + offset;
-      if (neighbor >= 1 && neighbor <= rawLines.length) {
-        included.add(neighbor);
+  const files = context.files?.filter((file) => file.parsed) ?? [{ path: context.filePath, parsed: context.parsed }];
+  let totalMatches = 0, returnedMatches = 0;
+  const lines: Array<{ file?: string; line?: number; lineNumber: number; isMatch: boolean; content: string }> = [];
+  for (const file of files) {
+    if (fileMatcher && (!file.path || !fileMatcher.test(file.path))) continue;
+    const rawLines = file.parsed!.rawLines;
+    const kept: number[] = [];
+    for (let line = 1; line <= rawLines.length; line++) {
+      if (matcher(rawLines[line - 1])) {
+        totalMatches++;
+        if (returnedMatches < params.maxMatches) { kept.push(line); returnedMatches++; }
       }
     }
-  }
-  const matchedSet = new Set(kept);
-
-  return {
-    ok: true,
-    result: {
-      totalMatches: matchedLineNumbers.length,
-      returnedMatches: kept.length,
-      truncated: matchedLineNumbers.length > kept.length,
-      lines: [...included]
-        .sort((left, right) => left - right)
-        .map((lineNumber) => ({
-          lineNumber,
-          isMatch: matchedSet.has(lineNumber),
-          content: clipLine(rawLines[lineNumber - 1])
-        }))
+    const included = new Set<number>();
+    for (const line of kept) for (let offset = -params.neighborhood; offset <= params.neighborhood; offset++) {
+      if (line + offset >= 1 && line + offset <= rawLines.length) included.add(line + offset);
     }
-  };
+    const matched = new Set(kept);
+    for (const line of [...included].sort((a, b) => a - b)) lines.push({
+      ...(file.path ? { file: file.path, line } : {}), lineNumber: line,
+      isMatch: matched.has(line), content: clipLine(rawLines[line - 1])
+    });
+  }
+  return { ok: true, result: { totalMatches, returnedMatches, truncated: totalMatches > returnedMatches, lines } };
 }
 
 export const readLineRangeParamsSchema = z.object({
+  file: z.string().min(1).max(1024).optional(),
   startLine: z.number().int().min(1),
   endLine: z.number().int().min(1)
 });
@@ -103,16 +102,20 @@ export function readLineRange(
   if (params.endLine < params.startLine) {
     return { ok: false, error: "endLine must be greater than or equal to startLine." };
   }
-  const totalLines = context.parsed.rawLines.length;
+  const files = context.files?.filter((file) => file.parsed) ?? [{ path: context.filePath, parsed: context.parsed }];
+  if (!params.file && files.length > 1) return { ok: false, error: "file is required for multi-file records." };
+  const selected = params.file ? files.find((file) => file.path === params.file) : files[0];
+  if (!selected) return { ok: false, error: "File was not found or was skipped." };
+  const totalLines = selected.parsed!.rawLines.length;
   if (params.startLine > totalLines) {
     return { ok: false, error: `startLine ${params.startLine} is beyond the end of the log (${totalLines} lines).` };
   }
 
   const clampedEnd = Math.min(params.endLine, totalLines);
   const cappedEnd = Math.min(clampedEnd, params.startLine + MAX_RANGE_LINES - 1);
-  const lines: Array<{ lineNumber: number; content: string }> = [];
+  const lines: Array<{ file?: string; line?: number; lineNumber: number; content: string }> = [];
   for (let lineNumber = params.startLine; lineNumber <= cappedEnd; lineNumber += 1) {
-    lines.push({ lineNumber, content: clipLine(context.parsed.rawLines[lineNumber - 1]) });
+    lines.push({ ...(selected.path ? { file: selected.path, line: lineNumber } : {}), lineNumber, content: clipLine(selected.parsed!.rawLines[lineNumber - 1]) });
   }
 
   return {
@@ -127,9 +130,15 @@ export function readLineRange(
   };
 }
 
-export const getPrefilterFindingsParamsSchema = z.object({}).strict();
+export const getPrefilterFindingsParamsSchema = z.object({ file: z.string().min(1).max(1024).optional() }).strict();
 
-export function getPrefilterFindings(context: LogAnalysisToolContext): LogAnalysisToolOutcome {
+export function getPrefilterFindings(context: LogAnalysisToolContext, filePath?: string): LogAnalysisToolOutcome {
+  if (context.files) {
+    const files = context.files.filter((file) => file.parsed && (!filePath || file.path === filePath));
+    return { ok: true, result: { totalFiles: files.length, truncated: files.length > MAX_MATCHES_HARD_CAP,
+      files: files.slice(0, MAX_MATCHES_HARD_CAP).map((file) => ({ file: file.path,
+        findings: getPrefilterFindings({ ...context, files: undefined, prefilter: runLogPrefilter(file.parsed!.entries, context.signalRules) }) })) } };
+  }
   const findings = context.prefilter;
   return {
     ok: true,
@@ -232,22 +241,36 @@ type ToolDefinition = {
 };
 
 export const logAnalysisToolCatalog: Record<LogAnalysisToolName, ToolDefinition> = {
+  list_files: {
+    description: 'List file inventory, including skipped files. Args: {"offset"?: number, "limit"?: 1-200}.',
+    paramsSchema: z.object({ offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(200).default(100) }),
+    execute: (context, args) => {
+      const { offset, limit } = args as { offset: number; limit: number };
+      const files = context.files?.map(({ parsed: _parsed, ...file }) => file) ?? [{ path: context.filePath, lineCount: context.parsed.rawLines.length, status: "analyzed" }];
+      return { ok: true, result: { files: files.slice(offset, offset + limit), total: files.length, truncated: files.length > offset + limit } };
+    }
+  },
+  search_lines: {
+    description: 'Search lines across files. Optional file path/glob; results cite file and line. Same arguments and caps as search_log_lines.',
+    paramsSchema: searchLogLinesParamsSchema,
+    execute: (context, params) => searchLogLines(context, params as z.infer<typeof searchLogLinesParamsSchema>)
+  },
   search_log_lines: {
     description:
-      'Search raw log lines by keyword or regex. Args: {"pattern": string, "isRegex"?: boolean, "maxMatches"?: 1-20, "neighborhood"?: 0-3}. Returns matching lines with neighborhood context.',
+      'Search raw log lines by keyword or regex. Args: {"pattern": string, "isRegex"?: boolean, "maxMatches"?: 1-20, "neighborhood"?: 0-3, "file"?: string}. Returns matching lines with neighborhood context.',
     paramsSchema: searchLogLinesParamsSchema,
     execute: (context, params) => searchLogLines(context, params as z.infer<typeof searchLogLinesParamsSchema>)
   },
   read_line_range: {
     description:
-      'Read a contiguous line range (max 40 lines per call). Args: {"startLine": number, "endLine": number}.',
+      'Read a contiguous line range (max 40 lines per call). Args: {"startLine": number, "endLine": number, "file"?: string (required with multiple analyzed files)}.',
     paramsSchema: readLineRangeParamsSchema,
     execute: (context, params) => readLineRange(context, params as z.infer<typeof readLineRangeParamsSchema>)
   },
   get_prefilter_findings: {
-    description: "Get the deterministic prefilter findings (rule hits, error-code stats, severity counts). Args: {}.",
+    description: 'Get deterministic prefilter findings (rule hits, error-code stats, severity counts). Args: {"file"?: string}. Multi-file summaries show at most 20 files; use file for the others.',
     paramsSchema: getPrefilterFindingsParamsSchema,
-    execute: (context) => getPrefilterFindings(context)
+    execute: (context, params) => getPrefilterFindings(context, (params as z.infer<typeof getPrefilterFindingsParamsSchema>).file)
   },
   read_domain_knowledge: {
     description:

@@ -10667,6 +10667,11 @@
               "schema": {
                 "$ref": "#/components/schemas/LogFileUploadRequest"
               }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/LogBundleMultipartUpload"
+              }
             }
           }
         },
@@ -28953,6 +28958,57 @@
           "log": {
             "type": "object",
             "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    },
+                    "encoding": {
+                      "type": "string",
+                      "enum": [
+                        "utf-8",
+                        "utf-16le",
+                        "utf-16be"
+                      ]
+                    },
+                    "lossy": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "analyzed",
+                        "skipped"
+                      ]
+                    },
+                    "skipReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "sizeBytes",
+                    "lineCount",
+                    "encoding",
+                    "lossy",
+                    "status",
+                    "skipReason"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "skillRevision": {
                 "type": [
                   "object",
@@ -29026,6 +29082,12 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "filePath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -29292,6 +29354,57 @@
           "item": {
             "type": "object",
             "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    },
+                    "encoding": {
+                      "type": "string",
+                      "enum": [
+                        "utf-8",
+                        "utf-16le",
+                        "utf-16be"
+                      ]
+                    },
+                    "lossy": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "analyzed",
+                        "skipped"
+                      ]
+                    },
+                    "skipReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "sizeBytes",
+                    "lineCount",
+                    "encoding",
+                    "lossy",
+                    "status",
+                    "skipReason"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "skillRevision": {
                 "type": [
                   "object",
@@ -29365,6 +29478,12 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "filePath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -29505,6 +29624,57 @@
             "items": {
               "type": "object",
               "properties": {
+                "files": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "sizeBytes": {
+                        "type": "number"
+                      },
+                      "lineCount": {
+                        "type": "number"
+                      },
+                      "encoding": {
+                        "type": "string",
+                        "enum": [
+                          "utf-8",
+                          "utf-16le",
+                          "utf-16be"
+                        ]
+                      },
+                      "lossy": {
+                        "type": "boolean"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "analyzed",
+                          "skipped"
+                        ]
+                      },
+                      "skipReason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "sizeBytes",
+                      "lineCount",
+                      "encoding",
+                      "lossy",
+                      "status",
+                      "skipReason"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "skillRevision": {
                   "type": [
                     "object",
@@ -29578,6 +29748,12 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "filePath": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -29823,6 +29999,57 @@
           "log": {
             "type": "object",
             "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "number"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    },
+                    "encoding": {
+                      "type": "string",
+                      "enum": [
+                        "utf-8",
+                        "utf-16le",
+                        "utf-16be"
+                      ]
+                    },
+                    "lossy": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "analyzed",
+                        "skipped"
+                      ]
+                    },
+                    "skipReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "sizeBytes",
+                    "lineCount",
+                    "encoding",
+                    "lossy",
+                    "status",
+                    "skipReason"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "skillRevision": {
                 "type": [
                   "object",
@@ -29896,6 +30123,12 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "filePath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -44808,6 +45041,36 @@
       "CatalogDefinitionLifecycleChangeResponse": {
         "type": "object",
         "x-wiseeff-schema": "CatalogDefinitionLifecycleChangeResponse"
+      },
+      "LogBundleMultipartUpload": {
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "format": "binary"
+            },
+            "description": "Several plain files or one archive; repeated file parts form one log bundle."
+          },
+          "analysisQuestion": {
+            "type": "string"
+          },
+          "skillId": {
+            "type": "string"
+          },
+          "logDomainId": {
+            "type": "string"
+          },
+          "relatedParameterPin": {
+            "type": "string",
+            "description": "JSON-encoded canonical parameter pin."
+          }
+        }
       }
     },
     "responses": {

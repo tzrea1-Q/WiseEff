@@ -1,3 +1,4 @@
+import { loadLogFiles } from "./filesRepository";
 import { claimJobById, claimNextJob, failJob, getJobSnapshot, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "../jobs/repository";
 import type { ClaimedLogAnalysisJobDto } from "../jobs/types";
 import type { Database } from "../../shared/database/client";
@@ -275,13 +276,33 @@ async function processClaimedLogAnalysisJob(
     currentProgress = 10;
 
     currentFailureReason = "object_store_error";
-    const bytes = await objectStore.get(snapshot.storageKey);
-    currentFailureReason = "parse_error";
     if (snapshot.logDomain && !snapshot.skillRevisionId) throw new Error("Analysis skill run has no pinned revision.");
     const formatProfile = readStoredLogFormatProfile(snapshot.logDomain?.formatProfile ?? undefined);
-    const parsed = parseLogText({ fileName: snapshot.fileName, content: bytes }, { profile: formatProfile });
-    if (!parsed.ok) {
-      throw new Error(parsed.reason);
+    const inventory = await loadLogFiles(db, snapshot.organizationId, snapshot.logId);
+    const files: NonNullable<AnalyzeLogInput["files"]> = [];
+    for (const file of inventory) {
+      const { objectKey, ...entry } = file;
+      if (file.status === "skipped") { files.push(entry); continue; }
+      const bytes = await objectStore.get(objectKey!);
+      currentFailureReason = "parse_error";
+      // Inventory already validated extension/encoding. Parse decoded UTF-8, including extensionless text.
+      const parsedFile = parseLogText({ fileName: "decoded.log", content: bytes }, { profile: formatProfile });
+      if (!parsedFile.ok) throw new Error(parsedFile.reason);
+      files.push({ ...entry, parsed: parsedFile });
+      currentFailureReason = "object_store_error";
+    }
+    let parsed: Extract<ReturnType<typeof parseLogText>, { ok: true }>;
+    if (inventory.length) {
+      const analyzed = files.filter((file) => file.parsed);
+      if (!analyzed.length) throw new Error("日志包中没有可分析的文本文件");
+      // ponytail: parsed bundle lives for one analysis; offset-backed lazy reads are a later phase.
+      parsed = { ok: true, rawLines: analyzed.flatMap((file) => file.parsed!.rawLines), entries: analyzed.flatMap((file) => file.parsed!.entries) };
+    } else {
+      const bytes = await objectStore.get(snapshot.storageKey);
+      currentFailureReason = "parse_error";
+      const legacy = parseLogText({ fileName: snapshot.fileName, content: bytes }, { profile: formatProfile });
+      if (!legacy.ok) throw new Error(legacy.reason);
+      parsed = legacy;
     }
     currentFailureReason = "unknown";
 
@@ -340,6 +361,8 @@ async function processClaimedLogAnalysisJob(
     const analysis = await analyzeWithDegradation({
       analyzer,
       analyzeInput: {
+        files: inventory.length ? files : undefined,
+        filePath: inventory.length ? files.find((file) => file.parsed)?.path : snapshot.fileName,
         signalRules: snapshot.signalRules,
         parsed,
         analysisQuestion: snapshot.analysisQuestion ?? undefined,
@@ -417,7 +440,7 @@ async function processClaimedLogAnalysisJob(
         impact: analysis.impact,
         severity: analysis.severity,
         suggestedActions: analysis.suggestedActions,
-        rawLines: parsed.rawLines,
+        rawLines: (files.find((file) => file.parsed)?.parsed ?? parsed).rawLines,
         analysisSource: analysis.analysisSource,
         degradedReason: analysis.degradedReason,
         promptVersion: analysis.promptVersion,

@@ -13,6 +13,8 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type AnalyzeLogInput = {
+  files?: Array<import("./filesRepository").LogFileDto & { parsed?: Extract<ParseResult, { ok: true }> }>;
+  filePath?: string;
   signalRules?: SignalRuleSet;
   parsed: Extract<ParseResult, { ok: true }>;
   analysisQuestion?: string;
@@ -37,6 +39,7 @@ export type AnalyzeLogInput = {
 };
 
 export type AnalyzeLogEvidence = {
+  filePath?: string | null;
   stageId: LogAnalysisStageId;
   lineNumbers: number[];
   inference: string;
@@ -72,11 +75,14 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
   return {
     async analyze(input) {
       const activeRules = input.signalRules ?? ruleSet;
-      const evidence = collectRuleEvidence(input.parsed.entries, activeRules);
+      const evidence = input.files
+        ? input.files.flatMap((file) => file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules).map((item) => ({ ...item, filePath: file.path })) : [])
+        : collectRuleEvidence(input.parsed.entries, activeRules).map((item) => ({ ...item, filePath: input.filePath }));
       const ruleHits = new Set(
         evidence.map((item) => item.ruleHit).filter((ruleHit): ruleHit is LogRuleHit => ruleHit !== undefined)
       );
-      const hasErrorEvidence = input.parsed.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence, entry));
+      const hasErrorEvidence = input.files ? input.files.some((file) => file.parsed?.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence.filter((item) => item.filePath === file.path), entry)))
+        : input.parsed.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence, entry));
 
       const matchedRules = activeRules.rules.filter((rule) => ruleHits.has(rule.id));
       const defaults = matchedRules.length === 0 ? activeRules.noHit : activeRules.hitDefaults;

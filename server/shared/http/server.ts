@@ -115,7 +115,7 @@ function parseMultipartBody(bytes: Buffer, boundary: string): MultipartBody {
     if (disposition.filename !== undefined) {
       files.push({
         fieldName,
-        fileName: disposition.filename,
+        fileName: Buffer.from(disposition.filename, "binary").toString("utf8"),
         contentType: headers["content-type"] ?? "application/octet-stream",
         bytes: contentBytes
       });

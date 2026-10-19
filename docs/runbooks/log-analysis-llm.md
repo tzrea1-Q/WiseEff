@@ -95,9 +95,12 @@ JS
 
 ## Archive Intake (P3)
 
-- Uploads may be `.gz` (single file, inner name keeps a supported text extension) or `.zip` (exactly one non-directory entry, stored/deflate, no encryption). Unpacking happens at intake; the object store always holds plain UTF-8 text, so reruns never re-unpack.
-- Zip-bomb bounds (constants in `server/modules/logs/unpack.ts`, documented in the API contract): unpacked size ≤ 100 MB absolute and ≤ 200× the compressed upload (1 MB floor). Oversized or corrupt archives become `failed` records with a readable `failureReason` and no analysis job — they never reach the worker or the retry loop.
-- Triage: a user reporting a "failed" compressed upload should read the record's failure reason first; multi-entry zips are the most common cause (macOS Finder compression adds `__MACOSX` metadata entries — re-zip only the single log file, or gzip it).
+- Accept multiple plain files or one `.tar/.tar.gz/.tgz/.zip/.gz` archive, expanding at most one nested archive level. All safety validation precedes object-store writes. Rejection returns a failed record (`201`, `failureReason`, `inline/` pseudo key), no object-store write or job, and a `log-upload-failed` audit with `{ fileName, failureReason }`. Bundle/archive reasons are Chinese; unsupported single plain files preserve the English format message. Unexpected archive exceptions use a generic integrity reason. A bundle without analyzable files retains skipped inventory and a failed record without a job.
+- Defaults are 100 MiB uploaded, 100 MiB total original file bytes, 2000 files and 100 MiB per file, configured by `LOG_BUNDLE_MAX_COMPRESSED_BYTES`, `LOG_BUNDLE_MAX_UNPACKED_BYTES`, `LOG_BUNDLE_MAX_FILES`, and `LOG_BUNDLE_MAX_FILE_BYTES`. Each inflate retains the 200x ratio / 1 MiB floor and stops at the output bound. Plain files also obey the upload bound. Intermediate tar data (including headers/padding) fits the remaining-total bound.
+- Defaults fit the memory envelope of the stock self-hosted 512 MiB API / 384 MiB worker containers and retain the previous 100 MiB single-file cap. Raising limits requires more container memory until streaming intake (#1234) lands. The probe below measured 357 MiB peak RSS for a 95 MiB bundle in a standalone process.
+- Triage starts with the upload dialog's rule reason, then the report's file inventory: binary/unsupported files show skip reasons and lossy text is marked. Evidence cites file and line. Stored objects are decoded UTF-8 per file; legacy records without `log_files` retain the single-object path.
+- For an optional near-cap intake memory probe, run `npx tsx scripts/log-bundle-memory-probe.ts` separately from tests. It processes three log files totaling 95 MiB, runs intake plus per-file UTF-8 storage/copy into a throwaway sink, and prints process peak RSS and heap usage after storage; archive construction is included in the RSS high-water mark.
+- The worker currently retains per-file parsed lines/entries for one analysis. Streaming line-offset indexes are deferred, so large bundles may have high peak memory.
 
 ## Evidence
 

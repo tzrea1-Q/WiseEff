@@ -180,7 +180,7 @@ describe("LogsPage api upload wiring", () => {
     await confirmSelectedFile();
 
     expect(repository.uploadLog).toHaveBeenCalledWith({
-      file,
+      file, files: [file],
       analysisQuestion: "why"
     });
     expect(screen.getByRole("tab", { name: "报告" })).toHaveAttribute("aria-selected", "true");
@@ -243,7 +243,7 @@ describe("LogsPage api upload wiring", () => {
     const file = new File(["line"], "canonical.log", { type: "text/plain" });
     chooseFile(file);
     await confirmSelectedFile();
-    expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "",
+    expect(repository.uploadLog).toHaveBeenCalledWith({ file, files: [file], analysisQuestion: "",
       relatedParameterPin: { kind: "canonical-pin", projectId: project.id, bindingId: binding.id,
         definitionRevisionId: binding.effectiveRevisionId } });
   });
@@ -268,7 +268,7 @@ describe("LogsPage api upload wiring", () => {
     await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), "");
     vi.useFakeTimers();
     await confirmSelectedFile();
-    expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "" });
+    expect(repository.uploadLog).toHaveBeenCalledWith({ file, files: [file], analysisQuestion: "" });
   });
 
   it("ignores a delayed parameter response after switching projects", async () => {
@@ -325,7 +325,24 @@ describe("LogsPage api upload wiring", () => {
     await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), "");
     vi.useFakeTimers();
     await confirmSelectedFile();
-    expect(repository.uploadLog).toHaveBeenCalledWith({ file, analysisQuestion: "" });
+    expect(repository.uploadLog).toHaveBeenCalledWith({ file, files: [file], analysisQuestion: "" });
+  });
+
+  it("selects a rejected archive after submit and displays the server reason", async () => {
+    const reason = "路径安全规则：不允许 .. 路径穿越";
+    const failedLog = { ...apiLog, id: "api-rejected-bundle", fileName: "bundle.zip", status: "Failed" as const, failureReason: reason };
+    const repository = renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockResolvedValue({ log: failedLog, job: null }) }));
+    await waitForApiRuntime(repository);
+    vi.useFakeTimers();
+    openUploadDialog();
+    chooseFile(new File(["archive"], "bundle.zip", { type: "application/zip" }));
+    await confirmSelectedFile();
+
+    expect(screen.queryByRole("dialog", { name: "上传日志" })).not.toBeInTheDocument();
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    expect(within(history).getByRole("button", { name: /bundle\.zip/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(reason);
+    expect(repository.rerunLog).not.toHaveBeenCalled();
   });
 
   it("allows unsupported extensions to reach the runtime", async () => {
@@ -344,7 +361,7 @@ describe("LogsPage api upload wiring", () => {
 
     openUploadDialog();
     chooseFile(file);
-    await confirmSelectedFile(".upload-dialog__actions .button.danger");
+    await confirmSelectedFile();
 
     expect(repository.uploadLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -459,21 +476,48 @@ describe("LogsPage api upload wiring", () => {
     ).toBe(false);
   });
 
-  it("absorbs handled runtime failures when multiple selected files include a rejected upload", async () => {
+  it("removes an individual file before submitting the remaining selection", async () => {
+    const repository = renderApiLogs();
+    await waitForApiRuntime(repository); vi.useFakeTimers(); openUploadDialog();
+    const first = new File(["one"], "first.log"), second = new File(["two"], "second.log");
+    fireEvent.change(document.querySelector("input[type='file']")!, { target: { files: [first, second] } });
+    fireEvent.click(screen.getByRole("button", { name: "移除 first.log" }));
+    expect(screen.getByRole("list", { name: "已选文件" })).not.toHaveTextContent("first.log");
+    expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent("second.log");
+    await confirmSelectedFile();
+    expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ files: [second] }));
+  });
+
+  it("shows the server's Chinese rejection rule inline without closing the dialog", async () => {
+    const reason = "路径安全规则：不允许 .. 路径穿越";
+    const repository = renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockRejectedValue(new Error(reason)) }));
+    await waitForApiRuntime(repository); vi.useFakeTimers();
+    const dialog = openUploadDialog(); chooseFile(new File(["archive"], "bad.zip"));
+    await confirmSelectedFile();
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(reason);
+    expect(repository.uploadLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists multiple selected files and submits one bundle, preserving handled failure state", async () => {
     const uploadLog = vi.fn().mockRejectedValue(new Error("boom"));
     const repository = renderApiLogs(createLogRepository({ uploadLog }));
     const first = new File(["line"], "first.log", { type: "text/plain" });
     const second = new File(["line"], "second.log", { type: "text/plain" });
     await waitForApiRuntime(repository);
-
+    vi.useFakeTimers();
     openUploadDialog();
     await act(async () => {
       fireEvent.change(document.querySelector("input[type='file']") as HTMLInputElement, { target: { files: [first, second] } });
       await Promise.resolve();
     });
 
-    await waitFor(() => expect(toastWithText(logRuntimeFailureNotification)).toBeTruthy());
-    expect(repository.uploadLog).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent("first.log");
+    expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent("second.log");
+    expect(repository.uploadLog).not.toHaveBeenCalled();
+    await confirmSelectedFile();
+    expect(toastWithText(logRuntimeFailureNotification)).toBeTruthy();
+    expect(repository.uploadLog).toHaveBeenCalledTimes(1);
+    expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ files: [first, second] }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 

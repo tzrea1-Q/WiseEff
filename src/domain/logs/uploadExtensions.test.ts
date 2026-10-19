@@ -25,5 +25,11 @@ describe("log upload extensions", () => {
     expect(isSupportedLogUploadFileName("events.zip", true)).toBe(true);
     expect(isSupportedLogUploadFileName("events.bin", true)).toBe(false);
     expect(isSupportedTextLogFileName("events")).toBe(false);
+    expect(isSupportedLogUploadFileName("events", true)).toBe(true);
+    expect(isSupportedLogUploadFileName("events", false)).toBe(false);
+    for (const name of ["bundle.tar", "bundle.tar.gz", "bundle.tgz"]) {
+      expect(isSupportedLogUploadFileName(name, true)).toBe(true);
+      expect(isSupportedLogUploadFileName(name, false)).toBe(false);
+    }
   });
 });

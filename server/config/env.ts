@@ -50,6 +50,10 @@ const rawEnvSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
+  LOG_BUNDLE_MAX_COMPRESSED_BYTES: z.coerce.number().int().positive().default(100 * 1024 * 1024),
+  LOG_BUNDLE_MAX_UNPACKED_BYTES: z.coerce.number().int().positive().default(100 * 1024 * 1024),
+  LOG_BUNDLE_MAX_FILES: z.coerce.number().int().positive().default(2000),
+  LOG_BUNDLE_MAX_FILE_BYTES: z.coerce.number().int().positive().default(100 * 1024 * 1024),
   LOG_ANALYSIS_API_BASE_URL: z.string().optional(),
   LOG_ANALYSIS_MODEL: z.string().optional(),
   LOG_ANALYSIS_API_KEY: z.string().optional(),
@@ -112,6 +116,13 @@ const rawEnvSchema = z.object({
 });
 
 type ParsedServerEnv = z.infer<typeof rawEnvSchema>;
+
+export function loadLogBundleLimits(raw: NodeJS.ProcessEnv = process.env) {
+  const values = rawEnvSchema.pick({ LOG_BUNDLE_MAX_COMPRESSED_BYTES: true, LOG_BUNDLE_MAX_UNPACKED_BYTES: true,
+    LOG_BUNDLE_MAX_FILES: true, LOG_BUNDLE_MAX_FILE_BYTES: true }).parse(raw);
+  return { maxCompressedBytes: values.LOG_BUNDLE_MAX_COMPRESSED_BYTES, maxUnpackedBytes: values.LOG_BUNDLE_MAX_UNPACKED_BYTES,
+    maxFiles: values.LOG_BUNDLE_MAX_FILES, maxFileBytes: values.LOG_BUNDLE_MAX_FILE_BYTES };
+}
 
 export type ServerEnv = ParsedServerEnv & {
   XIAOZE_LLM_CONFIG: ResolvedXiaozeLlmConfig;

@@ -14,7 +14,12 @@ export const logAnalysisSourceSchema = z.enum(["agent", "rules-fallback"]);
 export const logDegradedReasonSchema = z.enum(["provider-unavailable", "token-budget-exhausted"]);
 export const logDomainStatusSchema = z.enum(["active", "archived"]);
 
+export const logFileDtoSchema = z.object({
+  path: z.string(), sizeBytes: z.number(), lineCount: z.number(), encoding: z.enum(["utf-8", "utf-16le", "utf-16be"]),
+  lossy: z.boolean(), status: z.enum(["analyzed", "skipped"]), skipReason: z.string().nullable()
+});
 export const logEvidenceDtoSchema = z.object({
+  filePath: z.string().nullable().optional(),
   id: z.string(),
   stageId: logStageSchema,
   lineNumbers: z.array(z.number()),
@@ -24,6 +29,7 @@ export const logEvidenceDtoSchema = z.object({
 });
 
 export const logRecordDtoSchema = z.object({
+  files: z.array(logFileDtoSchema).optional(),
   skillRevision: skillRevisionPinSchema.nullable().optional(),
   id: z.string(),
   reportId: z.string(),

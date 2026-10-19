@@ -27,6 +27,21 @@ function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnaly
 }
 
 describe("executeLogAnalysisTool dispatch", () => {
+  it("lists inventory, filters search by file glob, and requires an explicit range file", async () => {
+    const context = buildContext();
+    context.files = ["device/a.log", "device/b.log"].map((path) => ({ path, sizeBytes: 100, lineCount: context.parsed.rawLines.length,
+      encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null, parsed: context.parsed }));
+    context.files.push({ path: "image.bin", sizeBytes: 2, lineCount: 0, encoding: "utf-8", lossy: false, status: "skipped", skipReason: "二进制文件" });
+    const inventory = await executeLogAnalysisTool("list_files", {}, context);
+    expect(inventory).toMatchObject({ ok: true, result: { total: 3, files: [{ path: "device/a.log" }, { path: "device/b.log" }, { skipReason: "二进制文件" }] } });
+    if (inventory.ok) expect(JSON.stringify(inventory.result)).not.toContain("rawLines");
+    const filtered = await executeLogAnalysisTool("search_lines", { pattern: "thermal", file: "device/a.*", neighborhood: 0 }, context);
+    expect(filtered).toMatchObject({ ok: true, result: { lines: [{ file: "device/a.log", line: 3 }, { file: "device/a.log", line: 4 }] } });
+    expect(await executeLogAnalysisTool("read_line_range", { startLine: 1, endLine: 2 }, context)).toMatchObject({ ok: false, error: expect.stringContaining("file is required") });
+    expect(await executeLogAnalysisTool("read_line_range", { file: "device/b.log", startLine: 1, endLine: 2 }, context))
+      .toMatchObject({ ok: true, result: { lines: [{ file: "device/b.log", line: 1 }, { file: "device/b.log", line: 2 }] } });
+    expect(await executeLogAnalysisTool("read_line_range", { file: "image.bin", startLine: 1, endLine: 2 }, context)).toMatchObject({ ok: false });
+  });
   it("rejects unknown tool names with the available catalog", async () => {
     const outcome = await executeLogAnalysisTool("write_parameter", {}, buildContext());
     expect(outcome.ok).toBe(false);

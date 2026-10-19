@@ -199,11 +199,17 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | `LOG_ANALYSIS_DETERMINISTIC` | `true` in `.env.example`, `false` in code | offline dev/test/eval | Runs the deterministic stub model (`model` recorded as `deterministic`); no provider required and readiness reports ready. Production must configure a real provider and keep this `false`. |
 | `LOG_ANALYSIS_KERNEL` | `loop` | analysis kernel selection | `loop` = P2 bounded multi-step agent with the five read-only tools (default); `single-shot` = the P1 kernel kept as a config fallback. |
 | `LOG_ANALYSIS_MAX_STEPS` | `6` | loop bound | Max model steps per analysis before the marked early convergence (`token-budget-exhausted`). |
+| `LOG_BUNDLE_MAX_COMPRESSED_BYTES` | `104857600` | bundle intake | Total uploaded bytes, including plain files; default 100 MiB. |
+| `LOG_BUNDLE_MAX_UNPACKED_BYTES` | `104857600` | bundle intake | Total original file bytes; intermediate inflated containers are also bounded; default 100 MiB. |
+| `LOG_BUNDLE_MAX_FILES` | `2000` | bundle intake | Maximum non-directory leaf files, including skipped files. |
+| `LOG_BUNDLE_MAX_FILE_BYTES` | `104857600` | bundle intake | Per-file original byte cap; default 100 MiB. Inflate also obeys the 200x ratio / 1 MiB floor. |
 | `LOG_ANALYSIS_JUDGE_API_BASE_URL` | blank | quality eval judge | OpenAI-compatible endpoint for the LLM-as-judge in `npm run logs:eval:quality` (real-model mode). Unset → deterministic rubric stub. |
 | `LOG_ANALYSIS_JUDGE_MODEL` | blank | quality eval judge | Judge model id, recorded in the quality report. |
 | `LOG_ANALYSIS_JUDGE_API_KEY` | blank | quality eval judge | Secret. |
 | `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | quality eval judge | Judge request timeout. |
 | `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge calibration | Deterministic human-review sampling rate (0..1) for `docs/generated/log-analysis-judge-sample.md`; at least one judged case is always sampled. |
+
+Bundle defaults are sized for the stock 512 MiB API / 384 MiB worker containers in `ops/self-hosted/compose.yaml`, retaining the previous 100 MiB single-file envelope. Raising these limits requires increasing container memory until streaming intake (#1234) lands. `npx tsx scripts/log-bundle-memory-probe.ts` (three files totaling 95 MiB, including per-file storage and archive construction) measured 357 MiB peak RSS in a standalone process.
 
 ## Log Analysis Result Webhooks
 

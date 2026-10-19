@@ -233,6 +233,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     logContent: chargingLog,
     script: [
       { content: { action: "tool", tool: "write_device_parameter", args: { value: 42 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 5 } } },
       { content: loopFinalPayload }
     ],
     expectations: [
@@ -249,6 +250,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     logContent: chargingLog,
     script: [
       { content: { action: "tool", tool: "read_line_range", args: { startLine: 0, endLine: -5 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 5 } } },
       { content: loopFinalPayload }
     ],
     expectations: [
