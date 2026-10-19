@@ -2,7 +2,7 @@ import { useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parse, stringify } from "yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { parsingSpecSchema } from "@wiseeff/dto-schemas";
 import { DecodingSection } from "./DecodingSection";
@@ -11,7 +11,7 @@ import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 import type { ParsePreview, SkillSpec } from "./types";
 import { decodeLogFiles } from "../../../server/modules/logs/parsing/engine";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 type Parsing = NonNullable<SkillSpec["parsing"]>;
 const spec: Parsing = { schemaVersion: "parsing/v1", frames: {
   packet: { endian: "little", fields: [{ name: "size", type: "uint", length: 1 }, { name: "payload", type: "bytes", length: "size" },
@@ -62,7 +62,7 @@ describe("frame workspace", () => {
     expect(screen.getByRole("combobox", { name: "选择帧" })).toHaveTextContent("message");
     const hex = screen.getByRole("group", { name: "帧十六进制视图" });
     expect(within(hex).getAllByRole("button")).toHaveLength(10);
-    expect(screen.getByLabelText("hdr 解码值")).toHaveTextContent("8545");
+    expect(screen.getByLabelText("hdr 解码值")).toHaveTextContent(/^8545 \(0x2161\)$/);
     expect(screen.getByLabelText("objects 解码值")).toHaveTextContent("2c9101082cd10200");
     await userEvent.click(screen.getByRole("button", { name: "选择帧字段 objects" }));
     expect(within(hex).getAllByRole("button", { pressed: true })).toHaveLength(8);
@@ -135,10 +135,10 @@ describe("frame workspace", () => {
   it("links field selection to bytes and byte selection to the field with text and pressed states", async () => {
     editor();
     await userEvent.click(screen.getByRole("button", { name: "选择帧字段 payload" }));
-    expect(screen.getByText("已选字段：payload（▶ 与边框标记字节）")).toBeVisible();
+    expect(screen.getByText("已选字段：payload（边框与粗体标记字节）")).toBeVisible();
     const hex = screen.getByRole("group", { name: "帧十六进制视图" });
     expect(within(hex).getAllByRole("button", { pressed: true }).map((byte) => byte.getAttribute("aria-label"))).toEqual(["字节 1：A0，字段 payload", "字节 2：B0，字段 payload"]);
-    expect(within(hex).getByRole("button", { name: "字节 1：A0，字段 payload" })).toHaveTextContent("▶A0");
+    expect(within(hex).getByRole("button", { name: "字节 1：A0，字段 payload" })).toHaveTextContent(/^A0$/);
     await userEvent.click(within(hex).getByRole("button", { name: "字节 3：03，字段 status" }));
     expect(screen.getByRole("button", { name: "选择帧字段 status" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "选择帧字段 payload" })).toHaveAttribute("aria-pressed", "false");
@@ -147,7 +147,7 @@ describe("frame workspace", () => {
     expect(screen.getByRole("status", { name: "sum 校验状态" })).toHaveTextContent("✓ 校验通过 · 期望 85 / 实际 85");
   });
 
-  it("shows a failing checksum inline and renders 16 bytes per hex row", () => {
+  it("shows a failing checksum inline and safely defaults to four bytes per row before measuring", () => {
     const result = structuredClone(preview);
     const data = result.events[0].fields.data;
     if (!data || typeof data !== "object" || !("fields" in data) || !data.fields) throw new Error("Missing frame fixture");
@@ -157,8 +157,60 @@ describe("frame workspace", () => {
     if (sum && typeof sum === "object" && "checksum" in sum) sum.checksum = { expected: 85, actual: 0, ok: false };
     const { container } = editor(result.events);
     expect(screen.getByRole("status", { name: "sum 校验状态" })).toHaveTextContent("✕ 校验失败 · 期望 85 / 实际 0");
-    expect([...container.querySelectorAll(".skill-frame-hex-row")].map((row) => row.querySelectorAll("button").length)).toEqual([16, 1]);
+    expect([...container.querySelectorAll(".skill-frame-hex-row")].map((row) => row.querySelectorAll("button").length)).toEqual([4, 4, 4, 4, 1]);
     expect(screen.getByText("0010")).toBeVisible();
+  });
+
+  it("fits sixteen, eight or four bytes to the column and keeps selected byte text at constant width", async () => {
+    let width = 470, resize = () => {};
+    const disconnect = vi.fn(), originalRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains("skill-frame-hex")) return new DOMRect(0, 0, width, 0);
+      if (this.classList.contains("skill-frame-hex-offset")) return new DOMRect(0, 0, 40, 0);
+      return originalRect.call(this);
+    });
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) { if (target.classList.contains("skill-frame-hex")) resize = () => this.callback([], this as unknown as ResizeObserver); }
+      disconnect = disconnect;
+    });
+    const { container, unmount } = editor(pdPreview.events.filter((event) => event.line === 1), pdSpec);
+    const rowSizes = () => [...container.querySelectorAll(".skill-frame-hex-row")].map((row) => row.querySelectorAll("button").length);
+    const gutters = () => [...container.querySelectorAll(".skill-frame-hex-offset")].map((item) => item.textContent);
+    expect(rowSizes()).toEqual([8, 2]);
+    expect(gutters()).toEqual(["0000", "0008"]);
+    const hex = screen.getByRole("group", { name: "帧十六进制视图" });
+    const before = within(hex).getAllByRole("button").map((item) => item.textContent);
+    await userEvent.click(screen.getByRole("button", { name: "选择帧字段 objects" }));
+    expect(within(hex).getAllByRole("button").map((item) => item.textContent)).toEqual(before);
+    expect(within(hex).getAllByRole("button", { pressed: true })).toHaveLength(8);
+    expect(within(hex).queryByText(/▶/)).not.toBeInTheDocument();
+    width = 800; act(() => resize());
+    expect(rowSizes()).toEqual([10]);
+    expect(container.querySelector(".skill-frame-hex-row")).toHaveStyle({ gridTemplateColumns: "minmax(0, var(--space-10)) repeat(16, minmax(0, 1fr))" });
+    width = 200; act(() => resize());
+    expect(rowSizes()).toEqual([4, 4, 2]);
+    expect(gutters()).toEqual(["0000", "0004", "0008"]);
+    await userEvent.click(within(hex).getByRole("button", { name: "字节 8：02，字段 objects，重复项 1" }));
+    expect(within(hex).getAllByRole("button", { pressed: true })).toHaveLength(4);
+    unmount(); expect(disconnect).toHaveBeenCalled();
+  });
+
+  it.each([
+    [-2, {}, "-2 (-0x2)"],
+    ["18446744073709551615", {}, "18446744073709551615 (0xffffffffffffffff)"],
+    [8545, { unit: "mV" }, "8545 mV"],
+    [8545, { meaning: "Source_Capabilities" }, "8545 (Source_Capabilities)"],
+    [0.5, {}, "0.5"]
+  ] as const)("formats integer sample %s without altering physical or enum values", (value, metadata, expected) => {
+    const initial = structuredClone(pdSpec), events = structuredClone(pdPreview.events.filter((event) => event.line === 1));
+    const frame = events[0].fields.frame;
+    if (!frame || typeof frame !== "object" || !("fields" in frame) || !frame.fields) throw new Error("Missing frame fixture");
+    frame.fields.hdr = { raw: "6121", value, ...metadata };
+    initial.frames!.message.fields[0] = { name: "hdr", type: typeof value === "number" && value < 0 ? "int" : "uint", length: 8 };
+    editor(events, initial);
+    expect(screen.getByLabelText("hdr 解码值")).toHaveTextContent(expected);
+    expect(screen.getByLabelText("hdr 解码值").textContent).toBe(expected);
   });
 
   it("renders hex bytes from the decoded byte value when the original capture is base64", async () => {
