@@ -1,9 +1,10 @@
 -- Freeze the pre-0196 charging prefilter as a published, tenant-owned skill.
--- Runtime organization provisioning and migration replay share the same atomic seed.
+-- One-time data backfill: no persistent functions, ACL changes, or audit baseline rows.
 -- Replay never changes an existing seed or any author-owned publication.
-create or replace function provision_charging_skill(target_organization_id text,
-  seed_source text default 'organization-provisioning') returns void language plpgsql as $seed$
+do $seed$
 declare
+  organization record;
+  target_organization_id text;
   skill_id text;
   skill_name text;
   suffix integer;
@@ -266,33 +267,25 @@ declare
 }$rules$::jsonb;
   skill_spec jsonb;
 begin
-  -- Serialize seed retries per tenant, including concurrent seed invocations.
-  perform 1 from organizations where id = target_organization_id for update;
-  if not found then raise exception 'Organization does not exist' using errcode = '23503'; end if;
-  skill_id := 'seed-charging:' || target_organization_id;
-  if exists (select 1 from log_domains where id = skill_id and organization_id = target_organization_id) then return; end if;
-  skill_spec := jsonb_build_object('schemaVersion', 'skill/v1', 'signalRules', charging_rules);
-  skill_name := '充电';
-  suffix := 1;
-  while exists (select 1 from log_domains where organization_id = target_organization_id and name = skill_name) loop
-    suffix := suffix + 1;
-    skill_name := '充电 (' || suffix || ')';
+  for organization in select id from organizations order by id loop
+    target_organization_id := organization.id;
+    -- Serialize seed retries per tenant, including concurrent seed invocations.
+    perform 1 from organizations where id = target_organization_id for update;
+    skill_id := 'seed-charging:' || target_organization_id;
+    if exists (select 1 from log_domains where id = skill_id and organization_id = target_organization_id) then continue; end if;
+    skill_spec := jsonb_build_object('schemaVersion', 'skill/v1', 'signalRules', charging_rules);
+    skill_name := '充电';
+    suffix := 1;
+    while exists (select 1 from log_domains where organization_id = target_organization_id and name = skill_name) loop
+      suffix := suffix + 1;
+      skill_name := '充电 (' || suffix || ')';
+    end loop;
+    insert into log_domains (id, organization_id, name, description)
+      values (skill_id, target_organization_id, skill_name, 'Charging analysis with the original charging signal rules.');
+    insert into log_skill_revisions
+      (id, organization_id, skill_id, revision_number, status, spec, content_hash, published_at)
+      values ('seed-charging-revision:' || target_organization_id, target_organization_id, skill_id, 1, 'published', skill_spec,
+        encode(sha256(convert_to(skill_spec::text, 'UTF8')), 'hex'), now());
   end loop;
-  insert into log_domains (id, organization_id, name, description)
-    values (skill_id, target_organization_id, skill_name, 'Charging analysis with the original charging signal rules.');
-  insert into log_skill_revisions
-    (id, organization_id, skill_id, revision_number, status, spec, content_hash, published_at)
-    values ('seed-charging-revision:' || target_organization_id, target_organization_id, skill_id, 1, 'published', skill_spec,
-      encode(sha256(convert_to(skill_spec::text, 'UTF8')), 'hex'), now());
-  insert into audit_events (id, organization_id, actor_type, app, kind, action, severity,
-    target_type, target_id, metadata, trace_id)
-    values ('seed-charging-audit:' || target_organization_id, target_organization_id, 'system', 'log-analysis',
-      'log-skill-create', 'log-skill-create', 'Medium', 'log-skill', skill_id,
-      jsonb_build_object('initiator', 'system', 'systemKind', case when seed_source = '0196_seed_charging_skill' then 'migration' else 'service' end,
-        'systemName', seed_source, 'revisionId', 'seed-charging-revision:' || target_organization_id),
-      seed_source);
 end
 $seed$;
-
-select provision_charging_skill(id, '0196_seed_charging_skill') from organizations order by id;
-

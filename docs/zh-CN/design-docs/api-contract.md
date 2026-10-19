@@ -398,7 +398,7 @@ GET  /api/v1/jobs/:jobId/events
 
 条件保留 `text`、`numericComparison`、`severityToken`，新增 `{type: "field", field: "extractorId.fieldName", operator: "equals", value}`、`operator: "range", min, max`（闭区间数值范围）及 `operator: "in", values`。比较使用 `parsing/v1` 成功解码的标量值，严格检查类型；字节对象和未声明字段会被拒绝。`{type: "window", condition: textOrFieldCondition, count, seconds}` 在含当前行的向前时间窗内至少出现 `count` 个匹配后，对每个匹配行产生信号。计数范围 1–10000；秒数大于零且不超过 86400。只有含已解析时间戳的行参与计数；时间回退会清空窗口，各文件不共享计数。消息模式使用 RE2，保留模式 4096 字符及输入 65536 字符上限。
 
-迁移 `0196_seed_charging_skill.sql` 通过 `provision_charging_skill` 为已有的每个组织创建已发布的「充电」技能。组织 bootstrap 和 M0/M1/M2/M3 种子为之后新建的组织调用同一函数。组织行锁保证重试幂等；冻结规则数据保持原充电证据一致，重放不修改已有种子或作者技能。沿用租户复合外键，同事务写入系统审计（回填为 `migration`，初始化为 `service`）。钉住且未配置规则的技能使用通用信号，未分类上传保留旧充电预筛。草稿编辑不改变既有运行钉住的规则；规则回退同时使用钉住规则与通用信号。
+迁移 `0196_seed_charging_skill.sql` 在内联 `DO` 块中为已有的每个组织创建已发布的「充电」技能，不写应用审计，也不留下持久化初始化函数。组织 bootstrap 和 M0/M1/M2/M3 种子为之后新建的组织调用 TypeScript 服务 `provisionChargingSkill`。运行时初始化通过系统服务调用使用 `withAuditedWrite`，技能、发布版本和审计在同一事务中提交或回滚。两条路径都使用组织行锁和租户复合外键；重试不修改已有种子或作者版本。测试校验冻结的迁移字面量与运行时种子一致，两者均保留原充电规则证据。钉住且未配置规则的技能使用通用信号，未分类上传保留旧充电预筛。草稿编辑不改变既有运行钉住的规则；规则回退同时使用钉住规则与通用信号。
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
 | `POST` | `/api/v1/logs` | 创建日志分析记录 |
 | `GET` | `/api/v1/logs` | 日志列表 |

@@ -5,6 +5,7 @@ import { createPostgresDatabase } from "../server/shared/database/client";
 import type { Database } from "../server/shared/database/client";
 import { seedBaselinePlatformRoles } from "../server/modules/auth/baselineCatalog";
 import { seedLocalDemoCredentials } from "../server/modules/auth/seedLocalDemoCredentials";
+import { provisionChargingSkill } from "../server/modules/logs/provisionChargingSkill";
 
 const organizationId = "org-chargelab";
 
@@ -28,7 +29,7 @@ export async function seedM0Foundation(db: Database) {
       `,
       [organizationId, "ChargeLab"]
     );
-    await tx.query("select provision_charging_skill($1)", [organizationId]);
+    await provisionChargingSkill(tx, organizationId);
   });
 
   for (const [id, name, email, title] of users) {

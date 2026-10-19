@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 import { loadServerEnv } from "../server/config/env";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
+import { provisionChargingSkill } from "../server/modules/logs/provisionChargingSkill";
 
 const organizationId = "org-chargelab";
 const deviceId = "sim-device-aurora-1";
@@ -125,7 +126,7 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       `,
       [organizationId, "ChargeLab"]
     );
-    await tx.query("select provision_charging_skill($1)", [organizationId]);
+    await provisionChargingSkill(tx, organizationId);
 
     await tx.query(
       `
