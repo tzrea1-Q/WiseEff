@@ -1,9 +1,11 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { createPostgresDatabase } from "../../shared/database/client";
+import { applyMigrations } from "../../shared/database/migrations";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createRouter } from "../../shared/http/router";
@@ -46,7 +48,8 @@ describe.skipIf(!available)("analysis skill integration keys over PostgreSQL", (
       expect(unicode.skillKey).toMatch(/^skill-[a-f0-9]{8}$/);
       // Replay only this migration against identities predating skillKey.
       await db.query("alter table log_domains drop column skill_key cascade; drop function assign_log_skill_key() cascade");
-      await db.query(await readFile(new URL("../../migrations/0200_log_skill_keys.sql", import.meta.url), "utf8"));
+      await db.query("delete from schema_migrations where name = '0200_log_skill_keys.sql'");
+      expect(await applyMigrations(db, fileURLToPath(new URL("../../migrations", import.meta.url)))).toEqual(["0200_log_skill_keys.sql"]);
       expect((await request<{ items: Skill[] }>("/api/v1/log-skills")).body.items.map((item) => item.skillKey).sort())
         .toEqual([skill.skillKey, collision.skillKey, unicode.skillKey].sort());
       expect((await request<{ item: Skill }>(`/api/v1/log-domains/${skill.id}`, "PATCH", { name: "Renamed Device" })).body.item.skillKey).toBe(skill.skillKey);
