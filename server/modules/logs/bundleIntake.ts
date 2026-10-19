@@ -58,7 +58,7 @@ function validateZipExtras(extra: Buffer) {
   }
 }
 
-function decodeFile(path: string, bytes: Buffer): BundleFile {
+export function decodeLogBundleFile(path: string, bytes: Buffer, requireSupportedExtension = true): BundleFile {
   const utf16 = bytes.length >= 2 && ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff));
   const encoding = utf16 ? (bytes[0] === 0xff ? "utf-16le" : "utf-16be") : "utf-8";
   let lossy = false;
@@ -70,7 +70,7 @@ function decodeFile(path: string, bytes: Buffer): BundleFile {
   // UTF-16's zero octets are ordinary text; decoded U+0000 is not PostgreSQL-storable text.
   const binary = (!utf16 && bytes.subarray(0, 8192).includes(0)) || text.includes("\0") || controls / Math.max(1, sample.length) > 0.2;
   const extension = extname(path).toLowerCase();
-  const skipReason = binary ? "二进制文件" : extension && !(supportedLogExtensions as readonly string[]).includes(extension) ? "不支持的文件扩展名" : null;
+  const skipReason = binary ? "二进制文件" : requireSupportedExtension && extension && !(supportedLogExtensions as readonly string[]).includes(extension) ? "不支持的文件扩展名" : null;
   let lineCount = binary ? 0 : 1;
   if (!binary) {
     // Count separators without allocating an array of every line; preserve split's trailing empty line.
@@ -117,7 +117,7 @@ export function intakeLogBundle(
       total += bytes.length;
       if (total > limits.maxUnpackedBytes) throw new LogBundleIntakeError("解包总大小规则：超过 LOG_BUNDLE_MAX_UNPACKED_BYTES 上限");
       if (total > ratioBudget) throw new LogBundleIntakeError("压缩比规则：解包总量超过 200 倍压缩比上限（最低预算 1 MiB）");
-      files.push(decodeFile(path, bytes));
+      files.push(decodeLogBundleFile(path, bytes));
     };
     const inflate = (bytes: Buffer, gzip: boolean, container: boolean) => {
       const cap = Math.min(unpackedBudget - inflatedBytes, container ? unpackedBudget : limits.maxFileBytes, Math.max(bytes.length * 200, MiB));

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import { createHttpLogAnalysisRepository } from "./logClient";
 import type { LogJobDto, LogRecordDto } from "./logDtos";
-import { mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
+import { mockSkillWorkspace, mockSkillSample, mockSkillTemplates } from "@/infrastructure/mock/logSkills";
 
 const baseLogDto: LogRecordDto = {
   id: "log-1",
@@ -60,6 +60,35 @@ function createRepository(fetchMock: typeof fetch) {
     baseUrl: "http://127.0.0.1:8787"
   });
 }
+
+it("uses template, creation and sample contracts with encoded skill ids", async () => {
+  const skill = mockSkillWorkspace("skill-charging")!;
+  const fetchMock = createFetchMock({ items: mockSkillTemplates });
+  const repository = createRepository(fetchMock);
+  await expect(repository.listSkillTemplates!()).resolves.toEqual(mockSkillTemplates);
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/log-skill-templates");
+  const input = { name: "New", startingPoint: { templateId: "linux-dmesg" } };
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: skill }));
+  await expect(repository.createLogSkill!(input)).resolves.toEqual(skill);
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/log-skills");
+  expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual(input);
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: mockSkillSample }));
+  await expect(repository.getSkillSample!("skill/a")).resolves.toEqual(mockSkillSample);
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/log-skills/skill%2Fa/sample");
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: null }));
+  await expect(repository.getSkillSample!(skill.id)).resolves.toBeNull();
+  const { content: _content, truncated: _truncated, ...metadata } = mockSkillSample;
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: metadata }));
+  const file = new File(["hello"], "sample.log");
+  Object.defineProperty(file, "arrayBuffer", { value: async () => new TextEncoder().encode("hello").buffer });
+  await repository.replaceSkillSample!("skill/a", file);
+  expect(fetchMock.mock.calls.at(-1)?.[1]?.method).toBe("PUT");
+  expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({ fileName: "sample.log", contentBase64: "aGVsbG8=" });
+  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+  await repository.deleteSkillSample!("skill/a");
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/log-skills/skill%2Fa/sample");
+  expect(fetchMock.mock.calls.at(-1)?.[1]?.method).toBe("DELETE");
+});
 
 it("uses workspace contracts, encodes ids and sends draft bases for all authoring requests", async () => {
   const skill = mockSkillWorkspace("skill-charging")!;

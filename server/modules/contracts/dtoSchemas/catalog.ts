@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import { z } from "zod";
-import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema } from "../../logs/schemas";
+import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema } from "../../logs/schemas";
 import { logSkillSpecSchema } from "../../logs/skillSpec";
 
 import {
@@ -30,6 +30,7 @@ import {
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
   logSkillListResponseSchema, logSkillResponseSchema, logSkillRevisionResponseSchema, logSkillRevisionListResponseSchema,
+  logSkillTemplateListResponseSchema, logSkillSampleResponseSchema, logSkillSampleReplaceResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
   logFeedbackResponseSchema,
@@ -72,6 +73,11 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogRerunRequest: rerunLogBodySchema,
   LogSkillDraftRequest: z.object({ spec: logSkillSpecSchema, baseDraftRevisionId: z.string().min(1).nullable(), basePublishedRevisionId: z.string().min(1) }).strict(),
   LogSkillPublishRequest: z.object({ draftRevisionId: z.string().min(1) }).strict(),
+  CreateLogSkillRequest: createLogSkillBodySchema,
+  ReplaceLogSkillSampleRequest: replaceLogSkillSampleBodySchema,
+  LogSkillTemplateListResponse: logSkillTemplateListResponseSchema,
+  LogSkillSampleResponse: logSkillSampleResponseSchema,
+  LogSkillSampleReplaceResponse: logSkillSampleReplaceResponseSchema,
   // No response content is emitted for 204; retain an empty shape for route coverage.
   LogSkillDiscardResponse: z.object({}).strict(),
   ProjectListResponse: projectListResponseSchema,
@@ -160,6 +166,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.feedback",
   "logs.feedbackInsights",
   "logs.listSkills", "logs.createSkill", "logs.getSkill", "logs.saveSkillDraft", "logs.discardSkillDraft", "logs.restoreSkillRevision", "logs.publishSkill", "logs.listSkillRevisions", "logs.getSkillRevision",
+  "logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample",
   "logs.listDomains",
   "logs.createDomain",
   "logs.updateDomain",

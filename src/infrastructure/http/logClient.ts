@@ -24,6 +24,9 @@ import {
   logSkillResponseSchema,
   logSkillRevisionResponseSchema,
   logSkillRevisionListResponseSchema,
+  logSkillTemplateListResponseSchema,
+  logSkillSampleResponseSchema,
+  logSkillSampleReplaceResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
   logFileUploadResponseSchema,
@@ -309,6 +312,23 @@ export function createHttpLogAnalysisRepository(
       const response = parseContractDto(logSkillListResponseSchema,
         await apiClient.get(buildLogDomainsPath(query).replace("log-domains", "log-skills")), "LogSkillListResponse");
       return logDomainListFromDto(response);
+    },
+    async listSkillTemplates() {
+      return parseContractDto(logSkillTemplateListResponseSchema, await apiClient.get("/api/v1/log-skill-templates"), "LogSkillTemplateListResponse").items;
+    },
+    async createLogSkill(input) {
+      return parseContractDto(logSkillResponseSchema, await apiClient.post("/api/v1/log-skills", input), "LogSkillResponse").item;
+    },
+    async getSkillSample(id) {
+      return parseContractDto(logSkillSampleResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/sample`), "LogSkillSampleResponse").item;
+    },
+    async replaceSkillSample(id, file) {
+      parseContractDto(logSkillSampleReplaceResponseSchema, await apiClient.put(`/api/v1/log-skills/${encodeURIComponent(id)}/sample`, {
+        fileName: file.name, contentBase64: await fileToBase64(file)
+      }), "LogSkillSampleReplaceResponse");
+    },
+    async deleteSkillSample(id) {
+      await apiClient.delete(`/api/v1/log-skills/${encodeURIComponent(id)}/sample`);
     },
     async getLogSkill(id) {
       return parseContractDto(logSkillResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}`), "LogSkillResponse").item;

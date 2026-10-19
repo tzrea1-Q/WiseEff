@@ -32,6 +32,10 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
+import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
+import { SectionEmpty, SectionSkeleton } from "@/components/common/SectionState";
+import type { SkillAuthoringRepository } from "@/features/log-skills/types";
+
 const collectionTabs = ["records", "skills", "quality"] as const;
 
 export type LogAdminPageProps = {
@@ -40,6 +44,8 @@ export type LogAdminPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   logActions?: LogRuntimeActions;
+  skillRepository?: Partial<SkillAuthoringRepository>;
+  apiMode?: boolean;
   /** Published-entry catalog for the domain ↔ knowledge link editor (API mode only). */
   knowledgeRepository?: KnowledgeRepository;
 };
@@ -523,16 +529,21 @@ function LogDomainGovernanceSection({
   canGovern,
   logActions,
   knowledgeRepository,
-  onNavigate
+  onNavigate,
+  skillRepository,
+  apiMode
 }: {
   canGovern: boolean;
   logActions?: LogRuntimeActions;
   knowledgeRepository?: KnowledgeRepository;
   onNavigate: (path: string) => void;
+  skillRepository?: Partial<SkillAuthoringRepository>;
+  apiMode: boolean;
 }) {
   const [domains, setDomains] = useState<LogDomain[] | null>(null);
   const domainsLoading = Boolean(logActions) && domains === null;
   const [formOpen, setFormOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
@@ -553,11 +564,7 @@ function LogDomainGovernanceSection({
   }, [refreshDomains]);
 
   const openCreateForm = () => {
-    setDraftConflict(false);
-    setForm(emptyLogDomainForm);
-    setProfileError(null);
-    setNameError(null);
-    setFormOpen(true);
+    setCreateOpen(true);
   };
 
   const openEditForm = (domain: LogDomain) => {
@@ -576,7 +583,7 @@ function LogDomainGovernanceSection({
 
   const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!logActions || pending) {
+    if (!logActions || !form.domainId || pending) {
       return;
     }
     const parsedProfile = parseProfileText(form.profileText);
@@ -590,23 +597,13 @@ function LogDomainGovernanceSection({
     setPending(true);
     try {
       const original = domains?.find((domain) => domain.id === form.domainId);
-      let saved = form.domainId
-        ? await logActions.updateLogDomain({
-            domainId: form.domainId,
-            name: form.name.trim(),
-            ...(form.description !== (original?.description ?? "") ? { description: form.description.trim() === "" ? null : form.description.trim() } : {}),
-            ...(form.profileText !== formatProfileText(original?.formatProfile) ? { formatProfile: form.profileText.trim() === "" ? null : parsedProfile.profile } : {}),
-            ...(form.modelOverride !== (original?.modelOverride ?? "") ? { modelOverride: form.modelOverride.trim() === "" ? null : form.modelOverride.trim() } : {})
-          })
-        : await logActions.createLogDomain({
-            name: form.name.trim(),
-            description: form.description.trim() === "" ? undefined : form.description.trim(),
-            formatProfile: parsedProfile.profile
-          });
-      // Creation does not carry the override; apply it right after in the same save.
-      if (saved && !form.domainId && form.modelOverride.trim() !== "") {
-        saved = await logActions.updateLogDomain({ domainId: saved.id, modelOverride: form.modelOverride.trim() });
-      }
+      const saved = await logActions.updateLogDomain({
+        domainId: form.domainId,
+        name: form.name.trim(),
+        ...(form.description !== (original?.description ?? "") ? { description: form.description.trim() === "" ? null : form.description.trim() } : {}),
+        ...(form.profileText !== formatProfileText(original?.formatProfile) ? { formatProfile: form.profileText.trim() === "" ? null : parsedProfile.profile } : {}),
+        ...(form.modelOverride !== (original?.modelOverride ?? "") ? { modelOverride: form.modelOverride.trim() === "" ? null : form.modelOverride.trim() } : {})
+      });
       if (saved) {
         setFormOpen(false);
         setForm(emptyLogDomainForm);
@@ -739,9 +736,14 @@ function LogDomainGovernanceSection({
       ) : (
         <>
           <AdminListPage label="分析技能治理"
-            headerActions={<Button size="sm" onClick={openCreateForm} disabled={pending}>新建分析技能</Button>}
+            headerContent="分析技能"
+            headerActions={domains?.length || domainsLoading ? <Button size="sm" onClick={openCreateForm} disabled={pending || domainsLoading}>新建技能</Button> : undefined}
             filterBar={<p className="text-sm text-muted-foreground">注册分析技能（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
-            table={{ "aria-label": "分析技能列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50 }}
+            table={{ "aria-label": "分析技能列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50,
+              emptyState: <div className="flex flex-col items-center gap-3 py-4 text-center">
+                <SectionEmpty title="还没有分析技能" message="从模板创建技能，并上传样例日志开始配置。" />
+                <Button onClick={openCreateForm}>新建第一个分析技能</Button>
+              </div> }}
             rowActions={(domain) => ({ label: domain.name,
               primaryAction: { id: "edit", label: "编辑", disabled: pending, onSelect: () => openEditForm(domain) },
               items: domain.status === "active" ? [
@@ -752,12 +754,16 @@ function LogDomainGovernanceSection({
                   onSelect: () => archiveDomain(domain.id) }
               ] : []
             })}
-            emptyState={{ message: domainsLoading ? "正在加载分析技能…" : "暂无分析技能；未分类域始终可用（通用分析）。", actionLabel: "新建分析技能", onAction: openCreateForm }} />
+            tableState={domainsLoading ? <SectionSkeleton label="正在加载分析技能" /> : undefined}
+            emptyState={{ message: "还没有分析技能", actionLabel: "新建第一个分析技能", onAction: openCreateForm }} />
+
+          {createOpen ? <CreateSkillDialog repository={skillRepository} apiMode={apiMode} skills={domains ?? []}
+            onDismiss={() => setCreateOpen(false)} onNavigate={onNavigate} /> : null}
 
           {formOpen ? (
             <form
               className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
-              aria-label={form.domainId ? "编辑分析技能" : "新建分析技能"}
+              aria-label="编辑分析技能"
               onSubmit={(event) => void submitForm(event)}
             >
               <div className="grid gap-3 sm:grid-cols-2">
@@ -838,7 +844,7 @@ function LogDomainGovernanceSection({
                   取消
                 </Button>
                 <Button type="submit" size="sm" disabled={pending || form.name.trim() === ""} aria-busy={pending || undefined}>
-                  {form.domainId ? "保存修改" : "创建分析技能"}
+                  保存修改
                 </Button>
               </div>
             </form>
@@ -993,7 +999,7 @@ function FeedbackQualityInsightsSection({
   );
 }
 
-export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, knowledgeRepository }: LogAdminPageProps) {
+export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, knowledgeRepository, skillRepository, apiMode = false }: LogAdminPageProps) {
   const [collection, selectCollection] = useCollectionTab(collectionTabs, new URLSearchParams(window.location.search).has("tab") ? "skills" : "records");
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
@@ -1303,7 +1309,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         ]} />
       <TabPanel id={`log-panel-${collection}`} aria-labelledby={`log-tab-${collection}`}>
         <div hidden={collection !== "skills"}>
-          <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} knowledgeRepository={knowledgeRepository} onNavigate={onNavigate} />
+          <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} knowledgeRepository={knowledgeRepository} onNavigate={onNavigate}
+            skillRepository={skillRepository} apiMode={apiMode} />
         </div>
         <div hidden={collection !== "quality"}>
           <FeedbackQualityInsightsSection timeWindow={timeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} />

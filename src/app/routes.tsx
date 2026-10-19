@@ -413,6 +413,8 @@ export function PageRouter({
           search={search}
           logActions={logActions}
           knowledgeRepository={knowledgeRepository}
+          skillRepository={runtime?.logAnalysisRepository}
+          apiMode={runtimeMode === "api"}
         />
       );
     case "feedback-admin":

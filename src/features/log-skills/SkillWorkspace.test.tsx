@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { SkillWorkspace } from "./SkillWorkspace";
-import { mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
+import { mockSkillWorkspace, mockSkillSample } from "@/infrastructure/mock/logSkills";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import type { SkillWorkspaceRepository, SkillRevision } from "./types";
@@ -17,6 +17,7 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
   if (options.legacyDescription) delete skill.currentRevision.spec.description;
   if (options.draft) skill.draft = { ...skill.currentRevision, id: "draft", number: 3, status: "draft", spec: { ...skill.currentRevision.spec, description: "草稿描述" } };
   const repository = {
+    getSkillSample: vi.fn(async () => mockSkillSample),
     getLogSkill: vi.fn(async () => structuredClone(skill)),
     listSkillRevisions: vi.fn(async () => [...(skill.draft ? [skill.draft] : []), skill.currentRevision, old]),
     saveSkillDraft: vi.fn<SkillWorkspaceRepository["saveSkillDraft"]>(async (_id, spec) => {
@@ -49,6 +50,16 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
 }
 
 describe("skill workspace", () => {
+  it("keeps the mounted sample and its scroll position across sections", async () => {
+    const { repository } = setup();
+    const sample = await screen.findByRole("region", { name: "样例内容" });
+    expect(sample).toHaveAttribute("data-sample-scroll");
+    sample.scrollTop = 120;
+    await userEvent.click(screen.getByRole("button", { name: "版本" }));
+    expect(screen.getByRole("region", { name: "样例内容" })).toBe(sample);
+    expect(sample.scrollTop).toBe(120);
+    expect(repository.getSkillSample).toHaveBeenCalledTimes(1);
+  });
   it("shows compact overview facts without leaking the internal skill id", async () => {
     setup();
     await screen.findByRole("textbox", { name: "描述" });
@@ -224,7 +235,7 @@ describe("skill workspace", () => {
   it.each([{ apiMode: false }, { canEdit: false }])("keeps mock and viewer authoring disabled: %j", async (options) => {
     const { repository } = setup(options);
     expect(await screen.findByRole("textbox", { name: "描述" })).toBeDisabled();
-    expect(screen.getByText(/仅供查看/)).toBeInTheDocument();
+    expect(screen.getByText(/仅供查看；/)).toBeInTheDocument();
     expect(repository.saveSkillDraft).not.toHaveBeenCalled();
   });
   it("renders the standard missing state for an inaccessible id", async () => {

@@ -611,11 +611,12 @@ describe("LogAdminPage 分析技能治理", () => {
   });
 
   it("preserves domain edits while visiting another collection", async () => {
-    renderPage({ logActions: createLogActions() });
-    await userEvent.click(within(screen.getByRole("group", { name: "分析技能治理操作" })).getByRole("button", { name: "新建分析技能" }));
+    renderPage({ logActions: createLogActions({ listLogDomains: vi.fn().mockResolvedValue([chargingDomain]) }) });
+    await userEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    await userEvent.clear(screen.getByLabelText(/名称/));
     await userEvent.type(screen.getByLabelText(/名称/), "未保存分析技能");
     await userEvent.click(screen.getByRole("tab", { name: "日志分析记录" }));
-    expect(screen.queryByRole("form", { name: "新建分析技能" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "编辑分析技能" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "分析技能" }));
     expect(screen.getByLabelText(/名称/)).toHaveValue("未保存分析技能");
   });
@@ -656,7 +657,15 @@ describe("LogAdminPage 分析技能治理", () => {
     renderPage({ logActions });
 
     const table = await screen.findByRole("table", { name: "分析技能列表" });
-    expect(within(table).getByText("暂无分析技能；未分类域始终可用（通用分析）。")).toBeInTheDocument();
+    expect(within(table).getByText("还没有分析技能").tagName).toBe("STRONG");
+    expect(within(table).getByText("从模板创建技能，并上传样例日志开始配置。")).toBeInTheDocument();
+    const action = within(table).getByRole("button", { name: "新建第一个分析技能" });
+    expect(action).toBeEnabled();
+    expect(action).toHaveAttribute("data-variant", "default");
+    expect(action).toHaveAttribute("data-size", "default");
+    expect(screen.queryByRole("button", { name: "新建技能" })).not.toBeInTheDocument();
+    await userEvent.click(action);
+    expect(screen.getByRole("dialog", { name: "新建技能" })).toBeInTheDocument();
   });
 
   it("sorts the domain list from the 名称 column header", async () => {
@@ -697,23 +706,27 @@ describe("LogAdminPage 分析技能治理", () => {
     expect(within(table).queryByText("charging-power")).not.toBeInTheDocument();
   });
 
-  it("creates a domain through the form with a valid profile JSON", async () => {
+  it("retains legacy editing with a valid profile JSON", async () => {
     const logActions = createLogActions({
-      listLogDomains: vi.fn().mockResolvedValue([]),
-      createLogDomain: vi.fn().mockResolvedValue(chargingDomain)
+      listLogDomains: vi.fn().mockResolvedValue([chargingDomain]),
+      updateLogDomain: vi.fn().mockResolvedValue(chargingDomain)
     });
     renderPage({ logActions });
 
-    await userEvent.click(await within(screen.getByRole("group", { name: "分析技能治理操作" })).findByRole("button", { name: "新建分析技能" }));
+    await userEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    await userEvent.clear(screen.getByLabelText(/名称/));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
+    await userEvent.clear(screen.getByLabelText(/描述/));
     await userEvent.type(screen.getByLabelText(/描述/), "充电域");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    await userEvent.clear(profileInput);
     await userEvent.click(profileInput);
     await userEvent.paste('{"timestampPattern": "^x"}');
-    await userEvent.click(screen.getByRole("button", { name: "创建分析技能" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
     await waitFor(() =>
-      expect(logActions.createLogDomain).toHaveBeenCalledWith({
+      expect(logActions.updateLogDomain).toHaveBeenCalledWith({
+        domainId: "domain-charging",
         name: "charging-power",
         description: "充电域",
         formatProfile: { timestampPattern: "^x" }
@@ -722,24 +735,25 @@ describe("LogAdminPage 分析技能治理", () => {
   });
 
   it("blocks submission and shows a readable error for invalid profile JSON", async () => {
-    const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([]) });
+    const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([chargingDomain]) });
     renderPage({ logActions });
 
-    await userEvent.click(await within(screen.getByRole("group", { name: "分析技能治理操作" })).findByRole("button", { name: "新建分析技能" }));
+    await userEvent.click(await screen.findByRole("button", { name: "编辑" }));
     await userEvent.type(screen.getByLabelText(/名称/), "broken");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    await userEvent.clear(profileInput);
     await userEvent.click(profileInput);
     await userEvent.paste("{not json");
-    await userEvent.click(screen.getByRole("button", { name: "创建分析技能" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/画像 JSON 无法解析/);
-    expect(logActions.createLogDomain).not.toHaveBeenCalled();
+    expect(logActions.updateLogDomain).not.toHaveBeenCalled();
   });
 
   it("shows an inline profile error when the server rejects a parseable format profile", async () => {
     const logActions = createLogActions({
-      listLogDomains: vi.fn().mockResolvedValue([]),
-      createLogDomain: vi.fn().mockRejectedValue(
+      listLogDomains: vi.fn().mockResolvedValue([chargingDomain]),
+      updateLogDomain: vi.fn().mockRejectedValue(
         new WiseEffApiError(
           "VALIDATION_FAILED",
           "Log domain format profile is invalid.",
@@ -750,22 +764,23 @@ describe("LogAdminPage 分析技能治理", () => {
     });
     renderPage({ logActions });
 
-    await userEvent.click(await within(screen.getByRole("group", { name: "分析技能治理操作" })).findByRole("button", { name: "新建分析技能" }));
+    await userEvent.click(await screen.findByRole("button", { name: "编辑" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
     const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    await userEvent.clear(profileInput);
     await userEvent.click(profileInput);
     await userEvent.paste('{"timestampPattern":"(["}');
-    await userEvent.click(screen.getByRole("button", { name: "创建分析技能" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("timestampPattern 不是合法正则表达式。");
     expect(screen.getByLabelText(/格式画像 JSON/)).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByRole("form", { name: "新建分析技能" })).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "编辑分析技能" })).toBeInTheDocument();
   });
 
-  it("shows an inline name error when creating a duplicate domain", async () => {
+  it("shows an inline name error when renaming to a duplicate domain", async () => {
     const logActions = createLogActions({
-      listLogDomains: vi.fn().mockResolvedValue([]),
-      createLogDomain: vi.fn().mockRejectedValue(
+      listLogDomains: vi.fn().mockResolvedValue([chargingDomain]),
+      updateLogDomain: vi.fn().mockRejectedValue(
         new WiseEffApiError(
           "CONFLICT",
           "A log domain with this name already exists in the organization.",
@@ -776,9 +791,9 @@ describe("LogAdminPage 分析技能治理", () => {
     });
     renderPage({ logActions });
 
-    await userEvent.click(await within(screen.getByRole("group", { name: "分析技能治理操作" })).findByRole("button", { name: "新建分析技能" }));
+    await userEvent.click(await screen.findByRole("button", { name: "编辑" }));
     await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
-    await userEvent.click(screen.getByRole("button", { name: "创建分析技能" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("该分析技能名称已存在，请换一个名称。");
     expect(screen.getByLabelText(/名称/)).toHaveAttribute("aria-invalid", "true");
@@ -815,7 +830,7 @@ describe("LogAdminPage 分析技能治理", () => {
     );
 
     expect(screen.getByTestId("log-domain-governance")).toHaveTextContent(/需要 Admin 权限/);
-    expect(screen.queryByRole("button", { name: "新建分析技能" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建技能" })).not.toBeInTheDocument();
   });
 });
 

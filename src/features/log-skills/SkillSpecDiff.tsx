@@ -2,7 +2,7 @@ import { diffSkillSpecs, specJson } from "./diffSkillSpecs";
 import type { SkillSpec } from "./types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const labels: Record<string, string> = { description: "描述", modelOverride: "模型覆盖", mode: "规则来源",
+const labels: Record<string, string> = { description: "描述", procedure: "诊断流程", modelOverride: "模型覆盖", mode: "规则来源",
   noHit: "未命中规则时", hitDefaults: "命中默认值", anyOf: "触发条件", stageId: "阶段", inference: "推断",
   suggestedAction: "建议操作", analysis: "分析", id: "规则标识", rulesOrder: "规则顺序" };
 const display = (value: unknown) => value === undefined ? "未配置" : value === "default" ? "平台默认充电规则"

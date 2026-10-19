@@ -26,6 +26,7 @@ import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modu
 import type { KnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
 import { registerKnowledgeRoutes } from "./modules/knowledge/routes";
 import { registerLogRoutes, type LogWebhookRouteContext } from "./modules/logs/routes";
+import { MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH } from "./modules/logs/schemas";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
 import { createMetricsRegistry, type MetricsRegistry } from "./observability/metrics";
@@ -348,6 +349,10 @@ export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
 
 export function resolveRouteBodyLimit({ method, path }: { method: string; path: string }) {
+  if (method === "PUT" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+sample\/*$/.test(path)) {
+    // Base64 of one 2 MiB sample plus a bounded JSON envelope.
+    return MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH + 64 * 1024;
+  }
   if (method === "POST" && /^\/+api\/+v1\/+log-files\/*$/.test(path)) {
     // Bound collection too: allow JSON base64 expansion and multipart headers.
     return Math.ceil(loadLogBundleLimits().maxCompressedBytes * 4 / 3) + 4 * 1024 * 1024;

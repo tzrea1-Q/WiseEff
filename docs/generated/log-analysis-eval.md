@@ -1,6 +1,6 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-10-19T06:04:15.357Z
+- Generated: 2026-10-19T07:34:31.394Z
 - Single-shot prompt version: `2026-10-18.bundle.1`
 - Loop prompt version: `2026-10-18.loop.bundle.1`
 - Scenarios: 16 (16 passed)

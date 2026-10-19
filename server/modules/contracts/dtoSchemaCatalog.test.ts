@@ -9,6 +9,28 @@ import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("documents template creation, optional procedure and sample contracts", () => {
+    const create = dtoSchemaCatalog.CreateLogSkillRequest;
+    for (const startingPoint of [{ templateId: "generic-text" }, { copyFromSkillId: "source" }])
+      expect(create.safeParse({ name: "Skill", startingPoint }).success).toBe(true);
+    expect(create.safeParse({ name: "Skill" }).success).toBe(true);
+    expect(create.safeParse({ name: "Skill", startingPoint: { templateId: "a", copyFromSkillId: "b" } }).success).toBe(false);
+    expect(create.safeParse({ name: "   " }).success).toBe(false);
+    expect(dtoSchemaCatalog.LogSkillDraftRequest.safeParse({ spec: { schemaVersion: "skill/v1", procedure: "## Steps" },
+      baseDraftRevisionId: null, basePublishedRevisionId: "v1" }).success).toBe(true);
+    const document = buildOpenApiDocument();
+    expect(document.components.schemas.ReplaceLogSkillSampleRequest).toMatchObject({
+      properties: { fileName: { type: "string" }, contentBase64: { type: "string" } }
+    });
+    const paths = document.paths as Record<string, Record<string, { responses: Record<string, unknown> }>>;
+    expect(paths["/api/v1/log-skill-templates"].get.responses["200"]).toBeDefined();
+    const sample = paths["/api/v1/log-skills/{skillId}/sample"];
+    expect(sample.get.responses["200"]).toBeDefined();
+    expect(sample.put.responses["200"]).toBeDefined();
+    expect(sample.delete.responses["204"]).not.toHaveProperty("content");
+    for (const id of ["logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample"])
+      expect(dtoSchemaCoveredRouteIds).toContain(id);
+  });
   it("documents draft concurrency and bodyless discard without losing restore coverage", () => {
     const document = buildOpenApiDocument();
     const request = dtoSchemaCatalog.LogSkillDraftRequest;

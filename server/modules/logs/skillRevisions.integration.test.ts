@@ -20,6 +20,7 @@ import { createLogSkill, discardLogSkillDraft, publishLogSkill, restoreLogSkillR
 import type { LogSkillSpec } from "./skillSpec";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import { createLocalObjectStore } from "./objectStore";
+import { logSkillTemplates } from "./skillTemplates";
 
 const available = await isTestDatabaseAvailable();
 const auth = (organizationId = "org-skills") => makeTestAuthContext({ organizationId,
@@ -39,6 +40,7 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
         { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       const created = await request<{ item: Skill }>("/api/v1/log-skills", "POST", { name: "并发编辑", description: "版本一" });
       expect(created.status).toBe(201);
+      expect(created.body.item.currentRevision.spec).toEqual({ ...logSkillTemplates[0].spec, description: "版本一" });
       const base = `/api/v1/log-skills/${created.body.item.id}`;
       const editorA = (await request<{ item: Skill }>(base)).body.item;
       const editorB = (await request<{ item: Skill }>(base)).body.item;
@@ -335,6 +337,9 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       });
       expect(created.status).toBe(201);
       const skill = created.body.item;
+      expect(skill.currentRevision.spec).toEqual({ schemaVersion: "skill/v1", formatProfile: { severityMap: { error: ["ALERT"] } } });
+      expect((await db.query<{ metadata: unknown }>("select metadata from audit_events where target_id=$1 and kind='log-skill-create'", [skill.id])).rows[0].metadata)
+        .not.toHaveProperty("templateId");
       const base = `/api/v1/log-skills/${skill.id}`;
       expect((await request<{ items: Array<{ helpfulRate7d: number | null }> }>("/api/v1/log-skills")).body.items[0].helpfulRate7d).toBeNull();
       // Enable the identity's webhook without invoking an external sender.

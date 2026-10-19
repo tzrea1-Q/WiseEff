@@ -4,11 +4,18 @@ import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditedWriteContext, type AuditSpec } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
-import { findLogDomainByName, getLogDomainById, insertLogDomain, listLogDomains } from "./domainsRepository";
+import { findLogDomainByName, getLogDomainById, insertLogDomain, listLogDomains, updateLogDomainRow } from "./domainsRepository";
 import { requireLogAdminDomains, requireLogView } from "./policy";
 import { aggregateFeedbackInsights, relatedParameterVisibilityValues } from "./repository";
 import { logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
 import { insertSkillRevision, listSkillRevisions, lockSkill, publishSkillRevision } from "./skillsRepository";
+import { logSkillTemplates } from "./skillTemplates";
+
+export function listLogSkillTemplates(auth: AuthContext) {
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  return { items: logSkillTemplates };
+}
 
 function requireOrganization(auth: AuthContext) {
   if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "Log organization access is required.");
@@ -69,21 +76,35 @@ export async function listLogSkills(db: Queryable, auth: AuthContext, includeArc
 
 export async function createLogSkill(db: Database, auth: AuthContext, input: {
   name: string; description?: string; formatProfile?: unknown;
+  startingPoint?: { templateId: string } | { copyFromSkillId: string };
 }, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Create analysis skill");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   const name = input.name.trim();
   if (!name) throw new ApiError("VALIDATION_FAILED", "Analysis skill name must not be blank.");
-  const spec = parseSpec({ schemaVersion: "skill/v1", description: input.description, ...(input.formatProfile != null ? { formatProfile: input.formatProfile } : {}) });
   return withAuditedWrite(db, invocation, context, async (tx) => {
+    const start = input.startingPoint;
+    let source: LogSkillSpec;
+    if (start && "copyFromSkillId" in start) {
+      await lockSkill(tx, auth.organization.id, start.copyFromSkillId);
+      const skill = await readSkill(tx, auth.organization.id, start.copyFromSkillId);
+      source = (skill.draft ?? skill.currentRevision).spec;
+    } else {
+      const template = logSkillTemplates.find((item) => item.id === (start?.templateId ?? "generic-text"));
+      if (!template) throw new ApiError("VALIDATION_FAILED", "未找到所选技能模板。");
+      source = start || input.formatProfile == null ? template.spec : { schemaVersion: "skill/v1", formatProfile: input.formatProfile } as LogSkillSpec;
+    }
+    const spec = parseSpec({ ...source, ...(input.description !== undefined ? { description: input.description } : {}) });
     if (await findLogDomainByName(tx, { organizationId: auth.organization.id, name })) {
       throw new ApiError("CONFLICT", "An analysis skill with this name already exists.");
     }
     const skill = await insertLogDomain(tx, { id: randomUUID(), organizationId: auth.organization.id, name,
       description: spec.description, formatProfile: spec.formatProfile });
+    if (spec.modelOverride) await updateLogDomainRow(tx, { organizationId: auth.organization.id, domainId: skill.id, modelOverride: spec.modelOverride });
     await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: skill.id, spec, userId: auth.user.id, published: true });
-    return { result: await readSkill(tx, auth.organization.id, skill.id), audit: skillAudit(skill.id, "log-skill-create") };
+    return { result: await readSkill(tx, auth.organization.id, skill.id),
+      audit: skillAudit(skill.id, "log-skill-create", start ?? (input.formatProfile == null ? { templateId: "generic-text" } : {})) };
   });
 }
 

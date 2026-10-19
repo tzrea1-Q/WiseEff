@@ -3,16 +3,11 @@ import { z } from "zod";
 import { logRecordStatuses } from "./status";
 
 const nonEmptyString = z.string().min(1);
-const base64String = nonEmptyString.refine(
-  (value) => {
-    try {
-      return Buffer.from(value, "base64").toString("base64") === value;
-    } catch {
-      return false;
-    }
-  },
-  { message: "Expected valid base64 content." }
-);
+function validBase64(value: string) {
+  try { return Buffer.from(value, "base64").toString("base64") === value; }
+  catch { return false; }
+}
+const base64String = nonEmptyString.refine(validBase64, { message: "Expected valid base64 content." });
 const booleanQuerySchema = z.union([z.boolean(), z.enum(["true", "false"])]).transform((value) => value === true || value === "true");
 
 const relatedParameterPinSchema = z.object({
@@ -107,6 +102,29 @@ export const createLogDomainBodySchema = z.object({
   description: z.string().max(2000).optional(),
   formatProfile: z.unknown().optional()
 });
+
+export const createLogSkillBodySchema = createLogDomainBodySchema.extend({
+  name: z.string().trim().min(1).max(120),
+  startingPoint: z.union([
+    z.object({ templateId: nonEmptyString }).strict(),
+    z.object({ copyFromSkillId: nonEmptyString }).strict()
+  ]).optional()
+}).strict();
+
+export const MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH = Math.ceil(2 * 1024 * 1024 * 4 / 3) + 4;
+
+export const replaceLogSkillSampleBodySchema = z.object({
+  fileName: z.string().trim().min(1).max(255).refine((name) => !/[\\/\u0000]/.test(name), "样例文件名不能包含路径或空字符。"),
+  contentBase64: z.string().superRefine((value, ctx) => {
+    // Chained refinements still run after .max() fails; bound allocation first.
+    if (value.length > MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH) {
+      ctx.addIssue({ code: z.ZodIssueCode.too_big, type: "string", maximum: MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH,
+        inclusive: true, message: "样例日志不能超过 2 MiB。" });
+      return;
+    }
+    if (!value || !validBase64(value)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Expected valid base64 content." });
+  })
+}).strict();
 
 export const updateLogDomainBodySchema = z.object({
   name: nonEmptyString.max(120).optional(),

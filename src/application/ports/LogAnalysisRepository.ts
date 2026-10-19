@@ -1,4 +1,4 @@
-import type { SkillWorkspaceRepository } from "@/features/log-skills/types";
+import type { SkillWorkspaceRepository, SkillAuthoringRepository } from "@/features/log-skills/types";
 import type {
   LogDomain,
   LogDomainKnowledgeLink,
@@ -107,7 +107,7 @@ export type LogFeedbackInsightsQuery = {
   timeWindow?: TimeWindow;
 };
 
-export interface LogAnalysisRepository extends Partial<SkillWorkspaceRepository> {
+export interface LogAnalysisRepository extends Partial<SkillWorkspaceRepository>, Partial<SkillAuthoringRepository> {
   listLogs(query?: LogListQuery): Promise<LogRecord[]>;
   getLog(logId: string): Promise<LogRecord | null>;
   uploadLog(input: LogUploadInput): Promise<{ log: LogRecord; job: LogJobSnapshot | null }>;
