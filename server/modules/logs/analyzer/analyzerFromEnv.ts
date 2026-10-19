@@ -139,7 +139,7 @@ export function createLogAnalyzerFromEnv(
     return model;
   }
 
-  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number): LogAnalysisAdapter {
+  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number, hasTokenBudgetOverride: boolean): LogAnalysisAdapter {
     const model = resolveModel(modelLabel, tokenBudget);
     if (!useLoopKernel) {
       return createLlmLogAnalyzer({
@@ -156,6 +156,8 @@ export function createLogAnalyzerFromEnv(
       modelLabel,
       tokenBudget,
       maxSteps: stepBudget,
+      // Unset revision budgets retain the pre-skill global convergence behavior.
+      enforceTokenBudgetBeforeCall: hasTokenBudgetOverride,
       telemetry: options.telemetry,
       bindToolBackends: (input) =>
         db && input.organizationId
@@ -179,7 +181,7 @@ export function createLogAnalyzerFromEnv(
       const modelLabel = readNonBlank(input.logDomain?.modelOverride) ?? globalModelLabel;
       const stepBudget = Math.min(input.logDomain?.stepBudget ?? env.LOG_ANALYSIS_MAX_STEPS, env.LOG_ANALYSIS_MAX_STEPS);
       const tokenBudget = Math.min(input.logDomain?.tokenBudget ?? env.LOG_ANALYSIS_TOKEN_BUDGET, env.LOG_ANALYSIS_TOKEN_BUDGET);
-      return createKernel(modelLabel, stepBudget, tokenBudget).analyze(input);
+      return createKernel(modelLabel, stepBudget, tokenBudget, input.logDomain?.tokenBudget !== undefined).analyze(input);
     }
   };
 }

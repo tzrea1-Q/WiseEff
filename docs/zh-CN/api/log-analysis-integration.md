@@ -28,7 +28,7 @@ curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
 
 将 `charging` 替换为复制的 key；multipart 示例要求对应本地文件已存在。模型覆盖及可选步数/token 预算保存在草稿，发布后影响新运行；省略预算使用平台默认值。超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值以字段错误拒绝。Webhook 配置和 key 仍为即时生效的身份设置，不依赖发布。
 
-步骤预算须为至少 1 的整数；版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含提前收敛调用；不做 token 估算，也不承诺单次调用的严格限额。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。没有得到已接地最终报告时，耗尽运行沿用 `rules-fallback` 结果及 `degradedReason: "token-budget-exhausted"`。
+步骤预算须为至少 1 的整数；版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含提前收敛调用；不做 token 估算，也不承诺单次调用的严格限额。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。没有得到已接地最终报告时，耗尽运行沿用 `rules-fallback` 结果及 `degradedReason: "token-budget-exhausted"`。省略 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
 
 `POST /api/v1/log-files`，内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。通过 `skillKey` 或 `skillId` 绑定分析技能（`GET /api/v1/log-skills` 可列出），保留 `logDomainId` 兼容别名；不选技能则使用平台通用分析。
 

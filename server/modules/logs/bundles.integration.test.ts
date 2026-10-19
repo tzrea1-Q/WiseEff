@@ -1,4 +1,6 @@
 import JSZip from "jszip";
+import { readFile } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
 import { resolveRouteBodyLimit } from "../../app";
 import { describe, expect, it } from "vitest";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
@@ -16,12 +18,34 @@ import { createRuleBasedLogAnalyzer } from "./analyzer";
 import { parseLogText } from "./parser";
 import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
 import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
+import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 
 const available = await isTestDatabaseAvailable();
 const auth = (organizationId = "bundle-org") => makeTestAuthContext({ organizationId, userId: `${organizationId}-admin`,
   roles: [{ roleId: "admin", projectId: null }], permissions: ["logs:view", "logs:upload", "logs:analyze"] });
 
 describe.skipIf(!available)("bundle upload and analysis over PostgreSQL", () => {
+  it("completes the acceptance gzip fixture with the legacy model calls when no skill budget is set", async () => {
+    const ephemeral = await createEphemeralTestDatabase("factorygz");
+    const db = createPostgresDatabase(ephemeral.url);
+    const objectStore = createMemoryObjectStore();
+    try {
+      const organizationId = "factory-gzip-org";
+      await seedCoreGraph(db, { organization: { id: organizationId, name: organizationId },
+        users: [{ id: `${organizationId}-admin`, name: "Admin" }] });
+      const calls: string[] = [];
+      const analyzer = createLogAnalyzerFromEnv({ LOG_ANALYSIS_DETERMINISTIC: true, LOG_ANALYSIS_KERNEL: "loop",
+        LOG_ANALYSIS_API_TIMEOUT_MS: 1000, LOG_ANALYSIS_TOKEN_BUDGET: 8000, LOG_ANALYSIS_MAX_STEPS: 6 },
+      { telemetry: { recordLlmCall: (call) => { calls.push(call.outcome); } } });
+      const content = await readFile(new URL("../../../test-fixtures/logs/charging-foldback.log", import.meta.url));
+      const uploaded = await uploadLogFile(db, objectStore, auth(organizationId), { fileName: "charging-foldback.log.gz",
+        contentType: "application/gzip", bytes: gzipSync(content), analysisQuestion: "Why did fast charging fold back?" });
+      expect(await processLogAnalysisJobById({ db, objectStore, analyzer, jobId: uploaded.job!.id })).toEqual({ status: "processed" });
+      expect(await getLogRecord(db, auth(organizationId), uploaded.log.id)).toMatchObject({ status: "complete",
+        skillRevision: null, analysisSource: "agent", conclusion: expect.stringMatching(/thermal|foldback/i) });
+      expect(calls).toEqual(["ok", "ok", "ok"]);
+    } finally { await db.close(); await ephemeral.drop(); }
+  });
   it("bounds collection before parsing a log upload body", () => {
     for (const path of ["/api/v1/log-files", "/api//v1/log-files/"]) {
       expect(resolveRouteBodyLimit({ method: "POST", path })).toBe(Math.ceil(100 * 1024 * 1024 * 4 / 3) + 4 * 1024 * 1024);

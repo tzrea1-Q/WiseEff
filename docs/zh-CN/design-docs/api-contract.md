@@ -438,7 +438,7 @@ GET  /api/v1/jobs/:jobId/events
 
 工作区「集成」统一编辑 key、展示上传示例、配置和测试 Webhook、查看投递记录、编辑模型及预算。「概览」保留指引，旧管理页提供工作区链接，不再重复编辑。`spec.stepBudget`、`spec.tokenBudget` 为可选正整数，随版本发布，省略时使用全局默认。服务端拒绝超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值，返回 `VALIDATION_FAILED` 字段错误；技能详情提供 `budgetCaps`。旧版本在平台上限降低后仍受运行时上限约束。Webhook 和 key 继续属于即时生效的身份设置。
 
-保存及发布还校验 `stepBudget >= 1`、`tokenBudget >= min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`，错误指向具体字段路径。token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含收敛调用，不做 token 估算。单次完成可能超过剩余预算；已报告用量达到预算后，不再发起后续调用。没有得到已接地最终报告时，耗尽运行返回 `rules-fallback` 及 `degradedReason: "token-budget-exhausted"`。
+保存及发布还校验 `stepBudget >= 1`、`tokenBudget >= min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`，错误指向具体字段路径。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含收敛调用，不做 token 估算。单次完成可能超过剩余预算；已报告用量达到预算后，不再发起后续调用。没有得到已接地最终报告时，耗尽运行返回 `rules-fallback` 及 `degradedReason: "token-budget-exhausted"`。没有版本 `tokenBudget` 时，既有平台全局预算计量及提前收敛行为不变。
 
 结果 Webhook 在保留 `logDomainId`、`skillRevisionId`、`skillRevisionNumber` 及其他旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }`、`degraded: boolean`。旧未钉住运行的版本字段可为 null；规则回退或存在降级原因时 `degraded` 为 true，有原因时保留 `degradedReason`。终态入队快照保存 key 和钉住版本，重试保持相同载荷；同步测试事件维持原格式。参见[集成指南](../api/log-analysis-integration.md)。
 

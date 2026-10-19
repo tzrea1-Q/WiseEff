@@ -129,6 +129,8 @@ export type CreateAgentLoopAnalyzerOptions = {
   model: LogAnalysisChatModel;
   modelLabel: string;
   tokenBudget: number;
+  /** False retains the existing global-budget accounting and convergence policy. */
+  enforceTokenBudgetBeforeCall?: boolean;
   maxSteps: number;
   fallback?: LogAnalysisAdapter;
   telemetry?: LogAnalysisLlmTelemetry;
@@ -144,14 +146,15 @@ export type CreateAgentLoopAnalyzerOptions = {
  * checkpointer, no ToolRegistry) over run-scoped read-only tools. Every step the model
  * emits strict JSON: either one tool call or the final conclusion. Illegal tool
  * names/arguments get a corrective message and count toward a consecutive-invalid
- * threshold. Step exhaustion permits early convergence while reported token usage
- * remains below budget; token exhaustion skips every further model call and uses
- * the deterministic rule fallback with the honest `token-budget-exhausted` marker.
+ * threshold. Explicit revision budgets stop further calls after reported usage
+ * reaches the limit. Factory-created runs without a token override preserve the
+ * legacy global-budget convergence attempt. Both paths retain honest degradation.
  */
 export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptions): LogAnalysisAdapter {
   const fallback = options.fallback ?? createRuleBasedLogAnalyzer();
   const now = options.now ?? (() => Date.now());
   const maxSteps = Math.max(1, options.maxSteps);
+  const enforceReportedBudget = options.enforceTokenBudgetBeforeCall !== false;
 
   async function degradeToFallback(input: AnalyzeLogInput, reason: LogAnalysisDegradedReason): Promise<AnalyzeLogOutput> {
     options.telemetry?.recordDegraded?.({ reason, model: options.modelLabel });
@@ -277,7 +280,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       let invalidStreak = 0;
 
       const invokeModel = async (): Promise<string | null> => {
-        if (usedTokens >= options.tokenBudget) return null;
+        if (enforceReportedBudget && usedTokens >= options.tokenBudget) return null;
         const startedAtMs = now();
         let response: Awaited<ReturnType<LogAnalysisChatModel["invoke"]>>;
         try {
@@ -300,8 +303,9 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           );
         }
 
-        const inputTokens = response.usage?.inputTokens;
-        const outputTokens = response.usage?.outputTokens;
+        const inputTokens = response.usage?.inputTokens ?? (enforceReportedBudget ? undefined
+          : Math.ceil(messages.reduce((total, message) => total + message.content.length, 0) / 4));
+        const outputTokens = response.usage?.outputTokens ?? (enforceReportedBudget ? undefined : Math.ceil(response.content.length / 4));
         usedTokens += (inputTokens ?? 0) + (outputTokens ?? 0);
         options.telemetry?.recordLlmCall?.({
           model: options.modelLabel,
