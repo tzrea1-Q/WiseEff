@@ -134,6 +134,32 @@ describe("DTS whole-source workbench integration", () => {
     await session.flush();
   });
 
+  it("retains an older submission receipt without refreshing a newly selected configuration", async () => {
+    const { props, rerender, submitCandidateSourceReview, session } = setup();
+    let resolve!: (value: object) => void;
+    submitCandidateSourceReview.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    await waitFor(() => expect(screen.getByRole("radio", { name: "编辑" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("radio", { name: "编辑" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "test DTS" }), { target: { value: "/ { next; };" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    await screen.findByRole("textbox", { name: "DTS 修改原因" });
+    fireEvent.change(screen.getByRole("textbox", { name: "DTS 修改原因" }), { target: { value: "保留修改" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "提交审核" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    await waitFor(() => expect(submitCandidateSourceReview).toHaveBeenCalledOnce());
+    const next = { ...props, scope: { ...props.scope, configSetId: "other-config", fileId: "other-file" },
+      source: "/ { other; };", baseVersionId: "v2", configRevisionId: "c2", onRefresh: vi.fn() };
+    rerender(<WorkbenchSourceEditingPane {...next} />);
+    await waitFor(() => expect(session.getFile(next.scope)?.base.configRevisionId).toBe("c2"));
+    await act(async () => { resolve({ requestId: "older-request", status: "pending", replayed: false }); });
+    expect(session.getFile(props.scope)?.submission?.requestId).toBe("older-request");
+    expect(props.onRefresh).not.toHaveBeenCalled();
+    expect(next.onRefresh).not.toHaveBeenCalled();
+    expect(session.getFile(next.scope)).toMatchObject({ sourceText: "/ { other; };", dirty: false, base: { configRevisionId: "c2" } });
+    expect(screen.getByRole("radio", { name: "编辑" })).toBeEnabled();
+    await session.flush();
+  });
+
   it("does not leave a newly selected file busy after an older candidate request settles", async () => {
     const { props, rerender, createCandidate, session } = setup();
     let resolve!: (value: object) => void;

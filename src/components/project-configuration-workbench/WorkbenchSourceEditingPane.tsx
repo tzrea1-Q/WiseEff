@@ -162,8 +162,9 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
       setAttempt(submitted);
       const result = await repository.submitCandidateSourceReview(scope.projectId, captured.candidate!.id, body);
       session.markSubmitted(captured.saved, { candidateId: captured.candidate!.id, requestId: result.requestId });
-      if (latestScope.current === key && operationEpoch.current === epoch) { setSaveOpen(false); setReason(""); }
-      onRefresh();
+      if (latestScope.current === key && operationEpoch.current === epoch) {
+        setSaveOpen(false); setReason(""); refresh.current();
+      }
     } catch (cause) { if (latestScope.current === key && operationEpoch.current === epoch) setError(presentError(cause, "提交失败，可重试同一请求；文本仍保留。")); }
     finally { if (latestScope.current === key && operationEpoch.current === epoch) setBusy(false); }
   };
