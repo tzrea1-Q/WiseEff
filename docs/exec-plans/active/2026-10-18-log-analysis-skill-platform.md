@@ -150,6 +150,8 @@ The ADR-0022 loop, with per-run tool composition:
 
 Prompt order: platform protocol → skill procedure (delimited, lower precedence) → mission (question, file inventory, signals, budgets). Evidence kinds: log line (`file`, `line`) and source location (`snapshot`, `path`, `line`); both grounded against tool results. Platform caps: steps ≤ 20, token budget ≤ the global `LOG_ANALYSIS_TOKEN_BUDGET` × 4 (exact caps set in S1 with cost measurements).
 
+The diagnostic-procedure slice (#1227) reads optional `skill/v1.procedure` (maximum 20,000 characters) from the run's pinned revision. It appends a lower-priority, untrusted section to the system protocol, before the user mission. The procedure is JSON-quoted with delimiter characters and line separators escaped; forged closing tags and protocol headings stay inside that data value. It cannot override grounding, tool-result evidence, refusal rules or the prohibition on writes. Rule fallback ignores it; an absent procedure leaves the prompt unchanged except for the version label. Current loop versions are `2026-10-19.loop.procedure.1` / `2026-10-19.loop.procedure.related-parameter.1`; single-shot versions are `2026-10-19.procedure.1` / `2026-10-19.procedure.related-parameter.1`. Reports record the selected version. Behavioral eval covers benign and adversarial procedures; a PostgreSQL upload-to-report test captures scripted-model prompts across draft edits, publication and revision-pinned reruns.
+
 ### Data model (additive; final names fixed per phase)
 
 | Table | Phase | Content |
@@ -172,44 +174,44 @@ UX is decided here under the standing delegation and follows `docs/design-docs/u
 
 | Role | Goal | Where |
 | --- | --- | --- |
-| 技能作者 (administrator) | Turn a module's know-how into a published skill | `/log-admin` skills list → skill workspace |
-| 分析用户 (engineer) | Upload logs, get a trustworthy answer, drill into evidence | `/logs` |
-| 集成方 (external system owner) | Push logs from their system and receive results | skill workspace → 集成 |
+| Skill author (administrator) | Turn a module's know-how into a published skill | `/log-admin` skills list → skill workspace |
+| Analysis user (engineer) | Upload logs, get a trustworthy answer, drill into evidence | `/logs` |
+| Integration owner (external system owner) | Push logs from their system and receive results | skill workspace → `集成` |
 
 ### Interaction principles
 
 1. **Zero configuration works.** Uploading without a skill always analyzes with generic signals; skills improve results and never gate an upload.
 2. **Sample first.** An author starts by attaching a sample log. Parsing, decoding and signal screens preview against it live: matched lines are highlighted, coverage is counted, decoded values are shown.
-3. **Forms first, code optional.** Every rule has a visual form. A 代码视图 toggle shows the same draft as YAML for bulk edits and copy/paste; both views edit one draft and validate the same way.
-4. **Draft, check, publish.** A sticky draft bar shows 未发布更改 · 运行测试 · 发布. Publishing shows the change summary and test results and never blocks; rollback publishes an older revision as a new one.
+3. **Forms first, code optional.** Every rule has a visual form. A `代码视图` toggle shows the same draft as YAML for bulk edits and copy/paste; both views edit one draft and validate the same way.
+4. **Draft, check, publish.** A sticky draft bar shows `未发布更改` · `运行测试` · `发布`. Publishing shows the change summary and test results and never blocks; rollback publishes an older revision as a new one.
 5. **Every claim is one click from its proof.** Evidence opens the log viewer at the cited line, with decoded fields and the source location beside it.
 6. **Integration is self-service.** Everything an integrator needs (key, endpoint, credential, copyable request, webhook, delivery log) is on one tab.
 
 ### Information architecture
 
-- **`/log-admin?tab=skills`** (replaces `tab=domains`): `AdminListPage` with columns 名称 · 适用文件 · 当前版本 · 草稿 · 近 7 天分析 · 有用率 · 集成状态. Header actions: 导入技能包 (secondary), 新建技能 (primary). Empty state: 新建第一个分析技能.
-- **新建技能 dialog** (`md`): name, starting point (通用文本日志 / Linux 内核 dmesg / Android logcat / JSON Lines / 复制已有技能), optional sample log. Templates prefill the procedure outline, base format and common signals.
-- **Skill workspace `/log-admin/skills/:skillId`**: navigator-workbench layout with a left section list, the editing area, and (on 样例与解析 / 解码 / 信号) a right sample pane that keeps its scroll position across sections. Sections: 概览 · 诊断流程 · 样例与解析 · 解码 · 信号 · 知识 · 源码 · 测试 · 集成 · 版本.
-- **`/logs`**: upload dialog, record list, and the report view with tabs 结论 · 文件 · 信号 · 分析轨迹 (轨迹 for skill administrators only).
+- **`/log-admin?tab=skills`** (replaces `tab=domains`): `AdminListPage` with columns `名称` · `适用文件` · `当前版本` · `草稿` · `近 7 天分析` · `有用率` · `集成状态`. Header actions: `导入技能包` (secondary), `新建技能` (primary). Empty state: `新建第一个分析技能`.
+- **`新建技能` dialog** (`md`): name, starting point (`通用文本日志` / `Linux 内核 dmesg` / Android logcat / JSON Lines / `复制已有技能`), optional sample log. Templates prefill the procedure outline, base format and common signals.
+- **Skill workspace `/log-admin/skills/:skillId`**: navigator-workbench layout with a left section list, the editing area, and (on `样例与解析` / `解码` / `信号`) a right sample pane that keeps its scroll position across sections. Sections: `概览` · `诊断流程` · `样例与解析` · `解码` · `信号` · `知识` · `源码` · `测试` · `集成` · `版本`.
+- **`/logs`**: upload dialog, record list, and the report view with tabs `结论` · `文件` · `信号` · `分析轨迹` (`轨迹` for skill administrators only).
 
 ### Key interactions
 
 | Capability | Interaction |
 | --- | --- |
-| Procedure | Markdown editor prefilled with an outline (适用场景 / 先检查什么 / 根因判定 / 常见误判 / 建议动作) and a preview toggle. 试运行 runs the draft on the sample with the real model and opens the analysis trace drawer: each step's tool, what it read, and the final evidence. |
+| Procedure | Markdown editor prefilled with an outline (`适用场景` / `先检查什么` / `根因判定` / `常见误判` / `建议动作`) and a preview toggle. `试运行` runs the draft on the sample with the real model and opens the analysis trace drawer: each step's tool, what it read, and the final evidence. |
 | Base format | Form replacing today's format-profile JSON: timestamp format (picked from the sample with a detected default), severity mapping, multi-line rule, each with a live sample preview. |
-| Extractors | Click a sample line → 从此行创建抽取规则. The line splits into tokens; the author selects spans and names them, choosing a type. The pattern is generalized automatically (digits, hex, quoted strings), shows its match count and coverage, and can be edited directly under 高级. Each extractor gets a highlight colour in the sample pane. |
-| Registers | Bit bar (MSB→LSB boxes coloured per field) above a field table (位段 · 名称 · 类型 · 枚举/比例/单位). 粘贴寄存器表 imports bit, name and description columns copied from a datasheet table. Register maps list addresses on the left. Selecting a sample line shows the decoded value on the bit bar. |
+| Extractors | Click a sample line → `从此行创建抽取规则`. The line splits into tokens; the author selects spans and names them, choosing a type. The pattern is generalized automatically (digits, hex, quoted strings), shows its match count and coverage, and can be edited directly under `高级`. Each extractor gets a highlight colour in the sample pane. |
+| Registers | Bit bar (MSB→LSB boxes coloured per field) above a field table (`位段` · `名称` · `类型` · `枚举/比例/单位`). `粘贴寄存器表` imports bit, name and description columns copied from a datasheet table. Register maps list addresses on the left. Selecting a sample line shows the decoded value on the bit bar. |
 | Frames | Ordered field rows with byte offsets computed automatically, plus a hex view of the sample bytes highlighting the selected field; `switch`, repeat and TLV are row types, not free text. |
-| Signals | Sentence builder: 当 [抽取规则] 的 [字段] [等于 / 在范围 / 属于 / 匹配] [值]，产生信号 [名称]，级别 [错误]. Hits in the sample are listed; clicking one jumps to the line. |
-| Knowledge | Linked-entry list with 链接已有条目 (picker over published entries) and 上传 Markdown (multi-file drop; creates knowledge entries linked to the skill). Without knowledge-edit permission the upload shows a disabled reason. |
-| Source | Snapshot table (版本标签 · 文件数 · 索引状态 with progress · 跳过文件 · 上传时间), 上传源码 dialog (archive + label), 设为默认. 试一试: paste a log line and see the source statement that printed it. |
-| Tests | 解析测试 (sample lines + expected fields, pass/fail with an inline diff) and 分析用例 (bundle + expected root cause, evidence and actions; latest score vs previous revision). 全部运行. Cases can also be created from a report with 存为测试用例. |
+| Signals | Sentence builder: `当 [抽取规则] 的 [字段] [等于 / 在范围 / 属于 / 匹配] [值]，产生信号 [名称]，级别 [错误]`. Hits in the sample are listed; clicking one jumps to the line. |
+| Knowledge | Linked-entry list with `链接已有条目` (picker over published entries) and `上传 Markdown` (multi-file drop; creates knowledge entries linked to the skill). Without knowledge-edit permission the upload shows a disabled reason. |
+| Source | Snapshot table (`版本标签` · `文件数` · `索引状态` with progress · `跳过文件` · `上传时间`), `上传源码` dialog (archive + label), `设为默认`. `试一试`: paste a log line and see the source statement that printed it. |
+| Tests | `解析测试` (sample lines + expected fields, pass/fail with an inline diff) and `分析用例` (bundle + expected root cause, evidence and actions; latest score vs previous revision). `全部运行`. Cases can also be created from a report with `存为测试用例`. |
 | Integration | skillKey and endpoint with copy buttons; a ready-to-run `curl` prefilled with the skillKey; integration credentials (create shows the secret once, then rotate/revoke, last used); result webhook and test delivery (moved from the domain row); delivery records; link to the integration guide. |
-| Versions | Revision list; side-by-side diff grouped by section (procedure text, rules added/changed/removed); 回滚 publishes an older revision as a new one. |
-| Publish dialog (`lg`) | Change summary; parse tests passed/total; analysis-case scores vs the previous revision; warnings (for example an extractor with zero sample matches); 发布. |
-| Upload (`/logs`) | Drop files or one archive; optional question and related parameter; skill selector preselected by suggestion with its reason (推荐：充电电源 · 匹配 kernel.log); one primary action 开始分析. |
-| Report (`/logs`) | Conclusion card with provenance badges (技能与版本 · 模型 · 降级); evidence items show `file:line`, the inference, decoded-field chips and an expandable source excerpt; clicking opens the log viewer drawer at the line with context. 文件 tab: tree with size, lines, role and skipped reasons. Feedback stays; skill administrators also see 存为测试用例. |
+| Versions | Revision list; side-by-side diff grouped by section (procedure text, rules added/changed/removed); `回滚` publishes an older revision as a new one. |
+| Publish dialog (`lg`) | Change summary; parse tests passed/total; analysis-case scores vs the previous revision; warnings (for example an extractor with zero sample matches); `发布`. |
+| Upload (`/logs`) | Drop files or one archive; optional question and related parameter; skill selector preselected by suggestion with its reason (`推荐：充电电源 · 匹配 kernel.log`); one primary action `开始分析`. |
+| Report (`/logs`) | Conclusion card with provenance badges (`技能与版本` · `模型` · `降级`); evidence items show `file:line`, the inference, decoded-field chips and an expandable source excerpt; clicking opens the log viewer drawer at the line with context. `文件` tab: tree with size, lines, role and skipped reasons. Feedback stays; skill administrators also see `存为测试用例`. |
 
 Mock mode keeps a read-only seeded skill so demos and component tests still render; authoring is API-mode only.
 
@@ -217,15 +219,15 @@ Mock mode keeps a read-only seeded skill so demos and component tests still rend
 
 | Phase | Frontend scope |
 | --- | --- |
-| S1 | Skills list and 新建技能 with templates; workspace shell with draft bar; 概览, 诊断流程 (with 试运行 and trace drawer), sample upload, 信号 (message and token conditions), 知识, 集成 (webhook and model moved here), 版本 and publish dialog; skill selector and provenance badge on `/logs` |
-| S2 | Multi-file drop zone; 文件 tab; log viewer drawer; `file:line` evidence; applicability globs previewed against the sample bundle |
-| S3 | 样例与解析 (base format form, extractor builder), 解码 (register, register map and frame editors, 粘贴寄存器表), 代码视图, parse tests; decoded-field chips in evidence |
-| S4 | 源码 section with 试一试; source excerpts in evidence |
-| S5 | 分析用例 and 存为测试用例; upload suggestion; package import/export; integration credentials and `curl` snippet; quality insights by revision |
+| S1 | Skills list and `新建技能` with templates; workspace shell with draft bar; `概览`, `诊断流程` (with `试运行` and trace drawer), sample upload, `信号` (message and token conditions), `知识`, `集成` (webhook and model moved here), `版本` and publish dialog; skill selector and provenance badge on `/logs` |
+| S2 | Multi-file drop zone; `文件` tab; log viewer drawer; `file:line` evidence; applicability globs previewed against the sample bundle |
+| S3 | `样例与解析` (base format form, extractor builder), `解码` (register, register map and frame editors, `粘贴寄存器表`), `代码视图`, parse tests; decoded-field chips in evidence |
+| S4 | `源码` section with `试一试`; source excerpts in evidence |
+| S5 | `分析用例` and `存为测试用例`; upload suggestion; package import/export; integration credentials and `curl` snippet; quality insights by revision |
 
 ### UX acceptance
 
-Each phase PR walks its rows above in a real browser at 1440x900 and shows the screenshots in the PR. Builder logic (pattern generalization, decoding, offset computation, form ↔ code round trip) lives in the parsing engine and is tested at its module interface; the browser walkthrough covers the rest, with no separate frontend view-model seam. S5 adds two scripted end-to-end walkthroughs as the design targets: (1) from 新建技能 with a template to a published skill with one extractor, one register decoder and one signal using only forms; (2) from the 集成 tab to a first successful push and webhook delivery using only the copied snippet and a new credential.
+Each phase PR walks its rows above in a real browser at 1440x900 and shows the screenshots in the PR. Builder logic (pattern generalization, decoding, offset computation, form ↔ code round trip) lives in the parsing engine and is tested at its module interface; the browser walkthrough covers the rest, with no separate frontend view-model seam. S5 adds two scripted end-to-end walkthroughs as the design targets: (1) from `新建技能` with a template to a published skill with one extractor, one register decoder and one signal using only forms; (2) from the `集成` tab to a first successful push and webhook delivery using only the copied snippet and a new credential.
 
 ## Phase S1 — skill revisions, procedures and data-driven signals
 
@@ -234,7 +236,7 @@ Each phase PR walks its rows above in a real browser at 1440x900 and shows the s
 3. Worker loads the pinned revision; prompt gains the procedure section; new prompt version.
 4. Signal rule engine (message regex, token/field conditions, count-in-window). Rule ids become open strings. The charging rules become a seed skill (demo seed and eval fixtures); the rules fallback evaluates the pinned revision's signals.
 5. Linear-time regex engine for all administrator patterns, including existing format profiles. Choose between a native RE2 binding and a WASM build by self-hosted image compatibility; record the choice in the PR.
-6. Analysis trace: the loop records each step (tool, argument summary, result size, lines returned, outcome, tokens) in `log_analysis_traces`; readable by skill administrators only. 试运行 runs a draft revision on the skill's sample without creating a user-visible record.
+6. Analysis trace: the loop records each step (tool, argument summary, result size, lines returned, outcome, tokens) in `log_analysis_traces`; readable by skill administrators only. `试运行` runs a draft revision on the skill's sample without creating a user-visible record.
 7. Frontend: the S1 row of [UI by phase](#ui-by-phase).
 
 **S1 acceptance**: a published revision's procedure demonstrably reaches the prompt (behavior eval asserts it); editing a draft never changes a run pinned to the published revision; a rerun of an old record reproduces with the pinned revision; the charging seed skill gives the same rule evidence as today's hard-coded prefilter on the existing eval cases; cross-organization reads/writes of skills and revisions are refused (PostgreSQL integration tests).
@@ -258,7 +260,7 @@ Issue #1237 delivers the extraction core and code view; the sample-line extracto
 2. Parse stage runs extractors and decoders, applies signal rules over decoded values, and stores decoded events as a per-run artifact (object store, line-anchored) plus per-extractor counts and signal hits in the database; reports persist cited events only.
 3. Tools `query_events` (extractor, field filters, line/time range, limit) and `describe_event_schema`; an event in a tool result counts as seeing its line for grounding.
 4. Parse tests: sample line(s) → expected decoded fields; run on every draft save and before publish.
-5. Frontend: the S3 row of [UI by phase](#ui-by-phase). Forms and 代码视图 share one validator, so a draft round-trips between them without loss.
+5. Frontend: the S3 row of [UI by phase](#ui-by-phase). Forms and `代码视图` share one validator, so a draft round-trips between them without loss.
 6. A preview endpoint decodes pasted or selected sample lines against an unsaved draft for the live panes.
 
 **S3 acceptance**: the illustrative register-map and PD-frame examples decode exactly as specified; every construct has unit tests including cap violations; an agent conclusion cites a decoded field and the report renders it; parse tests block nothing but are shown in the publish dialog.
@@ -293,7 +295,7 @@ Requires its own ADR first (QuickJS/WASM in an isolated worker vs a separate no-
 
 ## Security and privacy
 
-- Organization isolation at the repository layer and in composite foreign keys for every new table; permission `logs:admin-domains` governs skill and snapshot administration (label becomes 管理分析技能); `logs:view` sees cited excerpts only, not snapshot browsing.
+- Organization isolation at the repository layer and in composite foreign keys for every new table; permission `logs:admin-domains` governs skill and snapshot administration (label becomes `管理分析技能`); `logs:view` sees cited excerpts only, not snapshot browsing.
 - Procedure text, knowledge, decoded values and source are untrusted model input; the platform protocol is never overridable by a skill.
 - Administrator patterns run on a linear-time engine with caps; archives are validated before anything persists.
 - Integration credentials carry only upload and own-record read scope, are hashed at rest, and never grant administration.

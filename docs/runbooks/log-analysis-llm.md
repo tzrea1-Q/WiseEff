@@ -42,6 +42,13 @@ Verify the degraded path visibly: kill or misconfigure the provider, upload a lo
 - Degraded analyses must never impersonate full analyses; provenance stays on the report row and in the UI.
 - Prompt changes must bump `LOG_ANALYSIS_PROMPT_VERSION` (single-shot) or `LOG_ANALYSIS_LOOP_PROMPT_VERSION` (loop) and pass `npm run logs:eval` (behavior-layer eval, CI-gated); model or prompt changes should additionally run `npm run logs:eval:quality` before release.
 
+## Skill diagnostic procedures
+
+- In the skill workspace, authors edit and preview Markdown in the Diagnostic procedure section. `skill/v1.procedure` is optional and capped at 20,000 characters. Saving changes only the draft; publishing creates an immutable revision. The worker reads the procedure from the run's pinned `skill_revision_id`, so subsequent draft edits cannot change queued or explicitly revision-pinned reruns. New uploads use the current published revision.
+- Prompt order is platform protocol → delimited, lower-priority skill procedure → user mission. The procedure is a JSON string inside `<skill_diagnostic_procedure>`; newlines and delimiter characters are escaped so closing tags or fake protocol headings remain data. The guidance explicitly cannot override grounding, refusal rules or the ban on writes. Evidence must come from tool results; the legacy single-shot kernel uses its platform-provided excerpt. The tool allowlist and existing evidence checks remain enforced independently of the text.
+- Current versions: loop `2026-10-19.loop.procedure.1`, related-parameter loop `2026-10-19.loop.procedure.related-parameter.1`; single-shot `2026-10-19.procedure.1`, related-parameter single-shot `2026-10-19.procedure.related-parameter.1`. Reports retain the matching `prompt_version`. Without a procedure, the prompt changes only in its version label. Deterministic rule fallback ignores the procedure.
+- Run `npm run logs:eval` for prompt order, hostile procedure, delimiter injection, grounding and illegal write-tool scenarios. The PostgreSQL run-level test is `server/modules/logs/procedure.integration.test.ts`; it captures scripted-model prompts and verifies publication, draft isolation and explicitly pinned reruns. These checks do not establish live-provider resistance to all prompt injection.
+
 ## Quality Eval (`logs:eval:quality`)
 
 - Deterministic demo (zero API cost): `LOG_ANALYSIS_DETERMINISTIC=true npm run logs:eval:quality` — runs the golden case set with the deterministic kernel and the deterministic rubric judge.

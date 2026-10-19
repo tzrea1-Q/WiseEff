@@ -405,6 +405,7 @@ async function processClaimedLogAnalysisJob(
     const analysis = await analyzeWithDegradation({
       analyzer,
       analyzeInput: {
+        procedure: snapshot.procedure,
         decoding,
         files: inventory.length ? files : undefined,
         filePath: inventory.length ? files.find((file) => file.parsed)?.path : snapshot.fileName,

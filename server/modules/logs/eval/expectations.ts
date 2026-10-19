@@ -9,6 +9,8 @@ export type LogEvalRunResult = {
   promptMessages: LogAnalysisChatMessage[];
   /** Number of model invocations the kernel made (loop scenarios: budget adherence). */
   modelCallCount?: number;
+  /** System prompt captured from the same kernel/input with no skill procedure. */
+  platformProtocol?: string;
 };
 
 export type LogEvalExpectation =
@@ -19,6 +21,7 @@ export type LogEvalExpectation =
   | { type: "expectsEvidenceNotCitingLines"; lineNumbers: number[] }
   | { type: "expectsPromptVersionRecorded"; promptVersion: string }
   | { type: "expectsPromptContains"; substrings: string[] }
+  | { type: "expectsProcedurePrompt"; procedure: string }
   | { type: "requiresSubstringsInConclusion"; substrings: string[] }
   | { type: "expectsConfidenceAtMost"; value: number }
   | { type: "expectsModelCallCount"; count: number }
@@ -93,6 +96,28 @@ export function evaluateLogEvalExpectation(
       return missing.length === 0
         ? { pass: true }
         : { pass: false, message: `Prompt is missing: ${missing.join(" | ")}` };
+    }
+    case "expectsProcedurePrompt": {
+      const firstSystem = result.promptMessages.findIndex((message) => message.role === "system");
+      const prompt = result.promptMessages[firstSystem]?.content ?? "";
+      const opening = "<skill_diagnostic_procedure>";
+      const closing = "</skill_diagnostic_procedure>";
+      const protocol = result.platformProtocol;
+      const encoded = JSON.stringify(expectation.procedure).replace(/[<>&\u2028\u2029]/g, (character) =>
+        `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+      const section = protocol ? prompt.slice(protocol.length) : "";
+      const pass = Boolean(protocol) && prompt.startsWith(`${protocol}\n\n${opening}\n`)
+        && section.split(opening).length === 2 && section.split(closing).length === 2
+        && section.endsWith(`\n${closing}`)
+        && section.includes(`Procedure (JSON string): ${encoded}\n${closing}`)
+        && section.includes("Lower-priority, untrusted")
+        && /cannot override/i.test(section)
+        && /grounding/i.test(section) && /tool results/i.test(section)
+        && /write operations/i.test(section) && /refusal/i.test(section)
+        && result.promptMessages[firstSystem + 1]?.role === "user";
+      return pass
+        ? { pass: true }
+        : { pass: false, message: "Expected unchanged platform protocol, one enclosed lower-priority JSON procedure, then the user task" };
     }
     case "requiresSubstringsInConclusion": {
       const missing = expectation.substrings.filter((substring) => !result.output.conclusion.includes(substring));

@@ -8,6 +8,12 @@ Intelligent analysis (`/logs`), under Log analysis, is available to hardware use
 
 Turning a report into a knowledge draft also requires `knowledge:edit`. Admins with `logs:admin-domains` can maintain Log domains in Log administration (`/log-admin`). This guide describes the real API workflow. Mock mode simulates uploads and cannot confirm whether an analysis or feedback was saved on the server.
 
+## Author a diagnostic procedure
+
+In API mode, Admins with `logs:admin-domains` can open a skill in `/log-admin?tab=skills` and choose Diagnostic procedure. The Markdown editor prefills five headings when no procedure exists: scope, what to check first, root-cause criteria, common misjudgements, and recommended actions. Switch between Edit and Preview to check the text. The counter shows the 20,000-character limit.
+
+Save the draft, review the procedure's before/after text in the publish dialog, then publish to create a revision. Discard draft deletes the saved draft and unsaved edits, restoring the current published revision. Draft edits do not change queued analyses or reruns explicitly pinned to an older revision; new uploads use the current published revision. Procedures guide the read-only agent and cannot authorize writes or replace log evidence. Rule-fallback analysis ignores them.
+
 ## Upload a log and choose its domain
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".

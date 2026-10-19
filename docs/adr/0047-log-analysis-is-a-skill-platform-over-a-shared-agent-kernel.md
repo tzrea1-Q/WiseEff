@@ -1,6 +1,6 @@
 # ADR-0047: Log analysis is a skill platform over a shared agent kernel
 
-> Chinese companion: [中文决策记录](../zh-CN/design-docs/adr-0047-log-analysis-is-a-skill-platform-over-a-shared-agent-kernel.md)
+> Chinese companion: [Chinese](../zh-CN/design-docs/adr-0047-log-analysis-is-a-skill-platform-over-a-shared-agent-kernel.md)
 
 Date: 2026-10-18
 
@@ -42,6 +42,8 @@ The product goal (2026-10-18) is a general log analysis platform: administrators
 - **A general expression language for decoding (CEL, JSONata)** — deferred: a closed construct set is easier to validate, test and explain in the editor. Add a bounded expression construct only when a real protocol needs it.
 
 ## Consequences
+
+The diagnostic procedure follows the platform protocol and precedes the mission. In #1227 it is optional Markdown capped at 20,000 characters, loaded from the pinned revision and transported as a JSON string within a delimited, lower-priority untrusted section. Escaped line separators and delimiter characters prevent forged protocol headings or closing tags from opening a new section. Guidance cannot override grounding, tool-result evidence, refusal rules or read-only tools. Deterministic rule fallback ignores it. Loop prompt versions are `2026-10-19.loop.procedure.1` and `2026-10-19.loop.procedure.related-parameter.1`; single-shot counterparts are `2026-10-19.procedure.1` and `2026-10-19.procedure.related-parameter.1`. An absent procedure changes only the version label. Behavior eval verifies prompt precedence and rejected fabrication/write attempts, while PostgreSQL integration verifies draft isolation and publication through captured scripted-model prompts.
 
 - Run provenance grows a skill revision id; evidence grows an optional file path and an optional source location. Both are additive to the output contract, and single-file runs without a skill read as today.
 - The hard-coded charging rules move into data as a seed skill. The rules fallback then uses the pinned skill's signal rules plus generic signals, so degraded analysis stays meaningful for any skill.

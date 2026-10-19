@@ -7,9 +7,16 @@ const defaults = { conclusion: "结论", impact: "影响", severity: "Info" as c
 const rule = (id: string, inference = "推断") => ({ id, inference, stageId: "pattern" as const, suggestedAction: "检查",
   anyOf: [{ type: "text" as const, pattern: "ERROR" }], analysis: { suggestedActions: [] } });
 describe("diffSkillSpecs", () => {
-  it("shows stored template procedures in the overview diff", () => {
-    expect(diffSkillSpecs(base, { ...base, procedure: "## Steps\nCheck context." }).overview)
-      .toContainEqual({ field: "procedure", before: undefined, after: "## Steps\nCheck context." });
+  it.each([
+    [undefined, "## Steps\nCheck context."],
+    ["Old procedure", "New procedure"],
+    ["Old procedure", undefined]
+  ])("groups procedure changes separately from overview: %s → %s", (before, after) => {
+    const diff = diffSkillSpecs({ ...base, procedure: before }, { ...base, procedure: after });
+    expect(diff.procedure).toEqual([{ field: "procedure", before, after }]);
+    expect(diff.overview).toEqual([]);
+    expect(diff.counts).toMatchObject({ overview: 0, procedure: 1 });
+    expect(diffSkillSpecs({ ...base, procedure: after }, { ...base, procedure: after }).procedure).toEqual([]);
   });
   it("groups extractors added, changed and removed by id", () => {
     const extractor = (id: string, pattern = "(?P<value>.+)") => ({ id, pattern, fields: { value: { type: "string" as const } } });
