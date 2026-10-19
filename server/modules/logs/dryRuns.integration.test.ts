@@ -47,9 +47,10 @@ async function harness(analyzer: LogAnalysisAdapter) {
     expect((await api.request(`${base}/sample`, "PUT", { fileName: "sample.log", contentBase64: Buffer.from(content).toString("base64") })).status).toBe(200);
     return { ...api, skill, base, revisionId: draft.body.item.id };
   };
-  const idle = async () => vi.waitFor(async () => {
+  // Large samples stream through decoding and signals; under CI load draining can exceed 10 s.
+  const idle = async (timeout = 10_000) => vi.waitFor(async () => {
     expect((await db.query("select count(*)::int n from log_skill_dry_runs where status='processing'")).rows).toEqual([{ n: 0 }]);
-  }, { timeout: 10_000 });
+  }, { timeout });
   return { db, otherDb, store, get, getStream, client, prepare, idle, async close() {
     await Promise.all([db.close(), otherDb.close()]);
     await ephemeral.drop();
@@ -279,7 +280,7 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
       h.get.mockClear(); h.getStream.mockClear();
       const started = await api.request<Dry>(`${api.base}/dry-runs`, "POST");
       expect(started.status).toBe(202);
-      await h.idle();
+      await h.idle(60_000);
       expect(observed).toHaveLength(1);
       const input = observed[0];
       expect(input.parsed.rawLines.length).toBeLessThanOrEqual(400);
