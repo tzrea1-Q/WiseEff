@@ -34,6 +34,10 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 
 `GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据(含行号锚点)、建议动作,以及溯源字段 `analysisSource` / `degradedReason`——`rules-fallback` 是降级分析,绝不冒充完整 Agent 分析。
 
+记录另有当前运行的可选 `signalSummary: { signals, templates, truncatedSignals, truncatedTemplates }`。不选择技能也生成通用信号，钉住的技能另提供自身信号命中。信号带种类、严重度、来源、出现次数和有界的 `file:line` 锚点及摘录；模板带归一化文本、次数和首末锚点。判断摘要是否完整前，先检查截断标记；旧记录可以没有该字段。规则回退同时使用通用和所钉技能的信号，保留降级标记与置信度上限。字段和内部 Agent 工具见 [API 合同](../design-docs/api-contract.md)；这些工具不新增 REST 端点。
+
+可选的 `signalSummary.truncated` 与 `reason` 说明提取不完整：`time_cap` 保留已完成结果，`line_cap` 仅按行首内容匹配，`extraction_error` 返回空摘要并继续分析。判断空摘要是否意味着没有异常前，还须同时检查这些字段和数量截断标记。
+
 ## 4. 或消费结果 Webhook
 
 Admin 在 `/log-admin`(业务域治理 → 结果回调)按域配置:HTTPS URL、签名密钥、启用开关。该域的分析到达终态(完成——含降级——或失败)后,WiseEff 会 POST 一份精简 JSON 摘要。**绝不外发**原始日志内容或证据全文;需要细节时用 `recordId` 走 API 获取。

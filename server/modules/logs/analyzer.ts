@@ -3,6 +3,7 @@ import { collectRuleEvidence } from "./prefilter";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import type { SignalRuleSet } from "./signalRules";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
+import { extractLogSignals, type LogSignalSummary } from "./genericSignals";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
@@ -13,6 +14,7 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type AnalyzeLogInput = {
+  signalSummary?: LogSignalSummary;
   /** Untrusted diagnostic guidance from this run's immutable skill revision. */
   procedure?: string;
   decoding?: { spec: import("./parsing/spec").ParsingSpec; events: import("./parsing/spec").DecodedEvent[]; counts: import("./parsing/spec").DecodeCounts };
@@ -77,6 +79,13 @@ export interface LogAnalysisAdapter {
   analyze(input: AnalyzeLogInput): Promise<AnalyzeLogOutput>;
 }
 
+/** Pinned skills without rules must not inherit charging-specific rules. */
+export const genericSignalRuleSet: SignalRuleSet = {
+  rules: [],
+  noHit: { confidence: 0.35, conclusion: "未发现通用异常信号", impact: "请结合日志上下文进一步检查。", severity: "Info", suggestedActions: ["检查日志上下文。"] },
+  hitDefaults: { confidence: 0.55, conclusion: "发现通用异常信号，请核对根因", impact: "异常可能影响设备或应用运行。", severity: "Warning", suggestedActions: ["检查信号附近的日志并确认根因。"] }
+};
+
 export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultChargingRuleSet): LogAnalysisAdapter {
   return {
     async analyze(input) {
@@ -84,14 +93,19 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
       const evidence = input.files
         ? input.files.flatMap((file) => file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules).map((item) => ({ ...item, filePath: file.path })) : [])
         : collectRuleEvidence(input.parsed.entries, activeRules).map((item) => ({ ...item, filePath: input.filePath }));
-      const ruleHits = new Set(
-        evidence.map((item) => item.ruleHit).filter((ruleHit): ruleHit is LogRuleHit => ruleHit !== undefined)
-      );
+      const ruleHits = new Set(evidence.map((item) => item.ruleHit));
       const hasErrorEvidence = input.files ? input.files.some((file) => file.parsed?.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence.filter((item) => item.filePath === file.path), entry)))
         : input.parsed.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence, entry));
-
+      const summary = input.signalSummary ?? extractLogSignals(input.files ?? [{ path: input.filePath ?? "log", parsed: input.parsed }], input.signalRules);
+      const generic = summary.signals.filter((signal) => signal.source === "generic");
+      for (const signal of generic) {
+        for (const filePath of new Set(signal.anchors.map((anchor) => anchor.file))) evidence.push({
+          stageId: "pattern", filePath, lineNumbers: signal.anchors.filter((anchor) => anchor.file === filePath).map((anchor) => anchor.line),
+          inference: signal.title, suggestedAction: "检查信号附近的日志并确认根因。", ruleHit: `generic:${signal.kind}`
+        });
+      }
       const matchedRules = activeRules.rules.filter((rule) => ruleHits.has(rule.id));
-      const defaults = matchedRules.length === 0 ? activeRules.noHit : activeRules.hitDefaults;
+      const defaults = matchedRules.length === 0 ? (generic.length ? genericSignalRuleSet.hitDefaults : activeRules.noHit) : activeRules.hitDefaults;
       const eligible = <T extends { priority: number; requiresErrorEvidence?: boolean }>(items: T[]) =>
         items.filter((item) => !item.requiresErrorEvidence || hasErrorEvidence)
           .sort((left, right) => left.priority - right.priority);
@@ -103,7 +117,7 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
         confidence: choose(matchedRules.map((rule) => rule.analysis.confidence), defaults.confidence),
         conclusion: choose(matchedRules.map((rule) => rule.analysis.conclusion), defaults.conclusion),
         impact: choose(matchedRules.map((rule) => rule.analysis.impact), defaults.impact),
-        severity: choose(matchedRules.map((rule) => rule.analysis.severity), defaults.severity),
+        severity: choose(matchedRules.map((rule) => rule.analysis.severity), matchedRules.length === 0 && generic.some((signal) => signal.severity === "Critical") ? "Critical" : defaults.severity),
         evidence,
         suggestedActions: [...new Set([...defaults.suggestedActions, ...actions.map((action) => action.value)])],
         reportContext: {

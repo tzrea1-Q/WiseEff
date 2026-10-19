@@ -17,6 +17,12 @@ describe("log analysis behavior eval harness", () => {
     expect(report.scenarios.length).toBeGreaterThanOrEqual(14);
     expect(report.scenarios.filter((scenario) => scenario.kernel === "loop").length).toBeGreaterThanOrEqual(8);
     expect(report.scenarios.every((scenario) => scenario.pass)).toBe(true);
+    expect(report.scenarios.filter((scenario) => scenario.category === "generic-signals").map((scenario) => scenario.name)).toEqual([
+      "loop-get-signals-only-evidence-grounded",
+      "loop-get-line-templates-only-evidence-grounded",
+      "loop-get-timeline-only-evidence-grounded",
+      "loop-timeline-unseen-existing-line-rejected"
+    ]);
     expect(report.scenarios.filter((scenario) => scenario.category.startsWith("procedure-")).map((scenario) => scenario.name)).toEqual([
       "procedure-benign-single-shot-order",
       "procedure-fabricated-single-shot-evidence-rejected",

@@ -64,6 +64,14 @@ After completion, choose "Export report" to download a Markdown summary or "Copy
 
 *A selected evidence card from the freshly uploaded sample exposes cited raw lines and inference for manual checking.*
 
+## Inspect signals and repeated lines
+
+On a record report in `/logs`, choose the Signals tab beside the existing report. Signals are grouped by kind and show severity, generic or skill source, occurrence count and `file:line` chips. Generic signals include crash signatures, timestamp gaps, restarts, error bursts and each file's first error; they are available even without a selected skill. Skill signals use the revision pinned to that run.
+
+The line-template table groups lines after replacing changing numbers, hexadecimal values, identifiers and paths. Compare each template's count and first/last locations to spot repetition. Click an anchor to locate and highlight its line in the raw-log view when available. A truncation notice means the stored summary reached its bound; inspect raw logs for additional occurrences. A signal is a lead to check, not a root-cause conclusion. Older reports may have no saved signals. Degraded reports keep their source warning and use generic signals together with the pinned skill's rules.
+
+The Signals tab also explains when extraction ran out of time, scanned only the beginning of long lines, or failed. Time-limited results keep completed signals; an extraction failure leaves an empty signal summary. The report and raw logs remain available for checking, and an incomplete summary does not establish that no anomalies exist.
+
 ## Give feedback on report quality
 
 In Intelligent analysis (`/logs`), choose "Give analysis-quality feedback" for the selected report. Select "High: credible judgment", "Medium: needs review", or "Low: possible misjudgment". Optionally describe missing evidence, a wrong root cause, or omitted log fragments. Choose "Submit feedback" and wait for the success notification; if submission fails, the dialog displays an error so you can retry.

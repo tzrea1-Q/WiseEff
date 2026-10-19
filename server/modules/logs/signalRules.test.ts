@@ -12,11 +12,19 @@ const entry = (overrides: Partial<ParsedLogEntry> = {}): ParsedLogEntry => ({
 
 function analyze(entries: ParsedLogEntry[], ruleSet?: SignalRuleSet) {
   return createRuleBasedLogAnalyzer(ruleSet).analyze({
+    // Isolate skill-rule priorities here; generic/combined summaries have their own run tests.
+    signalSummary: { signals: [], templates: [], truncatedSignals: false, truncatedTemplates: false },
     parsed: { ok: true, entries, rawLines: entries.map((item) => item.message) }
   });
 }
 
 describe("signal conditions", () => {
+  it("bounds requested message/token searches without changing unbounded callers", () => {
+    const condition = { type: "text" as const, pattern: "ERROR" };
+    const input = entry({ message: "x".repeat(6144) + " ERROR", tokens: { state: "ERROR" } });
+    expect(compileSignalCondition(condition)(input)).toBe(true);
+    expect(compileSignalCondition(condition, 6144)(input)).toBe(false);
+  });
   it("matches the message and key=value tokens with flags, without state leaking between lines", () => {
     const matches = compileSignalCondition({ type: "text", pattern: "ALERT|state=failed", flags: "i" });
     expect(matches(entry({ message: "alert" }))).toBe(true);

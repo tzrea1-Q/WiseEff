@@ -237,6 +237,53 @@ const nominalLog = [
 ].join("\n");
 
 export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
+  ...[
+    { tool: "get_signals", args: { kind: "first-error", severity: "Warning", offset: 0, limit: 20 } },
+    { tool: "get_line_templates", args: { offset: 0, limit: 20 } },
+    { tool: "get_timeline", args: { time: "2026-08-10T08:00:04Z", before: 0, after: 0 } }
+  ].map(({ tool, args }): LogLoopEvalScenario => ({
+    name: `loop-${tool.replaceAll("_", "-")}-only-evidence-grounded`,
+    category: "generic-signals",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    script: [
+      { content: { action: "tool", tool, args } },
+      { content: { ...loopFinalPayload, evidence: [{
+        lineNumbers: [4], inference: "The error reports a reduced charging current.",
+        suggestedAction: "Inspect the reported thermal condition."
+      }] } }
+    ],
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" },
+      { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" },
+      { type: "expectsPromptContains", substrings: [`Tool result for ${tool}:`] },
+      { type: "expectsModelCallCount", count: 2 }
+    ]
+  })),
+  {
+    name: "loop-timeline-unseen-existing-line-rejected",
+    category: "generic-signals",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    script: [
+      { content: { action: "tool", tool: "get_timeline", args: { file: "charging.log", line: 4, before: 0, after: 0 } } },
+      { content: { ...loopFinalPayload, evidence: [{
+        lineNumbers: [3], inference: "An existing line that the tool did not return.", suggestedAction: "None."
+      }] } },
+      { content: { ...loopFinalPayload, evidence: [{
+        lineNumbers: [4], inference: "The returned error reports reduced current.", suggestedAction: "Inspect cooling."
+      }] } }
+    ],
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" },
+      { type: "expectsNoDegradation" },
+      { type: "expectsPromptContains", substrings: ["Tool result for get_timeline:", "Grounding violation"] },
+      { type: "expectsGroundedEvidence" },
+      { type: "expectsEvidenceNotCitingLines", lineNumbers: [3] },
+      { type: "expectsModelCallCount", count: 3 }
+    ]
+  },
   {
     name: "procedure-benign-loop-order",
     category: "procedure-priority",

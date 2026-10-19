@@ -8,7 +8,8 @@ import type { Database } from "../../shared/database/client";
 import { decideRetry } from "../jobs/retryPolicy";
 import type { LogAnalysisJobFailureReason, MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
-import { createRuleBasedLogAnalyzer, type AnalyzeLogInput, type AnalyzeLogOutput, type LogAnalysisAdapter } from "./analyzer";
+import { createRuleBasedLogAnalyzer, genericSignalRuleSet, type AnalyzeLogInput, type AnalyzeLogOutput, type LogAnalysisAdapter } from "./analyzer";
+import { extractLogSignalsCooperatively, logSignalLimits } from "./genericSignals";
 import { LogAnalysisProviderError, LOG_ANALYSIS_PROMPT_VERSION } from "./analyzer/llmAnalyzer";
 import { readStoredLogFormatProfile } from "./formatProfile";
 import { sanitizeFileName, sanitizePathSegment, type ObjectStore } from "./objectStore";
@@ -310,14 +311,27 @@ async function processClaimedLogAnalysisJob(
     }
     currentFailureReason = "unknown";
 
+    // Unclassified uploads retain the legacy prefilter. A pinned skill without
+    // rules stays explicitly empty instead of inheriting charging rules.
+    const signalRules = snapshot.signalRules ?? (snapshot.skillRevisionId ? genericSignalRuleSet : undefined);
+    const expiresAt = Date.parse(job.leaseExpiresAt ?? "");
+    const remainingLeaseMs = Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now().getTime()) : 0;
+    // Signals and decoding together may consume at most one quarter of the
+    // remaining lease. Reserve the rest for compression, storage and analysis.
+    const preprocessingDeadline = performance.now() + Math.floor(remainingLeaseMs / 4);
+    let signalSummary: NonNullable<AnalyzeLogInput["signalSummary"]>;
+    try {
+      signalSummary = await extractLogSignalsCooperatively(inventory.length ? files : [{ path: snapshot.fileName, parsed }], signalRules,
+        { maxMs: Math.min(logSignalLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now())) });
+    } catch {
+      signalSummary = { signals: [], templates: [], truncatedSignals: false, truncatedTemplates: false, truncated: true, reason: "extraction_error" };
+    }
+
     let decoding: AnalyzeLogInput["decoding"];
     let decodedArtifact: { objectKey: string | null; counts: DecodeCounts } | undefined;
     if (snapshot.parsing?.extractors.length) {
-      const expiresAt = Date.parse(job.leaseExpiresAt ?? "");
-      const remainingLeaseMs = Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now().getTime()) : 0;
-      // There is no lease renewal in this worker. Reserve at least three quarters
-      // of the remaining lease for compression, storage and analysis.
-      const maxMs = Math.min(logDecodeLimits().maxMs, Math.floor(remainingLeaseMs / 4));
+      const maxMs = Math.min(logDecodeLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now()),
+        Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now().getTime()) : 0);
       decodedArtifact = { objectKey: null, counts: { total: 0,
         byExtractor: Object.fromEntries(snapshot.parsing.extractors.map(({ id }) => [id, 0])), errors: {} } };
       let cleanupKey: string | undefined;
@@ -405,12 +419,13 @@ async function processClaimedLogAnalysisJob(
     const analysis = await analyzeWithDegradation({
       analyzer,
       analyzeInput: {
+        signalSummary,
         procedure: snapshot.procedure,
         decoding,
         sourceSnapshot: snapshot.sourceSnapshot,
         files: inventory.length ? files : undefined,
         filePath: inventory.length ? files.find((file) => file.parsed)?.path : snapshot.fileName,
-        signalRules: snapshot.signalRules,
+        signalRules,
         parsed,
         analysisQuestion: snapshot.analysisQuestion ?? undefined,
         logDomain: snapshot.logDomain
@@ -488,6 +503,7 @@ async function processClaimedLogAnalysisJob(
       leaseOwner,
       sourceSnapshot: snapshot.sourceSnapshot,
       report: {
+        signalSummary,
         confidence: analysis.confidence,
         conclusion: analysis.conclusion,
         impact: analysis.impact,

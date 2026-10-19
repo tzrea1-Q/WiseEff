@@ -90,10 +90,11 @@ describe.skipIf(!available)("bundle upload and analysis over PostgreSQL", () => 
       const singleReport = await getLogRecord(db, auth(), single.log.id);
       const parsed = parseLogText({ fileName: "single.log", content: text });
       if (!parsed.ok) throw new Error(parsed.reason);
-      const previous = await createRuleBasedLogAnalyzer().analyze({ parsed });
+      const previous = await createRuleBasedLogAnalyzer().analyze({ parsed, filePath: "single.log" });
       expect(singleReport.conclusion).toBe(previous.conclusion);
       expect(singleReport.rawLines).toEqual(parsed.rawLines);
-      expect(singleReport.evidence.map(({ filePath, id: _id, ...item }) => { expect(filePath).toBe("single.log"); return item; })).toEqual(previous.evidence);
+      expect(singleReport.evidence.map(({ id: _id, ...item }) => item)).toEqual(previous.evidence);
+      expect(singleReport.evidence).toMatchObject([{ ruleHit: "error-code", filePath: "single.log", lineNumbers: [2] }, { ruleHit: "generic:first-error", filePath: "single.log", lineNumbers: [2] }]);
       expect(singleReport.files).toMatchObject([{ path: "single.log", status: "analyzed" }]);
       const utf16Text = `INFO ${"a".repeat(90)}${"\0".repeat(7)}\n`;
       const utf16 = await uploadLogFile(db, objectStore, auth(), { fileName: "utf16.log", contentType: "text/plain",

@@ -141,8 +141,8 @@ signals:
 | 工具 | 可用条件 | 阶段 |
 | --- | --- | --- |
 | `list_files`、`search_lines`、`read_line_range`（感知文件） | 始终 | S2（此前为现有单文件版本） |
-| `get_signals`（通用 + 技能信号；取代 `get_prefilter_findings`） | 始终 | S1（技能信号）、S2（通用信号） |
-| `list_templates`、`get_timeline` | 始终 | S2 |
+| `get_signals`（通用 + 技能信号；保留旧 `get_prefilter_findings` 兼容） | 始终 | S1（技能信号）、S2（通用信号） |
+| `get_line_templates`、`get_timeline` | 始终 | S2 |
 | `query_events`、`describe_event_schema` | 版本含抽取器 | S3 |
 | `read_domain_knowledge` | 始终（链接集合，否则全组织） | 已有 |
 | `find_log_statement`、`search_source`、`read_source_range` | 版本含已索引的源码快照 | S4 |
@@ -150,7 +150,7 @@ signals:
 
 提示词顺序：平台协议 → 技能诊断流程（分隔、优先级更低）→ 任务（问题、文件清单、信号、预算）。证据类型：日志行（`file`、`line`）和源码位置（`snapshot`、`path`、`line`）；两者都以工具结果为接地依据。平台上限：步数 ≤ 20，token 预算 ≤ 全局 `LOG_ANALYSIS_TOKEN_BUDGET` × 4（具体上限在 S1 结合成本测量确定）。
 
-诊断流程切片（#1227）从运行钉住的版本读取可选的 `skill/v1.procedure`（上限 20,000 字符），作为低优先级的不可信分隔段追加到系统协议之后、用户任务之前。流程经过 JSON 引用，分隔符字符和行分隔符转义；伪造结束标签和协议标题仍留在数据值内部。流程不能覆盖接地、工具结果证据、拒绝规则或禁止写操作的约束。规则回退忽略流程；无流程时，提示词仅改变版本标签。当前循环版本为 `2026-10-19.loop.procedure.1` / `2026-10-19.loop.procedure.related-parameter.1`；单发版本为 `2026-10-19.procedure.1` / `2026-10-19.procedure.related-parameter.1`。报告记录所选版本。行为评测覆盖正常和对抗性流程；PostgreSQL 上传到报告测试捕获脚本模型的提示词，验证草稿修改、发布和钉住版本的重新分析。
+诊断流程切片（#1227）从运行钉住的版本读取可选的 `skill/v1.procedure`（上限 20,000 字符），作为低优先级的不可信分隔段追加到系统协议之后、用户任务之前。流程经过 JSON 引用，分隔符字符和行分隔符转义；伪造结束标签和协议标题仍留在数据值内部。流程不能覆盖接地、工具结果证据、拒绝规则或禁止写操作的约束。规则回退忽略流程；无流程时省略流程段，平台信号工具仍可用。当前循环版本为 `2026-10-19.loop.procedure.signals.1` / `2026-10-19.loop.procedure.signals.related-parameter.1`；单发版本为 `2026-10-19.procedure.signals.1` / `2026-10-19.procedure.signals.related-parameter.1`。报告记录所选版本。行为评测覆盖正常和对抗性流程；PostgreSQL 上传到报告测试捕获脚本模型的提示词，验证草稿修改、发布和钉住版本的重新分析。
 
 ### 数据模型（增量；最终命名按阶段确定）
 
@@ -247,7 +247,7 @@ Mock 模式保留一个只读的种子技能，演示和组件测试仍可渲染
 2. 编码：UTF-8、带 BOM 的 UTF-16，以及带逐文件标记的有损解码；二进制文件列出但不分析。
 3. `log_files` 带逐文件文本对象和行偏移索引；Worker 流式处理文件并按偏移读取行范围，不再把全部文本留在内存中。
 4. 通用信号：崩溃特征（kernel panic、Oops、`BUG:`、watchdog、ANR、`FATAL EXCEPTION`、segfault、assert）、时间戳间隔与重启、带计数及首末出现位置的行模板聚类、错误突发、每文件首个错误。
-5. 感知文件的工具，以及 `list_templates`、`get_timeline`；证据新增 `file_path`。
+5. 感知文件的工具，以及 `get_line_templates`、`get_timeline`；证据新增 `file_path`。
 6. 前端：[分阶段 UI](#分阶段-ui) 的 S2 行；适用通配决定文件角色。
 
 **S2 验收**：多文件日志包产出引用多个文件中行的证据；恶意压缩包（穿越、链接、炸弹、嵌套）被拒绝并说明原因；达到上限的日志包在 PR 中测得的 Worker 内存上限内完成分析；单文件上传行为与之前一致。

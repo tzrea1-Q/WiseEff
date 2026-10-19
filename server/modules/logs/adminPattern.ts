@@ -15,6 +15,7 @@ export type LogPattern = {
   groupCount: number;
   test(input: string): boolean;
   exec(input: string): RegExpExecArray | null;
+  matchAll(input: string): Iterable<RegExpExecArray>;
 };
 
 /**
@@ -52,7 +53,20 @@ export function compileLogPattern(pattern: string, flags = "", maxInputLength = 
     groupCount: compiled.groupCount(),
     test: (input) => input.length <= maxInputLength && compiled.test(input),
     // RE2JS returns index/input/groups at runtime but declares only any[].
-    exec: (input) => input.length <= maxInputLength ? compiled.exec(input) as RegExpExecArray | null : null
+    exec: (input) => input.length <= maxInputLength ? compiled.exec(input) as RegExpExecArray | null : null,
+    *matchAll(input) {
+      if (input.length > maxInputLength) return;
+      const matcher = compiled.matcher(input);
+      while (matcher.find()) {
+        const match = Array.from({ length: compiled.groupCount() + 1 }, (_, index) => matcher.group(index) ?? undefined) as RegExpExecArray;
+        match.index = matcher.start();
+        match.input = input;
+        if (Object.keys(compiled.namedGroups()).length) match.groups = Object.fromEntries(
+          Object.keys(compiled.namedGroups()).map((name) => [name, matcher.group(name) ?? undefined])
+        ) as Record<string, string>;
+        yield match;
+      }
+    }
   };
 }
 

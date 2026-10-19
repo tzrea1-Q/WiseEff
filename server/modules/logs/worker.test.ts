@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as workerDecoding from "./parsing/workerDecoding";
+import * as workerSignals from "./genericSignals";
 import { parsingSpecSchema, type ParsingSpec, type DecodeCounts } from "./parsing/spec";
 import { claimNextJob } from "../jobs/repository";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
@@ -189,7 +190,7 @@ function createFakeWorkerDb(fixture = createFixture()) {
         if (fixture.job.status !== "queued") return { rows: [], rowCount: 0 };
         fixture.job.status = "processing";
         fixture.job.lease_owner = values[1] as string;
-        fixture.job.lease_expires_at = "2026-05-25T02:01:00.000Z";
+        fixture.job.lease_expires_at ??= new Date(Date.now() + 60_000).toISOString();
         fixture.job.attempt_count += 1;
         return { rows: [fixture.job as Row], rowCount: 1 };
       }
@@ -432,7 +433,9 @@ describe("log worker", () => {
     const { db, fixture } = createFakeWorkerDb();
     fixture.parsing = parsing;
     fixture.log.log_domain = { id: "skill-1", name: "Parsing" };
+    fixture.job.lease_expires_at = "2026-05-25T02:01:00.000Z";
     vi.stubEnv("LOG_DECODE_MAX_MS", "60000");
+    vi.stubEnv("LOG_SIGNAL_MAX_MS", "1000");
     let elapsed = 0;
     vi.spyOn(performance, "now").mockImplementation(() => (elapsed += 0.75));
     const objectStore = createObjectStore(Buffer.from(Array(6000).fill("value").join("\n")));
@@ -444,8 +447,20 @@ describe("log worker", () => {
     expect(fixture.decoded?.counts.errors).toEqual({ time_cap: 1 });
     expect(fixture.decoded!.counts.total).toBeGreaterThan(0);
     expect(fixture.decoded!.counts.total).toBeLessThan(6000);
-    expect(elapsed).toBeLessThan(20_000);
+    // The configured budgets together exceed this 60s lease's 15s share.
+    // Synthetic clock increments allow only the final bounded checkpoint to overshoot.
+    expect(elapsed).toBeLessThan(15_020);
+    expect(analyze.mock.calls[0][0].signalSummary).toMatchObject({ truncated: true, reason: "time_cap" });
     expect(analyze.mock.calls[0][0].decoding?.counts.errors.time_cap).toBe(1);
+  });
+  it("continues with an honest empty signal summary when extraction throws", async () => {
+    const { db, fixture } = createFakeWorkerDb();
+    vi.spyOn(workerSignals, "extractLogSignalsCooperatively").mockRejectedValueOnce(new Error("Extraction failed"));
+    const analyze = vi.fn(createRuleBasedLogAnalyzer().analyze);
+    expect(await processNextLogAnalysisJob({ db, objectStore: createObjectStore(Buffer.from("kernel panic")), analyzer: { analyze } })).toBe("processed");
+    expect(fixture.log.status).toBe("complete");
+    expect(analyze.mock.calls[0][0].signalSummary).toMatchObject({ signals: [], templates: [], truncated: true, reason: "extraction_error" });
+    expect(fixture.evidence).toEqual([]);
   });
   it.each(["compression", "upload", "legacy pattern"])("continues analysis without decoding when %s fails", async (failure) => {
     const { db, fixture } = createFakeWorkerDb();
@@ -518,6 +533,7 @@ describe("log worker", () => {
   });
   it("leases a queued job to one worker and prevents a second claim", async () => {
     const { db, fixture } = createFakeWorkerDb();
+    fixture.job.lease_expires_at = "2026-05-25T02:01:00.000Z";
 
     const firstClaim = await claimNextJob(db, {
       kind: "log-analysis",
@@ -785,8 +801,10 @@ describe("log worker", () => {
     expect(fixture.evidence.map((item) => ({ id: item.id, stage: item.stage, lineNumbers: item.line_numbers }))).toEqual([
       { id: "evidence-run-1-0", stage: "rootcause", lineNumbers: [2] },
       { id: "evidence-run-1-1", stage: "pattern", lineNumbers: [3] },
-      { id: "evidence-run-1-2", stage: "pattern", lineNumbers: [2] }
+      { id: "evidence-run-1-2", stage: "pattern", lineNumbers: [2] },
+      { id: "evidence-run-1-3", stage: "pattern", lineNumbers: [2] }
     ]);
+    expect(fixture.evidence.map((item) => item.rule_hit)).toEqual(["thermal-foldback", "charge-current-reduction", "error-code", "generic:first-error"]);
   });
 
   it("marks run, job, and record failed with a readable parser error", async () => {

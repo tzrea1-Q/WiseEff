@@ -141,8 +141,8 @@ The ADR-0022 loop, with per-run tool composition:
 | Tool | Available when | Phase |
 | --- | --- | --- |
 | `list_files`, `search_lines`, `read_line_range` (file-aware) | always | S2 (today's single-file versions until then) |
-| `get_signals` (generic + skill signals; replaces `get_prefilter_findings`) | always | S1 (skill signals), S2 (generic signals) |
-| `list_templates`, `get_timeline` | always | S2 |
+| `get_signals` (generic + skill signals; legacy `get_prefilter_findings` remains supported) | always | S1 (skill signals), S2 (generic signals) |
+| `get_line_templates`, `get_timeline` | always | S2 |
 | `query_events`, `describe_event_schema` | revision has extractors | S3 |
 | `read_domain_knowledge` | always (linked set, else organization-wide) | existing |
 | `find_log_statement`, `search_source`, `read_source_range` | revision has an indexed source snapshot | S4 |
@@ -150,7 +150,7 @@ The ADR-0022 loop, with per-run tool composition:
 
 Prompt order: platform protocol → skill procedure (delimited, lower precedence) → mission (question, file inventory, signals, budgets). Evidence kinds: log line (`file`, `line`) and source location (`snapshot`, `path`, `line`); both grounded against tool results. Platform caps: steps ≤ 20, token budget ≤ the global `LOG_ANALYSIS_TOKEN_BUDGET` × 4 (exact caps set in S1 with cost measurements).
 
-The diagnostic-procedure slice (#1227) reads optional `skill/v1.procedure` (maximum 20,000 characters) from the run's pinned revision. It appends a lower-priority, untrusted section to the system protocol, before the user mission. The procedure is JSON-quoted with delimiter characters and line separators escaped; forged closing tags and protocol headings stay inside that data value. It cannot override grounding, tool-result evidence, refusal rules or the prohibition on writes. Rule fallback ignores it; an absent procedure leaves the prompt unchanged except for the version label. Current loop versions are `2026-10-19.loop.procedure.1` / `2026-10-19.loop.procedure.related-parameter.1`; single-shot versions are `2026-10-19.procedure.1` / `2026-10-19.procedure.related-parameter.1`. Reports record the selected version. Behavioral eval covers benign and adversarial procedures; a PostgreSQL upload-to-report test captures scripted-model prompts across draft edits, publication and revision-pinned reruns.
+The diagnostic-procedure slice (#1227) reads optional `skill/v1.procedure` (maximum 20,000 characters) from the run's pinned revision. It appends a lower-priority, untrusted section to the system protocol, before the user mission. The procedure is JSON-quoted with delimiter characters and line separators escaped; forged closing tags and protocol headings stay inside that data value. It cannot override grounding, tool-result evidence, refusal rules or the prohibition on writes. Rule fallback ignores it; an absent procedure omits that section while platform signal tools remain available. Current loop versions are `2026-10-19.loop.procedure.signals.1` / `2026-10-19.loop.procedure.signals.related-parameter.1`; single-shot versions are `2026-10-19.procedure.signals.1` / `2026-10-19.procedure.signals.related-parameter.1`. Reports record the selected version. Behavioral eval covers benign and adversarial procedures; a PostgreSQL upload-to-report test captures scripted-model prompts across draft edits, publication and revision-pinned reruns.
 
 ### Data model (additive; final names fixed per phase)
 
@@ -247,7 +247,7 @@ Each phase PR walks its rows above in a real browser at 1440x900 and shows the s
 2. Encoding: UTF-8, UTF-16 with BOM, and lossy decode with a per-file flag; binary files are listed but not analyzed.
 3. `log_files` with per-file text object and line-offset index; the worker streams files and reads ranges by offset instead of holding all text in memory.
 4. Generic signals: crash signatures (kernel panic, Oops, `BUG:`, watchdog, ANR, `FATAL EXCEPTION`, segfault, assert), timestamp gaps and reboots, line-template clustering with counts and first/last occurrence, error bursts, first error per file.
-5. File-aware tools plus `list_templates`, `get_timeline`; evidence gains `file_path`.
+5. File-aware tools plus `get_line_templates`, `get_timeline`; evidence gains `file_path`.
 6. Frontend: the S2 row of [UI by phase](#ui-by-phase); applicability globs assign file roles.
 
 **S2 acceptance**: a multi-file bundle produces evidence citing lines in more than one file; malicious archives (traversal, link, bomb, nesting) are rejected with stated reasons; a bundle at the cap analyzes within the worker memory limit measured in the PR; single-file uploads behave as before.

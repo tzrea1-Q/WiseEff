@@ -362,7 +362,8 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       await expect(processLogAnalysisJobById({ db, objectStore, jobId: upload.body.job.id })).resolves.toMatchObject({ status: "processed" });
       const first = (await request<{ item: LogRecordDto }>(`/api/v1/logs/${logId}`)).body.item;
       expect(first.status).toBe("complete");
-      expect(first.evidence).toEqual(expect.arrayContaining([expect.objectContaining({ ruleHit: "error-code", lineNumbers: [2] })]));
+      expect(first.evidence).toEqual(expect.arrayContaining([expect.objectContaining({ ruleHit: "generic:first-error", filePath: "device.log", lineNumbers: [2] })]));
+      expect(first.evidence.some((item) => item.ruleHit === "error-code")).toBe(false);
       expect(first.conclusion).not.toBe("版本二规则");
       expect((await request(`/api/v1/logs/${logId}/feedback`, "POST", { rating: "helpful" })).status).toBe(200);
       const reportBefore = await db.query(`select * from log_analysis_reports where run_id = $1`, [upload.body.job.runId]);

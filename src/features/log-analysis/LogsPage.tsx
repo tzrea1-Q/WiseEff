@@ -1,5 +1,6 @@
 import { SelectControl } from "@/components/common/SelectControl";
 import { DecodedFields } from "./DecodedFields";
+import { SignalsTab } from "./SignalsTab";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -69,7 +70,7 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-type LogsAuxTab = "report" | "files" | "metadata" | "related";
+type LogsAuxTab = "report" | "files" | "signals" | "metadata" | "related";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 
 function createEmptyLogRecord(): LogRecord {
@@ -121,6 +122,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [hoveredLine, setHoveredLine] = useState<number | null>(null);
+  const [focusedSignalLine, setFocusedSignalLine] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [liveMessage, setLiveMessage] = useState("");
@@ -222,7 +224,15 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     setHoveredEvidenceId(null);
     setFocusedEvidenceId(null);
     setHoveredLine(null);
+    setFocusedSignalLine(null);
   }, [activeLog.id]);
+
+  useEffect(() => {
+    if (auxTab !== "report" || focusedSignalLine === null) return;
+    const row = document.querySelector<HTMLElement>(`[data-testid="rawlog-line-${focusedSignalLine}"]`);
+    row?.scrollIntoView({ block: "center" });
+    row?.focus({ preventScroll: true });
+  }, [auxTab, focusedSignalLine]);
 
   useEffect(() => {
     setLiveMessage(hasActiveLog ? `已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${formatPercent(activeLog.confidence)}` : "暂无日志记录，请上传日志。");
@@ -451,7 +461,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         tabId={`logs-aux-tab-${auxTab}`}
         toolbar={<ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
           onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
-          items={([["report", "报告"], ["files", "文件"], ["metadata", "元数据"], ["related", "相关"]] as const)
+          items={([["report", "报告"], ["files", "文件"], ["signals", "信号"], ["metadata", "元数据"], ["related", "相关"]] as const)
             .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} />}
         primaryAction={<button className="button primary" type="button" onClick={openUploadDialog}>
           <Upload size={16} />上传新日志
@@ -468,7 +478,9 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           </div>
         </aside>}
       >
-      {auxTab === "files" ? <LogFilesTable log={activeLog} /> : auxTab !== "metadata" ? <div className="logs-v2-main">
+      {auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length}
+        onAnchor={(anchor) => { setSearchQuery(""); setFocusedSignalLine(anchor.line); setAuxTab("report"); }} />
+        : auxTab === "files" ? <LogFilesTable log={activeLog} /> : auxTab !== "metadata" ? <div className="logs-v2-main">
         {auxTab === "report" || activeLog.status === "Complete" ? <LogConclusionCard
           log={activeLog}
           onAskAgent={onAskAgent}
@@ -494,6 +506,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
                   activeMatchIndex={activeMatchIndex}
                   evidenceByLine={evidenceByLine}
                   focusedEvidenceId={focusedEvidenceId}
+                  focusedSignalLine={focusedSignalLine}
                   hoveredEvidenceId={hoveredEvidenceId}
                   hoveredLine={hoveredLine}
                   matchLines={matchLines}
@@ -1146,6 +1159,7 @@ function RawLogViewer({
   evidenceByLine,
   hoveredEvidenceId,
   focusedEvidenceId,
+  focusedSignalLine,
   hoveredLine,
   searchQuery,
   matchLines,
@@ -1160,6 +1174,7 @@ function RawLogViewer({
   evidenceByLine: Map<number, LogEvidence[]>;
   hoveredEvidenceId: string | null;
   focusedEvidenceId: string | null;
+  focusedSignalLine: number | null;
   hoveredLine: number | null;
   searchQuery: string;
   matchLines: number[];
@@ -1271,7 +1286,7 @@ function RawLogViewer({
             {visibleRawLogRows.map(({ line, lineNumber, parsed }) => {
               const evidence = evidenceByLine.get(lineNumber) ?? [];
               const isHoverAnchor = evidence.some((item) => item.id === hoveredEvidenceId);
-              const isFocusAnchor = evidence.some((item) => item.id === focusedEvidenceId);
+              const isFocusAnchor = lineNumber === focusedSignalLine || evidence.some((item) => item.id === focusedEvidenceId);
               const isHoveredLine = hoveredLine === lineNumber && evidence.length > 0;
               const isMatch = matchLineSet.has(lineNumber);
               const isCurrentMatch = activeMatchLine === lineNumber;
@@ -1287,6 +1302,7 @@ function RawLogViewer({
                     isCurrentMatch && "rawlog-line--match-current"
                   )}
                   data-testid={`rawlog-line-${lineNumber}`}
+                  tabIndex={lineNumber === focusedSignalLine ? -1 : undefined}
                   key={`${lineNumber}-${line}`}
                 >
                   <td>

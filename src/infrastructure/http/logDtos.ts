@@ -21,6 +21,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  signalSummary?: LogRecord["signalSummary"];
   files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;
   id: string;
@@ -106,6 +107,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     skillRevision: dto.skillRevision ?? null,
     fileName: dto.fileName,
     files: dto.files,
+    signalSummary: dto.signalSummary,
     source: dto.source,
     fileSizeMB: Math.round((dto.fileSizeBytes / 1024 / 1024) * 10) / 10,
     status: statusLabels[dto.status],

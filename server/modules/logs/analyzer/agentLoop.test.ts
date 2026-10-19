@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AnalyzeLogInput } from "../analyzer";
+import { genericSignalRuleSet } from "../analyzer";
 import type { RelatedParameterRunSnapshot } from "../relatedParameter";
 import { parseLogText } from "../parser";
 import { defaultChargingRuleSet } from "../chargingSignalRules";
@@ -118,7 +119,9 @@ describe("createAgentLoopLogAnalyzer", () => {
     const toolResult = model.calls.flat().find((m) => m.content.startsWith("Tool result for get_prefilter_findings:"));
     expect(toolResult).toBeDefined();
     expect(toolResult?.content).not.toContain("thermal-foldback");
-    expect(output).toMatchObject({ conclusion: "Pinned loop fallback", evidence: [], analysisSource: "rules-fallback" });
+    expect(output).toMatchObject({ conclusion: genericSignalRuleSet.hitDefaults.conclusion, confidence: 0.55,
+      evidence: [{ ruleHit: "generic:first-error", lineNumbers: [4] }], analysisSource: "rules-fallback" });
+    expect(output.evidence.some((item) => item.ruleHit === "thermal-foldback")).toBe(false);
   });
 
   it("runs tool calls then returns a grounded agent conclusion with the loop prompt version", async () => {

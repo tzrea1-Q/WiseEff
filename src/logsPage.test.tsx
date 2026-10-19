@@ -62,6 +62,8 @@ describe("LogsPage · Header", () => {
       const path = new URL(String(url)).pathname;
       if (path === "/api/v1/logs") return new Response(JSON.stringify({ items: [other, summary] }));
       if (path === "/api/v1/logs/kernel-report") return new Response(JSON.stringify({ item: { ...summary, evidence,
+        signalSummary: { signals: [{ kind: "crash", severity: "Critical", source: "generic", title: "Hydrated signal", signature: "watchdog", count: 1,
+          anchors: [{ file: "kernel.log", line: 1, content: "ibus=1450 temp=71 vbus=9012" }] }], templates: [], truncatedSignals: false, truncatedTemplates: false },
         rawLines: ["ibus=1450 temp=71 vbus=9012", "INFO waiting", "WARN thermal", "INFO reduced"] } }));
       if (path === "/api/v1/logs/other-report") return new Response(JSON.stringify({ item: other }));
       throw new Error(`Unexpected request: ${path}`);
@@ -80,6 +82,8 @@ describe("LogsPage · Header", () => {
     expect(fields).toHaveTextContent("vbus = 9012");
     expect(chain.querySelectorAll(".evidence-card")).toHaveLength(1);
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/logs/kernel-report"))).toBe(true);
+    await userEvent.click(screen.getByRole("tab", { name: "信号" }));
+    expect(screen.getByText("崩溃特征：watchdog")).toBeInTheDocument();
   });
 
   it("renders the file inventory tab with analyzed, skipped and lossy files", async () => {
@@ -131,9 +135,13 @@ describe("LogsPage · Header", () => {
     const history = within(tabs).getByRole("tab", { name: "报告" });
     const metadata = within(tabs).getByRole("tab", { name: "元数据" });
     const files = within(tabs).getByRole("tab", { name: "文件" });
+    const signals = within(tabs).getByRole("tab", { name: "信号" });
     await user.click(history);
     await user.keyboard("{ArrowRight}");
     expect(files).toHaveFocus();
+    expect(history).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowRight}");
+    expect(signals).toHaveFocus();
     expect(history).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{ArrowRight}");
     expect(metadata).toHaveFocus();

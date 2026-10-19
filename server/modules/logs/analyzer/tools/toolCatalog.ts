@@ -2,6 +2,7 @@ import { runLogPrefilter } from "../../prefilter";
 import { z } from "zod";
 
 import { compileFileGlob, compileLogPattern, type LogPattern } from "../../adminPattern";
+import { extractLogSignals } from "../../genericSignals";
 import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolContext";
 
 /**
@@ -16,6 +17,9 @@ export const LOG_ANALYSIS_TOOL_NAMES = [
   "describe_event_schema",
   "query_events",
   "read_line_range",
+  "get_signals",
+  "get_line_templates",
+  "get_timeline",
   "get_prefilter_findings",
   "read_domain_knowledge",
   "get_related_parameter_context"
@@ -241,6 +245,71 @@ type ToolDefinition = {
   execute: (context: LogAnalysisToolContext, params: unknown) => Promise<LogAnalysisToolOutcome> | LogAnalysisToolOutcome;
 };
 
+export const MAX_SIGNAL_TOOL_BYTES = 16 * 1024;
+const pageParams = { offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(20).default(10) };
+export const getSignalsParamsSchema = z.object({ ...pageParams, kind: z.string().min(1).max(200).optional(),
+  severity: z.enum(["Critical", "Warning", "Info"]).optional() }).strict();
+export const getLineTemplatesParamsSchema = z.object(pageParams).strict();
+export const getTimelineParamsSchema = z.object({ time: z.string().datetime({ offset: true }).optional(),
+  file: z.string().min(1).max(1024).optional(), line: z.number().int().min(1).optional(),
+  before: z.number().int().min(0).max(20).default(10), after: z.number().int().min(0).max(20).default(10)
+}).strict().refine((params) => params.time !== undefined ? params.file === undefined && params.line === undefined
+  : params.file !== undefined && params.line !== undefined, "Provide either time or both file and line.");
+
+function signalSummary(context: LogAnalysisToolContext) {
+  return context.signalSummary ??= extractLogSignals(context.files ?? [{ path: context.filePath ?? "", parsed: context.parsed }], context.signalRules);
+}
+
+function signalPage(field: "signals" | "templates", items: unknown[], params: { offset: number; limit: number }, extractionTruncated: boolean, reason?: string): LogAnalysisToolOutcome {
+  const page: unknown[] = [];
+  const outcome = () => ({ ok: true as const, result: { [field]: page, total: items.length,
+    nextOffset: params.offset + page.length < items.length ? params.offset + page.length : null,
+    truncated: extractionTruncated || params.offset + page.length < items.length, ...(reason ? { reason } : {}) } });
+  for (const item of items.slice(params.offset, params.offset + params.limit)) {
+    page.push(item);
+    if (Buffer.byteLength(JSON.stringify(outcome()), "utf8") > MAX_SIGNAL_TOOL_BYTES) {
+      page.pop();
+      if (!page.length) return { ok: false, error: "Signal item exceeds the 16 KiB tool output cap; read its lines directly." };
+      break;
+    }
+  }
+  return outcome();
+}
+
+export function getTimeline(context: LogAnalysisToolContext, params: z.infer<typeof getTimelineParamsSchema>): LogAnalysisToolOutcome {
+  const files = context.files?.filter((file) => file.parsed) ?? [{ path: context.filePath ?? "", parsed: context.parsed }];
+  const anchor = params.file !== undefined ? files.find((file) => file.path === params.file)?.parsed?.entries.find((entry) => entry.lineNumber === params.line) : undefined;
+  const targetTime = Date.parse(params.time ?? anchor?.timestamp ?? "");
+  if (!Number.isFinite(targetTime)) return { ok: false, error: "The anchor must identify an analyzed line with a valid timestamp." };
+  type TimedLine = { file: string; line: number; lineNumber: number; timestamp: string; content: string; time: number };
+  const compare = (a: TimedLine, b: TimedLine) => a.time - b.time || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0) || a.line - b.line;
+  const target: TimedLine = { file: params.file ?? "", line: params.line ?? 0, lineNumber: 0, timestamp: "", content: "", time: targetTime };
+  const before: TimedLine[] = [], after: TimedLine[] = [];
+  let total = 0;
+  for (const file of files) for (const entry of file.parsed!.entries) {
+    const time = Date.parse(entry.timestamp ?? "");
+    if (!Number.isFinite(time)) continue;
+    total++;
+    const item: TimedLine = { file: file.path ?? "", line: entry.lineNumber, lineNumber: entry.lineNumber,
+      timestamp: new Date(time).toISOString(), content: clipLine(file.parsed!.rawLines[entry.lineNumber - 1]), time };
+    const earlier = params.time !== undefined ? time < targetTime : compare(item, target) < 0;
+    const list = earlier ? before : after;
+    list.push(item); list.sort(compare);
+    if (list.length > (earlier ? params.before : params.after + 1)) list.splice(earlier ? 0 : list.length - 1, 1);
+  }
+  const lines = [...before, ...after].map(({ time: _time, ...line }) => line);
+  const outcome = () => ({ ok: true as const, result: { lines, truncated: total > lines.length } });
+  while (lines.length && Buffer.byteLength(JSON.stringify(outcome()), "utf8") > MAX_SIGNAL_TOOL_BYTES) {
+    // Drop the farther edge; the requested time/anchor remains in the window.
+    const firstDistance = Math.abs(Date.parse(lines[0].timestamp) - targetTime);
+    const lastDistance = Math.abs(Date.parse(lines[lines.length - 1].timestamp) - targetTime);
+    const firstIsAnchor = lines[0].file === params.file && lines[0].line === params.line;
+    const lastIsAnchor = lines[lines.length - 1].file === params.file && lines[lines.length - 1].line === params.line;
+    lines.splice(!firstIsAnchor && (lastIsAnchor || firstDistance > lastDistance) ? 0 : lines.length - 1, 1);
+  }
+  return outcome();
+}
+
 const queryScalar = z.union([z.string().max(8192), z.number().finite(), z.boolean(), z.null(), z.object({ hex: z.string().max(8192), length: z.number().int().min(0).max(4096) }).strict()]);
 export const queryEventsParamsSchema = z.object({ extractor: z.string().min(1).max(100), file: z.string().max(1024).optional(),
   where: z.array(z.object({ field: z.string().max(512), op: z.enum(["eq", "ne", "lt", "lte", "gt", "gte", "in"]),
@@ -307,6 +376,27 @@ export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typ
 }
 
 export const logAnalysisToolCatalog: Record<LogAnalysisToolName, ToolDefinition> = {
+  get_signals: {
+    description: 'Get generic signals plus pinned skill signal hits, including evidence lines. Args: {kind?, severity?: Critical|Warning|Info, offset?: number, limit?: 1-20}. Output capped at 16 KiB; follow nextOffset. Only returned anchors count as seen lines.',
+    paramsSchema: getSignalsParamsSchema,
+    execute: (context, args) => {
+      const params = args as z.infer<typeof getSignalsParamsSchema>;
+      const summary = signalSummary(context);
+      return signalPage("signals", summary.signals.filter((signal) => (!params.kind || signal.kind === params.kind)
+        && (!params.severity || signal.severity === params.severity)).map((signal) => ({ ...signal, title: clipLine(signal.title) })), params, !!summary.truncated || summary.truncatedSignals, summary.reason);
+    }
+  },
+  get_line_templates: {
+    description: 'Get normalized line templates ordered by descending count with first/last file:line evidence. Args: {offset?: number, limit?: 1-20}. Output capped at 16 KiB; follow nextOffset. Only returned first/last anchors count as seen lines.',
+    paramsSchema: getLineTemplatesParamsSchema,
+    execute: (context, args) => { const summary = signalSummary(context);
+      return signalPage("templates", summary.templates, args as z.infer<typeof getLineTemplatesParamsSchema>, !!summary.truncated || summary.truncatedTemplates, summary.reason); }
+  },
+  get_timeline: {
+    description: 'Read a cross-file timestamp-ordered window. Args: {time?: ISO timestamp, file?: string, line?: positive integer, before?: 0-20, after?: 0-20}. Provide time OR file+line (anchor needs a timestamp). Returns at most 41 lines and 16 KiB. Returned lines can be cited.',
+    paramsSchema: getTimelineParamsSchema,
+    execute: (context, args) => getTimeline(context, args as z.infer<typeof getTimelineParamsSchema>)
+  },
   describe_event_schema: {
     description: 'Describe decoded extractors, field names/types and per-extractor event counts. Args: {}.',
     paramsSchema: z.object({}).strict(),

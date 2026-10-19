@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-10-19T11:25:45.680Z
-- Single-shot prompt version: `2026-10-19.procedure.1`
-- Loop prompt version: `2026-10-19.loop.procedure.1`
-- Scenarios: 23 (23 passed)
+- Generated: 2026-10-19T12:21:01.886Z
+- Single-shot prompt version: `2026-10-19.procedure.signals.1`
+- Loop prompt version: `2026-10-19.loop.procedure.signals.1`
+- Scenarios: 27 (27 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -18,6 +18,10 @@
 | provider-outage-degrades-honestly | degradation | single-shot | rules-fallback | provider-unavailable | PASS |
 | budget-exhausted-marked | degradation | single-shot | rules-fallback | token-budget-exhausted | PASS |
 | analysis-question-injected-and-answered | analysis-question | single-shot | agent | - | PASS |
+| loop-get-signals-only-evidence-grounded | generic-signals | loop | agent | - | PASS |
+| loop-get-line-templates-only-evidence-grounded | generic-signals | loop | agent | - | PASS |
+| loop-get-timeline-only-evidence-grounded | generic-signals | loop | agent | - | PASS |
+| loop-timeline-unseen-existing-line-rejected | generic-signals | loop | agent | - | PASS |
 | procedure-benign-loop-order | procedure-priority | loop | agent | - | PASS |
 | procedure-skip-tool-grounding-rejected | procedure-adversarial | loop | agent | - | PASS |
 | procedure-fabricated-line-rejected | procedure-adversarial | loop | agent | - | PASS |

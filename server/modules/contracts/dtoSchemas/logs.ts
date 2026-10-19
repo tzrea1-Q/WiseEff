@@ -16,6 +16,15 @@ export const logAnalysisSourceSchema = z.enum(["agent", "rules-fallback"]);
 export const logDegradedReasonSchema = z.enum(["provider-unavailable", "token-budget-exhausted"]);
 export const logDomainStatusSchema = z.enum(["active", "archived"]);
 
+export const logSignalAnchorSchema = z.object({ file: z.string(), line: z.number().int().positive(), content: z.string() });
+export const logSignalSchema = z.object({ kind: z.string(), severity: logSeveritySchema, source: z.enum(["generic", "skill"]),
+  title: z.string(), signature: z.string().optional(), count: z.number().int().positive(), anchors: z.array(logSignalAnchorSchema) });
+export const logLineTemplateSchema = z.object({ template: z.string(), count: z.number().int().positive(),
+  first: logSignalAnchorSchema, last: logSignalAnchorSchema });
+export const logSignalSummarySchema = z.object({ signals: z.array(logSignalSchema), templates: z.array(logLineTemplateSchema),
+  truncatedSignals: z.boolean(), truncatedTemplates: z.boolean(), truncated: z.boolean().optional(),
+  reason: z.enum(["time_cap", "line_cap", "extraction_error"]).optional() });
+
 export const logFileDtoSchema = z.object({
   path: z.string(), sizeBytes: z.number(), lineCount: z.number(), encoding: z.enum(["utf-8", "utf-16le", "utf-16be"]),
   lossy: z.boolean(), status: z.enum(["analyzed", "skipped"]), skipReason: z.string().nullable()
@@ -32,6 +41,7 @@ export const logEvidenceDtoSchema = z.object({
 });
 
 export const logRecordDtoSchema = z.object({
+  signalSummary: logSignalSummarySchema.optional(),
   files: z.array(logFileDtoSchema).optional(),
   skillRevision: skillRevisionPinSchema.nullable().optional(),
   id: z.string(),

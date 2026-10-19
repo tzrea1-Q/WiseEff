@@ -136,6 +136,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
     analyzer,
     analyzeInput: {
       parsed,
+      filePath: scenario.fileName,
       procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
       logDomain: scenario.logDomain
@@ -177,6 +178,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     analyzer,
     analyzeInput: {
       parsed,
+      filePath: scenario.fileName,
       procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
       logDomain: scenario.logDomain

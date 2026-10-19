@@ -12,6 +12,7 @@ import type { RelatedParameterChange, RelatedParameterRunSnapshot } from "../../
  * snapshot authorized.
  */
 export type LogAnalysisToolContext = {
+  signalSummary?: import("../../genericSignals").LogSignalSummary;
   decoding?: import("../../analyzer").AnalyzeLogInput["decoding"];
   sourceSnapshot?: import("../../analyzer").AnalyzeLogInput["sourceSnapshot"];
   signalRules?: import("../../signalRules").SignalRuleSet;

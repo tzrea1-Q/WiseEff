@@ -22,7 +22,7 @@ export function collectRuleEvidence(
   ruleSet: SignalRuleSet = defaultChargingRuleSet
 ): AnalyzeLogEvidence[] {
   return ruleSet.rules.flatMap((rule) => {
-    const conditions = rule.anyOf.map(compileSignalCondition);
+    const conditions = rule.anyOf.map((condition) => compileSignalCondition(condition));
     const lineNumbers = entries
       .filter((entry) => conditions.some((matches) => matches(entry)))
       .map((entry) => entry.lineNumber);

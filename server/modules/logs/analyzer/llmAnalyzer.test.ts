@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RelatedParameterRunSnapshot } from "../relatedParameter";
 import { parseLogText } from "../parser";
 import { defaultChargingRuleSet } from "../chargingSignalRules";
-import { createRuleBasedLogAnalyzer } from "../analyzer";
+import { createRuleBasedLogAnalyzer, genericSignalRuleSet } from "../analyzer";
 import { analyzeWithDegradation } from "../worker";
 import {
   buildBudgetedExcerpt,
@@ -97,7 +97,9 @@ describe("createLlmLogAnalyzer", () => {
     const adapter = createLlmLogAnalyzer({ model: jsonModel({}, captured), modelLabel: "test", tokenBudget: 100_000 });
     const output = await adapter.analyze({ parsed: parseFixture(), signalRules });
     expect(captured.find((m) => m.role === "user")?.content).toContain("- no rule hits");
-    expect(output).toMatchObject({ conclusion: "Pinned fallback", evidence: [], analysisSource: "rules-fallback" });
+    expect(output).toMatchObject({ conclusion: genericSignalRuleSet.hitDefaults.conclusion, confidence: 0.55,
+      evidence: [{ ruleHit: "generic:first-error", lineNumbers: [4] }], analysisSource: "rules-fallback" });
+    expect(output.evidence.some((item) => item.ruleHit === "thermal-foldback")).toBe(false);
   });
 
   it("returns a grounded agent analysis with prompt version and model label", async () => {

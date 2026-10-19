@@ -2,7 +2,7 @@
 
 > English: [English](../../runbooks/log-analysis-llm.md)
 
-在 staging 或试点环境验证日志分析 LLM 路径时使用本运行手册。内核在日志 worker 内、`LogAnalysisAdapter` 之后运行（ADR-0022），使用独立 `LOG_ANALYSIS_*` 环境变量家族，不用 LangGraph、不进 ToolRegistry、没有任何写路径——全部输出是仅供参考、证据接地的报告。自 P2 起默认内核是**有界 agent 循环**（`LOG_ANALYSIS_KERNEL=loop`）：一个至多 `LOG_ANALYSIS_MAX_STEPS` 步的普通 for 循环，驱动五个只读工具（`search_log_lines`、`read_line_range`、`get_prefilter_findings`、`read_domain_knowledge`、`get_related_parameter_context`），在 `rootcause` 阶段内运行并按步推进进度条。P1 单发内核保留为配置回退（`LOG_ANALYSIS_KERNEL=single-shot`）。
+在 staging 或试点环境验证日志分析 LLM 路径时使用本运行手册。内核在日志 worker 内、`LogAnalysisAdapter` 之后运行（ADR-0022），使用独立 `LOG_ANALYSIS_*` 环境变量家族，不用 LangGraph、不进 ToolRegistry、没有任何写路径——全部输出是仅供参考、证据接地的报告。默认内核是**有界 agent 循环**（`LOG_ANALYSIS_KERNEL=loop`）：一个至多 `LOG_ANALYSIS_MAX_STEPS` 步的普通 for 循环，驱动按运行组合的只读工具，在 `rootcause` 阶段内运行并按步推进进度条。文件、信号、模板、时间线、知识与关联参数工具属于平台能力；解码事件工具要求版本含抽取器。P1 单发内核保留为配置回退（`LOG_ANALYSIS_KERNEL=single-shot`）。
 
 ## 必需配置
 
@@ -37,16 +37,40 @@
 
 ## 安全预期
 
-- 内核没有写路径：不接触设备、不改参数、不进 ToolRegistry、无 approval 链。五个循环工具是 worker 内部只读函数，组织隔离在仓储查询层强制。
+- 内核没有写路径：不接触设备、不改参数、不进 ToolRegistry、无 approval 链。循环工具是 worker 内部只读函数，组织隔离在仓储查询层强制。
 - 日志内容、检索到的领域知识与参数上下文都是不可信模型输入；接地校验约束虚构引用，嵌入其中的指令不得改变输出契约。`read_domain_knowledge` 只见已发布知识条目（published-only 不变量），域有关联时限定在关联条目集合内。
 - 降级分析绝不冒充完整分析；来源标注保留在报告行与 UI 上。
 - 提示词变更必须递增 `LOG_ANALYSIS_PROMPT_VERSION`（单发）或 `LOG_ANALYSIS_LOOP_PROMPT_VERSION`（循环）并通过 `npm run logs:eval`（行为层评测，CI 门禁）；模型或提示词变更还应在发布前运行 `npm run logs:eval:quality`。
+
+## 通用信号与工具
+
+每次分析均提取平台信号，不选技能也适用：崩溃特征（kernel panic、Oops、`BUG:`、watchdog、ANR、`FATAL EXCEPTION`、segfault、assert）、至少 60 秒的时间戳间隔、启动或时间重置、十秒内至少五条错误，以及每文件首个错误。模板将变化的数字、十六进制、标识符和路径归一化，保留次数与首末锚点。模式使用 `compileLogPattern`（RE2）；提取两类来源合计最多保存 200 个信号、200 个模板、每信号五个锚点、每证据行 400 字符，并显式标记截断。所钉技能的信号命中加入有界摘要；未选技能的信号摘要只包含通用信号。
+
+技能或领域发现驱动结论、置信度与根因证据；通用信号只作补充，不能提高技能发现的置信度。为保持兼容，未固定技能的上传保留既有充电预筛，因此充电样例仍结论为 thermal foldback。没有领域命中时，由通用信号驱动规则结论。显式固定的技能若没有信号规则，则保持空集，不继承充电规则。确定性模型保留既有优先级与置信度，跨文件选择最强发现，并将引用接地到对应文件。
+
+突发阈值保持为每文件滚动十秒内至少五条错误，用于发现重复故障；孤立错误仍可通过首个错误信号查看。解析后的 error 级别，或独立且不区分大小写的 `ERROR`、`ERR`、`FATAL` 单词均计为错误，无需正式级别字段，因此 `usb 1-1: error -71 while reading descriptor` 计入。无需技能即可用内核 `[秒.小数]` 前缀（前面可有数字 `<priority>`）计算同文件的突发、间隔和时间重置。时钟类型变化会清空突发窗口，不比较或跨文件合并启动时钟与绝对时间；这些前缀也不构成跨文件时间线工具的绝对时间。崩溃行按文件及匹配签名分组，保留稳定的 `kind: crash` 并新增可选 `signature`；报告使用中文类型与通用标题，保留技术签名名称。
+
+模板只保留最先遇到的 200 种归一化结果，再在该集合中按次数排序。已保留模板继续累计次数，并按文件扫描顺序更新首末锚点。达到上限后出现的新种类即使后来很频繁也不会纳入，因此不是全部输入上的精确高频排名。需要更广覆盖时，检查 `truncatedTemplates` 并查阅原始日志。
+
+`LOG_SIGNAL_MAX_MS` 默认 `5000` ms，最大取 `10000`；仅接受正安全整数，格式错误、零、负值或非安全整数均使用默认值。模式匹配与模板归一化每行最多扫描前 6144 个 UTF-16 代码单元。提取在每行前检查截止时间，约每 8 ms 或 64 个检查点让出调度。超时保留已完成结果并标记 `truncated: true, reason: "time_cap"`；缩短行首扫描范围标记 `line_cap`。提取出错时返回带 `extraction_error` 的空摘要，分析继续。这些可选字段保存在既有报告 JSON 中，并在「信号」页提示；数量上限仍由 `truncatedSignals` 和 `truncatedTemplates` 表示。
+
+运行 `npx tsx scripts/log-signals-memory-probe.ts` 检查病理输入：1600 条实际分配的数字词元行约 100 MiB，前置一条崩溃日志。脚本指定 250 ms 预算，断言在 1250 ms 内返回、事件循环得到调度、崩溃证据被保留且标记 `time_cap`，并输出耗时与进程峰值 RSS。耗时不含输入构造，峰值 RSS 包含输入构造。这只检查信号提取，不代表整个 worker 管线。
+
+信号提取与解码共享最多四分之一的剩余租约预算，从信号提取开始时计算；信号提取已用时间会扣减解码额度。worker 不续租，其余预算留给压缩、存储与分析。不能中途抢占单次 RE2 调用，因此行首长度限制也约束单次模式操作。
+
+迁移 `0192_log_signal_summary.sql` 后，运行报告保存 `signal_summary`，记录详情暴露可选 `signalSummary`。每次重新分析保留自身摘要。在 `/logs` 的「信号」页检查来源、种类、严重度、次数和模板首末锚点，点击 `file:line` 标签定位可用的原始行；既有报告内容保留在旁边。
+
+- `get_signals` 返回通用及所钉技能信号，可按 `kind` 或 `severity` 筛选，接受 `offset` 与 1–20 的 `limit`。
+- `get_line_templates` 接受 `offset` 与 1–20 的 `limit` 分页，返回模板次数及首末锚点。
+- `get_timeline` 仅接受 ISO `time` 或 `file` + 正整数 `line` 之一；`before` 和 `after` 各为 0–20。跨文件窗口按时间戳排序。
+
+三种工具始终可用，输出均有上限。只有实际返回的锚点或行才算已读，与 `read_line_range` 相同；未返回的分页或相邻行不算。规则回退合并通用信号与所钉版本规则，保留既有降级标记和置信度上限。运行 `npm run logs:eval` 重新生成行为评测工件，覆盖合法调用、仅通过新工具获得的接地证据及未读行拒绝。PostgreSQL 运行级集成通过不选技能的多文件上传，检查已保存的崩溃、间隔或重启、错误突发及接地报告。
 
 ## 技能诊断流程
 
 - 技能作者在工作区的「诊断流程」分区编辑和预览 Markdown。`skill/v1.procedure` 可选，上限 20,000 字符。保存只更新草稿；发布创建不可变版本。Worker 从运行钉住的 `skill_revision_id` 读取流程，因此后续草稿修改不会改变排队中的运行或显式指定版本的重新分析。新上传使用当前已发布版本。
 - 提示词顺序是平台协议 → 分隔、低优先级的技能流程 → 用户任务。流程以 JSON 字符串置于 `<skill_diagnostic_procedure>` 中；换行和分隔符字符经过转义，使结束标签或伪造协议标题保持为数据。提示中明确说明流程不能覆盖接地、拒绝规则或禁止写操作的约束。证据必须来自工具结果；旧单发内核使用平台提供的摘录。工具白名单和既有证据校验仍独立执行。
-- 当前版本：循环 `2026-10-19.loop.procedure.1`、关联参数循环 `2026-10-19.loop.procedure.related-parameter.1`；单发 `2026-10-19.procedure.1`、关联参数单发 `2026-10-19.procedure.related-parameter.1`。报告保留对应的 `prompt_version`。无流程时，提示词只改变版本标签。确定性规则回退忽略流程。
+- 当前版本：循环 `2026-10-19.loop.procedure.signals.1`、关联参数循环 `2026-10-19.loop.procedure.signals.related-parameter.1`；单发 `2026-10-19.procedure.signals.1`、关联参数单发 `2026-10-19.procedure.signals.related-parameter.1`。报告保留对应的 `prompt_version`。无流程时省略流程段，平台信号工具仍可用。确定性规则回退忽略流程。
 - 运行 `npm run logs:eval` 检查提示词顺序、对抗性流程、分隔符注入、接地和非法写工具场景。PostgreSQL 运行级测试位于 `server/modules/logs/procedure.integration.test.ts`，通过捕获脚本模型收到的提示词验证发布、草稿隔离和显式钉住版本的重新分析。这些检查不能证明真实模型能抵抗所有提示词注入。
 
 ## 效果层评测（`logs:eval:quality`）
@@ -112,7 +136,7 @@ JS
 ## Worker 解码限制
 
 - `LOG_DECODE_MAX_EVENTS` 默认 `50000`，为整个运行保留的事件上限；额外匹配计入 `decoded_event_counts.errors.event_cap`，分析仍使用已保留事件继续执行。
-- `LOG_DECODE_MAX_MS` 默认 `15000` ms，最大取 `20000`，worker 解码实际最多使用当前剩余任务租约的四分之一。worker 不续租，其余预算供压缩、存储和分析使用。每行、组提交和编译前检查截止时间，约每 8 ms 或 2000 个检查点让出调度；超时保留已完成事件、丢弃未完成组、计一次 `time_cap`，保存部分产物与计数后继续分析。worker 不能抢占单次受限 RE2 调用。
+- `LOG_DECODE_MAX_MS` 默认 `15000` ms，最大取 `20000`；信号提取与解码合计最多使用信号提取开始时剩余任务租约的四分之一。worker 不续租，其余预算供压缩、存储和分析使用。解码在每行、组提交和编译前检查截止时间，约每 8 ms 或 2000 个检查点让出调度；超时保留已完成事件、丢弃未完成组、计一次 `time_cap`，保存部分产物与计数后继续分析。worker 不能抢占单次受限 RE2 调用。
 - 解析模式最多 512 个 UTF-16 单元，计数重复上限 100，多行控制同样受限；匹配输入每行最多 6144 个单元、每组最多 16,384，超长行/组记录 `match_input_cap`，不执行截断前缀匹配。预览使用固定 100 ms 校验/解码硬超时，最多处理 5000 行、返回 500 事件，以 `truncated` 和 `reason` 标识部分结果，不受 worker 环境变量调整。`query_events` 最多返回 50 事件/16 KiB，字段预览最多 1 KiB，缩短时返回 `truncated: true`。
 - 压缩/上传失败计入 `decoded_event_counts.errors.artifact_error`，产物键置空，继续分析且不提供解码事件；按本地/S3 内容寻址键尽力清理部分对象，清理失败也不使分析失败。
 - 旧钉住版本若超出新模式限制，记录 `decode_error`，继续分析且不解码；新保存/发布则以问题路径拒绝。

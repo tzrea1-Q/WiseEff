@@ -8,6 +8,13 @@ import {
 } from "./adminPattern";
 
 describe("compileLogPattern", () => {
+  it("iterates a bounded input with stable offsets and capture groups", () => {
+    const pattern = compileLogPattern("(?<id>[0-9]+)", "", 20);
+    const matches = [...pattern.matchAll("😀 12 and 34")];
+    expect(matches.map((match) => [match.index, match[0], match.groups])).toEqual([[3, "12", { id: "12" }], [10, "34", { id: "34" }]]);
+    expect([...pattern.matchAll("1".repeat(21))]).toEqual([]);
+    expect([...compileLogPattern("").matchAll("a")]).toHaveLength(2);
+  });
   it("exposes capture metadata and supports the explicit bounded assembly input size", () => {
     const pattern = compileLogPattern("(?P<field>a)(b)?", "", 100_000);
     expect(pattern.groupNames).toEqual(["field"]);
