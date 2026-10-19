@@ -5,6 +5,7 @@ export type LogAnalysisResultWebhookInput = {
   logDomainId: string;
   logId: string;
   runId: string;
+  skillKey?: string | null;
   skillRevisionId?: string | null;
   skillRevisionNumber?: number | null;
   fileName: string;
@@ -36,6 +37,13 @@ export function buildLogResultWebhookPayload(input: LogAnalysisResultWebhookInpu
     runId: input.runId,
     skillRevisionId: input.skillRevisionId ?? null,
     skillRevisionNumber: input.skillRevisionNumber ?? null,
+    skill: {
+      id: input.logDomainId,
+      key: input.skillKey ?? null,
+      revisionId: input.skillRevisionId ?? null,
+      revisionNumber: input.skillRevisionNumber ?? null
+    },
+    degraded: input.analysisSource === "rules-fallback" || Boolean(input.degradedReason),
     fileName: input.fileName,
     logDomainId: input.logDomainId,
     status: input.status,

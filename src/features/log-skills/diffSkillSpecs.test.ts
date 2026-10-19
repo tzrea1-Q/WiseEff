@@ -7,6 +7,20 @@ const defaults = { conclusion: "结论", impact: "影响", severity: "Info" as c
 const rule = (id: string, inference = "推断") => ({ id, inference, stageId: "pattern" as const, suggestedAction: "检查",
   anyOf: [{ type: "text" as const, pattern: "ERROR" }], analysis: { suggestedActions: [] } });
 describe("diffSkillSpecs", () => {
+  it("groups model and budget additions, changes and resets under integration", () => {
+    const before = { ...base, modelOverride: "old-model", stepBudget: 4, tokenBudget: 4000 };
+    const after = { ...base, stepBudget: 5, tokenBudget: 5000 };
+    const diff = diffSkillSpecs(before, after);
+    expect(diff.overview).toEqual([]);
+    expect(diff.integration).toEqual([
+      { field: "modelOverride", before: "old-model", after: undefined },
+      { field: "stepBudget", before: 4, after: 5 },
+      { field: "tokenBudget", before: 4000, after: 5000 }
+    ]);
+    expect(diff.counts.integration).toBe(3);
+    expect(diffSkillSpecs(base, after).integration).toHaveLength(2);
+    expect(diffSkillSpecs(after, structuredClone(after)).integration).toEqual([]);
+  });
   it.each([
     [undefined, "## Steps\nCheck context."],
     ["Old procedure", "New procedure"],
@@ -35,7 +49,8 @@ describe("diffSkillSpecs", () => {
     const after = { ...base, description: "诊断", modelOverride: "m", formatProfile: { severityMap: { error: ["ALERT"] } } };
     const saved = structuredClone(after);
     const diff = diffSkillSpecs(base, after);
-    expect(diff.overview).toEqual([{ field: "description", before: undefined, after: "诊断" }, { field: "modelOverride", before: undefined, after: "m" }]);
+    expect(diff.overview).toEqual([{ field: "description", before: undefined, after: "诊断" }]);
+    expect(diff.integration).toEqual([{ field: "modelOverride", before: undefined, after: "m" }]);
     expect(diff.format).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "add", value: '      "ALERT"' })]));
     expect(after).toEqual(saved);
   });

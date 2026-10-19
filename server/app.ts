@@ -208,6 +208,10 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     objectStore: options.objectStore,
     logAnalysisQueue: options.logAnalysisQueue,
     webhooks: options.logWebhooks,
+    skillBudgetCaps: {
+      stepBudget: options.env?.LOG_ANALYSIS_MAX_STEPS ?? 6,
+      tokenBudget: options.env?.LOG_ANALYSIS_TOKEN_BUDGET ?? 8000
+    },
     getCurrentAuthContext: authResolver
   });
   registerProductFeedbackRoutes(router, {

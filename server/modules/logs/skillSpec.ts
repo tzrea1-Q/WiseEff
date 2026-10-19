@@ -16,6 +16,8 @@ export const logSkillSpecSchema = z.object({
     if (!result.ok) for (const message of result.issues) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
   }).optional(),
   modelOverride: z.string().trim().min(1).max(200).optional(),
+  stepBudget: z.number().int().positive().optional(),
+  tokenBudget: z.number().int().positive().optional(),
   defaultSourceSnapshotId: z.string().min(1).max(200).optional(),
   source: z.object({
     statementPatterns: z.array(z.string().min(1).max(MAX_LOG_PATTERN_LENGTH).superRefine((pattern, ctx) => {

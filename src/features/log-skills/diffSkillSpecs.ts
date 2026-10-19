@@ -13,8 +13,9 @@ function fields(a: Record<string, unknown>, b: Record<string, unknown>) {
 }
 
 export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
-  const overview = fields({ description: a.description, modelOverride: a.modelOverride },
-    { description: b.description, modelOverride: b.modelOverride });
+  const overview = fields({ description: a.description }, { description: b.description });
+  const integration = fields({ modelOverride: a.modelOverride, stepBudget: a.stepBudget, tokenBudget: a.tokenBudget },
+    { modelOverride: b.modelOverride, stepBudget: b.stepBudget, tokenBudget: b.tokenBudget });
   const procedure = fields({ procedure: a.procedure }, { procedure: b.procedure });
   const knowledge = fields({ knowledgeEntryIds: a.knowledgeEntryIds ?? [] }, { knowledgeEntryIds: b.knowledgeEntryIds ?? [] });
   const source = fields({ defaultSourceSnapshotId: a.defaultSourceSnapshotId, statementPatterns: a.source?.statementPatterns },
@@ -35,7 +36,8 @@ export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
     const left = parsingBefore.get(id), right = parsingAfter.get(id), changes = fields(left ?? {}, right ?? {});
     return changes.length ? [{ id, kind: !left ? "added" as const : !right ? "removed" as const : "changed" as const, fields: changes }] : [];
   });
-  return { overview, procedure, knowledge, source, format, rules, signalSettings, parsing, counts: {
+  return { overview, integration, procedure, knowledge, source, format, rules, signalSettings, parsing, counts: {
+    integration: integration.length,
     knowledge: knowledge.length,
     source: source.length, overview: overview.length, procedure: procedure.length, format: format.filter((line) => line.kind !== "equal").length,
     added: rules.filter((rule) => rule.kind === "added").length,

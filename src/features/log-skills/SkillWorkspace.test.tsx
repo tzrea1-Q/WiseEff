@@ -104,7 +104,7 @@ describe("skill workspace", () => {
         return structuredClone(skill);
       })
     };
-    render(<StrictMode><SkillWorkspace skillId={skill.id} search="" repository={repository} apiMode canEdit
+    render(<StrictMode><SkillWorkspace skillId={skill.id} search="?section=integration" repository={repository} apiMode canEdit
       onNavigate={() => undefined} onPublished={() => undefined} /></StrictMode>);
     const override = await screen.findByRole("textbox", { name: "模型覆盖" });
     fireEvent.change(override, { target: { value: "acceptance-domain-model-x" } });

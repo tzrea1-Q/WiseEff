@@ -76,6 +76,7 @@ export type LogDomainCreateInput = {
 
 export type LogDomainUpdateInput = {
   domainId: string;
+  skillKey?: string;
   name?: string;
   description?: string | null;
   /** undefined = keep; null = clear the stored profile. */

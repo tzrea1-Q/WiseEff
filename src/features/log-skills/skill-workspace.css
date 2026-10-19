@@ -20,6 +20,9 @@
 .skill-section .skill-facts dt, .skill-section .skill-facts dd { margin: 0; font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
 .skill-facts dt { color: var(--text-muted); }
 .skill-facts dd { color: var(--text); overflow-wrap: anywhere; }
+.skill-integration-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.skill-integration-actions code { overflow-wrap: anywhere; }
+.skill-curl-example { padding: var(--space-3); overflow: auto; max-width: 100%; background: var(--surface-sunken); border-radius: var(--radius-md); font: 400 var(--text-sm) / var(--leading-base) var(--font-mono); }
 .skill-compare-selectors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .skill-diff { display: grid; gap: var(--space-3); min-width: 0; font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
 .skill-diff section, .skill-diff [data-slot="table-container"] { min-width: 0; max-width: 100%; }

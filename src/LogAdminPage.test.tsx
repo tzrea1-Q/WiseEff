@@ -1007,26 +1007,17 @@ describe("LogAdminPage 分析技能结果回调与模型覆盖", () => {
     expect(within(table).getByTestId("domain-webhook-state-domain-charging")).toHaveTextContent("已启用");
   });
 
-  it("saves the model override through the edit form (blank clears back to the global model)", async () => {
+  it("links model editing to the integration section", async () => {
     const logActions = createLogActions({
       listLogDomains: vi.fn().mockResolvedValue([webhookDomain]),
       updateLogDomain: vi.fn().mockResolvedValue(webhookDomain)
     });
-    renderPage({ logActions });
-
+    const { onNavigate } = renderPage({ logActions });
     const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: "编辑" }));
-    const overrideInput = screen.getByLabelText(/模型覆盖/);
-    expect(overrideInput).toHaveValue("gpt-4o");
-    expect(overrideInput).toHaveAttribute("placeholder", "留空使用全局模型");
-    await userEvent.clear(overrideInput);
-    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
-
-    await waitFor(() =>
-      expect(logActions.updateLogDomain).toHaveBeenCalledWith(
-        expect.objectContaining({ domainId: "domain-charging", modelOverride: null })
-      )
-    );
+    expect(screen.queryByLabelText(/模型覆盖/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "前往集成配置模型、预算与结果回调" }));
+    expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/domain-charging?section=integration");
   });
 
   it("links to the workspace when a draft blocks a legacy configuration edit", async () => {
@@ -1037,7 +1028,7 @@ describe("LogAdminPage 分析技能结果回调与模型覆盖", () => {
     const { onNavigate } = renderPage({ logActions });
     const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: "编辑" }));
-    await userEvent.clear(screen.getByLabelText(/模型覆盖/));
+    await userEvent.clear(screen.getByLabelText(/格式画像 JSON/));
     await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("该技能有未发布草稿，请先在技能工作区发布或放弃草稿。");
@@ -1062,82 +1053,6 @@ describe("LogAdminPage 分析技能结果回调与模型覆盖", () => {
     await waitFor(() => expect(logActions.updateLogDomain).toHaveBeenCalledWith({ domainId: "domain-charging", name: "renamed" }));
   });
 
-  it("opens the webhook editor, saves config without echoing the secret, and lists recent deliveries", async () => {
-    const logActions = createLogActions({
-      listLogDomains: vi.fn().mockResolvedValue([webhookDomain]),
-      setLogDomainWebhook: vi.fn().mockResolvedValue(webhookDomain),
-      listLogDomainWebhookDeliveries: vi.fn().mockResolvedValue([
-        {
-          id: "delivery-1",
-          logDomainId: "domain-charging",
-          logRecordId: "log-1",
-          runId: "run-1",
-          kind: "result" as const,
-          attempt: 1,
-          status: "delivered" as const,
-          httpStatus: 200,
-          createdAt: "2026-08-13T02:00:00.000Z"
-        },
-        {
-          id: "delivery-2",
-          logDomainId: "domain-charging",
-          kind: "test" as const,
-          attempt: 1,
-          status: "failed" as const,
-          error: "Receiver responded with HTTP 500.",
-          createdAt: "2026-08-13T01:00:00.000Z"
-        }
-      ])
-    });
-    renderPage({ logActions });
-
-    const table = await screen.findByRole("table", { name: "分析技能列表" });
-    await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "结果回调" }));
-
-    const editor = await screen.findByTestId("domain-webhook-editor");
-    await waitFor(() => expect(logActions.listLogDomainWebhookDeliveries).toHaveBeenCalledWith("domain-charging", 10));
-    // The secret never renders; only configured-state + last four characters do.
-    expect(editor).toHaveTextContent("已配置 · 末四位 cdef");
-    const deliveries = within(editor).getByTestId("domain-webhook-deliveries");
-    expect(deliveries).toHaveTextContent("已送达");
-    expect(deliveries).toHaveTextContent("HTTP 200");
-    expect(deliveries).toHaveTextContent("投递失败");
-
-    const urlInput = within(editor).getByLabelText(/Webhook URL/);
-    await userEvent.clear(urlInput);
-    await userEvent.click(urlInput);
-    await userEvent.paste("https://hooks.example.com/updated");
-    await userEvent.click(within(editor).getByRole("button", { name: "保存配置" }));
-
-    await waitFor(() =>
-      expect(logActions.setLogDomainWebhook).toHaveBeenCalledWith({
-        domainId: "domain-charging",
-        url: "https://hooks.example.com/updated",
-        enabled: true
-      })
-    );
-    expect(await within(editor).findByRole("status")).toHaveTextContent("配置已保存");
-  });
-
-  it("sends a test delivery and reports the outcome inline", async () => {
-    const logActions = createLogActions({
-      listLogDomains: vi.fn().mockResolvedValue([webhookDomain]),
-      sendLogDomainWebhookTest: vi.fn().mockResolvedValue({ status: "delivered", attempts: 1, httpStatus: 200 })
-    });
-    renderPage({ logActions });
-
-    const table = await screen.findByRole("table", { name: "分析技能列表" });
-    await userEvent.click(within(table).getByRole("button", { name: /：更多$/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "结果回调" }));
-    const editor = await screen.findByTestId("domain-webhook-editor");
-    await userEvent.click(within(editor).getByRole("button", { name: "发送测试投递" }));
-
-    await waitFor(() => expect(logActions.sendLogDomainWebhookTest).toHaveBeenCalledWith("domain-charging"));
-    expect(await within(editor).findByRole("status")).toHaveTextContent("测试投递成功（HTTP 200）");
-    // The list refreshes after a test delivery (initial load + refresh).
-    expect(logActions.listLogDomainWebhookDeliveries).toHaveBeenCalledTimes(2);
-  });
 });
 
 describe("LogAdminPage 分析质量洞察", () => {

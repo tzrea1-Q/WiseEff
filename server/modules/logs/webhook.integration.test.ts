@@ -277,8 +277,11 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     await configureWebhook();
     const logId = await seedLogRecord(db, domainId);
     const runId = `run-atomic-${status}`;
-    await db.query(`insert into log_analysis_runs (id, organization_id, log_record_id, status, current_stage)
-      values ($1, $2, $3, 'processing', 'parse')`, [runId, ORG_ID, logId]);
+    const revision = (await db.query<{ id: string; revision_number: number }>(`select id, revision_number from log_skill_revisions
+      where organization_id = $1 and skill_id = $2 and status = 'published'`, [ORG_ID, domainId])).rows[0];
+    const key = (await db.query<{ skill_key: string }>(`select skill_key from log_domains where id = $1`, [domainId])).rows[0].skill_key;
+    await db.query(`insert into log_analysis_runs (id, organization_id, log_record_id, status, current_stage, skill_revision_id)
+      values ($1, $2, $3, 'processing', 'parse', $4)`, [runId, ORG_ID, logId, revision.id]);
     await db.query(`update log_records set current_run_id = $2 where id = $1`, [logId, runId]);
     const jobId = `job-atomic-${status}`;
     await createLogAnalysisJob(db, { id: jobId, organizationId: ORG_ID, logId, runId });
@@ -286,7 +289,7 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     const terminal = (connection: Database) => status === "complete"
       ? completeLogAnalysisJobWithReport(connection, { organizationId: ORG_ID, logId, runId, jobId, leaseOwner: "atomic-test",
         report: { confidence: 0.8, conclusion: "A compact conclusion", impact: "Limited", severity: "Warning",
-          suggestedActions: [], rawLines: ["raw content never sent"], analysisSource: "agent" }, evidence: [] })
+          suggestedActions: [], rawLines: ["raw content never sent"], analysisSource: "rules-fallback", degradedReason: "provider-unavailable" }, evidence: [] })
       : failRun(connection, { organizationId: ORG_ID, logId, runId, error: "exhausted" });
     await expect(db.transaction(async (tx) => { await terminal(tx); throw new Error("crash"); })).rejects.toThrow("crash");
     expect((await db.query(`select id from log_webhook_outbox where run_id = $1`, [runId])).rows).toHaveLength(0);
@@ -296,6 +299,11 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     expect((await db.query(`select id from log_webhook_outbox where run_id = $1`, [runId])).rows).toHaveLength(1);
     expect(await makeDeliverer().processNext()).toMatchObject({ status: "delivered" });
     expect(JSON.parse(received[0].body).event).toBe(`log-analysis.${status === "complete" ? "completed" : "failed"}`);
+    expect(JSON.parse(received[0].body)).toMatchObject({
+      skill: { id: domainId, key, revisionId: revision.id, revisionNumber: revision.revision_number },
+      degraded: status === "complete",
+      ...(status === "complete" ? { degradedReason: "provider-unavailable" } : {})
+    });
     expect(received[0].body).not.toContain("raw content never sent");
   });
 
