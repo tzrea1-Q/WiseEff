@@ -481,11 +481,16 @@ export function DtsReloadPage({
   }, [connectedBridgeId, session]);
 
   const runDetectTargets = useCallback(async (options: { manual?: boolean } = {}) => {
-    if (historyRunLoading) return;
+    // A connect attempt can retain this callback while health/protocol changes during its awaits.
+    const snapshot = session.getSnapshot();
+    if (snapshot.historyRunLoading) return;
     const requestSeq = detectRequestSeqRef.current + 1;
     detectRequestSeqRef.current = requestSeq;
-    const requestProtocol = protocol;
-    const requestBridgeId = connectedBridgeId;
+    const requestProtocol = snapshot.protocol;
+    const healthBridgeId = snapshot.bridgeHealth?.connected ? snapshot.bridgeHealth.bridgeId?.trim() : "";
+    const requestBridgeId = healthBridgeId && snapshot.bridges.some((bridge) => bridge.id === healthBridgeId)
+      ? healthBridgeId
+      : "";
 
     if (!detectTargets) {
       setReachableTargets([]);
@@ -558,7 +563,7 @@ export function DtsReloadPage({
         setDetectingTargets(false);
       }
     }
-  }, [connectedBridgeId, detectTargets, historyRunLoading, protocol, session]);
+  }, [detectTargets, session]);
 
   useEffect(() => {
     if (historyRunLoading) {

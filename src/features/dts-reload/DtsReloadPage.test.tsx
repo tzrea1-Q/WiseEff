@@ -797,6 +797,38 @@ describe("DtsReloadPage", () => {
     );
   });
 
+  it.each(["hdc", "adb"] as const)("detects no %s devices after connecting without reporting the Bridge offline", async (protocol) => {
+    let connected = false;
+    let finishRefresh!: () => void;
+    const refreshPending = new Promise<void>((resolve) => { finishRefresh = resolve; });
+    const health = () => ({ ok: true as const, paired: true, connected, bridgeId: "bridge-1", updatedAt: "2026-10-19T00:00:00Z" });
+    vi.spyOn(bridgeLauncher, "launchBridgeSchemeForConnect").mockImplementation(() => undefined);
+    vi.spyOn(bridgeLauncher, "connectLocalBridge").mockImplementation(async () => {
+      connected = true;
+      return { reachable: true, ok: true };
+    });
+    vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockImplementation(async () => health());
+    const detectTargets = vi.fn(async () => []);
+    renderPageWithTopBar(createRepository(), {
+      detectTargets,
+      bridges: undefined,
+      listBridges: async () => {
+        if (connected) await refreshPending;
+        return testBridges;
+      },
+      probeBridgeHealth: async () => health()
+    });
+    if (protocol === "adb") await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
+    const connect = await screen.findByRole("button", { name: "连接本机" });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledWith(protocol, "bridge-1"));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(`未检测到 ${protocol.toUpperCase()} 设备`));
+    await act(async () => { finishRefresh(); });
+    await waitFor(() => expect(bridgeLauncher.pollLocalBridgeHealth).toHaveBeenCalled());
+    expect(screen.queryByText("本地 Device Bridge 未连接，请先连接本机后重新检测。")).not.toBeInTheDocument();
+  });
+
   it("shows a bounded empty-target error instead of silently clearing the page", async () => {
     const detectTargets = vi.fn(async () => []);
     renderPage(createRepository(), { detectTargets, initialTargetRef: "STALE-HDC-TARGET" });
