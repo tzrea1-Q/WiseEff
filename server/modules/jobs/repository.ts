@@ -168,6 +168,37 @@ export async function claimJobById(
   return result.rows[0] ? toClaimedLogAnalysisJobDto(result.rows[0]) : null;
 }
 
+export async function renewJobLease(
+  db: Queryable,
+  input: { jobId: string; leaseOwner: string; leaseMs: number }
+) {
+  if (!Number.isFinite(input.leaseMs) || input.leaseMs <= 0) {
+    throw new RangeError("leaseMs must be a positive finite number");
+  }
+  // Check expiry after locking: a plain UPDATE can test its predicate before a lock wait.
+  const result = await db.query(
+    `
+    with locked_job as materialized (
+      select id, status, lease_owner, lease_expires_at
+      from jobs where id = $1
+      for update
+    )
+    update jobs
+    set lease_expires_at = clock_timestamp() + ($3 * interval '1 millisecond'),
+      updated_at = clock_timestamp()
+    where id = (
+      select id from locked_job
+      where status = 'processing'
+        and lease_owner = $2
+        and lease_expires_at > clock_timestamp()
+    )
+    `,
+    [input.jobId, input.leaseOwner, input.leaseMs]
+  );
+
+  return result.rowCount === 1;
+}
+
 export async function markJobRetryScheduled(
   db: Queryable,
   input: {

@@ -11,6 +11,14 @@ import type {
 
 export type LogRunStatus = "queued" | "processing" | "complete" | "failed";
 
+export type LogLineRange = {
+  file: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  lines: Array<{ lineNumber: number; content: string }>;
+};
+
 export type LogListQuery = {
   status?: LogRecord["status"];
   timeWindow?: TimeWindow;
@@ -111,6 +119,7 @@ export interface LogAnalysisRepository extends Partial<SkillWorkspaceRepository>
   getSourceEvidence?(logId: string, evidenceId: string): Promise<import("@/features/log-skills/types").SourceExcerpt>;
   listLogs(query?: LogListQuery): Promise<LogRecord[]>;
   getLog(logId: string): Promise<LogRecord | null>;
+  getLogLines?(logId: string, file: string, startLine: number, endLine: number): Promise<LogLineRange>;
   uploadLog(input: LogUploadInput): Promise<{ log: LogRecord; job: LogJobSnapshot | null }>;
   getJob(jobId: string): Promise<LogJobSnapshot>;
   watchJob?(jobId: string, onEvent: (snapshot: LogJobSnapshot) => void): () => void;

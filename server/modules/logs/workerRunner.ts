@@ -48,6 +48,8 @@ type LogWorkerRuntimeOptions = {
   env?: LogAnalysisQueueRuntimeEnv;
   workerId?: string;
   leaseTtlMs?: number;
+  maxJobMs?: number;
+  preprocessingMs?: number;
   intervalMs?: number;
   metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
   webhooks?: LogWorkerWebhooks & Partial<Pick<LogWebhookDeliverer, "start">>;
@@ -131,12 +133,15 @@ export function createLogWorkerRuntime({
   env,
   workerId = "wiseeff-log-worker",
   leaseTtlMs = 60_000,
+  maxJobMs,
+  preprocessingMs,
   intervalMs = 1000,
   metrics,
   webhooks
 }: LogWorkerRuntimeOptions) {
   return {
     start() {
+      const limits = { ...(maxJobMs === undefined ? {} : { maxJobMs }), ...(preprocessingMs === undefined ? {} : { preprocessingMs }) };
       let stopWorker: () => void | Promise<void>;
       if (queueMode === "durable") {
         if (!env) {
@@ -147,6 +152,7 @@ export function createLogWorkerRuntime({
           db,
           objectStore,
           workerId,
+          ...limits,
           metrics,
           tracing: defaultTracingBoundary,
           ...(analyzer ? { analyzer } : {}),
@@ -155,7 +161,7 @@ export function createLogWorkerRuntime({
         stopWorker = () => runtime.close();
       } else {
         stopWorker = startLoop(
-          { db, objectStore, workerId, leaseTtlMs, metrics, ...(analyzer ? { analyzer } : {}), ...(webhooks ? { webhooks } : {}) },
+          { db, objectStore, workerId, leaseTtlMs, metrics, ...limits, ...(analyzer ? { analyzer } : {}), ...(webhooks ? { webhooks } : {}) },
           intervalMs
         );
       }
@@ -201,6 +207,8 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
     objectStore: createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }),
     analyzer: createLogAnalyzerFromEnv(env, { db, embeddingClient: resolveKnowledgeEmbeddingClient(env) }),
     queueMode: env.LOG_ANALYSIS_QUEUE_MODE,
+    maxJobMs: env.LOG_ANALYSIS_JOB_MAX_MS,
+    preprocessingMs: env.LOG_ANALYSIS_PREPROCESS_MAX_MS,
     env: {
       REDIS_URL: env.REDIS_URL ?? "",
       LOG_ANALYSIS_QUEUE_PREFIX: env.LOG_ANALYSIS_QUEUE_PREFIX,

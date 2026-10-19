@@ -1,12 +1,22 @@
 import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { decodeLogBundleFile, defaultBundleLimits, intakeLogBundle } from "./bundleIntake";
+import { bundleFileUtf8Bytes, decodeLogBundleFile, defaultBundleLimits, intakeLogBundle } from "./bundleIntake";
 import { loadLogBundleLimits } from "../../config/env";
+
+it("counts CRLF and converts UTF-16 across decoder chunks, bounding expanded UTF-8 before persistence", () => {
+  const content = "界".repeat(32766) + "\r\nend";
+  const bytes = Buffer.concat([Buffer.from([255, 254]), Buffer.from(content, "utf16le")]);
+  const file = decodeLogBundleFile("test.log", bytes);
+  expect(file).toMatchObject({ encoding: "utf-16le", lineCount: 2, lossy: false, status: "analyzed" });
+  expect(bundleFileUtf8Bytes(file).toString()).toBe(content);
+  const result = intakeLogBundle({ fileName: "test.log", bytes }, { ...defaultBundleLimits, maxFileBytes: bytes.length, maxUnpackedBytes: bytes.length });
+  expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("UTF-8") });
+});
 
 it("allows sample text extensions through the shared decoder without allowing binary input", () => {
   const text = Buffer.from('{"level":"error"}\n');
-  expect(decodeLogBundleFile("sample.jsonl", text, false)).toMatchObject({ status: "analyzed", encoding: "utf-8", lineCount: 2 });
+  expect(decodeLogBundleFile("sample.jsonl", text, false)).toMatchObject({ status: "analyzed", encoding: "utf-8", lineCount: 1 });
   expect(decodeLogBundleFile("sample.jsonl", text)).toMatchObject({ status: "skipped", skipReason: "不支持的文件扩展名" });
   expect(decodeLogBundleFile("sample.jsonl", Buffer.from([0, 1, 2]), false)).toMatchObject({ status: "skipped", skipReason: "二进制文件" });
 });
@@ -90,7 +100,9 @@ describe("log bundle intake", () => {
   it.each(["", "one", "one\n", "one\r\ntwo\rthree\n", "\r\n\n\r"])("counts lines without retaining decoded text: %j", (text) => {
     const bytes = Buffer.from(text);
     const result = intake("a.log", bytes);
-    expect(result).toMatchObject({ ok: true, files: [{ lineCount: text.split(/\r\n|\n|\r/).length }] });
+    const lines = text.split(/\r\n|\n|\r/);
+    if (lines.at(-1) === "") lines.pop();
+    expect(result).toMatchObject({ ok: true, files: [{ lineCount: lines.length }] });
     if (result.ok) {
       expect(result.files[0]).not.toHaveProperty("text");
       expect(result.files[0].bytes).toBe(bytes);

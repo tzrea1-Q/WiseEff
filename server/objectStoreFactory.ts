@@ -64,7 +64,7 @@ function traceObjectStore(
       return trace("get", () => store.get(storageKey));
     },
     ...(sourceGetStream
-      ? { getStream: (storageKey: string) => trace("getStream", () => sourceGetStream(storageKey)) }
+      ? { getStream: (storageKey: string, range?: { start: number; end?: number }) => trace("getStream", () => sourceGetStream(storageKey, range)) }
       : {}),
     ...(sourceGetBounded
       ? {

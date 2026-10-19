@@ -36,7 +36,8 @@ async function readRequestBytes(request: IncomingMessage, maxBytes = DEFAULT_MAX
     throw new ApiError("PAYLOAD_TOO_LARGE", `Request body exceeds the ${maxBytes} byte transport limit.`, { maxBytes });
   }
   // Known bounded uploads need one buffer, rather than retaining chunks plus a copy.
-  const bytes = Number.isSafeInteger(declared) && declared >= 0 && Number.isFinite(maxBytes)
+  const knownLength = Number.isSafeInteger(declared) && declared >= 0;
+  let bytes = knownLength && Number.isFinite(maxBytes)
     ? Buffer.allocUnsafe(declared) : undefined;
   const chunks: Buffer[] = [];
   let length = 0;
@@ -48,14 +49,22 @@ async function readRequestBytes(request: IncomingMessage, maxBytes = DEFAULT_MAX
         maxBytes
       });
     }
+    // Large bounded chunked uploads switch to one buffer before a final concat
+    // could duplicate the complete upload. Small requests keep proportional allocation.
+    if (!bytes && Number.isFinite(maxBytes) && length > 8 * 1024 * 1024) {
+      bytes = Buffer.allocUnsafe(maxBytes);
+      let offset = 0;
+      for (const previous of chunks) { previous.copy(bytes, offset); offset += previous.length; }
+      chunks.length = 0;
+    }
     if (bytes) {
       if (length > bytes.length) throw new ApiError("VALIDATION_FAILED", "Request body exceeds Content-Length.");
       buffer.copy(bytes, length - buffer.length);
     } else chunks.push(buffer);
   }
 
-  if (bytes && length !== bytes.length) throw new ApiError("VALIDATION_FAILED", "Incomplete request body.");
-  return bytes ?? Buffer.concat(chunks, length);
+  if (bytes && knownLength && length !== declared) throw new ApiError("VALIDATION_FAILED", "Incomplete request body.");
+  return bytes ? bytes.subarray(0, length) : Buffer.concat(chunks, length);
 }
 
 function getContentType(request: IncomingMessage) {

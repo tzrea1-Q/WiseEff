@@ -18,14 +18,15 @@ function signalTitle(signal: LogSignal) {
     "timestamp-gap": "相邻时间戳间隔至少 60 秒", "error-burst": "10 秒内至少 5 条错误" } as Record<string, string>)[signal.kind] ?? signal.title;
 }
 
-export function SignalsTab({ summary, rawFilePath, rawLineCount, onAnchor }: {
+export function SignalsTab({ summary, rawFilePath, rawLineCount, allFilesAvailable = false, onAnchor }: {
   summary?: LogSignalSummary;
   rawFilePath: string;
   rawLineCount: number;
+  allFilesAvailable?: boolean;
   onAnchor: (anchor: LogSignalAnchor) => void;
 }) {
   const anchorChip = (anchor: LogSignalAnchor) => {
-    const available = anchor.file === rawFilePath && anchor.line > 0 && anchor.line <= rawLineCount;
+    const available = anchor.line > 0 && (allFilesAvailable || (anchor.file === rawFilePath && anchor.line <= rawLineCount));
     return <Badge asChild variant="outline" key={`${anchor.file}:${anchor.line}`} className="max-w-full">
       <button type="button" disabled={!available} onClick={() => onAnchor(anchor)} className="truncate"
         title={`${anchor.content}${available ? "" : " · 当前原始日志视图未包含此行"}`}>

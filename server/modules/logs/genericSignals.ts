@@ -1,6 +1,7 @@
 import { compileLogPattern } from "./adminPattern";
 import { setImmediate } from "node:timers/promises";
-import type { ParseResult } from "./parser";
+import type { ParsedLogEntry, ParseResult } from "./parser";
+import type { LogFileReader } from "./fileReader";
 import { compileSignalCondition, type SignalRuleSet } from "./signalRules";
 
 export type LogSignalAnchor = { file: string; line: number; content: string };
@@ -34,6 +35,9 @@ export function logSignalLimits(env: NodeJS.ProcessEnv = process.env) {
 function emptySummary(): LogSignalSummary {
   return { signals: [], templates: [], truncatedSignals: false, truncatedTemplates: false };
 }
+type SignalFile = { path: string; parsed?: Extract<ParseResult, { ok: true }>; reader?: Pick<LogFileReader, "lineCount" | "lines" | "entries"> };
+type SignalStep = LogSignalSummary & { readLine?: { fileIndex: number; lineNumber: number } };
+type SignalLine = { rawContent: string; entry?: ParsedLogEntry };
 
 const crash = compileLogPattern("\\bBUG:|\\b(kernel panic|Oops|watchdog|ANR|FATAL EXCEPTION|segfault|assert(?:ion)?)\\b", "i");
 const boot = compileLogPattern("\\b(Linux version|Booting|boot completed|BOOT_COMPLETED|system boot|reboot(?:ing)?|starting kernel)\\b", "i");
@@ -58,9 +62,9 @@ export function normalizeLogTemplate(message: string): string {
 
 /** One forward scan per file, with fixed-size summaries and error windows. */
 function* extractLogSignalSteps(
-  files: Array<{ path: string; parsed?: Extract<ParseResult, { ok: true }> }>,
+  files: SignalFile[],
   signalRules?: SignalRuleSet
-): Generator<LogSignalSummary, LogSignalSummary> {
+): Generator<SignalStep, LogSignalSummary, SignalLine | undefined> {
   const summary = emptySummary();
   yield summary;
   const signals = new Map<string, LogSignal>();
@@ -89,20 +93,29 @@ function* extractLogSignalSteps(
       if (!found.anchors.some((item) => item.file === anchor.file && item.line === anchor.line)) found.anchors.push(anchor);
     }
   };
-  for (const file of files) {
-    if (!file.parsed) continue;
+  for (const [fileIndex, file] of files.entries()) {
+    if (!file.parsed && !file.reader) continue;
     let entryIndex = 0;
     let previous: { time: number; clock: "wall" | "boot"; anchor: LogSignalAnchor } | undefined;
     let firstError = true, lastBurstError = 0;
     const errors: Array<{ time: number; anchor: LogSignalAnchor }> = [];
-    for (const [index, rawContent] of file.parsed.rawLines.entries()) {
+    const lineCount = file.reader?.lineCount ?? file.parsed!.rawLines.length;
+    for (let index = 0; index < lineCount; index++) {
       yield summary;
+      let rawContent: string, entry: ParsedLogEntry | undefined;
+      if (file.reader) {
+        const line = yield { ...summary, readLine: { fileIndex, lineNumber: index + 1 } };
+        if (!line) throw new Error("Streaming signals require a line");
+        ({ rawContent, entry } = line);
+      } else {
+        rawContent = file.parsed!.rawLines[index];
+        while (file.parsed!.entries[entryIndex]?.lineNumber < index + 1) entryIndex++;
+        entry = file.parsed!.entries[entryIndex]?.lineNumber === index + 1 ? file.parsed!.entries[entryIndex] : undefined;
+      }
       const content = rawContent.slice(0, LOG_SIGNAL_LIMITS.lineChars);
       if (rawContent.length > content.length) { summary.truncated = true; summary.reason = "line_cap"; }
       if (!content.trim()) continue;
       const anchor = { file: file.path, line: index + 1, content: content.slice(0, LOG_SIGNAL_LIMITS.contentChars) };
-      while (file.parsed.entries[entryIndex]?.lineNumber < index + 1) entryIndex++;
-      const entry = file.parsed.entries[entryIndex]?.lineNumber === index + 1 ? file.parsed.entries[entryIndex] : undefined;
       if (entry && entry.message.length > LOG_SIGNAL_LIMITS.lineChars) { summary.truncated = true; summary.reason = "line_cap"; }
       const generic = (kind: string, severity: LogSignal["severity"], title: string, anchors = [anchor], count = 1, signature?: string) =>
         add(JSON.stringify([file.path, kind, signature]), { kind, severity, title, source: "generic", ...(signature ? { signature } : {}) }, anchors, count);
@@ -169,35 +182,69 @@ export async function extractLogSignalsCooperatively(
   files: Parameters<typeof extractLogSignalSteps>[0], signalRules?: SignalRuleSet,
   options: { maxMs?: number; now?: () => number } = {}
 ): Promise<LogSignalSummary> {
+  let partial: SignalStep | undefined;
+  let active: { fileIndex: number; lines: ReturnType<LogFileReader["lines"]>; entries: ReturnType<LogFileReader["entries"]>; entry?: ParsedLogEntry } | undefined;
+  const close = async () => { await active?.lines.return(undefined); await active?.entries.return(undefined); active = undefined; };
   try {
     const now = options.now ?? (() => performance.now());
     const deadline = now() + Math.max(0, Math.min(options.maxMs ?? logSignalLimits().maxMs, logSignalLimits().maxMs));
+    const realDeadline = performance.now() + Math.max(0, Math.min(options.maxMs ?? logSignalLimits().maxMs, logSignalLimits().maxMs));
     const steps = extractLogSignalSteps(files, signalRules);
     let step = steps.next();
     while (!step.done) {
       await setImmediate();
       const batchStart = now();
       for (let work = 0; !step.done && work < 64; work++) {
+        partial = step.value;
         if (now() >= deadline) {
           step.value.truncated = true; step.value.reason = "time_cap";
           steps.return(step.value);
           step.value.templates.sort((a, b) => b.count - a.count);
+          delete step.value.readLine;
           return step.value;
         }
-        step = steps.next();
+        let line: SignalLine | undefined;
+        const request = step.value.readLine;
+        if (request) {
+          const reader = files[request.fileIndex].reader;
+          if (!reader) throw new Error("Invalid streaming signal input");
+          if (active?.fileIndex !== request.fileIndex) {
+            await close();
+            active = { fileIndex: request.fileIndex, lines: reader.lines({ deadline: realDeadline }), entries: reader.entries({ deadline: realDeadline }) };
+            active.entry = (await active.entries.next()).value;
+          }
+          const raw = await active!.lines.next();
+          if (raw.done || raw.value.lineNumber !== request.lineNumber) throw new Error("Log text does not match its line index");
+          while (active!.entry && active!.entry.lineNumber < request.lineNumber) active!.entry = (await active!.entries.next()).value;
+          line = { rawContent: raw.value.content, entry: active!.entry?.lineNumber === request.lineNumber ? active!.entry : undefined };
+          if (now() >= deadline) {
+            step.value.truncated = true; step.value.reason = "time_cap";
+            steps.return(step.value);
+            step.value.templates.sort((a, b) => b.count - a.count);
+            delete step.value.readLine;
+            return step.value;
+          }
+        }
+        step = steps.next(line);
         if (now() - batchStart >= 8) break;
       }
     }
     if (now() >= deadline) { step.value.truncated = true; step.value.reason = "time_cap"; }
     step.value.templates.sort((a, b) => b.count - a.count);
     return step.value;
-  } catch {
+  } catch (error) {
+    if (partial && error && typeof error === "object" && "code" in error && error.code === "LOG_READER_TIME_CAP") {
+      partial.truncated = true; partial.reason = "time_cap";
+      partial.templates.sort((a, b) => b.count - a.count);
+      delete partial.readLine;
+      return partial;
+    }
     return { ...emptySummary(), truncated: true, reason: "extraction_error" };
-  }
+  } finally { await close(); }
 }
 
 /** Small offline/direct callers share the line and time bounds without worker scheduling. */
-export function extractLogSignals(files: Parameters<typeof extractLogSignalSteps>[0], signalRules?: SignalRuleSet): LogSignalSummary {
+export function extractLogSignals(files: Array<{ path: string; parsed?: Extract<ParseResult, { ok: true }> }>, signalRules?: SignalRuleSet): LogSignalSummary {
   try {
     const deadline = performance.now() + logSignalLimits().maxMs;
     const steps = extractLogSignalSteps(files, signalRules);

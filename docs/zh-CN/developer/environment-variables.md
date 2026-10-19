@@ -179,13 +179,15 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_DETERMINISTIC` | `.env.example` 为 `true`，代码默认 `false` | 离线开发/测试/评测 | 使用确定性桩模型（`model` 记 `deterministic`），无需 provider 且就绪检查通过。生产必须配置真实 provider 并保持 `false`。 |
 | `LOG_ANALYSIS_KERNEL` | `loop` | 分析内核选择 | `loop` = P2 有界多步 agent（五个只读工具，默认）；`single-shot` = P1 单发内核，保留为配置回退。 |
 | `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 每次分析的最大模型步数；超出触发标注为 `token-budget-exhausted` 的提前收敛。 |
-| `LOG_BUNDLE_MAX_COMPRESSED_BYTES` | `104857600` | 日志包接入 | 上传文件总字节数（含普通文件），默认 100 MiB。 |
-| `LOG_BUNDLE_MAX_UNPACKED_BYTES` | `104857600` | 日志包接入 | 文件原始字节总量；中间解压容器也受限，默认 100 MiB。 |
+| `LOG_ANALYSIS_JOB_MAX_MS` | `600000` | worker 尝试时限 | 从任务认领开始，覆盖预处理、分析与持久化的总墙钟时限；续租不会重置截止时间。须为不超过 `2147483647` 的正整数；中央环境校验拒绝无效值，直接独立调用 worker 时回退默认值。 |
+| `LOG_ANALYSIS_PREPROCESS_MAX_MS` | `20000` | 信号与解码共享时限 | 从信号提取开始的固定合计额度，并受本次尝试剩余墙钟时限约束。续租不补充额度；`LOG_SIGNAL_MAX_MS` 和 `LOG_DECODE_MAX_MS` 仍分别约束各阶段。校验与独立调用回退规则同 `LOG_ANALYSIS_JOB_MAX_MS`。 |
+| `LOG_BUNDLE_MAX_COMPRESSED_BYTES` | `104857600` | 日志包接入 | 上传总字节数（含普通文件），multipart 默认 100 MiB；JSON/base64 另受解码文件 32 MiB 上限约束。 |
+| `LOG_BUNDLE_MAX_UNPACKED_BYTES` | `104857600` | 日志包接入 | 文件原始字节及规范化 UTF-8 文本总量；中间解压容器也受限，默认 100 MiB。 |
 | `LOG_BUNDLE_MAX_FILES` | `2000` | 日志包接入 | 非目录叶文件数上限，包含跳过文件。 |
-| `LOG_BUNDLE_MAX_FILE_BYTES` | `104857600` | 日志包接入 | 单文件原始字节上限，默认 100 MiB；解压还受 200 倍压缩比及 1 MiB 最低预算限制。 |
+| `LOG_BUNDLE_MAX_FILE_BYTES` | `104857600` | 日志包接入 | 单文件原始及规范化 UTF-8 字节上限，默认 100 MiB；解压还受 200 倍压缩比及 1 MiB 最低预算限制。 |
 | `LOG_DECODE_MAX_EVENTS` | `50000` | worker 解码 | 每运行跨文件、抽取器保留的事件上限，超出匹配计 `event_cap`。须为正安全整数；格式错误、零或负值使用默认值。 |
-| `LOG_SIGNAL_MAX_MS` | `5000` | worker 信号提取 | 信号提取耗时预算（毫秒），最大取 `10000`；仅接受正安全整数，否则使用默认值。每行最多扫描前 6144 个 UTF-16 代码单元，每行前检查截止时间，约每 8 ms 或 64 个检查点让出调度。部分摘要标记 `time_cap` 或 `line_cap`；提取失败返回带 `extraction_error` 的空摘要，分析继续。信号提取与解码共享最多四分之一的剩余租约，从信号提取开始时计算；不续租。 |
-| `LOG_DECODE_MAX_MS` | `15000` | worker 解码 | 解码耗时预算（毫秒），大于 `20000` 时取上限；worker 不续租，信号提取与解码合计最多使用信号提取开始时剩余租约的四分之一，其余预算留给压缩、存储和分析。解码在每行、组提交和编译前检查，约每 8 ms 或 2000 个检查点让出调度。超时保留已完成事件、丢弃未完成组、计一次 `time_cap` 并继续。须为正安全整数；格式错误、零或负值使用默认值。 |
+| `LOG_SIGNAL_MAX_MS` | `5000` | worker 信号提取 | 信号提取耗时预算（毫秒），最大取 `10000`；仅接受正安全整数，否则使用默认值。每行最多扫描前 6144 个 UTF-16 代码单元，每行前检查截止时间，约每 8 ms 或 64 个检查点让出调度。部分摘要标记 `time_cap` 或 `line_cap`；提取失败返回带 `extraction_error` 的空摘要，分析继续。还受 `LOG_ANALYSIS_PREPROCESS_MAX_MS` 共享剩余额度与本次尝试剩余墙钟时限约束。 |
+| `LOG_DECODE_MAX_MS` | `15000` | worker 解码 | 解码耗时预算（毫秒），大于 `20000` 时取上限；还受信号阶段用时后的 `LOG_ANALYSIS_PREPROCESS_MAX_MS` 共享剩余额度与本次尝试剩余墙钟时限约束。解码在每行、组提交和编译前检查，约每 8 ms 或 2000 个检查点让出调度。超时保留已完成事件、丢弃未完成组、计一次 `time_cap` 并继续。须为正安全整数；格式错误、零或负值使用默认值。 |
 | `LOG_SOURCE_MAX_COMPRESSED_BYTES` | `104857600` | 源码快照上传/索引 | 压缩包上限 100 MiB；multipart 路由请求体预算为该上限加 64 KiB，过大的 `Content-Length` 在缓冲前拒绝。 |
 | `LOG_SOURCE_MAX_UNPACKED_BYTES` | `1073741824` | 源码快照索引 | 累计解包字节上限，包含跳过条目，默认 1 GiB。 |
 | `LOG_SOURCE_MAX_FILE_BYTES` | `2097152` | 源码快照索引 | 大于 2 MiB 的文件跳过并记录原因。 |
@@ -196,9 +198,13 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | 效果层评测 judge | judge 请求超时。 |
 | `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge 校准 | `docs/generated/log-analysis-judge-sample.md` 人工复核清单的确定性抽样率（0..1）；至少抽 1 条已评分案例。 |
 
-日志包默认值按 `ops/self-hosted/compose.yaml` 中 512 MiB API / 384 MiB worker 容器的内存预算设置，沿用原单文件 100 MiB 上限。流式接入（#1234）落地前，提高这些限制必须同时增加容器内存。`npx tsx scripts/log-bundle-memory-probe.ts`（3 个文件、总计 95 MiB，含逐文件存储与压缩包构造）在独立进程中测得峰值 RSS 357 MiB。
+worker 在各耗时阶段每隔租约时长的三分之一续租，默认租约为 60 秒。续租要求任务仍为处理中、持有者匹配且租约未过期，以 PostgreSQL `clock_timestamp()` 检查；续租失败即停止工作。`LOG_ANALYSIS_JOB_MAX_MS` 独立限制整个已认领尝试，续租不会延长总时限。
 
-解码默认值面向同一标准 384 MiB worker：保留 50,000 个事件，解码耗时预算 15,000 ms。提高事件上限前须检查内存；耗时始终受 20,000 ms 和剩余租约四分之一限制。模式最多 512 个 UTF-16 单元、计数重复上限 100；输入每行最多 6144 个单元、每组最多 16,384。预览独立使用 100 ms 校验/解码硬超时，最多处理 5000 行、返回 500 事件，以 `truncated`/`reason` 标识部分结果。worker 流式 gzip，但仍保留解析输入和事件对象；顺序数组支持游标，证据索引共享对象。产物失败记录 `artifact_error` 和空键，不提供解码事件并继续分析。可在测试之外运行 `npx tsx scripts/log-decode-memory-probe.ts`，对三个总计 95 MiB 的文件执行解码、压缩和索引，输出耗时、事件数、峰值 RSS、堆内存和 interval 漂移停顿。本次变更未运行该探针，不能据此声称标准容器已验收。
+`ops/self-hosted/compose.yaml` 中标准 512 MiB API / 384 MiB worker 保留上传/解包/单文件 100 MiB 默认限制。worker 文本、工具、解码与信号逐文件流式读取；偏移索引仅在首次范围读取时加载或建立。原始日志面板只保留首个可分析文件最多 400 行、128 KiB 预览；单行/合并条目在 64 KiB 截断。预筛最多预取八个 GET 流，按文件顺序消费，保持共享引用与错误码预算不变。接入仍缓冲压缩包，不能仅凭 worker 的 512 MiB 实测提高 API 限制。
+
+2026-10-19 宿主机的历史探针（延迟索引与租约心跳改动前）测得：worker 处理 512 MiB、2,000 文件、最大单文件 200 MiB 时 RSS **171.64 MiB**、耗时 **55,720.41 ms**；当时实现持久化全部索引与报告，信号为部分结果、解码 `time_cap`（零事件）。API multipart 100 MiB 为 **290.28 MiB** / **8,550.36 ms**；JSON 新上限 32 MiB 为 **394.08 MiB** / **6,577.96 ms**；100 MiB chunked multipart 为 **364.08 MiB** / **6,010.87 ms**，加 `--chunked=true` 可检查没有 Content-Length 的接收路径。100 MiB JSON 消除重复校验复制后仍测得 669.84 MiB，超过 API 512 MiB，因此更大上传须用 multipart。在测试之外显式设置可丢弃 `DATABASE_URL`，运行 `npx tsx scripts/log-bundle-memory-probe.ts --mode=worker --profile=spec` 或 `--mode=api-multipart|api-json --profile=configured`；输入生成/客户端进程不计入测量 RSS。范围与限制见[运行手册](../runbooks/log-analysis-llm.md#压缩包接入p3)。
+
+解码默认值面向同一标准 384 MiB worker：保留 50,000 个事件，解码耗时预算 15,000 ms。提高事件上限前须检查内存；解码受 20,000 ms、预处理共享剩余额度与本次尝试剩余墙钟时限约束。模式最多 512 个 UTF-16 单元、计数重复上限 100；输入每行最多 6144 个单元、每组最多 16,384。预览独立使用 100 ms 校验/解码硬超时，最多处理 5000 行、返回 500 事件，以 `truncated`/`reason` 标识部分结果。worker 流式读取解析输入并执行 gzip，只保留有界事件对象；顺序数组支持游标，证据索引共享对象。产物失败记录 `artifact_error` 和空键，不提供解码事件并继续分析。可在测试之外运行 `npx tsx scripts/log-decode-memory-probe.ts`，对三个总计 95 MiB 的文件执行解码、压缩和索引，输出耗时、事件数、峰值 RSS、堆内存和 interval 漂移停顿。本次变更未运行该探针，不能据此声称标准容器已验收。
 
 `LOG_SOURCE_*` 值必须是正的安全整数；未设置或空值使用默认值。源码索引通过临时磁盘流式处理压缩包，一次最多保留一个符合条件的文件。这些限制独立于 `LOG_BUNDLE_*`；源码索引按累计字节限制，不使用压缩比启发式。可单独运行 `npx tsx scripts/log-source-memory-probe.ts` 探测 1 GiB 源码索引的 RSS。源码索引与日志分析共用 `LOG_WORKER_ENABLED` 和 `npm run worker:logs`，详见[运行手册](../runbooks/log-analysis-llm.md#源码快照1243)。
 

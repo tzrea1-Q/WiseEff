@@ -10878,6 +10878,70 @@
         }
       }
     },
+    "/api/v1/logs/{logId}/lines": {
+      "get": {
+        "operationId": "logs.getLines",
+        "summary": "Read an inclusive window of at most 400 indexed log lines",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "query",
+            "required": true,
+            "description": "Exact file path in the record inventory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startLine",
+            "in": "query",
+            "required": true,
+            "description": "First line, 1-based inclusive",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "endLine",
+            "in": "query",
+            "required": true,
+            "description": "Last line, inclusive; clipped to the file length",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogLineRangeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/logs/{logId}/runs": {
       "get": {
         "operationId": "logs.listRuns",
@@ -32184,6 +32248,60 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogRecordListResponse"
+      },
+      "LogLineRangeResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "startLine": {
+                "type": "number"
+              },
+              "endLine": {
+                "type": "number"
+              },
+              "totalLines": {
+                "type": "number"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "lineNumber": {
+                      "type": "number"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lineNumber",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "file",
+              "startLine",
+              "endLine",
+              "totalLines",
+              "lines"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogLineRangeResponse"
       },
       "LogRunListResponse": {
         "type": "object",

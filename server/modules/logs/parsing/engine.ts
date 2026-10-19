@@ -8,6 +8,8 @@ export const MAX_DECODE_FIELD_BYTES = 4096;
 export const DECODE_BATCH_LINES = 2000;
 export type DecodeLogFile = { file: string; lines: readonly string[] };
 export type DecodeResult = { events: DecodedEvent[]; counts: DecodeCounts; unmatchedLineCount: number };
+export type DecodeInputFile = DecodeLogFile | { file: string; lineCount: number };
+export type DecodeStep = DecodeResult & { readLine?: { fileIndex: number; lineNumber: number } };
 
 function timestamp(raw: string, { names, pattern }: ReturnType<typeof timestampFormat>): string {
   const match = pattern.exec(raw);
@@ -69,11 +71,11 @@ export function decodeLogFiles(spec: ParsingSpec, files: DecodeLogFile[], maxEve
 }
 
 /** Resumable pure engine: checkpoints retain assembly state and expose completed events only. */
-export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeLogFile[], maxEvents = MAX_DECODE_EVENTS): Generator<DecodeResult, DecodeResult> {
+export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeInputFile[], maxEvents = MAX_DECODE_EVENTS): Generator<DecodeStep, DecodeResult, string | undefined> {
   if (!Number.isSafeInteger(maxEvents) || maxEvents < 1) throw new Error("Decode event limit must be a positive safe integer");
   const events: DecodedEvent[] = [];
   const counts: DecodeCounts = { total: 0, byExtractor: Object.fromEntries(spec.extractors.map((e) => [e.id, 0])), errors: {} };
-  const result: DecodeResult = { events, counts, unmatchedLineCount: files.reduce((sum, file) => sum + file.lines.length, 0) };
+  const result: DecodeResult = { events, counts, unmatchedLineCount: files.reduce((sum, file) => sum + ("lines" in file ? file.lines.length : file.lineCount), 0) };
   const countError = (code: string) => { counts.errors[code] = (counts.errors[code] ?? 0) + 1; };
   const compiled = [];
   for (const extractor of spec.extractors) {
@@ -84,15 +86,22 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeLogFile[], 
     next: extractor.multiline?.continue ? compileParsingPattern(extractor.multiline.continue) : undefined,
     end: extractor.multiline?.end ? compileParsingPattern(extractor.multiline.end) : undefined });
   }
-  for (const { file, lines } of files) {
+  for (const [fileIndex, input] of files.entries()) {
+    const { file } = input;
+    const lineCount = "lines" in input ? input.lines.length : input.lineCount;
+    function* readLine(index: number): Generator<DecodeStep, string, string | undefined> {
+      if ("lines" in input) { yield result; return input.lines[index]; }
+      const line = yield { ...result, readLine: { fileIndex, lineNumber: index + 1 } };
+      if (line === undefined) throw new Error("Streaming decoder requires a line");
+      return line;
+    }
     yield result; // File selection is bounded too, including files with no applicable extractor.
     const applicable = compiled.filter(({ globs }) => !globs || globs.some((glob) => glob.test(file)));
     if (!applicable.length) continue;
-    const matched = new Uint8Array(lines.length);
+    const matched = new Uint8Array(Math.ceil(lineCount / 8));
     const oversized = new Set<number>();
-    for (let i = 0; i < lines.length; i++) {
-      yield result;
-      const line = lines[i];
+    for (let i = 0; i < lineCount; i++) {
+      const line = yield* readLine(i);
       if (Buffer.byteLength(line, "utf8") > MAX_DECODE_LINE_BYTES) { oversized.add(i); countError("line_cap"); }
       else if (line.length > MAX_PARSING_LINE_CHARS) { oversized.add(i); countError("match_input_cap"); }
     }
@@ -110,21 +119,24 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeLogFile[], 
           try { if (raw == null) throw new Error("Group did not participate"); event.fields[name] = decode(raw, field, timeFormats.get(name)); }
           catch (cause) { const message = cause instanceof Error ? cause.message : String(cause); error(message === "byte_cap" ? "byte_cap" : "invalid_field", message === "byte_cap" ? `Decoded bytes exceed ${MAX_DECODE_FIELD_BYTES} bytes` : message, name); }
         }
-        for (const i of indices) if (!matched[i]) { matched[i] = 1; result.unmatchedLineCount--; }
+        for (const i of indices) {
+          const byte = i >>> 3, bit = 1 << (i & 7);
+          if (!(matched[byte] & bit)) { matched[byte] |= bit; result.unmatchedLineCount--; }
+        }
         events.push(event); counts.total++; counts.byExtractor[extractor.id]++;
       };
       if (!start) {
-        for (let i = 0; i < lines.length; i++) {
-          yield result;
-          if (!oversized.has(i)) emit(lines[i], [i]);
+        for (let i = 0; i < lineCount; i++) {
+          const line = yield* readLine(i);
+          if (!oversized.has(i)) emit(line, [i]);
         }
         continue;
       }
       const pending = new Map<string, { text: string; indices: number[] }>();
-      for (let i = 0; i < lines.length; i++) {
-        yield result;
+      for (let i = 0; i < lineCount; i++) {
+        const text = yield* readLine(i);
         if (oversized.has(i)) { pending.clear(); continue; }
-        const text = lines[i], starts = start.exec(text), ends = end?.exec(text), continues = next?.exec(text);
+        const starts = start.exec(text), ends = end?.exec(text), continues = next?.exec(text);
         const control = starts ?? ends ?? continues;
         if (!control && (next || extractor.multiline!.keyField)) continue;
         const key = extractor.multiline!.keyField ? control?.groups?.[extractor.multiline!.keyField] : "";

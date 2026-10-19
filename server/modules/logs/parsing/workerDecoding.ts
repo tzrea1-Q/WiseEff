@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import { createContext, Script } from "node:vm";
 import { decodeLogFilesSteps, DECODE_BATCH_LINES, MAX_DECODE_EVENTS, type DecodeLogFile, type DecodeResult } from "./engine";
 import type { DecodedEvent, ParsingSpec } from "./spec";
+import type { LogFileReader } from "../fileReader";
 
 export const DEFAULT_LOG_DECODE_MAX_MS = 15_000;
 export const MAX_LOG_DECODE_MS = 20_000;
@@ -15,13 +16,16 @@ export function logDecodeLimits(env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** Worker scheduling and clock live outside the deterministic engine. */
-export async function decodeLogFilesCooperatively(spec: ParsingSpec, files: DecodeLogFile[], options: {
+type StreamingDecodeFile = { file: string; reader: Pick<LogFileReader, "lineCount" | "lines"> };
+type DecodeOptions = {
   maxMs?: number; maxEvents?: number; now?: () => number; hardTimeout?: boolean;
-} = {}): Promise<DecodeResult> {
+};
+export async function decodeLogFilesCooperatively(spec: ParsingSpec, files: Array<DecodeLogFile | StreamingDecodeFile>, options: DecodeOptions = {}): Promise<DecodeResult> {
+  if (files.some((file) => "reader" in file)) return decodeStreamingFiles(spec, files, options);
   const limits = logDecodeLimits(), now = options.now ?? (() => performance.now());
   const maxMs = options.maxMs ?? limits.maxMs;
   const started = now();
-  const steps = decodeLogFilesSteps(spec, files, options.maxEvents ?? limits.maxEvents);
+  const steps = decodeLogFilesSteps(spec, files as DecodeLogFile[], options.maxEvents ?? limits.maxEvents);
   let step = steps.next();
   let timedOut = false;
   let interrupted = false;
@@ -65,6 +69,53 @@ export async function decodeLogFilesCooperatively(spec: ParsingSpec, files: Deco
     if (!interrupted) steps.return(step.value); // Discard unfinished groups; pure engine owns no IO resources.
   }
   return step.value;
+}
+
+/** Reopen the text stream for each extractor pass; only multiline groups and capped events stay resident. */
+async function decodeStreamingFiles(spec: ParsingSpec, files: Array<DecodeLogFile | StreamingDecodeFile>, options: DecodeOptions): Promise<DecodeResult> {
+  const limits = logDecodeLimits(), now = options.now ?? (() => performance.now());
+  const deadline = now() + (options.maxMs ?? limits.maxMs);
+  const realDeadline = performance.now() + Math.max(0, options.maxMs ?? limits.maxMs);
+  const steps = decodeLogFilesSteps(spec, files.map((file) => "reader" in file ? { file: file.file, lineCount: file.reader.lineCount } : file), options.maxEvents ?? limits.maxEvents);
+  let step = steps.next();
+  let active: { fileIndex: number; lineNumber: number; iterator: ReturnType<LogFileReader["lines"]> } | undefined;
+  try {
+    while (!step.done && now() < deadline) {
+      await setImmediate();
+      const batchStart = now();
+      for (let work = 0; !step.done && work < DECODE_BATCH_LINES && now() < deadline; work++) {
+        let line: string | undefined;
+        const request = step.value.readLine;
+        if (request) {
+          const file = files[request.fileIndex];
+          if (!("reader" in file)) throw new Error("Invalid streaming decoder input");
+          if (!active || active.fileIndex !== request.fileIndex || request.lineNumber <= active.lineNumber) {
+            await active?.iterator.return(undefined);
+            active = { fileIndex: request.fileIndex, lineNumber: 0, iterator: file.reader.lines({ deadline: realDeadline }) };
+          }
+          const next = await active.iterator.next();
+          if (next.done || next.value.lineNumber !== request.lineNumber) throw new Error("Log text does not match its line index");
+          active.lineNumber = request.lineNumber;
+          line = next.value.content;
+        }
+        if (now() >= deadline) break;
+        step = steps.next(line);
+        if (now() - batchStart >= 8) break;
+      }
+    }
+    if (!step.done || now() >= deadline) {
+      step.value.counts.errors.time_cap = (step.value.counts.errors.time_cap ?? 0) + 1;
+      steps.return(step.value);
+    }
+    const { events, counts, unmatchedLineCount } = step.value;
+    return { events, counts, unmatchedLineCount };
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "LOG_READER_TIME_CAP")) throw error;
+    step.value.counts.errors.time_cap = (step.value.counts.errors.time_cap ?? 0) + 1;
+    steps.return(step.value);
+    const { events, counts, unmatchedLineCount } = step.value;
+    return { events, counts, unmatchedLineCount };
+  } finally { await active?.iterator.return(undefined); }
 }
 
 /** Backpressure bounds uncompressed JSONL; the object-store port requires one compressed Buffer. */

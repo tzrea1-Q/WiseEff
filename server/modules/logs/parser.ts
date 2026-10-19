@@ -48,6 +48,7 @@ export function parseLogText(input: ParseLogTextInput, options: ParseLogTextOpti
   }
 
   const rawLines = decoded.text.split(/\r\n|\n|\r/);
+  if (rawLines.at(-1) === "") rawLines.pop();
   const profile = options.profile;
   const entries = profile ? parseEntriesWithProfile(rawLines, profile) : parseEntriesGeneric(rawLines);
 
@@ -90,6 +91,30 @@ function parseEntriesWithProfile(rawLines: string[], profile: LogFormatProfile):
   }
 
   return entries;
+}
+
+/** Same parsing rules with only the current multiline entry retained. */
+export async function* parseLogLines(lines: AsyncIterable<{ lineNumber: number; content: string }>, profile?: LogFormatProfile): AsyncGenerator<ParsedLogEntry> {
+  const timestampRegex = compileProfileRegex(profile?.timestampPattern);
+  const startRegex = compileProfileRegex(profile?.multiline?.startPattern);
+  const severityMatchers = profile ? compileSeverityMatchers(profile) : [];
+  let previous: ParsedLogEntry | undefined;
+  for await (const { lineNumber, content } of lines) {
+    const trimmed = content.trim();
+    if (!trimmed) continue;
+    if (previous && profile && isContinuationLine(content, profile, startRegex)) {
+      if (previous.message.length < 64 * 1024) {
+        const retained = trimmed.slice(0, Math.max(0, 64 * 1024 - previous.message.length - 1));
+        previous.message += `\n${retained}`;
+        if (retained.length < trimmed.length) previous.message += "… [multiline entry truncated at 64 KiB]";
+        Object.assign(previous.tokens, parseTokens(retained));
+      }
+      continue;
+    }
+    if (previous) yield previous;
+    previous = profile ? parseLineWithProfile(trimmed, lineNumber, { timestampRegex, severityMatchers }) : parseLine(trimmed, lineNumber);
+  }
+  if (previous) yield previous;
 }
 
 function compileProfileRegex(pattern: string | undefined): LogPattern | undefined {

@@ -29,6 +29,12 @@ export const logFileDtoSchema = z.object({
   path: z.string(), sizeBytes: z.number(), lineCount: z.number(), encoding: z.enum(["utf-8", "utf-16le", "utf-16be"]),
   lossy: z.boolean(), status: z.enum(["analyzed", "skipped"]), skipReason: z.string().nullable()
 });
+export const logLineRangeDtoSchema = z.object({
+  file: z.string(), startLine: z.number().int().positive(), endLine: z.number().int().nonnegative(),
+  totalLines: z.number().int().nonnegative(),
+  lines: z.array(z.object({ lineNumber: z.number().int().positive(), content: z.string() })).max(400)
+});
+export const logLineRangeResponseSchema = itemEnvelopeSchema(logLineRangeDtoSchema);
 export const logEvidenceDtoSchema = z.object({
   sourceLocation: z.object({ snapshotId: z.string(), path: z.string(), line: z.number().int().positive() }).optional(),
   sourceVersionLabel: z.string().optional(),

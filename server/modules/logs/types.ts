@@ -3,6 +3,14 @@ import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 export type LogArchiveState = "active" | "archived";
 export type LogFeedbackRating = "helpful" | "not_helpful";
 
+export type LogLineRangeDto = {
+  file: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  lines: Array<{ lineNumber: number; content: string }>;
+};
+
 export type LogEvidenceDto = {
   sourceLocation?: { snapshotId: string; path: string; line: number };
   sourceVersionLabel?: string;

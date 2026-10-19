@@ -1,4 +1,6 @@
-import { loadLogFiles } from "./filesRepository";
+import { loadLegacyLogFile, loadLogFiles } from "./filesRepository";
+import { createLogFileReader, ensureStoredLogIndex } from "./fileReader";
+import { createPrefilterBudget, prefilterLogStream } from "./prefilter";
 import { createHash } from "node:crypto";
 import { decodeLogFilesCooperatively, gzipDecodedEvents, indexDecodedEvents, logDecodeLimits } from "./parsing/workerDecoding";
 import type { DecodeCounts } from "./parsing/spec";
@@ -25,6 +27,7 @@ import { notifyLogAnalysisCompleted, notifyLogAnalysisFailed } from "../notifica
 import type { LogWebhookDeliverer } from "./webhookDelivery";
 import type { LogStage } from "./status";
 import { requireRelatedParameterRunSnapshot } from "./relatedParameter";
+import { JobLeaseLostError, keepLogJobLease, logJobLimits, type LogJobLease } from "./jobLease";
 
 type LogWorkerMetrics = Pick<MetricsRegistry, "recordLogAnalysisJobResult"> &
   Partial<Pick<MetricsRegistry, "recordLogAnalysisDegraded">>;
@@ -38,6 +41,8 @@ export type ProcessLogWorkerOptions = {
   analyzer?: LogAnalysisAdapter;
   workerId?: string;
   leaseTtlMs?: number;
+  maxJobMs?: number;
+  preprocessingMs?: number;
   maxAttempts?: number;
   retryBaseDelayMs?: number;
   now?: () => Date;
@@ -57,12 +62,6 @@ export type ProcessLogWorkerResult =
   | { status: "dead-lettered"; reason: string };
 
 type StageStatus = "processing" | "complete" | "failed";
-
-class JobLeaseLostError extends Error {
-  constructor() {
-    super("Log analysis job lease was lost before the worker write completed.");
-  }
-}
 
 async function traceLogAnalysisJob(
   tracing: Pick<TracingBoundary, "withSpan"> | undefined,
@@ -92,7 +91,7 @@ function assertActiveJobLease(updated: boolean) {
 }
 
 async function markProgress(
-  options: ProcessLogWorkerOptions,
+  options: ProcessLogWorkerOptions & { lease: LogJobLease },
   input: {
     organizationId: string;
     jobId: string;
@@ -105,15 +104,15 @@ async function markProgress(
   }
 ) {
   assertActiveJobLease(
-    await updateJobProgress(options.db, {
+    await options.lease.run(() => updateJobProgress(options.db, {
       organizationId: input.organizationId,
       jobId: input.jobId,
       progress: input.progress,
       currentStage: input.stage,
       leaseOwner: input.leaseOwner
-    })
+    }))
   );
-  await updateRunStageProgress(options.db, {
+  await options.lease.run(() => updateRunStageProgress(options.db, {
     organizationId: input.organizationId,
     runId: input.runId,
     status: input.status === "failed" ? "failed" : "processing",
@@ -121,7 +120,7 @@ async function markProgress(
     stage: input.stage,
     progress: input.progress,
     message: input.message
-  });
+  }));
 }
 
 function readableError(error: unknown) {
@@ -147,6 +146,7 @@ export async function analyzeWithDegradation(input: {
   try {
     return await input.analyzer.analyze(input.analyzeInput);
   } catch (error) {
+    input.analyzeInput.signal?.throwIfAborted();
     if (!(error instanceof LogAnalysisProviderError)) {
       throw error;
     }
@@ -183,19 +183,19 @@ async function processClaimedLogAnalysisJob(
     workerId,
     maxAttempts,
     retryBaseDelayMs,
+    preprocessingMs,
     now,
     metrics,
-    webhooks
-  }: Required<Pick<ProcessLogWorkerOptions, "analyzer" | "workerId" | "maxAttempts" | "retryBaseDelayMs" | "now">> &
-    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics" | "webhooks">,
+    webhooks,
+    lease
+  }: Required<Pick<ProcessLogWorkerOptions, "analyzer" | "workerId" | "maxAttempts" | "retryBaseDelayMs" | "preprocessingMs" | "now">> &
+    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics" | "webhooks"> & { lease: LogJobLease },
   job: ClaimedLogAnalysisJobDto
 ): Promise<ProcessLogWorkerResult> {
   const leaseOwner = job.leaseOwner ?? workerId;
   const startedAtMs = now().getTime();
 
-  const options = { db, objectStore, analyzer };
-  const jobSnapshot = await getJobSnapshot(db, job.id);
-  const snapshot = await getActiveLogWorkerRunSnapshot(db, job.id);
+  const options = { db, objectStore, analyzer, lease };
   const recordMetric = (input: {
     status: "complete" | "retry" | "dead_lettered" | "failed";
     stage: LogStage;
@@ -210,52 +210,58 @@ async function processClaimedLogAnalysisJob(
     });
   };
 
-  if (!snapshot) {
-    const staleReason = jobSnapshot
-      ? "Log analysis job is stale because its run is no longer current."
-      : "Unable to load log analysis job target.";
-
-    const failed = await db.transaction(async (tx) => {
-      const failedJob = await failJob(tx, {
-        organizationId: job.organizationId,
-        jobId: job.id,
-        currentStage: "parse",
-        error: staleReason,
-        leaseOwner
-      });
-      if (!failedJob) return false;
-
-      if (jobSnapshot) {
-        await updateRunStageProgress(tx, {
-          organizationId: jobSnapshot.organizationId,
-          runId: jobSnapshot.runId,
-          status: "failed",
-          stageStatus: "failed",
-          stage: jobSnapshot.currentStage,
-          progress: jobSnapshot.progress,
-          message: staleReason
-        });
-        await failRun(tx, {
-          organizationId: jobSnapshot.organizationId,
-          logId: jobSnapshot.logId,
-          runId: jobSnapshot.runId,
-          currentStage: jobSnapshot.currentStage,
-          error: staleReason
-        });
-      }
-      return true;
-    });
-    if (!failed) return { status: "idle" };
-    recordMetric({ status: "failed", stage: jobSnapshot?.currentStage ?? "parse", failureReason: "stale_run" });
-    return { status: "processed" };
-  }
-
   let currentStage: LogStage = "parse";
   let currentProgress = 0;
   let currentFailureReason: LogAnalysisJobFailureReason = "unknown";
+  let failedSnapshot: Awaited<ReturnType<typeof getActiveLogWorkerRunSnapshot>> = null;
+  let failureLogId = job.logId;
 
   try {
-    let relatedParameterSnapshot;
+    const jobSnapshot = await lease.run(() => getJobSnapshot(db, job.id));
+    failureLogId = jobSnapshot?.logId ?? failureLogId;
+    const snapshot = await lease.run(() => getActiveLogWorkerRunSnapshot(db, job.id));
+    failedSnapshot = snapshot;
+    if (!snapshot) {
+      const staleReason = jobSnapshot
+        ? "Log analysis job is stale because its run is no longer current."
+        : "Unable to load log analysis job target.";
+
+      const failed = await db.transaction(async (tx) => {
+        const failedJob = await failJob(tx, {
+          organizationId: job.organizationId,
+          jobId: job.id,
+          currentStage: "parse",
+          error: staleReason,
+          leaseOwner
+        });
+        if (!failedJob) return false;
+
+        if (jobSnapshot) {
+          await updateRunStageProgress(tx, {
+            organizationId: jobSnapshot.organizationId,
+            runId: jobSnapshot.runId,
+            status: "failed",
+            stageStatus: "failed",
+            stage: jobSnapshot.currentStage,
+            progress: jobSnapshot.progress,
+            message: staleReason
+          });
+          await failRun(tx, {
+            organizationId: jobSnapshot.organizationId,
+            logId: jobSnapshot.logId,
+            runId: jobSnapshot.runId,
+            currentStage: jobSnapshot.currentStage,
+            error: staleReason
+          });
+        }
+        return true;
+      });
+      if (!failed) return { status: "idle" };
+      recordMetric({ status: "failed", stage: jobSnapshot?.currentStage ?? "parse", failureReason: "stale_run" });
+      return { status: "processed" };
+    }
+
+    let relatedParameterSnapshot: AnalyzeLogInput["relatedParameterSnapshot"];
     if (snapshot.relatedParameterId) {
       if (!snapshot.relatedParameterProjectId) {
         throw new Error("Legacy related-parameter association has no authoritative project scope.");
@@ -283,66 +289,115 @@ async function processClaimedLogAnalysisJob(
     currentFailureReason = "object_store_error";
     if (snapshot.logDomain && !snapshot.skillRevisionId) throw new Error("Analysis skill run has no pinned revision.");
     const formatProfile = readStoredLogFormatProfile(snapshot.logDomain?.formatProfile ?? undefined);
-    const inventory = await loadLogFiles(db, snapshot.organizationId, snapshot.logId);
-    const files: NonNullable<AnalyzeLogInput["files"]> = [];
-    for (const file of inventory) {
-      const { objectKey, ...entry } = file;
-      if (file.status === "skipped") { files.push(entry); continue; }
-      const bytes = await objectStore.get(objectKey!);
-      currentFailureReason = "parse_error";
-      // Inventory already validated extension/encoding. Parse decoded UTF-8, including extensionless text.
-      const parsedFile = parseLogText({ fileName: "decoded.log", content: bytes }, { profile: formatProfile });
-      if (!parsedFile.ok) throw new Error(parsedFile.reason);
-      files.push({ ...entry, parsed: parsedFile });
-      currentFailureReason = "object_store_error";
-    }
-    let parsed: Extract<ReturnType<typeof parseLogText>, { ok: true }>;
-    if (inventory.length) {
-      const analyzed = files.filter((file) => file.parsed);
-      if (!analyzed.length) throw new Error("日志包中没有可分析的文本文件");
-      // Parsed files live for one analysis; offset-backed lazy reads are a later phase.
-      parsed = { ok: true, rawLines: analyzed.flatMap((file) => file.parsed!.rawLines), entries: analyzed.flatMap((file) => file.parsed!.entries) };
-    } else {
-      const bytes = await objectStore.get(snapshot.storageKey);
-      currentFailureReason = "parse_error";
-      const legacy = parseLogText({ fileName: snapshot.fileName, content: bytes }, { profile: formatProfile });
-      if (!legacy.ok) throw new Error(legacy.reason);
-      parsed = legacy;
-    }
-    currentFailureReason = "unknown";
-
+    const inventory = await lease.run(() => loadLogFiles(db, snapshot.organizationId, snapshot.logId));
+    const hadInventory = inventory.length > 0;
     // Unclassified uploads retain the legacy prefilter. A pinned skill without
     // rules stays explicitly empty instead of inheriting charging rules.
     const signalRules = snapshot.signalRules ?? (snapshot.skillRevisionId ? genericSignalRuleSet : undefined);
-    const expiresAt = Date.parse(job.leaseExpiresAt ?? "");
-    const remainingLeaseMs = Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now().getTime()) : 0;
-    // Signals and decoding together may consume at most one quarter of the
-    // remaining lease. Reserve the rest for compression, storage and analysis.
-    const preprocessingDeadline = performance.now() + Math.floor(remainingLeaseMs / 4);
+    const files: NonNullable<AnalyzeLogInput["files"]> = [];
+    if (!inventory.length && objectStore.getStream) {
+      const legacy = await lease.run(() => loadLegacyLogFile(db, snapshot.organizationId, snapshot.logId, snapshot.fileName));
+      if (legacy) inventory.push(legacy);
+    }
+    if (!inventory.length) inventory.push({ path: snapshot.fileName, objectKey: snapshot.storageKey,
+      sizeBytes: 0, lineCount: 0, status: "analyzed", encoding: "utf-8", lossy: false, skipReason: null });
+    const prefilterBudget = createPrefilterBudget();
+    const prepare = (file: typeof inventory[number]) => {
+      const reader = createLogFileReader(objectStore, file, formatProfile,
+        () => lease.run(() => ensureStoredLogIndex(db, objectStore, snapshot.organizationId, snapshot.logId, file)));
+      const entries = reader.entries();
+      const first = entries.next();
+      // A later file may fail while the current file is still being consumed.
+      void first.catch(() => undefined);
+      return { reader, entries, first };
+    };
+    const pending = new Map<number, ReturnType<typeof prepare>>();
+    let nextFile = 0;
+    const prefetch = () => {
+      if (!objectStore.getStream) return;
+      // Start at most eight GET streams, but consume in inventory order so the
+      // shared reference budget and resulting evidence stay deterministic.
+      while (pending.size < 8 && nextFile < inventory.length) {
+        const index = nextFile++;
+        if (inventory[index].status !== "skipped") pending.set(index, prepare(inventory[index]));
+      }
+    };
+    prefetch();
+    let readPreview = false;
+    try { for (const [fileIndex, file] of inventory.entries()) {
+      const { objectKey: _objectKey, lineIndexKey: _indexKey, ...entry } = file;
+      if (file.status === "skipped") { files.push(entry); continue; }
+      if (!objectStore.getStream) {
+        // Compatibility for small offline adapters; production local/S3 stores always stream.
+        const content = await objectStore.get(file.objectKey!);
+        currentFailureReason = "parse_error";
+        const legacy = parseLogText({ fileName: hadInventory ? "decoded.log" : snapshot.fileName,
+          content }, { profile: formatProfile });
+        if (!legacy.ok) throw new Error(legacy.reason);
+        files.push({ ...entry, lineCount: legacy.rawLines.length, parsed: legacy });
+        continue;
+      }
+      const { reader, entries, first } = pending.get(fileIndex)!;
+      currentFailureReason = "parse_error";
+      const prefilter = await prefilterLogStream((async function* () {
+        const initial = await first;
+        if (!initial.done) yield initial.value;
+        yield* entries;
+      })(), signalRules, prefilterBudget);
+      pending.delete(fileIndex);
+      const preview: string[] = [];
+      if (!readPreview) {
+        readPreview = true;
+        let previewBudget = 128 * 1024;
+        for await (const line of reader.lines()) {
+          const cost = Buffer.byteLength(line.content);
+          if (preview.length >= 400 || cost > previewBudget) break;
+          preview.push(line.content); previewBudget -= cost;
+        }
+      }
+      prefetch();
+      const parsedFile = parseLogText({ fileName: "decoded.log", content: preview.join("\n") }, { profile: formatProfile });
+      if (!parsedFile.ok) throw new Error(parsedFile.reason);
+      parsedFile.rawLines = preview;
+      files.push({ ...entry, lineCount: reader.lineCount, reader, prefilter, parsed: parsedFile });
+      currentFailureReason = "object_store_error";
+    } } finally {
+      await Promise.all([...pending.values()].map(({ entries }) => entries.return(undefined)));
+    }
+    const analyzed = files.filter((file) => file.parsed);
+    if (!analyzed.length) throw new Error("日志包中没有可分析的文本文件");
+    const parsed = analyzed[0].parsed!;
+    const stats = { lineCount: analyzed.reduce((sum, file) => sum + file.lineCount, 0),
+      entryCount: analyzed.reduce((sum, file) => sum + (file.prefilter ? Object.values(file.prefilter.severityCounts).reduce((a, b) => a + b, 0) : file.parsed!.entries.length), 0) };
+    currentFailureReason = "unknown";
+
+    lease.signal.throwIfAborted();
+    // One allowance for signals + decoding; heartbeats cannot replenish it.
+    const preprocessingDeadline = performance.now() + Math.min(preprocessingMs, lease.remainingMs());
     let signalSummary: NonNullable<AnalyzeLogInput["signalSummary"]>;
     try {
-      signalSummary = await extractLogSignalsCooperatively(inventory.length ? files : [{ path: snapshot.fileName, parsed }], signalRules,
-        { maxMs: Math.min(logSignalLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now())) });
+      signalSummary = await lease.run(() => extractLogSignalsCooperatively(files, signalRules,
+        { maxMs: Math.min(logSignalLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now())) }));
     } catch {
+      lease.signal.throwIfAborted();
       signalSummary = { signals: [], templates: [], truncatedSignals: false, truncatedTemplates: false, truncated: true, reason: "extraction_error" };
     }
 
     let decoding: AnalyzeLogInput["decoding"];
     let decodedArtifact: { objectKey: string | null; counts: DecodeCounts } | undefined;
     if (snapshot.parsing?.extractors.length) {
-      const maxMs = Math.min(logDecodeLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now()),
-        Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now().getTime()) : 0);
+      const parsing = snapshot.parsing;
+      const maxMs = Math.min(logDecodeLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now()), lease.remainingMs());
       decodedArtifact = { objectKey: null, counts: { total: 0,
         byExtractor: Object.fromEntries(snapshot.parsing.extractors.map(({ id }) => [id, 0])), errors: {} } };
       let cleanupKey: string | undefined;
       let failureCode = "decode_error";
       try {
-        decoding = { spec: snapshot.parsing, ...await decodeLogFilesCooperatively(snapshot.parsing,
-          inventory.length ? files.filter((file) => file.parsed).map((file) => ({ file: file.path, lines: file.parsed!.rawLines }))
-            : [{ file: snapshot.fileName, lines: parsed.rawLines }], { maxMs }) };
+        decoding = { spec: parsing, ...await lease.run(() => decodeLogFilesCooperatively(parsing,
+          analyzed.map((file) => file.reader ? { file: file.path, reader: file.reader } : { file: file.path, lines: file.parsed!.rawLines }), { maxMs })) };
         decodedArtifact.counts = decoding.counts;
         failureCode = "artifact_error";
-        const bytes = await gzipDecodedEvents(decoding.events);
+        const bytes = await lease.run(() => gzipDecodedEvents(decoding!.events));
         const fileName = sanitizeFileName(`${snapshot.runId}-decoded-events.jsonl.gz`);
         // Shipped local/S3 stores use this content-addressed key. Retain it before
         // the write so even an upload with a lost response can be cleaned up.
@@ -353,12 +408,13 @@ async function processClaimedLogAnalysisJob(
         decodedArtifact.counts.errors[failureCode] = (decodedArtifact.counts.errors[failureCode] ?? 0) + 1;
         decoding = undefined;
         if (cleanupKey) await objectStore.delete?.(cleanupKey).catch(() => undefined);
+        lease.signal.throwIfAborted();
       }
     }
 
-    if (decodedArtifact) assertActiveJobLease(await persistLogDecodedArtifact(db, {
+    if (decodedArtifact) assertActiveJobLease(await lease.run(() => persistLogDecodedArtifact(db, {
       ...decodedArtifact, organizationId: snapshot.organizationId, runId: snapshot.runId, jobId: snapshot.jobId, leaseOwner
-    }));
+    })));
 
     // Query cursors require extractor/completion order; evidence needs direct file/line lookup.
     // The array and index share event objects (no field/raw-value copies).
@@ -416,15 +472,17 @@ async function processClaimedLogAnalysisJob(
 
     // P2: the analysis kernel runs inside the rootcause stage (the agent loop's
     // natural home); loop steps advance the progress bar inside the 65→80 range.
-    const analysis = await analyzeWithDegradation({
+    const analysis = await lease.run(() => analyzeWithDegradation({
       analyzer,
       analyzeInput: {
+        signal: lease.signal,
         signalSummary,
+        stats,
         procedure: snapshot.procedure,
         decoding,
         sourceSnapshot: snapshot.sourceSnapshot,
-        files: inventory.length ? files : undefined,
-        filePath: inventory.length ? files.find((file) => file.parsed)?.path : snapshot.fileName,
+        files: hadInventory || objectStore.getStream ? files : undefined,
+        filePath: analyzed[0].path,
         signalRules,
         parsed,
         analysisQuestion: snapshot.analysisQuestion ?? undefined,
@@ -463,7 +521,7 @@ async function processClaimedLogAnalysisJob(
       retryBaseDelayMs,
       now,
       metrics
-    });
+    }));
 
     if (snapshot.sourceSnapshot && snapshot.sourceSnapshot.status !== "ready") {
       const reason = { queued: "仍在排队", indexing: "仍在索引", failed: "索引失败", archived: "已归档" }[snapshot.sourceSnapshot.status];
@@ -496,6 +554,7 @@ async function processClaimedLogAnalysisJob(
     currentProgress = 90;
 
     const completed = await completeLogAnalysisJobWithReport(db, {
+      signal: lease.signal,
       organizationId: snapshot.organizationId,
       logId: snapshot.logId,
       runId: snapshot.runId,
@@ -522,6 +581,7 @@ async function processClaimedLogAnalysisJob(
       })
     });
     if (!completed) return { status: "idle" };
+    lease.stop();
 
     if (snapshot.submittedByUserId) {
       await notifyLogAnalysisCompleted(db, {
@@ -555,6 +615,8 @@ async function processClaimedLogAnalysisJob(
     recordMetric({ status: "complete", stage: "report" });
     return { status: "processed" };
   } catch (error) {
+    const snapshot = failedSnapshot;
+    if (lease.signal.aborted) error = lease.signal.reason;
     if (error instanceof JobLeaseLostError) {
       return { status: "idle" };
     }
@@ -563,8 +625,8 @@ async function processClaimedLogAnalysisJob(
     const decision = decideRetry({ attemptCount: job.attemptCount, maxAttempts, baseDelayMs: retryBaseDelayMs, now: endedAt });
     if (decision.action === "retry") {
       const scheduled = await markJobRetryScheduled(db, {
-        organizationId: snapshot.organizationId,
-        jobId: snapshot.jobId,
+        organizationId: job.organizationId,
+        jobId: job.id,
         currentStage,
         error: message,
         nextRunAt: decision.nextRunAt,
@@ -578,8 +640,8 @@ async function processClaimedLogAnalysisJob(
 
     const deadLettered = await db.transaction(async (tx) => {
       const deadLettered = await markJobDeadLettered(tx, {
-        organizationId: snapshot.organizationId,
-        jobId: snapshot.jobId,
+        organizationId: job.organizationId,
+        jobId: job.id,
         currentStage,
         error: message,
         reason: decision.reason,
@@ -588,8 +650,8 @@ async function processClaimedLogAnalysisJob(
       if (!deadLettered) return false;
 
       await updateRunStageProgress(tx, {
-        organizationId: snapshot.organizationId,
-        runId: snapshot.runId,
+        organizationId: job.organizationId,
+        runId: job.runId,
         status: "failed",
         stageStatus: "failed",
         stage: currentStage,
@@ -597,16 +659,16 @@ async function processClaimedLogAnalysisJob(
         message
       });
       await failRun(tx, {
-        organizationId: snapshot.organizationId,
-        logId: snapshot.logId,
-        runId: snapshot.runId,
+        organizationId: job.organizationId,
+        logId: failureLogId,
+        runId: job.runId,
         currentStage,
         error: decision.reason
       });
       return true;
     });
     if (!deadLettered) return { status: "idle" };
-    if (snapshot.submittedByUserId) {
+    if (snapshot?.submittedByUserId) {
       await notifyLogAnalysisFailed(db, {
         organizationId: snapshot.organizationId,
         logId: snapshot.logId,
@@ -616,7 +678,7 @@ async function processClaimedLogAnalysisJob(
         failureReason: decision.reason
       });
     }
-    if (snapshot.logDomain && webhooks) {
+    if (snapshot?.logDomain && webhooks) {
       webhooks.notifyAnalysisTerminal({
         organizationId: snapshot.organizationId,
         logDomainId: snapshot.logDomain.id,
@@ -639,6 +701,8 @@ export async function processNextLogAnalysisJob({
   analyzer = createRuleBasedLogAnalyzer(),
   workerId = "wiseeff-log-worker",
   leaseTtlMs = 60_000,
+  maxJobMs = logJobLimits().maxJobMs,
+  preprocessingMs = logJobLimits().preprocessingMs,
   maxAttempts = 4,
   retryBaseDelayMs = 1000,
   now = () => new Date(),
@@ -648,7 +712,11 @@ export async function processNextLogAnalysisJob({
 }: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
   const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
   if (!job) return "idle";
-  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics, webhooks }, job);
+  const process = async () => {
+    const lease = keepLogJobLease(db, objectStore, { jobId: job.id, leaseOwner: job.leaseOwner ?? workerId, leaseMs: leaseTtlMs, maxJobMs });
+    try { return await processClaimedLogAnalysisJob({ db, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease }, job); }
+    finally { lease.stop(); }
+  };
   const result = await traceLogAnalysisJob(tracing, "polling", process);
   return result.status === "idle" ? "idle" : "processed";
 }
@@ -660,6 +728,8 @@ export async function processLogAnalysisJobById({
   analyzer = createRuleBasedLogAnalyzer(),
   workerId = "wiseeff-log-worker",
   leaseTtlMs = 60_000,
+  maxJobMs = logJobLimits().maxJobMs,
+  preprocessingMs = logJobLimits().preprocessingMs,
   maxAttempts = 4,
   retryBaseDelayMs = 1000,
   now = () => new Date(),
@@ -669,7 +739,11 @@ export async function processLogAnalysisJobById({
 }: ProcessLogWorkerByIdOptions): Promise<ProcessLogWorkerResult> {
   const job = await claimJobById(db, { kind: "log-analysis", jobId, leaseOwner: workerId, leaseTtlMs });
   if (!job) return { status: "idle" };
-  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics, webhooks }, job);
+  const process = async () => {
+    const lease = keepLogJobLease(db, objectStore, { jobId: job.id, leaseOwner: job.leaseOwner ?? workerId, leaseMs: leaseTtlMs, maxJobMs });
+    try { return await processClaimedLogAnalysisJob({ db, objectStore: lease.objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, preprocessingMs, now, metrics, webhooks, lease }, job); }
+    finally { lease.stop(); }
+  };
   return traceLogAnalysisJob(tracing, "queue", process);
 }
 

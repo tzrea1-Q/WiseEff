@@ -216,6 +216,7 @@
   --configuration-workbench-compact-project-clearance: 110px;
   --configuration-workbench-compact-metadata-width: 150px;
   --configuration-workbench-rollback-dialog-width: min(720px, calc(100vw - var(--space-12)));
+  --log-file-drawer-width: min(880px, 60vw);
   --configuration-workbench-meta-tracking: 0.05em;
   --configuration-workbench-title-tracking: 0.01em;
   --configuration-workbench-source-tracking: 0.04em;

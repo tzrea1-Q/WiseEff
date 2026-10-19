@@ -1017,6 +1017,15 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
   "logs.list": { summary: "List log records", tags: ["logs"], responseBody: "LogRecordListResponse" },
   "logs.get": { summary: "Get log record with run-owned signals and line templates", tags: ["logs"], responseBody: "LogRecordResponse" },
+  "logs.getLines": {
+    summary: "Read an inclusive window of at most 400 indexed log lines",
+    tags: ["logs"], responseBody: "LogLineRangeResponse",
+    requestParameters: [
+      { name: "file", in: "query", required: true, description: "Exact file path in the record inventory", schema: { type: "string" } },
+      { name: "startLine", in: "query", required: true, description: "First line, 1-based inclusive", schema: { type: "integer" } },
+      { name: "endLine", in: "query", required: true, description: "Last line, inclusive; clipped to the file length", schema: { type: "integer" } }
+    ]
+  },
   "logs.listRuns": { summary: "List log analysis runs", tags: ["logs"], responseBody: "LogRunListResponse" },
   "logs.rerun": { summary: "Rerun log analysis", tags: ["logs"], requestBody: "LogRerunRequest", responseBody: "LogRunResponse" },
   "logs.archive": { summary: "Archive log record", tags: ["logs"], responseBody: "LogRecordResponse" },

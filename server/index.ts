@@ -100,6 +100,8 @@ const logAnalysisQueueRuntime =
           env: logAnalysisQueueEnv,
           db,
           objectStore,
+          maxJobMs: env.LOG_ANALYSIS_JOB_MAX_MS,
+          preprocessingMs: env.LOG_ANALYSIS_PREPROCESS_MAX_MS,
           analyzer: logAnalyzer,
           metrics,
           tracing: defaultTracingBoundary,
@@ -109,7 +111,11 @@ const logAnalysisQueueRuntime =
     : undefined;
 const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
-    ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer })
+    ? startLogWorkerLoop({
+        db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer,
+        maxJobMs: env.LOG_ANALYSIS_JOB_MAX_MS,
+        preprocessingMs: env.LOG_ANALYSIS_PREPROCESS_MAX_MS
+      })
     : undefined;
 const stopSourceIndexWorker = env.LOG_WORKER_ENABLED && db && objectStore
   ? startSourceIndexWorkerLoop({ db, objectStore }) : undefined;

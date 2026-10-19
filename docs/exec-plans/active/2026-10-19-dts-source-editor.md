@@ -6,7 +6,7 @@ Status: implemented. The initial local checks and their broader regression failu
 
 Workspace: `codex/frontend-ui-refinement`, inspected HEAD `56fdcccfb09302061f713aad15244f03c53ca84e`. Existing uncommitted navigation and typed-editor work remains intact. This proposal supersedes the UI direction of [Configuration value editor refinement](2026-10-19-configuration-value-editor.md); its historical verification is not evidence for the new design.
 
-PR integration uses `codex/dts-source-editor` on main `cabf75eb6`. Main had already published migrations 0190–0193, so this change's unpublished source migrations were renamed from 0190–0192 to 0194–0196 without changing their SQL. The original preview worktree/database is retained. Earlier upgrade results below refer to the original unpublished numbering; integration checks must use the new migration inventory.
+PR integration uses `codex/dts-source-editor`, initially based on main `cabf75eb6` and now integrating main `93c1f2522`. Main had published migrations 0190–0193 at the initial integration and has since added 0194, so this change's unpublished source migrations were renamed from 0190–0192 through 0194–0196 to 0195–0197 without changing their SQL. The original preview worktree/database is retained. Earlier upgrade results below refer to the original unpublished numbering; integration checks must use the new migration inventory.
 
 ## Outcome and boundaries
 

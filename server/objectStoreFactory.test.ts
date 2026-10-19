@@ -7,6 +7,16 @@ import { createTracingBoundary, type TraceExporter } from "./observability/traci
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
 
 describe("createObjectStoreFromEnv", () => {
+  it("forwards byte ranges through the runtime wrapper", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "wiseeff-range-factory-"));
+    try {
+      const store = createObjectStoreFromEnv({ OBJECT_STORE_MODE: "local", OBJECT_STORE_ROOT: rootDir });
+      const object = await store.put({ organizationId: "org", fileName: "test.log", contentType: "text/plain", bytes: Buffer.from("first\nsecond\nthird") });
+      const chunks = [];
+      for await (const chunk of await store.getStream!(object.storageKey, { start: 6, end: 11 })) chunks.push(chunk as Buffer);
+      expect(Buffer.concat(chunks).toString()).toBe("second");
+    } finally { await rm(rootDir, { recursive: true, force: true }); }
+  });
   it("preserves and traces streaming reads through the runtime wrapper", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "wiseeff-stream-factory-"));
     const spans: Parameters<TraceExporter>[0][] = [];
