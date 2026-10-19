@@ -10,6 +10,16 @@ import {
 } from "./schemas";
 
 describe("log schemas", () => {
+  it("trims source version labels and rejects empty or oversized labels on both upload APIs", () => {
+    for (const [schema, input] of [
+      [createLogFileBodySchema, { fileName: "device.log", contentType: "text/plain", contentBase64: "YQ==" }],
+      [createLogBodySchema, { fileObjectId: "file", fileName: "device.log" }]
+    ] as const) {
+      expect(schema.parse({ ...input, sourceVersion: " firmware-v7 " }).sourceVersion).toBe("firmware-v7");
+      for (const sourceVersion of [" ", "x".repeat(201)])
+        expect(schema.safeParse({ ...input, sourceVersion }).success).toBe(false);
+    }
+  });
   it("rejects an oversized sample before decoding base64", () => {
     const contentBase64 = "A".repeat(Math.ceil(2 * 1024 * 1024 * 4 / 3) + 5);
     const decode = vi.spyOn(Buffer, "from");

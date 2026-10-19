@@ -114,6 +114,7 @@ function uploadBody(input: LogUploadInput, contentBase64: string) {
     fileName: input.file.name,
     contentType: input.file.type || "application/octet-stream",
     contentBase64,
+    ...(input.sourceVersion !== undefined ? { sourceVersion: input.sourceVersion } : {}),
     ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {}),
     ...(input.relatedParameterPin !== undefined ? { relatedParameterPin: input.relatedParameterPin } : {}),
     ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {}),
@@ -174,6 +175,7 @@ export function createHttpLogAnalysisRepository(
   async function uploadFiles(input: LogUploadInput): Promise<LogUploadResponse> {
     if (!input.files) return apiClient.post<LogUploadResponse>("/api/v1/log-files", uploadBody(input, await fileToBase64(input.file)));
     const form = new FormData();
+    if (input.sourceVersion !== undefined) form.append("sourceVersion", input.sourceVersion);
     for (const file of input.files) form.append("file", file);
     if (input.analysisQuestion) form.append("analysisQuestion", input.analysisQuestion);
     if (input.skillId ?? input.logDomainId) form.append("skillId", (input.skillId ?? input.logDomainId)!);

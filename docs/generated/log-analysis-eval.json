@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-10-19T12:38:21.925Z",
+  "generatedAt": "2026-10-19T15:01:59.289Z",
   "promptVersion": "2026-10-19.procedure.signals.source.1",
-  "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.1",
-  "total": 36,
-  "passed": 36,
+  "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.3",
+  "total": 48,
+  "passed": 48,
   "failed": 0,
   "scenarios": [
     {
@@ -423,6 +423,799 @@
       }
     },
     {
+      "name": "loop-source-search-timeout-preserves-log-analysis",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": []
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceToolBounds",
+            "tool": "search_source",
+            "maxBytes": 16384,
+            "expectedItems": 0,
+            "truncated": true
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "requiresSubstringsInConclusion",
+            "substrings": [
+              "Source search timed out"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 3
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated. Source search timed out; this conclusion uses log evidence only."
+      }
+    },
+    {
+      "name": "loop-source-search-literal-legal-and-grounded",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": [
+              {
+                "snapshotId": "thermal-source",
+                "path": "drivers/power/thermal.c",
+                "line": 4
+              }
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 2
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          []
+        ],
+        "evidenceSourceLocations": [
+          {
+            "snapshotId": "thermal-source",
+            "path": "drivers/power/thermal.c",
+            "line": 4
+          }
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-search-full-text-legal-and-grounded",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": [
+              {
+                "snapshotId": "thermal-source",
+                "path": "drivers/power/thermal.c",
+                "line": 4
+              }
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 2
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          []
+        ],
+        "evidenceSourceLocations": [
+          {
+            "snapshotId": "thermal-source",
+            "path": "drivers/power/thermal.c",
+            "line": 4
+          }
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-search-result-and-excerpt-caps",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceToolBounds",
+            "tool": "search_source",
+            "maxBytes": 16384,
+            "maxItems": 20,
+            "expectedItems": 20,
+            "maxExcerptChars": 400,
+            "truncated": true
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 2
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          []
+        ],
+        "evidenceSourceLocations": [
+          {
+            "snapshotId": "thermal-source",
+            "path": "drivers/power/thermal.c",
+            "line": 1
+          }
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-search-byte-caps",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceToolBounds",
+            "tool": "search_source",
+            "maxBytes": 16384,
+            "maxItems": 20,
+            "maxExcerptChars": 400,
+            "truncated": true
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 2
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          []
+        ],
+        "evidenceSourceLocations": [
+          {
+            "snapshotId": "thermal-source",
+            "path": "drivers/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.c",
+            "line": 1
+          }
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-range-clamped-to-80-and-grounded",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": [
+              {
+                "snapshotId": "thermal-source",
+                "path": "drivers/power/thermal.c",
+                "line": 80
+              }
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceToolBounds",
+            "tool": "read_source_range",
+            "maxBytes": 16384,
+            "expectedLines": 80,
+            "endLine": 80,
+            "truncated": true
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 2
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          []
+        ],
+        "evidenceSourceLocations": [
+          {
+            "snapshotId": "thermal-source",
+            "path": "drivers/power/thermal.c",
+            "line": 80
+          }
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-range-unseen-line-rejected",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": [
+              {
+                "snapshotId": "thermal-source",
+                "path": "drivers/power/thermal.c",
+                "line": 80
+              }
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceToolBounds",
+            "tool": "read_source_range",
+            "maxBytes": 16384,
+            "expectedLines": 80,
+            "endLine": 80,
+            "truncated": true
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Grounding violation"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 3
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          []
+        ],
+        "evidenceSourceLocations": [
+          {
+            "snapshotId": "thermal-source",
+            "path": "drivers/power/thermal.c",
+            "line": 80
+          }
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-tools-unavailable-queued",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": []
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Unknown tool \"search_source\"",
+              "Unknown tool \"read_source_range\""
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 4
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-tools-unavailable-indexing",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": []
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Unknown tool \"search_source\"",
+              "Unknown tool \"read_source_range\""
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 4
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-tools-unavailable-failed",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": []
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Unknown tool \"search_source\"",
+              "Unknown tool \"read_source_range\""
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 4
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-tools-unavailable-archived",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": []
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Unknown tool \"search_source\"",
+              "Unknown tool \"read_source_range\""
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 4
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-source-tools-unavailable-no-snapshot",
+      "category": "source-tools",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsSourceLocations",
+            "locations": []
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Unknown tool \"search_source\"",
+              "Unknown tool \"read_source_range\""
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 4
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
       "name": "loop-source-location-returned-by-tool-grounded",
       "category": "source-grounding",
       "kernel": "loop",
@@ -470,7 +1263,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           []
@@ -536,7 +1329,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -598,7 +1391,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -660,7 +1453,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -722,7 +1515,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -777,7 +1570,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -831,7 +1624,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -885,7 +1678,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -949,7 +1742,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -994,7 +1787,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1065,7 +1858,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1136,7 +1929,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1207,7 +2000,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1270,7 +2063,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1316,14 +2109,14 @@
         {
           "expectation": {
             "type": "expectsPromptVersionRecorded",
-            "promptVersion": "2026-10-19.loop.procedure.signals.source.1"
+            "promptVersion": "2026-10-19.loop.procedure.signals.source.3"
           },
           "pass": true
         }
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1372,7 +2165,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1414,7 +2207,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1455,7 +2248,7 @@
       "runResult": {
         "analysisSource": "rules-fallback",
         "degradedReason": "token-budget-exhausted",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1522,7 +2315,7 @@
       "runResult": {
         "analysisSource": "agent",
         "degradedReason": "token-budget-exhausted",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1577,7 +2370,7 @@
       "runResult": {
         "analysisSource": "agent",
         "degradedReason": "token-budget-exhausted",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1632,7 +2425,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1684,7 +2477,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1711,7 +2504,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "domain-override-model-x",
         "evidenceLineNumbers": [
           [
@@ -1737,7 +2530,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "deterministic",
         "evidenceLineNumbers": [
           [

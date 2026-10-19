@@ -28,8 +28,8 @@ import { appendSkillProcedure } from "./procedurePrompt";
  * the P1 single shot, so it carries its own version string on every report and in
  * both eval layers. Bump on any wording change.
  */
-export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.1";
-export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.1";
+export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.3";
+export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.3";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot
@@ -96,7 +96,7 @@ function buildLoopSystemPrompt(maxSteps: number, hasRelatedParameter: boolean, c
     "- Every evidence lineNumbers entry MUST be a raw log line number you have actually seen in a tool result.",
     "- Anchors returned by get_signals, first/last anchors from get_line_templates, and lines from get_timeline count as seen exactly like read_line_range. Counts do not reveal any other lines.",
     "- Never cite a line number you have not seen.",
-    "- Source evidence MUST identify the exact snapshotId, path and line returned by locate_log_statement. A nearby excerpt line, inventory, procedure or knowledge mention is not a source citation. Use lineNumbers: [] for source-only evidence.",
+    "- Source evidence MUST identify the exact snapshotId, path and line returned by locate_log_statement or search_source, or a numbered line returned by read_source_range. A nearby unnumbered excerpt line, inventory, procedure or knowledge mention is not a source citation. Use lineNumbers: [] for source-only evidence.",
     "- If an analysis question is provided, the conclusion must directly address it.",
     "- If the evidence is insufficient for a confident root cause, say so honestly with low confidence instead of fabricating one.",
     "- Keep suggestions advisory; you have no write access to devices or parameters.",
@@ -139,7 +139,7 @@ export type CreateAgentLoopAnalyzerOptions = {
   /** Binds the database-backed tool seams (domain knowledge, related parameter) for one run. */
   bindToolBackends?: (
     input: AnalyzeLogInput
-  ) => Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext" | "locateLogStatement">;
+  ) => Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext" | "locateLogStatement" | "searchSource" | "readSourceRange">;
 };
 
 /**
@@ -212,7 +212,16 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         if (!value || typeof value !== "object") return;
         const result = value as Record<string, unknown>;
         // Only kernel-owned log references establish grounding; retrieved JSON never does.
-        if (tool === "locate_log_statement") {
+        if (tool === "read_source_range") {
+          if (result.snapshotId !== input.sourceSnapshot?.id || typeof result.path !== "string" || !Array.isArray(result.lines)) return;
+          for (const item of result.lines) {
+            if (!item || typeof item !== "object") continue;
+            const line = (item as { line?: unknown }).line;
+            if (typeof line === "number" && Number.isSafeInteger(line) && line > 0) {
+              seenSources.add(sourceLocationKey({ snapshotId: result.snapshotId as string, path: result.path, line }));
+            }
+          }
+        } else if (tool === "locate_log_statement" || tool === "search_source") {
           if (!Array.isArray(result.items)) return;
           for (const item of result.items) {
             if (!item || typeof item !== "object") continue;
