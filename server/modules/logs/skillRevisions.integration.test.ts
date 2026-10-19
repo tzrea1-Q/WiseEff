@@ -6,6 +6,7 @@ import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../test
 import { createPostgresDatabase } from "../../shared/database/client";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { makeTestAuthContext } from "../../testing/authContext";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
@@ -33,10 +34,24 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
     try {
       await seedCoreGraph(db, { organization: { id: "org-skills", name: "技能" }, users: [{ id: "org-skills-admin", name: "管理员" }] });
       const context = { requestId: "skill-delete" };
-      const skill = await createLogSkill(db, auth(), { name: "待删除技能" }, context);
-      const published = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1", modelOverride: "next-model" }, context);
-      await publishLogSkill(db, auth(), skill.id, published.id, context);
-      await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1" }, context);
+      const invocation = createAgentInvocation(auth(), {
+        sessionId: "skill-session", toolCallId: "skill-call", approval: { required: true, approvalId: "skill-approval" }
+      });
+      const wrongPrincipal = createUserInvocation(auth("org-other"));
+      await expect(createLogSkill(db, auth(), { name: "待删除技能" }, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
+      const skill = await createLogSkill(db, auth(), { name: "待删除技能" }, invocation, context);
+      await expect(saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1" }, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
+      const published = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1", modelOverride: "next-model" }, invocation, context);
+      await expect(publishLogSkill(db, auth(), skill.id, published.id, wrongPrincipal, context)).rejects.toThrow(/principal does not match/);
+      await publishLogSkill(db, auth(), skill.id, published.id, invocation, context);
+      await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1" }, invocation, context);
+      const audits = await db.query(`select kind, actor_type, actor_user_id, metadata from audit_events
+        where organization_id = 'org-skills' and target_id = $1 order by kind`, [skill.id]);
+      expect(audits.rows).toEqual(["log-skill-create", "log-skill-draft-save", "log-skill-draft-save", "log-skill-publish"].map((kind) => ({
+        kind, actor_type: "agent", actor_user_id: "org-skills-admin", metadata: expect.objectContaining({
+          initiator: "agent", sessionId: "skill-session", toolCallId: "skill-call", approvalId: "skill-approval"
+        })
+      })));
       await db.query(`insert into log_file_objects (id, organization_id, storage_key, file_name, content_type, file_size_bytes, checksum_sha256)
         values ('delete-file', 'org-skills', 'delete-file', 'delete.log', 'text/plain', 1, 'hash');`);
       await db.query(`insert into log_records (id, organization_id, file_object_id, file_name, source, status, log_domain_id)
@@ -61,8 +76,9 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
     try {
       await seedCoreGraph(db, { organization: { id: "org-skills", name: "技能" }, users: [{ id: "org-skills-admin", name: "管理员" }] });
       const context = { requestId: "skill-locks" };
-      const skill = await createLogSkill(db, auth(), { name: "并发钉住" }, context);
-      const draft = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1", modelOverride: "next-model" }, context);
+      const invocation = createUserInvocation(auth());
+      const skill = await createLogSkill(db, auth(), { name: "并发钉住" }, invocation, context);
+      const draft = await saveLogSkillDraft(db, auth(), skill.id, { schemaVersion: "skill/v1", modelOverride: "next-model" }, invocation, context);
       await db.transaction(async (firstPin) => {
         expect(await currentSkillRevisionId(firstPin, "org-skills", skill.id)).toBe(skill.currentRevision.id);
         // Separate sessions overlap their pinning transactions. An exclusive
@@ -73,13 +89,13 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
         });
         await expect(db.transaction(async (publisher) => {
           await publisher.query("set local lock_timeout = '150ms'");
-          return publishLogSkill(publisher, auth(), skill.id, draft.id, context);
+          return publishLogSkill(publisher, auth(), skill.id, draft.id, invocation, context);
         })).rejects.toMatchObject({ code: "55P03" });
       });
       // Once the pins release, publish succeeds. While its transaction remains
       // open, a new pin must wait rather than reading the preceding revision.
       await db.transaction(async (publisher) => {
-        expect((await publishLogSkill(publisher, auth(), skill.id, draft.id, context)).currentRevision.id).toBe(draft.id);
+        expect((await publishLogSkill(publisher, auth(), skill.id, draft.id, invocation, context)).currentRevision.id).toBe(draft.id);
         await expect(db.transaction(async (pin) => {
           await pin.query("set local lock_timeout = '150ms'");
           return currentSkillRevisionId(pin, "org-skills", skill.id);

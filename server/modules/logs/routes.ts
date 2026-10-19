@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -251,7 +252,7 @@ export function registerLogRoutes(
   router.post("/api/v1/log-skills", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const body = parseWithSchema(createLogDomainBodySchema, request.body);
-    return { status: 201, body: { item: await createLogSkill(requireDb(options.db), auth, body, { requestId: request.requestId }) } };
+    return { status: 201, body: { item: await createLogSkill(requireDb(options.db), auth, body, createUserInvocation(auth), { requestId: request.requestId }) } };
   });
   const skillParams = z.object({ skillId: z.string().min(1) });
   router.get("/api/v1/log-skills/:skillId", async (request) => {
@@ -263,13 +264,13 @@ export function registerLogRoutes(
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const { spec } = parseWithSchema(z.object({ spec: logSkillSpecSchema }).strict(), request.body);
-    return { status: 200, body: { item: await saveLogSkillDraft(requireDb(options.db), auth, skillId, spec, { requestId: request.requestId }) } };
+    return { status: 200, body: { item: await saveLogSkillDraft(requireDb(options.db), auth, skillId, spec, createUserInvocation(auth), { requestId: request.requestId }) } };
   });
   router.post("/api/v1/log-skills/:skillId/publish", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId } = parseWithSchema(skillParams, request.params);
     const { draftRevisionId } = parseWithSchema(z.object({ draftRevisionId: z.string().min(1) }).strict(), request.body);
-    return { status: 200, body: { item: await publishLogSkill(requireDb(options.db), auth, skillId, draftRevisionId, { requestId: request.requestId }) } };
+    return { status: 200, body: { item: await publishLogSkill(requireDb(options.db), auth, skillId, draftRevisionId, createUserInvocation(auth), { requestId: request.requestId }) } };
   });
   router.get("/api/v1/log-skills/:skillId/revisions", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

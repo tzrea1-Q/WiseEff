@@ -489,7 +489,7 @@ async function commitCanonicalDriverCatalog(
   }
 }
 
-async function aclFingerprint(db: Database | pg.Client): Promise<string> {
+async function aclFingerprint(db: { query(text: string): Promise<{ rows: unknown[] }> }): Promise<string> {
   const query = async <Row>(text: string): Promise<Row[]> => {
     const result = await db.query(text);
     return result.rows as Row[];
@@ -558,6 +558,7 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
             and grantee in ('catalog_mod_d02_capture_owner', 'wiseeff_mod_d02_capture', 'wiseeff_mod_d02_source_reader'))
         order by grantee, table_schema, table_name, column_name, privilege_type
       `);
+  // Trigger functions are not directly callable, so public triggers are not reachable Catalog ACL.
   const functionExecute = await query<{
     role_name: string;
     function_name: string;
@@ -583,6 +584,7 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
             ('wiseeff_mod_d02_source_reader')
         ) as roles(role_name)
         where namespace.nspname in ('public', 'parameter_catalog', 'catalog_publication')
+          and not (namespace.nspname = 'public' and procedure.prorettype = 'pg_catalog.trigger'::pg_catalog.regtype)
         order by role_name, namespace.nspname, procedure.proname, pg_catalog.pg_get_function_identity_arguments(procedure.oid)
       `);
   const schemaUsage = await query<{ role_name: string; can_use: boolean }>(`

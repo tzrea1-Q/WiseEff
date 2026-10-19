@@ -3,7 +3,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditedWriteContext, type AuditSpec } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { findLogDomainByName, getLogDomainById, insertLogDomain, listLogDomains } from "./domainsRepository";
 import { requireLogAdminDomains, requireLogView } from "./policy";
 import { aggregateFeedbackInsights, relatedParameterVisibilityValues } from "./repository";
@@ -69,13 +69,14 @@ export async function listLogSkills(db: Queryable, auth: AuthContext, includeArc
 
 export async function createLogSkill(db: Database, auth: AuthContext, input: {
   name: string; description?: string; formatProfile?: unknown;
-}, context: AuditedWriteContext) {
+}, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Create analysis skill");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   const name = input.name.trim();
   if (!name) throw new ApiError("VALIDATION_FAILED", "Analysis skill name must not be blank.");
   const spec = parseSpec({ schemaVersion: "skill/v1", ...(input.formatProfile != null ? { formatProfile: input.formatProfile } : {}) });
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  return withAuditedWrite(db, invocation, context, async (tx) => {
     if (await findLogDomainByName(tx, { organizationId: auth.organization.id, name })) {
       throw new ApiError("CONFLICT", "An analysis skill with this name already exists.");
     }
@@ -86,11 +87,12 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
   });
 }
 
-export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId: string, value: unknown, context: AuditedWriteContext) {
+export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId: string, value: unknown, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Save analysis skill draft");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   const spec = parseSpec(value);
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  return withAuditedWrite(db, invocation, context, async (tx) => {
     await lockSkill(tx, auth.organization.id, skillId);
     // A new draft id on every save makes stale publish requests detectable.
     await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);
@@ -100,10 +102,11 @@ export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId
   });
 }
 
-export async function publishLogSkill(db: Database, auth: AuthContext, skillId: string, draftId: string, context: AuditedWriteContext) {
+export async function publishLogSkill(db: Database, auth: AuthContext, skillId: string, draftId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Publish analysis skill");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
-  return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+  return withAuditedWrite(db, invocation, context, async (tx) => {
     await lockSkill(tx, auth.organization.id, skillId);
     await publishSkillRevision(tx, auth.organization.id, skillId, draftId, auth.user.id);
     return { result: await readSkill(tx, auth.organization.id, skillId), audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
