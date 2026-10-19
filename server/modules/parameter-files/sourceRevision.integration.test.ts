@@ -265,6 +265,21 @@ describe("whole DTS source revisions (native PostgreSQL and toolchain)", { timeo
     expect(exported).not.toBeNull();
     expect(canonicalSourceManifestSchema.safeParse(exported!.manifest).success).toBe(true);
     expect(await verifyCanonicalSourceReimport(runtime, storage, editor, { projectId: PROJECT, bindingId, source: exported! })).toEqual(exported);
+
+    const restored = await candidate(base, "restore-whole-node");
+    const restorationConflict = { code: "CONFLICT", details: {
+      reason: "source-occurrence-restoration-requires-mapping", nodePath: "charger", propertyName: "iin_max"
+    } };
+    await expect(previewSourceRevisionCandidate(runtime, storage, editor, { projectId: PROJECT, candidateId: restored.id }))
+      .rejects.toMatchObject(restorationConflict);
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(runtime)!);
+    await expect(runtime.transaction((tx) => inspectSourceRevision(tx, storage, reviewer,
+      { projectId: PROJECT, candidateId: restored.id }, catalog, { lock: true }))).rejects.toMatchObject(restorationConflict);
+    const fresh = await candidate(base.replace("charger: charger", "new_charger: new_charger"), "new-node-after-deletion");
+    expect(await previewSourceRevisionCandidate(runtime, storage, editor, { projectId: PROJECT, candidateId: fresh.id }))
+      .toMatchObject({ canSubmit: true, impact: { parameterChanges: 1, nodeAdditions: 1 } });
+    expect((await db.query("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [bindingId])).rows[0])
+      .toEqual({ current_value_id: deleted.project_value_id });
   });
 
   it("rejects terminal property restoration at preview instead of creating an unapplicable request", async () => {

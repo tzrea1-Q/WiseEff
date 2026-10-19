@@ -10,7 +10,7 @@ import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol
 import { resolveDtsConfigSet } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles } from "../parameter-bindings/catalogProjectValueSync";
-import { loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { loadDeletedSourceAnchors, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import type { ProjectValuePayload } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
 import { CatalogReleaseId, CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
@@ -195,6 +195,19 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   }));
   if (diagnostics.some((row) => row.severity === "error" || row.code.includes("dangling") || row.code.includes("unresolved"))) {
     throw new ApiError("VALIDATION_FAILED", "DTS configuration has unresolved source diagnostics.", { diagnostics });
+  }
+  for (const anchor of await loadDeletedSourceAnchors(tx, {
+    organizationId: auth.organization.id, projectId: input.projectId, configSetId: context.configSetId
+  })) {
+    if (anchor.format !== "dts" || !anchor.nodeLocator || typeof anchor.locator.propertyName !== "string") continue;
+    const node = resolved.effective.nodesByLocator.get(anchor.nodeLocator);
+    const property = node?.properties.get(anchor.locator.propertyName);
+    const originMember = rows.find((row) => row.sourceName === property?.sourceChain.at(-1)?.fileName);
+    if (node && !node.deleted && property && !property.deleted && originMember?.fileId === anchor.fileId) {
+      throw new ApiError("CONFLICT", `Restoring ${anchor.nodeLocator}/${anchor.locator.propertyName} requires an explicit source identity mapping.`, {
+        reason: "source-occurrence-restoration-requires-mapping", nodePath: anchor.nodeLocator, propertyName: anchor.locator.propertyName
+      });
+    }
   }
   const toolchain = await (options.toolchain ?? createDtsToolchainRunner()).validate({
     entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths,
