@@ -146,6 +146,28 @@ describe("executeLogAnalysisTool dispatch", () => {
     expect(invalid.ok).toBe(false);
     expect(Buffer.byteLength(JSON.stringify(invalid))).toBeLessThanOrEqual(16 * 1024);
   });
+  it("returns nested register fields and meanings within existing output caps", async () => {
+    const spec = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "register", pattern: "(?P<val>0x[0-9A-Fa-f]+)",
+      fields: { val: { type: "hex", decode: { register: "fault" } } } }],
+    registers: { fault: { width: 8, fields: [{ bits: [5, 4], name: "CHRG_FAULT", enum: { "2": "thermal_shutdown" } }] } } });
+    const context = buildContext({ decoding: { spec, ...decodeLogFiles(spec, [{ file: "a.log", lines: ["0x20"] }]) } });
+    expect(await executeLogAnalysisTool("query_events", { extractor: "register" }, context)).toMatchObject({ ok: true, result: {
+      events: [{ fields: { val: { raw: "0x20", value: 32, fields: { CHRG_FAULT: { value: 2, meaning: "thermal_shutdown" } } } } }], truncated: false
+    } });
+    const nested = { raw: "0x20", value: 32, fields: { CHRG_FAULT: { raw: "2", value: 2, meaning: "界".repeat(2000) } } };
+    const events = Array.from({ length: 50 }, (_, i) => ({ v: 1 as const, source: "declarative" as const, extractor: "register", file: "a.log", line: i + 1, fields: { val: nested } }));
+    context.decoding = { spec, events, counts: { total: events.length, byExtractor: { register: events.length }, errors: {} } };
+    const outcome = await executeLogAnalysisTool("query_events", { extractor: "register" }, context);
+    expect(outcome).toMatchObject({ ok: true, result: { truncated: true } });
+    expect(Buffer.byteLength(JSON.stringify(outcome))).toBeLessThanOrEqual(16 * 1024);
+    if (outcome.ok) {
+      const result = outcome.result as { events: Array<{ fields: { val: unknown } }>; nextCursor: string };
+      expect(result.events.length).toBeGreaterThan(0);
+      expect(result.nextCursor).toBe(String(result.events.length));
+      expect(Buffer.byteLength(JSON.stringify(result.events[0].fields.val))).toBeLessThanOrEqual(1024);
+    }
+    expect(nested.fields.CHRG_FAULT.meaning).toHaveLength(2000);
+  });
   it("composes decoded tools per revision, describes counts, and queries typed values with bounded pagination", async () => {
     const context = buildContext();
     expect(await executeLogAnalysisTool("query_events", { extractor: "value" }, context)).toMatchObject({ ok: false });

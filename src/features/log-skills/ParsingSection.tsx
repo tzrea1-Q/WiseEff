@@ -14,6 +14,13 @@ export function parseParsingYaml(text: string): { value?: unknown; error?: strin
   catch (error) { return { error: `第 1 行：${error instanceof Error ? error.message : String(error)}` }; }
 }
 
+export function boundedSamplePreview(content: string) {
+  const bytes = new TextEncoder().encode(content);
+  if (bytes.length <= 1024 * 1024) return { content, truncated: false };
+  const prefix = new TextDecoder().decode(bytes.subarray(0, 1024 * 1024));
+  return { content: prefix.slice(0, Math.max(0, prefix.lastIndexOf("\n"))), truncated: true };
+}
+
 export function ParsingSection({ skillId, yaml, onChange, disabled, repository, sample }: {
   skillId: string; yaml: string; onChange: (text: string) => void; disabled: boolean; repository?: Partial<SkillWorkspaceRepository>;
   sample?: SkillSample | null;
@@ -26,13 +33,7 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
   const sampleEdited = useRef(false);
   const generation = useRef(0);
   const parsed = parseParsingYaml(yaml);
-  const storedPreview = useMemo(() => {
-    const content = sample?.content ?? "";
-    const bytes = new TextEncoder().encode(content);
-    if (bytes.length <= 1024 * 1024) return { content, truncated: false };
-    const prefix = new TextDecoder().decode(bytes.subarray(0, 1024 * 1024));
-    return { content: prefix.slice(0, Math.max(0, prefix.lastIndexOf("\n"))), truncated: true };
-  }, [sample]);
+  const storedPreview = useMemo(() => boundedSamplePreview(sample?.content ?? ""), [sample]);
   useEffect(() => {
     // The workspace owns the shared pane's sample; standalone callers can still
     // prefill their fallback input through the older optional adapter.
@@ -71,6 +72,8 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
       {error ? <p role="alert">{error}</p> : null}
       {result ? <>
         {result.truncated ? <p role="status">{result.reason === "time_cap" ? "预览达到 100 ms 时间上限，已返回完成的部分。"
+          : result.reason === "output_field_cap" ? "预览达到 32768 个解码字段上限，已返回完成的部分。"
+          : result.reason === "output_byte_cap" ? "预览达到 4 MiB 解码输出上限，已返回完成的部分。"
           : result.reason === "line_cap" ? "预览仅处理前 5000 行。" : "预览仅显示前 500 个事件。"}</p> : null}
         {result.issues.length ? <ul role="alert">{result.issues.map((issue, i) => <li key={i}>{issue.path.join(".")}：{issue.message}</li>)}</ul> : null}
         <p>事件 {result.counts.total} · 未匹配行 {result.unmatchedLineCount} · 解码错误 {Object.values(result.counts.errors).reduce((sum, count) => sum + count, 0)}{result.counts.total > 500 ? " · 仅显示前 500 条" : ""}</p>

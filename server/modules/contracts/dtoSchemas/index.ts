@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from "zod";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "./logs";
-export { parsingSpecSchema } from "../../logs/parsing/spec";
+export { parsingSpecSchema, registerCaseKey } from "../../logs/parsing/spec";
 import {
   dtoSchemaCatalog as coreDtoSchemaCatalog,
   dtoSchemaCoveredRouteIds as coreDtoSchemaCoveredRouteIds
