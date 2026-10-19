@@ -9,7 +9,7 @@ import type { LogAnalysisJobDto } from "../jobs/types";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { enqueueLogAnalysisJob, type LogAnalysisQueue } from "./logAnalysisQueue";
-import { getActiveLogDomainForBinding } from "./domainsRepository";
+import { findLogDomainBySkillKey, getActiveLogDomainForBinding } from "./domainsRepository";
 import { currentSkillRevisionId } from "./skillsRepository";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
@@ -56,6 +56,8 @@ import {
 } from "./relatedParameter";
 
 export type UploadLogFileInput = {
+  skillId?: string;
+  skillKey?: string;
   sourceVersion?: string;
   fileName: string;
   contentType: string;
@@ -68,6 +70,8 @@ export type UploadLogFileInput = {
 };
 
 export type CreateLogFromFileInput = {
+  skillId?: string;
+  skillKey?: string;
   sourceVersion?: string;
   fileObjectId: string;
   fileName: string;
@@ -176,6 +180,24 @@ async function requireBindableLogDomainId(db: Queryable, auth: AuthContext, logD
   return domain.id;
 }
 
+async function resolveUploadSkillId(db: Queryable, auth: AuthContext, input: {
+  skillId?: string; logDomainId?: string; skillKey?: string;
+}) {
+  if (input.skillId && input.logDomainId && input.skillId !== input.logDomainId) {
+    throw new ApiError("VALIDATION_FAILED", "skillId and logDomainId must identify the same analysis skill.");
+  }
+  const id = input.skillId ?? input.logDomainId;
+  if (input.skillKey !== undefined) {
+    const skill = await findLogDomainBySkillKey(db, { organizationId: auth.organization.id, skillKey: input.skillKey });
+    if (!skill || skill.status !== "active") {
+      throw new ApiError("VALIDATION_FAILED", "skillKey is unknown or not active in this organization.", { fieldErrors: { skillKey: "Unknown or inactive analysis skill." } });
+    }
+    if (id && id !== skill.id) throw new ApiError("VALIDATION_FAILED", "skillKey and skillId/logDomainId must identify the same analysis skill.");
+    return skill.id;
+  }
+  return requireBindableLogDomainId(db, auth, id);
+}
+
 async function createLogAudit(
   tx: AuditTx,
   invocation: TrustedInvocationContext,
@@ -226,7 +248,7 @@ export async function uploadLogFile(
   context: ServiceContext = {}
 ): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
   requireLogUpload(auth);
-  const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
+  const logDomainId = await resolveUploadSkillId(db, auth, input);
   const relatedParameter = await resolveLogRelatedParameter(db, auth, input);
   const uploads = input.files ?? [{ fileName: input.fileName, bytes: Buffer.isBuffer(input.bytes) ? input.bytes
     : Buffer.from(input.bytes.buffer, input.bytes.byteOffset, input.bytes.byteLength) }];
@@ -328,7 +350,7 @@ export async function uploadLogFile(
 
 export async function createLogFromFile(db: Database, auth: AuthContext, input: CreateLogFromFileInput, context: ServiceContext = {}) {
   requireLogUpload(auth);
-  const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
+  const logDomainId = await resolveUploadSkillId(db, auth, input);
 
   const fileObject = await getFileObjectById(db, {
     organizationId: auth.organization.id,

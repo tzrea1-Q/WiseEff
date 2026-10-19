@@ -19,6 +19,7 @@ export type LogDomainWebhookSummary = {
 
 export type LogDomainDto = {
   id: string;
+  skillKey: string;
   name: string;
   description?: string;
   status: LogDomainStatus;
@@ -32,6 +33,7 @@ export type LogDomainDto = {
 
 type LogDomainRow = {
   id: string;
+  skill_key: string;
   name: string;
   description: string | null;
   status: LogDomainStatus;
@@ -62,6 +64,7 @@ function toWebhookSummary(row: Pick<LogDomainRow, "webhook_url" | "webhook_secre
 function toLogDomainDto(row: LogDomainRow): LogDomainDto {
   return {
     id: row.id,
+    skillKey: row.skill_key,
     name: row.name,
     description: row.description ?? undefined,
     status: row.status,
@@ -74,7 +77,7 @@ function toLogDomainDto(row: LogDomainRow): LogDomainDto {
 }
 
 const logDomainSelect = `
-  select id, name, description, status, format_profile, model_override,
+  select id, skill_key, name, description, status, format_profile, model_override,
     webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, created_at, updated_at
   from log_domains
 `;
@@ -135,6 +138,12 @@ export async function findLogDomainByName(
   return result.rows[0] ? toLogDomainDto(result.rows[0]) : null;
 }
 
+export async function findLogDomainBySkillKey(db: Queryable, query: { organizationId: string; skillKey: string }): Promise<LogDomainDto | null> {
+  const result = await db.query<LogDomainRow>(`${logDomainSelect}
+    where organization_id = $1 and skill_key = $2 limit 1`, [query.organizationId, query.skillKey]);
+  return result.rows[0] ? toLogDomainDto(result.rows[0]) : null;
+}
+
 export async function insertLogDomain(
   db: Queryable,
   input: {
@@ -149,7 +158,7 @@ export async function insertLogDomain(
     `
     insert into log_domains (id, organization_id, name, description, status, format_profile)
     values ($1, $2, $3, $4, 'active', $5::jsonb)
-    returning id, name, description, status, format_profile, model_override,
+    returning id, skill_key, name, description, status, format_profile, model_override,
       webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, created_at, updated_at
     `,
     [input.id, input.organizationId, input.name, input.description ?? null, input.formatProfile ? JSON.stringify(input.formatProfile) : null]
@@ -163,6 +172,7 @@ export async function updateLogDomainRow(
   input: {
     organizationId: string;
     domainId: string;
+    skillKey?: string;
     name?: string;
     description?: string | null;
     /** undefined = keep; null = clear the stored profile. */
@@ -180,10 +190,11 @@ export async function updateLogDomainRow(
       format_profile = case when $6 then $7::jsonb else format_profile end,
       status = coalesce($8, status),
       model_override = case when $9 then $10 else model_override end,
+      skill_key = coalesce($11, skill_key),
       updated_at = now()
     where organization_id = $1
       and id = $2
-    returning id, name, description, status, format_profile, model_override,
+    returning id, skill_key, name, description, status, format_profile, model_override,
       webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, created_at, updated_at
     `,
     [
@@ -196,7 +207,8 @@ export async function updateLogDomainRow(
       input.formatProfile ? JSON.stringify(input.formatProfile) : null,
       input.status ?? null,
       input.modelOverride !== undefined,
-      input.modelOverride ?? null
+      input.modelOverride ?? null,
+      input.skillKey ?? null
     ]
   );
 
@@ -228,7 +240,7 @@ export async function updateLogDomainWebhookRow(
       updated_at = now()
     where organization_id = $1
       and id = $2
-    returning id, name, description, status, format_profile, model_override,
+    returning id, skill_key, name, description, status, format_profile, model_override,
       webhook_url, webhook_secret, webhook_secret_last_four, webhook_enabled, created_at, updated_at
     `,
     [input.organizationId, input.domainId, input.url, input.enabled, input.secret !== undefined,

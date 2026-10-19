@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-19T21:32:08.605Z",
+  "generatedAt": "2026-10-19T22:01:49.006Z",
   "promptVersion": "2026-10-19.procedure.signals.source.1",
   "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.3",
   "total": 49,
@@ -2639,7 +2639,7 @@
       }
     },
     {
-      "name": "loop-token-budget-early-convergence",
+      "name": "loop-token-budget-fallback",
       "category": "loop-convergence",
       "kernel": "loop",
       "pass": true,
@@ -2647,7 +2647,7 @@
         {
           "expectation": {
             "type": "expectsAnalysisSource",
-            "source": "agent"
+            "source": "rules-fallback"
           },
           "pass": true
         },
@@ -2661,14 +2661,14 @@
         {
           "expectation": {
             "type": "expectsConfidenceAtMost",
-            "value": 0.5
+            "value": 0.85
           },
           "pass": true
         },
         {
           "expectation": {
             "type": "expectsModelCallCount",
-            "count": 2
+            "count": 1
           },
           "pass": true
         },
@@ -2680,22 +2680,34 @@
         }
       ],
       "runResult": {
-        "analysisSource": "agent",
+        "analysisSource": "rules-fallback",
         "degradedReason": "token-budget-exhausted",
         "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
+            2,
             3,
+            4
+          ],
+          [
+            4
+          ],
+          [
+            4
+          ],
+          [
             4
           ]
         ],
-        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
-        "traceStepCount": 4,
+        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "traceStepCount": 5,
         "traceKinds": [
           "model-turn",
           "tool-call",
-          "early-convergence"
+          "early-convergence",
+          "degradation",
+          "rule-fallback"
         ]
       }
     },

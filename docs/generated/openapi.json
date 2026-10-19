@@ -31207,6 +31207,9 @@
           },
           "skillId": {
             "type": "string"
+          },
+          "skillKey": {
+            "type": "string"
           }
         },
         "required": [
@@ -32065,6 +32068,9 @@
             "type": "string"
           },
           "skillId": {
+            "type": "string"
+          },
+          "skillKey": {
             "type": "string"
           }
         },
@@ -39012,6 +39018,9 @@
                 "id": {
                   "type": "string"
                 },
+                "skillKey": {
+                  "type": "string"
+                },
                 "name": {
                   "type": "string"
                 },
@@ -39104,6 +39113,7 @@
               },
               "required": [
                 "id",
+                "skillKey",
                 "name",
                 "status",
                 "createdAt",
@@ -39175,6 +39185,9 @@
             "type": "object",
             "properties": {
               "id": {
+                "type": "string"
+              },
+              "skillKey": {
                 "type": "string"
               },
               "name": {
@@ -40323,6 +40336,12 @@
                       },
                       "modelOverride": {
                         "type": "string"
+                      },
+                      "stepBudget": {
+                        "type": "number"
+                      },
+                      "tokenBudget": {
+                        "type": "number"
                       },
                       "defaultSourceSnapshotId": {
                         "type": "string"
@@ -41727,6 +41746,12 @@
                       "modelOverride": {
                         "type": "string"
                       },
+                      "stepBudget": {
+                        "type": "number"
+                      },
+                      "tokenBudget": {
+                        "type": "number"
+                      },
                       "defaultSourceSnapshotId": {
                         "type": "string"
                       },
@@ -42305,16 +42330,34 @@
                   "publishedByUserId"
                 ],
                 "additionalProperties": false
+              },
+              "budgetCaps": {
+                "type": "object",
+                "properties": {
+                  "stepBudget": {
+                    "type": "number"
+                  },
+                  "tokenBudget": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "stepBudget",
+                  "tokenBudget"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
               "id",
+              "skillKey",
               "name",
               "status",
               "createdAt",
               "updatedAt",
               "currentRevision",
-              "draft"
+              "draft",
+              "budgetCaps"
             ],
             "additionalProperties": false
           }
@@ -42861,6 +42904,12 @@
                     },
                     "modelOverride": {
                       "type": "string"
+                    },
+                    "stepBudget": {
+                      "type": "number"
+                    },
+                    "tokenBudget": {
+                      "type": "number"
                     },
                     "defaultSourceSnapshotId": {
                       "type": "string"
@@ -44725,6 +44774,12 @@
               "modelOverride": {
                 "type": "string"
               },
+              "stepBudget": {
+                "type": "number"
+              },
+              "tokenBudget": {
+                "type": "number"
+              },
               "defaultSourceSnapshotId": {
                 "type": "string"
               },
@@ -46564,6 +46619,12 @@
               "modelOverride": {
                 "type": "string"
               },
+              "stepBudget": {
+                "type": "number"
+              },
+              "tokenBudget": {
+                "type": "number"
+              },
               "defaultSourceSnapshotId": {
                 "type": "string"
               },
@@ -47939,6 +48000,12 @@
                   },
                   "modelOverride": {
                     "type": "string"
+                  },
+                  "stepBudget": {
+                    "type": "number"
+                  },
+                  "tokenBudget": {
+                    "type": "number"
                   },
                   "defaultSourceSnapshotId": {
                     "type": "string"
@@ -49365,6 +49432,12 @@
                     "modelOverride": {
                       "type": "string"
                     },
+                    "stepBudget": {
+                      "type": "number"
+                    },
+                    "tokenBudget": {
+                      "type": "number"
+                    },
                     "defaultSourceSnapshotId": {
                       "type": "string"
                     },
@@ -49963,6 +50036,9 @@
                 "id": {
                   "type": "string"
                 },
+                "skillKey": {
+                  "type": "string"
+                },
                 "name": {
                   "type": "string"
                 },
@@ -50011,6 +50087,7 @@
               },
               "required": [
                 "id",
+                "skillKey",
                 "name",
                 "status",
                 "createdAt",
@@ -50050,6 +50127,9 @@
             "type": "object",
             "properties": {
               "id": {
+                "type": "string"
+              },
+              "skillKey": {
                 "type": "string"
               },
               "name": {
@@ -50100,6 +50180,7 @@
             },
             "required": [
               "id",
+              "skillKey",
               "name",
               "status",
               "createdAt",

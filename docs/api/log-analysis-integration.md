@@ -2,13 +2,35 @@
 
 > Chinese: [Chinese](../zh-CN/api/log-analysis-integration.md)
 
-How an external system pushes logs into WiseEff for analysis and consumes results — either by polling or through the domain-level **result webhook**. Inline examples cover uploads, jobs, reports, file windows and webhook signature checks without a packaged SDK.
+How an external system pushes logs into WiseEff for analysis and consumes results through polling or a skill's **result webhook**. Inline examples cover uploads, jobs, reports, file windows and webhook signature checks without a packaged SDK.
 
 Prerequisites: [Authentication](authentication.md) (bearer token), [Errors](errors.md) (error envelope). Endpoint schemas: [API Contract](../design-docs/api-contract.md) and [openapi.json](../generated/openapi.json).
 
 ## 1. Push a log
 
-`POST /api/v1/log-files` with base64 content. JSON uploads accept at most 32 MiB of decoded file bytes; larger bundles use multipart under the configured upload cap (100 MiB by default). Oversized transport bodies return `413` before parsing. Bind the upload to a registered log domain via `logDomainId` (list them with `GET /api/v1/log-domains`); omit it to fall back to the built-in uncategorized domain — uploads are never blocked by domain selection.
+### Select an analysis skill by key
+
+Open a skill workspace's Integration section to copy its `skillKey`, upload URL and runnable JSON/base64 or multipart examples. Supply your bearer token through `$WISEEFF_TOKEN`; examples never contain a real credential. `skillKey` is stable across renames and publications, unique within an organization, and matches `^[a-z0-9][a-z0-9-]{1,62}$`. Administrators can edit it in that section; edits are audited and integrations must then use the new key. Creation derives a slug from the name, with a short id suffix when needed for non-ASCII names or collisions. Migration 0202 backfills existing identities.
+
+Both `POST /api/v1/log-files` (JSON or multipart) and `POST /api/v1/logs` (stored file) accept `skillKey`. `skillId` and its compatibility alias `logDomainId` remain supported. When several selectors are supplied they must identify the same skill; conflicting selectors return `400 VALIDATION_FAILED`. Keys resolve only within the caller's organization. Unknown or foreign keys are rejected. A successful upload pins the skill's current published revision, including its model and budgets; later edits or publications do not change that run.
+
+```bash
+curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
+  -H "Authorization: Bearer $WISEEFF_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"skillKey":"charging","fileName":"example.log","contentType":"text/plain","contentBase64":"SU5GTyBib290Cg=="}'
+
+curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
+  -H "Authorization: Bearer $WISEEFF_TOKEN" \
+  --form-string 'skillKey=charging' \
+  -F 'file=@device.log;type=text/plain' -F 'file=@kernel.log;type=text/plain'
+```
+
+Replace `charging` with the copied key. The multipart example expects the named local files. The workspace keeps model override and optional step/token budgets in the draft; publish them to affect new runs. Missing budgets use the platform defaults. Values above `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` are rejected with field errors. Webhook configuration and the key remain live identity settings, independent of publication.
+
+Step budgets must be integers of at least 1. Per-revision token budgets must be integers of at least `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`. Save and publish validate these bounds with field-specific errors. An explicit per-revision token budget bounds cumulative usage reported by the provider, checked before each model call, including early convergence; it is not a token estimate or a strict per-call ceiling. One completion may take cumulative usage above the budget, but no further call is made after exhaustion. Exhausted runs without a grounded final report use the existing `rules-fallback` result with `degradedReason: "token-budget-exhausted"`. Omitting `tokenBudget` preserves the existing platform-global budget accounting and early-convergence behavior.
+
+`POST /api/v1/log-files` with base64 content. JSON uploads accept at most 32 MiB of decoded file bytes; larger bundles use multipart under the configured upload cap (100 MiB by default). Oversized transport bodies return `413` before parsing. Bind the upload to an analysis skill via `skillKey` or `skillId` (list them with `GET /api/v1/log-skills`); `logDomainId` remains a compatibility alias. Omit skill selection for platform generic analysis.
 
 Supply an optional `sourceVersion` label (trimmed, 1–200 characters) to select the matching source snapshot belonging to the pinned skill. The worker selects a matching non-archived snapshot even while it is queued, indexing or failed; source tools are offered only when that snapshot is ready. With no matching label, or no label, it uses the pinned revision's default snapshot. An unknown label is recorded in report provenance, with a short fallback note there. The same field is accepted by JSON uploads, multipart uploads and `POST /api/v1/logs` when creating a record from a stored file. `GET /api/v1/log-skills` exposes `hasSourceSnapshots` and `readySourceVersions`, an array of ready version labels without snapshot metadata. The upload dialog offers these labels and a default-snapshot option; integration APIs continue accepting free-text labels.
 
@@ -90,7 +112,7 @@ The record's existing raw-log panel remains a preview: at most the first 400 lin
 
 ## 4. Or consume the result webhook
 
-An Admin configures the webhook per log domain in `/log-admin` (business-domain governance → Result webhook): HTTPS URL, signing secret, enabled flag. After an analysis for that domain reaches a terminal state (complete — including degraded — or failed), WiseEff POSTs a compact JSON summary. Raw log content and evidence text are **never** sent; fetch details through the API using `recordId`.
+An administrator configures a skill's webhook in its workspace's Integration section: HTTPS URL, write-only signing secret (set or rotate), and enabled flag. The same section offers a test delivery and recent delivery attempts. The old administration page links to this workspace. After an analysis for that skill reaches a terminal state (complete, including degraded, or failed), WiseEff POSTs a compact JSON summary. Raw log content and evidence text are **never** sent; fetch details through the API using `recordId`.
 
 ```json
 {
@@ -98,6 +120,10 @@ An Admin configures the webhook per log domain in `/log-admin` (business-domain 
   "eventId": "log-result:run-...",
   "recordId": "log-...",
   "runId": "run-...",
+  "skillRevisionId": "revision-...",
+  "skillRevisionNumber": 2,
+  "skill": { "id": "domain-...", "key": "charging", "revisionId": "revision-...", "revisionNumber": 2 },
+  "degraded": false,
   "fileName": "charging-foldback.log",
   "logDomainId": "domain-...",
   "status": "complete",
@@ -113,9 +139,11 @@ An Admin configures the webhook per log domain in `/log-admin` (business-domain 
 
 `event` is `log-analysis.completed`, `log-analysis.failed`, or `log-analysis.test` (admin test button).
 
+Result events add `skill: { id, key, revisionId, revisionNumber }` and `degraded: boolean` while retaining all previous fields. Revision fields are nullable for legacy unpinned runs. `degraded` is true for rule fallback or an available degradation reason; `degradedReason` carries the reason when available. The key is captured when the terminal event is enqueued; retries preserve that snapshot. The synchronous test event retains its existing shape.
+
 ### Delivery semantics
 
-- At-least-once with bounded retries: the terminal-state transaction persists an outbox event before acknowledging completion. Workers claim due events using leases and `FOR UPDATE SKIP LOCKED`; crashes during delivery or backoff resume after lease expiry. Failed sends retry with exponential backoff (default 3 attempts), then remain failed. Every recorded attempt is visible in `/log-admin` → Recent deliveries; the REST API remains the source of truth.
+- At-least-once with bounded retries: the terminal-state transaction persists an outbox event before acknowledging completion. Workers claim due events using leases and `FOR UPDATE SKIP LOCKED`; crashes during delivery or backoff resume after lease expiry. Failed sends retry with exponential backoff (default 3 attempts), then remain failed. Every recorded attempt is visible in the skill workspace's Integration section; the REST API remains the source of truth.
 - Delivery-attempt history is bounded independently per log domain. The worker keeps the latest 10,000 rows by `created_at DESC, id DESC` by default; cleanup failures produce a redacted warning and retry on the next 60-second cycle without interrupting delivery. Operators can tune the bound or disable future pruning with `LOG_WEBHOOK_DELIVERY_RETENTION_*`, but only database backup/restore can recover rows already deleted. Attempt history and terminal outbox rows (`delivered` / `failed`) each independently retain the newest N rows under the same setting and ordering, with at most ten batches of 1,000 deletes per table per cycle. `pending`, `processing`, and `retry` events are never pruned.
 - Respond with a `2xx` quickly (do the work async). Redirects are not followed; response bodies are discarded.
 - A receiver may accept a request before the sender crashes and records success. Deduplicate result events using the stable `eventId` (or existing `runId`); retries preserve the payload and event id. The admin test endpoint remains a synchronous single attempt.

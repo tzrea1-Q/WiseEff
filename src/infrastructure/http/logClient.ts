@@ -154,6 +154,7 @@ function logDomainCreateBody(input: LogDomainCreateInput) {
 
 function logDomainUpdateBody(input: LogDomainUpdateInput) {
   return {
+    ...(input.skillKey !== undefined ? { skillKey: input.skillKey } : {}),
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.formatProfile !== undefined ? { formatProfile: input.formatProfile } : {}),

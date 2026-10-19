@@ -534,7 +534,9 @@ async function processClaimedLogAnalysisJob(
           ? {
               name: snapshot.logDomain.name,
               description: snapshot.logDomain.description ?? undefined,
-              modelOverride: snapshot.logDomain.modelOverride ?? undefined
+              modelOverride: snapshot.logDomain.modelOverride ?? undefined,
+              stepBudget: snapshot.logDomain.stepBudget,
+              tokenBudget: snapshot.logDomain.tokenBudget
             }
           : undefined,
         organizationId: snapshot.organizationId,

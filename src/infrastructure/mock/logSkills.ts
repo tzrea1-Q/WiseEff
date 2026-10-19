@@ -24,7 +24,7 @@ export const mockLogSkills: LogDomain[] = [{
 export function mockSkillWorkspace(id: string): AnalysisSkill | null {
   const skill = mockLogSkills.find((item) => item.id === id);
   if (!skill) return null;
-  return { id: skill.id, name: skill.name, description: skill.description, status: skill.status, createdAt: skill.createdAt, updatedAt: skill.updatedAt,
+  return { id: skill.id, skillKey: "charging", budgetCaps: { stepBudget: 6, tokenBudget: 8000 }, name: skill.name, description: skill.description, status: skill.status, createdAt: skill.createdAt, updatedAt: skill.updatedAt,
     currentRevision: { id: "skill-charging-v1", skillId: id, number: 1, status: "published",
     spec: { schemaVersion: "skill/v1", description: skill.description, parsing: { schemaVersion: "parsing/v1", extractors: [
       { id: "charge_current", pattern: "charge_current_ma=(?P<current>\\d+)", fields: { current: { type: "uint" } } }

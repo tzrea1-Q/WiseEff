@@ -304,7 +304,7 @@ describe("skill workspace", () => {
         return structuredClone(skill);
       })
     };
-    render(<StrictMode><SkillWorkspace skillId={skill.id} search="" repository={repository} apiMode canEdit
+    render(<StrictMode><SkillWorkspace skillId={skill.id} search="?section=integration" repository={repository} apiMode canEdit
       onNavigate={() => undefined} onPublished={() => undefined} /></StrictMode>);
     const override = await screen.findByRole("textbox", { name: "模型覆盖" });
     fireEvent.change(override, { target: { value: "acceptance-domain-model-x" } });
@@ -657,13 +657,13 @@ describe("skill workspace", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("请先发布或放弃现有草稿");
     expect(repository.restoreSkillRevision).not.toHaveBeenCalled();
   });
-  it("keeps future sections disabled and switches freely without dropping local edits", async () => {
+  it("enables every section and switches freely without dropping local edits", async () => {
     const { onNavigate } = setup();
     fireEvent.change(await screen.findByRole("textbox", { name: "描述" }), { target: { value: "未保存" } });
     expect(screen.getByRole("button", { name: "解码" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "信号" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "测试" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /集成/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /集成/ })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: "测试" }));
     expect(screen.getByRole("table", { name: "解析测试列表" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "版本" }));
