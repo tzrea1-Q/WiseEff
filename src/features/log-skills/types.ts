@@ -6,6 +6,9 @@ export type SkillSpec = SkillRevision["spec"];
 export type AnalysisSkill = z.infer<typeof logSkillDtoSchema>;
 export type SkillSample = z.infer<typeof logSkillSampleDtoSchema>;
 export type SkillTemplate = z.infer<typeof logSkillTemplateListResponseSchema>["items"][number];
+export type AnalysisTraceStep = z.infer<typeof import("@wiseeff/dto-schemas").logTraceResponseSchema>["steps"][number];
+export type SkillDryRun = z.infer<typeof import("@wiseeff/dto-schemas").logSkillDryRunResponseSchema>["run"];
+export type SkillDryRunDetail = { run: SkillDryRun; steps: AnalysisTraceStep[] };
 export type CreateSkillInput = { name: string; description?: string; startingPoint: { templateId: string } | { copyFromSkillId: string } };
 
 export interface SkillAuthoringRepository {
@@ -23,6 +26,9 @@ export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas
 
 export interface SkillWorkspaceRepository {
   signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"] }): Promise<SignalPreview>;
+  startSkillDryRun?(id: string): Promise<SkillDryRun>;
+  getSkillDryRun?(id: string, runId: string): Promise<SkillDryRunDetail>;
+  getSkillDryRunLines?(id: string, runId: string, file: string, startLine: number, endLine: number): Promise<import("@/application/ports/LogAnalysisRepository").LogLineRange>;
   parsePreview?(id: string, input: { parsing: unknown; sampleText: string; fileName?: string }): Promise<ParsePreview>;
   getSkillSampleText?(id: string): Promise<{ text: string; fileName?: string } | null>;
   getLogSkill(id: string): Promise<AnalysisSkill>;

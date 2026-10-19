@@ -95,6 +95,7 @@ export type WiseEffServerOptions = {
   objectStore?: ObjectStore;
   objectStoreHealth?: ObjectStoreHealthCheck;
   logAnalysisQueue?: LogAnalysisQueue;
+  logAnalyzer?: import("./modules/logs/analyzer").LogAnalysisAdapter;
   debugGateway?: DebugDeviceGateway;
   debugGatewayRegistry?: DebugDeviceGatewayRegistry;
   durableQueue?: DurableQueueHealthCheck;
@@ -207,6 +208,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     objectStore: options.objectStore,
     logAnalysisQueue: options.logAnalysisQueue,
+    analyzer: options.logAnalyzer,
     webhooks: options.logWebhooks,
     getCurrentAuthContext: authResolver
   });
@@ -531,6 +533,7 @@ export function createWiseEffServerFromEnv(
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
     logAnalysisQueue?: LogAnalysisQueue;
+    logAnalyzer?: import("./modules/logs/analyzer").LogAnalysisAdapter;
     debugGateway?: DebugDeviceGateway;
     debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     durableQueue?: DurableQueueHealthCheck;

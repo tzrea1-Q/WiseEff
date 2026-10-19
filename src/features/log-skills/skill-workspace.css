@@ -128,3 +128,15 @@
 .skill-decoding [aria-label="寄存器字段表"] th:last-child { width: var(--space-16); }
 .skill-decoding [aria-label="寄存器字段表"] td { vertical-align: top; white-space: normal; }
 .skill-register-properties { display: grid; gap: var(--space-2); }
+.skill-frames { display: grid; gap: var(--space-3); min-width: 0; }
+.skill-frame-table { table-layout: fixed; min-width: calc(var(--space-16) * 9); }
+.skill-frame-table td { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+.skill-frame-table [data-selected="true"] { outline: calc(var(--stroke-hairline) * 2) solid var(--accent); outline-offset: calc(-2 * var(--stroke-hairline)); }
+.skill-frame-hex { display: grid; gap: var(--space-2); min-width: 0; font: 400 var(--text-sm) / var(--leading-base) var(--font-mono); }
+.skill-frame-hex-row { display: grid; min-width: 0; gap: var(--space-1); align-items: center; }
+.skill-frame-hex-offset { color: var(--text-muted); }
+.skill-frame-byte { display: flex; min-width: 0; align-items: center; justify-content: center; padding: var(--space-1); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; }
+.skill-frame-byte[aria-pressed="true"] { background: var(--accent-soft); outline: calc(var(--stroke-hairline) * 2) solid var(--accent); outline-offset: calc(-2 * var(--stroke-hairline)); font-weight: 600; }
+.skill-frame-byte:focus-visible { outline: calc(var(--stroke-hairline) * 2) solid var(--accent); outline-offset: calc(var(--stroke-hairline) * 2); }
+.skill-frame-checksum[data-ok="true"] { color: var(--success); }
+.skill-frame-checksum[data-ok="false"] { color: var(--danger); }

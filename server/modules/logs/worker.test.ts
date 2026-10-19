@@ -167,6 +167,12 @@ function createFakeWorkerDb(fixture = createFixture()) {
       const normalized = text.replace(/\s+/g, " ").trim();
       calls.push(normalized);
 
+      if (normalized.startsWith("select job.id from jobs job") && normalized.includes("for update of job")) {
+        const current = values[0] === fixture.job.organization_id && values[1] === fixture.job.id && values[2] === fixture.run.id
+          && values[3] === fixture.job.lease_owner && fixture.job.status === "processing" && fixture.log.current_run_id === fixture.run.id;
+        return { rows: current ? [{ id: fixture.job.id } as Row] : [], rowCount: current ? 1 : 0 };
+      }
+
       if (normalized.startsWith("select r.log_domain_id, a.log_record_id")) {
         if (!fixture.log.log_domain) return { rows: [], rowCount: 0 };
         return { rows: [{
@@ -589,6 +595,19 @@ describe("log worker", () => {
     expect(workerDb.fixture.stages).toEqual([]);
     expect(workerDb.fixture.run).toMatchObject({ status: "queued", progress: 0, current_stage: "parse" });
     expect(workerDb.fixture.job).toMatchObject({ status: "processing", progress: 0, current_stage: "parse" });
+  });
+
+  it("rejects trace callbacks from an analyzer continuing after the job timeout", async () => {
+    const { db, calls } = createFakeWorkerDb();
+    let onTrace: AnalyzeLogInput["onTrace"];
+    await processLogAnalysisJobById({
+      db, objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")), jobId: "job-1", maxJobMs: 100, maxAttempts: 1,
+      analyzer: { async analyze(input) { onTrace = input.onTrace; return new Promise<AnalyzeLogOutput>(() => undefined); } }
+    });
+    expect(onTrace).toBeTypeOf("function");
+    const writes = calls.length;
+    await expect(onTrace!({ index: 1, kind: "model-turn", tool: null, arguments: {}, resultBytes: 0, lines: [], outcome: "ok", reason: null })).rejects.toThrow("LOG_ANALYSIS_JOB_MAX_MS");
+    expect(calls).toHaveLength(writes);
   });
 
   it("does not fail a stale run when the claimed job lease is lost", async () => {

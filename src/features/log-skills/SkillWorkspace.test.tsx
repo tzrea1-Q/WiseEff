@@ -39,6 +39,10 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
       skill.currentRevision = { ...old, id: "restored", number: 3, status: "published" }; return structuredClone(skill);
     }),
     listLogSkills: vi.fn(async () => [{ ...skill, currentRevision: { id: "current", number: 2, publishedAt: skill.currentRevision.publishedAt }, analyses7d: 7, helpfulRate7d: 0.5 }]),
+    startSkillDryRun: vi.fn(async () => ({ id: "dry-run", skillRevisionId: skill.draft!.id, status: "processing" as const,
+      progress: 0, report: null, error: null, createdAt: skill.createdAt })),
+    getSkillDryRun: vi.fn(async () => ({ run: { id: "dry-run", skillRevisionId: skill.draft!.id, status: "complete" as const,
+      progress: 100, report: null, error: null, createdAt: skill.createdAt }, steps: [] })),
     listSourceSnapshots: vi.fn(async () => [{ id: "source-default", skillId: skill.id, versionLabel: "source-v1", status: "ready" as const,
       fileCount: 1, filesProcessed: 1, filesTotal: 1, skippedCount: 0, skippedFiles: [], error: null, createdAt: skill.createdAt }]),
     setDefaultSourceSnapshot: vi.fn<SkillWorkspaceRepository["setDefaultSourceSnapshot"]>(async (_id, snapshotId) => {
@@ -88,6 +92,38 @@ describe("skill workspace", () => {
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "发布" })).toBeEnabled();
   });
+
+  it("saves current edits before running the draft against the stored sample", async () => {
+    const { repository, skill } = setup({ procedure: "Original procedure" });
+    const description = await screen.findByRole("textbox", { name: "描述" });
+    fireEvent.change(description, { target: { value: "Draft for dry run" } });
+    const start = screen.getByRole("button", { name: "试运行" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await screen.findByRole("dialog", { name: "试运行" });
+    expect(repository.saveSkillDraft).toHaveBeenCalledWith(skill.id, expect.objectContaining({ description: "Draft for dry run" }), null, "current");
+    expect(repository.saveSkillDraft.mock.invocationCallOrder[0]).toBeLessThan(repository.startSkillDryRun.mock.invocationCallOrder[0]);
+    expect(repository.startSkillDryRun).toHaveBeenCalledWith(skill.id);
+    expect(repository.publishSkill).not.toHaveBeenCalled();
+  });
+
+  it("runs an existing draft without publishing or saving it again", async () => {
+    const { repository } = setup({ draft: true });
+    const start = await screen.findByRole("button", { name: "试运行" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await screen.findByRole("dialog", { name: "试运行" });
+    expect(repository.saveSkillDraft).not.toHaveBeenCalled();
+    expect(repository.startSkillDryRun).toHaveBeenCalledOnce();
+  });
+
+  it("hides dry run from users without skill administration permission", async () => {
+    const { repository } = setup({ canEdit: false });
+    await screen.findByRole("textbox", { name: "描述" });
+    expect(screen.queryByRole("button", { name: "试运行" })).not.toBeInTheDocument();
+    expect(repository.startSkillDryRun).not.toHaveBeenCalled();
+  });
+
   it("keeps a model override editable and publishable when a superseded initial load finishes late", async () => {
     const skill = structuredClone(mockSkillWorkspace("skill-charging")!);
     let finishFirst!: (history: SkillRevision[]) => void;
