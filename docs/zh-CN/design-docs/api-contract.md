@@ -318,7 +318,7 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 `skill/v1` 新增可选 `parsing: {schemaVersion: "parsing/v1", extractors}`，保存、发布和回滚均校验，错误为带路径的 `400`。严格规范、时间格式子集、上限和事件外壳见[解析参考](log-parsing-v1.md)。worker 只使用钉住版本，有抽取器的运行在解析完成后按当前任务租约保护写入迁移 0190 的产物键及 `{total, byExtractor, errors}`，provider 重试时仍保留；无抽取器保持旧行为。
 
-证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。寄存器节点另含嵌套 `fields`、可选枚举含义 `meaning` 和单位 `unit`，父节点仍保留原始寄存器值；不安全整数使用十进制字符串，树深度最多 8。报告在引用行下展示此树。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。寄存器节点另含嵌套 `fields`、可选枚举含义 `meaning` 和单位 `unit`，父节点仍保留原始寄存器值；不安全整数使用十进制字符串。帧/寄存器构件最多嵌套 8 层，输出树允许最多 25 层结构以容纳 TLV 外壳及寄存器叶节点。报告在引用行下展示此树。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
 
 `parsing` 还接受可选 `registers: Record<id, {width: 8|16|32|64, fields: {bits: [hi,lo], name, enum?, scale?, offset?, unit?, signed?, description?}[]}>` 和 `registerMaps: Record<id, {selectBy, cases: Record<地址或消息id, registerId>, default?}>`。抽取器的 `int`/`uint`/`hex` 字段配置 `decode: {register: id}` 或 `decode: {registerMap: id}`。保存、发布及既有未保存草稿预览均校验位重叠、越界、重名和引用，返回精确路径。映射无匹配分支或默认项时，事件记录 `unmatched_register`，不使运行失败。寄存器工作共享既有执行预算。参见 [BQ25890 示例与数值规则](log-parsing-v1.md#寄存器与寄存器映射)。
 
@@ -331,7 +331,13 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 grounding 只认可 query 工具自身 `events[].file/line`。endLine 范围、字段内嵌引用、结构元数据和非白名单工具返回的引用不能建立观察记录。
 
-`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值（包含嵌套寄存器树）最多 1 KiB；限额内完整返回子字段与含义，超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
+`parsing` 还接受 `frames: Record<id, {endian?: "big" | "little", fields: FrameField[]}>`。有序具名字段支持 `uint`/`int`、固定或先前字段决定长度的 `bytes`、嵌套 `register`/`frame`、按先前解码值选择的 `switch`、使用常量或先前字段计数且可乘固定倍数的 `repeat`，以及配置 tag/length 宽度和已知 tag 引用的 TLV。switch/TLV 数字键沿用寄存器映射的归一化规则，未知 TLV tag 保留原始字节。抽取器十六进制/字节字段使用 `decode: {frame: id}`，包括 `hexbytes`、`base64bytes` 及十六进制 `bytes` 别名。帧十六进制输入支持空白和可选 `0x`。[帧规范与 USB-PD 示例](log-parsing-v1.md#字节布局帧)定义封闭的字段结构和路径查找规则。
+
+帧校验和支持 `sum8`、`xor8`、`crc8`（多项式 `0x07`）、`crc16-ccitt`（`0x1021`，初值 `0xFFFF`）、`crc16-modbus`（反射形式 `0x8005`，初值 `0xFFFF`）及 IEEE `crc32`。校验字段声明相对所在帧的半开区间 `range: [start, endExclusive]`、存储字节数及字节序，覆盖范围不得包含该字段自身存储校验和的字节或与其他校验范围重叠。解码节点在既有 raw/value/meaning/unit/fields 树外增加 `byteOffset`、`byteLength` 和可选 `checksum: {expected, actual, ok}`。`checksum_mismatch` 是事件错误，保留节点并继续分析。
+
+帧/寄存器合计最多嵌套 8 层，单帧输入最多 4096 字节，每个 repeat 乘倍数后最多 256 项，单事件解码元素合计最多 1024，每个 TLV 字段最多 256 项。输出共享单事件 1024 字段/32 KiB、单运行 32,768 字段/4 MiB 和时间预算。保存、发布及未保存草稿预览拒绝未知引用、循环、向前路径、无效长度和重叠校验范围，返回精确路径；运行时超限记录具体事件错误。无需迁移或新增端点；嵌套帧字段沿用报告证据与解码事件工具及其既有响应上限。
+
+`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值（包含嵌套寄存器/帧树）最多 1 KiB；限额内完整返回子字段与含义，超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
 
 M2 日志合同锁定为组织级作用域（迁移 `0037` 移除 `projectId`）：
 

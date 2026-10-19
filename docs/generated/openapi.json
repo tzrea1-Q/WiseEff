@@ -30853,6 +30853,32 @@
                                     "unit": {
                                       "type": "string"
                                     },
+                                    "byteOffset": {
+                                      "type": "number"
+                                    },
+                                    "byteLength": {
+                                      "type": "number"
+                                    },
+                                    "checksum": {
+                                      "type": "object",
+                                      "properties": {
+                                        "expected": {
+                                          "type": "number"
+                                        },
+                                        "actual": {
+                                          "type": "number"
+                                        },
+                                        "ok": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "expected",
+                                        "actual",
+                                        "ok"
+                                      ],
+                                      "additionalProperties": false
+                                    },
                                     "fields": {
                                       "type": "object",
                                       "additionalProperties": {
@@ -31646,6 +31672,32 @@
                                     "unit": {
                                       "type": "string"
                                     },
+                                    "byteOffset": {
+                                      "type": "number"
+                                    },
+                                    "byteLength": {
+                                      "type": "number"
+                                    },
+                                    "checksum": {
+                                      "type": "object",
+                                      "properties": {
+                                        "expected": {
+                                          "type": "number"
+                                        },
+                                        "actual": {
+                                          "type": "number"
+                                        },
+                                        "ok": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "expected",
+                                        "actual",
+                                        "ok"
+                                      ],
+                                      "additionalProperties": false
+                                    },
                                     "fields": {
                                       "type": "object",
                                       "additionalProperties": {
@@ -32309,6 +32361,32 @@
                                       },
                                       "unit": {
                                         "type": "string"
+                                      },
+                                      "byteOffset": {
+                                        "type": "number"
+                                      },
+                                      "byteLength": {
+                                        "type": "number"
+                                      },
+                                      "checksum": {
+                                        "type": "object",
+                                        "properties": {
+                                          "expected": {
+                                            "type": "number"
+                                          },
+                                          "actual": {
+                                            "type": "number"
+                                          },
+                                          "ok": {
+                                            "type": "boolean"
+                                          }
+                                        },
+                                        "required": [
+                                          "expected",
+                                          "actual",
+                                          "ok"
+                                        ],
+                                        "additionalProperties": false
                                       },
                                       "fields": {
                                         "type": "object",
@@ -33188,6 +33266,32 @@
                                     "unit": {
                                       "type": "string"
                                     },
+                                    "byteOffset": {
+                                      "type": "number"
+                                    },
+                                    "byteLength": {
+                                      "type": "number"
+                                    },
+                                    "checksum": {
+                                      "type": "object",
+                                      "properties": {
+                                        "expected": {
+                                          "type": "number"
+                                        },
+                                        "actual": {
+                                          "type": "number"
+                                        },
+                                        "ok": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "expected",
+                                        "actual",
+                                        "ok"
+                                      ],
+                                      "additionalProperties": false
+                                    },
                                     "fields": {
                                       "type": "object",
                                       "additionalProperties": {
@@ -34034,6 +34138,31 @@
                               "additionalProperties": false
                             }
                           },
+                          "frames": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "endian": {
+                                  "type": "string",
+                                  "enum": [
+                                    "big",
+                                    "little"
+                                  ]
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "extractors": {
                             "type": "array",
                             "items": {
@@ -34062,8 +34191,7 @@
                                             "type": "string",
                                             "enum": [
                                               "int",
-                                              "uint",
-                                              "hex"
+                                              "uint"
                                             ]
                                           },
                                           "decode": {
@@ -34106,11 +34234,97 @@
                                           "type": {
                                             "type": "string",
                                             "enum": [
-                                              "float",
-                                              "bool",
-                                              "string",
+                                              "hex"
+                                            ]
+                                          },
+                                          "decode": {
+                                            "anyOf": [
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "register": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "register"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "registerMap": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "registerMap"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "frame": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "frame"
+                                                ],
+                                                "additionalProperties": false
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "type"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
+                                              "bytes",
                                               "hexbytes",
                                               "base64bytes"
+                                            ]
+                                          },
+                                          "decode": {
+                                            "type": "object",
+                                            "properties": {
+                                              "frame": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "frame"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        },
+                                        "required": [
+                                          "type"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
+                                              "float",
+                                              "bool",
+                                              "string"
                                             ]
                                           }
                                         },
@@ -34810,6 +35024,31 @@
                               "additionalProperties": false
                             }
                           },
+                          "frames": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "endian": {
+                                  "type": "string",
+                                  "enum": [
+                                    "big",
+                                    "little"
+                                  ]
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "extractors": {
                             "type": "array",
                             "items": {
@@ -34838,8 +35077,7 @@
                                             "type": "string",
                                             "enum": [
                                               "int",
-                                              "uint",
-                                              "hex"
+                                              "uint"
                                             ]
                                           },
                                           "decode": {
@@ -34882,11 +35120,97 @@
                                           "type": {
                                             "type": "string",
                                             "enum": [
-                                              "float",
-                                              "bool",
-                                              "string",
+                                              "hex"
+                                            ]
+                                          },
+                                          "decode": {
+                                            "anyOf": [
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "register": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "register"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "registerMap": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "registerMap"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "frame": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "frame"
+                                                ],
+                                                "additionalProperties": false
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "type"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
+                                              "bytes",
                                               "hexbytes",
                                               "base64bytes"
+                                            ]
+                                          },
+                                          "decode": {
+                                            "type": "object",
+                                            "properties": {
+                                              "frame": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "frame"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        },
+                                        "required": [
+                                          "type"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
+                                              "float",
+                                              "bool",
+                                              "string"
                                             ]
                                           }
                                         },
@@ -35599,6 +35923,31 @@
                             "additionalProperties": false
                           }
                         },
+                        "frames": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "endian": {
+                                "type": "string",
+                                "enum": [
+                                  "big",
+                                  "little"
+                                ]
+                              },
+                              "fields": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object"
+                                }
+                              }
+                            },
+                            "required": [
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
                         "extractors": {
                           "type": "array",
                           "items": {
@@ -35627,8 +35976,7 @@
                                           "type": "string",
                                           "enum": [
                                             "int",
-                                            "uint",
-                                            "hex"
+                                            "uint"
                                           ]
                                         },
                                         "decode": {
@@ -35671,11 +36019,97 @@
                                         "type": {
                                           "type": "string",
                                           "enum": [
-                                            "float",
-                                            "bool",
-                                            "string",
+                                            "hex"
+                                          ]
+                                        },
+                                        "decode": {
+                                          "anyOf": [
+                                            {
+                                              "anyOf": [
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "register": {
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "register"
+                                                  ],
+                                                  "additionalProperties": false
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "registerMap": {
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "registerMap"
+                                                  ],
+                                                  "additionalProperties": false
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "frame": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "frame"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "bytes",
                                             "hexbytes",
                                             "base64bytes"
+                                          ]
+                                        },
+                                        "decode": {
+                                          "type": "object",
+                                          "properties": {
+                                            "frame": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "frame"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "float",
+                                            "bool",
+                                            "string"
                                           ]
                                         }
                                       },
@@ -36841,6 +37275,32 @@
                           "unit": {
                             "type": "string"
                           },
+                          "byteOffset": {
+                            "type": "number"
+                          },
+                          "byteLength": {
+                            "type": "number"
+                          },
+                          "checksum": {
+                            "type": "object",
+                            "properties": {
+                              "expected": {
+                                "type": "number"
+                              },
+                              "actual": {
+                                "type": "number"
+                              },
+                              "ok": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "expected",
+                              "actual",
+                              "ok"
+                            ],
+                            "additionalProperties": false
+                          },
                           "fields": {
                             "type": "object",
                             "additionalProperties": {
@@ -37090,6 +37550,31 @@
                       "additionalProperties": false
                     }
                   },
+                  "frames": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "endian": {
+                          "type": "string",
+                          "enum": [
+                            "big",
+                            "little"
+                          ]
+                        },
+                        "fields": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "required": [
+                        "fields"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "extractors": {
                     "type": "array",
                     "items": {
@@ -37118,8 +37603,7 @@
                                     "type": "string",
                                     "enum": [
                                       "int",
-                                      "uint",
-                                      "hex"
+                                      "uint"
                                     ]
                                   },
                                   "decode": {
@@ -37162,11 +37646,97 @@
                                   "type": {
                                     "type": "string",
                                     "enum": [
-                                      "float",
-                                      "bool",
-                                      "string",
+                                      "hex"
+                                    ]
+                                  },
+                                  "decode": {
+                                    "anyOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "register": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "register"
+                                            ],
+                                            "additionalProperties": false
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "registerMap": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "registerMap"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "frame": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "frame"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "bytes",
                                       "hexbytes",
                                       "base64bytes"
+                                    ]
+                                  },
+                                  "decode": {
+                                    "type": "object",
+                                    "properties": {
+                                      "frame": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "frame"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "float",
+                                      "bool",
+                                      "string"
                                     ]
                                   }
                                 },
@@ -37839,6 +38409,31 @@
                           "additionalProperties": false
                         }
                       },
+                      "frames": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "endian": {
+                              "type": "string",
+                              "enum": [
+                                "big",
+                                "little"
+                              ]
+                            },
+                            "fields": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          },
+                          "required": [
+                            "fields"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
                       "extractors": {
                         "type": "array",
                         "items": {
@@ -37867,8 +38462,7 @@
                                         "type": "string",
                                         "enum": [
                                           "int",
-                                          "uint",
-                                          "hex"
+                                          "uint"
                                         ]
                                       },
                                       "decode": {
@@ -37911,11 +38505,97 @@
                                       "type": {
                                         "type": "string",
                                         "enum": [
-                                          "float",
-                                          "bool",
-                                          "string",
+                                          "hex"
+                                        ]
+                                      },
+                                      "decode": {
+                                        "anyOf": [
+                                          {
+                                            "anyOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "register": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "register"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "registerMap": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "registerMap"
+                                                ],
+                                                "additionalProperties": false
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "frame": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "frame"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "type"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": [
+                                          "bytes",
                                           "hexbytes",
                                           "base64bytes"
+                                        ]
+                                      },
+                                      "decode": {
+                                        "type": "object",
+                                        "properties": {
+                                          "frame": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "frame"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "type"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": [
+                                          "float",
+                                          "bool",
+                                          "string"
                                         ]
                                       }
                                     },
@@ -38637,6 +39317,31 @@
                             "additionalProperties": false
                           }
                         },
+                        "frames": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "endian": {
+                                "type": "string",
+                                "enum": [
+                                  "big",
+                                  "little"
+                                ]
+                              },
+                              "fields": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object"
+                                }
+                              }
+                            },
+                            "required": [
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
                         "extractors": {
                           "type": "array",
                           "items": {
@@ -38665,8 +39370,7 @@
                                           "type": "string",
                                           "enum": [
                                             "int",
-                                            "uint",
-                                            "hex"
+                                            "uint"
                                           ]
                                         },
                                         "decode": {
@@ -38709,11 +39413,97 @@
                                         "type": {
                                           "type": "string",
                                           "enum": [
-                                            "float",
-                                            "bool",
-                                            "string",
+                                            "hex"
+                                          ]
+                                        },
+                                        "decode": {
+                                          "anyOf": [
+                                            {
+                                              "anyOf": [
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "register": {
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "register"
+                                                  ],
+                                                  "additionalProperties": false
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "registerMap": {
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "registerMap"
+                                                  ],
+                                                  "additionalProperties": false
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "frame": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "frame"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "bytes",
                                             "hexbytes",
                                             "base64bytes"
+                                          ]
+                                        },
+                                        "decode": {
+                                          "type": "object",
+                                          "properties": {
+                                            "frame": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "frame"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "float",
+                                            "bool",
+                                            "string"
                                           ]
                                         }
                                       },
