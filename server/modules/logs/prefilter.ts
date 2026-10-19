@@ -2,6 +2,7 @@ import type { AnalyzeLogEvidence, LogRuleHit } from "./analyzer";
 import type { ParsedLogEntry } from "./parser";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import { compileSignalCondition, type SignalRuleSet } from "./signalRules";
+import { createLogPatternCache } from "./adminPattern";
 
 /**
  * Deterministic prefilter (glossary: Prefilter findings): the legacy rule matching
@@ -24,7 +25,8 @@ export type PrefilterFindings = {
 export function createPrefilterBudget() { return { references: 32_768, codes: 8192, codeBytes: 2 * 1024 * 1024 }; }
 export async function prefilterLogStream(entries: AsyncIterable<ParsedLogEntry>, ruleSet: SignalRuleSet = defaultChargingRuleSet, budget = createPrefilterBudget()): Promise<PrefilterFindings> {
   const refs = 2000;
-  const evidence = ruleSet.rules.map((rule) => ({ rule, matches: rule.anyOf.map((condition) => compileSignalCondition(condition)), lines: [] as number[] }));
+  const cache = createLogPatternCache();
+  const evidence = ruleSet.rules.map((rule) => ({ rule, matches: rule.anyOf.map((condition) => compileSignalCondition(condition, undefined, cache)), lines: [] as number[] }));
   const severityCounts = { error: 0, warn: 0, info: 0 };
   const anomalyLines = new Set<number>();
   const codes = new Map<string, { count: number; lineNumbers: number[] }>();
@@ -69,8 +71,9 @@ export function collectRuleEvidence(
   entries: ParsedLogEntry[],
   ruleSet: SignalRuleSet = defaultChargingRuleSet
 ): AnalyzeLogEvidence[] {
+  const cache = createLogPatternCache();
   return ruleSet.rules.flatMap((rule) => {
-    const conditions = rule.anyOf.map((condition) => compileSignalCondition(condition));
+    const conditions = rule.anyOf.map((condition) => compileSignalCondition(condition, undefined, cache));
     const lineNumbers = entries
       .filter((entry) => conditions.some((matches) => matches(entry)))
       .map((entry) => entry.lineNumber);

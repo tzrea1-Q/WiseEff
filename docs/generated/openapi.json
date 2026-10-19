@@ -37101,6 +37101,9 @@
           "generalizeNumbers": {
             "type": "boolean"
           },
+          "timestampPattern": {
+            "type": "string"
+          },
           "pattern": {
             "type": "string"
           }

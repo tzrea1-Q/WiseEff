@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { compileFileGlob, compileLogPattern } from "../adminPattern";
+import { compileFileGlob, compileLogPattern, createLogPatternCache, type LogPatternCache } from "../adminPattern";
+import { withLogPatternBudget } from "../patternBudget";
 
 export const MAX_PARSING_PATTERN_CHARS = 512;
 export const MAX_PARSING_LINE_CHARS = 6144;
@@ -11,25 +12,9 @@ export const MAX_REGISTER_ENUM_LABEL_CHARS = 128;
 export const MAX_REGISTER_DECODE_CAPTURES = 8;
 
 /** Bound RE2 program size before compiling, including multiline controls. */
-export function compileParsingPattern(source: string, flags = "", maxInputLength = MAX_PARSING_LINE_CHARS) {
+export function compileParsingPattern(source: string, flags = "", maxInputLength = MAX_PARSING_LINE_CHARS, cache?: LogPatternCache) {
   if (source.length > MAX_PARSING_PATTERN_CHARS) throw new Error(`Parsing pattern exceeds ${MAX_PARSING_PATTERN_CHARS} UTF-16 code units`);
-  let characterClass = false, quoted = false;
-  for (let i = 0; i < source.length; i++) {
-    if (source[i] === "\\") {
-      if (source[i + 1] === "Q" && !quoted) quoted = true;
-      else if (source[i + 1] === "E" && quoted) quoted = false;
-      i++; continue;
-    }
-    if (quoted) continue;
-    if (source[i] === "[") characterClass = true;
-    if (source[i] === "]") characterClass = false;
-    if (characterClass || source[i] !== "{") continue;
-    const repetition = /^\{(\d+)(?:,(\d*))?\}/.exec(source.slice(i));
-    if (repetition && (Number(repetition[1]) > 100 || Number(repetition[2] ?? 0) > 100)) {
-      throw new Error("Parsing counted repetition must not exceed 100");
-    }
-  }
-  return compileLogPattern(source, flags, maxInputLength);
+  return compileLogPattern(source, flags, maxInputLength, cache);
 }
 
 const identifier = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,99}$/);
@@ -61,7 +46,7 @@ export function registerCaseKey(value: string): string {
   return ((value[0] === "-" ? -1n : 1n) * BigInt(value.replace(/^[+-]/, ""))).toString();
 }
 const pattern = z.string().min(1).max(MAX_PARSING_PATTERN_CHARS, `Parsing pattern exceeds ${MAX_PARSING_PATTERN_CHARS} UTF-16 code units`);
-export function timestampFormat(format: string) {
+export function timestampFormat(format: string, cache?: LogPatternCache) {
   const names: string[] = [];
   const tokens: Record<string, string> = { Y: "\\d{4}", m: "\\d{2}", d: "\\d{2}", H: "\\d{2}", M: "\\d{2}", S: "\\d{2}", f: "\\d{1,6}", z: "Z|[+-]\\d{2}:?\\d{2}" };
   let source = "";
@@ -72,9 +57,9 @@ export function timestampFormat(format: string) {
       else { if (!Object.hasOwn(tokens, token) || names.includes(token)) throw new Error("Unsupported or duplicate timestamp directive"); names.push(token); source += `(${tokens[token]})`; }
     } else source += format[i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-  return { names, pattern: compileLogPattern(`^${source}$`) };
+  return { names, pattern: compileLogPattern(`^${source}$`, "", undefined, cache) };
 }
-export const parsingSpecSchema = z.object({
+export const parsingSpecSchema = withLogPatternBudget(z.object({
   schemaVersion: z.literal("parsing/v1"),
   registers: z.record(identifier, registerSchema).refine((v) => Object.keys(v).length <= MAX_REGISTERS, `At most ${MAX_REGISTERS} registers`).optional(),
   registerMaps: z.record(identifier, registerMapSchema).refine((v) => Object.keys(v).length <= 200, "At most 200 register maps").optional(),
@@ -87,6 +72,7 @@ export const parsingSpecSchema = z.object({
       keyField: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/).optional(), maxLines: z.number().int().min(1).max(200) }).strict().optional()
   }).strict()).max(200)
 }).strict().superRefine((spec, ctx) => {
+  const cache = createLogPatternCache();
   const add = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
   for (const [id, register] of Object.entries(spec.registers ?? {})) {
     const names = new Set<string>(), occupied = new Set<number>();
@@ -119,10 +105,10 @@ export const parsingSpecSchema = z.object({
     if (ids.has(extractor.id)) issue(["id"], "duplicate id");
     ids.add(extractor.id);
     extractor.files?.forEach((glob, fileIndex) => {
-      try { compileFileGlob(glob); } catch (error) { issue(["files", fileIndex], String(error)); }
+      try { compileFileGlob(glob, cache); } catch (error) { issue(["files", fileIndex], String(error)); }
     });
     try {
-      const compiled = compileParsingPattern(extractor.pattern, "s"), groups = compiled.groupNames;
+      const compiled = compileParsingPattern(extractor.pattern, "s", undefined, cache), groups = compiled.groupNames;
       if (compiled.groupCount !== groups.length) issue(["pattern"], "every capture group must be named and mapped to a field");
       for (const name of groups) if (!Object.hasOwn(extractor.fields, name)) issue(["fields", name], `group ${name} has no declared field`);
       for (const name of Object.keys(extractor.fields)) if (!groups.includes(name)) issue(["fields", name], `field ${name} has no pattern group`);
@@ -133,7 +119,7 @@ export const parsingSpecSchema = z.object({
       for (const name of ["start", "continue", "end"] as const) {
         if (!controls[name]) continue;
         try {
-          const compiled = compileParsingPattern(controls[name]), groups = compiled.groupNames;
+          const compiled = compileParsingPattern(controls[name], "", undefined, cache), groups = compiled.groupNames;
           if (compiled.groupCount !== groups.length) issue(["multiline", name], "every capture group must be named and mapped to a field");
           for (const group of groups) if (!Object.hasOwn(extractor.fields, group)) issue(["multiline", name], `group ${group} has no declared field`);
           if (keyField && !groups.includes(keyField)) issue(["multiline", name], `pattern must capture key field ${keyField}`);
@@ -152,11 +138,11 @@ export const parsingSpecSchema = z.object({
           else if (!Object.hasOwn(extractor.fields, map.selectBy)) add(["registerMaps", field.decode.registerMap, "selectBy"], `Field ${map.selectBy} is not declared in extractor ${extractor.id}`);
         }
       }
-      if (field.type === "timestamp") try { timestampFormat(field.format); }
+      if (field.type === "timestamp") try { timestampFormat(field.format, cache); }
       catch (error) { issue(["fields", name, "format"], `field ${name}: ${String(error)}`); }
     }
   });
-});
+}), "parsing");
 
 export type ParsingSpec = z.infer<typeof parsingSpecSchema>;
 export type FieldSpec = z.infer<typeof fieldSpecSchema>;

@@ -2,6 +2,7 @@ import { MAX_EXTRACTOR_PREVIEW_BYTES, MAX_EXTRACTOR_PREVIEW_LINES } from "./pars
 import { MAX_PARSING_LINE_CHARS } from "./parsing/spec";
 import { formatPreviewRequestSchema, validateLogFormatProfile } from "./formatProfile";
 import { parseLogText } from "./parser";
+import { createLogPatternCache } from "./adminPattern";
 
 /** Uses the runtime parser unchanged, with multiline disabled only for the per-line annotations. */
 export function previewLogFormat(value: { sampleText: string; formatProfile?: unknown }) {
@@ -10,12 +11,13 @@ export function previewLogFormat(value: { sampleText: string; formatProfile?: un
   const rawLines = input.sampleText.split(/\r\n|\n|\r/);
   if (rawLines.at(-1) === "") rawLines.pop();
   if (rawLines.length > MAX_EXTRACTOR_PREVIEW_LINES || rawLines.some((text) => text.length > MAX_PARSING_LINE_CHARS)) throw new Error("Format preview allows at most 500 lines of 6144 UTF-16 code units each");
-  const validated = validateLogFormatProfile(input.formatProfile);
+  const patternCache = createLogPatternCache();
+  const validated = validateLogFormatProfile(input.formatProfile, patternCache);
   if (!validated.ok) throw new Error(validated.issues.join("; "));
   const { multiline: _multiline, ...singleLineProfile } = validated.profile;
   const log = { fileName: "sample.log", content: input.sampleText };
-  const grouped = parseLogText(log, { profile: validated.profile });
-  const single = parseLogText(log, { profile: singleLineProfile });
+  const grouped = parseLogText(log, { profile: validated.profile, patternCache });
+  const single = parseLogText(log, { profile: singleLineProfile, patternCache });
   if (!grouped.ok) throw new Error(grouped.reason);
   if (!single.ok) throw new Error(single.reason);
   const byLine = new Map(single.entries.map((entry) => [entry.lineNumber, entry]));

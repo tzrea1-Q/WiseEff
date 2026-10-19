@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { parsingSpecSchema } from "@wiseeff/dto-schemas";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SelectControl } from "@/components/common/SelectControl";
@@ -28,15 +29,16 @@ function segmentType(value: string): Segment["type"] {
     : /^[+-]?\d+$/.test(value) ? "int" : /^[+-]?(?:\d+\.\d*|\.\d+|\d+[eE][+-]?\d+)$/.test(value) ? "float" : "string";
 }
 
-export function ExtractorBuilder({ skillId, parsing, onChange, disabled, repository, sampleText, selectedLine, onLineSelect }: {
+export function ExtractorBuilder({ skillId, parsing, onChange, disabled, repository, sampleText, selectedLine, onLineSelect, timestampPattern }: {
   skillId: string; parsing: Parsing | null; onChange: (value: Parsing) => void; disabled: boolean;
   repository?: Partial<SkillWorkspaceRepository>; sampleText: string; selectedLine?: number | null; onLineSelect?: (line: number) => void;
+  timestampPattern?: string;
 }) {
   const lines = useMemo(() => sampleText.split(/\r?\n/), [sampleText]);
   const [localLine, setLocalLine] = useState(1);
   const lineNumber = Math.min(lines.length, Math.max(1, selectedLine ?? localLine));
   const line = lines[lineNumber - 1];
-  const [draft, setDraft] = useState<{ id: string; line: string; original?: Extractor; segments: Segment[]; pattern?: string; advanced: boolean; generalizeNumbers: boolean } | null>(null);
+  const [draft, setDraft] = useState<{ id: string; line: string; original?: Extractor; segments: Segment[]; pattern?: string; advanced: boolean; generalizeNumbers: boolean; manuallyEdited?: boolean } | null>(null);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<{ key: string; result?: Preview; error?: string } | null>(null);
   const tokens = useMemo(() => extractorTokens(draft?.line ?? ""), [draft?.line]);
@@ -44,6 +46,7 @@ export function ExtractorBuilder({ skillId, parsing, onChange, disabled, reposit
   const sampleLines = useMemo(() => lines.slice(0, 500), [lines]);
   const input: Request | null = draft && (draft.segments.length || draft.pattern !== undefined) ? {
     line: draft.line, segments: draft.segments, sampleLines, generalizeNumbers: draft.generalizeNumbers,
+    ...(timestampPattern ? { timestampPattern } : {}),
     ...(draft.pattern !== undefined ? { pattern: draft.pattern } : {})
   } : null;
   const key = JSON.stringify(input);
@@ -81,7 +84,7 @@ export function ExtractorBuilder({ skillId, parsing, onChange, disabled, reposit
     let name = from.name ?? `field${segments.length + 1}`;
     while (segments.some((segment) => segment.name === name)) name += "_";
     if (!existing) segments.push({ start, end, name, type: segmentType(draft.line.slice(start, end)) });
-    setDraft({ ...draft, segments: segments.sort((a, b) => a.start - b.start), pattern: undefined });
+    setDraft({ ...draft, segments: segments.sort((a, b) => a.start - b.start), pattern: undefined, manuallyEdited: false });
     if (!range || anchor === null) setAnchor(tokenIndex);
   };
   return <section aria-label="抽取规则" className="skill-extractors"><h3>抽取规则</h3>
@@ -91,14 +94,14 @@ export function ExtractorBuilder({ skillId, parsing, onChange, disabled, reposit
     <pre className="skill-extractor-line" aria-label="当前样例行">{line || "暂无样例；请上传或粘贴样例日志。"}</pre>
     <Button variant="outline" disabled={disabled || !parsing || !line || !repository?.generateExtractorPattern || parsing.extractors.length >= 200} onClick={() => {
       let index = 1; while (parsing!.extractors.some((extractor) => extractor.id === `extractor${index}`)) index++;
-      setDraft({ id: `extractor${index}`, line, segments: [], advanced: false, generalizeNumbers: false }); setAnchor(null);
+      setDraft({ id: `extractor${index}`, line, segments: [], advanced: false, generalizeNumbers: true }); setAnchor(null);
     }}>从此行创建抽取规则</Button>
     {!parsing ? <p role="alert">请先在代码视图修复解析规范。</p> : <DataTable fluid ariaLabel="抽取规则列表" rows={parsing.extractors} rowKey={(row) => row.id}
       emptyMessage="暂无抽取规则。选择样例行后创建第一条规则。" columns={[
         { key: "id", header: "抽取器", render: (row) => row.id },
         { key: "fields", header: "字段", render: (row) => Object.keys(row.fields).join("、") || "无字段" },
         { key: "actions", header: "操作", render: (row) => <div className="dialog-actions"><Button size="sm" variant="outline" disabled={disabled || !repository?.generateExtractorPattern} onClick={() => {
-          setDraft({ id: row.id, line, original: row, segments: [], pattern: row.pattern, advanced: true, generalizeNumbers: false }); setAnchor(null);
+          setDraft({ id: row.id, line, original: row, segments: [], pattern: row.pattern, advanced: true, generalizeNumbers: true }); setAnchor(null);
         }}>编辑 {row.id}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={() => onChange({ ...parsing, extractors: parsing.extractors.filter((extractor) => extractor.id !== row.id) })}>删除 {row.id}</Button></div> }
       ]} />}
     <ModalDialog open={!!draft} onDismiss={() => setDraft(null)} className="skill-authoring-dialog skill-extractor-dialog modal-card--lg">
@@ -111,17 +114,19 @@ export function ExtractorBuilder({ skillId, parsing, onChange, disabled, reposit
         <DataTable fluid ariaLabel="选中片段字段" rows={draft.segments} rowKey={(row) => String(row.start)} emptyMessage="点击上方片段选择字段。" columns={[
           { key: "text", header: "片段", render: (row) => <code>{draft.line.slice(row.start, row.end)}</code> },
           { key: "name", header: "字段名", render: (row) => <Input aria-label={`片段 ${draft.line.slice(row.start, row.end)} 的字段名`} disabled={disabled} value={row.name} maxLength={100}
-            onChange={(event) => setDraft({ ...draft, pattern: undefined, segments: draft.segments.map((segment) => segment === row ? { ...row, name: event.target.value } : segment) })} /> },
+            onChange={(event) => setDraft({ ...draft, pattern: undefined, manuallyEdited: false, segments: draft.segments.map((segment) => segment === row ? { ...row, name: event.target.value } : segment) })} /> },
           { key: "type", header: "类型", render: (row) => <SelectControl ariaLabel={`字段 ${row.name} 的类型`} disabled={disabled} value={row.type}
             options={(["int", "uint", "hex", "float", "string", "quoted"] as const).map((value) => ({ value, label: value }))}
-            onValueChange={(type) => setDraft({ ...draft, pattern: undefined, segments: draft.segments.map((segment) => segment === row ? { ...row, type } : segment) })} /> },
-          { key: "remove", header: "操作", render: (row) => <Button variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft({ ...draft, pattern: undefined, segments: draft.segments.filter((segment) => segment !== row) })}>移除 {row.name}</Button> }
+            onValueChange={(type) => setDraft({ ...draft, pattern: undefined, manuallyEdited: false, segments: draft.segments.map((segment) => segment === row ? { ...row, type } : segment) })} /> },
+          { key: "remove", header: "操作", render: (row) => <Button variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft({ ...draft, pattern: undefined, manuallyEdited: false, segments: draft.segments.filter((segment) => segment !== row) })}>移除 {row.name}</Button> }
         ]} />
-        <label className="skill-extractor-option"><input type="checkbox" checked={draft.generalizeNumbers} disabled={disabled || draft.pattern !== undefined} onChange={(event) => setDraft({ ...draft, generalizeNumbers: event.target.checked })} />同时泛化未选中的数字（如时间戳）</label>
-        <Button variant="ghost" aria-expanded={draft.advanced} onClick={() => setDraft({ ...draft, advanced: !draft.advanced })}>高级</Button>
+        <label className="skill-extractor-option"><input type="checkbox" checked={draft.generalizeNumbers} disabled={disabled || draft.pattern !== undefined} onChange={(event) => setDraft({ ...draft, generalizeNumbers: event.target.checked })} />泛化未选中的数字（时间戳、计数）</label>
+        <Button variant="link" className="skill-extractor-disclosure" aria-expanded={draft.advanced} onClick={() => setDraft({ ...draft, advanced: !draft.advanced })}>
+          {draft.advanced ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}高级</Button>
         {draft.advanced ? <label>RE2 模式<Textarea className="font-mono" spellCheck={false} disabled={disabled} value={draft.pattern ?? result?.pattern ?? ""} maxLength={512} aria-invalid={!!current?.error}
-          onChange={(event) => setDraft({ ...draft, pattern: event.target.value })} /></label> : result ? <pre className="skill-extractor-line" aria-label="生成模式">{result.pattern}</pre> : null}
-        {draft.pattern !== undefined && draft.segments.length ? <Button variant="outline" onClick={() => setDraft({ ...draft, pattern: undefined })}>按片段重新生成</Button> : null}
+          onChange={(event) => setDraft({ ...draft, pattern: event.target.value, manuallyEdited: true })} /></label> : result ? <pre className="skill-extractor-line" aria-label="生成模式">{result.pattern}</pre> : null}
+        {draft.manuallyEdited ? <p role="status">已手动编辑，模式不再随片段自动生成。</p> : null}
+        {draft.pattern !== undefined && draft.segments.length ? <Button variant="outline" onClick={() => setDraft({ ...draft, pattern: undefined, manuallyEdited: false })}>按片段重新生成</Button> : null}
         <div aria-live="polite">{pending ? <p role="status">正在校验 RE2 并计算覆盖率…</p> : current?.error ? <p role="alert">{current.error}</p> : result ? <>
           <p>命中 {result.matchCount} / {result.totalLines} 行 · 覆盖率 {(result.coverage * 100).toFixed(1)}%</p>
           {lines.length > 500 ? <p>仅对前 500 行计算覆盖率。</p> : null}

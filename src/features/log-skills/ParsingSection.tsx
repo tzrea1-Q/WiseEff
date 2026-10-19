@@ -65,7 +65,7 @@ export function ParsingSection({ skillId, yaml, onChange, disabled, repository, 
       {onProfileChange ? <FormatProfileForm skillId={skillId} profile={profile} onChange={onProfileChange} disabled={disabled} repository={repository} sample={sample}
         onValidityChange={onProfileValidityChange} /> : null}
       <ExtractorBuilder skillId={skillId} parsing={validation.success ? validation.data : null} onChange={(value) => { invalidate(); onChange(stringify(value)); }}
-        disabled={disabled} repository={repository} sampleText={sample ? storedPreview.content : sampleText} selectedLine={selectedLine} onLineSelect={onLineSelect} />
+        disabled={disabled} repository={repository} sampleText={sample ? storedPreview.content : sampleText} selectedLine={selectedLine} onLineSelect={onLineSelect} timestampPattern={profile?.timestampPattern} />
     </TabPanel>
     <TabPanel id={`${id}-code-panel`} aria-labelledby={`${id}-code`} hidden={view !== "code"}>
     <label htmlFor="parsing-yaml">代码视图 · YAML</label>

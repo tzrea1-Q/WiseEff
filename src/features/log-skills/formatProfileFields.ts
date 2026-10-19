@@ -1,8 +1,8 @@
-import { logSkillRevisionDtoSchema } from "@wiseeff/dto-schemas";
+import { validatedLogFormatProfileSchema } from "@wiseeff/dto-schemas";
 import type { SkillSpec } from "./types";
 
 export type FormatProfile = NonNullable<SkillSpec["formatProfile"]>;
-const schema = logSkillRevisionDtoSchema.shape.spec.shape.formatProfile;
+const schema = validatedLogFormatProfileSchema.optional();
 
 export function formatProfileCode(profile: SkillSpec["formatProfile"]): string {
   return profile === undefined ? "" : JSON.stringify(profile, null, 2);

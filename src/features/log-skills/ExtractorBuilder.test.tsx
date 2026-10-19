@@ -12,14 +12,14 @@ import type { SkillSpec, SkillWorkspaceRepository } from "./types";
 afterEach(cleanup);
 const sample = { ...mockSkillSample, content: "charger vbus=9012 ibus=1450 temp=71\ncharger vbus=5000 ibus=700 temp=55\nother state=idle", lineCount: 3 };
 const initial: NonNullable<SkillSpec["parsing"]> = { schemaVersion: "parsing/v1", extractors: [] };
-function setup(spec = initial) {
+function setup(spec = initial, sampleInput = sample, timestampPattern?: string) {
   const save = vi.fn();
   const repository: Partial<SkillWorkspaceRepository> = { generateExtractorPattern: vi.fn(async (_id, input) => generateExtractorPattern(input)) };
   function Harness() {
     const [yaml, setYaml] = useState(stringify(spec));
     const [line, setLine] = useState<number | null>(null);
-    return <><ParsingSection skillId={sample.skillId} yaml={yaml} onChange={(next) => { save(parse(next)); setYaml(next); }} disabled={false} repository={repository} sample={sample} selectedLine={line} onLineSelect={setLine} />
-      <SkillSamplePane skillId={sample.skillId} apiMode canEdit repository={{ getSkillSample: async () => sample }} selectedLine={line} onLineSelect={setLine} /></>;
+    return <><ParsingSection skillId={sampleInput.skillId} yaml={yaml} onChange={(next) => { save(parse(next)); setYaml(next); }} disabled={false} repository={repository} sample={sampleInput} selectedLine={line} onLineSelect={setLine} profile={timestampPattern ? { timestampPattern } : undefined} />
+      <SkillSamplePane skillId={sampleInput.skillId} apiMode canEdit repository={{ getSkillSample: async () => sampleInput }} selectedLine={line} onLineSelect={setLine} /></>;
   }
   render(<Harness />); return { save, repository };
 }
@@ -54,13 +54,36 @@ describe("extractor authoring", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "片段 temp=71" }), { shiftKey: true });
     expect(within(dialog).getByRole("textbox", { name: "片段 9012 ibus=1450 temp=71 的字段名" })).toBeVisible();
     expect(await within(dialog).findByText("命中 2 / 3 行 · 覆盖率 66.7%" )).toBeVisible();
-    fireEvent.click(within(dialog).getByRole("button", { name: "高级" }));
+    const advanced = within(dialog).getByRole("button", { name: "高级" });
+    expect(advanced).toHaveAttribute("aria-expanded", "false");
+    expect(advanced).toHaveAttribute("data-variant", "link");
+    expect(advanced).toHaveClass("skill-extractor-disclosure");
+    fireEvent.click(advanced);
+    expect(advanced).toHaveAttribute("aria-expanded", "true");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "RE2 模式" }), { target: { value: "(?=bad)" } });
+    expect(within(dialog).getByText("已手动编辑，模式不再随片段自动生成。")).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "保存抽取规则" })).toBeDisabled();
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/invalid|unsupported|syntax/i);
     fireEvent.change(within(dialog).getByRole("textbox", { name: "RE2 模式" }), { target: { value: "^other state=(?P<state>\\S+)$" } });
     expect(await within(dialog).findByText("命中 1 / 3 行 · 覆盖率 33.3%" )).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "保存抽取规则" })).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "按片段重新生成" }));
+    expect(within(dialog).queryByText("已手动编辑，模式不再随片段自动生成。")).not.toBeInTheDocument();
+    expect(await within(dialog).findByText("命中 2 / 3 行 · 覆盖率 66.7%" )).toBeVisible();
+  });
+  it("generalizes timestamp metadata by default for the walkthrough sample", async () => {
+    const content = "thermal foldback: temp=71\n[  101.600000] charger: vbus=9012 ibus=1450 temp=71\ncharger: vbus=9012 ibus=800 temp=71\n";
+    const { repository } = setup(initial, { ...sample, content, lineCount: 3 }, "^\\[\\s*(\\d+\\.\\d+)\\]");
+    await userEvent.click(await screen.findByRole("button", { name: /选择样例第 2 行/ }));
+    fireEvent.click(screen.getByRole("button", { name: "从此行创建抽取规则" }));
+    const dialog = screen.getByRole("dialog");
+    const checkbox = within(dialog).getByRole("checkbox", { name: "泛化未选中的数字（时间戳、计数）" });
+    expect(checkbox).toBeChecked();
+    for (const token of ["vbus=9012", "ibus=1450", "temp=71"]) fireEvent.click(within(dialog).getByRole("button", { name: `片段 ${token}` }));
+    expect(await within(dialog).findByText("命中 2 / 3 行 · 覆盖率 66.7%" )).toBeVisible();
+    expect(repository.generateExtractorPattern).toHaveBeenLastCalledWith(sample.skillId, expect.objectContaining({ timestampPattern: "^\\[\\s*(\\d+\\.\\d+)\\]", generalizeNumbers: true }));
+    fireEvent.click(checkbox);
+    expect(await within(dialog).findByText("命中 1 / 3 行 · 覆盖率 33.3%" )).toBeVisible();
   });
   it("edits existing patterns while preserving file filters, multiline rules and richer field definitions", async () => {
     const spec = { ...initial, extractors: [{ id: "status", files: ["*.log"], pattern: "^other state=(?P<state>\\S+)$", fields: { state: { type: "enum" as const, values: { idle: "idle" } } }, multiline: { start: "^other", maxLines: 2 } }] };
@@ -68,6 +91,7 @@ describe("extractor authoring", () => {
     fireEvent.click(screen.getByRole("button", { name: "编辑 status" }));
     const dialog = screen.getByRole("dialog");
     expect(await within(dialog).findByText("命中 1 / 3 行 · 覆盖率 33.3%" )).toBeVisible();
+    expect(within(dialog).queryByText("已手动编辑，模式不再随片段自动生成。")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "保存抽取规则" }));
     expect(save.mock.lastCall![0]).toEqual(spec);
   });

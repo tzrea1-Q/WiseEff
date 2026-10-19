@@ -24,13 +24,13 @@ export const PARSE_PREVIEW_MAX_LINES = 5000;
 
 export async function previewLogSkillExtractor(db: Queryable, auth: AuthContext, skillId: string, input: ExtractorPatternInput) {
   await requirePreviewSkill(db, auth, skillId);
-  try { return generateExtractorPattern(input); }
+  try { return runInNewContext("preview()", { preview: () => generateExtractorPattern(input) }, { timeout: PARSE_PREVIEW_MAX_MS }) as ReturnType<typeof generateExtractorPattern>; }
   catch (error) { throw new ApiError("VALIDATION_FAILED", error instanceof Error ? error.message : String(error)); }
 }
 
 export async function previewLogSkillFormat(db: Queryable, auth: AuthContext, skillId: string, input: Parameters<typeof previewLogFormat>[0]) {
   await requirePreviewSkill(db, auth, skillId);
-  try { return previewLogFormat(input); }
+  try { return runInNewContext("preview()", { preview: () => previewLogFormat(input) }, { timeout: PARSE_PREVIEW_MAX_MS }) as ReturnType<typeof previewLogFormat>; }
   catch (error) { throw new ApiError("VALIDATION_FAILED", error instanceof Error ? error.message : String(error)); }
 }
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RE2JS } from "re2js";
 import type { Queryable } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import * as domains from "./domainsRepository";
@@ -31,6 +32,25 @@ describe("parsing preview service bounds", () => {
     skill();
     await expect(previewLogSkillExtractor(db, auth, "skill", { line: "", segments: [], pattern: "(?=x)", sampleLines: [] })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     await expect(previewLogSkillFormat(db, auth, "skill", { sampleText: "x", formatProfile: { timestampPattern: "(?=x)" } })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+  it("hard-stops format and extractor preview compilation at the request time budget", async () => {
+    skill();
+    const original = RE2JS.compile;
+    const delay = (source: string, flags?: number) => {
+      const end = performance.now() + 400;
+      while (performance.now() < end) { /* Simulate costly RE2 compilation beyond the source/program caps. */ }
+      return original(source, flags);
+    };
+    const compile = vi.spyOn(RE2JS, "compile");
+    for (const preview of [
+      () => previewLogSkillFormat(db, auth, "skill", { sampleText: "ERROR", formatProfile: { severityMap: { error: ["ERROR"] } } }),
+      () => previewLogSkillExtractor(db, auth, "skill", { line: "n=1", segments: [], pattern: "^n=(?P<n>\\d+)$", sampleLines: ["n=1"] })
+    ]) {
+      compile.mockImplementationOnce(delay);
+      const start = performance.now();
+      await expect(preview()).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringMatching(/timed out.*100ms/) });
+      expect(performance.now() - start).toBeLessThan(350);
+    }
   });
   it("keeps preview limits independent of worker environment settings", async () => {
     skill();

@@ -259,6 +259,14 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
       const formatPath = `/api/v1/log-skills/${skill.id}/format-preview`;
       const extractorInput = { line: "vbus=9012", segments: [{ start: 5, end: 9, name: "voltage", type: "uint" }], sampleLines: ["vbus=5000", "ibus=5000"] };
       const formatInput = { sampleText: "[12] ERROR bad\n  detail\n[13] INFO ready", formatProfile: { timestampPattern: "^\\[(\\d+)\\]", multiline: { mode: "indent" } } };
+      const oversizedProgram = `(?:${"a".repeat(1000)}){1000}`;
+      const unsafeProfile = { severityMap: { error: Array(4).fill(oversizedProgram) } };
+      expect(await request(formatPath, { sampleText: "a", formatProfile: unsafeProfile })).toMatchObject({ status: 400,
+        body: { error: { code: "VALIDATION_FAILED", message: expect.stringContaining("severityMap.error[0]") } } });
+      expect(await request(`/api/v1/log-skills/${skill.id}/draft`, {
+        spec: { schemaVersion: "skill/v1", formatProfile: unsafeProfile }, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id
+      }, "PUT")).toMatchObject({ status: 400,
+        body: { error: { details: { issues: [expect.objectContaining({ path: ["spec", "formatProfile", "severityMap", "error", 0] })] } } } });
       expect(await request(extractorPath, extractorInput)).toMatchObject({ status: 200, body: {
         pattern: "^vbus=(?P<voltage>\\d+)$", fields: { voltage: { type: "uint" } }, matchCount: 1, coverage: 0.5,
         matchedLines: [{ line: 1, text: "vbus=5000" }]

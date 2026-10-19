@@ -57,3 +57,4 @@ export * from "./canonicalManualSync";
 export * from "./productFeedback";
 export * from "./sourceRevision";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
+export { validatedLogFormatProfileSchema } from "../../logs/formatProfile";
