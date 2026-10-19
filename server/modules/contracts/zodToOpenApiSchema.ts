@@ -23,6 +23,10 @@ function unwrap(schema: ZodTypeAny): { inner: ZodTypeAny; optional: boolean; nul
       inner = inner._def.schema as ZodTypeAny;
       continue;
     }
+    if (typeName === "ZodPipeline") {
+      inner = inner._def.out as ZodTypeAny;
+      continue;
+    }
     break;
   }
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { validatedLogFormatProfileSchema } from "./formatProfile";
 import { withLogPatternBudget } from "./patternBudget";
 import { signalRuleSetSchema } from "./signalRules";
-import { parsingSpecSchema } from "./parsing/spec";
+import { parsingSpecSchema, type FieldSpec } from "./parsing/spec";
 import { MAX_LOG_PATTERN_LENGTH } from "./adminPattern";
 import { compileSourceStatementPattern, MAX_STATEMENT_PATTERNS } from "./sourceStatements";
 
@@ -24,6 +24,23 @@ export const logSkillSpecSchema = withLogPatternBudget(z.object({
     })).max(MAX_STATEMENT_PATTERNS).optional()
   }).strict().optional(),
   signalRules: signalRuleSetSchema.optional()
-}).strict(), "skill");
+}).strict().superRefine((spec, ctx) => {
+  const fields = new Map<string, FieldSpec>(spec.parsing?.extractors.flatMap((extractor) =>
+    Object.entries(extractor.fields).map(([name, field]) => [`${extractor.id}.${name}`, field] as const)) ?? []);
+  spec.signalRules?.rules.forEach((rule, ruleIndex) => rule.anyOf.forEach((input, conditionIndex) => {
+    const condition = input.type === "window" ? input.condition : input;
+    if (condition.type !== "field") return;
+    const path = ["signalRules", "rules", ruleIndex, "anyOf", conditionIndex, ...(input.type === "window" ? ["condition"] : [])];
+    const field = fields.get(condition.field);
+    const issue = (key: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, key], message });
+    if (!field) { issue("field", "Unknown extracted field"); return; }
+    if (field.type === "hexbytes" || field.type === "base64bytes") { issue("field", "Signal comparisons require a scalar extracted field"); return; }
+    const numeric = ["int", "uint", "float"].includes(field.type);
+    if (condition.operator === "range" && !numeric) issue("operator", "Ranges require a numeric extracted field");
+    const expected = numeric ? "number" : field.type === "bool" ? "boolean" : "string";
+    if (condition.operator === "equals" && typeof condition.value !== expected) issue("value", `Expected a ${expected} comparison value`);
+    if (condition.operator === "in" && condition.values?.some((value) => typeof value !== expected)) issue("values", `Expected ${expected} set members`);
+  }));
+}), "skill");
 
 export type LogSkillSpec = z.infer<typeof logSkillSpecSchema>;

@@ -16,6 +16,7 @@ import { LogAnalysisProviderError, LOG_ANALYSIS_PROMPT_VERSION } from "./analyze
 import { readStoredLogFormatProfile } from "./formatProfile";
 import { sanitizeFileName, sanitizePathSegment, type ObjectStore } from "./objectStore";
 import { parseLogText } from "./parser";
+import { createSignalEvaluationBudget, withSignalFields } from "./signalRules";
 import {
   completeLogAnalysisJobWithReport,
   persistLogDecodedArtifact,
@@ -305,11 +306,13 @@ async function processClaimedLogAnalysisJob(
     }
     if (!inventory.length) inventory.push({ path: snapshot.fileName, objectKey: snapshot.storageKey,
       sizeBytes: 0, lineCount: 0, status: "analyzed", encoding: "utf-8", lossy: false, skipReason: null });
-    const prefilterBudget = createPrefilterBudget();
+    // One allowance includes the initial prefilter, decoding, and signal extraction.
+    const preprocessingDeadline = performance.now() + Math.min(preprocessingMs, lease.remainingMs());
+    const prefilterBudget = createPrefilterBudget(createSignalEvaluationBudget(preprocessingDeadline));
     const prepare = (file: typeof inventory[number]) => {
       const reader = createLogFileReader(objectStore, file, formatProfile,
         () => lease.run(() => ensureStoredLogIndex(db, objectStore, snapshot.organizationId, snapshot.logId, file)));
-      const entries = reader.entries();
+      const entries = reader.entries({ deadline: preprocessingDeadline });
       const first = entries.next();
       // A later file may fail while the current file is still being consumed.
       void first.catch(() => undefined);
@@ -338,7 +341,8 @@ async function processClaimedLogAnalysisJob(
         const legacy = parseLogText({ fileName: hadInventory ? "decoded.log" : snapshot.fileName,
           content }, { profile: formatProfile });
         if (!legacy.ok) throw new Error(legacy.reason);
-        files.push({ ...entry, lineCount: legacy.rawLines.length, parsed: legacy });
+        const prefilter = await prefilterLogStream((async function* () { yield* legacy.entries; })(), signalRules, prefilterBudget);
+        files.push({ ...entry, lineCount: legacy.rawLines.length, parsed: legacy, prefilter });
         continue;
       }
       const { reader, entries, first } = pending.get(fileIndex)!;
@@ -376,17 +380,6 @@ async function processClaimedLogAnalysisJob(
     currentFailureReason = "unknown";
 
     lease.signal.throwIfAborted();
-    // One allowance for signals + decoding; heartbeats cannot replenish it.
-    const preprocessingDeadline = performance.now() + Math.min(preprocessingMs, lease.remainingMs());
-    let signalSummary: NonNullable<AnalyzeLogInput["signalSummary"]>;
-    try {
-      signalSummary = await lease.run(() => extractLogSignalsCooperatively(files, signalRules,
-        { maxMs: Math.min(logSignalLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now())) }));
-    } catch {
-      lease.signal.throwIfAborted();
-      signalSummary = { signals: [], templates: [], truncatedSignals: false, truncatedTemplates: false, truncated: true, reason: "extraction_error" };
-    }
-
     let decoding: AnalyzeLogInput["decoding"];
     let decodedArtifact: { objectKey: string | null; counts: DecodeCounts } | undefined;
     if (snapshot.parsing?.extractors.length) {
@@ -423,6 +416,48 @@ async function processClaimedLogAnalysisJob(
     // Query cursors require extractor/completion order; evidence needs direct file/line lookup.
     // The array and index share event objects (no field/raw-value copies).
     const eventsByLine = indexDecodedEvents(decoding?.events ?? []);
+    const usesFields = signalRules?.rules.some((rule) => rule.anyOf.some((condition) =>
+      condition.type === "field" || condition.type === "window" && condition.condition.type === "field"));
+    if (usesFields) {
+      const budget = createPrefilterBudget(prefilterBudget.evaluation);
+      for (const file of analyzed) {
+        const enrich = (entry: Parameters<typeof withSignalFields>[0]) => withSignalFields(entry, eventsByLine.get(JSON.stringify([file.path, entry.lineNumber])));
+        file.parsed!.entries = file.parsed!.entries.map(enrich);
+        {
+          const complete = file.prefilter!;
+          const refined = await lease.run(() => prefilterLogStream((async function* () {
+            if (file.reader) for await (const entry of file.reader.entries({ deadline: preprocessingDeadline })) yield enrich(entry);
+            else yield* file.parsed!.entries;
+          })(), signalRules, budget));
+          // A bounded second pass must not erase text evidence collected before decoding.
+          const evidence = signalRules!.rules.flatMap((rule) => {
+            const before = complete.evidence.find((item) => item.ruleHit === rule.id);
+            const after = refined.evidence.find((item) => item.ruleHit === rule.id);
+            const item = after ?? before;
+            return item ? [{ ...item, lineNumbers: [...new Set([...(before?.lineNumbers ?? []), ...(after?.lineNumbers ?? [])])].sort((a, b) => a - b).slice(0, 2000) }] : [];
+          });
+          file.prefilter = { ...complete, evidence, ruleHits: evidence.map((item) => item.ruleHit!),
+            anomalyLineNumbers: [...new Set([...complete.anomalyLineNumbers, ...refined.anomalyLineNumbers])].sort((a, b) => a - b).slice(0, 2000),
+            hasErrorEvidence: complete.hasErrorEvidence || refined.hasErrorEvidence, truncated: complete.truncated || refined.truncated };
+        }
+      }
+    }
+    let signalSummary: NonNullable<AnalyzeLogInput["signalSummary"]>;
+    try {
+      signalSummary = await lease.run(() => extractLogSignalsCooperatively(files, signalRules,
+        { eventsByLine, evaluation: prefilterBudget.evaluation, maxMs: Math.min(logSignalLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now())) }));
+    } catch {
+      lease.signal.throwIfAborted();
+      signalSummary = { signals: [], templates: [], truncatedSignals: false, truncatedTemplates: false, truncated: true, reason: "extraction_error" };
+    }
+    if (analyzed.some((file) => file.prefilter?.truncated)) {
+      signalSummary.truncated = true;
+      signalSummary.reason ??= performance.now() >= preprocessingDeadline ? "time_cap" : "extraction_error";
+    }
+    if (usesFields && (!decoding || ["time_cap", "line_cap", "match_input_cap", "event_cap"].some((code) => decoding.counts.errors[code]))) {
+      signalSummary.truncated = true;
+      signalSummary.reason = decoding?.counts.errors.time_cap ? "time_cap" : decoding?.counts.errors.line_cap || decoding?.counts.errors.match_input_cap ? "line_cap" : "extraction_error";
+    }
 
     await markProgress(options, {
       organizationId: snapshot.organizationId,
@@ -490,7 +525,7 @@ async function processClaimedLogAnalysisJob(
         procedure: snapshot.procedure,
         decoding,
         sourceSnapshot: snapshot.sourceSnapshot,
-        files: hadInventory || objectStore.getStream ? files : undefined,
+        files,
         filePath: analyzed[0].path,
         signalRules,
         parsed,

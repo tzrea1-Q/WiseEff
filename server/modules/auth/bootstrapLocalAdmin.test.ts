@@ -62,10 +62,10 @@ describe.skipIf(!databaseAvailable)("bootstrapLocalAdmin", () => {
     );
     expect(binding.rows).toEqual([{ role_id: "admin", project_id: null }]);
     const audit = await db.query<{ kind: string; action: string }>(
-      `select kind, action from audit_events where organization_id = $1`,
+      `select kind, action from audit_events where organization_id = $1 order by kind`,
       [result.organizationId]
     );
-    expect(audit.rows).toEqual([{ kind: "auth-event", action: "bootstrap-admin" }]);
+    expect(audit.rows).toEqual([{ kind: "auth-event", action: "bootstrap-admin" }, { kind: "log-skill-create", action: "log-skill-create" }]);
   });
 
   it("rejects bootstrap when an admin already exists", async () => {

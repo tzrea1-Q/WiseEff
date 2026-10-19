@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema } from "../../logs/schemas";
 import { logSkillSpecSchema } from "../../logs/skillSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
+import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
 import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
 
@@ -76,6 +77,8 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogParsePreviewRequest: parsePreviewRequestSchema,
   LogParsePreviewResponse: parsePreviewResponseSchema,
+  LogSignalPreviewRequest: signalPreviewRequestSchema,
+  LogSignalPreviewResponse: signalPreviewResponseSchema,
   LogExtractorPreviewRequest: extractorPreviewRequestSchema,
   LogExtractorPreviewResponse: extractorPreviewResponseSchema,
   LogFormatPreviewRequest: formatPreviewRequestSchema,
@@ -193,6 +196,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.listSkills", "logs.createSkill", "logs.getSkill", "logs.saveSkillDraft", "logs.discardSkillDraft", "logs.restoreSkillRevision", "logs.publishSkill", "logs.listSkillRevisions", "logs.getSkillRevision",
   "logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample",
   "logs.parsePreview",
+  "logs.signalPreview",
   "logs.extractorPreview", "logs.formatPreview",
   "logs.getTrace", "logs.startDryRun", "logs.getDryRun", "logs.getDryRunLines",
   "logs.listSourceSnapshots", "logs.listSourceVersions", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot", "logs.locateSourceStatement", "logs.sourceEvidence",

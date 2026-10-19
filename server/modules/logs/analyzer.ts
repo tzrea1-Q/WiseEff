@@ -127,9 +127,9 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
 
       const output: AnalyzeLogOutput = {
         confidence: choose(matchedRules.map((rule) => rule.analysis.confidence), defaults.confidence),
-        conclusion: choose(matchedRules.map((rule) => rule.analysis.conclusion), defaults.conclusion),
+        conclusion: choose(matchedRules.map((rule) => rule.analysis.conclusion ?? (rule.name ? { value: rule.name, priority: 0 } : undefined)), defaults.conclusion),
         impact: choose(matchedRules.map((rule) => rule.analysis.impact), defaults.impact),
-        severity: choose(matchedRules.map((rule) => rule.analysis.severity), matchedRules.length === 0 && generic.some((signal) => signal.severity === "Critical") ? "Critical" : defaults.severity),
+        severity: choose(matchedRules.map((rule) => rule.severity ? { value: rule.severity, priority: ["Critical", "Warning", "Info"].indexOf(rule.severity) } : rule.analysis.severity), matchedRules.length === 0 && generic.some((signal) => signal.severity === "Critical") ? "Critical" : defaults.severity),
         evidence,
         suggestedActions: [...new Set([...defaults.suggestedActions, ...actions.map((action) => action.value)])],
         reportContext: {

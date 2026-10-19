@@ -47,9 +47,9 @@ function* patterns(value: unknown, kind: BudgetKind): Generator<PatternSource> {
   if (kind !== "parsing" && Array.isArray(signals.rules)) for (const [index, value] of signals.rules.entries()) {
     const rule = object(value);
     if (Array.isArray(rule.anyOf)) for (const [conditionIndex, value] of rule.anyOf.entries()) {
-      const condition = object(value);
+      const input = object(value), condition = input.type === "window" ? object(input.condition) : input;
       if (condition.type === "text" && typeof condition.pattern === "string") yield {
-        source: condition.pattern, path: [...signalPrefix, "rules", index, "anyOf", conditionIndex, "pattern"]
+        source: condition.pattern, path: [...signalPrefix, "rules", index, "anyOf", conditionIndex, ...(input.type === "window" ? ["condition"] : []), "pattern"]
       };
     }
   }

@@ -5,6 +5,7 @@ import { createAuditEvent } from "../audit/repository";
 import { resolveBootstrapOrganization } from "./evaluationOrganization";
 import { hashLocalAccountPassword, validateLocalAccountPassword, validateLocalAccountUsername } from "./localAccountCredentials";
 import { seedBaselineAuthCatalog } from "./baselineCatalog";
+import { provisionChargingSkill } from "../logs/provisionChargingSkill";
 
 export type BootstrapLocalAdminInput = {
   name: string;
@@ -87,6 +88,7 @@ export async function bootstrapLocalAdmin(
         [organization.id, organization.name]
       );
     }
+    await provisionChargingSkill(tx, organization.id);
     await tx.query(
       `
       insert into users (id, organization_id, name, title, is_active, last_active_at)

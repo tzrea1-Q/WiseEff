@@ -13,6 +13,7 @@ export type ParsedLogEntry = {
   severity: ParsedLogSeverity;
   message: string;
   tokens: Record<string, string>;
+  signalFields?: Record<string, string | number | boolean>;
 };
 
 export type ParseLogTextInput = {

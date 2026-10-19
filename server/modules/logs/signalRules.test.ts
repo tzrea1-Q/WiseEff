@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { createRuleBasedLogAnalyzer } from "./analyzer";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import type { ParsedLogEntry } from "./parser";
-import { collectRuleEvidence, runLogPrefilter } from "./prefilter";
-import { compileSignalCondition, signalRuleSetSchema, type SignalRuleSet } from "./signalRules";
+import { collectRuleEvidence, createPrefilterBudget, prefilterLogStream, runLogPrefilter } from "./prefilter";
+import { compileSignalCondition, compileSignalRules, createSignalEvaluationBudget, SIGNAL_RULE_LIMITS, signalRuleSetSchema, type SignalRuleSet } from "./signalRules";
 
 const entry = (overrides: Partial<ParsedLogEntry> = {}): ParsedLogEntry => ({
   lineNumber: 1, severity: "info", message: "nominal", tokens: {}, ...overrides
@@ -86,6 +86,53 @@ describe("signal conditions", () => {
 });
 
 describe("signal rule schema", () => {
+  it.each([
+    ["rules", ["rules"]], ["conditions", ["rules", 0, "anyOf"]], ["windows", ["rules", 1, "anyOf", 0]]
+  ] as const)("rejects excess %s with a stable error path", (kind, path) => {
+    const data = structuredClone(defaultChargingRuleSet);
+    const rule = data.rules[0];
+    if (kind === "rules") data.rules = Array.from({ length: 65 }, (_, i) => ({ ...rule, id: `rule-${i}` }));
+    if (kind === "conditions") rule.anyOf = Array.from({ length: 17 }, () => ({ type: "text", pattern: "x" }));
+    if (kind === "windows") {
+      const window = { type: "window" as const, condition: { type: "text" as const, pattern: "x" }, count: 10_000, seconds: 1 };
+      rule.anyOf = Array.from({ length: 16 }, () => window);
+      data.rules[1].anyOf = [window];
+    }
+    const result = signalRuleSetSchema.safeParse(data);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ path: [...path] }));
+  });
+
+  it("bounds the worst allowed skill to 1.28 MB of rings and a shared evaluation allowance", async () => {
+    const rule = defaultChargingRuleSet.rules[0];
+    const data: SignalRuleSet = { ...defaultChargingRuleSet, rules: Array.from({ length: 64 }, (_, i) => ({ ...rule, id: `rule-${i}`,
+      anyOf: Array.from({ length: 16 }, () => i === 0
+        ? { type: "window" as const, condition: { type: "text" as const, pattern: "x" }, count: 10_000, seconds: 86400 }
+        : { type: "text" as const, pattern: "never" }) })) };
+    expect(signalRuleSetSchema.safeParse(data).success).toBe(true);
+    const allocated = process.memoryUsage().arrayBuffers;
+    const compiled = compileSignalRules(data);
+    expect(process.memoryUsage().arrayBuffers - allocated).toBeLessThanOrEqual(SIGNAL_RULE_LIMITS.windowTimestamps * 8 + 65536);
+    expect(compiled).toHaveLength(64);
+    const budget = createPrefilterBudget(createSignalEvaluationBudget(performance.now() + 5000));
+    const started = performance.now();
+    const result = await prefilterLogStream((async function* () {
+      for (let i = 0; i < 10_000; i++) yield entry({ lineNumber: i + 1, message: "x", timestamp: "2026-01-01T00:00:00Z" });
+    })(), data, budget);
+    expect(result.truncated).toBe(true);
+    expect(budget.evaluation.remaining).toBeLessThan(0);
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(Object.values(result.severityCounts).reduce((a, b) => a + b, 0)).toBeLessThan(10_000);
+  }, 10_000);
+
+  it("shares deadline/evaluation exhaustion across initial and subsequent prefilter passes", async () => {
+    let now = 0;
+    const budget = createPrefilterBudget(createSignalEvaluationBudget(5, 100, () => now));
+    const stream = () => (async function* () { yield entry({ message: "thermal" }); now = 5; yield entry({ message: "thermal" }); })();
+    expect(await prefilterLogStream(stream(), defaultChargingRuleSet, budget)).toMatchObject({ truncated: true, evidence: [{ lineNumbers: [1] }] });
+    expect(await prefilterLogStream(stream(), defaultChargingRuleSet, budget)).toMatchObject({ truncated: true, evidence: [] });
+    expect(await prefilterLogStream(stream(), { ...defaultChargingRuleSet, rules: [] }, budget)).toMatchObject({ truncated: true, severityCounts: { error: 0, warn: 0, info: 0 } });
+  });
   it("round-trips the charging data through JSON and zod", () => {
     expect(signalRuleSetSchema.parse(JSON.parse(JSON.stringify(defaultChargingRuleSet)))).toEqual(defaultChargingRuleSet);
   });
