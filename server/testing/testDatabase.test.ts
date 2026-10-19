@@ -33,13 +33,13 @@ describe("test database query scheduling", () => {
   it("serializes concurrent service queries on the transaction client", async () => {
     let activeQueries = 0;
     let maximumConcurrentQueries = 0;
-    const execute = vi.fn(async <Row>(text: string): Promise<QueryResult<Row>> => {
+    const execute = async <Row,>(text: string): Promise<QueryResult<Row>> => {
       activeQueries += 1;
       maximumConcurrentQueries = Math.max(maximumConcurrentQueries, activeQueries);
       await new Promise<void>((resolve) => queueMicrotask(resolve));
       activeQueries -= 1;
       return { rows: [{ text }] as Row[], rowCount: 1 };
-    });
+    };
     const queryable = createSerializedTestQueryable(execute);
 
     const results = await Promise.all([
@@ -425,7 +425,7 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
     let latePid = 0;
     let close: Promise<void> | undefined;
     const gatedAdmin = {
-      query: async <Row,>(text: string, values?: unknown[]) => {
+      query: async <Row extends pg.QueryResultRow,>(text: string, values?: unknown[]) => {
         if (text.startsWith("drop database") && !injected) {
           injected = true;
           await late.connect();
@@ -459,7 +459,7 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
     let injected = false;
     let close: Promise<void> | undefined;
     const gatedAdmin = {
-      query: async <Row,>(text: string, values?: unknown[]) => {
+      query: async <Row extends pg.QueryResultRow,>(text: string, values?: unknown[]) => {
         if (text.startsWith("drop database") && !injected) {
           injected = true;
           await late.connect();
@@ -497,6 +497,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     const thirdReady = new Promise<void>((resolve) => { thirdCopied = resolve; });
     let third: ReturnType<typeof createEphemeralTestDatabase> | undefined;
     let restoreQuery: (() => void) | undefined;
+    let cleanupFailure: PromiseRejectedResult | undefined;
     const first = withTestClusterRoleCatalogLock(() => withTempDatabase({ prefix: "parallelfirst" }, async () => {
       firstEntered();
       await firstGate;
@@ -504,7 +505,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     try {
       await Promise.race([firstReady, first]);
       await withTempDatabase({ prefix: "parallelsecond" }, async ({ db }) => {
-        expect((await db.query("select count(*)::int as n from schema_migrations")).rows[0].n).toBeGreaterThan(0);
+        expect((await db.query<{ n: number }>("select count(*)::int as n from schema_migrations")).rows[0].n).toBeGreaterThan(0);
         const original = pg.Client.prototype.query;
         const spy = vi.spyOn(pg.Client.prototype, "query").mockImplementation(function (this: pg.Client, sql: unknown, values?: unknown) {
           const result = Reflect.apply(original, this, [sql, values]);
@@ -536,16 +537,12 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     } finally {
       releaseThird();
       releaseFirst();
-      try {
-        const outcomes = await Promise.allSettled([first, third?.then((database) => database.drop())]);
-        for (const outcome of outcomes) {
-          if (outcome.status === "rejected") throw outcome.reason;
-        }
-      } finally {
-        restoreQuery?.();
-        vi.unstubAllEnvs();
-      }
+      const outcomes = await Promise.allSettled([first, third?.then((database) => database.drop())]);
+      restoreQuery?.();
+      vi.unstubAllEnvs();
+      cleanupFailure = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
     }
+    if (cleanupFailure) throw cleanupFailure.reason;
   });
   it("defaults to a complete clone and releases the template lock before the callback", async () => {
     const applicationName = `template_callback_${process.pid}`;
@@ -556,7 +553,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
       );
       await withTempDatabase({ prefix: "tpldefault" }, async ({ db, connectionString }) => {
         expect(isEphemeralTestDatabaseName(new URL(connectionString).pathname.slice(1))).toBe(true);
-        expect((await db.query("select count(*)::int as count from schema_migrations")).rows[0].count).toBeGreaterThan(0);
+        expect((await db.query<{ count: number }>("select count(*)::int as count from schema_migrations")).rows[0].count).toBeGreaterThan(0);
         expect((await db.query("select name, checksum, applied_at from schema_migrations order by name")).rows)
           .toEqual(receipts);
         expect(await applyTestMigrations(db, migrationsDir)).toEqual([]);
@@ -734,7 +731,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
         name = this.database;
         return Promise.reject(new Error("template connect probe"));
       }
-      return original.call(this);
+      return (original as (this: pg.Client) => Promise<pg.Client>).call(this);
     });
     try {
       await expect(withTempDatabase({ prefix: "setupf", migrate: "template" }, async () => {
@@ -751,7 +748,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     await withTestClusterRoleCatalogLock(async () => {
       await Promise.all(["outertpl1", "outertpl2"].map((prefix) =>
         withTempDatabase({ prefix, migrate: "template" }, async ({ db }) => {
-          expect((await db.query("select count(*)::int as n from schema_migrations")).rows[0].n).toBeGreaterThan(0);
+          expect((await db.query<{ n: number }>("select count(*)::int as n from schema_migrations")).rows[0].n).toBeGreaterThan(0);
         })
       ));
       await expect(withTestClusterRoleCatalogLock(async () => undefined)).rejects.toThrow("Nested test cluster role catalog lease");
