@@ -41,7 +41,7 @@ export const S2_SCH_0181_FINGERPRINT =
 export const S2_SCH_0182_FINGERPRINT =
   "2ab9046e3ceb66ab9f91b1d7eb96e5d929f9b25f8b3fda0bb0c190fcac761fd5";
 
-/** Current 0200 whole-source review stage; unpublished 0190–0192 source migrations were renumbered on integration. */
+/** Current 0201 whole-source review stage; unpublished 0190–0192 source migrations were renumbered on integration. */
 export const S2_SCH_LIVE_FINGERPRINT =
   "abb616c58e3dfd3d7b7b95f73f5d9ae1f1c9aadbf47ee31f3513c1e2914a5682";
 

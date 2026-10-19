@@ -24,6 +24,19 @@ For an address or message-id register dump, add a register map, choose the selec
 
 The sample pane stays on the right while editing. Select a matching sample line to preview the unsaved spec through the server; the bit bar displays each field's decoded value and enum meaning. For `addr=0x0C val=0x20` using BQ25890 REG0C, `CHRG_FAULT` is 2 (`thermal_shutdown`), `WATCHDOG_FAULT` is 0 and `NTC_FAULT` is 0. Signed fields use two's complement before scale and offset; units appear with the physical value. Save and publish when the preview matches the datasheet. In completed reports, cited lines show the raw register value and its nested decoded fields with meanings and units.
 
+## Link knowledge to a skill
+
+Open a skill in `/log-admin?tab=skills` and choose Knowledge. The list shows each linked entry's title, publication status, current revision and update time. Choose Unlink to remove an entry from the skill draft; this does not delete the knowledge entry.
+
+Entries you cannot read appear with a restricted-entry label and their id; titles, tags, status, revision and update time remain hidden. Log administration does not grant knowledge access. Report sources also hide revision ids for unreadable entries while retaining the recorded entry ids.
+
+- Choose Link existing entry to search published entries in your Organization and add them to the draft. Entries from another Organization cannot be linked.
+- Choose Upload Markdown, or drop several `.md` files into the upload area, to create knowledge-base drafts and link them to the skill draft. This uses the normal knowledge creation workflow and audit. Review and publish each entry in Knowledge base before analysis can retrieve it; uploading does not publish it automatically.
+- Review each pending file's size and validation message, and remove unwanted files before submitting. Each file must be `.md`, at most 20 MiB and 200,000 characters. If some files fail, the dialog keeps their reasons and the successful results; retrying creates only the failed files.
+- Upload requires `knowledge:edit` in addition to skill-administration permission. Without it, the disabled action explains the missing permission. Linking existing published entries does not grant knowledge-editing permission.
+
+Save and publish the skill draft to make its link set available to new analyses. A run uses the entries linked by its pinned skill revision, so later skill edits cannot change that set. Unpublished and archived knowledge is excluded from retrieval. The report's source information records the entry and revision ids actually returned during analysis, rather than treating every linked entry as used. Later knowledge edits do not rewrite that run's recorded sources.
+
 ## Upload a log and choose its domain
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".

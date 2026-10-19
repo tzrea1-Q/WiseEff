@@ -16,6 +16,7 @@ export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
   const overview = fields({ description: a.description, modelOverride: a.modelOverride },
     { description: b.description, modelOverride: b.modelOverride });
   const procedure = fields({ procedure: a.procedure }, { procedure: b.procedure });
+  const knowledge = fields({ knowledgeEntryIds: a.knowledgeEntryIds ?? [] }, { knowledgeEntryIds: b.knowledgeEntryIds ?? [] });
   const source = fields({ defaultSourceSnapshotId: a.defaultSourceSnapshotId, statementPatterns: a.source?.statementPatterns },
     { defaultSourceSnapshotId: b.defaultSourceSnapshotId, statementPatterns: b.source?.statementPatterns });
   const format = buildTextDiffLines(specJson(a.formatProfile), specJson(b.formatProfile));
@@ -34,7 +35,8 @@ export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
     const left = parsingBefore.get(id), right = parsingAfter.get(id), changes = fields(left ?? {}, right ?? {});
     return changes.length ? [{ id, kind: !left ? "added" as const : !right ? "removed" as const : "changed" as const, fields: changes }] : [];
   });
-  return { overview, procedure, source, format, rules, signalSettings, parsing, counts: {
+  return { overview, procedure, knowledge, source, format, rules, signalSettings, parsing, counts: {
+    knowledge: knowledge.length,
     source: source.length, overview: overview.length, procedure: procedure.length, format: format.filter((line) => line.kind !== "equal").length,
     added: rules.filter((rule) => rule.kind === "added").length,
     changed: rules.filter((rule) => rule.kind === "changed").length,

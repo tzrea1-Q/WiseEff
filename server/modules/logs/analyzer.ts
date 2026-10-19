@@ -14,6 +14,8 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type AnalyzeLogInput = {
+  knowledgeEntryIds?: string[];
+  onKnowledgeRetrieved?: (revisions: Array<{ entryId: string; revisionId: string }>) => void;
   signal?: AbortSignal;
   signalSummary?: LogSignalSummary;
   /** Untrusted diagnostic guidance from this run's immutable skill revision. */

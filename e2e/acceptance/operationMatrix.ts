@@ -912,6 +912,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "LOG-SKILL-KNOWLEDGE-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin/skills/:skillId",
+    roles: ["Admin"],
+    action: "List and unlink skill-draft knowledge, search published entries, upload multiple Markdown files as knowledge drafts, and explain disabled uploads without knowledge-edit permission.",
+    coverage: "future",
+    acceptanceIds: ["LOG-SKILL-KNOWLEDGE-001"],
+    specFiles: ["e2e/acceptance/log-skill-knowledge.acceptance.spec.ts", "src/features/log-skills/KnowledgeSection.test.tsx"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    deferralReason: "The focused browser spec is authored, but mandatory 1440x900 browser evidence remains pending: native Chromium bootstrap failed with MachPortRendezvous PermissionDenied, and CUA origin approval was explicitly user-declined. No browser interactions or screenshots were obtained. Actual retrieved revision provenance is asserted by PostgreSQL integration tests, not a deterministic browser model."
+  },
+  {
     id: "LOG-DOMAIN-KNOWLEDGE-001",
     priority: "P1",
     area: "logs",

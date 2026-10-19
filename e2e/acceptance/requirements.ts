@@ -436,6 +436,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "LOG-SKILL-KNOWLEDGE-001",
+    workflow: "D",
+    title: "Skill knowledge links publish with revisions; Markdown uploads follow knowledge permissions and draft publication; report provenance shows actual retrieved knowledge revisions.",
+    required: true
+  },
+  {
     id: "LOG-DOMAIN-KNOWLEDGE-001",
     workflow: "D",
     title: "Admin links published knowledge entries to a log domain in /log-admin; only published entries are selectable and the link set is audited.",

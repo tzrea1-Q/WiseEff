@@ -23,6 +23,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
   sourceSnapshot?: LogRecord["sourceSnapshot"];
   sourceSnapshotSelection?: LogRecord["sourceSnapshotSelection"];
   requestedSourceVersion?: string;
@@ -112,6 +113,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     id: dto.id,
     reportId: dto.reportId,
     skillRevision: dto.skillRevision ?? null,
+    knowledgeRevisions: dto.knowledgeRevisions ?? [],
     fileName: dto.fileName,
     files: dto.files,
     signalSummary: dto.signalSummary,
@@ -179,7 +181,7 @@ export type LogDomainKnowledgeLinkDto = {
   logDomainId: string;
   knowledgeEntryId: string;
   entryTitle: string;
-  entryStatus: "draft" | "published" | "archived";
+  entryStatus?: "draft" | "published" | "archived";
   entryTags: string[];
   linkedAt: string;
 };

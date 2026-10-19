@@ -183,7 +183,7 @@ describe.skipIf(!databaseAvailable)("log domain knowledge links (integration)", 
       { requestId: "req-links-retrieval" }
     );
 
-    const backends = createWorkerLogAnalysisToolBackends({ db, organizationId: ORG_ID, logDomainId: domainId });
+    const backends = createWorkerLogAnalysisToolBackends({ db, organizationId: ORG_ID, knowledgeEntryIds: [publishedEntryId] });
     const linked = await backends.searchDomainKnowledge!("thermal foldback");
     expect(linked.scope).toBe("domain-linked");
     expect(linked.items.map((item) => item.entryId)).toEqual([publishedEntryId]);
