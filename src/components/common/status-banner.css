@@ -1,6 +1,4 @@
-/* Shared notice treatment, including the existing Catalog banner spelling. */
-.status-banner,
-.parameter-catalog__banner {
+.status-banner {
   min-width: 0;
   padding: var(--space-3) var(--space-4);
   border: var(--stroke-hairline) solid var(--border);
@@ -10,20 +8,17 @@
   font: 400 var(--text-base) / var(--leading-base) var(--font-sans);
 }
 
-.status-banner[data-tone="warning"],
-.parameter-catalog__banner[data-tone="warning"] {
+.status-banner[data-tone="warning"] {
   background: var(--warning-soft);
   border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
 }
 
-.status-banner[data-tone="danger"],
-.parameter-catalog__banner[data-tone="danger"] {
+.status-banner[data-tone="danger"] {
   background: var(--danger-soft);
   border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
 }
 
-.status-banner p,
-.parameter-catalog__banner p {
+.status-banner p {
   margin: 0;
   overflow-wrap: anywhere;
   font: inherit;
