@@ -30,6 +30,7 @@ import type { DebuggingRuntimeActions } from "./application/debugging/debuggingR
 import {
   bindingUnavailableReason,
   bridgeTargetLabel,
+  canRead,
   canWrite,
   readInitialNodeDebuggingProtocol,
   type RuntimeRow
@@ -84,17 +85,43 @@ function canonicalAssociationLabel(row: Pick<RuntimeRow, "protectedReferenceKind
 
 function statusClass(status: RuntimeRow["runtimeStatus"]) {
   const classMap: Record<RuntimeRow["runtimeStatus"], string> = {
-    "未检测": "node-status-untested",
-    "待写入": "node-status-pending",
-    "执行中": "node-status-running",
-    "写入已执行": "node-status-success",
-    "成功": "node-status-success",
-    "失败": "node-status-failed",
+    "未读取": "node-status-untested",
+    "读取中": "node-status-running",
+    "写入中": "node-status-running",
+    "写入已执行": "node-status-pending",
+    "写入已回读": "node-status-success",
+    "回读失败": "node-status-failed",
+    "回读结果未知": "node-status-pending",
+    "读取成功": "node-status-success",
+    "读取失败": "node-status-failed",
     "写入失败": "node-status-failed",
     "写入结果未知": "node-status-pending",
     "不可用": "node-status-unavailable"
   };
   return `node-status-badge ${classMap[status]}`;
+}
+
+function nodeStatusDescription(row: RuntimeRow) {
+  if (row.error) return row.error;
+  if (row.runtimeStatus === "写入已回读") return "写命令已执行，并已取得回读值；回读值仅供核对，不代表与目标值一致。";
+  if (row.runtimeStatus === "写入已执行") return "写命令已执行，尚未取得回读值。";
+  if (row.runtimeStatus === "不可用") return bindingUnavailableReason(row) || "仅写节点暂不支持安全写入。";
+  if (row.runtimeStatus === "未读取") return "尚未取得本次连接的节点值。";
+  return row.runtimeStatus;
+}
+
+function NodeRowStatus({ row }: { row: RuntimeRow }) {
+  return <div className="node-row-status">
+    <span data-row-status className={statusClass(row.runtimeStatus)} title={nodeStatusDescription(row)}>{row.runtimeStatus}</span>
+    {row.pendingWrite ? <span className="node-status-badge node-status-pending" title="目标值已暂存，尚未执行写入；读取不会清除队列。">待写入</span> : null}
+  </div>;
+}
+
+function nodeErrorSummary(error: string) {
+  if (/permission denied/i.test(error)) return "节点访问被拒绝，请检查权限";
+  if (/no such file|node missing/i.test(error)) return "节点不存在，请检查节点路径";
+  if (/timed?\s*out|timeout/i.test(error)) return "操作超时，请检查设备连接后重试";
+  return error;
 }
 
 function buildDebugModuleNavigationTree(
@@ -137,18 +164,18 @@ function displayCurrentValue(row: RuntimeRow, context: "table" | "detail" = "det
         ? debugValuePreview(row.runtimeCurrentValue, row)
         : row.runtimeCurrentValue;
     }
-    return row.error || "写入失败";
+    return "未取得值";
   }
-  if (row.runtimeStatus === "失败") {
+  if (row.runtimeStatus === "读取失败" || row.runtimeStatus === "回读失败") {
     if (isUnsupportedParameterError(row.error)) return unsupportedNodeValueLabel;
-    return row.error || "读取失败";
+    if (row.lastReadValue === undefined) return "未取得值";
   }
   if (row.lastReadValue !== undefined) {
     return context === "table" && isComplexDebugParameter(row)
       ? debugValuePreview(row.runtimeCurrentValue, row)
       : row.runtimeCurrentValue;
   }
-  if (row.runtimeStatus === "执行中") {
+  if (row.activeOperation) {
     return row.activeOperation === "write" ? "写入中..." : "读取中...";
   }
   return "等待读取";
@@ -188,14 +215,15 @@ function DebugCurrentValueCell({ row, connected }: { row: RuntimeRow; connected:
   const hasComplexPayload =
     isComplexDebugParameter(row) &&
     row.lastReadValue !== undefined &&
-    row.runtimeStatus !== "失败" &&
+    row.runtimeStatus !== "读取失败" &&
+    row.runtimeStatus !== "回读失败" &&
     row.runtimeStatus !== "写入失败";
 
   if (hasComplexPayload) {
     return (
       <>
         <DebugTableValuePreview value={row.runtimeCurrentValue} row={row} />
-        {row.currentValueStale ? <small className="node-row-warning">写后状态待重新回读</small> : null}
+        {row.currentValueStale && row.lastReadValue !== undefined ? <small className="node-row-warning">上次读取值 · 待重新读取</small> : null}
       </>
     );
   }
@@ -203,7 +231,7 @@ function DebugCurrentValueCell({ row, connected }: { row: RuntimeRow; connected:
   return (
     <>
       <DebugTableValueText value={!connected && text === "等待读取" ? "设备未连接 · 等待读取" : text} />
-      {row.currentValueStale ? <small className="node-row-warning">写后状态待重新回读</small> : null}
+      {row.currentValueStale && row.lastReadValue !== undefined ? <small className="node-row-warning">上次读取值 · 待重新读取</small> : null}
     </>
   );
 }
@@ -211,7 +239,8 @@ function DebugCurrentValueCell({ row, connected }: { row: RuntimeRow; connected:
 function readbackOutcomeLabel(row: RuntimeRow) {
   if (row.readbackOutcome === "observed") return row.lastReadValue === undefined ? "已回读" : `回读值：${displayCurrentValue(row)}`;
   if (row.readbackOutcome === "failed") return "回读失败";
-  if (row.readbackOutcome === "unsupported" || row.readbackOutcome === "not_requested") return "不支持回读";
+  if (row.readbackOutcome === "unsupported") return "不支持回读";
+  if (row.readbackOutcome === "not_requested") return "未执行回读";
   if (row.readbackOutcome === "unknown") return "回读结果未知";
   return "尚未回读";
 }
@@ -453,11 +482,11 @@ export function NodeDebuggingPage({
     const searched = createSearchIndex(moduleScopedRows, debugParameterSearchProfile).search(searchQuery);
     return searched
       .map((hit) => hit.item)
-      .filter((row) => statusFilters.length === 0 || statusFilters.includes(row.runtimeStatus));
+      .filter((row) => statusFilters.length === 0 || statusFilters.includes(row.runtimeStatus) || (row.pendingWrite && statusFilters.includes("待写入")));
   }, [moduleScopedRows, searchQuery, statusFilters]);
 
   const statusOptions = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.runtimeStatus))).map((status) => ({ value: status, label: status })),
+    () => Array.from(new Set(rows.flatMap((row) => [row.runtimeStatus, ...(row.pendingWrite ? ["待写入"] : [])]))).map((status) => ({ value: status, label: status })),
     [rows]
   );
   const toggleArrayFilter = (currentValues: string[], value: string) =>
@@ -715,7 +744,7 @@ export function NodeDebuggingPage({
                       <td className="mono" data-label="当前值">
                         <DebugCurrentValueCell row={row} connected={connected} />
                         {bindingUnavailableReason(row) ? <small className="node-row-error">{bindingUnavailableReason(row)}</small> : null}
-                        {row.error && row.runtimeStatus !== "失败" && row.runtimeStatus !== "写入失败" ? <small className="node-row-error">{row.error}</small> : null}
+                        {row.error ? <small className="node-row-error" title={row.error}>{nodeErrorSummary(row.error)}</small> : null}
                       </td>
                       <td data-label="目标写入值">
                         {canWrite(row) ? (
@@ -728,7 +757,7 @@ export function NodeDebuggingPage({
                           <span>{row.accessMode === "WO" ? "只写（安全写入不可用）" : "只读"}</span>
                         )}
                       </td>
-                      <td data-label="状态"><span data-row-status className={statusClass(row.runtimeStatus)}>{row.runtimeStatus}</span></td>
+                      <td data-label="状态"><NodeRowStatus row={row} /></td>
                       <td className="parameter-row-actions" data-label="操作">
                         <button
                           className="icon-button parameter-row-edit"
@@ -791,7 +820,7 @@ export function NodeDebuggingPage({
             canWrite(editingRow) ? (
               <div className="draft-sheet-footer">
                 <span>
-                  {editingDirty ? "有未暂存的修改" : editingRow.runtimeStatus === "待写入" ? "已加入待写入队列" : "暂存后加入队列；写入立即执行"}
+                  {editingDirty ? "有未暂存的修改" : editingRow.pendingWrite ? "已加入待写入队列" : "暂存后加入队列；写入立即执行"}
                 </span>
                 <div className="draft-sheet-footer-actions">
                   <button className="button subtle" type="button" onClick={() => guardEditorChange(closeEditor)}>
@@ -800,7 +829,7 @@ export function NodeDebuggingPage({
                   <button
                     className="button subtle"
                     type="button"
-                    disabled={editingRow.runtimeStatus === "执行中"}
+                    disabled={Boolean(editingRow.activeOperation)}
                     onClick={() => {
                       session.setDraftValue(editingRow.id, editingValue);
                       session.stashRow(editingRow.id);
@@ -830,7 +859,7 @@ export function NodeDebuggingPage({
           <div className="draft-sheet-stack">
             <div className="debug-detail-card node-detail-card">
               <div className="debug-detail-head">
-                <span className={statusClass(editingRow.runtimeStatus)}>{editingRow.runtimeStatus}</span>
+                <NodeRowStatus row={editingRow} />
                 <span className={editingRow.risk === "High" ? "node-detail-risk node-detail-risk--high" : "node-detail-risk"}>
                   {editingRow.risk === "High" ? "高风险 · 写入前需确认" : editingRow.risk === "Medium" ? "中风险" : "低风险"}
                 </span>
@@ -902,15 +931,15 @@ export function NodeDebuggingPage({
                 {editingRow.range ? <div className="debug-detail-row"><span>参考范围</span><strong>{editingRow.range}</strong></div> : null}
               </div>
               {editingRow.error ? <p className="node-row-error">{editingRow.error}</p> : null}
-              {editingRow.currentValueStale && editingRow.lastWriteOperationId ? (
+              {canRead(editingRow) ? (
                 <button
                   className="button subtle"
                   type="button"
-                  disabled={!connected || editingRow.runtimeStatus === "执行中"}
+                  disabled={!connected || Boolean(editingRow.activeOperation)}
                   onClick={() => void session.retryRead(editingRow.id, debuggingActions)}
                 >
                   <RotateCw size={14} aria-hidden="true" />
-                  重新回读（不会再次写入）
+                  {editingRow.lastWriteOperationId && editingRow.writeOutcome !== "failed" ? "重新回读（不会再次写入）" : "重新读取"}
                 </button>
               ) : null}
               {editingRow.detailedDescription?.trim() && editingRow.detailedDescription.trim() !== editingRow.description.trim() ? (

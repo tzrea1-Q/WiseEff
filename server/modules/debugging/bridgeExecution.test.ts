@@ -92,6 +92,104 @@ describe("bridgeExecution", () => {
     expect(result.writeResult.ok).toBe(false);
   });
 
+  it.each([
+    { stdout: "cat: /sys/current: Permission denied", value: "cat: /sys/current: Permission denied" },
+    { stdout: "", value: "cat: /sys/current: Permission denied" },
+    { value: "/bin/sh: cat: /sys/current: No such file or directory" },
+    { stderr: "[Fail] Device is offline", value: "" }
+  ])("rejects successful legacy Bridge reads containing command diagnostics: %j", async (payload) => {
+    const rpc = { call: vi.fn().mockResolvedValue({ ok: true, ...payload }) };
+
+    await expect(readNodeViaBridge({
+      rpc: rpc as never,
+      bridgeId: "br-old",
+      protocol: "hdc",
+      targetRef: "target-1",
+      nodePath: "/sys/current",
+      preserveExactRead: false,
+      timeoutMs: 1000
+    })).resolves.toMatchObject({ ok: false, error: expect.any(String) });
+  });
+
+  it("keeps an executed write independent from a failed legacy readback", async () => {
+    const diagnostic = "cat: /sys/current: Permission denied";
+    const rpc = { call: vi.fn().mockResolvedValue({
+      ok: true,
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
+      writeResult: { ok: true, value: diagnostic },
+      readResult: { ok: true, value: diagnostic }
+    }) };
+
+    await expect(writeNodeViaBridge({
+      rpc: rpc as never,
+      bridgeId: "br-old",
+      protocol: "hdc",
+      targetRef: "target-1",
+      nodePath: "/sys/current",
+      value: diagnostic,
+      readBack: true,
+      preserveExactRead: false,
+      timeoutMs: 1000
+    })).resolves.toMatchObject({
+      ok: true,
+      writeOutcome: "executed",
+      readbackOutcome: "failed",
+      error: diagnostic,
+      writeResult: { ok: true },
+      readResult: { ok: false }
+    });
+  });
+
+  it("does not trust an executed outcome when the write output contains a command diagnostic", async () => {
+    const diagnostic = "sh: /sys/current: Read-only file system";
+    const rpc = { call: vi.fn().mockResolvedValue({
+      ok: true,
+      writeOutcome: "executed",
+      readbackOutcome: "not_requested",
+      writeResult: { ok: true, stderr: diagnostic }
+    }) };
+
+    await expect(writeNodeViaBridge({
+      rpc: rpc as never,
+      bridgeId: "br-old",
+      protocol: "adb",
+      targetRef: "target-1",
+      nodePath: "/sys/current",
+      value: "1",
+      readBack: false,
+      preserveExactRead: false,
+      timeoutMs: 1000
+    })).resolves.toMatchObject({
+      ok: false,
+      writeOutcome: "failed",
+      readbackOutcome: "not_requested",
+      error: diagnostic,
+      writeResult: { ok: false }
+    });
+  });
+
+  it("preserves an explicitly unknown write outcome despite a failed nested command", async () => {
+    const rpc = { call: vi.fn().mockResolvedValue({
+      ok: false,
+      writeOutcome: "unknown",
+      readbackOutcome: "unknown",
+      writeResult: { ok: false, error: "The write acknowledgement was lost." }
+    }) };
+
+    await expect(writeNodeViaBridge({
+      rpc: rpc as never,
+      bridgeId: "br-1",
+      protocol: "adb",
+      targetRef: "target-1",
+      nodePath: "/sys/current",
+      value: "1",
+      readBack: true,
+      preserveExactRead: false,
+      timeoutMs: 1000
+    })).resolves.toMatchObject({ ok: false, writeOutcome: "unknown", readbackOutcome: "unknown" });
+  });
+
   it("infers independent outcomes from legacy nested Bridge results", async () => {
     const rpc = {
       call: vi.fn().mockResolvedValue({

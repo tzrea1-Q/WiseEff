@@ -15,6 +15,7 @@
  */
 
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
+import { remoteShellDiagnostic } from "@wiseeff/device-command-core/remoteNodeWrite";
 
 import { normalizeBridgeProtocol } from "@/application/bridge/bridgeTargetSession";
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
@@ -40,12 +41,15 @@ import type { DebugParameter } from "@/domain/prototype/types";
 import type { LocalBridgeProbeResult } from "@/infrastructure/http/bridgeConnectLauncher";
 
 export type NodeRuntimeStatus =
-  | "未检测"
-  | "待写入"
-  | "执行中"
+  | "未读取"
+  | "读取中"
+  | "写入中"
   | "写入已执行"
-  | "成功"
-  | "失败"
+  | "写入已回读"
+  | "回读失败"
+  | "回读结果未知"
+  | "读取成功"
+  | "读取失败"
   | "写入失败"
   | "写入结果未知"
   | "不可用";
@@ -63,6 +67,7 @@ export type RuntimeRow = ProtocolAwareDebugParameter & {
   runtimeCurrentValue: string;
   draftValue: string;
   runtimeStatus: NodeRuntimeStatus;
+  pendingWrite?: boolean;
   activeOperation?: RowOperationKind;
   error?: string;
   lastReadValue?: string;
@@ -249,7 +254,7 @@ function deriveParameterForProtocol(parameter: DebugParameter, protocol: DebugCo
 
 function initialStatus(row: ProtocolAwareDebugParameter): NodeRuntimeStatus {
   if (bindingUnavailableReason(row)) return "不可用";
-  return row.accessMode === "WO" ? "不可用" : "未检测";
+  return row.accessMode === "WO" ? "不可用" : "未读取";
 }
 
 function runtimeRowFromParameter(
@@ -276,6 +281,8 @@ function runtimeRowFromParameter(
         : protocolParameter.currentValue,
     draftValue: existing?.draftValue ?? protocolParameter.targetValue,
     runtimeStatus: preserveRuntimeState ? existing.runtimeStatus : initialStatus(protocolParameter),
+    pendingWrite: preserveRuntimeState ? existing.pendingWrite : false,
+    activeOperation: preserveRuntimeState ? existing.activeOperation : undefined,
     error: bindingReason ? undefined : preserveRuntimeState ? existing.error : undefined,
     lastReadValue: preserveRuntimeState ? existing.lastReadValue : undefined,
     writeOutcome: preserveRuntimeState ? existing.writeOutcome : undefined,
@@ -285,28 +292,14 @@ function runtimeRowFromParameter(
   };
 }
 
-function looksLikeFailedNodeReadValue(value: string | undefined) {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return false;
-  }
-  return /^\[Fail\]/i.test(trimmed) || /\[E\d{6}\]/.test(trimmed);
-}
-
-function resolveReadRowOutcome(result: NodeReadResult) {
+function resolveReadRowOutcome(result: ReadResultWithOperation) {
   const value = result.value ?? result.stdout?.trim() ?? "";
-  if (!result.ok) {
+  const diagnostic = remoteShellDiagnostic({ stdout: result.stdout || value, stderr: result.stderr ?? "" });
+  if (!result.ok || diagnostic || (result.operation && result.operation.status !== "succeeded")) {
     return {
       ok: false as const,
       value,
-      error: result.error || result.stderr || value || "读取失败"
-    };
-  }
-  if (looksLikeFailedNodeReadValue(value)) {
-    return {
-      ok: false as const,
-      value,
-      error: value
+      error: result.error || result.operation?.failureReason || diagnostic || result.stderr || "读取失败"
     };
   }
   return {
@@ -463,7 +456,7 @@ export function createNodeDebuggingSession(
   let bulkWriteSummaryTimer: ReturnType<typeof setTimeout> | null = null;
 
   function pendingRowsNow() {
-    return rows.filter((row) => canWrite(row) && row.runtimeStatus === "待写入");
+    return rows.filter((row) => canWrite(row) && row.pendingWrite);
   }
 
   function pendingSelectedRowsNow() {
@@ -471,7 +464,7 @@ export function createNodeDebuggingSession(
       (row) =>
         selectedIds.has(row.id) &&
         canWrite(row) &&
-        (row.runtimeStatus === "待写入" || row.runtimeStatus === "写入失败")
+        row.pendingWrite
     );
   }
 
@@ -603,7 +596,9 @@ export function createNodeDebuggingSession(
     const requestProtocol = protocol;
     const generation = rowOperationGeneration;
     const operationSeq = nextRowOperationSeq(row.id);
-    patchRow(row.id, { runtimeStatus: "执行中", activeOperation: "read", error: undefined });
+    const preservesUnknownWrite = Boolean(relatedOperationId && row.writeOutcome === "unknown");
+    const isWriteReadback = Boolean(relatedOperationId && row.writeOutcome === "executed");
+    patchRow(row.id, { runtimeStatus: "读取中", activeOperation: "read", error: undefined });
     emit();
     try {
       const result: ReadResultWithOperation = await actions.readNode({
@@ -620,7 +615,7 @@ export function createNodeDebuggingSession(
           patchRow(row.id, {
             runtimeCurrentValue: outcome.value,
             lastReadValue: outcome.value,
-            runtimeStatus: "成功",
+            runtimeStatus: preservesUnknownWrite ? "写入结果未知" : isWriteReadback ? "写入已回读" : "读取成功",
             activeOperation: undefined,
             error: undefined,
             readbackOutcome: relatedOperationId ? "observed" : row.readbackOutcome,
@@ -628,16 +623,17 @@ export function createNodeDebuggingSession(
           });
         } else {
           patchRow(row.id, {
-            runtimeStatus: "失败",
+            runtimeStatus: preservesUnknownWrite ? "写入结果未知" : isWriteReadback ? "回读失败" : "读取失败",
             activeOperation: undefined,
             error: outcome.error,
-            readbackOutcome: relatedOperationId ? "failed" : row.readbackOutcome
+            readbackOutcome: relatedOperationId ? "failed" : row.readbackOutcome,
+            currentValueStale: true
           });
         }
       }
       if (result.operation) {
         const event = eventFromOperation(result.operation, rows);
-        appendEvent({ ...event, stdout: result.stdout ?? event.stdout, stderr: result.stderr || event.stderr });
+        appendEvent({ ...event, status: outcome.ok ? "读取成功" : "读取失败", stdout: result.stdout ?? event.stdout, stderr: outcome.error || result.stderr || event.stderr });
       } else {
         appendEvent({
           parameterName: row.name,
@@ -673,9 +669,11 @@ export function createNodeDebuggingSession(
       const message = formatDebuggingRuntimeError(error);
       if (isLatestRowOperation(row.id, operationSeq, generation, requestProtocol)) {
         patchRow(row.id, {
-          runtimeStatus: "失败",
+          runtimeStatus: preservesUnknownWrite ? "写入结果未知" : isWriteReadback ? "回读失败" : "读取失败",
           activeOperation: undefined,
-          error: message
+          error: message,
+          readbackOutcome: relatedOperationId ? "failed" : row.readbackOutcome,
+          currentValueStale: true
         });
       }
       appendEvent({
@@ -767,7 +765,7 @@ export function createNodeDebuggingSession(
     const requestProtocol = protocol;
     const generation = rowOperationGeneration;
     const operationSeq = nextRowOperationSeq(row.id);
-    patchRow(row.id, { runtimeStatus: "执行中", activeOperation: "write", error: undefined });
+    patchRow(row.id, { runtimeStatus: "写入中", activeOperation: "write", error: undefined });
     emit();
     try {
       const result: WriteResultWithOperation = await actions.writeNode({
@@ -804,6 +802,7 @@ export function createNodeDebuggingSession(
                 : "节点写入失败，请查看审计详情",
           writeOutcome,
           readbackOutcome,
+          pendingWrite: writeOutcome === "failed" ? row.pendingWrite : false,
           currentValueStale: writeOutcome === "unknown",
           lastWriteOperationId
         });
@@ -812,7 +811,8 @@ export function createNodeDebuggingSession(
         patchRow(row.id, {
           runtimeCurrentValue: value,
           lastReadValue: value,
-          runtimeStatus: "写入已执行",
+          runtimeStatus: "写入已回读",
+          pendingWrite: false,
           activeOperation: undefined,
           error: undefined,
           writeOutcome,
@@ -822,7 +822,8 @@ export function createNodeDebuggingSession(
         });
       } else {
         patchRow(row.id, {
-          runtimeStatus: "写入已执行",
+          runtimeStatus: readbackOutcome === "failed" ? "回读失败" : readbackOutcome === "unknown" ? "回读结果未知" : "写入已执行",
+          pendingWrite: false,
           activeOperation: undefined,
           error:
             readbackOutcome === "failed"
@@ -899,7 +900,10 @@ export function createNodeDebuggingSession(
         patchRow(row.id, {
           runtimeStatus: "写入失败",
           activeOperation: undefined,
-          error: message
+          error: message,
+          writeOutcome: "failed",
+          readbackOutcome: "not_requested",
+          lastWriteOperationId: undefined
         });
       }
       appendEvent({
@@ -1100,7 +1104,7 @@ export function createNodeDebuggingSession(
     },
 
     setDraftValue(rowId, value) {
-      patchRow(rowId, { draftValue: value, runtimeStatus: "待写入" });
+      patchRow(rowId, { draftValue: value, pendingWrite: true });
       emit();
     },
 
@@ -1126,7 +1130,7 @@ export function createNodeDebuggingSession(
     },
 
     stashRow(rowId) {
-      patchRow(rowId, { runtimeStatus: "待写入" });
+      patchRow(rowId, { pendingWrite: true });
       const next = new Set(selectedIds);
       next.add(rowId);
       selectedIds = next;
@@ -1141,8 +1145,8 @@ export function createNodeDebuggingSession(
 
     async retryRead(rowId, actions) {
       const row = rows.find((item) => item.id === rowId);
-      if (!row?.lastWriteOperationId || !canRead(row)) return;
-      await readRowWithTarget(row, activeTargetId, activeSessionId, actions, row.lastWriteOperationId);
+      if (!row || !canRead(row) || row.activeOperation) return;
+      await readRowWithTarget(row, activeTargetId, activeSessionId, actions, row.writeOutcome === "failed" ? undefined : row.lastWriteOperationId);
     },
 
     async confirmWrite(actions) {

@@ -60,7 +60,7 @@ function bearerTokenFor(input: { userId: string; roleId: string; permissions: st
   return `Bearer ${payload}.${signature}`;
 }
 
-function nonWriterApiHeaders() {
+function nonWriterApiHeaders(): Record<string, string> {
   const authorization = bearerTokenFor({
     userId: nonWriterDebugUserId,
     roleId: "guest",
@@ -89,7 +89,7 @@ function runSeedScript(script: string) {
     const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
     const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
     const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
+      ? `child_process error: ${"code" in result.error ? result.error.code : "unknown"} ${result.error.message ?? ""}`.trimEnd()
       : "";
 
     throw new Error(
@@ -543,7 +543,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
 
     await setTargetAndWrite(page, "Readback mismatch probe", "2");
     const alternateReadbackRow = parameterRow(page, "Readback mismatch probe");
-    await expect(alternateReadbackRow).toContainText("写入已执行", { timeout: 30_000 });
+    await expect(alternateReadbackRow).toContainText("写入已回读", { timeout: 30_000 });
     await expect(alternateReadbackRow).toContainText("1", { timeout: 30_000 });
     await expect(alternateReadbackRow.locator('td[data-label="状态"]')).not.toContainText(/readback mismatch|回读不一致/i);
     await expect(alternateReadbackRow.locator(".node-row-error").filter({ hasText: /readback mismatch|回读不一致/i })).toHaveCount(0);

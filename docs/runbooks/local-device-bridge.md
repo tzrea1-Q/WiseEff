@@ -153,6 +153,19 @@ Operator checks:
 
 ## Debugging Execution Checks
 
+The node table reports the latest operation, separately from the staged-write queue:
+
+| State | Meaning |
+| --- | --- |
+| 未读取 / 读取中 / 读取成功 / 读取失败 | No observation yet, read pending, a value obtained, or read failed. |
+| 写入中 / 写入已回读 | Write pending, or write executed and a readback value obtained; no equality claim. |
+| 回读失败 / 回读结果未知 / 写入已执行 | Write executed, but readback failed, is unknown, or was not available/requested. |
+| 写入失败 / 写入结果未知 | Write reported failure, or execution cannot be determined. A later read does not prove an unknown write executed. |
+| 不可用 | Missing/disabled binding, or a write-only node for which safe writing is unavailable. |
+| 待写入 | Independent staged-value marker; reads and retries retain it. Successful or unknown writes remove it to avoid automatic replay. |
+
+Failed reads retain any previous value with a stale-value label. Open node details to retry a read without writing. Known shell diagnostics from older Bridge results are treated as failures even if the payload claims success; empty values and numeric zero remain valid observations.
+
 Use `/api/v1/debugging/*` to verify bridge-backed behavior:
 
 - target detect includes bridge-prefixed target ids (`bridge:<bridgeId>:...`)

@@ -253,7 +253,7 @@ describe("/node-debugging", () => {
     const task = screen.getByRole("region", { name: "节点调试任务" });
     expect(within(task).getByRole("table")).toBeInTheDocument();
     expect(findRowByText("charger.input_current_limit_ma").querySelector('[data-row-status]'))
-      .toHaveTextContent("成功");
+      .toHaveTextContent("读取成功");
     expect(task).not.toContainElement(screen.getByRole("region", { name: "本地设备连接" }));
     fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
     expect(screen.queryByRole("tree", { name: "调试节点模块树" })).not.toBeInTheDocument();
@@ -442,7 +442,7 @@ describe("/node-debugging", () => {
       expect(within(findRowByText("charger.input_current_limit_ma")).getByText(/等待读取/)).toBeInTheDocument();
     });
     expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("3651")).not.toBeInTheDocument();
-    expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("成功")).not.toBeInTheDocument();
+    expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("读取成功")).not.toBeInTheDocument();
   });
 
   it("recomputes row binding availability for the automatically discovered protocol", async () => {
@@ -559,26 +559,39 @@ describe("/node-debugging", () => {
     await screen.findByText(/API Gateway Target/);
     const row = findRowByText("charger.input_current_limit_ma");
     await within(row).findByText("Node read failed.");
-    expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
+    expect(within(row).getByText(/^读取失败$/)).toBeInTheDocument();
     expect(currentValueCell(row)).not.toHaveTextContent("读取中...");
   });
 
   it("shows read failure when API read returns a failed result", async () => {
+    const readNode = vi.fn().mockResolvedValue({
+      ok: false,
+      error: "node missing",
+      stderr: "No such file"
+    });
     const debuggingActions = createDebuggingActions({
-      readNode: vi.fn().mockResolvedValue({
-        ok: false,
-        error: "node missing",
-        stderr: "No such file"
-      })
+      readNode
     });
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/API Gateway Target/);
     const row = findRowByText("charger.input_current_limit_ma");
-    await within(row).findByText("node missing");
-    expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
+    await within(row).findByText("节点不存在，请检查节点路径");
+    expect(within(row).getByText(/^读取失败$/)).toBeInTheDocument();
     expect(currentValueCell(row)).not.toHaveTextContent("读取中...");
     expect(currentValueCell(row)).not.toHaveTextContent("等待读取");
+    expect(within(row).getByText("读取失败")).toHaveClass("node-status-failed");
+    await waitFor(() => expect(readNode).toHaveBeenCalledTimes(9));
+    await userEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = getNodeDetailDialog();
+    readNode.mockResolvedValueOnce({ ok: true, value: "0" });
+    const retry = within(dialog).getByRole("button", { name: "重新读取" });
+    retry.focus();
+    await userEvent.keyboard("{Enter}");
+    await within(row).findByText("读取成功");
+    expect(currentValueCell(row)).toHaveTextContent("0");
+    expect(debuggingActions.writeNode).not.toHaveBeenCalled();
+    expect(within(row).queryByText("node missing")).not.toBeInTheDocument();
   });
 
   it("shows the API error reason when read rejects with a runtime failure", async () => {
@@ -594,8 +607,11 @@ describe("/node-debugging", () => {
 
     await screen.findByText(/API Gateway Target/);
     const row = findRowByText("charger.input_current_limit_ma");
-    await within(currentValueCell(row)).findByText("ADB command failed: No such file or directory");
-    expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
+    await within(currentValueCell(row)).findByText("节点不存在，请检查节点路径");
+    expect(currentValueCell(row)).toHaveTextContent("未取得值");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    expect(within(getNodeDetailDialog()).getByText("ADB command failed: No such file or directory")).toBeInTheDocument();
+    expect(within(row).getByText(/^读取失败$/)).toBeInTheDocument();
     expect(currentValueCell(row)).not.toHaveTextContent(debuggingRuntimeFailureNotification);
   });
 
@@ -904,7 +920,7 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    await within(row).findByText(/^写入已执行$/);
+    await within(row).findByText(/^写入已回读$/);
     expect(currentValueCell(row)).toHaveTextContent("3600");
     expect(row).not.toHaveTextContent("readback mismatch");
   });
@@ -971,10 +987,10 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    await within(row).findByText(/^写入已执行$/);
+    await within(row).findByText(/^回读失败$/);
     expect(currentValueCell(row)).toHaveTextContent("3651");
-    expect(currentValueCell(row)).toHaveTextContent("写后状态待重新回读");
-    expect(within(dialog).getByText("回读失败")).toBeInTheDocument();
+    expect(currentValueCell(row)).toHaveTextContent("上次读取值 · 待重新读取");
+    expect(within(dialog).getAllByText("回读失败")).toHaveLength(2);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "重新回读（不会再次写入）" }));
 
@@ -983,7 +999,7 @@ describe("/node-debugging", () => {
     })));
     expect(writeNode).toHaveBeenCalledOnce();
     await waitFor(() => expect(currentValueCell(row)).toHaveTextContent("0x1"));
-    expect(currentValueCell(row)).not.toHaveTextContent("写后状态待重新回读");
+    expect(currentValueCell(row)).not.toHaveTextContent("上次读取值 · 待重新读取");
   });
 
   it("keeps the write observation when a stale API auto-read resolves later", async () => {
@@ -1038,7 +1054,7 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    await within(row).findByText(/^写入已执行$/);
+    await within(row).findByText(/^写入已回读$/);
     expect(currentValueCell(row)).toHaveTextContent("3600");
 
     await act(async () => delayedRead.resolve({
@@ -1061,8 +1077,8 @@ describe("/node-debugging", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: /节点操作记录/ })).toHaveTextContent("10 条"));
     expect(currentValueCell(row)).toHaveTextContent("3600");
-    expect(within(row).getByText(/^写入已执行$/)).toBeInTheDocument();
-    expect(within(row).queryByText(/^成功$/)).not.toBeInTheDocument();
+    expect(within(row).getByText(/^写入已回读$/)).toBeInTheDocument();
+    expect(within(row).queryByText(/^读取成功$/)).not.toBeInTheDocument();
   });
 
   it("records a diagnostic event when API detect rejects", async () => {
@@ -1537,16 +1553,16 @@ describe("/node-debugging", () => {
     expect(gateway.readNode).not.toHaveBeenCalledWith(expect.objectContaining({ nodeId: "dbg-trickle-start" }));
   });
 
-  it("uses a compact status set with distinct status classes", async () => {
+  it("names the operation in status badges with distinct status classes", async () => {
     renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
-    await within(findRowByText("charger.input_current_limit_ma")).findByText("成功");
-    const successBadge = within(findRowByText("charger.input_current_limit_ma")).getByText("成功");
+    await within(findRowByText("charger.input_current_limit_ma")).findByText("读取成功");
+    const successBadge = within(findRowByText("charger.input_current_limit_ma")).getByText("读取成功");
     const unavailableBadge = within(findRowByText("charger.trickle_switch_soc")).getByText("不可用");
 
     expect(successBadge).toHaveClass("node-status-badge", "node-status-success");
     expect(unavailableBadge).toHaveClass("node-status-badge", "node-status-unavailable");
-    expect(screen.queryByText("读取成功")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^成功$/)).not.toBeInTheDocument();
     expect(screen.queryByText("回读一致")).not.toBeInTheDocument();
     expect(screen.queryByText("回读不一致")).not.toBeInTheDocument();
   });
@@ -1812,7 +1828,7 @@ describe("/node-debugging", () => {
     await confirmHighRiskWriteIfPrompted();
 
     expect(screen.queryByRole("dialog", { name: "确认高风险节点写入" })).not.toBeInTheDocument();
-    await within(row).findByText(/^写入已执行$/);
+    await within(row).findByText(/^写入已回读$/);
     expect(currentValueCell(row)).toHaveTextContent("3700");
   });
 
@@ -1840,7 +1856,7 @@ describe("/node-debugging", () => {
     const aggregateDialog = await screen.findByRole("dialog", { name: /批量写入包含 1 个高风险节点/ });
     fireEvent.click(within(aggregateDialog).getByRole("button", { name: /确认写入（含 1 个高风险）/ }));
 
-    await within(row).findByText(/^写入已执行$/);
+    await within(row).findByText(/^写入已回读$/);
     expect(gateway.writeNode).toHaveBeenLastCalledWith(expect.objectContaining({
       nodeId: "dbg-charge-input-current",
       value: "3700",
@@ -2265,7 +2281,7 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    await within(row).findByText(/^写入已执行$/);
+    await within(row).findByText(/^写入已回读$/);
     expect(currentValueCell(row)).toHaveTextContent("3600");
     expect(row).not.toHaveTextContent("回读不一致");
   });
