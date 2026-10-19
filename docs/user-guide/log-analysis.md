@@ -47,6 +47,14 @@ Entries you cannot read appear with a restricted-entry label and their id; title
 
 Save and publish the skill draft to make its link set available to new analyses. A run uses the entries linked by its pinned skill revision, so later skill edits cannot change that set. Unpublished and archived knowledge is excluded from retrieval. The report's source information records the entry and revision ids actually returned during analysis, rather than treating every linked entry as used. Later knowledge edits do not rewrite that run's recorded sources.
 
+## Try the draft on a sample
+
+In the skill workspace (`/log-admin/skills/:skillId`), upload the skill's sample log and choose Dry run. This action requires `logs:admin-domains` and API mode. It saves pending edits as a draft, then runs that saved draft on the stored sample with the configured analyzer, including the real model when configured; publishing is not required. Later edits or sample replacement do not change a run already started.
+
+The right-side drawer shows progress, the final conclusion and evidence, and the ordered analysis steps. A summary above the steps totals steps, tool calls and reported input/output tokens, with early-convergence and degradation markers. Review these warnings before relying on the result. Each step shows what tool ran, its bounded argument summary, result size, returned line references, outcome and available token counts. Trace `file:line` references are plain text because a dry run has no log record; evidence references can open the captured sample in the log viewer drawer. Prompts, procedure text, knowledge text and provider payloads are not displayed or stored in traces.
+
+Only one dry run may run per organization at a time, with a shared aggregate cap of 2 by default across API instances. An administrator can configure `LOG_DRY_RUN_MAX_CONCURRENT` from 1 to 4; invalid values use 2. A full-capacity request receives a busy message and starts no analysis. Analysis budgets and a timeout apply. Startup recovery and status reads detect a missing owner process or an expired deadline, mark the run interrupted, and offer Retry in the drawer. Dry runs do not appear in `/logs`, its counts or search, and do not send result webhooks. The latest 10 runs per skill are retained; older completed or failed runs and their traces are removed.
+
 ## Upload a log and choose its domain
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".
@@ -106,6 +114,12 @@ On a record report in `/logs`, choose the Signals tab beside the existing report
 The line-template table groups lines after replacing changing numbers, hexadecimal values, identifiers and paths. Compare each template's count and first/last locations to spot repetition. In API mode, every signal and template anchor opens the same file drawer with the cited line highlighted, even when another file appears in the raw-log preview. Load context above or below and copy individual lines there. A truncation notice means the stored summary reached its bound; inspect raw logs for additional occurrences. A signal is a lead to check, not a root-cause conclusion. Older reports may have no saved signals. Degraded reports keep their source warning and use generic signals together with the pinned skill's rules.
 
 The Signals tab also explains when extraction ran out of time, scanned only the beginning of long lines, or failed. Time-limited results keep completed signals; an extraction failure leaves an empty signal summary. The report and raw logs remain available for checking, and an incomplete summary does not establish that no anomalies exist.
+
+## Inspect the analysis trace
+
+Skill administrators with `logs:admin-domains` can open Analysis trace beside Conclusion, Files and Signals on a `/logs` report. Accounts with only `logs:view` do not see this tab and cannot read the trace API. The trace belongs to the record's current run; older records may have no saved steps.
+
+The summary above the steps totals steps, tool calls and reported input/output tokens and marks degradation or early convergence. Read steps in order to follow model turns, tool calls, early convergence, rule fallback or other degradation. Check the tool's argument summary, result byte count, outcome and short reason, and token counts when the model service provides them. A file argument shows the matching bundle-relative path, truncated to 120 characters; query and pattern text stays redacted. An error or truncation describes that step, not proof that the full analysis failed. Click a returned log `file:line` chip to open the existing log viewer drawer at that line and inspect surrounding context. Source references appear as source badges with a snapshot identity; they do not open the log viewer. Traces contain bounded summaries and line references rather than raw prompts or tool-result text; they help review the procedure but do not replace the final evidence.
 
 ## Give feedback on report quality
 

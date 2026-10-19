@@ -1,9 +1,11 @@
 import type { AnalyzeLogOutput, LogAnalysisDegradedReason, LogAnalysisSource } from "../analyzer";
 import type { LogAnalysisChatMessage } from "../analyzer/llmAnalyzer";
+import type { LogAnalysisTraceStep } from "../traceTypes";
 
 type SourceLocation = { snapshotId: string; path: string; line: number };
 
 export type LogEvalRunResult = {
+  trace?: LogAnalysisTraceStep[];
   output: AnalyzeLogOutput;
   /** Line numbers of the parsed (non-empty) raw lines — the grounding universe. */
   parsedLineNumbers: number[];
@@ -18,6 +20,9 @@ export type LogEvalRunResult = {
 };
 
 export type LogEvalExpectation =
+  | { type: "expectsTrace"; kinds: LogAnalysisTraceStep["kind"][] }
+  | { type: "expectsPrivateTrace"; forbidden: string[] }
+  | { type: "expectsTraceArguments"; tool: string; arguments: LogAnalysisTraceStep["arguments"] }
   | { type: "expectsAnalysisSource"; source: LogAnalysisSource }
   | { type: "expectsDegradedReason"; reason: LogAnalysisDegradedReason }
   | { type: "expectsNoDegradation" }
@@ -44,6 +49,25 @@ export function evaluateLogEvalExpectation(
   result: LogEvalRunResult
 ): LogEvalExpectationResult {
   switch (expectation.type) {
+    case "expectsTrace": {
+      const trace = result.trace ?? [];
+      const pass = trace.length > 0 && trace.length <= 200 && trace.every((step, index) => step.index === index + 1)
+        && trace.every((step) => step.resultBytes >= 0 && step.lines.length <= 50)
+        && expectation.kinds.every((kind) => trace.some((step) => step.kind === kind))
+        && trace.some((step) => step.lines.length > 0);
+      return pass ? { pass: true } : { pass: false, message: "Expected ordered bounded trace with every required step kind" };
+    }
+    case "expectsPrivateTrace": {
+      const serialized = JSON.stringify(result.trace ?? []);
+      const pass = Boolean(result.trace?.length) && expectation.forbidden.every((text) => !serialized.includes(text))
+        && result.trace!.every((step) => Object.values(step.arguments).every((value) => typeof value !== "string" || value.length <= 120));
+      return pass ? { pass: true } : { pass: false, message: "Trace leaked forbidden prompt content or unbounded argument text" };
+    }
+    case "expectsTraceArguments": {
+      const pass = Boolean(result.trace?.some((step) => step.tool === expectation.tool
+        && Object.entries(expectation.arguments).every(([key, value]) => step.arguments[key] === value)));
+      return pass ? { pass: true } : { pass: false, message: `Expected bounded argument summary for ${expectation.tool}` };
+    }
     case "expectsAnalysisSource": {
       const pass = result.output.analysisSource === expectation.source;
       return pass

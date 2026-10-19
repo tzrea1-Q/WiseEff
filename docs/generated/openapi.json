@@ -10878,6 +10878,224 @@
         }
       }
     },
+    "/api/v1/logs/{logId}/trace": {
+      "get": {
+        "operationId": "logs.getTrace",
+        "summary": "Read current run trace (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogTraceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/dry-runs": {
+      "post": {
+        "operationId": "logs.startDryRun",
+        "summary": "Run the saved draft on its stored sample (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSkillDryRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/dry-runs/{runId}": {
+      "get": {
+        "operationId": "logs.getDryRun",
+        "summary": "Read skill dry run and trace (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSkillDryRunDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/dry-runs/{runId}/lines": {
+      "get": {
+        "operationId": "logs.getDryRunLines",
+        "summary": "Read at most 400 lines from the dry run pinned sample (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startLine",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "endLine",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogLineRangeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/logs/{logId}/lines": {
       "get": {
         "operationId": "logs.getLines",
@@ -32576,6 +32794,937 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogRecordListResponse"
+      },
+      "LogTraceResponse": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "number"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "tool-call",
+                    "model-turn",
+                    "early-convergence",
+                    "rule-fallback",
+                    "degradation"
+                  ]
+                },
+                "tool": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "resultBytes": {
+                  "type": "number"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "file": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "number"
+                      },
+                      "snapshotId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "file",
+                      "line"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "error",
+                    "truncated"
+                  ]
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "inputTokens": {
+                  "type": "number"
+                },
+                "outputTokens": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "index",
+                "kind",
+                "tool",
+                "arguments",
+                "resultBytes",
+                "lines",
+                "outcome",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogTraceResponse"
+      },
+      "LogSkillDryRunResponse": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "skillRevisionId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "processing",
+                  "complete",
+                  "failed"
+                ]
+              },
+              "progress": {
+                "type": "number"
+              },
+              "report": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "confidence": {
+                    "type": "number"
+                  },
+                  "conclusion": {
+                    "type": "string"
+                  },
+                  "impact": {
+                    "type": "string"
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "Critical",
+                      "Warning",
+                      "Info"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sourceLocation": {
+                          "type": "object",
+                          "properties": {
+                            "snapshotId": {
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "line": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "snapshotId",
+                            "path",
+                            "line"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "sourceVersionLabel": {
+                          "type": "string"
+                        },
+                        "decodedFields": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "v": {
+                                "type": "number",
+                                "enum": [
+                                  1
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "declarative"
+                                ]
+                              },
+                              "extractor": {
+                                "type": "string"
+                              },
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "endLine": {
+                                "type": "number"
+                              },
+                              "fields": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "hex": {
+                                              "type": "string"
+                                            },
+                                            "length": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "hex",
+                                            "length"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "raw": {
+                                          "type": "string"
+                                        },
+                                        "value": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {
+                                              "type": "null"
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "hex": {
+                                                  "type": "string"
+                                                },
+                                                "length": {
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "hex",
+                                                "length"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        },
+                                        "meaning": {
+                                          "type": "string"
+                                        },
+                                        "unit": {
+                                          "type": "string"
+                                        },
+                                        "fields": {
+                                          "type": "object",
+                                          "additionalProperties": {
+                                            "type": "object"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "raw",
+                                        "value"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              },
+                              "errors": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "code": {
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "code",
+                                    "message"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "v",
+                              "source",
+                              "extractor",
+                              "file",
+                              "line",
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "filePath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "stageId": {
+                          "type": "string",
+                          "enum": [
+                            "parse",
+                            "pattern",
+                            "rootcause",
+                            "report"
+                          ]
+                        },
+                        "lineNumbers": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          }
+                        },
+                        "inference": {
+                          "type": "string"
+                        },
+                        "suggestedAction": {
+                          "type": "string"
+                        },
+                        "ruleHit": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "stageId",
+                        "lineNumbers",
+                        "inference",
+                        "suggestedAction"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "suggestedActions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "reportContext": {
+                    "type": "object",
+                    "properties": {
+                      "analysisQuestion": {
+                        "type": "string"
+                      },
+                      "lineCount": {
+                        "type": "number"
+                      },
+                      "entryCount": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "lineCount",
+                      "entryCount"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "analysisSource": {
+                    "type": "string",
+                    "enum": [
+                      "agent",
+                      "rules-fallback"
+                    ]
+                  },
+                  "degradedReason": {
+                    "type": "string",
+                    "enum": [
+                      "provider-unavailable",
+                      "token-budget-exhausted"
+                    ]
+                  },
+                  "promptVersion": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "confidence",
+                  "conclusion",
+                  "impact",
+                  "severity",
+                  "evidence",
+                  "suggestedActions",
+                  "reportContext"
+                ],
+                "additionalProperties": false
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "skillRevisionId",
+              "status",
+              "progress",
+              "report",
+              "error",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSkillDryRunResponse"
+      },
+      "LogSkillDryRunDetailResponse": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "skillRevisionId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "processing",
+                  "complete",
+                  "failed"
+                ]
+              },
+              "progress": {
+                "type": "number"
+              },
+              "report": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "confidence": {
+                    "type": "number"
+                  },
+                  "conclusion": {
+                    "type": "string"
+                  },
+                  "impact": {
+                    "type": "string"
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "Critical",
+                      "Warning",
+                      "Info"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sourceLocation": {
+                          "type": "object",
+                          "properties": {
+                            "snapshotId": {
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "line": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "snapshotId",
+                            "path",
+                            "line"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "sourceVersionLabel": {
+                          "type": "string"
+                        },
+                        "decodedFields": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "v": {
+                                "type": "number",
+                                "enum": [
+                                  1
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "declarative"
+                                ]
+                              },
+                              "extractor": {
+                                "type": "string"
+                              },
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "endLine": {
+                                "type": "number"
+                              },
+                              "fields": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "hex": {
+                                              "type": "string"
+                                            },
+                                            "length": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "hex",
+                                            "length"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "raw": {
+                                          "type": "string"
+                                        },
+                                        "value": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {
+                                              "type": "null"
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "hex": {
+                                                  "type": "string"
+                                                },
+                                                "length": {
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "hex",
+                                                "length"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        },
+                                        "meaning": {
+                                          "type": "string"
+                                        },
+                                        "unit": {
+                                          "type": "string"
+                                        },
+                                        "fields": {
+                                          "type": "object",
+                                          "additionalProperties": {
+                                            "type": "object"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "raw",
+                                        "value"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              },
+                              "errors": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "code": {
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "code",
+                                    "message"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "v",
+                              "source",
+                              "extractor",
+                              "file",
+                              "line",
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "filePath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "stageId": {
+                          "type": "string",
+                          "enum": [
+                            "parse",
+                            "pattern",
+                            "rootcause",
+                            "report"
+                          ]
+                        },
+                        "lineNumbers": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          }
+                        },
+                        "inference": {
+                          "type": "string"
+                        },
+                        "suggestedAction": {
+                          "type": "string"
+                        },
+                        "ruleHit": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "stageId",
+                        "lineNumbers",
+                        "inference",
+                        "suggestedAction"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "suggestedActions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "reportContext": {
+                    "type": "object",
+                    "properties": {
+                      "analysisQuestion": {
+                        "type": "string"
+                      },
+                      "lineCount": {
+                        "type": "number"
+                      },
+                      "entryCount": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "lineCount",
+                      "entryCount"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "analysisSource": {
+                    "type": "string",
+                    "enum": [
+                      "agent",
+                      "rules-fallback"
+                    ]
+                  },
+                  "degradedReason": {
+                    "type": "string",
+                    "enum": [
+                      "provider-unavailable",
+                      "token-budget-exhausted"
+                    ]
+                  },
+                  "promptVersion": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "confidence",
+                  "conclusion",
+                  "impact",
+                  "severity",
+                  "evidence",
+                  "suggestedActions",
+                  "reportContext"
+                ],
+                "additionalProperties": false
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "skillRevisionId",
+              "status",
+              "progress",
+              "report",
+              "error",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "number"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "tool-call",
+                    "model-turn",
+                    "early-convergence",
+                    "rule-fallback",
+                    "degradation"
+                  ]
+                },
+                "tool": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "resultBytes": {
+                  "type": "number"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "file": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "number"
+                      },
+                      "snapshotId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "file",
+                      "line"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "error",
+                    "truncated"
+                  ]
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "inputTokens": {
+                  "type": "number"
+                },
+                "outputTokens": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "index",
+                "kind",
+                "tool",
+                "arguments",
+                "resultBytes",
+                "lines",
+                "outcome",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "run",
+          "steps"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSkillDryRunDetailResponse"
       },
       "LogLineRangeResponse": {
         "type": "object",
