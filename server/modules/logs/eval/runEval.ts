@@ -11,6 +11,7 @@ import {
 } from "../analyzer/llmAnalyzer";
 import { createScriptedLogAnalysisModel } from "../analyzer/scriptedModel";
 import { analyzeWithDegradation } from "../worker";
+import type { LogAnalysisTraceStep } from "../traceTypes";
 import { evaluateAllLogEvalExpectations, evaluateLogEvalExpectation, type LogEvalExpectation, type LogEvalRunResult } from "./expectations";
 import {
   LOG_EVAL_SCENARIOS,
@@ -38,6 +39,8 @@ export type LogScenarioEvalResult = {
     evidenceLineNumbers: number[][];
     evidenceSourceLocations?: Array<{ snapshotId: string; path: string; line: number }>;
     conclusion: string;
+    traceStepCount?: number;
+    traceKinds?: LogAnalysisTraceStep["kind"][];
   };
 };
 
@@ -118,7 +121,8 @@ function toScenarioResult(
       ...(output.evidence.some((item) => item.sourceLocation) ? {
         evidenceSourceLocations: output.evidence.flatMap((item) => item.sourceLocation ? [item.sourceLocation] : [])
       } : {}),
-      conclusion: output.conclusion
+      conclusion: output.conclusion,
+      ...(runResult.trace ? { traceStepCount: runResult.trace.length, traceKinds: [...new Set(runResult.trace.map((step) => step.kind))] } : {})
     }
   };
 }
@@ -130,6 +134,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
   }
 
   const promptMessages: LogAnalysisChatMessage[] = [];
+  const trace: LogAnalysisTraceStep[] = [];
   const analyzer = createLlmLogAnalyzer({
     model: capturePrompts(scenario.model, promptMessages),
     modelLabel: EVAL_MODEL_LABEL,
@@ -140,6 +145,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
     analyzer,
     analyzeInput: {
       parsed,
+      onTrace: (step) => { trace.push(step); },
       filePath: scenario.fileName,
       procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
@@ -153,6 +159,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
 
   return toScenarioResult(scenario, "single-shot", {
     output,
+    trace,
     parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber),
     promptMessages,
     platformProtocol: scenario.procedure ? await capturePlatformProtocol(
@@ -171,6 +178,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
 
   const scriptedModel = createScriptedLogAnalysisModel(scenario.script);
   const promptMessages: LogAnalysisChatMessage[] = [];
+  const trace: LogAnalysisTraceStep[] = [];
   const returnedSourceLocations: NonNullable<LogEvalRunResult["returnedSourceLocations"]> = [];
   const analyzer = createAgentLoopLogAnalyzer({
     model: capturePrompts(scriptedModel, promptMessages),
@@ -188,6 +196,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     analyzer,
     analyzeInput: {
       parsed,
+      onTrace: (step) => { trace.push(step); },
       filePath: scenario.fileName,
       procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
@@ -215,6 +224,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
 
   return toScenarioResult(scenario, "loop", {
     output,
+    trace,
     parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber),
     promptMessages,
     platformProtocol: scenario.procedure ? await capturePlatformProtocol(
@@ -369,13 +379,13 @@ export function formatLogEvalReportMarkdown(report: LogEvalReport): string {
     "",
     "## Scenario Results",
     "",
-    "| Scenario | Category | Kernel | Source | Degraded | Result |",
-    "| --- | --- | --- | --- | --- | --- |"
+    "| Scenario | Category | Kernel | Source | Degraded | Trace steps | Result |",
+    "| --- | --- | --- | --- | --- | --- | --- |"
   ];
 
   for (const scenario of report.scenarios) {
     lines.push(
-      `| ${scenario.name} | ${scenario.category} | ${scenario.kernel} | ${scenario.runResult.analysisSource ?? "-"} | ${scenario.runResult.degradedReason ?? "-"} | ${scenario.pass ? "PASS" : "FAIL"} |`
+      `| ${scenario.name} | ${scenario.category} | ${scenario.kernel} | ${scenario.runResult.analysisSource ?? "-"} | ${scenario.runResult.degradedReason ?? "-"} | ${scenario.runResult.traceStepCount ?? "-"} | ${scenario.pass ? "PASS" : "FAIL"} |`
     );
   }
 

@@ -14,6 +14,7 @@ import { ensureKnowledgeVectorColumn } from "./modules/knowledge/indexing/vector
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
 import { startSourceIndexWorkerLoop } from "./modules/logs/sourceIndexWorker";
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
+import { recoverInterruptedDryRuns } from "./modules/logs/dryRunAdmission";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { createLogWebhookDeliverer } from "./modules/logs/webhookDelivery";
 import { ensureLogWebhookSecretsEncrypted } from "./modules/logs/webhookSecrets";
@@ -183,6 +184,7 @@ const server = createWiseEffServerFromEnv({
   objectStore,
   objectStoreHealth: objectStore,
   logAnalysisQueue: logAnalysisQueueRuntime?.queue,
+  logAnalyzer,
   debugGateway,
   debugGatewayRegistry,
   durableQueue: logAnalysisQueueRuntime?.queue,
@@ -230,6 +232,7 @@ process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
 
 async function start() {
+  if (db) await recoverInterruptedDryRuns(db);
   if (db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
     try {
       const cutover = await maybeEnsureLocalPostCutoverOnApiBoot(db);

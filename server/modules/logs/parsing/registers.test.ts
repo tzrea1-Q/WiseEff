@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { decodeLogFiles } from "./engine";
-import { decodedEventSchema, MAX_DECODE_DEPTH, parsingSpecSchema, type ParsingSpec, type RegisterSpec } from "./spec";
+import { decodedEventSchema, MAX_DECODE_TREE_DEPTH, parsingSpecSchema, type ParsingSpec, type RegisterSpec } from "./spec";
 import { decodeLogFilesCooperatively } from "./workerDecoding";
 
 const register: RegisterSpec = { width: 8, fields: [
@@ -117,10 +117,10 @@ describe("parsing/v1 registers interface", () => {
     expect(parsingSpecSchema.safeParse({ ...spec, registers: { value: { ...register, width: 24 } } }).success).toBe(false);
     expect(parsingSpecSchema.safeParse({ ...spec, registers: { value: { ...register, fields: [{ ...register.fields[0], decode: { register: "value" } }] } } }).success).toBe(false);
   });
-  it("bounds decoded-event contract depth at eight", () => {
+  it("bounds the decoded-event tree including structural frame wrappers", () => {
     const event = decode(bq()).events[0];
     let value: unknown = { raw: "1", value: 1 };
-    for (let i = 1; i < MAX_DECODE_DEPTH; i++) value = { raw: "1", value: 1, fields: { child: value } };
+    for (let i = 1; i < MAX_DECODE_TREE_DEPTH; i++) value = { raw: "1", value: 1, fields: { child: value } };
     expect(decodedEventSchema.safeParse({ ...event, fields: { value } }).success).toBe(true);
     expect(decodedEventSchema.safeParse({ ...event, fields: { value: { raw: "1", value: 1, fields: { child: value } } } }).success).toBe(false);
   });
