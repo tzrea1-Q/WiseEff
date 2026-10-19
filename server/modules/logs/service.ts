@@ -237,6 +237,7 @@ export async function uploadLogFile(
   const failureReason = !intake.ok ? intake.reason : intake.files.some((file) => file.status === "analyzed")
     ? undefined : singleUnsupported ? unsupportedReason() : "日志包中没有可分析的文本文件";
   const storedFiles: Array<Omit<BundleFile, "bytes"> & { objectKey: string | null }> = [];
+  const originalObjects = new Map<string, StoredObject>();
   let stored: StoredObject | undefined;
   for (const file of intake.ok ? intake.files : []) {
     const object = file.status === "analyzed" ? await objectStore.put({
@@ -245,6 +246,8 @@ export async function uploadLogFile(
       contentType: "text/plain; charset=utf-8", bytes: bundleFileUtf8Bytes(file)
     }) : undefined;
     stored ??= object;
+    const original = uploads.find((upload) => upload.fileName === file.path && !isLogArchive(upload.fileName));
+    if (object && original && bundleFileUtf8Bytes(file).equals(original.bytes)) originalObjects.set(original.fileName, object);
     delete file.bytes;
     storedFiles.push({ ...file, objectKey: object?.storageKey ?? null });
   }
@@ -254,6 +257,11 @@ export async function uploadLogFile(
     fileSizeBytes: uploads.reduce((sum, file) => sum + file.bytes.length, 0),
     checksumSha256: createHash("sha256").update(input.bytes).digest("hex")
   };
+  const originalUploads = failureReason ? [] : await Promise.all(uploads.map(async (upload) => ({
+    fileName: upload.fileName, sizeBytes: upload.bytes.length,
+    objectKey: (originalObjects.get(upload.fileName) ?? await objectStore.put({ organizationId: auth.organization.id,
+      fileName: `original-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: upload.bytes })).storageKey
+  })));
 
   const result = await db.transaction(async (tx) => {
     const fileObject = await persistFileObject(tx, auth, { stored: primary });
@@ -302,6 +310,9 @@ export async function uploadLogFile(
     );
 
     await insertLogFiles(tx, auth.organization.id, log.id, storedFiles);
+    for (const [position, upload] of originalUploads.entries()) await tx.query(`insert into log_original_uploads
+      (organization_id, record_id, position, file_name, object_key, size_bytes) values ($1,$2,$3,$4,$5,$6)`,
+    [auth.organization.id, log.id, position, upload.fileName, upload.objectKey, upload.sizeBytes]);
     return { fileObject, log: { ...log, files: fileInventory(storedFiles) }, job };
   });
 
@@ -413,6 +424,9 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         select gen_random_uuid()::text, organization_id, $3, path, size_bytes, sha256, encoding, lossy,
           line_count, status, skip_reason, object_key, line_index_key from log_files where organization_id=$1 and record_id=$2`,
       [auth.organization.id, sourceRecordId, result.log.id]);
+      await tx.query(`insert into log_original_uploads (organization_id, record_id, position, file_name, object_key, size_bytes)
+        select organization_id, $3, position, file_name, object_key, size_bytes from log_original_uploads
+        where organization_id = $1 and record_id = $2`, [auth.organization.id, sourceRecordId, result.log.id]);
       result.log.files = fileInventory(await loadLogFiles(tx, auth.organization.id, result.log.id));
     }
     return result;

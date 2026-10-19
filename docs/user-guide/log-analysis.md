@@ -77,6 +77,18 @@ The right-side drawer shows progress, the final conclusion and evidence, and the
 
 Only one dry run may run per organization at a time, with a shared aggregate cap of 2 by default across API instances. An administrator can configure `LOG_DRY_RUN_MAX_CONCURRENT` from 1 to 4; invalid values use 2. A full-capacity request receives a busy message and starts no analysis. Analysis budgets and a timeout apply. Startup recovery and status reads detect a missing owner process or an expired deadline, mark the run interrupted, and offer Retry in the drawer. Dry runs do not appear in `/logs`, its counts or search, and do not send result webhooks. The latest 10 runs per skill are retained; older completed or failed runs and their traces are removed.
 
+## Measure a draft with analysis cases
+
+In the skill workspace, open Tests and use Analysis cases. A case belongs to the skill, across revisions, and contains the original uploaded log bundle, its file inventory and expectations. Add a bundle and describe the expected root cause, decisive evidence and suggested actions; mark an expected refusal or degradation when that is the correct outcome. Edit expectations before saving.
+
+Run one case or all cases against the saved draft. The server uses the configured analysis model and the existing quality rubric, with the configured judge when available and deterministic expectation checks otherwise. The same inputs run against the last published revision. Review each case's draft and published score, pass/fail result and delta, and inspect its analysis trace. A failed or interrupted run is not a passing result. Cases and runs are bounded, share dry-run admission limits, and create no log-list entries, statistics, search results or result webhooks.
+
+The publish dialog shows the analysis-case pass count and comparison only when the results are current for the saved draft and cases. Otherwise, run the cases again. Results, failures and missing runs never block publishing.
+
+On a completed report bound to a skill, administrators with `logs:admin-domains` can choose Save as test case. The edit dialog prefills the report conclusion as expected root cause, cited file/line anchors as key evidence and suggestions as expected actions. Review these expectations before saving; the case retains the original uploaded bytes rather than the report's truncated preview.
+
+Use Import and Export to move cases as a ZIP in the [`eval-cases/logs` format](../../eval-cases/logs/README.md). Import validates annotations, fixtures, paths and size limits before saving. Keep the exported directory structure intact; validation errors identify the exact file and field to fix.
+
 ## Upload a log and choose its domain
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".

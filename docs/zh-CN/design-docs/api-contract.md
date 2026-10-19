@@ -468,6 +468,27 @@ GET  /api/v1/jobs/:jobId/events
 
 **反馈质量洞察（P3）**：`GET /api/v1/logs/feedback-insights`（`logs:view`，组织隔离）把 `log_feedback` 聚合给 `/log-admin`「分析质量」看板：按业务域 × `analysisSource` × `promptVersion` 每组一行，含 `totalCount`、`helpfulCount`、`helpfulRate`（0..1）与 `lastFeedbackAt`。可选 `timeWindow=today|7d|30d` 按反馈创建时间过滤（与 `GET /api/v1/logs` 相同的区间语义）。反馈归因到写入时戳记的分析 run（`log_feedback.run_id`，取当时日志的 `current_run_id`）；`run_id` 仍为空的历史行回退到日志当前 run。列表/详情仍读取当前 run 的报告。未分类域的 `logDomainId`/`logDomainName` 为 `null`，无来源信息的历史报告 `analysisSource`/`promptVersion` 为 `null`。
 
+### 技能分析用例（#1246）
+
+以下接口均要求 `logs:admin-domains`，读写限定于当前组织，不可访问的技能、记录或运行返回 `404`。用例归属技能身份。迁移 `0203_log_analysis_cases.sql` 添加组织复合外键及运行角色授权；用例新增、修改、删除、导入和运行结果写入均走审计事务。
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-cases` | `{ items, latestRun, current }`；`current` 要求捕获的草稿、发布版本及全部用例仍保持一致。 |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-cases` | `{ name, expectations, files?: [{ fileName, contentBase64 }], sourceRecordId? }`；提供上传文件或本技能可访问的已完成报告，返回 `201 { item }`，保留原始上传字节及文件清单。 |
+| `PATCH` | `/api/v1/log-skills/:skillId/analysis-cases/:caseId` | `{ name, expectations }`，返回 `{ item }`，使先前运行过期。 |
+| `DELETE` | `/api/v1/log-skills/:skillId/analysis-cases/:caseId` | 审计删除，`200 { ok: true }`。 |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-case-runs` | `{ caseIds? }`，省略 ids 运行全部用例，返回 `202 { run }`。需先保存草稿；容量耗尽返回 `429`。 |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-case-runs/:runId` | `{ run }`，含 `processing`、`complete` 或 `failed` 状态、进度，以及逐用例草稿/已发布结果。结果含 0–100 得分、通过情况、报告、轨迹引用及差值。 |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-case-runs/:runId/cases/:caseId/trace?revision=draft` | 复用有界管理员轨迹契约的 `{ steps }`；`revision` 也支持 `published`。 |
+| `GET` | `/api/v1/logs/:logId/analysis-case-prefill` | 对已完成且绑定技能的报告返回 `{ skillId, name, expectations }`；结论映射为期望根因，引用映射为文件/行证据，建议映射为期望动作。保存需要原始上传；缺少原包的历史报告明确报错。 |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-cases/import` | multipart `file` ZIP，完整校验后才持久化，返回导入用例的 `201 { items }`。 |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-cases/export` | [`eval-cases/logs` 布局](../../../eval-cases/logs/README.zh-CN.md)的二进制 ZIP，保留原始日志字节及未编辑标注。 |
+
+期望复用 `domain`、`summary`、`realLog`、`deIdentified`、`rootCauseCategory`、`rootCausePoints`、`keyEvidenceLines`、`expectedActions`、`expectRefusal`、`analysisQuestion` 和 `formatProfile`。日志包扩展为可选用例名 `caseName`、`bundleFiles`、文件感知的 `keyEvidence: [{ file, line?, pattern? }]` 和可选 `expectedDegradedReason`。非拒答用例须包含期望根因、证据和动作。导入错误指出具体归档路径与字段，文件沿用有界日志包接收校验，模式使用线性时间引擎。
+
+限制：每技能/运行 20 个用例，每用例原始字节及规范化文本各 10 MiB、解包文件 100 个，每次运行 120 秒，每技能保留 10 次运行。导入 ZIP 的压缩/解压总量均为 440 MiB，最多 2040 条目。准入时捕获输入及两个版本，与试运行共享组织/总量 owner 锁，使用已配置分析器和质量评测。配置 judge 时评分根因及动作，否则使用确定性评分。运行不产生记录、统计、搜索条目或结果 Webhook。当前草稿及全部用例的完整结果可提供发布摘要；过期、缺少或失败结果提示重跑，始终不阻止发布。
+
 ### 分析轨迹与草稿试运行（#1230）
 
 | 方法 | 路径 | 契约 |

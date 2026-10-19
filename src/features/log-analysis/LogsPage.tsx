@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { SignalsTab } from "./SignalsTab";
 import { LogFileDrawer } from "./LogFileDrawer";
 import { LogTraceTab } from "./AnalysisTrace";
+import { AnalysisCaseDialog } from "@/features/log-skills/AnalysisCaseDialog";
+import type { AnalysisCasePrefill } from "@/features/log-skills/types";
 import { canPerform } from "@/app/permissions";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
@@ -120,6 +122,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadLogDomains, setUploadLogDomains] = useState<LogDomain[]>([]);
   const [distilPending, setDistilPending] = useState(false);
+  const [casePrefill, setCasePrefill] = useState<(AnalysisCasePrefill & { sourceRecordId: string }) | null>(null);
+  const [casePending, setCasePending] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
@@ -511,6 +515,13 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           onCopyLink={onCopyLink}
           onDistil={canDistil ? onDistil : undefined}
           distilPending={distilPending}
+          onSaveCase={canViewTrace && activeLog.status === "Complete" && activeLog.logDomainId && logRepository?.getAnalysisCasePrefill && logRepository.createAnalysisCase ? () => {
+            setCasePending(true);
+            void logRepository.getAnalysisCasePrefill!(activeLog.id).then((prefill) => setCasePrefill({ ...prefill, sourceRecordId: activeLog.id }))
+              .catch((cause) => dispatch({ type: "ADD_NOTIFICATION", message: presentError(cause, "无法加载测试用例，请重试。") }))
+              .finally(() => setCasePending(false));
+          } : undefined}
+          casePending={casePending}
           onExport={onExport}
           onFeedback={() => setFeedbackLogId(activeLog.id)}
           onPrimary={onPrimary}
@@ -564,6 +575,10 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         ) : null}
       </div> : <LogMetadata log={activeLog} />}
       </NavigatorWorkbench>
+      {casePrefill ? <AnalysisCaseDialog title="存为测试用例" initial={casePrefill} onClose={() => setCasePrefill(null)} onSave={async (input) => {
+        await logRepository!.createAnalysisCase!(casePrefill.skillId, { ...input, sourceRecordId: casePrefill.sourceRecordId });
+        dispatch({ type: "ADD_NOTIFICATION", message: "已保存为分析测试用例" });
+      }} /> : null}
       {uploadDialogOpen ? (
         <UploadLogDialog
           accept={logActions ? null : mockLogUploadAccept}
@@ -999,6 +1014,8 @@ function LogConclusionCard({
   onCopyLink,
   onDistil,
   distilPending = false,
+  onSaveCase,
+  casePending = false,
   onFeedback,
   onRetry
 }: {
@@ -1012,6 +1029,8 @@ function LogConclusionCard({
   /** Present only when the user holds knowledge:edit (distil-to-knowledge). */
   onDistil?: () => void;
   distilPending?: boolean;
+  onSaveCase?: () => void;
+  casePending?: boolean;
   onFeedback: () => void;
   onRetry: () => void;
 }) {
@@ -1042,6 +1061,7 @@ function LogConclusionCard({
           {relatedParameterLocated ? "查看关联参数" : "生成参数修改请求"}
         </button>
         {relatedParameterUnlocated ? <p role="status">旧参数关联缺少可验证的项目与 Binding 定位，无法作为当前参数发起修改。</p> : null}
+        {onSaveCase ? <Button variant="outline" disabled={casePending} aria-busy={casePending} onClick={onSaveCase}>存为测试用例</Button> : null}
         <button className="button subtle" disabled={log.status !== "Complete"} type="button" onClick={onExport}>
           <Download size={16} />
           导出报告

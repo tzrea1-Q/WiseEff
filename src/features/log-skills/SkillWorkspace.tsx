@@ -31,6 +31,7 @@ import { SourceSnapshots } from "./SourceSnapshots";
 import { SkillDryRunDrawer } from "./SkillDryRunDrawer";
 import { KnowledgeSection } from "./KnowledgeSection";
 import { ParseTestsSection } from "./ParseTestsSection";
+import { AnalysisCasesSection, AnalysisCasePublishSummary } from "./AnalysisCasesSection";
 import "./skill-workspace.css";
 
 type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
@@ -46,6 +47,7 @@ type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: Ski
   repository?: Partial<SkillWorkspaceRepository>; apiMode: boolean; canEdit: boolean; dirty: boolean;
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
+  beforeCaseRun: () => Promise<unknown>;
   stats?: { analyses7d?: number; helpfulRate7d?: number | null } };
 const time = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未发布";
 const status = { published: "当前", draft: "草稿", superseded: "已替代" };
@@ -63,9 +65,12 @@ function Decoding({ skill, parsingYaml, onParsingYamlChange, disabled, repositor
   return <DecodingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} selectedLine={selectedLine} />;
 }
 
-function Tests({ skill, spec, setSpec, disabled, repository, sample, selectedLine, parseTestRun, testsRunning, testRunDisabled, parseTestError, onRunTests, onBusyChange, onTestValidityChange }: SectionProps) {
-  return <ParseTestsSection skillId={skill.id} spec={spec} setSpec={setSpec} disabled={disabled} repository={repository}
-    sample={sample} selectedLine={selectedLine} result={parseTestRun} running={testsRunning} runDisabled={testRunDisabled} runError={parseTestError} onRun={onRunTests} onBusyChange={onBusyChange} onValidityChange={onTestValidityChange} />;
+function Tests({ skill, spec, setSpec, disabled, repository, apiMode, canEdit, sample, selectedLine, parseTestRun, testsRunning, testRunDisabled, parseTestError, onRunTests, onBusyChange, onTestValidityChange, beforeCaseRun }: SectionProps) {
+  return <>
+    <ParseTestsSection skillId={skill.id} spec={spec} setSpec={setSpec} disabled={disabled} repository={repository}
+      sample={sample} selectedLine={selectedLine} result={parseTestRun} running={testsRunning} runDisabled={testRunDisabled} runError={parseTestError} onRun={onRunTests} onBusyChange={onBusyChange} onValidityChange={onTestValidityChange} />
+    <AnalysisCasesSection skillId={skill.id} repository={apiMode ? repository : undefined} canEdit={canEdit && !disabled} beforeRun={beforeCaseRun} />
+  </>;
 }
 
 const procedureOutline = ["适用场景", "先检查什么", "根因判定", "常见误判", "建议动作"]
@@ -334,6 +339,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
           if (!parsed.error && validated.success) setSpec({ ...spec, parsing: validated.data });
         }}
         repository={repository} apiMode={apiMode} canEdit={canEdit} dirty={dirty} onBusyChange={setPending}
+        beforeCaseRun={async () => { if (yamlInvalid || conflict) throw new Error("请先修正草稿错误再运行用例。"); if (dirty || !skill.draft) return save(); }}
         knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
         onSkillUpdated={(updated) => { setSkill(updated); setSpec(structuredClone((updated.draft ?? updated.currentRevision).spec));
           setRevisions((history) => [...(updated.draft ? [updated.draft] : []), ...history.filter((revision) => revision.status !== "draft")]); }}
@@ -354,6 +360,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
           <p>测试失败不会阻止发布。</p>
         </section>
         <SkillSpecDiff before={skill.currentRevision.spec} after={spec} />
+        <AnalysisCasePublishSummary skillId={skillId} draftId={skill.draft?.id} dirty={dirty} repository={repository}
+          onRun={() => { setPublishOpen(false); switchSection("tests"); }} />
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setPublishOpen(false)}>取消</Button>
           <Button disabled={disabled || conflict || yamlInvalid || testsInvalid || signalsInvalid || !formatValid} aria-busy={pending} onClick={() => void run(async () => {
             const draft = dirty ? await save() : skill.draft!;

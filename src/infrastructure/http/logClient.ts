@@ -21,6 +21,10 @@ import {
   logTraceResponseSchema,
   logSkillDryRunResponseSchema,
   logSkillDryRunDetailResponseSchema,
+  logAnalysisCaseListResponseSchema,
+  logAnalysisCaseResponseSchema,
+  logAnalysisCaseRunResponseSchema,
+  logAnalysisCasePrefillResponseSchema,
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
   logSkillListResponseSchema,
@@ -186,6 +190,38 @@ export function createHttpLogAnalysisRepository(
     return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
   }
   const repository: LogAnalysisRepository = {
+    async listAnalysisCases(id) {
+      return parseContractDto(logAnalysisCaseListResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases`), "LogAnalysisCaseListResponse");
+    },
+    async createAnalysisCase(id, input) {
+      const { files, ...fields } = input;
+      const body = { ...fields, ...(files ? { files: await Promise.all(files.map(async (file) => ({ fileName: file.name, contentBase64: await fileToBase64(file) }))) } : {}) };
+      return parseContractDto(logAnalysisCaseResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases`, body), "LogAnalysisCaseResponse").item;
+    },
+    async updateAnalysisCase(id, caseId, input) {
+      return parseContractDto(logAnalysisCaseResponseSchema, await apiClient.patch(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/${encodeURIComponent(caseId)}`, input), "LogAnalysisCaseResponse").item;
+    },
+    async deleteAnalysisCase(id, caseId) {
+      await apiClient.delete(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/${encodeURIComponent(caseId)}`);
+    },
+    async startAnalysisCaseRun(id, caseIds) {
+      return parseContractDto(logAnalysisCaseRunResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-case-runs`, { caseIds }), "LogAnalysisCaseRunResponse").run;
+    },
+    async getAnalysisCaseRun(id, runId) {
+      return parseContractDto(logAnalysisCaseRunResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-case-runs/${encodeURIComponent(runId)}`), "LogAnalysisCaseRunResponse").run;
+    },
+    async getAnalysisCaseTrace(id, runId, caseId, revision) {
+      return parseContractDto(logTraceResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-case-runs/${encodeURIComponent(runId)}/cases/${encodeURIComponent(caseId)}/trace?revision=${revision}`), "LogTraceResponse").steps;
+    },
+    async getAnalysisCasePrefill(logId) {
+      return parseContractDto(logAnalysisCasePrefillResponseSchema, await apiClient.get(`${routeLogPath(logId)}/analysis-case-prefill`), "LogAnalysisCasePrefillResponse");
+    },
+    async importAnalysisCases(id, file) {
+      await apiClient.upload(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/import`, file);
+    },
+    async exportAnalysisCases(id) {
+      return (await apiClient.raw(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/export`, { method: "GET" })).blob();
+    },
     async getLogTrace(logId) {
       return parseContractDto(logTraceResponseSchema, await apiClient.get(`${routeLogPath(logId)}/trace`), "LogTraceResponse").steps;
     },

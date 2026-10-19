@@ -116,7 +116,8 @@ export function decodeLogBundleFile(path: string, bytes: Buffer, requireSupporte
 /** No persistence: every entry is validated, bounded and decoded before the caller writes anything. */
 export function intakeLogBundle(
   uploads: { fileName: string; bytes: Buffer } | Array<{ fileName: string; bytes: Buffer }>,
-  limits: BundleLimits = defaultBundleLimits
+  limits: BundleLimits = defaultBundleLimits,
+  options: { preserveNestedArchives?: boolean; retainOriginalBytes?: boolean } = {}
 ): BundleIntakeResult {
   try {
     const inputs = Array.isArray(uploads) ? uploads : [uploads];
@@ -147,7 +148,7 @@ export function intakeLogBundle(
         textTotal += size;
         if (size > limits.maxFileBytes || textTotal > limits.maxUnpackedBytes) throw new LogBundleIntakeError("解码文本大小规则：UTF-8 文本超过单文件或解包总大小上限");
       }
-      files.push(file);
+      files.push(options.retainOriginalBytes ? { ...file, bytes } : file);
     };
     const inflate = (bytes: Buffer, gzip: boolean, container: boolean) => {
       const cap = Math.min(unpackedBudget - inflatedBytes, container ? unpackedBudget : limits.maxFileBytes, Math.max(bytes.length * 200, MiB));
@@ -164,7 +165,7 @@ export function intakeLogBundle(
     };
     const expand = (name: string, bytes: Buffer, depth: number, prefix = "") => {
       const path = safePath(name);
-      if (!isLogArchive(path)) { add(posix.join(prefix, path), bytes); return; }
+      if (!isLogArchive(path) || options.preserveNestedArchives && depth > 0) { add(posix.join(prefix, path), bytes); return; }
       if (depth > 1) throw new LogBundleIntakeError("嵌套层数规则：压缩包最多嵌套一层");
       const child = (entry: string, data: Buffer) => expand(safePath(entry), data, depth + 1, prefix);
       if (/\.(gz|tgz)$/i.test(path)) {
@@ -234,7 +235,7 @@ export function intakeLogBundle(
           const output = method === 8 ? inflate(data, false, isLogArchive(entry)) : data;
           if (output.length !== unpackedSize) throw new LogBundleIntakeError(corruptArchiveReason);
           if (crc32(output) !== checksum) throw new LogBundleIntakeError(corruptArchiveReason);
-          const nestedPrefix = isLogArchive(entry) ? posix.join(prefix, entry) : prefix;
+          const nestedPrefix = isLogArchive(entry) && !options.preserveNestedArchives ? posix.join(prefix, entry) : prefix;
           expand(entry, output, depth + 1, nestedPrefix);
         }
         if (at !== centralEnd) throw new LogBundleIntakeError(corruptArchiveReason);

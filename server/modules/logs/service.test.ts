@@ -402,12 +402,16 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     const result = await uploadLogFile(db, objectStore, makeAuth(), {
       fileName: "encodings", contentType: "text/plain", bytes: plain, files
     });
-    const stored = put.mock.calls.map(([input]) => input.bytes);
+    const stored = put.mock.calls.filter(([input]) => input.contentType.startsWith("text/plain")).map(([input]) => input.bytes);
     expect(stored[0]).toBe(plain);
     expect(stored[1].buffer).toBe(files[1].bytes.buffer);
     expect(stored[1].byteOffset).toBe(files[1].bytes.byteOffset + 3);
     expect(stored.map((bytes) => bytes.toString("utf8"))).toEqual(["INFO plain\r\n", "INFO bom\n", "INFO 你好\n", "INFO 你好\n", "�a"]);
-    expect([...objectStore.entries.values()].map((bytes) => bytes.toString("utf8"))).toEqual(["INFO plain\r\n", "INFO bom\n", "INFO 你好\n", "INFO 你好\n", "�a"]);
+    const normalized = await db.query<{ object_key: string }>("select object_key from log_files where record_id=$1 order by path", [result.log.id]);
+    expect(await Promise.all(normalized.rows.map(async ({ object_key }) => (await objectStore.get(object_key)).toString("utf8")))).toEqual(["INFO 你好\n", "INFO bom\n", "INFO 你好\n", "�a", "INFO plain\r\n"]);
+    const originals = await db.query<{ file_name: string; object_key: string }>("select file_name, object_key from log_original_uploads where record_id=$1 order by position", [result.log.id]);
+    expect(originals.rows.map((row) => row.file_name)).toEqual(files.map((file) => file.fileName));
+    expect(await Promise.all(originals.rows.map((row) => objectStore.get(row.object_key)))).toEqual(files.map((file) => file.bytes));
     expect(result.log.files?.map(({ encoding, lossy }) => ({ encoding, lossy }))).toEqual([
       { encoding: "utf-8", lossy: false }, { encoding: "utf-8", lossy: false }, { encoding: "utf-16le", lossy: false },
       { encoding: "utf-16be", lossy: false }, { encoding: "utf-8", lossy: true }
@@ -426,7 +430,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     expect(result.log.files).toMatchObject([{ path: "a.log", status: "analyzed" }, { path: "b.log", status: "analyzed" }]);
     expect(result.job).toMatchObject({ status: "queued" });
     expect(enqueued).toHaveLength(1);
-    expect(objectStore.entries.size).toBe(2);
+    expect(objectStore.entries.size).toBe(3);
     expect((await auditEvents()).map((event) => event.kind)).toEqual(["log-upload"]);
   });
 

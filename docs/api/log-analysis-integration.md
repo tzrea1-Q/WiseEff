@@ -48,6 +48,12 @@ Optional `signalSummary.truncated` and `reason` describe incomplete extraction: 
 
 `GET /api/v1/logs/{logId}/trace` returns ordered `{ steps }` for the record's current run. It requires `logs:admin-domains`; `logs:view` alone receives `403`, and inaccessible records return `404`. Steps contain bounded tool-argument summaries, result byte counts, returned line references, outcomes and available token counts, never raw prompts or provider payloads. See the [trace and dry-run contract](../design-docs/api-contract.md#analysis-traces-and-draft-dry-runs-1230) for storage bounds and the administrator-only draft dry-run endpoints. Dry runs use the saved draft and stored sample; they create no `/logs` records or result webhooks.
 
+### Skill analysis cases
+
+All analysis-case routes require `logs:admin-domains` and organization-scoped access. Cases belong to a skill identity across revisions. See the [analysis-case API contract](../design-docs/api-contract.md#skill-analysis-cases-1246) for CRUD, run, trace, report-prefill and ZIP endpoints. New uploads preserve original input bytes separately from normalized analysis files, so saving a report as a case retains its original bundle. Historical reports without retained original uploads cannot reconstruct those bytes and return an explicit error when saved as a case.
+
+Case runs use the configured analyzer, compare the saved draft with its last published revision, and persist isolated test outcomes. They share draft dry-run admission, produce no user-visible log record or result webhook, and never block publishing. Import and export use the [`eval-cases/logs` layout](../../eval-cases/logs/README.md), with exact fixture bytes and path-specific validation errors.
+
 ### Fetch a file's line window
 
 `GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` returns a window from one analyzed file. It requires `logs:view` and the same Organization scope as the record. Use the exact `path` from the record's `files` inventory for `file`; this is a bundle path, not an object-store key.

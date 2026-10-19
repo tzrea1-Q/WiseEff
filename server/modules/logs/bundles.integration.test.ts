@@ -38,12 +38,16 @@ describe.skipIf(!available)("bundle upload and analysis over PostgreSQL", () => 
       zip.file("device/a.log", "INFO boot\nERROR code=E_FIRST\n");
       zip.file("device/b.log", "ERROR code=E_SECOND\nINFO done\n");
       zip.file("snapshot.bin", Buffer.from([0, 1, 2])); zip.file("readme.pdf", "unsupported");
-      const created = await uploadLogFile(db, objectStore, auth(), { fileName: "device.zip", contentType: "application/zip", bytes: await zip.generateAsync({ type: "nodebuffer" }) });
+      const originalBytes = await zip.generateAsync({ type: "nodebuffer" });
+      const created = await uploadLogFile(db, objectStore, auth(), { fileName: "device.zip", contentType: "application/zip", bytes: originalBytes });
       expect(created.log.files).toEqual(expect.arrayContaining([
         expect.objectContaining({ path: "snapshot.bin", status: "skipped", skipReason: "二进制文件" }),
         expect.objectContaining({ path: "readme.pdf", status: "skipped", skipReason: "不支持的文件扩展名" })
       ]));
-      expect(objectStore.entries.size).toBe(2);
+      expect(objectStore.entries.size).toBe(3);
+      const original = (await db.query<{ object_key: string }>("select object_key from log_original_uploads where record_id=$1", [created.log.id])).rows;
+      expect(original).toHaveLength(1);
+      expect(await objectStore.get(original[0].object_key)).toEqual(originalBytes);
       expect((await db.query(`select path, skip_reason from log_files where record_id=$1 and status='skipped' order by path`, [created.log.id])).rows)
         .toEqual([{ path: "readme.pdf", skip_reason: "不支持的文件扩展名" }, { path: "snapshot.bin", skip_reason: "二进制文件" }]);
       const analyzer = createAgentLoopLogAnalyzer({ model: createScriptedLogAnalysisModel([

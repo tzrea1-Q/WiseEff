@@ -119,6 +119,27 @@ Log domain DTOs carry `modelOverride?` and a webhook summary `{ enabled, url?, s
 
 Log record DTOs gained additive provenance fields: `logDomainId?`, `logDomainName?`, `analysisSource?: "agent" | "rules-fallback"`, and `degradedReason?: "provider-unavailable" | "token-budget-exhausted"`. A `rules-fallback` source marks a degraded analysis and must stay visible to clients; the rest of the log output contract is unchanged.
 
+### Skill analysis cases (#1246)
+
+All endpoints below require `logs:admin-domains`, scope reads and writes to the authenticated organization, and return `404` for inaccessible skills, records or runs. Cases belong to the skill identity. Migration `0203_log_analysis_cases.sql` adds organization-composite foreign keys and runtime grants; case create/update/delete, imports and run-result writes use audited transactions.
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-cases` | `{ items, latestRun, current }`; `current` requires the captured draft, publication and entire case set to remain current. |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-cases` | `{ name, expectations, files?: [{ fileName, contentBase64 }], sourceRecordId? }`; provide uploaded files or an accessible completed report of this skill. Returns `201 { item }`. Original upload bytes and file inventory are retained. |
+| `PATCH` | `/api/v1/log-skills/:skillId/analysis-cases/:caseId` | `{ name, expectations }`; returns `{ item }` and invalidates previous run currency. |
+| `DELETE` | `/api/v1/log-skills/:skillId/analysis-cases/:caseId` | Audited delete, `200 { ok: true }`. |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-case-runs` | `{ caseIds? }`; omit ids to run all cases. Returns `202 { run }`. Requires a saved draft; capacity exhaustion returns `429`. |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-case-runs/:runId` | `{ run }` with `processing`, `complete` or `failed` status, progress and per-case draft/published outcomes. Outcomes include score (0–100), pass/fail, report, trace reference and delta. |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-case-runs/:runId/cases/:caseId/trace?revision=draft` | `{ steps }` using the existing bounded administrator trace contract; `revision` also accepts `published`. |
+| `GET` | `/api/v1/logs/:logId/analysis-case-prefill` | `{ skillId, name, expectations }` for a completed skill-bound report; conclusion becomes root-cause points, citations become file/line evidence, suggestions become expected actions. Saving requires retained originals; historical reports without them return an explicit error. |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-cases/import` | ZIP as multipart `file`; validates the entire archive before persisting. Returns `201 { items }` for imported cases. |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-cases/export` | Binary ZIP in the [`eval-cases/logs` layout](../../eval-cases/logs/README.md), retaining original fixture bytes and unchanged annotations. |
+
+Expectations reuse `domain`, `summary`, `realLog`, `deIdentified`, `rootCauseCategory`, `rootCausePoints`, `keyEvidenceLines`, `expectedActions`, `expectRefusal`, `analysisQuestion` and `formatProfile`. Bundle extensions are optional `caseName`, `bundleFiles`, file-aware `keyEvidence: [{ file, line?, pattern? }]`, and optional `expectedDegradedReason`. Non-refusal cases require expected root cause, evidence and actions. Import errors identify exact archive paths and fields. Files are validated through the existing bounded bundle intake and patterns through the linear-time pattern engine.
+
+Limits: 20 cases per skill/run, 10 MiB each of original bytes and normalized text, and 100 unpacked files per case, 120 seconds per run and 10 retained runs per skill. ZIP import is limited to 440 MiB compressed/unpacked and 2040 entries. Runs snapshot inputs and both revisions at admission, share the dry-run aggregate/organization owner lock, and use the configured analyzer and quality evaluator. A configured judge scores root cause/actions; otherwise the deterministic rubric applies. Runs create no records, statistics, search entries or result webhooks. A current complete all-case result supplies the advisory publish summary; stale, missing or failed results offer another run and never block publishing.
+
 ### Analysis traces and draft dry runs (#1230)
 
 | Method | Path | Shape |

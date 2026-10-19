@@ -127,6 +127,13 @@ describe("evaluateQualityCaseOutput", () => {
 });
 
 describe("deterministic rubric judge", () => {
+  it("credits literal Chinese report expectations and rejects different conclusions and actions", async () => {
+    const judge = createDeterministicQualityJudge();
+    const goldenCase = makeGoldenCase({ rootCausePoints: ["电池温度过高触发保护"], expectedActions: ["检查散热通道", "降温"] });
+    const output = makeOutput({ conclusion: "电池温度过高触发保护", impact: "充电暂停", evidence: [], suggestedActions: ["检查散热通道", "降温"] });
+    expect(await judge.score({ goldenCase, output })).toMatchObject({ rootCauseScore: 1, actionsScore: 1 });
+    expect(await judge.score({ goldenCase, output: { ...output, conclusion: "网络异常", suggestedActions: ["检查网线"] } })).toMatchObject({ rootCauseScore: 0, actionsScore: 0 });
+  });
   it("scores covered root causes and matched categories above missed ones", async () => {
     const judge = createDeterministicQualityJudge();
     const goldenCase = makeGoldenCase();
