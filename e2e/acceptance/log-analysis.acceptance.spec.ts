@@ -1143,7 +1143,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await prepareInteractionSurface(page);
     await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
     const uploadDialog = page.getByRole("dialog", { name: "上传日志" });
-    await expect(uploadDialog).toContainText(/\.gz、单条目 \.zip 压缩包/);
+    await expect(uploadDialog).toContainText(/\.tar\.gz \/ \.tgz \/ \.zip \/ \.gz 压缩包/);
     await uploadDialog.getByLabel("选择日志文件").setInputFiles({
       name: archiveFileName,
       mimeType: "application/gzip",
