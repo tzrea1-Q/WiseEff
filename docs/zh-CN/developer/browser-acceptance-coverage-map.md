@@ -6,6 +6,8 @@
 
 ## 使用方式
 
+`LOG-REGISTER-001`：Admin 在 1440x900 的技能工作区编辑寄存器位段与映射，预览粘贴表格的有效行及逐行拒绝原因后导入，往返 YAML，并选择常驻样例面板中的日志行查看位条数值与枚举含义。组件和 PostgreSQL 集成测试已覆盖；协调者执行浏览器走查，专属浏览器自动化尚待补充，不记为已完成的自动化浏览器覆盖。
+
 `PCAT-REGISTRATION-INITIALIZE-001`：组织管理员明确选择业务父分类和目标名称，在同一事务创建对应类型目标并登记主体。组件及真实 PostgreSQL 并发、租户隔离、失败回滚已有专项覆盖；专属浏览器写入与审计回执仍待补，不记为已完成的自动化浏览器覆盖。
 
 `PROJ-ARCHIVE-001`：Admin 通过现有带鉴权、租户隔离和审计的项目状态接口确认归档或恢复为在研。默认清单收起已归档项目，通过状态筛选仍可访问；规范历史和现有读写权限保持不变。focused 组件/客户端覆盖见 `src/components/admin/ProjectAdminTable.test.tsx`、`src/components/parameter-admin-next/ProjectsOperationsPanel.test.tsx`、`src/infrastructure/http/parameterAdminClient.test.ts`；原有服务端状态/鉴权/审计契约见 `server/modules/parameters/projectAdminMutations.test.ts`。归档专属浏览器、数据库与审计验收仍待执行，未记为自动化浏览器覆盖。

@@ -370,9 +370,10 @@ export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typ
     if ((condition.op === "in") !== Array.isArray(condition.value)) return { ok: false, error: "Only in requires an array value" };
   }
   const events: typeof decoding.events = [];
-  let truncated = false;
+  let truncated = !!decoding.counts.truncated;
   const outcome = (cursor: number) => ({ ok: true as const, result: { events,
-    nextCursor: cursor < decoding.events.length ? String(cursor) : null, truncated } });
+    nextCursor: cursor < decoding.events.length ? String(cursor) : null, truncated,
+    ...(decoding.counts.reason ? { reason: decoding.counts.reason } : {}) } });
   const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
   let index = Number(params.cursor ?? 0);
   for (; index < decoding.events.length; index++) {

@@ -20,6 +20,16 @@ Open a skill's Signals section to add rules in the form “When a condition hold
 
 Upload a sample in the persistent right pane. Valid rules preview automatically after a short pause. Each collapsed rule card shows its sentence summary and hit count; expand it to edit conditions or choose a matching line chip to highlight the sample. Legacy conditions have readable descriptions and remain editable in code. A limit notice identifies partial results. Preview uses unsaved rules on the server. Save and publish to apply the rules to new uploads; draft changes do not affect a run's pinned revision. The seeded Charging skill carries the existing charging rules, while uploads without a skill retain the legacy charging prefilter.
 
+## Decode registers in a skill
+
+Open a skill in `/log-admin?tab=skills` and choose Decode. Add a register, give it an id and select its width (8, 16, 32 or 64 bits). The field table edits inclusive high/low bits, name, enum labels, scale, offset, unit, signedness and description. Bits must fit the width, must not overlap and cannot share a name. The bit bar runs from high bit to low bit; field names and bit ranges identify each segment alongside its color.
+
+Choose Paste register table to import datasheet rows, up to 64 KiB and 512 lines. Paste columns for bits, name and description separated by tabs, commas, multiple spaces or pipes. Accepted bit notations include `7`, `7:5`, `[7:5]` and `7-5`. Review the valid/rejected counts and preview: header rows are skipped, and each rejected line has an error icon and reason. Confirming replaces all fields of the selected register with the valid rows; check their bit ranges before saving.
+
+For an address or message-id register dump, add a register map, choose the selector field, and enter each case's value and register id, with an optional default. Connect an extractor's integer or hex value field to the register or map. The YAML code view edits the same parsing spec as the forms; [the BQ25890 example](../design-docs/log-parsing-v1.md#registers-and-register-maps) shows the complete configuration. Unknown cases without a default produce an event error rather than stopping analysis.
+
+The sample pane stays on the right while editing. Select a matching sample line to preview the unsaved spec through the server; the bit bar displays each field's decoded value and enum meaning. For `addr=0x0C val=0x20` using BQ25890 REG0C, `CHRG_FAULT` is 2 (`thermal_shutdown`), `WATCHDOG_FAULT` is 0 and `NTC_FAULT` is 0. Signed fields use two's complement before scale and offset; units appear with the physical value. Save and publish when the preview matches the datasheet. In completed reports, cited lines show the raw register value and its nested decoded fields with meanings and units.
+
 ## Upload a log and choose its domain
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".

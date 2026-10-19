@@ -18,7 +18,7 @@ import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
 import { createLlmLogAnalyzer, LogAnalysisProviderError } from "./analyzer/llmAnalyzer";
 import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
 import { createRuleBasedLogAnalyzer } from "./analyzer";
-import { decodedEventSchema, parsingSpecSchema } from "./parsing/spec";
+import { decodedEventSchema, parsingSpecSchema, type DecodedValue } from "./parsing/spec";
 import { logRecordDtoSchema } from "../contracts/dtoSchemas/logs";
 import * as workerDecoding from "./parsing/workerDecoding";
 import { loadLogFiles } from "./filesRepository";
@@ -31,6 +31,96 @@ const authFor = (organizationId = "decode-org", admin = true) => makeTestAuthCon
 const parsing = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "current", pattern: "charge_current_ma=(?P<current>\\d+)", fields: { current: { type: "uint" } } }] });
 
 describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", () => {
+  it("decodes an uploaded BQ25890 register map into stored events and cited report fields", async () => {
+    const ephemeral = await createEphemeralTestDatabase("decoderegister");
+    const db = createPostgresDatabase(ephemeral.url), objectStore = createMemoryObjectStore();
+    const auth = authFor(), invocation = createUserInvocation(auth);
+    try {
+      await seedCoreGraph(db, { organization: { id: auth.organization.id, name: "Register decoding" }, users: [{ id: auth.user.id, name: "Admin" }] });
+      const skill = await createLogSkill(db, auth, { name: "BQ25890" }, invocation, { requestId: "decode-register" });
+      const registerParsing = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "fault", pattern: "addr=(?P<addr>0x[0-9A-Fa-f]+) val=(?P<val>0x[0-9A-Fa-f]+)",
+        fields: { addr: { type: "uint" }, val: { type: "hex", decode: { registerMap: "charger" } } } }],
+      registers: { REG0C: { width: 8, fields: [
+        { bits: [7, 7], name: "WATCHDOG_FAULT" }, { bits: [6, 6], name: "BOOST_FAULT" },
+        { bits: [5, 4], name: "CHRG_FAULT", enum: { "0": "normal", "1": "input_fault", "2": "thermal_shutdown", "3": "safety_timer" } },
+        { bits: [3, 3], name: "BAT_FAULT" }, { bits: [2, 0], name: "NTC_FAULT" }
+      ] } }, registerMaps: { charger: { selectBy: "addr", cases: { "0x0C": "REG0C" } } } });
+      const draft = await saveLogSkillDraft(db, auth, skill.id, { schemaVersion: "skill/v1", parsing: registerParsing }, null, skill.currentRevision.id, invocation, { requestId: "decode-register" });
+      await publishLogSkill(db, auth, skill.id, draft.id, invocation, { requestId: "decode-register" });
+      const model = createScriptedLogAnalysisModel([
+        { content: { action: "tool", tool: "query_events", args: { extractor: "fault" } } },
+        { content: { action: "final", conclusion: "Charger thermal shutdown", impact: "Charging stopped", severity: "Warning", confidence: 0.9,
+          suggestedActions: ["Inspect charger temperature"], evidence: [{ filePath: "charger.log", lineNumbers: [1], inference: "CHRG_FAULT is thermal_shutdown", suggestedAction: "Inspect cooling" }] } }
+      ]);
+      const uploaded = await uploadLogFile(db, objectStore, auth, { fileName: "charger.log", contentType: "text/plain", bytes: Buffer.from("addr=0x0C val=0x20"), logDomainId: skill.id });
+      expect(await processLogAnalysisJobById({ db, objectStore, jobId: uploaded.job!.id,
+        analyzer: createAgentLoopLogAnalyzer({ model, modelLabel: "scripted", maxSteps: 3, tokenBudget: 100_000 }) })).toEqual({ status: "processed" });
+      const report = await getLogRecord(db, auth, uploaded.log.id);
+      expect(report.status).toBe("complete");
+      expect(logRecordDtoSchema.safeParse(report).success).toBe(true);
+      const expectedEvent = { file: "charger.log", line: 1, extractor: "fault", fields: { val: { raw: "0x20", value: 32, fields: {
+        CHRG_FAULT: { value: 2, meaning: "thermal_shutdown" }, WATCHDOG_FAULT: { value: 0 }, NTC_FAULT: { value: 0 }
+      } } } };
+      expect(report.evidence).toMatchObject([{ filePath: "charger.log", lineNumbers: [1], decodedFields: [expectedEvent] }]);
+      const stored = (await db.query<{ decoded_events_object_key: string; decoded_event_counts: unknown }>(
+        "select decoded_events_object_key, decoded_event_counts from log_analysis_runs where id=$1", [uploaded.job!.runId])).rows[0];
+      expect(stored.decoded_event_counts).toEqual({ total: 1, byExtractor: { fault: 1 }, errors: {} });
+      const artifact = gunzipSync(await objectStore.get(stored.decoded_events_object_key)).toString().trim().split("\n").map((line) => decodedEventSchema.parse(JSON.parse(line)));
+      expect(artifact).toEqual(report.evidence[0].decodedFields);
+      expect(model.calls[1].at(-1)?.content).toContain('"meaning":"thermal_shutdown"');
+      expect((await db.query("select decoded_fields from log_evidence where run_id=$1", [uploaded.job!.runId])).rows)
+        .toEqual([{ decoded_fields: artifact }]);
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
+  it("bounds register-expanded bundle artifacts, persists truncation and cites completed fields", async () => {
+    const ephemeral = await createEphemeralTestDatabase("decodeoutput");
+    const db = createPostgresDatabase(ephemeral.url), objectStore = createMemoryObjectStore();
+    const auth = authFor(), invocation = createUserInvocation(auth);
+    const countFields = (fields: Record<string, DecodedValue>): number => Object.values(fields).reduce<number>((total, value) => total + 1
+      + (value && typeof value === "object" && "fields" in value && value.fields ? countFields(value.fields) : 0), 0);
+    try {
+      await seedCoreGraph(db, { organization: { id: auth.organization.id, name: "Output budgets" }, users: [{ id: auth.user.id, name: "Admin" }] });
+      for (const reason of ["output_field_cap", "output_byte_cap"] as const) {
+        const skill = await createLogSkill(db, auth, { name: reason }, invocation, { requestId: "decode-output" });
+        const bounded = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "bits", pattern: "(?P<value>1)",
+          fields: { value: { type: "uint", decode: { register: "wide" } } } }], registers: { wide: { width: 64,
+          fields: Array.from({ length: 64 }, (_, bit) => ({ bits: [bit, bit], name: `BIT${bit}`,
+            ...(reason === "output_byte_cap" ? { enum: { "0": "zero".repeat(32), "1": "one_".repeat(32) } } : {}) })) } } });
+        const draft = await saveLogSkillDraft(db, auth, skill.id, { schemaVersion: "skill/v1", parsing: bounded }, null, skill.currentRevision.id, invocation, { requestId: "decode-output" });
+        await publishLogSkill(db, auth, skill.id, draft.id, invocation, { requestId: "decode-output" });
+        const zip = new JSZip();
+        zip.file("a.log", Array(500).fill("1").join("\n")); zip.file("b.log", Array(500).fill("1").join("\n"));
+        const uploaded = await uploadLogFile(db, objectStore, auth, { fileName: `${reason}.zip`, contentType: "application/zip",
+          bytes: await zip.generateAsync({ type: "nodebuffer" }), logDomainId: skill.id });
+        const model = createScriptedLogAnalysisModel([
+          { content: { action: "tool", tool: "query_events", args: { extractor: "bits", limit: 1 } } },
+          { content: { action: "final", conclusion: "The first register has its low bit set", impact: "Register state", severity: "Info", confidence: 0.9,
+            suggestedActions: ["Inspect later raw lines because decoding was bounded"], evidence: [{ filePath: "a.log", lineNumbers: [1],
+              inference: "BIT0 is 1", suggestedAction: "Check the raw register dump" }] } }
+        ]);
+        expect(await processLogAnalysisJobById({ db, objectStore, jobId: uploaded.job!.id,
+          analyzer: createAgentLoopLogAnalyzer({ model, modelLabel: "scripted", maxSteps: 3, tokenBudget: 100_000 }) })).toEqual({ status: "processed" });
+        const stored = (await db.query<{ decoded_events_object_key: string; decoded_event_counts: { total: number; errors: Record<string, number>; truncated?: boolean; reason?: string } }>(
+          "select decoded_events_object_key, decoded_event_counts from log_analysis_runs where id=$1", [uploaded.job!.runId])).rows[0];
+        expect(stored.decoded_event_counts).toMatchObject({ truncated: true, reason, errors: { [reason]: 1 } });
+        expect(stored.decoded_event_counts.total).toBeGreaterThan(0);
+        expect(stored.decoded_event_counts.total).toBeLessThan(1000);
+        const jsonl = gunzipSync(await objectStore.get(stored.decoded_events_object_key));
+        expect(jsonl.byteLength).toBeLessThanOrEqual(4 * 1024 * 1024);
+        const events = jsonl.toString().trim().split("\n").map((line) => decodedEventSchema.parse(JSON.parse(line)));
+        expect(events).toHaveLength(stored.decoded_event_counts.total);
+        expect(events.reduce((total, event) => total + countFields(event.fields), 0)).toBeLessThanOrEqual(32_768);
+        expect(events.every((event) => Buffer.byteLength(JSON.stringify(event)) <= 32 * 1024)).toBe(true);
+        const report = await getLogRecord(db, auth, uploaded.log.id);
+        expect(report.status).toBe("complete");
+        expect(report.evidence).toMatchObject([{ filePath: "a.log", lineNumbers: [1], decodedFields: [{ fields: {
+          value: { value: 1, fields: { BIT0: { value: 1 }, BIT63: { value: 0 } } }
+        } }] }]);
+        expect(report.evidence[0].decodedFields?.[0]).toEqual(events[0]);
+        expect(model.calls[1].at(-1)?.content).toContain(reason);
+      }
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
   it("persists failed artifact counters without a key, cleans partial uploads and completes without decoded evidence", async () => {
     const ephemeral = await createEphemeralTestDatabase("decodeartifact");
     const db = createPostgresDatabase(ephemeral.url), objectStore = createMemoryObjectStore();
@@ -184,7 +274,7 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
       auth = authFor("other-org"); expect((await request(path, { parsing, sampleText: "x" })).status).toBe(404);
       auth = authFor("decode-org", false); expect((await request(path, { parsing, sampleText: "x" })).status).toBe(403);
       auth = authFor();
-      const invalid = { schemaVersion: "skill/v1", parsing: { ...parsing, registers: {} } };
+      const invalid = { schemaVersion: "skill/v1", parsing: { ...parsing, frames: {} } };
       expect(await request(`/api/v1/log-skills/${skill.id}/draft`, { spec: invalid, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id }, "PUT"))
         .toMatchObject({ status: 400, body: { error: { details: { issues: [expect.objectContaining({ path: ["spec", "parsing"] })] } } } });
       const draft = await saveLogSkillDraft(db, auth, skill.id, { schemaVersion: "skill/v1", parsing }, null, skill.currentRevision.id, createUserInvocation(auth), { requestId: "decoding-test" });

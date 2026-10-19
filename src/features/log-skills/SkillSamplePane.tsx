@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
@@ -6,11 +6,12 @@ import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 import { formatBytes } from "@/domain/format/formatBytes";
 import type { SkillAuthoringRepository, SkillSample } from "./types";
 
-export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampleChange, highlightedLine, highlightRequest }: {
+export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampleChange, highlightedLine, highlightRequest, selectedLine, onLineSelect }: {
   skillId: string; repository?: Partial<SkillAuthoringRepository>; apiMode: boolean; canEdit: boolean;
   onSampleChange?: (sample: SkillSample | null) => void;
   highlightedLine?: number | null;
   highlightRequest?: number;
+  selectedLine?: number | null; onLineSelect?: (line: number) => void;
 }) {
   const [sample, setSample] = useState<SkillSample | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,7 +21,7 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
   const [pending, setPending] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const highlightedRef = useRef<HTMLDivElement>(null);
+  const highlightedRef = useRef<HTMLElement>(null);
   useEffect(() => { highlightedRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" }); }, [highlightedLine, highlightRequest, sample]);
   const disabled = !apiMode || !canEdit || pending;
   useEffect(() => {
@@ -58,9 +59,14 @@ export function SkillSamplePane({ skillId, repository, apiMode, canEdit, onSampl
         {sample.truncated ? <p>仅显示前 5000 行</p> : null}
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The read-only log viewer needs focus for keyboard scrolling. */}
         <div className="skill-sample-content" data-sample-scroll role="region" aria-label="样例内容" tabIndex={0}>
-          {(sample.content ? sample.content.replace(/(?:\r\n|\n|\r)$/, "").split(/\r\n|\n|\r/) : []).map((line, index) => <div className="skill-sample-line" key={index}
-            ref={highlightedLine === index + 1 ? highlightedRef : undefined} data-highlighted={highlightedLine === index + 1 || undefined}>
-            <span aria-hidden="true">{index + 1}</span><code>{line || "\u00a0"}</code></div>)}
+          {(sample.content ? sample.content.replace(/(?:\r\n|\n|\r)$/, "").split(/\r\n|\n|\r/) : []).map((line, index) => onLineSelect
+            ? <button type="button" className="skill-sample-line skill-sample-line--selectable" key={index}
+              ref={highlightedLine === index + 1 ? highlightedRef as RefObject<HTMLButtonElement | null> : undefined} data-highlighted={highlightedLine === index + 1 || undefined}
+              aria-label={`选择样例第 ${index + 1} 行：${line}`} aria-pressed={selectedLine === index + 1} onClick={() => onLineSelect(index + 1)}>
+              <span aria-hidden="true">{index + 1}</span><code>{line || "\u00a0"}</code></button>
+            : <div className="skill-sample-line" key={index}
+              ref={highlightedLine === index + 1 ? highlightedRef as RefObject<HTMLDivElement | null> : undefined} data-highlighted={highlightedLine === index + 1 || undefined}>
+              <span aria-hidden="true">{index + 1}</span><code>{line || "\u00a0"}</code></div>)}
         </div>
       </> : <><SectionEmpty message="上传样例日志，后续解析与信号规则会用它实时预览。" />
         <Button variant="outline" disabled={disabled} onClick={() => fileRef.current?.click()}>上传样例日志</Button></>}

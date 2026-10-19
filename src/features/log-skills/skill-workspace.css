@@ -84,3 +84,47 @@
 .skill-rule-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
 .skill-rule-error { color: var(--danger); overflow-wrap: anywhere; }
 .skill-signal-rule p { margin: 0; }
+.skill-sample-line--selectable { border: 0; background: transparent; color: var(--text); padding: 0; text-align: left; font: inherit; min-width: 100%; cursor: pointer; }
+.skill-sample-line--selectable:hover, .skill-sample-line--selectable[aria-pressed="true"] { background: var(--accent-soft); }
+.skill-sample-line--selectable:focus-visible { outline: calc(var(--stroke-hairline) * 2) solid var(--ring); outline-offset: calc(-2 * var(--stroke-hairline)); }
+.skill-decoding [role="tabpanel"], .skill-decoding [role="tabpanel"] > section { display: grid; min-width: 0; gap: var(--space-3); }
+.skill-decoding [role="tabpanel"][hidden] { display: none; }
+.skill-register-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-3); }
+.skill-register-toolbar label { flex: 1; min-width: calc(var(--space-16) * 2); }
+.skill-register-map { display: grid; gap: var(--space-3); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); padding: var(--space-3); }
+.skill-bit-bar { display: grid; gap: var(--space-3); min-width: 0; max-width: 100%; }
+.skill-bit-layout { display: grid; min-width: 0; max-width: 100%; gap: var(--stroke-hairline); }
+.skill-bit-ruler { display: contents; color: var(--text-muted); text-align: center; font: 400 var(--text-xs) / var(--leading-sm) var(--font-mono); }
+.skill-bit-ruler > span { position: relative; min-width: 0; padding-block: var(--space-1); min-height: calc(var(--leading-sm) + var(--space-1) * 2); }
+.skill-bit-label { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+.skill-bit-ruler > span:first-child .skill-bit-label { left: 0; transform: none; }
+.skill-bit-ruler > span:last-child .skill-bit-label { left: auto; right: 0; transform: none; }
+.skill-bit-segments { display: contents; }
+.skill-bit-segment { display: grid; align-content: start; padding-block: var(--space-1); min-width: 0; overflow: hidden; gap: var(--space-1); border: var(--stroke-hairline) solid var(--border); background: var(--accent-soft); color: var(--text); font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans); }
+.skill-bit-segment[data-tone="1"], .skill-bit-legend [data-tone="1"] .skill-bit-swatch { background: var(--success-soft); }
+.skill-bit-segment[data-tone="2"], .skill-bit-legend [data-tone="2"] .skill-bit-swatch { background: var(--warning-soft); }
+.skill-bit-segment[data-tone="3"], .skill-bit-legend [data-tone="3"] .skill-bit-swatch { background: var(--info-soft); }
+.skill-bit-name, .skill-bit-value { display: block; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.skill-bit-value { padding-inline: var(--space-1); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.skill-bit-segment[data-nonzero="true"], .skill-bit-segment[data-nonzero="true"] .skill-bit-value { border-color: var(--accent); }
+.skill-bit-segment[data-nonzero="true"] .skill-bit-value, .skill-bit-legend [data-nonzero="true"] .skill-bit-legend-value { font-weight: 600; }
+.skill-bit-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.skill-bit-legend li { display: flex; gap: var(--space-2); align-items: start; min-width: 0; max-width: 100%; }
+.skill-bit-legend-value { min-width: 0; overflow-wrap: anywhere; }
+.skill-bit-swatch { width: var(--space-4); height: var(--space-4); flex-shrink: 0; border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.skill-register-unmatched { display: flex; align-items: start; gap: var(--space-2); color: var(--warning); }
+.skill-register-unmatched svg, .skill-register-paste-result svg { width: var(--space-4); height: var(--space-4); flex-shrink: 0; }
+.skill-register-paste-dialog { display: grid; gap: var(--space-4); }
+.skill-register-paste-dialog p { margin: 0; }
+.skill-register-paste-dialog textarea { min-height: calc(var(--space-8) * 4); }
+.skill-register-paste-dialog [aria-label="寄存器表预览"] td { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+.skill-register-paste-dialog [data-tone="invalid"] { background: var(--danger-soft); }
+.skill-register-paste-dialog [data-tone="invalid"] .skill-register-paste-result, .skill-register-paste-limit { color: var(--danger); }
+.skill-register-paste-dialog [data-tone="valid"] .skill-register-paste-result { color: var(--success); }
+.skill-register-paste-result { display: flex; align-items: start; gap: var(--space-2); }
+.skill-register-paste-summary { font-weight: 600; }
+.skill-decoding [aria-label="寄存器字段表"] { table-layout: fixed; min-width: calc(var(--space-10) * 18); }
+.skill-decoding [aria-label="寄存器字段表"] th:first-child { width: calc(var(--space-10) * 2); }
+.skill-decoding [aria-label="寄存器字段表"] th:last-child { width: var(--space-16); }
+.skill-decoding [aria-label="寄存器字段表"] td { vertical-align: top; white-space: normal; }
+.skill-register-properties { display: grid; gap: var(--space-2); }
