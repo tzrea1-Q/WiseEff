@@ -28,9 +28,8 @@ export async function persistLogTraceStep(db: Database, input: {
 }
 
 export async function readLogTraceSteps(db: Queryable, organizationId: string, parent: { runId: string } | { dryRunId: string }) {
-  const column = "runId" in parent ? "run_id" : "dry_run_id";
-  const id = "runId" in parent ? parent.runId : parent.dryRunId;
   const result = await db.query<{ step: LogAnalysisTraceStep }>(`select step from log_analysis_trace_steps
-    where organization_id = $1 and ${column} = $2 order by step_index limit 200`, [organizationId, id]);
+    where organization_id = $1 and (run_id = $2 or dry_run_id = $3) order by step_index limit 200`,
+  [organizationId, "runId" in parent ? parent.runId : null, "dryRunId" in parent ? parent.dryRunId : null]);
   return result.rows.map(({ step }) => logTraceStepSchema.parse(step));
 }

@@ -22,7 +22,8 @@ type Dry = z.infer<typeof logSkillDryRunDetailResponseSchema>;
 
 async function harness(analyzer: LogAnalysisAdapter) {
   const ephemeral = await createEphemeralTestDatabase("dryadmission");
-  const databases = [createPostgresDatabase(ephemeral.url), createPostgresDatabase(ephemeral.url)];
+  const db = createPostgresDatabase(ephemeral.url);
+  const otherDb = createPostgresDatabase(ephemeral.url);
   const store = createMemoryObjectStore();
   const get = vi.spyOn(store, "get"), getStream = vi.spyOn(store, "getStream");
   const client = (db: RootDatabase, organizationId: string) => {
@@ -32,9 +33,9 @@ async function harness(analyzer: LogAnalysisAdapter) {
     return { auth, request: <T,>(url: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), url,
       { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }) };
   };
-  const prepare = async (organizationId: string, name: string, content = "INFO sample\nERROR example\n", db = databases[0]) => {
-    const api = client(db, organizationId);
-    await seedCoreGraph(databases[0], { organization: { id: organizationId, name: organizationId }, users: [{ id: api.auth.user.id, name: "Admin" }] });
+  const prepare = async (organizationId: string, name: string, content = "INFO sample\nERROR example\n", database = db) => {
+    const api = client(database, organizationId);
+    await seedCoreGraph(db, { organization: { id: organizationId, name: organizationId }, users: [{ id: api.auth.user.id, name: "Admin" }] });
     const created = await api.request<{ item: Skill }>("/api/v1/log-skills", "POST", { name });
     expect(created.status).toBe(201);
     const skill = created.body.item, base = `/api/v1/log-skills/${skill.id}`;
@@ -46,10 +47,10 @@ async function harness(analyzer: LogAnalysisAdapter) {
     return { ...api, skill, base, revisionId: draft.body.item.id };
   };
   const idle = async () => vi.waitFor(async () => {
-    expect((await databases[0].query("select count(*)::int n from log_skill_dry_runs where status='processing'")).rows).toEqual([{ n: 0 }]);
+    expect((await db.query("select count(*)::int n from log_skill_dry_runs where status='processing'")).rows).toEqual([{ n: 0 }]);
   }, { timeout: 10_000 });
-  return { databases, store, get, getStream, client, prepare, idle, async close() {
-    await Promise.all(databases.map((db) => db.close()));
+  return { db, otherDb, store, get, getStream, client, prepare, idle, async close() {
+    await Promise.all([db.close(), otherDb.close()]);
     await ephemeral.drop();
   } };
 }
@@ -63,8 +64,8 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
     try {
       vi.stubEnv("LOG_DRY_RUN_MAX_CONCURRENT", "2");
       const one = await h.prepare("admission-one", "First skill");
-      const sibling = await h.prepare("admission-one", "Sibling skill", undefined, h.databases[1]);
-      const two = await h.prepare("admission-two", "Second tenant", undefined, h.databases[1]);
+      const sibling = await h.prepare("admission-one", "Sibling skill", undefined, h.otherDb);
+      const two = await h.prepare("admission-two", "Second tenant", undefined, h.otherDb);
       const three = await h.prepare("admission-three", "Third tenant");
       const sameOrg = await Promise.all([one, sibling].map((api) => api.request<Dry>(`${api.base}/dry-runs`, "POST")));
       expect(sameOrg.map((result) => result.status).sort()).toEqual([202, 429]);
@@ -76,7 +77,7 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
       expect(analyze).toHaveBeenCalledTimes(1);
       expect(h.get).toHaveBeenCalledTimes(reads.get);
       expect(h.getStream).toHaveBeenCalledTimes(reads.stream);
-      expect((await h.databases[0].query("select count(*)::int n from log_skill_dry_runs")).rows).toEqual([{ n: 1 }]);
+      expect((await h.db.query("select count(*)::int n from log_skill_dry_runs")).rows).toEqual([{ n: 1 }]);
 
       const crossOrg = await Promise.all([two, three].map((api) => api.request<Dry>(`${api.base}/dry-runs`, "POST")));
       expect(crossOrg.map((result) => result.status).sort()).toEqual([202, 429]);
@@ -89,7 +90,7 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
       }
       expect(h.getStream).toHaveBeenCalledTimes(readsAtCapacity);
       expect(analyze).toHaveBeenCalledTimes(2);
-      expect((await h.databases[1].query("select count(*)::int n from log_skill_dry_runs where status='processing'")).rows).toEqual([{ n: 2 }]);
+      expect((await h.otherDb.query("select count(*)::int n from log_skill_dry_runs where status='processing'")).rows).toEqual([{ n: 2 }]);
       release();
       await h.idle();
 
@@ -112,7 +113,7 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
     const owners: Awaited<ReturnType<typeof acquireDryRunOwner>>[] = [];
     try {
       const orphan = await h.prepare("restart-orphan", "Interrupted skill");
-      const live = await h.prepare("restart-live", "Other API skill", undefined, h.databases[1]);
+      const live = await h.prepare("restart-live", "Other API skill", undefined, h.otherDb);
       const expired = await h.prepare("restart-expired", "Expired skill");
       const seed = async (api: typeof orphan, db: RootDatabase, deadline: string) => {
         const owner = await acquireDryRunOwner(db); owners.push(owner);
@@ -124,18 +125,18 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
         return { id, owner };
       };
       const future = new Date(Date.now() + 60_000).toISOString();
-      const abandoned = await seed(orphan, h.databases[0], future);
-      const active = await seed(live, h.databases[1], future);
+      const abandoned = await seed(orphan, h.db, future);
+      const active = await seed(live, h.otherDb, future);
       await abandoned.owner.close();
       // The exact startup recovery path also runs against owners from another pool.
-      await recoverInterruptedDryRuns(h.databases[0]);
+      await recoverInterruptedDryRuns(h.db);
       expect((await orphan.request<Dry>(`${orphan.base}/dry-runs/${abandoned.id}`)).body.run).toMatchObject({ status: "failed", error: LOG_DRY_RUN_INTERRUPTED });
       expect((await live.request<Dry>(`${live.base}/dry-runs/${active.id}`)).body.run.status).toBe("processing");
 
-      const lazy = await seed(orphan, h.databases[0], future);
+      const lazy = await seed(orphan, h.db, future);
       await lazy.owner.close();
       expect((await orphan.request<Dry>(`${orphan.base}/dry-runs/${lazy.id}`)).body.run).toMatchObject({ status: "failed", error: LOG_DRY_RUN_INTERRUPTED });
-      const overdue = await seed(expired, h.databases[1], new Date(Date.now() - 1000).toISOString());
+      const overdue = await seed(expired, h.otherDb, new Date(Date.now() - 1000).toISOString());
       expect((await expired.request<Dry>(`${expired.base}/dry-runs/${overdue.id}`)).body.run).toMatchObject({ status: "failed", error: LOG_DRY_RUN_INTERRUPTED });
       expect((await live.request<Dry>(`${live.base}/dry-runs/${active.id}`)).body.run.status).toBe("processing");
     } finally { await Promise.all(owners.map((owner) => owner.close())); await h.close(); }
@@ -149,7 +150,7 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
     try {
       vi.stubEnv("LOG_DRY_RUN_MAX_CONCURRENT", "2");
       const one = await h.prepare("timeout-one", "Timed out skill");
-      const two = await h.prepare("timeout-two", "Other tenant", undefined, h.databases[1]);
+      const two = await h.prepare("timeout-two", "Other tenant", undefined, h.otherDb);
       const three = await h.prepare("timeout-three", "Third tenant");
       vi.stubEnv("LOG_ANALYSIS_JOB_MAX_MS", "150");
       const started = await one.request<Dry>(`${one.base}/dry-runs`, "POST");
@@ -170,7 +171,7 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
       release();
       await h.idle();
       await vi.waitFor(async () => {
-        expect((await h.databases[0].query("select count(*)::int n from pg_locks where locktype='advisory' and classid=7141230 and granted")).rows).toEqual([{ n: 0 }]);
+        expect((await h.db.query("select count(*)::int n from pg_locks where locktype='advisory' and classid=7141230 and granted")).rows).toEqual([{ n: 0 }]);
       });
       expect((await one.request(`${one.base}/dry-runs`, "POST")).status).toBe(202);
     } finally { release(); await h.idle(); vi.unstubAllEnvs(); await h.close(); }
@@ -183,16 +184,16 @@ describe.skipIf(!available)("dry-run aggregate admission and process lifecycle o
     const h = await harness({ analyze });
     try {
       const api = await h.prepare("owner-loss", "Interrupted owner");
-      const otherApi = h.client(h.databases[1], api.auth.organization.id);
+      const otherApi = h.client(h.otherDb, api.auth.organization.id);
       const started = await api.request<Dry>(`${api.base}/dry-runs`, "POST");
       expect(started.status).toBe(202);
       await vi.waitFor(() => expect(analyze).toHaveBeenCalledTimes(1));
-      const owner = (await h.databases[1].query<{ owner_pid: number }>("select owner_pid from log_skill_dry_runs where id=$1", [started.body.run.id])).rows[0];
+      const owner = (await h.otherDb.query<{ owner_pid: number }>("select owner_pid from log_skill_dry_runs where id=$1", [started.body.run.id])).rows[0];
       // Only terminate this disposable fixture run's dedicated owner connection.
-      expect((await h.databases[1].query("select pg_terminate_backend($1) as terminated", [owner.owner_pid])).rows).toEqual([{ terminated: true }]);
+      expect((await h.otherDb.query("select pg_terminate_backend($1) as terminated", [owner.owner_pid])).rows).toEqual([{ terminated: true }]);
       await vi.waitFor(async () => expect((await otherApi.request<Dry>(`${api.base}/dry-runs/${started.body.run.id}`)).body.run)
         .toMatchObject({ status: "failed", error: LOG_DRY_RUN_INTERRUPTED }));
-      expect((await h.databases[1].query("select count(*)::int n from pg_locks where locktype='advisory' and pid=$1 and granted", [owner.owner_pid])).rows).toEqual([{ n: 0 }]);
+      expect((await h.otherDb.query("select count(*)::int n from pg_locks where locktype='advisory' and pid=$1 and granted", [owner.owner_pid])).rows).toEqual([{ n: 0 }]);
       const reads = h.getStream.mock.calls.length;
       const rejected = await otherApi.request(`${api.base}/dry-runs`, "POST");
       expect(rejected.status).toBe(429);

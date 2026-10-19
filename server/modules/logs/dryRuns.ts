@@ -16,7 +16,7 @@ import { logJobLimits } from "./jobLease";
 import { logLineRangeQuerySchema } from "./schemas";
 import { buildLogLineIndex, createLogFileReader, readStoredLogRange } from "./fileReader";
 import { createPrefilterBudget, prefilterLogStream } from "./prefilter";
-import { acquireDryRunOwner, dryRunConcurrencyLimit, dryRunOwnerAliveSql, LOG_DRY_RUN_ADMISSION_LOCK, LOG_DRY_RUN_BUSY, LOG_DRY_RUN_INTERRUPTED, recoverInterruptedDryRuns } from "./dryRunAdmission";
+import { acquireDryRunOwner, dryRunConcurrencyLimit, LOG_DRY_RUN_OWNER_LOCK_NAMESPACE, LOG_DRY_RUN_ADMISSION_LOCK, LOG_DRY_RUN_BUSY, LOG_DRY_RUN_INTERRUPTED, recoverInterruptedDryRuns } from "./dryRunAdmission";
 import type { StoredLogFile } from "./filesRepository";
 import type { Readable } from "node:stream";
 import type { ObjectStore } from "./objectStore";
@@ -81,7 +81,11 @@ export async function startSkillDryRun(db: Database, store: ObjectStore, analyze
       await lockSkill(tx, auth.organization.id, skillId);
       await recoverInterruptedDryRuns(tx);
       const active = (await tx.query<{ total: number; organization: number }>(`select count(*)::int as total,
-        count(*) filter (where organization_id = $1)::int as organization from log_skill_dry_runs run where ${dryRunOwnerAliveSql}`, [auth.organization.id])).rows[0];
+        count(*) filter (where organization_id = $1)::int as organization from log_skill_dry_runs run
+        where exists (select 1 from pg_locks owner where owner.locktype = 'advisory' and owner.granted
+          and owner.pid = run.owner_pid and owner.classid = $2::oid
+          and owner.objid = run.owner_key::oid and owner.objsubid = 2)`,
+      [auth.organization.id, LOG_DRY_RUN_OWNER_LOCK_NAMESPACE])).rows[0];
       if (active.total >= dryRunConcurrencyLimit() || active.organization >= 1
         || activeWork.size >= dryRunConcurrencyLimit() || [...activeWork.values()].includes(auth.organization.id)) {
         throw new ApiError("RATE_LIMITED", LOG_DRY_RUN_BUSY);
