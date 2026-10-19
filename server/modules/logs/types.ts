@@ -25,6 +25,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
   sourceSnapshot?: import("./analyzer").AnalyzeLogInput["sourceSnapshot"];
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;

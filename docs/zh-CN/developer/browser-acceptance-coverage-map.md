@@ -39,7 +39,8 @@
 - `PFB-AUTHZ-001`：非 Admin 无法访问产品反馈管理 API 或 `/feedback-admin` 页面（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `LOG-DOMAIN-001`：Admin 在 `/log-admin` 业务域治理区注册业务域（名称、描述、格式画像 JSON），上传时绑定该域，结论卡展示业务域标签（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-DEGRADED-001`：模拟 provider 故障后分析降级到规则引擎，结果显著标注「降级分析 · 规则回退」与 provider-unavailable 原因，绝不静默冒充完整分析（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
-- `LOG-DOMAIN-KNOWLEDGE-001`：Admin 在 `/log-admin` 业务域治理区打开「知识条目」编辑器，仅能选择已发布的知识条目，保存关联集合（整组替换语义），变更落到 API、关联表与审计事件（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
+- `LOG-DOMAIN-KNOWLEDGE-001`：Admin 在 `/log-admin` 业务域治理区打开「知识条目」编辑器，仅能选择已发布的知识条目，保存关联集合（整组替换语义），变更落到 API、版本化链接与审计事件（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
+- `LOG-SKILL-KNOWLEDGE-001`：**必需，浏览器证据待完成**。在 1440×900 API 模式下查看和取消草稿知识链接、搜索已发布条目、上传多份 Markdown 并创建知识草稿、保存链接，并检查无权限时的禁用原因。专用 `e2e/acceptance/log-skill-knowledge.acceptance.spec.ts` 已编写，但原生 Chromium 启动因 MachPortRendezvous PermissionDenied 失败，CUA 来源授权被用户明确拒绝，未取得浏览器交互或截图证据。组件测试为 `src/features/log-skills/KnowledgeSection.test.tsx`；实际检索修订来源由 PostgreSQL 集成测试断言，不是确定性浏览器模型证据。
 - `LOG-FEEDBACK-INSIGHTS-001`：提交日志反馈后，`/log-admin`「分析质量」区按业务域 × 分析来源 × Prompt 版本聚合展示所选时间窗口内的有帮助率，数据来自 `GET /api/v1/logs/feedback-insights`（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-EVAL-DRAFT-001`：Admin 在已完成记录的抽屉中导出评测案例草稿：弹层展示脱敏清单，下载物为 schema 对齐的 `case.yaml`（realLog: true、deIdentified: false、rootCauseCategory TODO、预填证据行号/建议动作）与 `log.txt`（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-ARCHIVE-UPLOAD-001`：经上传对话框上传的 `.gz` 压缩日志由服务端解压并端到端完成分析，证据行号锚定解压后的文本行（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。

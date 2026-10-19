@@ -51,6 +51,14 @@ Scenario checks the model must satisfy:
 - **Hybrid retrieval**: when embeddings exist, vector similarity is fused with full-text ranking; otherwise full-text alone. CJK caveat: PostgreSQL default FTS does not segment CJK text, so Phase 1 pairs trigram matching for CJK with standard FTS for latin text; a dedicated CJK tokenizer stays a future option.
 - **Extraction**: file-form entries get server-side text extraction (PDF and Word first); extraction status is visible on the entry.
 
+## Analysis-skill knowledge links
+
+The skill workspace's Knowledge section reuses this module's entries and creation flow. `skill/v1.knowledgeEntryIds` belongs to the skill draft and is frozen on publication. It carries entry identities rather than copied Markdown or knowledge revision ids: the pinned skill revision determines which entries are eligible, while retrieval reads their published knowledge revisions and records what was actually returned. This follows the skill-platform spec and prevents a live domain-link edit from silently changing an older skill revision's retrieval scope.
+
+The published-entry picker is scoped to the skill's Organization. Markdown uploads create ordinary human-authored knowledge drafts, preserve knowledge permissions and audit, and link those drafts without publishing them. `logs:admin-domains` alone cannot create knowledge: creation still requires `knowledge:edit`. Knowledge publication remains a separate action, and drafts and archived entries are excluded from retrieval.
+
+Migration `0197` carries existing domain links into each skill's current published revision. Existing run link scopes are preserved during migration; historical reports are not assigned invented knowledge citations. New run provenance stores the distinct `{ entryId, revisionId }` pairs actually retrieved, including results used before a fallback. Entry changes, unlinking and later knowledge revisions do not rewrite completed-run provenance. New runs with no retrieved knowledge record `[]`; historical runs also expose `[]` when their actual sources are unknown. Neither case certifies that every linked entry was read.
+
 ## Xiaoze integration
 
 - Read tools `knowledge.search` and `knowledge.getDocument` join the perception catalog: auto-executing, permission-checked under the calling user's AuthContext, returning citation payloads (entry id, title, revision, excerpt) that the UI renders as source links.
