@@ -13,9 +13,61 @@ import { insertSkillRevision } from "./skillsRepository";
 import { defaultSourceSnapshotLimits } from "./sourceArchive";
 import { processNextSourceIndexJob } from "./sourceIndexWorker";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
+import { locateLogStatements, readSourceExcerpt } from "./sourceStatementRepository";
+import { applyMigrations, migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
 
 const available = await isTestDatabaseAvailable();
 describe.skipIf(!available)("source indexing over PostgreSQL", () => {
+  it("requeues pre-statement ready snapshots during the 0193 upgrade", async () => {
+    await withTempDatabase({ prefix: "stmtupgrade", migrate: false }, async ({ db }) => {
+      await applyMigrations(db, migrationsDir, { through: "0192_log_signal_summary.sql" });
+      await seedCoreGraph(db, { organization: { id: "upgrade-org" }, users: [{ id: "upgrade-admin" }] });
+      await db.transaction(async (tx) => {
+        await insertLogDomain(tx, { id: "upgrade-skill", organizationId: "upgrade-org", name: "Upgrade" });
+        await insertSkillRevision(tx, { skillId: "upgrade-skill", organizationId: "upgrade-org", userId: "upgrade-admin", spec: { schemaVersion: "skill/v1" }, published: true });
+      });
+      await db.query(`insert into log_source_snapshots(id,organization_id,skill_id,version_label,storage_key,file_name,status)
+        values ('legacy-ready','upgrade-org','upgrade-skill','ready','unused','source.zip','ready'),
+          ('legacy-archived','upgrade-org','upgrade-skill','archived','unused','source.zip','archived')`);
+      await applyMigrations(db, migrationsDir);
+      expect((await db.query(`select id,status from log_source_snapshots order by id`)).rows)
+        .toEqual([{ id: "legacy-archived", status: "archived" }, { id: "legacy-ready", status: "queued" }]);
+    });
+  }, 120_000);
+  it("indexes bounded custom/default statements, locates an emitted line and isolates organizations", async () => {
+    const ephemeral = await createEphemeralTestDatabase("stmtindex");
+    const db = createPostgresDatabase(ephemeral.url), objectStore = createMemoryObjectStore();
+    try {
+      for (const organizationId of ["stmt-org", "other-stmt-org"]) {
+        await seedCoreGraph(db, { organization: { id: organizationId }, users: [{ id: `${organizationId}-admin` }] });
+      }
+      await db.transaction(async (tx) => {
+        await insertLogDomain(tx, { id: "stmt-skill", organizationId: "stmt-org", name: "Statements" });
+        await insertSkillRevision(tx, { skillId: "stmt-skill", organizationId: "stmt-org", userId: "stmt-org-admin", spec: { schemaVersion: "skill/v1" }, published: true });
+      });
+      const zip = new JSZip();
+      zip.file("src/thermal.c", 'int thermal(void) {\n  int temp = 71;\n  pr_warn("thermal foldback: temp=%d\\n", temp);\n  THERM_LOG("custom alarm %d", temp);\n  pr_warn("omitted third %d", temp);\n}\n');
+      zip.file("src/second.c", 'pr_warn("second file %d", value);\npr_warn("omitted fourth %d", value);\n');
+      const stored = await objectStore.put({ organizationId: "stmt-org", fileName: "source.zip", contentType: "application/zip", bytes: await zip.generateAsync({ type: "nodebuffer" }) });
+      await db.query(`insert into log_source_snapshots(id,organization_id,skill_id,version_label,storage_key,file_name,statement_patterns)
+        values('stmt-snapshot','stmt-org','stmt-skill','build-71',$1,'source.zip',$2::jsonb)`, [stored.storageKey, JSON.stringify(["\\bTHERM_LOG\\s*\\("])]);
+      expect(await processNextSourceIndexJob({ db, objectStore, statementLimits: { maxPerFile: 2, maxPerSnapshot: 3 } })).toBe("processed");
+      expect((await db.query(`select statement_count,statements_truncated from log_source_snapshots where id='stmt-snapshot'`)).rows)
+        .toEqual([{ statement_count: 3, statements_truncated: true }]);
+      const result = await locateLogStatements(db, { organizationId: "stmt-org", snapshotId: "stmt-snapshot", line: "thermal foldback: temp=71" });
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ snapshotId: "stmt-snapshot", path: "src/thermal.c", line: 3, startLine: 1, versionLabel: "build-71", excerpt: expect.stringContaining('pr_warn("thermal foldback: temp=%d\\n", temp)') });
+      expect((await locateLogStatements(db, { organizationId: "stmt-org", snapshotId: "stmt-snapshot", line: "custom alarm 71" })).items).toHaveLength(1);
+      expect(await locateLogStatements(db, { organizationId: "other-stmt-org", snapshotId: "stmt-snapshot", line: "thermal foldback: temp=71" })).toEqual({ items: [], truncated: false });
+      expect(await readSourceExcerpt(db, { organizationId: "other-stmt-org", snapshotId: "stmt-snapshot", path: "src/thermal.c", line: 3 })).toBeNull();
+      const file = (await db.query<{ id: string }>(`select id from log_source_files where snapshot_id='stmt-snapshot' limit 1`)).rows[0];
+      await expect(db.query(`insert into log_source_statements(id,organization_id,snapshot_id,file_id,path,line,raw_call,skeleton,match_key)
+        values('wrong-stmt','other-stmt-org','stmt-snapshot',$1,'src/thermal.c',3,'bad','bad','bad')`, [file.id])).rejects.toMatchObject({ code: "23503" });
+      await db.query(`update log_source_snapshots set status='archived' where id='stmt-snapshot'`);
+      expect((await locateLogStatements(db, { organizationId: "stmt-org", snapshotId: "stmt-snapshot", line: "thermal foldback: temp=71" })).items).toEqual([]);
+      expect(await readSourceExcerpt(db, { organizationId: "stmt-org", snapshotId: "stmt-snapshot", path: "src/thermal.c", line: 3 })).not.toBeNull();
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
   it("indexes a tgz through the local runtime object-store factory", async () => {
     const ephemeral = await createEphemeralTestDatabase("srcfactory");
     const db = createPostgresDatabase(ephemeral.url);

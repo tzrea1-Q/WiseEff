@@ -164,6 +164,7 @@ export function createLogAnalyzerFromEnv(
               logDomainId: input.logDomainId,
               relatedParameterId: input.relatedParameterId,
               relatedParameterSnapshot: input.relatedParameterSnapshot,
+              sourceSnapshot: input.sourceSnapshot,
               embeddingClient: options.embeddingClient
             })
           : {}

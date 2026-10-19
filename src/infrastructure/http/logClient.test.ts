@@ -145,6 +145,14 @@ it("uses source snapshot DTOs, multipart archives, and encoded skill/snapshot pa
   fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...snapshot, status: "archived" } }));
   await expect(repository.archiveSourceSnapshot!("skill/a", "snap/b")).resolves.toMatchObject({ status: "archived" });
   expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/skill%2Fa/source-snapshots/snap%2Fb/archive");
+  const excerpt = { snapshotId: "snap/b", path: "drivers/thermal.c", line: 9, versionLabel: "v1", startLine: 6, excerpt: "pr_warn(\"thermal foldback\");" };
+  fetchMock.mockResolvedValueOnce(jsonResponse({ items: [{ ...excerpt, confidence: 0.95 }], truncated: false }));
+  await expect(repository.locateSourceStatement!("skill/a", "snap/b", "thermal foldback")).resolves.toMatchObject({ items: [{ path: "drivers/thermal.c", line: 9 }] });
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/skill%2Fa/source-snapshots/snap%2Fb/locate");
+  expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string)).toEqual({ line: "thermal foldback" });
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: excerpt }));
+  await expect(repository.getSourceEvidence!("log/a", "evidence/b")).resolves.toEqual(excerpt);
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/logs/log%2Fa/evidence/evidence%2Fb/source");
   fetchMock.mockResolvedValueOnce(jsonResponse({ items: [{ ...snapshot, status: "unexpected" }] }));
   await expect(repository.listSourceSnapshots!(skill.id)).rejects.toMatchObject({ code: "INTERNAL_ERROR", details: { reason: "contract-drift" } });
 });

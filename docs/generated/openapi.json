@@ -11260,6 +11260,121 @@
         }
       }
     },
+    "/api/v1/log-skills/{skillId}/source-snapshots/{snapshotId}/locate": {
+      "post": {
+        "operationId": "logs.locateSourceStatement",
+        "summary": "Locate log statements in a ready source snapshot (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogSourceLocateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSourceLocateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{logId}/evidence/{evidenceId}/source": {
+      "get": {
+        "operationId": "logs.sourceEvidence",
+        "summary": "Read the bounded source excerpt cited by record evidence (logs:view)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "evidenceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSourceEvidenceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skill-templates": {
       "get": {
         "operationId": "logs.listSkillTemplates",
@@ -29686,6 +29801,29 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "sourceLocation": {
+                      "type": "object",
+                      "properties": {
+                        "snapshotId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "snapshotId",
+                        "path",
+                        "line"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "sourceVersionLabel": {
+                      "type": "string"
+                    },
                     "decodedFields": {
                       "type": "array",
                       "items": {
@@ -30386,6 +30524,29 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "sourceLocation": {
+                      "type": "object",
+                      "properties": {
+                        "snapshotId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "snapshotId",
+                        "path",
+                        "line"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "sourceVersionLabel": {
+                      "type": "string"
+                    },
                     "decodedFields": {
                       "type": "array",
                       "items": {
@@ -30960,6 +31121,29 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "sourceLocation": {
+                        "type": "object",
+                        "properties": {
+                          "snapshotId": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "line": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "snapshotId",
+                          "path",
+                          "line"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "sourceVersionLabel": {
+                        "type": "string"
+                      },
                       "decodedFields": {
                         "type": "array",
                         "items": {
@@ -31639,6 +31823,29 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "sourceLocation": {
+                      "type": "object",
+                      "properties": {
+                        "snapshotId": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "snapshotId",
+                        "path",
+                        "line"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "sourceVersionLabel": {
+                      "type": "string"
+                    },
                     "decodedFields": {
                       "type": "array",
                       "items": {
@@ -32597,6 +32804,18 @@
                       "defaultSourceSnapshotId": {
                         "type": "string"
                       },
+                      "source": {
+                        "type": "object",
+                        "properties": {
+                          "statementPatterns": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "additionalProperties": false
+                      },
                       "signalRules": {
                         "type": "object",
                         "properties": {
@@ -33205,6 +33424,18 @@
                       },
                       "defaultSourceSnapshotId": {
                         "type": "string"
+                      },
+                      "source": {
+                        "type": "object",
+                        "properties": {
+                          "statementPatterns": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "signalRules": {
                         "type": "object",
@@ -33827,6 +34058,18 @@
                     },
                     "defaultSourceSnapshotId": {
                       "type": "string"
+                    },
+                    "source": {
+                      "type": "object",
+                      "properties": {
+                        "statementPatterns": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
                     },
                     "signalRules": {
                       "type": "object",
@@ -34539,6 +34782,113 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSourceSnapshotResponse"
       },
+      "LogSourceLocateRequest": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceLocateRequest"
+      },
+      "LogSourceLocateResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "snapshotId": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "number"
+                },
+                "versionLabel": {
+                  "type": "string"
+                },
+                "startLine": {
+                  "type": "number"
+                },
+                "excerpt": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "snapshotId",
+                "path",
+                "line",
+                "versionLabel",
+                "startLine",
+                "excerpt",
+                "confidence"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceLocateResponse"
+      },
+      "LogSourceEvidenceResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "snapshotId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "number"
+              },
+              "versionLabel": {
+                "type": "string"
+              },
+              "startLine": {
+                "type": "number"
+              },
+              "excerpt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "snapshotId",
+              "path",
+              "line",
+              "versionLabel",
+              "startLine",
+              "excerpt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceEvidenceResponse"
+      },
       "LogParsePreviewRequest": {
         "type": "object",
         "properties": {
@@ -35001,6 +35351,18 @@
               },
               "defaultSourceSnapshotId": {
                 "type": "string"
+              },
+              "source": {
+                "type": "object",
+                "properties": {
+                  "statementPatterns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
               },
               "signalRules": {
                 "type": "object",
@@ -35583,6 +35945,18 @@
                   },
                   "defaultSourceSnapshotId": {
                     "type": "string"
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "statementPatterns": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
                   },
                   "signalRules": {
                     "type": "object",
@@ -36214,6 +36588,18 @@
                     },
                     "defaultSourceSnapshotId": {
                       "type": "string"
+                    },
+                    "source": {
+                      "type": "object",
+                      "properties": {
+                        "statementPatterns": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
                     },
                     "signalRules": {
                       "type": "object",

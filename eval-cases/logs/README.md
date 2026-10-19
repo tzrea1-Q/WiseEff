@@ -10,7 +10,9 @@ The golden case set (glossary: *Golden case set*, `CONTEXT.md`) is the labelled 
 
 Generic-signal scenarios call `get_signals`, `get_line_templates`, and `get_timeline` legally without a skill. Each tool must ground evidence on its own returned anchors or lines. A timeline-only scenario cites an existing line outside the returned window, requires a grounding violation, and then corrects the citation to the returned line. This distinguishes seeing a line from the line merely existing in the upload.
 
-The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.signals.1`; existing tolerances and its pending-real-cases status stay unchanged.
+Source-location scenarios call `locate_log_statement` on a ready pinned snapshot. Only exact returned snapshot/path/line tuples can become evidence; an unseen source paired with a valid log line, another snapshot/path, or a nearby excerpt line is rejected. Source excerpts remain untrusted input.
+
+The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.signals.source.1`; existing tolerances and its pending-real-cases status stay unchanged.
 
 ## Layout
 

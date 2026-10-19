@@ -36,6 +36,7 @@ export type LogScenarioEvalResult = {
     promptVersion?: string;
     model?: string;
     evidenceLineNumbers: number[][];
+    evidenceSourceLocations?: Array<{ snapshotId: string; path: string; line: number }>;
     conclusion: string;
   };
 };
@@ -114,6 +115,9 @@ function toScenarioResult(
       promptVersion: output.promptVersion,
       model: output.model,
       evidenceLineNumbers: output.evidence.map((item) => item.lineNumbers),
+      ...(output.evidence.some((item) => item.sourceLocation) ? {
+        evidenceSourceLocations: output.evidence.flatMap((item) => item.sourceLocation ? [item.sourceLocation] : [])
+      } : {}),
       conclusion: output.conclusion
     }
   };
@@ -167,11 +171,18 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
 
   const scriptedModel = createScriptedLogAnalysisModel(scenario.script);
   const promptMessages: LogAnalysisChatMessage[] = [];
+  const returnedSourceLocations: NonNullable<LogEvalRunResult["returnedSourceLocations"]> = [];
   const analyzer = createAgentLoopLogAnalyzer({
     model: capturePrompts(scriptedModel, promptMessages),
     modelLabel: EVAL_MODEL_LABEL,
     tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
-    maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS
+    maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
+    bindToolBackends: () => scenario.sourceMatches ? {
+      locateLogStatement: async () => {
+        returnedSourceLocations.push(...scenario.sourceMatches!.items.map(({ snapshotId, path, line }) => ({ snapshotId, path, line })));
+        return scenario.sourceMatches!;
+      }
+    } : {}
   });
 
   const output = await analyzeWithDegradation({
@@ -181,7 +192,8 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
       filePath: scenario.fileName,
       procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
-      logDomain: scenario.logDomain
+      logDomain: scenario.logDomain,
+      sourceSnapshot: scenario.sourceSnapshot
     },
     job: { attemptCount: 1 },
     maxAttempts: EVAL_MAX_ATTEMPTS,
@@ -198,7 +210,8 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
         tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET, maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS }),
       { parsed, analysisQuestion: scenario.analysisQuestion, logDomain: scenario.logDomain }
     ) : undefined,
-    modelCallCount: scriptedModel.calls.length
+    modelCallCount: scriptedModel.calls.length,
+    returnedSourceLocations
   }, scenario.expectations);
 }
 

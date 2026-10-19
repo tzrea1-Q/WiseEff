@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-10-19T12:21:01.886Z
-- Single-shot prompt version: `2026-10-19.procedure.signals.1`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.1`
-- Scenarios: 27 (27 passed)
+- Generated: 2026-10-19T12:38:21.925Z
+- Single-shot prompt version: `2026-10-19.procedure.signals.source.1`
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.1`
+- Scenarios: 32 (32 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -18,6 +18,11 @@
 | provider-outage-degrades-honestly | degradation | single-shot | rules-fallback | provider-unavailable | PASS |
 | budget-exhausted-marked | degradation | single-shot | rules-fallback | token-budget-exhausted | PASS |
 | analysis-question-injected-and-answered | analysis-question | single-shot | agent | - | PASS |
+| loop-source-location-returned-by-tool-grounded | source-grounding | loop | agent | - | PASS |
+| loop-unseen-source-location-with-grounded-log-rejected | source-grounding | loop | agent | - | PASS |
+| loop-source-wrong-snapshot-rejected | source-grounding | loop | agent | - | PASS |
+| loop-source-wrong-path-rejected | source-grounding | loop | agent | - | PASS |
+| loop-source-context-line-not-cited-rejected | source-grounding | loop | agent | - | PASS |
 | loop-get-signals-only-evidence-grounded | generic-signals | loop | agent | - | PASS |
 | loop-get-line-templates-only-evidence-grounded | generic-signals | loop | agent | - | PASS |
 | loop-get-timeline-only-evidence-grounded | generic-signals | loop | agent | - | PASS |

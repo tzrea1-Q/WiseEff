@@ -12,6 +12,8 @@ describe("compileLogPattern", () => {
     const pattern = compileLogPattern("(?<id>[0-9]+)", "", 20);
     const matches = [...pattern.matchAll("😀 12 and 34")];
     expect(matches.map((match) => [match.index, match[0], match.groups])).toEqual([[3, "12", { id: "12" }], [10, "34", { id: "34" }]]);
+    const spans = [...pattern.matchAll("😀 12 and 34", false)];
+    expect(spans.map((match) => [match.index, [...match], match.groups])).toEqual([[3, ["12"], undefined], [10, ["34"], undefined]]);
     expect([...pattern.matchAll("1".repeat(21))]).toEqual([]);
     expect([...compileLogPattern("").matchAll("a")]).toHaveLength(2);
   });

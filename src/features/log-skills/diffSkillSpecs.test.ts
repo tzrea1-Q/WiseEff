@@ -28,6 +28,8 @@ describe("diffSkillSpecs", () => {
   it("includes default source snapshot changes in the publication review", () => {
     expect(diffSkillSpecs(base, { ...base, defaultSourceSnapshotId: "snapshot" }).source)
       .toEqual([{ field: "defaultSourceSnapshotId", before: undefined, after: "snapshot" }]);
+    expect(diffSkillSpecs(base, { ...base, source: { statementPatterns: ["MY_LOG"] } }).source)
+      .toEqual([{ field: "statementPatterns", before: undefined, after: ["MY_LOG"] }]);
   });
   it("reports overview and pretty-printed format line changes without mutating input", () => {
     const after = { ...base, description: "诊断", modelOverride: "m", formatProfile: { severityMap: { error: ["ALERT"] } } };

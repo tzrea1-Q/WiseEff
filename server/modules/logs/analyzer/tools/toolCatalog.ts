@@ -11,6 +11,7 @@ import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolConte
  * single call can never blow the token budget, and never writes anything.
  */
 export const LOG_ANALYSIS_TOOL_NAMES = [
+  "locate_log_statement",
   "search_log_lines",
   "search_lines",
   "list_files",
@@ -319,8 +320,10 @@ export const queryEventsParamsSchema = z.object({ extractor: z.string().min(1).m
 export const MAX_QUERY_EVENTS_BYTES = 16 * 1024;
 export const MAX_QUERY_FIELD_BYTES = 1024;
 
-export function availableLogAnalysisTools(context: Pick<LogAnalysisToolContext, "decoding">) {
-  return LOG_ANALYSIS_TOOL_NAMES.filter((name) => context.decoding?.spec.extractors.length || (name !== "query_events" && name !== "describe_event_schema"));
+export function availableLogAnalysisTools(context: Pick<LogAnalysisToolContext, "decoding" | "sourceSnapshot" | "locateLogStatement">) {
+  return LOG_ANALYSIS_TOOL_NAMES.filter((name) => name === "locate_log_statement"
+    ? context.sourceSnapshot?.status === "ready" && !!context.locateLogStatement
+    : context.decoding?.spec.extractors.length || (name !== "query_events" && name !== "describe_event_schema"));
 }
 
 export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typeof queryEventsParamsSchema>): LogAnalysisToolOutcome {
@@ -376,6 +379,27 @@ export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typ
 }
 
 export const logAnalysisToolCatalog: Record<LogAnalysisToolName, ToolDefinition> = {
+  locate_log_statement: {
+    description: 'Locate output statements in the pinned ready source snapshot. Args: {line?: string (max 4000 characters), file?: string, anchorLine?: positive integer, limit?: 1-20}. Supply line OR file+anchorLine. Returns candidate snapshotId/path/line, confidence and an untrusted ±3-line excerpt, capped at 16 KiB. Only the returned statement locations can be source evidence.',
+    paramsSchema: z.object({ line: z.string().min(1).max(4000).optional(), file: z.string().min(1).max(1024).optional(),
+      anchorLine: z.number().int().positive().optional(), limit: z.number().int().min(1).max(20).default(8) }).strict()
+      .refine((args) => !!args.line !== !!(args.file && args.anchorLine), "Supply line or file+anchorLine"),
+    execute: async (context, args) => {
+      const params = args as { line?: string; file?: string; anchorLine?: number; limit: number };
+      const file = context.files?.find((file) => file.path === params.file && file.parsed);
+      const content = params.line ?? (file?.parsed ?? (params.file === context.filePath ? context.parsed : undefined))?.rawLines[(params.anchorLine ?? 0) - 1];
+      if (!content || content.length > 4000 || !context.locateLogStatement) return { ok: false, error: "Source locator or log anchor unavailable" };
+      const result = await context.locateLogStatement(content, params.limit);
+      // Enforce output bounds before the kernel observes citations, even with an alternate backend.
+      const items = [] as typeof result.items;
+      let truncated = result.truncated;
+      for (const item of result.items.slice(0, params.limit)) {
+        items.push(item);
+        if (Buffer.byteLength(JSON.stringify({ items, truncated: true }), "utf8") > 16 * 1024) { items.pop(); truncated = true; break; }
+      }
+      return { ok: true, result: { items, truncated: truncated || result.items.length > items.length } };
+    }
+  },
   get_signals: {
     description: 'Get generic signals plus pinned skill signal hits, including evidence lines. Args: {kind?, severity?: Critical|Warning|Info, offset?: number, limit?: 1-20}. Output capped at 16 KiB; follow nextOffset. Only returned anchors count as seen lines.',
     paramsSchema: getSignalsParamsSchema,

@@ -10,6 +10,8 @@ import type { ObjectStore } from "./objectStore";
 import { getSourceSnapshotLimits } from "./sourceArchive";
 import { insertSkillRevision, listSkillRevisions, lockSkill } from "./skillsRepository";
 import type { LogSkillSpec } from "./skillSpec";
+import { locateLogStatements, readSourceExcerpt } from "./sourceStatementRepository";
+import { getLogRecord } from "./service";
 
 export type SourceSnapshotDto = {
   id: string; skillId: string; versionLabel: string;
@@ -81,12 +83,15 @@ export async function uploadSourceSnapshot(db: Database, objectStore: ObjectStor
         throw new ApiError("CONFLICT", "This source version label already exists for the skill.");
       }
       const id = randomUUID();
+      const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
+      const revision = revisions.find((item) => item.status === "draft") ?? revisions.find((item) => item.status === "published");
       // A unique object name keeps rollback cleanup from deleting another upload.
       const stored = await objectStore.put({ organizationId: auth.organization.id, fileName: `${id}-${input.fileName}`,
         contentType: "application/octet-stream", bytes: input.bytes });
       storedKey = stored.storageKey;
-      await tx.query(`insert into log_source_snapshots (id, organization_id, skill_id, version_label, storage_key, file_name)
-        values ($1,$2,$3,$4,$5,$6)`, [id, auth.organization.id, skillId, versionLabel, stored.storageKey, input.fileName]);
+      await tx.query(`insert into log_source_snapshots (id, organization_id, skill_id, version_label, storage_key, file_name, statement_patterns)
+        values ($1,$2,$3,$4,$5,$6,$7::jsonb)`, [id, auth.organization.id, skillId, versionLabel, stored.storageKey, input.fileName,
+        JSON.stringify(revision?.spec.source?.statementPatterns ?? [])]);
       return { result: await getSnapshot(tx, auth.organization.id, skillId, id), audit: audit(id, "log-source-snapshot-upload", skillId) };
     }), { onConfirmedRollback: () => { rollbackConfirmed = true; } });
   } catch (error) {
@@ -94,6 +99,27 @@ export async function uploadSourceSnapshot(db: Database, objectStore: ObjectStor
     if (rollbackConfirmed && storedKey) await objectStore.delete?.(storedKey).catch(() => undefined);
     throw error;
   }
+}
+
+/** Administrators can try only an organization's chosen ready snapshot. */
+export async function trySourceStatement(db: Queryable, auth: AuthContext, skillId: string, snapshotId: string, line: string) {
+  requireLogAdminDomains(auth);
+  await requireSkill(db, auth, skillId);
+  const snapshot = await getSnapshot(db, auth.organization.id, skillId, snapshotId);
+  if (snapshot.status !== "ready") throw new ApiError("CONFLICT", "Source snapshot must be ready.");
+  if (!line.trim() || line.length > 4000) throw new ApiError("VALIDATION_FAILED", "A log line of at most 4000 characters is required.");
+  return locateLogStatements(db, { organizationId: auth.organization.id, snapshotId, line });
+}
+
+/** No path input: report viewers can retrieve only the location cited by this record's evidence. */
+export async function getSourceEvidence(db: Queryable, auth: AuthContext, logId: string, evidenceId: string) {
+  requireOrganization(auth);
+  const record = await getLogRecord(db, auth, logId);
+  const evidence = record.evidence.find((item) => item.id === evidenceId);
+  if (!evidence?.sourceLocation) throw new ApiError("NOT_FOUND", "Cited source evidence was not found.");
+  const excerpt = await readSourceExcerpt(db, { organizationId: auth.organization.id, ...evidence.sourceLocation });
+  if (!excerpt) throw new ApiError("NOT_FOUND", "Cited source excerpt was not found.");
+  return excerpt;
 }
 
 export async function archiveSourceSnapshot(db: Database, auth: AuthContext, skillId: string, id: string,
