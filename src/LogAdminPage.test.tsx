@@ -1030,7 +1030,7 @@ describe("LogAdminPage 分析技能结果回调与模型覆盖", () => {
     const { onNavigate } = renderPage({ logActions });
     const table = await screen.findByRole("table", { name: "分析技能列表" });
     await userEvent.click(within(table).getByRole("button", { name: "编辑" }));
-    await userEvent.clear(screen.getByLabelText(/格式画像 JSON/));
+    await userEvent.type(screen.getByLabelText("时间戳模式"), "x");
     await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("该技能有未发布草稿，请先在技能工作区发布或放弃草稿。");
