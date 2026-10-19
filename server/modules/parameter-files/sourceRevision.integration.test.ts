@@ -268,7 +268,7 @@ describe("whole DTS source revisions (native PostgreSQL and toolchain)", { timeo
 
     const restored = await candidate(base, "restore-whole-node");
     const restorationConflict = { code: "CONFLICT", details: {
-      reason: "source-occurrence-restoration-requires-mapping", nodePath: "charger", propertyName: "iin_max"
+      reason: "source-occurrence-restoration-requires-mapping", nodePath: "/charger", propertyName: "iin_max"
     } };
     await expect(previewSourceRevisionCandidate(runtime, storage, editor, { projectId: PROJECT, candidateId: restored.id }))
       .rejects.toMatchObject(restorationConflict);
