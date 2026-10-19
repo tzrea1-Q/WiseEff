@@ -65,28 +65,30 @@ describe("NodeDebuggingPage local bridge rebind", () => {
       expect(options?.excludeBridgeId).toBe("br-A");
       return health;
     });
+    const debuggingActions = {
+      refresh: vi.fn().mockResolvedValue(undefined),
+      detectAndStartSession,
+      readNode: vi.fn(),
+      writeNode: vi.fn(),
+      pushValues: vi.fn(),
+      rollbackSnapshot: vi.fn(),
+      rollbackLastSnapshot: vi.fn(),
+      connectDevice: vi.fn()
+    };
+    const probeBridgeHealth = async () => ({ health, reachability: "ok" as const });
 
     function Harness() {
       const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
-      const context = useMemo(() => ({ setActions: setTopBarActions }), []);
+      const context = useMemo(() => ({ setActions: setTopBarActions, setLeadingActions: () => undefined }), []);
       return (
         <ToastProvider>
           <TopBarActionsContext.Provider value={context}>
             <div className="topbar-page-actions">{topBarActions}</div>
             <NodeDebuggingPage
               state={userState}
-              debuggingActions={{
-                refresh: vi.fn().mockResolvedValue(undefined),
-                detectAndStartSession,
-                readNode: vi.fn(),
-                writeNode: vi.fn(),
-                pushValues: vi.fn(),
-                rollbackSnapshot: vi.fn(),
-                rollbackLastSnapshot: vi.fn(),
-                connectDevice: vi.fn()
-              }}
+              debuggingActions={debuggingActions}
               runtimeStatus="ready"
-              probeBridgeHealth={async () => ({ health, reachability: "ok" })}
+              probeBridgeHealth={probeBridgeHealth}
               createBridgePairingCode={async () => ({ code: "654321", expiresAt: "2099-01-01T00:00:00Z" })}
             />
           </TopBarActionsContext.Provider>
@@ -103,7 +105,7 @@ describe("NodeDebuggingPage local bridge rebind", () => {
     detectAndStartSession.mockClear();
     fireEvent.click(repairButton);
 
-    await waitFor(() => expect(detectAndStartSession).toHaveBeenCalled());
+    await waitFor(() => expect(detectAndStartSession).toHaveBeenCalledWith({ autoDetectProtocol: true, bridgeId: "br-B" }));
     expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
   });
 });

@@ -220,14 +220,14 @@ describe("deriveBridgePanelStatus", () => {
     ).toBe("not_paired");
   });
 
-  it("returns tools_missing when connected but required protocol tool is unavailable", () => {
+  it("allows automatic discovery when either device tool is available", () => {
     expect(
       deriveBridgePanelStatus({
         health: connectedHealth,
         bridgeCount: 1,
         protocol: "adb"
       })
-    ).toBe("tools_missing");
+    ).toBe("online_no_device");
   });
 
   it("returns online_no_device when tools are available but no target is selected", () => {
@@ -345,6 +345,6 @@ describe("detect failure mapping", () => {
         protocol: "adb",
         formatError: (error) => (error instanceof Error ? error.message : "failed")
       })
-    ).toBe("缺少 ADB 调试工具，请先安装调试工具。");
+    ).toBe("缺少设备调试工具，请先安装调试工具。");
   });
 });

@@ -427,7 +427,7 @@ export function LocalDeviceBridgeWizard({
   const connectionError = localError?.message || (connectError ? presentLocalBridgeError(connectError) : health?.pairingError);
   const technicalDetail = localError?.detail || connectError;
   const readinessDescription = isBridgeOnlinePanelStatus(panelStatus)
-    ? `${protocol.toUpperCase()} · ${panelStatus === "bridges_with_targets" ? "设备已就绪，可以开始调试。" : panelStatus === "tools_missing" ? "安装调试工具后，即可检测 USB 设备。" : "插入 USB 设备，并在设备上允许调试连接。"}`
+    ? (panelStatus === "bridges_with_targets" ? "设备已就绪，可以开始调试。" : panelStatus === "tools_missing" ? "安装调试工具后，即可检测 USB 设备。" : "插入 USB 设备，并在设备上允许调试连接。")
     : panelStatus === "not_paired" ? "连接本机后自动完成配对，无需手动输入配对码。"
     : panelStatus === "not_connected" ? "保持 Bridge 运行，连接到当前平台后再检测 USB 设备。"
     : "已安装 Bridge？连接本机即可启动；首次使用请查看安装指南。";
@@ -606,12 +606,12 @@ export function LocalDeviceBridgeWizard({
           <section className="local-device-bridge-panel__step-content" aria-label="USB 设备连接指引">
             <header className="local-device-bridge-panel__step-intro">
               <h3>连接并授权设备</h3>
-              <p>当前使用 {protocol.toUpperCase()} 协议。完成设备授权后，再检测连接。</p>
+              <p>平台会自动识别设备的连接方式。完成设备授权后，再检测连接。</p>
             </header>
             <ol className="local-device-bridge-panel__checklist" aria-label="USB 设备连接操作">
               <li><div><strong>使用 USB 数据线直连电脑</strong><p>确认设备已开机并解锁，使用支持数据传输的 USB 线。</p></div></li>
-              <li><div><strong>开启调试并允许授权</strong><p>{protocol === "adb" ? "在 Android 设备开启开发者选项和 USB 调试，允许此电脑的调试授权。" : "在设备开启开发者模式和 USB 调试，在设备端允许此电脑通过 HDC 调试。"}</p></div></li>
-              <li><div><strong>返回网页检测设备</strong><p>如设备类型不匹配，请关闭指南，在页面切换 HDC / ADB 后再检测。</p></div></li>
+              <li><div><strong>开启调试并允许授权</strong><p>在设备上开启开发者选项和 USB 调试，并允许此电脑的调试授权。</p></div></li>
+              <li><div><strong>返回网页检测设备</strong><p>完成授权后检测设备，平台会自动选择可用的连接方式。</p></div></li>
             </ol>
             {!isBridgeOnlinePanelStatus(panelStatus) ? <p className="local-device-bridge-panel__step-status" role="status">请先完成「连接本机」，再检测 USB 设备。</p> : null}
             {health?.tools && isBridgeOnlinePanelStatus(panelStatus) ? (

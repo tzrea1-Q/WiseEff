@@ -52,7 +52,7 @@ describe("LocalDeviceBridgeToolsPanel", () => {
     await user.click(screen.getByRole("button", { name: /安装调试工具/i }));
   });
 
-  it("emphasizes the selected protocol tool state", () => {
+  it("shows available device tools without exposing a protocol choice", () => {
     render(
       <LocalDeviceBridgeToolsPanel
         health={health}
@@ -62,8 +62,9 @@ describe("LocalDeviceBridgeToolsPanel", () => {
         onInstallComplete={vi.fn(async () => undefined)}
       />
     );
-    expect(screen.getByText("ADB 工具")).toBeInTheDocument();
-    expect(screen.getByText(/不可用/)).toBeInTheDocument();
-    expect(screen.getByText("adb not found")).toBeInTheDocument();
+    expect(screen.getByText("设备调试工具")).toBeInTheDocument();
+    expect(screen.getByText("可用", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText("ADB 工具")).not.toBeInTheDocument();
+    expect(screen.getByText("技术信息").closest("details")).not.toHaveAttribute("open");
   });
 });

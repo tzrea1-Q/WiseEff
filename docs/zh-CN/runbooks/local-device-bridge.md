@@ -68,7 +68,9 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 3. 以默认选项运行安装包；会注册 `wiseeff-bridge://`、安装 Bridge，并启动 Windows 后台服务或 macOS `.pkg` postinstall 注册的 LaunchAgent。
 4. 回到 `/node-debugging`，点击 **连接本地设备**；页面生成配对码并打开 `wiseeff-bridge://connect?server=<origin>&code=<6位码>`。
 5. Bridge 本地执行 `connect`（必要时 pair，然后非阻塞启动）；30 秒内 `http://127.0.0.1:18787/health` 应出现 `connected: true`。
-6. 插入 USB 设备、授权调试，点击 **重新检测设备**。
+6. 插入 USB 设备、授权调试，点击 **重新检测**。节点调试和参数调试页面会自动探测 HDC 与 ADB，再按设备实际使用的协议建立会话、读写节点或重载参数。只有发现多台设备时才需要选择设备，页面不再提供协议切换。设备检测不会写入设备参数。
+
+当 `tools.adb.available` 与 `tools.hdc.available` 都为 false 时，设备连接步骤提示 **缺少设备调试工具**；任一种工具可用即可自动发现设备。点击 **安装调试工具** 会打开 `wiseeff-bridge://install-tools?server=<origin>&protocol=all`，无需用户选择协议。各工具版本放在 **技术信息** 中；高级 CLI 仍支持按协议排查。
 
 兜底：展开 **高级 · 命令行方式** 使用 `wiseeff-bridge connect` / `pair` / `start`，或从托盘/菜单栏启动 Bridge。
 

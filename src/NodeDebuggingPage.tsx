@@ -1,5 +1,4 @@
 import { Copy, Eye, Pencil, RotateCcw, RotateCw, Send } from "lucide-react";
-import { ViewSwitch } from "@/components/ui/view-switch";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { canPerform } from "@/app/permissions";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -32,14 +31,12 @@ import {
   bindingUnavailableReason,
   bridgeTargetLabel,
   canWrite,
-  protocolLabel,
   readInitialNodeDebuggingProtocol,
   type RuntimeRow
 } from "./application/debugging/nodeDebuggingSession";
 import { useNodeDebuggingSession } from "./application/debugging/useNodeDebuggingSession";
 import { buildParameterModuleFilterNodes } from "./application/parameters/buildModuleFilterNodes";
 import type { DtsWorkbenchTreeNode } from "./application/parameters/buildDtsTopologyTree";
-import type { DebugConnectionProtocol } from "./domain/debugging/types";
 import { buildModuleTree, type FlatModuleNode, type ModuleTreeNode } from "./domain/modules/moduleTree";
 import {
   debugValueEditorRows,
@@ -71,6 +68,7 @@ function isUnsupportedParameterError(message?: string) {
   return message.includes("not configured for the selected protocol")
     || message.includes("binding is disabled for the selected protocol")
     || message.includes("当前协议未配置该节点")
+    || message.includes("当前设备未配置该节点")
     || message.includes("绑定已禁用");
 }
 
@@ -232,10 +230,10 @@ function DebugValueCodeBlock({ label, row, value }: { label: string; row: Runtim
   );
 }
 
-function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: DebugConnectionProtocol }) {
+function NodeWriteFormatPanel({ row }: { row: RuntimeRow }) {
   const titleId = `node-write-format-${row.id}`;
   const exampleValue = resolveWriteFormatExample(row);
-  const exampleHint = resolveWriteFormatHint(row, exampleValue, protocol);
+  const exampleHint = resolveWriteFormatHint(row, exampleValue);
   const isComplex = isComplexDebugParameter(row);
 
   return (
@@ -396,15 +394,18 @@ export function NodeDebuggingPage({
     if (!runtimeReady) {
       return;
     }
-    void session.detect(debuggingActions, probeBridgeHealth);
+    guardEditorChange(() => {
+      closeEditor();
+      void session.detect(debuggingActions, probeBridgeHealth, { autoDetectProtocol: true });
+    });
   };
 
   useEffect(() => {
     if (!runtimeReady) return;
-    void session.detect(debuggingActions, probeBridgeHealth);
-    // Match the page-era auto-detect: protocol and catalog readiness only.
+    void session.detect(debuggingActions, probeBridgeHealth, { autoDetectProtocol: true });
+    // Protocol comes from detection; changing it must not trigger another discovery.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [protocol, runtimeReady]);
+  }, [runtimeReady]);
 
   const moduleNodes = useMemo(() => buildRuntimeDebugModuleTree(rows), [rows]);
   const moduleFilterNodes = useMemo(
@@ -512,28 +513,18 @@ export function NodeDebuggingPage({
   useTopBarActions(
     <div className="device-pill">
       <span className={connected ? "live-dot" : "idle-dot"} />
-      {connected ? `已连接：${target}` : detecting ? "检测中..." : `未连接 ${protocolLabel(protocol)} 设备`}
+      {connected ? `已连接：${target}` : detecting ? "检测中..." : "未连接设备"}
       <button className="link-button" type="button" disabled={!runtimeReady} onClick={() => detect()}>
         重新检测
       </button>
     </div>,
-    [connected, detecting, protocol, runtimeReady, target]
+    [connected, detecting, protocol, runtimeReady, target, editingDirty, editingRowId, debuggingActions, probeBridgeHealth, session]
   );
 
   return (
     <div className="workbench-page node-debugging-page">
       <div className="debugging-workbench-content">
-        <div className="node-debugging-controls">
-          <ViewSwitch variant="tabs" ariaLabel="连接协议" value={protocol}
-            onValueChange={(value) => guardEditorChange(() => {
-              closeEditor();
-              session.setProtocol(value as DebugConnectionProtocol, debuggingActions);
-            })}
-            items={(["hdc", "adb"] as const).map((value) => ({ value, label: protocolLabel(value),
-              id: `node-debugging-${value}-tab`, panelId: `node-debugging-${value}-panel` }))} />
-        </div>
-        <div role="tabpanel" id={`node-debugging-${protocol}-panel`}
-          aria-labelledby={`node-debugging-${protocol}-tab`}>
+        <div>
         <NavigatorWorkbench
           pageKey="node-debugging"
           toolbar={<>
@@ -785,8 +776,6 @@ export function NodeDebuggingPage({
         <NodeOperationHistoryPanel events={events} />
         </NavigatorWorkbench>
         </div>
-        <div role="tabpanel" id={`node-debugging-${protocol === "hdc" ? "adb" : "hdc"}-panel`}
-          aria-labelledby={`node-debugging-${protocol === "hdc" ? "adb" : "hdc"}-tab`} hidden />
       </div>
 
       {editingRow ? (
@@ -849,7 +838,6 @@ export function NodeDebuggingPage({
               <div className="node-detail-device">
                 <span className="node-detail-meta-label">目标设备</span>
                 <strong>{connected ? target : "设备未连接"}</strong>
-                <span className="node-detail-protocol">{protocolLabel(protocol)}</span>
               </div>
               <section className="node-detail-path" aria-labelledby={`node-detail-path-${editingRow.id}`}>
                 <div className="node-detail-path__head">
@@ -933,7 +921,7 @@ export function NodeDebuggingPage({
               ) : null}
               {canWrite(editingRow) ? <details className="node-detail-disclosure">
                 <summary>写入格式与示例</summary>
-                <NodeWriteFormatPanel row={editingRow} protocol={protocol} />
+            <NodeWriteFormatPanel row={editingRow} />
               </details> : null}
             </div>
           </div>

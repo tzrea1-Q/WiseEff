@@ -120,8 +120,8 @@ describe("LocalDeviceBridgeWizard", () => {
       health={{ ok: true, paired: true, connected: true, updatedAt: "2026-10-15T00:00:00Z",
         tools: { adb: { available: true }, hdc: { available: true } } }} />);
     fireEvent.click(screen.getByRole("button", { name: "设备连接与排查" }));
-    expect(screen.getByText(/在设备开启开发者模式/)).toBeInTheDocument();
-    expect(screen.getByText("HDC 工具")).toBeInTheDocument();
+    expect(screen.getByText(/在设备上开启开发者选项/)).toBeInTheDocument();
+    expect(screen.getByText("设备调试工具")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "检测 USB 设备" }));
     expect(onDetect).toHaveBeenCalledTimes(1);
   });

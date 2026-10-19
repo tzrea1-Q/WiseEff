@@ -70,11 +70,11 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 3. Run the installer with default options. It registers `wiseeff-bridge://`, installs Bridge under the user profile, and starts the background service (Windows) or LaunchAgent (macOS `.pkg` postinstall).
 4. Return to `/node-debugging` and click **连接本地设备**. The page creates a pairing code and opens `wiseeff-bridge://connect?server=<origin>&code=<6-digit>`.
 5. Bridge runs `connect` locally (pair if needed, then non-blocking start). Health at `http://127.0.0.1:18787/health` should report `connected: true` within 30 seconds.
-6. Insert the USB device, authorize debugging, and click **重新检测设备**.
+6. Insert the USB device, authorize debugging, and click **重新检测**. Both debugging pages automatically probe HDC and ADB, then use the detected device's protocol for sessions, node operations, and parameter reloads. Users select a device only when several are found; there is no protocol switch. Detection does not write device values.
 
 ### Tool install (Phase B)
 
-When health reports `tools.adb.available: false` or `tools.hdc.available: false`, Step ③ shows **缺少 ADB/HDC 调试工具** (not “Bridge 未安装”). Click **安装调试工具** to open `wiseeff-bridge://install-tools?server=<origin>&protocol=adb|hdc|all`. Bridge downloads pinned artifacts from `/downloads/device-bridge-tools/...` into a private directory:
+When both `tools.adb.available` and `tools.hdc.available` are false, Step ③ shows **缺少设备调试工具**. Either available tool permits automatic discovery. Click **安装调试工具** to open `wiseeff-bridge://install-tools?server=<origin>&protocol=all`; users do not need to choose a protocol. Individual tool versions remain under **技术信息**. Bridge downloads pinned artifacts from `/downloads/device-bridge-tools/...` into a private directory:
 
 - Windows: `%LOCALAPPDATA%\WiseEff\tools\`
 - macOS: `~/Library/Application Support/WiseEff/tools/`

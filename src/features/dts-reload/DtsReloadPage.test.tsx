@@ -356,7 +356,9 @@ describe("DtsReloadPage", () => {
     let complete!: (value: DtsReloadRun) => void;
     const pending = new Promise<DtsReloadRun>((resolve) => { complete = resolve; });
     const repository = createRepository({ getRun: vi.fn(() => pending) });
-    const detectTargets = vi.fn(async () => [{ bridgeId: "bridge-1", targetRef: "device-serial-1" }]);
+    const detectTargets = vi.fn(async (protocol: "hdc" | "adb") => protocol === "hdc"
+      ? [{ bridgeId: "bridge-1", targetRef: "device-serial-1" }]
+      : []);
     renderPage(repository, { initialRunId: "run-history", detectTargets });
     await screen.findAllByText("正在加载运行详情…");
     expect(detectTargets).not.toHaveBeenCalled();
@@ -442,13 +444,15 @@ describe("DtsReloadPage", () => {
     let finishDetection!: (value: DtsReloadReachableTarget[]) => void;
     let failDetection!: (reason: Error) => void;
     const detectionPending = new Promise<DtsReloadReachableTarget[]>((resolve, reject) => { finishDetection = resolve; failDetection = reject; });
-    const detectTargets = vi.fn().mockImplementationOnce(() => detectionPending).mockResolvedValue([{ bridgeId: "bridge-1", targetRef: "device-serial-1" }]);
+    const detectTargets = vi.fn((protocol: "hdc" | "adb"): Promise<DtsReloadReachableTarget[]> => Promise.resolve(protocol === "hdc"
+      ? [{ bridgeId: "bridge-1", targetRef: "device-serial-1" }]
+      : [])).mockImplementationOnce(() => detectionPending);
     const repository = createRepository({
       listRuns: vi.fn(async () => ({ items: [{ ...run({ id: "history-late" }), deviceId: null, targetCount: 1, propertyKeys: ["watchdog_time"], integrityCheck: null }], nextCursor: null })),
       getRun: vi.fn(() => runPending)
     });
     renderPage(repository, { detectTargets });
-    await waitFor(() => expect(detectTargets).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(detectTargets.mock.calls.map(([protocol]) => protocol)).toEqual(["hdc", "adb"]));
     await user.click(screen.getByText("运行历史", { exact: true }));
     await user.click(within(screen.getByLabelText("运行历史")).getByRole("button", { name: /预检通过/ }));
     await waitFor(() => expect(repository.getRun).toHaveBeenCalledWith("history-late"));
@@ -577,9 +581,9 @@ describe("DtsReloadPage", () => {
       return { reachable: true, ok: true };
     });
     const poll = vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockImplementation(async () => health);
-    const detectTargets = vi.fn(async (_protocol: "hdc" | "adb", bridgeId?: string) => [
+    const detectTargets = vi.fn(async (protocol: "hdc" | "adb", bridgeId?: string) => protocol === "hdc" ? [
       { targetRef: "HDC-LAB", label: "Lab device", bridgeId }
-    ]);
+    ] : []);
     renderPageWithTopBar(createRepository(), { bridges: undefined, probeBridgeHealth: undefined, detectTargets });
     await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-old"));
     await user.click(screen.getByText("管理设备代理"));
@@ -590,8 +594,10 @@ describe("DtsReloadPage", () => {
     await user.click(screen.getByRole("button", { name: "关闭设备代理管理" }));
     if (revokeOther || revokeFails) {
       expect(screen.queryByRole("button", { name: "连接本机" })).not.toBeInTheDocument();
+      detectTargets.mockClear();
       await user.click(screen.getByRole("button", { name: "重新检测" }));
-      expect(detectTargets).toHaveBeenLastCalledWith("hdc", "bridge-old");
+      expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-old");
+      expect(detectTargets).toHaveBeenCalledWith("adb", "bridge-old");
       expect(connect).not.toHaveBeenCalled();
       return;
     }
@@ -642,9 +648,9 @@ describe("DtsReloadPage", () => {
       return { reachable: true, ok: true, accepted: true };
     });
     const poll = vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockImplementation(async () => health);
-    const detectTargets = vi.fn(async (_protocol: "hdc" | "adb", bridgeId?: string) => [
+    const detectTargets = vi.fn(async (protocol: "hdc" | "adb", bridgeId?: string) => protocol === "hdc" ? [
       { targetRef: "HDC-LAB", label: "Lab device", bridgeId }
-    ]);
+    ] : []);
     renderPageWithTopBar(createRepository(), { bridges: undefined, probeBridgeHealth: undefined, detectTargets });
     const repairButton = await screen.findByRole("button", { name: "连接本机" });
     expect(screen.getByText(/其他账号/)).toBeInTheDocument();
@@ -696,13 +702,14 @@ describe("DtsReloadPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(genericMessage);
   });
 
-  it("exposes workbench landmarks for protocol, candidates, start bar, and collapsed history", async () => {
+  it("exposes workbench landmarks without asking users to choose a protocol", async () => {
     const repository = createRepository();
     renderPage(repository);
-    expect(await screen.findByRole("tablist", { name: "连接协议" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "可调试参数" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "连接协议" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "本地设备连接" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "部署目标" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "可调试参数" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "模块导航" })).toBeInTheDocument();
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /模块/ })).toBeInTheDocument();
@@ -751,24 +758,24 @@ describe("DtsReloadPage", () => {
     renderPageWithTopBar(createRepository(), { detectTargets });
 
     const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement;
-    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 HDC 设备"));
+    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接设备"));
 
+    detectTargets.mockClear();
     await user.click(within(topbarActions).getByRole("button", { name: "重新检测" }));
     await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-1"));
 
-    await user.click(screen.getByRole("tab", { name: "ADB" }));
-    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 ADB 设备"));
-    expect(detectTargets).toHaveBeenLastCalledWith("adb", "bridge-1");
+    expect(detectTargets).toHaveBeenCalledWith("adb", "bridge-1");
+    expect(screen.queryByRole("tablist", { name: "连接协议" })).not.toBeInTheDocument();
   });
 
   it("passes the health-confirmed HDC bridge to detection and displays the returned target", async () => {
-    const detectTargets = vi.fn(async (_protocol: "hdc" | "adb", bridgeId?: string) => [
+    const detectTargets = vi.fn(async (protocol: "hdc" | "adb", bridgeId?: string) => protocol === "hdc" ? [
       {
         targetRef: "HDC-SERIAL-001",
         label: `Lab Mac · HDC-SERIAL-001`,
         bridgeId
       }
-    ]);
+    ] : []);
     renderPageWithTopBar(createRepository(), { detectTargets });
 
     const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement;
@@ -786,7 +793,7 @@ describe("DtsReloadPage", () => {
     });
 
     const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement;
-    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 HDC 设备"));
+    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接设备"));
     expect(detectTargets).not.toHaveBeenCalled();
 
     await user.click(within(topbarActions).getByRole("button", { name: "重新检测" }));
@@ -797,7 +804,7 @@ describe("DtsReloadPage", () => {
     );
   });
 
-  it.each(["hdc", "adb"] as const)("detects no %s devices after connecting without reporting the Bridge offline", async (protocol) => {
+  it("detects both transports after connecting without reporting an empty Bridge offline", async () => {
     let connected = false;
     let finishRefresh!: () => void;
     const refreshPending = new Promise<void>((resolve) => { finishRefresh = resolve; });
@@ -818,12 +825,12 @@ describe("DtsReloadPage", () => {
       },
       probeBridgeHealth: async () => health()
     });
-    if (protocol === "adb") await userEvent.click(screen.getByRole("tab", { name: "ADB" }));
     const connect = await screen.findByRole("button", { name: "连接本机" });
     await waitFor(() => expect(connect).toBeEnabled());
     fireEvent.click(connect);
-    await waitFor(() => expect(detectTargets).toHaveBeenCalledWith(protocol, "bridge-1"));
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(`未检测到 ${protocol.toUpperCase()} 设备`));
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-1"));
+    expect(detectTargets).toHaveBeenCalledWith("adb", "bridge-1");
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("未检测到设备，请检查 USB 连接与调试授权后重新检测。"));
     await act(async () => { finishRefresh(); });
     await waitFor(() => expect(bridgeLauncher.pollLocalBridgeHealth).toHaveBeenCalled());
     expect(screen.queryByText("本地 Device Bridge 未连接，请先连接本机后重新检测。")).not.toBeInTheDocument();
@@ -834,31 +841,34 @@ describe("DtsReloadPage", () => {
     renderPage(createRepository(), { detectTargets, initialTargetRef: "STALE-HDC-TARGET" });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "未检测到 HDC 设备，请检查设备连接与调试授权后重新检测。"
+      "未检测到设备，请检查 USB 连接与调试授权后重新检测。"
     );
     expect(screen.queryByText("STALE-HDC-TARGET")).not.toBeInTheDocument();
   });
 
-  it("keeps typed protocol failures visible with their request id", async () => {
+  it("keeps non-optional detection failures visible with their request id", async () => {
     const detectTargets = vi.fn(async () => {
-      throw new WiseEffApiError("PROTOCOL_UNSUPPORTED", "HDC is not enabled.", {}, "req-protocol-1");
+      throw new WiseEffApiError("FORBIDDEN", "Device access denied.", {}, "req-protocol-1");
     });
     renderPage(createRepository(), { detectTargets });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "目标设备不支持该调试协议。（请求编号 req-prot）"
+      "当前角色没有执行该操作的权限。（请求编号 req-prot）"
     );
   });
 
-  it("clears the previous protocol target while the next detection is pending", async () => {
+  it("clears the previous target while redetecting a replacement device", async () => {
     const user = userEvent.setup({ delay: null });
     let resolveAdb: ((targets: DtsReloadReachableTarget[]) => void) | undefined;
+    let redetecting = false;
     const detectTargets = vi.fn((requestedProtocol: "hdc" | "adb", _bridgeId?: string) => {
-      if (requestedProtocol === "hdc") {
+      if (!redetecting) {
+        if (requestedProtocol === "adb") return Promise.resolve([]);
         return Promise.resolve([
           { targetRef: "HDC-TARGET", label: "HDC target", bridgeId: "bridge-1" }
         ]);
       }
+      if (requestedProtocol === "hdc") return Promise.resolve([]);
       return new Promise<DtsReloadReachableTarget[]>((resolve) => {
         resolveAdb = resolve;
       });
@@ -868,37 +878,18 @@ describe("DtsReloadPage", () => {
     const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement;
     await waitFor(() => expect(topbarActions).toHaveTextContent("已连接：HDC target"));
 
-    const protocols = screen.getByRole("tablist", { name: "连接协议" });
-    const hdc = within(protocols).getByRole("tab", { name: "HDC" });
-    const adb = within(protocols).getByRole("tab", { name: "ADB" });
-    expect(hdc).toHaveAttribute("aria-selected", "true");
-    hdc.focus();
-    await user.keyboard("{ArrowRight}");
-    expect(adb).toHaveFocus();
-    expect(hdc).toHaveAttribute("aria-selected", "true");
-    expect(topbarActions).toHaveTextContent("HDC target");
-    await user.keyboard("{Enter}");
-    expect(adb).toHaveAttribute("aria-selected", "true");
-    const panel = screen.getByRole("tabpanel", { name: "ADB" });
-    expect(panel).toHaveAttribute("id", adb.getAttribute("aria-controls"));
-    expect(panel).toHaveAttribute("aria-labelledby", adb.id);
-    expect(panel).not.toHaveAttribute("tabindex");
-    adb.focus();
-    await user.tab();
-    expect(screen.getByRole("button", { name: "安装指南" })).toHaveFocus();
-    for (let index = 0; index < 8 && !panel.contains(document.activeElement); index += 1) await user.tab();
-    expect(panel).toContainElement(document.activeElement as HTMLElement);
-    expect(panel).not.toHaveFocus();
-    expect(within(panel).getByRole("region", { name: "模块导航" })).toBeInTheDocument();
-    expect(document.getElementById(hdc.getAttribute("aria-controls")!)).not.toBeVisible();
+    redetecting = true;
+    await user.click(within(topbarActions).getByRole("button", { name: "重新检测" }));
+    await waitFor(() => expect(detectTargets.mock.calls.map(([protocol]) => protocol)).toEqual(["hdc", "adb", "hdc", "adb"]));
 
     expect(topbarActions).not.toHaveTextContent("HDC target");
     expect(screen.queryByText("HDC-TARGET")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块导航" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "连接协议" })).not.toBeInTheDocument();
 
-    resolveAdb?.([]);
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "未检测到 ADB 设备，请检查设备连接与调试授权后重新检测。"
-    );
+    await act(async () => { resolveAdb?.([{ targetRef: "ADB-TARGET", label: "Replacement device", bridgeId: "bridge-1" }]); });
+    await waitFor(() => expect(topbarActions).toHaveTextContent("已连接：Replacement device"));
+    expect(topbarActions).not.toHaveTextContent("HDC target");
   });
 
   it("ignores a detection response that resolves after the bridge disconnects", async () => {
@@ -909,7 +900,7 @@ describe("DtsReloadPage", () => {
           resolveFirstDetection = resolve;
         });
       }
-      return new Promise<DtsReloadReachableTarget[]>(() => undefined);
+      return Promise.resolve([]);
     });
     let probeBridgeHealth: (() => Promise<{ connected: boolean; bridgeId?: string } | null>) = async () => ({
       connected: true,
@@ -936,7 +927,7 @@ describe("DtsReloadPage", () => {
         pageProps={{ ...initialPageProps, probeBridgeHealth }}
       />
     );
-    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 HDC 设备"));
+    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接设备"));
 
     resolveFirstDetection?.([
       { targetRef: "STALE-HDC-TARGET", label: "Stale HDC target", bridgeId: "bridge-1" }
@@ -949,18 +940,18 @@ describe("DtsReloadPage", () => {
         pageProps={{ ...initialPageProps, probeBridgeHealth }}
       />
     );
-    await waitFor(() => expect(detectTargets).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(detectTargets.mock.calls.map(([protocol]) => protocol)).toEqual(["hdc", "adb", "hdc", "adb"]));
     expect(topbarActions).not.toHaveTextContent("Stale HDC target");
   });
 
   it("reruns against a replacement bridge and removes the previous target", async () => {
-    const detectTargets = vi.fn(async (_protocol: "hdc" | "adb", bridgeId?: string) => [
+    const detectTargets = vi.fn(async (protocol: "hdc" | "adb", bridgeId?: string) => protocol === "hdc" ? [
       {
         targetRef: `${bridgeId}-HDC-TARGET`,
         label: `Target from ${bridgeId}`,
         bridgeId
       }
-    ]);
+    ] : []);
     let probeBridgeHealth: (() => Promise<{ connected: boolean; bridgeId?: string } | null>) = async () => ({
       connected: true,
       bridgeId: "bridge-1"
@@ -996,7 +987,8 @@ describe("DtsReloadPage", () => {
       />
     );
 
-    await waitFor(() => expect(detectTargets).toHaveBeenLastCalledWith("hdc", "bridge-2"));
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-2"));
+    expect(detectTargets).toHaveBeenCalledWith("adb", "bridge-2");
     await waitFor(() => expect(topbarActions).toHaveTextContent("已连接：Target from bridge-2"));
     expect(topbarActions).not.toHaveTextContent("bridge-1");
   });
@@ -1578,12 +1570,22 @@ describe("DtsReloadPage", () => {
     expect(repository.deployRun).not.toHaveBeenCalled();
   });
 
-  it("opens deploy confirm after validated start and only calls deployRun with confirm-dts-reload on confirm", async () => {
+  it.each(["hdc", "adb"] as const)("automatically discovers a device with only %s available and deploys over that transport after confirmation", async (protocol) => {
     const user = userEvent.setup({ delay: null });
     const repository = createRepository();
+    const detectTargets = vi.fn(async (requestedProtocol: "hdc" | "adb", bridgeId?: string) => {
+      if (requestedProtocol !== protocol) {
+        throw new WiseEffApiError("PROTOCOL_UNSUPPORTED", "Optional tool is not installed.", {}, "req-optional");
+      }
+      return [{ targetRef: "device-serial-1", label: "Connected device", bridgeId }];
+    });
 
-    renderPage(repository);
+    renderPage(repository, { detectTargets, initialTargetRef: "" });
     await screen.findAllByText("Watchdog");
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-1"));
+    expect(detectTargets).toHaveBeenCalledWith("adb", "bridge-1");
+    await waitFor(() => expect(screen.getByText("已连接 · Lab Mac")).toBeInTheDocument());
+    expect(screen.queryByRole("tablist", { name: "连接协议" })).not.toBeInTheDocument();
     await fillDeployFields(user);
     await setWatchdogDebugValue(user);
     await user.click(screen.getByRole("button", { name: /启动预检/ }));
@@ -1610,7 +1612,7 @@ describe("DtsReloadPage", () => {
         deviceId: "bridge:bridge-1",
         bridgeId: "bridge-1",
         targetRef: "device-serial-1",
-        protocol: "hdc",
+        protocol,
         confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
       })
     );
@@ -1982,17 +1984,17 @@ describe("DtsReloadPage", () => {
     expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
   });
 
-  it("lists reachable targets from detectTargets for selection context", async () => {
+  it.each(["hdc", "adb"] as const)("automatically uses %s when selecting one of several discovered devices", async (protocol) => {
     const user = userEvent.setup({ delay: null });
     const repository = createRepository();
     renderPage(repository, {
       bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
       probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-1" }),
       initialTargetRef: "",
-      detectTargets: async () => [
+      detectTargets: async (requestedProtocol) => requestedProtocol === protocol ? [
         { targetRef: "AURORA-001", label: "Lab Mac · AURORA-001", bridgeId: "bridge-1" },
         { targetRef: "AURORA-002", label: "Lab Mac · AURORA-002", bridgeId: "bridge-1" }
-      ]
+      ] : []
     });
 
     const targetList = await screen.findByLabelText("设备代理目标选择");
@@ -2002,6 +2004,20 @@ describe("DtsReloadPage", () => {
       "aria-pressed",
       "true"
     );
+    await setWatchdogDebugValue(user);
+    await user.click(screen.getByRole("button", { name: /启动预检/ }));
+    const confirmation = await screen.findByRole("dialog", { name: "确认部署到设备" });
+    expect(within(confirmation).getByText(/AURORA-002/)).toBeInTheDocument();
+    expect(repository.deployRun).not.toHaveBeenCalled();
+    await user.click(within(confirmation).getByRole("button", { name: "确认部署" }));
+    await waitFor(() => expect(repository.deployRun).toHaveBeenCalledWith({
+      runId: "run-1",
+      deviceId: "bridge:bridge-1",
+      bridgeId: "bridge-1",
+      targetRef: "AURORA-002",
+      protocol,
+      confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+    }));
   });
 
   it.each(["沉淀为知识", "晋升为草稿"])("protects unsaved editing before %s creates a draft and navigates", async (actionLabel) => {

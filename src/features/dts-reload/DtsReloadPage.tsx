@@ -1,7 +1,7 @@
 import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { ViewSwitch } from "@/components/ui/view-switch";
+import { detectDeviceTargets } from "@/application/bridge/detectDeviceTargets";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { Button } from "@/components/ui/button";
 
@@ -80,6 +80,7 @@ export type DtsReloadReachableTarget = {
   targetRef: string;
   label?: string;
   bridgeId?: string;
+  protocol?: DtsReloadDeployProtocol;
 };
 
 export type DtsReloadPageProps = {
@@ -273,7 +274,6 @@ export function DtsReloadPage({
   const openedInitialRunRef = useRef(false);
   const detectRequestSeqRef = useRef(0);
   const previousConnectedBridgeIdRef = useRef("");
-  const lastDetectedProtocolRef = useRef<DtsReloadDeployProtocol | null>(null);
   const candidateTableRef = useRef<HTMLElement>(null);
   const pendingBatchFocusRef = useRef<string | null>(null);
 
@@ -483,10 +483,9 @@ export function DtsReloadPage({
   const runDetectTargets = useCallback(async (options: { manual?: boolean } = {}) => {
     // A connect attempt can retain this callback while health/protocol changes during its awaits.
     const snapshot = session.getSnapshot();
-    if (snapshot.historyRunLoading) return;
+    if (snapshot.historyRunLoading || snapshot.starting || snapshot.deploying || snapshot.restoring) return;
     const requestSeq = detectRequestSeqRef.current + 1;
     detectRequestSeqRef.current = requestSeq;
-    const requestProtocol = snapshot.protocol;
     const healthBridgeId = snapshot.bridgeHealth?.connected ? snapshot.bridgeHealth.bridgeId?.trim() : "";
     const requestBridgeId = healthBridgeId && snapshot.bridges.some((bridge) => bridge.id === healthBridgeId)
       ? healthBridgeId
@@ -509,19 +508,14 @@ export function DtsReloadPage({
       return;
     }
 
-    if (
-      lastDetectedProtocolRef.current &&
-      lastDetectedProtocolRef.current !== requestProtocol &&
-      session.getSnapshot().targetRef.trim()
-    ) {
-      session.setTargetRef("");
-    }
-    lastDetectedProtocolRef.current = requestProtocol;
+    setReachableTargets([]);
+    if (session.getSnapshot().targetRef.trim()) session.setTargetRef("");
     setTargetDetectionError("");
     setDetectingTargets(true);
     try {
-      const targets = await detectTargets(requestProtocol, requestBridgeId);
-      if (detectRequestSeqRef.current !== requestSeq || session.getSnapshot().historyRunLoading) return;
+      const targets = await detectDeviceTargets((connectionProtocol) => detectTargets(connectionProtocol, requestBridgeId));
+      const current = session.getSnapshot();
+      if (detectRequestSeqRef.current !== requestSeq || current.historyRunLoading || current.starting || current.deploying || current.restoring) return;
 
       const scopedTargets = targets.filter(
         (target) => !target.bridgeId || target.bridgeId === requestBridgeId
@@ -529,7 +523,7 @@ export function DtsReloadPage({
       setReachableTargets(scopedTargets);
       if (scopedTargets.length === 0) {
         setTargetDetectionError(
-          `未检测到 ${requestProtocol.toUpperCase()} 设备，请检查设备连接与调试授权后重新检测。`
+          "未检测到设备，请检查 USB 连接与调试授权后重新检测。"
         );
         if (session.getSnapshot().targetRef.trim()) {
           session.setTargetRef("");
@@ -545,13 +539,15 @@ export function DtsReloadPage({
         }
         if (scopedTargets.length === 1) {
           const only = scopedTargets[0]!.targetRef.trim();
-          if (only && !currentTargetStillAvailable) {
+          session.setProtocol(scopedTargets[0]!.protocol);
+          if (only && session.getSnapshot().targetRef !== only) {
             session.setTargetRef(only);
           }
         }
       }
     } catch (error) {
-      if (detectRequestSeqRef.current !== requestSeq || session.getSnapshot().historyRunLoading) return;
+      const current = session.getSnapshot();
+      if (detectRequestSeqRef.current !== requestSeq || current.historyRunLoading || current.starting || current.deploying || current.restoring) return;
       setReachableTargets([]);
       if (session.getSnapshot().targetRef.trim()) {
         session.setTargetRef("");
@@ -579,23 +575,7 @@ export function DtsReloadPage({
       return;
     }
     void runDetectTargets();
-  }, [connectedBridgeId, detectTargets, historyRunLoading, protocol, runDetectTargets]);
-
-  const handleProtocolChange = useCallback(
-    (nextProtocol: DtsReloadDeployProtocol) => {
-      if (nextProtocol === protocol) return;
-      detectRequestSeqRef.current += 1;
-      lastDetectedProtocolRef.current = null;
-      setReachableTargets([]);
-      setTargetDetectionError("");
-      setDetectingTargets(false);
-      if (session.getSnapshot().targetRef.trim()) {
-        session.setTargetRef("");
-      }
-      session.setProtocol(nextProtocol);
-    },
-    [protocol, session]
-  );
+  }, [connectedBridgeId, detectTargets, historyRunLoading, runDetectTargets]);
 
   const connectedTargetRef = connectedBridgeId ? targetRef.trim() : "";
   const connectedTargetLabel =
@@ -609,7 +589,7 @@ export function DtsReloadPage({
         ? `已连接：${connectedTargetLabel}`
         : detectingTargets
           ? "检测中..."
-          : `未连接 ${protocol.toUpperCase()} 设备`}
+          : "未连接设备"}
       <button
         className="link-button"
         type="button"
@@ -800,7 +780,6 @@ export function DtsReloadPage({
         ) : null}
 
         <NavigatorWorkbench pageKey="dts-reload"
-          panelId={`dts-reload-${protocol}-panel`} tabId={`dts-reload-${protocol}-tab`}
           toolbar={(primaryAction) => <div className="dts-reload-taskbar">
             <label className="dts-reload-project-select">
               <span>项目</span>
@@ -818,16 +797,6 @@ export function DtsReloadPage({
                 }}
                 options={projects.map((project) => ({ value: project.id, label: project.name }))} />
             </label>
-          <ViewSwitch variant="tabs" ariaLabel="连接协议" value={protocol}
-            onValueChange={(value) => {
-              if (value === protocol) return;
-              guardEditorChange(() => {
-                setEditingBindingId(null);
-                handleProtocolChange(value as DtsReloadDeployProtocol);
-              });
-            }}
-            items={(["hdc", "adb"] as const).map((value) => ({ value, label: value.toUpperCase(), disabled: !canStartRun || starting || deploying || restoring || historyRunLoading,
-              id: `dts-reload-${value}-tab`, panelId: `dts-reload-${value}-panel` }))} />
             <span className="dts-reload-selection-count">已选 {selectedCandidates.length} 项</span>
             {primaryAction}
           </div>}
@@ -885,7 +854,10 @@ export function DtsReloadPage({
                     className={cn("button subtle", targetRef === target.targetRef ? "is-active" : undefined)}
                     disabled={!canStartRun}
                     aria-pressed={targetRef === target.targetRef}
-                    onClick={() => session.setTargetRef(target.targetRef)}
+                    onClick={() => {
+                      if (target.protocol) session.setProtocol(target.protocol);
+                      session.setTargetRef(target.targetRef);
+                    }}
                   >
                     {target.label?.trim() || target.targetRef}
                   </button>

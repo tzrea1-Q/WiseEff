@@ -2,6 +2,7 @@ import "./helpers/loadAcceptanceEnvironment";
 import { spawnSync } from "node:child_process";
 import { expect, test, type APIRequestContext, type Page, type Route } from "playwright/test";
 import type { Client } from "pg";
+import type { Queryable } from "../../server/shared/database/client";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
@@ -72,7 +73,7 @@ type AdbSmokeConfig = {
 
 type MinimalAdbSmokeConfig = Pick<AdbSmokeConfig, "deviceId" | "targetRef" | "parameterId" | "nodePath">;
 type AdbSmokeEnv = Partial<Record<"ADB_SMOKE_DEVICE_ID" | "ADB_SMOKE_TARGET_REF" | "ADB_SMOKE_PARAMETER_ID" | "ADB_SMOKE_NODE_PATH" | "ADB_SMOKE_ENABLE_WRITE" | "ADB_SMOKE_WRITE_VALUE" | "ADB_SMOKE_CONFIRM_WRITE" | "ADB_SMOKE_CONFIRM_ROLLBACK" | "ADB_SMOKE_EXPECT_READ_PATTERN" | "ADB_SMOKE_USER_ID", string>>;
-type AdbSmokeQueryClient = Pick<Client, "query">;
+type AdbSmokeQueryClient = Queryable;
 
 type AdbSmokeDeviceRow = {
   id: string;
@@ -446,7 +447,7 @@ function runSeedScript(script: string) {
     const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
     const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
     const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
+      ? `child_process error: ${"code" in result.error ? result.error.code : "unknown"} ${result.error.message ?? ""}`.trimEnd()
       : "";
 
     throw new Error(
@@ -683,9 +684,9 @@ async function resolveAdbSmokeCatalogConfig(
 
 function createAdbSmokeConfigClient(results: unknown[][]): AdbSmokeQueryClient {
   return {
-    query: async () => {
+    query: async <Row>() => {
       const rows = results.shift() ?? [];
-      return { rows, rowCount: rows.length } as Awaited<ReturnType<Client["query"]>>;
+      return { rows: rows as Row[], rowCount: rows.length };
     }
   };
 }
@@ -782,7 +783,7 @@ function stringValueShape(value: string | null | undefined) {
   return typeof value === "string" ? `string:length=${value.length}` : "absent";
 }
 
-function operationFailureDiagnostic(operation: Pick<NodeOperationDto, "failureReason">) {
+function operationFailureDiagnostic(operation: Pick<NodeOperationDto, "failureReason"> & Partial<NodeOperationDto>) {
   return `failureReason=${operation.failureReason ? "present" : "absent"}`;
 }
 
@@ -887,11 +888,13 @@ function summarizeAudit(events: AuditEventDto[], kind: string, targetId: string 
 async function installFrontendDebuggingApiGuard(page: Page) {
   const observed = {
     detectRequests: 0,
+    detectedProtocols: new Set<string>(),
     blockedRequests: [] as string[]
   };
 
   await page.route("**/api/v1/debugging/targets/detect", async (route) => {
     observed.detectRequests += 1;
+    observed.detectedProtocols.add(route.request().postDataJSON()?.protocol);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -909,7 +912,7 @@ async function installFrontendDebuggingApiGuard(page: Page) {
       body: JSON.stringify({
         error: {
           code: "FRONTEND_DEVICE_CALL_BLOCKED",
-          message: "ADB device-lab UI stage only proves protocol selection; request API owns the real device chain."
+          message: "Device-lab UI stage only proves automatic discovery; request API owns the real device chain."
         }
       })
     });
@@ -922,17 +925,10 @@ async function installFrontendDebuggingApiGuard(page: Page) {
   return observed;
 }
 
-async function selectAdbProtocol(page: Page) {
-  const adbButton = page.getByRole("tab", { name: "ADB" });
-  await expect(adbButton).toBeVisible({ timeout: 30_000 });
-  await adbButton.click();
-  await expect(adbButton).toHaveAttribute("aria-selected", "true");
-}
-
 async function expectAdbUiReady(page: Page, config: AdbSmokeConfig) {
   await page.goto("/node-debugging");
-  await selectAdbProtocol(page);
-  await expect(page.locator("body")).toContainText(/ADB/);
+  await expect(page.getByRole("tablist", { name: "连接协议" })).toHaveCount(0);
+  await expect(page.locator(".topbar .device-pill").first()).toContainText("未连接设备");
 }
 
 test.describe("ADB device-lab full-chain loop", () => {
@@ -955,6 +951,7 @@ test.describe("ADB device-lab full-chain loop", () => {
     const config = await resolveAdbSmokeConfig({ targetRef });
     const frontendGuard = await installFrontendDebuggingApiGuard(page);
     await expectAdbUiReady(page, config);
+    expect([...frontendGuard.detectedProtocols].sort()).toEqual(["adb", "hdc"]);
     expect(
       frontendGuard.blockedRequests,
       `Frontend UI stage attempted request-API device calls: ${frontendGuard.blockedRequests.join(", ")}`

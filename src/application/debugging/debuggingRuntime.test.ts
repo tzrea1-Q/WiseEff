@@ -10,6 +10,7 @@ import type {
 import { initialState } from "@/mockData";
 import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification, formatDebuggingRuntimeError } from "./debuggingRuntime";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { createNodeDebuggingSession } from "./nodeDebuggingSession";
 
 const apiDevice: DebugDeviceSnapshot = {
   id: "api-device-1",
@@ -109,6 +110,69 @@ function createGateway(overrides: Partial<DebuggingGateway> = {}): DebuggingGate
 }
 
 describe("createDebuggingRuntimeActions", () => {
+  it("keeps the new device catalog when an older selection refresh finishes last", async () => {
+    let finishOldCatalog!: (parameters: typeof apiParameter[]) => void;
+    const oldCatalog = new Promise<typeof apiParameter[]>((resolve) => { finishOldCatalog = resolve; });
+    let supported: "hdc" | "adb" = "adb";
+    let state = { ...initialState };
+    const session = createNodeDebuggingSession({ initialParameters: [], initialProtocol: "hdc" });
+    const gateway = createGateway({
+      detectTargets: vi.fn(async (input) => input?.protocol === supported
+        ? [{ ...apiTarget, id: `${supported}-target`, protocol: supported, bridgeId: "local" }] : []),
+      createSession: vi.fn(async (input) => ({ ...apiSession, protocol: input.protocol, targetId: input.targetId })),
+      listRuntimeNodes: vi.fn(async (query) => query?.protocol === "adb" ? oldCatalog : [{ ...apiParameter, name: "HDC catalog" }]),
+      listSessionEvents: vi.fn(async () => [])
+    });
+    const hydrated = vi.fn();
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, getState: () => state,
+      dispatch: (action) => {
+        if (action.type === "HYDRATE_DEBUG_RUNTIME") {
+          hydrated(action.debugParameters);
+          state = { ...state, devices: action.devices, debugParameters: action.debugParameters };
+          session.syncParameters(action.debugParameters);
+        }
+      }
+    });
+    const selecting = session.selectBridgeTarget({ ...apiTarget, id: "adb-target", protocol: "adb", bridgeId: "local" }, actions);
+    await vi.waitFor(() => expect(gateway.listRuntimeNodes).toHaveBeenCalledWith({ protocol: "adb" }));
+    supported = "hdc";
+    await session.detect(actions, async () => ({ health: null, reachability: "offline" }), { autoDetectProtocol: true });
+    finishOldCatalog([{ ...apiParameter, name: "Obsolete ADB catalog" }]);
+    await selecting;
+    expect(hydrated).toHaveBeenCalledTimes(1);
+    expect(session.getSnapshot().protocol).toBe("hdc");
+    expect(session.getSnapshot().activeTargetId).toBe("hdc-target");
+    expect(session.getSnapshot().rows.map((row) => row.name)).toEqual(["HDC catalog"]);
+  });
+
+  it.each(["hdc", "adb"] as const)("automatically creates a %s session from the detected device", async (protocol) => {
+    const target = { ...apiTarget, protocol, bridgeId: "local-bridge", deviceId: "bridge:local-bridge" };
+    const gateway = createGateway({
+      detectTargets: vi.fn(async (input) => input?.protocol === protocol ? [target] : []),
+      createSession: vi.fn(async () => ({ ...apiSession, protocol }))
+    });
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch: vi.fn(),
+      getState: () => ({ ...initialState, devices: [] }) });
+    const result = await actions.detectAndStartSession({ autoDetectProtocol: true, bridgeId: "local-bridge" });
+    expect(gateway.detectTargets).toHaveBeenCalledWith({ protocol: "hdc", bridgeId: "local-bridge" });
+    expect(gateway.detectTargets).toHaveBeenCalledWith({ protocol: "adb", bridgeId: "local-bridge" });
+    expect(gateway.createSession).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      protocol, targetId: target.id, bridgeId: "local-bridge", deviceId: "bridge:local-bridge"
+    }));
+    expect("session" in result && result.session.protocol).toBe(protocol);
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("discovers both transports before presenting multiple device candidates without creating sessions", async () => {
+    const gateway = createGateway({ detectTargets: vi.fn(async (input) => [{ ...apiTarget,
+      id: `bridge:local:${input?.protocol}:device`, protocol: input!.protocol!, bridgeId: "local", targetRef: `${input?.protocol}-device`
+    }]) });
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch: vi.fn(), getState: () => initialState });
+    const result = await actions.detectAndStartSession({ autoDetectProtocol: true, bridgeId: "local" });
+    expect("candidates" in result && result.candidates.map((target) => target.protocol)).toEqual(["hdc", "adb"]);
+    expect(gateway.createSession).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])("lets only the latest refresh publish when an older request fails=%s", async (fails) => {
     let complete!: (devices: DebugDeviceSnapshot[]) => void;
     let reject!: (error: Error) => void;
@@ -316,7 +380,7 @@ describe("createDebuggingRuntimeActions", () => {
     );
   });
 
-  it("reloads API devices before detecting when local state has not hydrated a protocol device yet", async () => {
+  it("uses the detected target device without requiring a hydrated device registry", async () => {
     const dispatch = vi.fn();
     const hdcDevice = { ...apiDevice, id: "hdc-device-lab-aurora", transport: "hdc" as const };
     const gateway = createGateway({
@@ -333,7 +397,8 @@ describe("createDebuggingRuntimeActions", () => {
 
     await actions.detectAndStartSession({ protocol: "hdc" });
 
-    expect(gateway.listDevices).toHaveBeenCalledTimes(1);
+    expect(gateway.listDevices).not.toHaveBeenCalled();
+    expect(gateway.createSession).toHaveBeenCalledWith(expect.objectContaining({ deviceId: hdcDevice.id }));
     expect(gateway.detectTargets).toHaveBeenCalledWith({
       protocol: "hdc"
     });

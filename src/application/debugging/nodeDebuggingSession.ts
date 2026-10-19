@@ -125,7 +125,7 @@ export type NodeDebuggingSession = {
   getSnapshot(): NodeDebuggingSessionSnapshot;
   syncParameters(parameters: DebugParameter[]): void;
   setProtocol(protocol: DebugConnectionProtocol, actions: Pick<NodeDebuggingSessionActions, "refresh">): void;
-  detect(actions: NodeDebuggingSessionActions, probeBridgeHealth: NodeDebuggingProbeBridgeHealth): Promise<void>;
+  detect(actions: NodeDebuggingSessionActions, probeBridgeHealth: NodeDebuggingProbeBridgeHealth, options?: { autoDetectProtocol?: boolean }): Promise<void>;
   selectBridgeTarget(target: DeviceTarget, actions: NodeDebuggingSessionActions): Promise<void>;
   setDraftValue(rowId: string, value: string): void;
   toggleSelect(rowId: string): void;
@@ -174,8 +174,8 @@ export function protocolLabel(protocol: DebugConnectionProtocol) {
 }
 
 export function bindingUnavailableReason(row: Pick<ProtocolAwareDebugParameter, "bindingStatus" | "nodePath">) {
-  if (row.bindingStatus === "missing") return "未配置该协议节点";
-  if (row.bindingStatus === "disabled") return "该协议节点已停用";
+  if (row.bindingStatus === "missing") return "未配置该设备节点";
+  if (row.bindingStatus === "disabled") return "该设备节点已停用";
   if (!row.nodePath) return "节点不可用";
   return "";
 }
@@ -408,7 +408,7 @@ function eventFromOperation(
   return {
     parameterName:
       row?.name ??
-      (operation.operationType === "detect" ? `${protocolLabel(operation.protocol ?? "hdc")} 设备` : operation.parameterId ?? operation.nodePath),
+      (operation.operationType === "detect" ? "设备" : operation.parameterId ?? operation.nodePath),
     parameterKey: row?.key ?? operation.parameterId ?? operation.nodePath,
     accessMode: row?.accessMode ?? "RO",
     action: eventActionFromOperation(operation),
@@ -714,7 +714,7 @@ export function createNodeDebuggingSession(
     }
   }
 
-  async function applyDetectResult(result: DetectResultWithOperation) {
+  async function applyDetectResult(result: DetectResultWithOperation, actions?: NodeDebuggingSessionActions, isCurrent = () => true) {
     if ("candidates" in result) {
       target = undefined;
       activeSessionId = undefined;
@@ -723,6 +723,27 @@ export function createNodeDebuggingSession(
       return;
     }
     const { session, target: detectedTarget } = result;
+    const detectedProtocol = session.protocol ?? detectedTarget.protocol ?? protocol;
+    // Refresh even for the same transport so a newer detection supersedes older catalog requests.
+    if (actions) {
+      activeSessionId = undefined;
+      activeTargetId = undefined;
+      target = undefined;
+      const refreshedParameters = await actions.refresh({ protocol: detectedProtocol });
+      if (!isCurrent()) return;
+      if (Array.isArray(refreshedParameters)) debugParameters = refreshedParameters;
+    }
+    if (detectedProtocol !== protocol) {
+      rowOperationGeneration += 1;
+      activeSessionId = undefined;
+      activeTargetId = undefined;
+      target = undefined;
+      protocol = detectedProtocol;
+      writeProtocol(protocol);
+      selectedIds = new Set();
+    }
+    rows = rebuildRows(debugParameters, detectedProtocol, rows);
+    if (!isCurrent()) return;
     applyDetectedSession(session, detectedTarget);
     if ("operations" in result && result.operations) {
       replaceEventsFromOperations(result.operations);
@@ -779,7 +800,7 @@ export function createNodeDebuggingSession(
             writeOutcome === "unknown"
               ? "写入结果未知，请升级 Device Bridge 后重新读取节点"
               : isUnsupportedWriteError(result.error || result.writeResult?.stderr)
-                ? "当前协议未配置该节点或绑定已禁用"
+                ? "当前设备未配置该节点或绑定已禁用"
                 : "节点写入失败，请查看审计详情",
           writeOutcome,
           readbackOutcome,
@@ -973,14 +994,22 @@ export function createNodeDebuggingSession(
         .catch(() => undefined);
     },
 
-    async detect(actions, probeBridgeHealth) {
+    async detect(actions, probeBridgeHealth, options) {
       rememberReadActions(actions);
       const requestProtocol = protocol;
       const requestSeq = detectRequestSeq + 1;
       detectRequestSeq = requestSeq;
-      const isCurrentDetectRequest = () => detectRequestSeq === requestSeq && protocol === requestProtocol;
+      const isCurrentDetectRequest = () => detectRequestSeq === requestSeq;
 
       detecting = true;
+      if (options?.autoDetectProtocol) {
+        rowOperationGeneration += 1;
+        activeSessionId = undefined;
+        activeTargetId = undefined;
+        target = undefined;
+        selectedIds = new Set();
+        rows = rows.map((row) => ({ ...runtimeRowFromParameter(row, protocol), draftValue: row.draftValue }));
+      }
       selectingBridgeTargetId = null;
       emit();
       try {
@@ -990,11 +1019,12 @@ export function createNodeDebuggingSession(
         const localBridgeId =
           healthProbe.health?.connected && healthProbe.health.bridgeId ? healthProbe.health.bridgeId : undefined;
         const result = (await actions.detectAndStartSession({
-          protocol: requestProtocol,
+          ...(options?.autoDetectProtocol ? { autoDetectProtocol: true } : { protocol: requestProtocol }),
           ...(localBridgeId ? { bridgeId: localBridgeId } : {})
         })) as DetectResultWithOperation;
         if (!isCurrentDetectRequest()) return;
-        await applyDetectResult(result);
+        await applyDetectResult(result, actions, isCurrentDetectRequest);
+        if (!isCurrentDetectRequest()) return;
         emit();
         maybeAutoRead();
       } catch (error) {
@@ -1013,7 +1043,7 @@ export function createNodeDebuggingSession(
         });
         const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
         appendEvent({
-          parameterName: `${protocolLabel(requestProtocol)} 设备`,
+          parameterName: "设备",
           parameterKey: "debugging.detect",
           accessMode: "RO",
           action: "detect",
@@ -1036,34 +1066,36 @@ export function createNodeDebuggingSession(
         return;
       }
       rememberReadActions(actions);
+      const requestSeq = ++detectRequestSeq;
+      const isCurrent = () => detectRequestSeq === requestSeq;
       selectingBridgeTargetId = selectedTarget.id;
       detecting = true;
       emit();
       try {
         const result = (await actions.detectAndStartSession({
-          protocol,
+          protocol: selectedTarget.protocol ?? protocol,
           targetId: selectedTarget.id,
           bridgeId: selectedTarget.bridgeId
         })) as DetectResultWithOperation;
+        if (!isCurrent()) return;
         if ("candidates" in result) {
           bridgeTargetCandidates = result.candidates;
           emit();
           return;
         }
-        applyDetectedSession(result.session, result.target);
-        if ("operations" in result && result.operations) {
-          replaceEventsFromOperations(result.operations);
-        } else if (result.operation) {
-          appendEvent(eventFromOperation(result.operation, rows));
-        }
+        await applyDetectResult(result, actions, isCurrent);
+        if (!isCurrent()) return;
         emit();
         maybeAutoRead();
       } catch {
+        if (!isCurrent()) return;
         emit();
       } finally {
-        selectingBridgeTargetId = null;
-        detecting = false;
-        emit();
+        if (isCurrent()) {
+          selectingBridgeTargetId = null;
+          detecting = false;
+          emit();
+        }
       }
     },
 

@@ -10,6 +10,66 @@ import {
   type NodeDebuggingSessionActions
 } from "./nodeDebuggingSession";
 
+describe("automatic protocol selection", () => {
+  it("uses the refreshed catalog before reading without waiting for a UI render", async () => {
+    const newParameter = parameter({ id: "adb-only-node", nodePath: "/device/new-node" });
+    const actions = createActions({
+      refresh: vi.fn().mockResolvedValue([newParameter]),
+      detectAndStartSession: vi.fn().mockResolvedValue({
+        session: { ...sessionSnapshot, protocol: "adb" }, target: { ...deviceTarget, protocol: "adb" }
+      })
+    });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter({ id: "old-node" })], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe, { autoDetectProtocol: true });
+    expect(session.getSnapshot().rows.map((row) => row.id)).toEqual(["adb-only-node"]);
+    expect(actions.readNode).toHaveBeenCalledWith(expect.objectContaining({
+      nodeId: "adb-only-node", sessionId: "session-1"
+    }));
+    expect(actions.readNode).not.toHaveBeenCalledWith(expect.objectContaining({ nodeId: "old-node" }));
+  });
+
+  it("retries catalog refresh after a detected protocol change fails", async () => {
+    const actions = createActions({
+      detectAndStartSession: vi.fn().mockResolvedValue({
+        session: { ...sessionSnapshot, protocol: "adb" }, target: { ...deviceTarget, protocol: "adb" }
+      }),
+      refresh: vi.fn().mockRejectedValueOnce(new Error("catalog unavailable")).mockResolvedValue(undefined)
+    });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    await session.detect(actions, offlineProbe, { autoDetectProtocol: true });
+    expect(session.getSnapshot().activeSessionId).toBeUndefined();
+    expect(session.getSnapshot().protocol).toBe("hdc");
+    await session.detect(actions, offlineProbe, { autoDetectProtocol: true });
+    expect(actions.refresh).toHaveBeenCalledTimes(2);
+    expect(actions.refresh).toHaveBeenLastCalledWith({ protocol: "adb" });
+    expect(session.getSnapshot().protocol).toBe("adb");
+    expect(session.getSnapshot().activeSessionId).toBe("session-1");
+    expect(session.getSnapshot().detecting).toBe(false);
+  });
+
+  it("does not restore an older selected device after newer detection finishes", async () => {
+    let finishRefresh!: () => void;
+    const refreshPending = new Promise<void>((resolve) => { finishRefresh = resolve; });
+    const oldTarget = { ...deviceTarget, id: "old-target", protocol: "adb" as const };
+    const actions = createActions({
+      refresh: vi.fn().mockImplementationOnce(() => refreshPending).mockResolvedValue(undefined),
+      detectAndStartSession: vi.fn()
+        .mockResolvedValueOnce({ session: { ...sessionSnapshot, id: "old-session", protocol: "adb" }, target: oldTarget })
+        .mockResolvedValueOnce({ session: { ...sessionSnapshot, id: "new-session" }, target: deviceTarget })
+    });
+    const session = createNodeDebuggingSession({ initialParameters: [parameter()], initialProtocol: "hdc" });
+    const selecting = session.selectBridgeTarget(oldTarget, actions);
+    await vi.waitFor(() => expect(actions.refresh).toHaveBeenCalled());
+    await session.detect(actions, offlineProbe, { autoDetectProtocol: true });
+    finishRefresh();
+    await selecting;
+    expect(session.getSnapshot().activeSessionId).toBe("new-session");
+    expect(session.getSnapshot().activeTargetId).toBe(deviceTarget.id);
+    expect(session.getSnapshot().protocol).toBe("hdc");
+    expect(session.getSnapshot().detecting).toBe(false);
+  });
+});
+
 const sessionSnapshot: DebugSessionSnapshot = {
   id: "session-1",
   deviceId: "device-1",
