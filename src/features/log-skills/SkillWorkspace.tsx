@@ -202,6 +202,11 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const base = skill?.draft ?? skill?.currentRevision;
   const dirty = !!base && (specJson(spec) !== specJson(base.spec) || parsingYamlDraft !== null || !formatValid);
   const disabled = !apiMode || !canEdit || pending;
+  const [lastTestTab, setLastTestTab] = useState<"parse" | "cases">("parse");
+  useEffect(() => {
+    const query = new URLSearchParams(search);
+    if (query.get("section") === "tests") setLastTestTab(query.get("tab") === "cases" ? "cases" : "parse");
+  }, [search]);
   const selected = skillSections.find((s) => s.id === new URLSearchParams(search).get("section") && s.component) ?? skillSections[0];
   const Component = selected.component!;
   const highlightSpec = useMemo(() => {
@@ -304,8 +309,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     if (!formatValid) { setError("请先修正基础格式，再切换分区。"); return; }
     setError("");
     const query = new URLSearchParams(search); query.set("section", id);
-    if (tab) query.set("tab", tab);
-    else if (id === "tests" && !["parse", "cases"].includes(query.get("tab") ?? "")) query.set("tab", "parse");
+    if (id === "tests") query.set("tab", tab ?? lastTestTab);
+    else query.delete("tab");
     sectionNavigation.current = true;
     onNavigate(`/log-admin/skills/${encodeURIComponent(skillId)}?${query}`);
     sectionNavigation.current = false;

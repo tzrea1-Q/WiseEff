@@ -85,6 +85,23 @@ function setup(options: { section?: string; tab?: string; draft?: boolean; apiMo
 }
 
 describe("skill workspace", () => {
+  it.each(["parse", "cases"])("drops the test tab from other section URLs and restores the remembered tab (%s)", async (tab) => {
+    const { onNavigate } = setup({ section: "tests", tab });
+    expect(await screen.findByRole("tab", { name: tab === "cases" ? /分析用例/ : /解析测试/ })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("button", { name: "版本" }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/log-admin/skills/skill-charging?section=versions");
+    await userEvent.click(screen.getByRole("button", { name: "测试" }));
+    expect(onNavigate).toHaveBeenLastCalledWith(`/log-admin/skills/skill-charging?section=tests&tab=${tab}`);
+    expect(screen.getByRole("tab", { name: tab === "cases" ? /分析用例/ : /解析测试/ })).toHaveAttribute("aria-selected", "true");
+    const next = tab === "cases" ? "parse" : "cases";
+    await userEvent.click(screen.getByRole("tab", { name: next === "cases" ? /分析用例/ : /解析测试/ }));
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/log-admin/skills/skill-charging?section=overview");
+    await userEvent.click(screen.getByRole("button", { name: "测试" }));
+    expect(onNavigate).toHaveBeenLastCalledWith(`/log-admin/skills/skill-charging?section=tests&tab=${next}`);
+    expect(screen.getByRole("tab", { name: next === "cases" ? /分析用例/ : /解析测试/ })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("uses the shared manual keyboard tabs and preserves their URL selection across sections", async () => {
     const { onNavigate } = setup({ section: "tests" });
     const parse = await screen.findByRole("tab", { name: /解析测试.*未运行/ });
