@@ -7,10 +7,11 @@ import { mockSkillWorkspace, mockSkillSample } from "@/infrastructure/mock/logSk
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import type { SkillWorkspaceRepository, SkillRevision } from "./types";
+import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const conflictError = () => new WiseEffApiError("LOG_SKILL_DRAFT_CONFLICT", "stale", {}, "request");
-function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean; procedure?: string } = {}) {
+function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean; procedure?: string; knowledgeRepository?: KnowledgeRepository } = {}) {
   const skill = structuredClone(mockSkillWorkspace("skill-charging")!);
   const old: SkillRevision = { ...skill.currentRevision, id: "old", number: 1, status: "superseded", spec: { schemaVersion: "skill/v1", description: "旧描述" } };
   skill.currentRevision = { ...skill.currentRevision, id: "current", number: 2 };
@@ -51,6 +52,7 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
   function Harness() {
     const [search, setSearch] = useState(`?section=${options.section ?? "overview"}`);
     return <SkillWorkspace skillId="skill-charging" search={search} repository={repository} apiMode={options.apiMode ?? true} canEdit={options.canEdit ?? true}
+      knowledgeRepository={options.knowledgeRepository} knowledgeCapability={{ userId: "user", canView: true, canEdit: false, canManage: false }}
       onPublished={onPublished} onNavigate={(path) => {
         const apply = () => { onNavigate(path); if (path.includes("?section=")) setSearch(path.slice(path.indexOf("?"))); };
         const decision = requestSettingsLeave();
@@ -130,6 +132,17 @@ describe("skill workspace", () => {
     expect(screen.getByRole("textbox", { name: "规则 1 条件 1消息正则" })).toHaveValue("timeout");
     fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
     await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ signalRules: expect.objectContaining({ rules: [expect.objectContaining({ name: "Timeout", anyOf: [{ type: "text", pattern: "timeout" }] })] }) }), null, "current"));
+  });
+  it("opens the knowledge section and saves selected links through the skill draft", async () => {
+    const knowledgeRepository = { list: vi.fn(async () => ({ items: [{ id: "00000000-0000-4000-8000-000000000001", title: "热管理知识", status: "published", headRevisionNumber: 1 }] })),
+      get: vi.fn(async () => null) } as unknown as KnowledgeRepository;
+    const { repository } = setup({ section: "knowledge", knowledgeRepository });
+    await userEvent.click(await screen.findByRole("button", { name: "链接已有条目" }));
+    const dialog = screen.getByRole("dialog", { name: "链接已有条目" });
+    await userEvent.click(await within(dialog).findByRole("button", { name: "链接 热管理知识" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "完成" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ knowledgeEntryIds: ["00000000-0000-4000-8000-000000000001"] }), null, "current"));
   });
   it("prefills an absent procedure without creating an edit, and previews the five-heading outline", async () => {
     setup({ section: "procedure" });
@@ -432,7 +445,7 @@ describe("skill workspace", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "描述" }), { target: { value: "未保存" } });
     expect(screen.getByRole("button", { name: "解码" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "信号" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /知识/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /测试/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "版本" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging?section=versions");

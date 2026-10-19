@@ -12,6 +12,8 @@ import { TabPanel } from "@/components/ui/tab-panel";
 import { DataTable } from "@/components/admin/DataTable";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
+import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { mockLogSkills, mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import { formatPercent } from "@/domain/format/formatPercent";
@@ -26,6 +28,7 @@ import { parsingSpecSchema, logSkillSpecSchema } from "@wiseeff/dto-schemas";
 import { SignalsSection } from "./SignalsSection";
 import { DecodingSection } from "./DecodingSection";
 import { SourceSnapshots } from "./SourceSnapshots";
+import { KnowledgeSection } from "./KnowledgeSection";
 import "./skill-workspace.css";
 
 type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
@@ -35,6 +38,7 @@ type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: Ski
   parsingYaml: string; onParsingYamlChange: (text: string) => void;
   revisions: SkillRevision[]; onRestore: (revision: SkillRevision) => void;
   repository?: Partial<SkillWorkspaceRepository>; apiMode: boolean; canEdit: boolean; dirty: boolean;
+  knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
   stats?: { analyses7d?: number; helpfulRate7d?: number | null } };
 const time = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未发布";
@@ -119,13 +123,14 @@ function Versions({ skill, revisions, disabled, onRestore }: SectionProps) {
 export const skillSections: Array<{ id: string; label: string; component?: ComponentType<SectionProps> }> = [
   { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程", component: Procedure },
   { id: "parsing", label: "样例与解析", component: Parsing }, { id: "decoding", label: "解码", component: Decoding }, { id: "signals", label: "信号", component: Signals },
-  { id: "knowledge", label: "知识" }, { id: "source", label: "源码", component: SourceSnapshots }, { id: "tests", label: "测试" },
+  { id: "knowledge", label: "知识", component: KnowledgeSection }, { id: "source", label: "源码", component: SourceSnapshots }, { id: "tests", label: "测试" },
   { id: "integration", label: "集成" }, { id: "versions", label: "版本", component: Versions }
 ];
 
-export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, onNavigate, onPublished }: {
+export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, knowledgeRepository, knowledgeCapability, onNavigate, onPublished }: {
   skillId: string; search: string; repository?: Pick<LogAnalysisRepository, keyof SkillWorkspaceRepository | "listLogSkills" | "getSkillSample" | "replaceSkillSample" | "deleteSkillSample">; apiMode: boolean; canEdit: boolean;
   onNavigate: (path: string) => void; onPublished: (message: string) => void;
+  knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
 }) {
   const [skill, setSkill] = useState<AnalysisSkill | null>(null);
   const [sample, setSample] = useState<SkillSample | null>(null);
@@ -255,6 +260,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
           if (!parsed.error && validated.success) setSpec({ ...spec, parsing: validated.data });
         }}
         repository={repository} apiMode={apiMode} canEdit={canEdit} dirty={dirty} onBusyChange={setPending}
+        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
         onSkillUpdated={(updated) => { setSkill(updated); setSpec(structuredClone((updated.draft ?? updated.currentRevision).spec));
           setRevisions((history) => [...(updated.draft ? [updated.draft] : []), ...history.filter((revision) => revision.status !== "draft")]); }}
         onRestore={(revision) => { if (dirty || skill.draft) { setError("请先发布或放弃现有草稿，再回滚版本。"); return; }

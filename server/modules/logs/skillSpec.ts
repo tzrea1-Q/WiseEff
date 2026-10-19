@@ -7,6 +7,7 @@ import { compileSourceStatementPattern, MAX_STATEMENT_PATTERNS } from "./sourceS
 
 export const logSkillSpecSchema = z.object({
   schemaVersion: z.literal("skill/v1"),
+  knowledgeEntryIds: z.array(z.string().uuid()).max(200).refine((ids) => new Set(ids).size === ids.length, "Knowledge links must be unique").optional(),
   parsing: parsingSpecSchema.optional(),
   description: z.string().trim().max(2000).optional(),
   procedure: z.string().trim().max(20000).optional(),

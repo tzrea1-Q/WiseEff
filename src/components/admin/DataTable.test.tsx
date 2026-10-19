@@ -24,6 +24,15 @@ const columns: DataTableColumn<Row>[] = [
 ];
 
 describe("DataTable", () => {
+  it("adds the fluid scroll modifier only when requested", () => {
+    const { rerender } = render(<DataTable columns={columns} rows={rows} rowKey={(row) => row.id} />);
+    expect(screen.getByRole("table").closest(".data-table-scroll")).not.toHaveClass("data-table-scroll--fluid");
+    rerender(<DataTable fluid columns={columns} rows={rows} rowKey={(row) => row.id} />);
+    expect(screen.getByRole("table").closest(".data-table-scroll")).toHaveClass("data-table-scroll--fluid");
+    rerender(<DataTable columns={columns} rows={rows} rowKey={(row) => row.id} />);
+    expect(screen.getByRole("table").closest(".data-table-scroll")).not.toHaveClass("data-table-scroll--fluid");
+  });
+
   it("renders table headers and cells", () => {
     render(<DataTable ariaLabel="日志分析记录" columns={columns} rows={rows} rowKey={(row) => row.id} />);
 

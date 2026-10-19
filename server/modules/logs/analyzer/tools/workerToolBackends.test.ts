@@ -73,17 +73,15 @@ it("uses an immutable database root without wrapping query for related-parameter
     organizationId: "org-1",
     relatedParameterId: "binding-1",
     relatedParameterSnapshot: snapshot,
-    logDomainId: "domain-1"
+    knowledgeEntryIds: ["36bb42b6-3cc6-4d57-a86c-5a684aa09c21"]
   });
   expect(await tools.loadRelatedParameterContext!()).toMatchObject({ name: snapshot.propertyKey, snapshot });
   expect(query).not.toHaveBeenCalled();
   await tools.searchDomainKnowledge!("iin_max");
   expect(db.query).toBe(query);
-  expect(query).toHaveBeenCalledWith(
-    expect.stringContaining("log_domain_knowledge_links"),
-    ["org-1", "domain-1"]
-  );
-  expect(query).toHaveBeenCalledWith(expect.stringContaining("knowledge_entries"), expect.any(Array));
+  expect(query.mock.calls.some(([sql]) => sql.includes("log_domain_knowledge_links"))).toBe(false);
+  expect(query).toHaveBeenCalledWith(expect.stringContaining("knowledge_entries"),
+    ["org-1", "iin_max", "%iin_max%", ["36bb42b6-3cc6-4d57-a86c-5a684aa09c21"], 5]);
 });
 
 it("fails closed when the related binding has no matching frozen snapshot", () => {

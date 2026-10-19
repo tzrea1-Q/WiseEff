@@ -29677,6 +29677,24 @@
           "log": {
             "type": "object",
             "properties": {
+              "knowledgeRevisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "revisionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "entryId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "sourceSnapshot": {
                 "type": "object",
                 "properties": {
@@ -30452,6 +30470,24 @@
           "item": {
             "type": "object",
             "properties": {
+              "knowledgeRevisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "revisionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "entryId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "sourceSnapshot": {
                 "type": "object",
                 "properties": {
@@ -31098,6 +31134,24 @@
             "items": {
               "type": "object",
               "properties": {
+                "knowledgeRevisions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "revisionId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "entryId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "sourceSnapshot": {
                   "type": "object",
                   "properties": {
@@ -31799,6 +31853,24 @@
             "items": {
               "type": "object",
               "properties": {
+                "knowledgeRevisions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "revisionId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "entryId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "sourceSnapshot": {
                   "type": "object",
                   "properties": {
@@ -31940,6 +32012,24 @@
           "log": {
             "type": "object",
             "properties": {
+              "knowledgeRevisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "revisionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "entryId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "sourceSnapshot": {
                 "type": "object",
                 "properties": {
@@ -32641,6 +32731,24 @@
             "items": {
               "type": "object",
               "properties": {
+                "knowledgeRevisions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "revisionId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "entryId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "sourceSnapshot": {
                   "type": "object",
                   "properties": {
@@ -33096,6 +33204,12 @@
                         "enum": [
                           "skill/v1"
                         ]
+                      },
+                      "knowledgeEntryIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
                       },
                       "parsing": {
                         "type": "object",
@@ -34053,6 +34167,12 @@
                         "enum": [
                           "skill/v1"
                         ]
+                      },
+                      "knowledgeEntryIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
                       },
                       "parsing": {
                         "type": "object",
@@ -35023,6 +35143,12 @@
                       "enum": [
                         "skill/v1"
                       ]
+                    },
+                    "knowledgeEntryIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "parsing": {
                       "type": "object",
@@ -36790,6 +36916,12 @@
                   "skill/v1"
                 ]
               },
+              "knowledgeEntryIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "parsing": {
                 "type": "object",
                 "properties": {
@@ -37719,6 +37851,12 @@
                     "enum": [
                       "skill/v1"
                     ]
+                  },
+                  "knowledgeEntryIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   },
                   "parsing": {
                     "type": "object",
@@ -38698,6 +38836,12 @@
                       "enum": [
                         "skill/v1"
                       ]
+                    },
+                    "knowledgeEntryIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "parsing": {
                       "type": "object",
@@ -39841,7 +39985,6 @@
                 "logDomainId",
                 "knowledgeEntryId",
                 "entryTitle",
-                "entryStatus",
                 "entryTags",
                 "linkedAt"
               ],
