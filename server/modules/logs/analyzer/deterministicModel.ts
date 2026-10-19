@@ -9,7 +9,7 @@ import { LogAnalysisProviderError, type LogAnalysisChatMessage, type LogAnalysis
  */
 export const LOG_ANALYSIS_SIMULATED_OUTAGE_MARKER = "WISEEFF_SIMULATE_LLM_PROVIDER_DOWN";
 
-type RuleHitSummary = { ruleHit: string; lineNumbers: number[] };
+type RuleHitSummary = { ruleHit: string; lineNumbers: number[]; filePath?: string };
 
 const conclusionByRuleHit: Array<{ ruleHit: string; conclusion: string; impact: string; severity: "Critical" | "Warning" | "Info" }> = [
   {
@@ -44,18 +44,23 @@ const conclusionByRuleHit: Array<{ ruleHit: string; conclusion: string; impact: 
   }
 ];
 
-function parseExcerptLineNumbers(prompt: string): number[] {
-  return [...prompt.matchAll(/^(?:".*":)?L(\d+): /gm)].map((match) => Number(match[1]));
+function parseExcerptLines(prompt: string): Array<{ filePath?: string; lineNumber: number }> {
+  return [...prompt.matchAll(/^(?:("(?:[^"\\]|\\.)*"):)?L(\d+): /gm)].map((match) => ({
+    filePath: match[1] ? JSON.parse(match[1]) as string : undefined, lineNumber: Number(match[2])
+  }));
 }
 
 function parseRuleHits(prompt: string): RuleHitSummary[] {
-  return [...prompt.matchAll(/^- ([a-z][a-z-]*): lines ([0-9, ]+)/gm)].map((match) => ({
-    ruleHit: match[1],
-    lineNumbers: match[2]
-      .split(",")
-      .map((value) => Number(value.trim()))
-      .filter((value) => Number.isFinite(value))
-  }));
+  const hits: RuleHitSummary[] = [];
+  let filePath: string | undefined;
+  for (const line of prompt.split("\n")) {
+    const header = line.match(/^File ("(?:[^"\\]|\\.)*"):$/);
+    if (header) filePath = JSON.parse(header[1]) as string;
+    const match = line.match(/^- ([a-z][a-z-]*): lines ([0-9, ]+)/);
+    if (match) hits.push({ filePath, ruleHit: match[1], lineNumbers: match[2].split(",")
+      .map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) });
+  }
+  return hits;
 }
 
 function parseAnalysisQuestion(prompt: string): string | undefined {
@@ -74,18 +79,19 @@ export function createDeterministicLogAnalysisModel(): LogAnalysisChatModel {
         throw new LogAnalysisProviderError("Simulated log-analysis provider outage (deterministic mode).");
       }
 
-      const excerptLines = parseExcerptLineNumbers(prompt);
-      const excerptFile = prompt.match(/^(".*"):L\d+: /m)?.[1];
-      const filePath = excerptFile ? JSON.parse(excerptFile) as string : undefined;
+      const excerptLines = parseExcerptLines(prompt);
       const ruleHits = parseRuleHits(prompt);
       const analysisQuestion = parseAnalysisQuestion(prompt);
-      const excerptSet = new Set(excerptLines);
+      const seenHit = (hit: RuleHitSummary) => excerptLines.some((line) =>
+        (hit.filePath === undefined || line.filePath === hit.filePath) && hit.lineNumbers.includes(line.lineNumber));
 
       const matched = conclusionByRuleHit.find((candidate) =>
-        ruleHits.some((hit) => hit.ruleHit === candidate.ruleHit && hit.lineNumbers.some((line) => excerptSet.has(line)))
+        ruleHits.some((hit) => hit.ruleHit === candidate.ruleHit && seenHit(hit))
       );
-      const matchedHit = matched ? ruleHits.find((hit) => hit.ruleHit === matched.ruleHit) : undefined;
-      const citedLines = (matchedHit?.lineNumbers.filter((line) => excerptSet.has(line)) ?? excerptLines).slice(0, 3);
+      const matchedHit = matched ? ruleHits.find((hit) => hit.ruleHit === matched.ruleHit && seenHit(hit)) : undefined;
+      const filePath = matchedHit?.filePath ?? excerptLines[0]?.filePath;
+      const excerptSet = new Set(excerptLines.filter((line) => line.filePath === filePath).map((line) => line.lineNumber));
+      const citedLines = (matchedHit?.lineNumbers.filter((line) => excerptSet.has(line)) ?? [...excerptSet]).slice(0, 3);
 
       if (citedLines.length === 0) {
         // No excerpt lines at all — nothing can be grounded; emit an ungroundable shell
@@ -184,8 +190,13 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
 
       const analysisQuestion = parseAnalysisQuestion(promptText);
       const bundlePrefilter = parseToolResult<PrefilterToolResult>(messages, "get_prefilter_findings");
-      const filePath = bundlePrefilter?.files?.[0]?.file;
-      const prefilterResult = bundlePrefilter?.files?.[0]?.findings.result ?? bundlePrefilter;
+      const files = bundlePrefilter?.files?.map((file) => ({ filePath: file.file, findings: file.findings.result }))
+        ?? [{ filePath: undefined, findings: bundlePrefilter }];
+      const selected = conclusionByRuleHit.map((candidate) => files.find((file) => file.findings?.evidence?.some(
+        (item) => item.ruleHit === candidate.ruleHit && (item.lineNumbers?.length ?? 0) > 0
+      ))).find((file) => file !== undefined) ?? files[0];
+      const filePath = selected?.filePath;
+      const prefilterResult = selected?.findings;
       const lineRangeResult = parseToolResult<LineRangeToolResult>(messages, "read_line_range");
       const mustConverge = messages.some(
         (message) => message.role === "user" && message.content.startsWith("Budget exhausted:")
@@ -196,7 +207,10 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
       }
 
       if (prefilterResult && !lineRangeResult && !mustConverge) {
+        const preferredRule = conclusionByRuleHit.find((candidate) => prefilterResult.evidence?.some((item) =>
+          item.ruleHit === candidate.ruleHit && (item.lineNumbers?.length ?? 0) > 0));
         const focusLine =
+          prefilterResult.evidence?.find((item) => item.ruleHit === preferredRule?.ruleHit)?.lineNumbers?.[0] ??
           prefilterResult.evidence?.find((item) => (item.lineNumbers?.length ?? 0) > 0)?.lineNumbers?.[0] ??
           prefilterResult.anomalyLineNumbers?.[0] ??
           1;
@@ -210,7 +224,7 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         );
       }
 
-      const seenLines = (lineRangeResult?.lines ?? []).map((line) => line.lineNumber);
+      const seenLines = (lineRangeResult?.lines ?? []).filter((line) => filePath === undefined || line.file === filePath).map((line) => line.lineNumber);
       const matched = conclusionByRuleHit.find((candidate) =>
         (prefilterResult?.evidence ?? []).some(
           (item) => item.ruleHit === candidate.ruleHit && (item.lineNumbers ?? []).some((line) => seenLines.includes(line))

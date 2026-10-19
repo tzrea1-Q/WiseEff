@@ -203,6 +203,7 @@ export type ParameterSubmissionRound = {
 };
 
 export type LogRecord = {
+  signalSummary?: import("@/domain/logs/types").LogSignalSummary;
   files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;
   id: string;

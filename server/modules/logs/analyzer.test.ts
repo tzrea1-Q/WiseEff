@@ -2,8 +2,9 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { createRuleBasedLogAnalyzer } from "./analyzer";
+import { createRuleBasedLogAnalyzer, genericSignalRuleSet } from "./analyzer";
 import { parseLogText } from "./parser";
+import { defaultChargingRuleSet } from "./chargingSignalRules";
 
 async function parseFixture() {
   const content = await readFile("test-fixtures/logs/charging-foldback.log");
@@ -15,6 +16,26 @@ async function parseFixture() {
 }
 
 describe("createRuleBasedLogAnalyzer", () => {
+  it("keeps generic errors supplementary without upgrading the pinned thermal conclusion's confidence", async () => {
+    const parsed = parseLogText({ fileName: "charging.log", content: "WARN thermal foldback\nERROR unrelated subsystem\nkernel panic" });
+    if (!parsed.ok) throw new Error(parsed.reason);
+    const report = await createRuleBasedLogAnalyzer().analyze({ parsed, signalRules: defaultChargingRuleSet });
+    expect(report).toMatchObject({ conclusion: "Charging behavior is consistent with thermal foldback protection.",
+      confidence: defaultChargingRuleSet.hitDefaults.confidence, severity: "Warning" });
+    expect(report.evidence.map((item) => item.ruleHit)).toEqual(["thermal-foldback", "generic:first-error", "generic:crash"]);
+  });
+  it("does not activate a skill rule whose id collides with a generic signal", async () => {
+    const parsed = parseLogText({ fileName: "panic.log", content: "kernel panic" });
+    if (!parsed.ok) throw new Error(parsed.reason);
+    const report = await createRuleBasedLogAnalyzer().analyze({ parsed, signalRules: { ...genericSignalRuleSet, rules: [{
+      id: "generic:crash", anyOf: [{ type: "text", pattern: "only-this-matches" }], stageId: "rootcause", inference: "Unmatched skill",
+      suggestedAction: "Unmatched action", analysis: { conclusion: { value: "Unmatched conclusion", priority: 1 },
+        confidence: { value: 1, priority: 1 }, suggestedActions: [] }
+    }] } });
+    expect(report.conclusion).toBe(genericSignalRuleSet.hitDefaults.conclusion);
+    expect(report.confidence).toBe(0.55);
+    expect(report.evidence).toMatchObject([{ ruleHit: "generic:crash", lineNumbers: [1], inference: "Crash signature: Kernel panic" }]);
+  });
   it("reports thermal foldback fixture with stable evidence and actions", async () => {
     const analyzer = createRuleBasedLogAnalyzer();
     const parsed = await parseFixture();

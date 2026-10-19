@@ -33,6 +33,7 @@ type LogFileObjectRow = {
 type RevisionRow = { skill_revision_id?: string | null; skill_revision_number?: number | null };
 
 type LogRecordRow = RevisionRow & {
+  signal_summary?: import("./genericSignals").LogSignalSummary | null;
   id: string;
   current_run_id?: string | null;
   report_id: string | null;
@@ -184,6 +185,7 @@ export type PersistLogAnalysisReportInput = {
   logId: string;
   runId: string;
   report: {
+    signalSummary?: import("./genericSignals").LogSignalSummary;
     confidence: number;
     conclusion: string;
     impact: string;
@@ -249,6 +251,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
 
   return {
     files: [],
+    signalSummary: row.signal_summary ?? undefined,
     id: row.id,
     reportId: row.report_id ?? "",
     fileName: row.file_name,
@@ -359,6 +362,7 @@ const logSelect = `
     report.raw_lines,
     report.analysis_source,
     report.degraded_reason,
+    report.signal_summary,
     lr.captured_at,
     lr.updated_at,
     users.name as submitted_by,
@@ -850,9 +854,9 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
       `
       insert into log_analysis_reports (
         id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-        severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model
+        severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       on conflict (id) do update
       set confidence = excluded.confidence,
         conclusion = excluded.conclusion,
@@ -863,7 +867,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         analysis_source = excluded.analysis_source,
         degraded_reason = excluded.degraded_reason,
         prompt_version = excluded.prompt_version,
-        model = excluded.model
+        model = excluded.model,
+        signal_summary = excluded.signal_summary
       `,
       [
         `report-${input.runId}`,
@@ -879,7 +884,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         input.report.analysisSource ?? null,
         input.report.degradedReason ?? null,
         input.report.promptVersion ?? null,
-        input.report.model ?? null
+        input.report.model ?? null,
+        input.report.signalSummary ? jsonb(input.report.signalSummary) : null
       ]
     );
     await tx.query(
@@ -936,9 +942,9 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         `
         insert into log_analysis_reports (
           id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-          severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model
+          severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         on conflict (id) do update
         set confidence = excluded.confidence,
           conclusion = excluded.conclusion,
@@ -949,7 +955,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           analysis_source = excluded.analysis_source,
           degraded_reason = excluded.degraded_reason,
           prompt_version = excluded.prompt_version,
-          model = excluded.model
+          model = excluded.model,
+          signal_summary = excluded.signal_summary
         `,
         [
           `report-${input.runId}`,
@@ -965,7 +972,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           input.report.analysisSource ?? null,
           input.report.degradedReason ?? null,
           input.report.promptVersion ?? null,
-          input.report.model ?? null
+          input.report.model ?? null,
+          input.report.signalSummary ? jsonb(input.report.signalSummary) : null
         ]
       );
       await tx.query(

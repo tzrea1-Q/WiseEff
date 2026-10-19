@@ -413,6 +413,14 @@ GET  /api/v1/jobs/:jobId/events
 
 `POST /api/v1/log-files` 接受 JSON base64 或 multipart 多文件内容，保持 `POST /api/v1/logs` 的分析合同。
 
+`GET /api/v1/logs/:logId` 新增当前运行的可选 `signalSummary`；旧记录可以没有该字段。结构为 `{ signals, templates, truncatedSignals, truncatedTemplates }`。信号包含 `kind`、`severity: "Critical" | "Warning" | "Info"`、`source: "generic" | "skill"`、`title`、`count` 和有界的 `anchors: [{ file, line, content }]`；行号从 1 开始，相对于文件。崩溃信号还可包含 `signature`（如 `Oops` 或 `Kernel panic`），按文件与签名分别计数和保存锚点，`kind: "crash"` 保持不变。模板包含 `template`、`count`、`first` 和 `last`，首末锚点结构相同。截断标记说明摘要受上限约束，不能视为完整清单。信号是分析线索，不是已经验证的根因。
+
+摘要还接受可选的 `truncated: boolean` 与 `reason: "time_cap" | "line_cap" | "extraction_error"`，与数量上限分开说明提取不完整：超时保留已完成结果，长行只扫描受限的行首内容，提取出错则返回空摘要并继续分析。既有报告 JSON 保存这些字段，「信号」页按原因提示。
+
+没有选择技能的上传也提取崩溃特征、时间戳间隔、重启、错误突发和每文件首个错误。行模板归一化数字、十六进制、标识符和路径，保留次数及首末位置。技能信号来自运行钉住的版本。规则回退同时使用两类信号，保留 `analysisSource`、`degradedReason` 与既有置信度上限。
+
+只读 Agent 始终具有 `get_signals`（可选 `kind`、`severity`、`offset`、`limit`）、`get_line_templates`（`offset`、`limit`）和 `get_timeline`（ISO `time` 或 `file` + `line`，以及 `before`/`after`）。分页偏移非负，每页 1–20 条。时间线上下文前后各最多 20 行，按时间戳跨文件排序。只有实际返回的锚点与日志行算已读证据；不在返回页或窗口中的真实行仍算未读。这些是 Worker 内部工具，不是新增 HTTP 端点。
+
 分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，写入要求 `logs:admin-domains`；每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save`、`log-skill-publish`、`log-skill-draft-discard` 或 `log-skill-restore` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、状态、知识关联和 Webhook 配置仍属于身份。工作区描述按版本管理，发布时同步身份行描述；旧 PATCH 仍可独立编辑身份描述。版本 DTO 另有可选的 `publishedByDisplayName`，供工作区显示发布者。
 
 上传、创建与 rerun 接受 `skillId`，`logDomainId` 继续作为别名。rerun 接受 `revisionPolicy: "current" | "pinned"`，默认 `current` 使用当前发布版本；`pinned` 复用前一次运行版本，不能同时更换技能。未分类运行保持 null 钉住值并使用平台默认配置。记录和运行 DTO 暴露 `skillRevision: { id, number } | null`；结果 Webhook 增加可空 `skillRevisionId`、`skillRevisionNumber`。Worker 只从所钉版本读取格式画像、模型覆盖和信号规则。

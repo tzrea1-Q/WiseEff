@@ -105,7 +105,28 @@ export type LogEvidence = {
   ruleHit?: string;
 };
 
+export type LogSignalAnchor = { file: string; line: number; content: string };
+export type LogSignal = {
+  signature?: string;
+  kind: string;
+  severity: LogSeverity;
+  source: "generic" | "skill";
+  title: string;
+  count: number;
+  anchors: LogSignalAnchor[];
+};
+export type LogLineTemplate = { template: string; count: number; first: LogSignalAnchor; last: LogSignalAnchor };
+export type LogSignalSummary = {
+  truncated?: boolean;
+  reason?: "time_cap" | "line_cap" | "extraction_error";
+  signals: LogSignal[];
+  templates: LogLineTemplate[];
+  truncatedSignals: boolean;
+  truncatedTemplates: boolean;
+};
+
 export type LogRecord = {
+  signalSummary?: LogSignalSummary;
   files?: LogFile[];
   skillRevision?: { id: string; number: number } | null;
   id: string;

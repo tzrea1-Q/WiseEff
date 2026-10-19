@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_LOG_PATTERN_INPUT_LENGTH } from "../../adminPattern";
 import { parseLogText } from "../../parser";
 import { runLogPrefilter } from "../../prefilter";
-import { availableLogAnalysisTools, executeLogAnalysisTool } from "./toolCatalog";
+import { availableLogAnalysisTools, executeLogAnalysisTool, MAX_SIGNAL_TOOL_BYTES } from "./toolCatalog";
 import { parsingSpecSchema } from "../../parsing/spec";
 import { decodeLogFiles } from "../../parsing/engine";
 import type { LogAnalysisToolContext } from "./toolContext";
@@ -29,6 +29,58 @@ function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnaly
 }
 
 describe("executeLogAnalysisTool dispatch", () => {
+  it("always exposes signal tools, filters signals, pages templates and caps serialized output", async () => {
+    const context = buildContext({ filePath: "charging.log" });
+    expect(availableLogAnalysisTools(context)).toEqual(expect.arrayContaining(["get_signals", "get_line_templates", "get_timeline"]));
+    expect(await executeLogAnalysisTool("get_signals", { kind: "first-error", severity: "Warning", limit: 1 }, context))
+      .toMatchObject({ ok: true, result: { total: 1, signals: [{ kind: "first-error", anchors: [{ file: "charging.log", line: 4 }] }] } });
+    const templates = await executeLogAnalysisTool("get_line_templates", { limit: 1 }, context);
+    expect(templates).toMatchObject({ ok: true, result: { nextOffset: 1, templates: [{ first: { file: "charging.log" }, last: { file: "charging.log" } }] } });
+    expect(await executeLogAnalysisTool("get_line_templates", { offset: 1, limit: 1 }, context)).toMatchObject({ ok: true, result: { nextOffset: 2 } });
+    expect(await executeLogAnalysisTool("get_signals", { severity: "Critical" }, context)).toMatchObject({ ok: true, result: { signals: [], total: 0 } });
+    const anchor = { file: "界".repeat(200), line: 1, content: "界".repeat(400) };
+    context.signalSummary = { signals: Array.from({ length: 20 }, () => ({ kind: "crash", severity: "Critical", source: "generic", title: "界".repeat(400), count: 10,
+      anchors: Array.from({ length: 5 }, () => anchor) })), templates: [], truncatedSignals: false, truncatedTemplates: false };
+    const bounded = await executeLogAnalysisTool("get_signals", { limit: 20 }, context);
+    expect(bounded).toMatchObject({ ok: true, result: { truncated: true, nextOffset: 1 } });
+    expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(MAX_SIGNAL_TOOL_BYTES);
+    for (const [tool, args] of [["get_signals", { limit: 21 }], ["get_signals", { severity: "error" }], ["get_line_templates", { offset: -1 }],
+      ["get_timeline", {}], ["get_timeline", { time: "invalid" }], ["get_timeline", { file: "charging.log" }],
+      ["get_timeline", { time: "2026-10-19T00:00:00Z", file: "charging.log", line: 1 }],
+      ["get_timeline", { file: "charging.log", line: 1, before: 21 }]] as const) {
+      expect(await executeLogAnalysisTool(tool, args, context)).toMatchObject({ ok: false });
+    }
+  });
+
+  it("returns a bounded cross-file timestamp order around an exact anchor or time", async () => {
+    const context = buildContext({ filePath: "charging.log" });
+    context.files = ["a.log", "b.log"].map((path, i) => {
+      const parsed = parseLogText({ fileName: path, content: ["INFO no timestamp",
+        `2026-10-19T00:00:0${2 + i}Z INFO late`, `2026-10-19T00:00:0${i}Z INFO early`].join("\n") });
+      if (!parsed.ok) throw new Error("Fixture must parse");
+      return { path, parsed, sizeBytes: 100, lineCount: 3, encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null };
+    });
+    expect(await executeLogAnalysisTool("get_timeline", { file: "a.log", line: 2, before: 1, after: 1 }, context))
+      .toMatchObject({ ok: true, result: { truncated: true, lines: [{ file: "b.log", line: 3 }, { file: "a.log", line: 2 }, { file: "b.log", line: 2 }] } });
+    expect(await executeLogAnalysisTool("get_timeline", { time: "2026-10-19T00:00:01Z", before: 0, after: 0 }, context))
+      .toMatchObject({ ok: true, result: { lines: [{ file: "b.log", line: 3 }] } });
+    expect(await executeLogAnalysisTool("get_timeline", { file: "a.log", line: 1 }, context)).toMatchObject({ ok: false });
+    expect(await executeLogAnalysisTool("get_timeline", { file: "missing.log", line: 1 }, context)).toMatchObject({ ok: false });
+    const parsed = parseLogText({ fileName: "big.log", content: Array.from({ length: 100 }, (_, i) => `2026-10-19T00:00:${String(i % 60).padStart(2, "0")}Z INFO ${"界".repeat(400)}`).join("\n") });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    context.files = [{ ...context.files[0], path: "big.log", parsed }];
+    const bounded = await executeLogAnalysisTool("get_timeline", { file: "big.log", line: 25, before: 20, after: 20 }, context);
+    expect(bounded.ok).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(MAX_SIGNAL_TOOL_BYTES);
+    if (bounded.ok) expect((bounded.result as { lines: Array<{ line: number }> }).lines.some((line) => line.line === 25)).toBe(true);
+    const tied = parseLogText({ fileName: "big.log", content: Array.from({ length: 40 }, () => `2026-10-19T00:00:00Z INFO ${"界".repeat(400)}`).join("\n") });
+    if (!tied.ok) throw new Error("Fixture must parse");
+    context.files[0].parsed = tied;
+    const tiedWindow = await executeLogAnalysisTool("get_timeline", { file: "big.log", line: 40, before: 20, after: 0 }, context);
+    expect(tiedWindow.ok).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(tiedWindow))).toBeLessThanOrEqual(MAX_SIGNAL_TOOL_BYTES);
+    if (tiedWindow.ok) expect((tiedWindow.result as { lines: Array<{ line: number }> }).lines.some((line) => line.line === 40)).toBe(true);
+  });
   it("bounds serialized decoded output and fields without mutating stored events, preserving pagination", async () => {
     const spec = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "large", pattern: "(?P<v>.*)", fields: { v: { type: "string" } } }] });
     const events = Array.from({ length: 50 }, (_, i) => ({ v: 1 as const, source: "declarative" as const, extractor: "large", file: "a.log", line: i + 1,

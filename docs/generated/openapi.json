@@ -10787,7 +10787,7 @@
     "/api/v1/logs/{logId}": {
       "get": {
         "operationId": "logs.get",
-        "summary": "Get log record",
+        "summary": "Get log record with run-owned signals and line templates",
         "tags": [
           "logs"
         ],
@@ -29405,6 +29405,163 @@
           "log": {
             "type": "object",
             "properties": {
+              "signalSummary": {
+                "type": "object",
+                "properties": {
+                  "signals": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "type": "string",
+                          "enum": [
+                            "Critical",
+                            "Warning",
+                            "Info"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "generic",
+                            "skill"
+                          ]
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "signature": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "content": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line",
+                              "content"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "severity",
+                        "source",
+                        "title",
+                        "count",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "templates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "template": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        },
+                        "first": {
+                          "type": "object",
+                          "properties": {
+                            "file": {
+                              "type": "string"
+                            },
+                            "line": {
+                              "type": "number"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "file",
+                            "line",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "last": {
+                          "type": "object",
+                          "properties": {
+                            "file": {
+                              "type": "string"
+                            },
+                            "line": {
+                              "type": "number"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "file",
+                            "line",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "template",
+                        "count",
+                        "first",
+                        "last"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "truncatedSignals": {
+                    "type": "boolean"
+                  },
+                  "truncatedTemplates": {
+                    "type": "boolean"
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "time_cap",
+                      "line_cap",
+                      "extraction_error"
+                    ]
+                  }
+                },
+                "required": [
+                  "signals",
+                  "templates",
+                  "truncatedSignals",
+                  "truncatedTemplates"
+                ],
+                "additionalProperties": false
+              },
               "files": {
                 "type": "array",
                 "items": {
@@ -29948,6 +30105,163 @@
           "item": {
             "type": "object",
             "properties": {
+              "signalSummary": {
+                "type": "object",
+                "properties": {
+                  "signals": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "type": "string",
+                          "enum": [
+                            "Critical",
+                            "Warning",
+                            "Info"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "generic",
+                            "skill"
+                          ]
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "signature": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "content": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line",
+                              "content"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "severity",
+                        "source",
+                        "title",
+                        "count",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "templates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "template": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        },
+                        "first": {
+                          "type": "object",
+                          "properties": {
+                            "file": {
+                              "type": "string"
+                            },
+                            "line": {
+                              "type": "number"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "file",
+                            "line",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "last": {
+                          "type": "object",
+                          "properties": {
+                            "file": {
+                              "type": "string"
+                            },
+                            "line": {
+                              "type": "number"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "file",
+                            "line",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "template",
+                        "count",
+                        "first",
+                        "last"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "truncatedSignals": {
+                    "type": "boolean"
+                  },
+                  "truncatedTemplates": {
+                    "type": "boolean"
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "time_cap",
+                      "line_cap",
+                      "extraction_error"
+                    ]
+                  }
+                },
+                "required": [
+                  "signals",
+                  "templates",
+                  "truncatedSignals",
+                  "truncatedTemplates"
+                ],
+                "additionalProperties": false
+              },
               "files": {
                 "type": "array",
                 "items": {
@@ -30365,6 +30679,163 @@
             "items": {
               "type": "object",
               "properties": {
+                "signalSummary": {
+                  "type": "object",
+                  "properties": {
+                    "signals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string",
+                            "enum": [
+                              "Critical",
+                              "Warning",
+                              "Info"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "generic",
+                              "skill"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "signature": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "number"
+                          },
+                          "anchors": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                },
+                                "content": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line",
+                                "content"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "severity",
+                          "source",
+                          "title",
+                          "count",
+                          "anchors"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "templates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "template": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "number"
+                          },
+                          "first": {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "content": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line",
+                              "content"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "last": {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "content": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line",
+                              "content"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "template",
+                          "count",
+                          "first",
+                          "last"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "truncatedSignals": {
+                      "type": "boolean"
+                    },
+                    "truncatedTemplates": {
+                      "type": "boolean"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "time_cap",
+                        "line_cap",
+                        "extraction_error"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "signals",
+                    "templates",
+                    "truncatedSignals",
+                    "truncatedTemplates"
+                  ],
+                  "additionalProperties": false
+                },
                 "files": {
                   "type": "array",
                   "items": {
@@ -30887,6 +31358,163 @@
           "log": {
             "type": "object",
             "properties": {
+              "signalSummary": {
+                "type": "object",
+                "properties": {
+                  "signals": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "type": "string",
+                          "enum": [
+                            "Critical",
+                            "Warning",
+                            "Info"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "generic",
+                            "skill"
+                          ]
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "signature": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              },
+                              "content": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line",
+                              "content"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "severity",
+                        "source",
+                        "title",
+                        "count",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "templates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "template": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        },
+                        "first": {
+                          "type": "object",
+                          "properties": {
+                            "file": {
+                              "type": "string"
+                            },
+                            "line": {
+                              "type": "number"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "file",
+                            "line",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "last": {
+                          "type": "object",
+                          "properties": {
+                            "file": {
+                              "type": "string"
+                            },
+                            "line": {
+                              "type": "number"
+                            },
+                            "content": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "file",
+                            "line",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "template",
+                        "count",
+                        "first",
+                        "last"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "truncatedSignals": {
+                    "type": "boolean"
+                  },
+                  "truncatedTemplates": {
+                    "type": "boolean"
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "time_cap",
+                      "line_cap",
+                      "extraction_error"
+                    ]
+                  }
+                },
+                "required": [
+                  "signals",
+                  "templates",
+                  "truncatedSignals",
+                  "truncatedTemplates"
+                ],
+                "additionalProperties": false
+              },
               "files": {
                 "type": "array",
                 "items": {

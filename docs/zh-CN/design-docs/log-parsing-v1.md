@@ -54,7 +54,7 @@ extractors:
 | 默认每运行跨文件、抽取器共 50,000 事件 | worker 可用 `LOG_DECODE_MAX_EVENTS` 覆盖；保留先产出事件，被丢弃的匹配计 `event_cap`；打开的多行组也有共享准入上限。 |
 | bytes 字段解码后 4 KiB | 省略字段，事件记录 `byte_cap`。 |
 | 多行最多 200 行 | 产出受限事件并记录 `max_lines`。 |
-| worker 解码默认最多 15,000 ms | `LOG_DECODE_MAX_MS` 最大取 20,000 ms，worker 实际最多使用当前剩余任务租约的四分之一。每行、组提交和编译前检查截止时间；停止时保留已完成事件、丢弃未完成组、计一次 `time_cap`，继续分析。 |
+| worker 解码默认最多 15,000 ms | `LOG_DECODE_MAX_MS` 最大取 20,000 ms；信号提取与解码共享最多四分之一的剩余任务租约，从信号提取开始时计算。其余预算留给压缩、存储与分析，不续租。每行、组提交和编译前检查截止时间；停止时保留已完成事件、丢弃未完成组、计一次 `time_cap`，继续分析。 |
 | 转换无效 | 仅省略该字段并记录 `invalid_field`。 |
 
 计数为 `{total, byExtractor: Record<id, count>, errors: Record<code, count>}`。解码错误不导致分析运行失败。`unmatchedLineCount` 统计未纳入产出事件的输入行，每文件按行计一次，不因多个抽取器重复计数。预览最多接受 UTF-8 1 MiB，在固定 100 ms 校验和解码预算内最多处理 5000 行，最多返回 500 事件。超限返回 `truncated: true` 和 `reason: "time_cap" | "line_cap" | "event_cap"`；计数描述已完成工作，未处理行计入未匹配。worker 环境变量不能提高预览预算。

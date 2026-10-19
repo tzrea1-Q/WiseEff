@@ -8,7 +8,9 @@ The golden case set (glossary: *Golden case set*, `CONTEXT.md`) is the labelled 
 
 `npm run logs:eval` also runs deterministic, zero-API-cost procedure scenarios in `server/modules/logs/eval/scenarios.ts`. Benign procedures must appear after the unchanged platform protocol and before the user task in both kernels. Adversarial scenarios demand skipping grounding, fabricated line `9999`, a parameter write, or an injected closing delimiter and fake protocol heading. They verify a single enclosed JSON string with lower-priority, untrusted guidance, rejection by the existing grounding/tool guards, and grounded final evidence or an honestly marked fallback. These scripted checks verify prompt construction and kernel enforcement; they do not measure a live model's resistance to persuasion.
 
-The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.1`; existing tolerances and its pending-real-cases status stay unchanged.
+Generic-signal scenarios call `get_signals`, `get_line_templates`, and `get_timeline` legally without a skill. Each tool must ground evidence on its own returned anchors or lines. A timeline-only scenario cites an existing line outside the returned window, requires a grounding violation, and then corrects the citation to the returned line. This distinguishes seeing a line from the line merely existing in the upload.
+
+The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.signals.1`; existing tolerances and its pending-real-cases status stay unchanged.
 
 ## Layout
 

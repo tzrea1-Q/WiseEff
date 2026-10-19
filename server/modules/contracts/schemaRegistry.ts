@@ -1008,7 +1008,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201
   },
   "logs.list": { summary: "List log records", tags: ["logs"], responseBody: "LogRecordListResponse" },
-  "logs.get": { summary: "Get log record", tags: ["logs"], responseBody: "LogRecordResponse" },
+  "logs.get": { summary: "Get log record with run-owned signals and line templates", tags: ["logs"], responseBody: "LogRecordResponse" },
   "logs.listRuns": { summary: "List log analysis runs", tags: ["logs"], responseBody: "LogRunListResponse" },
   "logs.rerun": { summary: "Rerun log analysis", tags: ["logs"], requestBody: "LogRerunRequest", responseBody: "LogRunResponse" },
   "logs.archive": { summary: "Archive log record", tags: ["logs"], responseBody: "LogRecordResponse" },
