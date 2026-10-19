@@ -400,6 +400,8 @@ export function LocalDeviceBridgeWizard({
     hasReleaseCatalog
   });
   const installedClientVersion = resolveInstalledBridgeClientVersion({ health, bridges });
+  const bridgeUpToDate = Boolean(installedClientVersion && recommendedVersion?.trim() &&
+    !isBridgeClientVersionBehind(installedClientVersion, recommendedVersion));
   const installerBehind = Boolean(hostInstaller && isBridgeClientVersionBehind(hostInstaller.version, hostPortable?.version || recommendedVersion));
   const openInstallStep = () => {
     setInlineGuideDismissed(true);
@@ -719,12 +721,12 @@ export function LocalDeviceBridgeWizard({
         </div>
         <div className="local-device-bridge-panel__connection-actions" role="group" aria-label="本地连接操作">
           {!guideOpen && !isBridgeOnlinePanelStatus(panelStatus) ? connectButton : null}
-          <button type="button" className="button subtle" onClick={() => {
+          {!bridgeUpToDate ? <button type="button" className="button subtle" onClick={() => {
             setInlineGuideDismissed(true);
             setGuideOpen(true);
             if (!hasInstallCatalog) void onLoadInstallReleases?.();
-          }}>安装指南</button>
-          {isBridgeOnlinePanelStatus(panelStatus) ? (
+          }}>安装指南</button> : null}
+          {bridgeUpToDate || isBridgeOnlinePanelStatus(panelStatus) ? (
             <button type="button" className="button subtle" onClick={() => { setViewStep(3); setGuideOpen(true); }}>设备连接与排查</button>
           ) : null}
           {managementAction}
