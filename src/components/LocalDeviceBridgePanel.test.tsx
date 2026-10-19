@@ -431,7 +431,7 @@ it("asks the current user to rebind a live local bridge owned by another account
   expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
 });
 
-it("refreshes online tool changes without overlapping probes or replacing a rename draft", async () => {
+it.each([true, false])("refreshes online tool changes without overlapping probes or replacing a rename draft (adbAvailable=%s)", async (adbAvailable) => {
   vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
   const bridge = { id: "br-local", machineLabel: "工程机", platform: "linux", arch: "amd64", revokedAt: null };
   const health = { ok: true as const, paired: true, connected: true, bridgeId: bridge.id,
@@ -450,9 +450,14 @@ it("refreshes online tool changes without overlapping probes or replacing a rena
     window.dispatchEvent(new Event("focus"));
   });
   expect(probeHealth).toHaveBeenCalledTimes(2);
-  await act(async () => pending.resolve({ health: { ...health, tools: { ...health.tools, hdc: { available: false } } }, reachability: "ok" }));
+  await act(async () => pending.resolve({ health: { ...health, tools: { adb: { available: adbAvailable }, hdc: { available: false } } }, reachability: "ok" }));
   expect(screen.getByDisplayValue("正在编辑的名称")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "安装调试工具" })).toBeInTheDocument();
+  if (adbAvailable) {
+    expect(screen.queryByRole("button", { name: "安装调试工具" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAccessibleName("Bridge 在线，请插入 USB 设备并授权调试。");
+  } else {
+    expect(screen.getByRole("button", { name: "安装调试工具" })).toBeInTheDocument();
+  }
   expect(createCode).toHaveBeenCalledTimes(1);
 });
 
