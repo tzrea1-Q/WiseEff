@@ -130,6 +130,26 @@ parseTests:
 
 保存草稿与发布返回新的可选 `parseTestRun`。`POST /api/v1/log-skills/:skillId/parse-tests` 接受 `{spec}`，按需检查当前编辑，沿用技能管理权限与组织范围。结果仅作为响应保留在打开的工作区，并关联所测试的规范，不持久化：有界确定性测试可重新计算，避免存储过期结果和新增迁移。「测试」分区提供字段路径表单、代码视图及内联差异表；分区工具栏提供「运行测试」，并紧凑显示通过/失败数、「未运行」或「运行中」。发布对话框顶部显示通过数/总数与失败项链接，再按名称列出各测试的新增、修改和删除，并标明修改部分。测试失败不阻止发布。
 
+## 技能包
+
+技能包为 ZIP，根目录直接包含下表文件，不套外层目录。包迁移一份已保存的 `skill/v1` 版本及技能的分析用例。导出默认选择已发布版本，`revision=draft` 选择已保存草稿；条目按确定顺序排列，ZIP 时间戳不表示版本身份。
+
+| 路径 | 内容 |
+| --- | --- |
+| `SKILL.md` | YAML frontmatter 包含 `schemaVersion: skill/v1`、`name`、`description`、建议的 `skillKey`，以及可选的 `stepBudget`、`tokenBudget`、`formatProfile`、`modelOverride` 和 `source.statementPatterns`；Markdown 正文为诊断流程。 |
+| `parsing.yaml` | 完整 `parsing/v1` 对象，包含抽取器文件通配及寄存器／映射／帧定义；未配置时为 YAML `null`。 |
+| `signals.yaml` | 完整信号规则对象，未配置时为 YAML `null`；字段引用结合 `parsing.yaml` 校验。 |
+| `tests.yaml` | 解析测试数组，未配置时为 `[]`；沿用[解析测试](#解析测试)的限制与期望语义。 |
+| `knowledge/<slug>.md` | 每个链接条目一份文件；frontmatter 包含 `title`、`tags` 和 `source: {type, entryId, revisionId, revisionNumber}`，正文为该次导出的知识修订文本。来源 id 只供追溯，不作为导入外键。 |
+| `cases/<domain>/<case-id>/…` | 沿用 [`eval-cases/logs` 布局](../../../eval-cases/logs/README.zh-CN.md)：`case.yaml`、规范化的 `log.txt`，以及 `bundleFiles` 声明的原始文件；往返保留标注与原始字节。 |
+| `README.md` | 迁移说明，包含源码快照需单独上传的要求。 |
+
+导入在解析 YAML 或 Markdown 前，先经过分析用例压缩包共用的有界中央目录读取器。共用上限为压缩／解压各 440 MiB、2040 个文件、包含目录在内共 4080 个条目、单文件 10 MiB 及 200 倍压缩比。包元数据文件最多 2 MiB，链接知识文件最多 200 份，每份正文最多 200,000 字符；分析用例仍最多 20 个，每个用例的原始文件总计最多 10 MiB。读取器拒绝不安全路径、重复路径、链接、加密条目、ZIP64 和不一致的 ZIP 头。YAML 别名、非法 UTF-8、未知文件及无效规范均报错，不会静默忽略。必需的根文件缺失也报错。错误包含精确的包内路径与字段，例如 `SKILL.md: required file is missing` 或 `signals.yaml: rules[2].anyOf[0].field: Unknown scalar extracted or decoded field`。
+
+导入沿用既有重名规则创建新技能、第一个草稿或已发布版本（默认草稿）、链接到技能的新知识草稿及分析用例，全部在一个审计事务内完成；校验或持久化失败会回滚所有行。包内 `skillKey` 仅为建议，目标组织重新分配身份与修订 id；知识链接沿用普通工作流的知识权限。以已发布状态导入技能也不会发布知识。仅有草稿的技能尚无发布版，详情的 `currentRevision` 暂时表示其草稿头，列表的 `currentRevision.publishedAt` 在首次发布前为 null；初始草稿须先发布，不能直接丢弃。
+
+源码快照及其 id、工作区样例、分析运行、轨迹和凭据不入包。源码语句模式属于可迁移配置，实际源码需单独上传并选择目标快照。同一用例字节及解析／信号配置可在组织间保留确定性的规则证据；已发布知识、源码可用性与模型配置仍会影响模型分析。
+
 ## 字节布局帧
 
 `frames` 将定义 id 映射到 `{endian?: "big" | "little", fields: FrameField[]}`，最多 32 个帧，每帧最多 64 字段，每个 switch/TLV 映射最多 256 分支。字段按数组顺序消耗字节，偏移自动计算。帧默认使用大端；字段的 `endian` 覆盖所在帧的默认值，用于整数、tag、length 及校验和存储。抽取器可将 `decode: {frame: "packet"}` 连接到 `hex`、`bytes`、`hexbytes` 或 `base64bytes` 捕获；帧十六进制输入支持可选 `0x` 和空白。解码保留原始字节，捕获节点下包含嵌套字段。

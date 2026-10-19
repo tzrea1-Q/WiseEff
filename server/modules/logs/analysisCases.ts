@@ -249,6 +249,13 @@ export async function importSkillAnalysisCases(db: Database, store: ObjectStore,
   let archived: ArchivedAnalysisCase[];
   try { archived = await importAnalysisCaseArchive(bytes); }
   catch (error) { throw new ApiError("VALIDATION_FAILED", "Invalid case archive.", { problems: error instanceof AnalysisCaseArchiveError ? error.problems : [error instanceof Error ? error.message : "archive.zip: invalid archive"] }); }
+  return importArchivedSkillAnalysisCases(db, store, auth, skillId, archived, invocation, context);
+}
+
+/** Compose validated package cases into the caller's audited transaction. */
+export async function importArchivedSkillAnalysisCases(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, archived: ArchivedAnalysisCase[], invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+  assertTrustedInvocationMatchesAuth(auth, invocation, "Import analysis cases");
+  requireAdmin(auth);
   const prepared: Array<Omit<ArchivedAnalysisCase, "files"> & { id: string; fixtureFiles: ArchivedAnalysisCase["files"]; files: StoredAnalysisCase["files"] }> = [];
   const uploadsWritten: Upload[] = [];
   for (const item of archived) {

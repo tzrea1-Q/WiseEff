@@ -191,6 +191,12 @@ export function createHttpLogAnalysisRepository(
     return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
   }
   const repository: LogAnalysisRepository = {
+    async importSkillPackage(file, status) {
+      return parseContractDto(logSkillResponseSchema, await apiClient.upload("/api/v1/log-skills/import", file, { status }), "LogSkillResponse").item;
+    },
+    async exportSkillPackage(id, revision) {
+      return (await apiClient.raw(`/api/v1/log-skills/${encodeURIComponent(id)}/package?revision=${revision}`, { method: "GET" })).blob();
+    },
     async listAnalysisCases(id) {
       return parseContractDto(logAnalysisCaseListResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases`), "LogAnalysisCaseListResponse");
     },

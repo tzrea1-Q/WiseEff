@@ -9,6 +9,29 @@ import { projectBindingDtoSchema } from "../parameter-topology/schemas";
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
 describe("DTO schema catalog coverage", () => {
+  it("documents skill ZIP import status and revision-selectable ZIP export", () => {
+    const request = dtoSchemaCatalog.LogSkillPackageMultipartImport;
+    expect(request.parse({ file: "package.zip" })).toEqual({ file: "package.zip", status: "draft" });
+    expect(request.safeParse({ file: "package.zip", status: "published" }).success).toBe(true);
+    expect(request.safeParse({ file: "package.zip", status: "superseded" }).success).toBe(false);
+    const document = buildOpenApiDocument();
+    expect(document.components.schemas.LogSkillPackageMultipartImport).toMatchObject({
+      required: ["file"], properties: {
+        file: { type: "string", format: "binary" },
+        status: { enum: ["draft", "published"], default: "draft" }
+      }
+    });
+    const paths = document.paths as Record<string, Record<string, {
+      requestBody?: { content: Record<string, unknown> }; responses: Record<string, { content: Record<string, unknown> }>
+    }>>;
+    expect(Object.keys(paths["/api/v1/log-skills/import"].post.requestBody!.content)).toEqual(["multipart/form-data"]);
+    expect(paths["/api/v1/log-skills/import"].post.responses["201"].content).toHaveProperty("application/json");
+    expect(paths["/api/v1/log-skills/{skillId}/package"].get.responses["200"].content).toHaveProperty("application/zip");
+    expect(schemaRegistry["logs.exportSkillPackage"].requestParameters).toContainEqual(expect.objectContaining({
+      name: "revision", in: "query", schema: { type: "string", enum: ["published", "draft"] }
+    }));
+    expect(dtoSchemaCoveredRouteIds).toContain("logs.importSkillPackage");
+  });
   it("documents template creation, optional procedure and sample contracts", () => {
     const create = dtoSchemaCatalog.CreateLogSkillRequest;
     for (const startingPoint of [{ templateId: "generic-text" }, { copyFromSkillId: "source" }])

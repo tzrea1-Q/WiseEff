@@ -105,6 +105,14 @@ On a completed report bound to a skill, administrators with `logs:admin-domains`
 
 Use Import and Export to move cases as a ZIP in the [`eval-cases/logs` format](../../eval-cases/logs/README.md). The Import button opens a file picker; its result or errors appear in the section's status area. Import validates annotations, fixtures, paths and size limits before saving. Keep the exported directory structure intact; validation errors identify the exact file and field to fix.
 
+## Move a skill between organizations
+
+In API mode, choose Import skill package from the toolbar in `/log-admin?tab=skills`. Select a `.zip` package and choose Draft (the default) or Published for its first revision, then import. Review the validation result in the dialog. Errors include the package filename and field, such as `signals.yaml: rules[2].anyOf[0].field`; correct that file and try again. A failed import creates no skill, knowledge entries or cases. A duplicate skill name follows the same rejection rule as creating a skill. On success, follow Open skill workspace.
+
+In the workspace's Versions section, choose Export skill package. Export the published revision by default, or choose the saved draft. Save pending edits before exporting a draft. The ZIP contains the procedure, parsing and signal rules, parse tests, linked knowledge Markdown and analysis cases. See the [package format reference](../design-docs/log-parsing-v1.md#skill-packages) before editing files outside WiseEff.
+
+Both actions require `logs:admin-domains` and a human account. Packages with knowledge also require the existing knowledge access/edit permissions. Imported knowledge entries are drafts linked to the new skill, even when the skill itself is imported as Published. Review and publish those entries in Knowledge base before analysis can retrieve them. Skill and knowledge ids are newly allocated in the destination organization; source ids in Markdown metadata are provenance only. Source snapshots and the workspace sample are not included: upload them separately in the destination workspace. Matching cases retain their log bytes and rules, but model answers can vary with model configuration and available published knowledge or source snapshots.
+
 ## Upload a log and choose its domain
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".

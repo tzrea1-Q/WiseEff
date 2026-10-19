@@ -10,6 +10,8 @@ import type { KnowledgeEntry } from "./domain/knowledge/types";
 import { createPrototypeState } from "./mockData";
 import { WiseEffApiError } from "./infrastructure/http/apiClient";
 import { createTestLogRuntimeActions as createLogActions } from "./test/harness";
+import type { SkillAuthoringRepository } from "./features/log-skills/types";
+import { mockSkillWorkspace } from "./infrastructure/mock/logSkills";
 
 afterEach(() => {
   cleanup();
@@ -63,8 +65,10 @@ function deferred<T = void>() {
 function renderPage({
   logActions,
   stateOverrides,
-  knowledgeRepository
-}: { logActions?: LogRuntimeActions; stateOverrides?: Partial<ReturnType<typeof createPrototypeState>>; knowledgeRepository?: KnowledgeRepository } = {}) {
+  knowledgeRepository,
+  skillRepository,
+  apiMode
+}: { logActions?: LogRuntimeActions; stateOverrides?: Partial<ReturnType<typeof createPrototypeState>>; knowledgeRepository?: KnowledgeRepository; skillRepository?: Partial<SkillAuthoringRepository>; apiMode?: boolean } = {}) {
   const state = { ...createPrototypeState(), activeRoleId: "admin", ...stateOverrides };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
@@ -77,12 +81,26 @@ function renderPage({
         search=""
         logActions={logActions}
         knowledgeRepository={knowledgeRepository}
+        skillRepository={skillRepository}
+        apiMode={apiMode}
       />
     </TopBarActionsHarness>
   );
 
   return { ...utils, state, dispatch, onNavigate };
 }
+
+it("opens skill package import from the skill list toolbar and links to the imported workspace", async () => {
+  window.history.replaceState(null, "", "/log-admin?tab=skills");
+  const skillRepository = { importSkillPackage: vi.fn().mockResolvedValue(mockSkillWorkspace("skill-charging")) };
+  const { onNavigate } = renderPage({ logActions: createLogActions(), skillRepository, apiMode: true });
+  await userEvent.click(await screen.findByRole("button", { name: "导入技能包" }));
+  const dialog = screen.getByRole("dialog", { name: "导入技能包" });
+  await userEvent.upload(within(dialog).getByLabelText("技能包 ZIP"), new File(["zip"], "skill.zip", { type: "application/zip" }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "校验并导入" }));
+  await userEvent.click(await within(dialog).findByRole("link", { name: "打开技能工作区" }));
+  expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging");
+});
 
 function getLogRow(fileName: RegExp) {
   const table = screen.getByRole("table", { name: "日志分析记录" });

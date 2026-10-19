@@ -20,7 +20,7 @@ export type ContractSchemaRef = {
   tags: RouteManifestEntry["module"][];
   requestBody?: string;
   responseBody: string;
-  responseMedia?: "json" | "binary";
+  responseMedia?: "json" | "binary" | "zip";
   successStatus?: 200 | 201 | 202 | 204 | 410;
   additionalSuccessResponses?: Record<string, string>;
   additionalResponses?: Record<string, string>;
@@ -1062,6 +1062,17 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
   "logs.listSkills": { summary: "List analysis skills", tags: ["logs"], responseBody: "LogSkillListResponse" },
   "logs.createSkill": { summary: "Create analysis skill", tags: ["logs"], requestBody: "CreateLogSkillRequest", responseBody: "LogSkillResponse", successStatus: 201 },
+  "logs.importSkillPackage": {
+    summary: "Import a validated skill ZIP atomically (logs:admin-domains)", tags: ["logs"],
+    requestBody: "LogSkillPackageMultipartImport", responseBody: "LogSkillResponse", successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "logs.exportSkillPackage": {
+    summary: "Export a skill revision as a ZIP (logs:admin-domains)", tags: ["logs"],
+    responseBody: "BinaryAttachment", responseMedia: "zip",
+    requestParameters: [{ name: "revision", in: "query", description: "Defaults to published; draft requires a saved draft.", schema: { type: "string", enum: ["published", "draft"] } }],
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "logs.listSkillTemplates": { summary: "List skill templates", tags: ["logs"], responseBody: "LogSkillTemplateListResponse" },
   "logs.getSkillSample": { summary: "Read skill sample inventory and first 5000 lines per text file", tags: ["logs"], responseBody: "LogSkillSampleResponse" },
   "logs.replaceSkillSample": { summary: "Replace skill sample (text or archive, up to 2 MiB uploaded and expanded)", tags: ["logs"], requestBody: "ReplaceLogSkillSampleRequest", responseBody: "LogSkillSampleReplaceResponse" },

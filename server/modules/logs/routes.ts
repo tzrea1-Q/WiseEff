@@ -35,6 +35,7 @@ import {
 } from "./domainsService";
 import type { LogWebhookDeliverer } from "./webhookDelivery";
 import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, listLogSkillSourceVersions, listLogSkillTemplates, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
+import { exportLogSkillPackage, importLogSkillPackage } from "./skillPackages";
 import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "./skillSamplesService";
 import { previewLogSkillFiles, skillFilePreviewRequestSchema } from "./skillFilePreview";
 import { logSkillSpecSchema } from "./skillSpec";
@@ -430,6 +431,21 @@ export function registerLogRoutes(
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const body = parseWithSchema(createLogSkillBodySchema, request.body);
     return { status: 201, body: { item: await createLogSkill(requireDb(options.db), auth, body, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps) } };
+  });
+  router.post("/api/v1/log-skills/import", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    requireLocalOrganization(auth); requireLogAdminDomains(auth);
+    const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
+    if (!multipart || multipart.files.length !== 1 || multipart.files[0].fieldName !== "file") throw new ApiError("VALIDATION_FAILED", "One skill package ZIP file is required.");
+    const fields = parseWithSchema(z.object({ status: z.enum(["draft", "published"]).default("draft") }).strict(), multipart.fields);
+    return { status: 201, body: { item: await importLogSkillPackage(requireDb(options.db), requireObjectStore(options.objectStore), auth,
+      multipart.files[0].bytes, fields.status, createUserInvocation(auth), { requestId: request.requestId }, options.skillBudgetCaps) } };
+  });
+  router.get("/api/v1/log-skills/:skillId/package", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const query = parseWithSchema(z.object({ revision: z.enum(["published", "draft"]).default("published") }).strict(), request.query);
+    return { status: 200, bytes: await exportLogSkillPackage(requireDb(options.db), requireObjectStore(options.objectStore), auth,
+      request.params.skillId, query.revision), contentType: "application/zip", fileName: "skill-package.zip" };
   });
   const skillParams = z.object({ skillId: z.string().min(1) });
   router.get("/api/v1/log-skills/:skillId/sample", async (request) => {

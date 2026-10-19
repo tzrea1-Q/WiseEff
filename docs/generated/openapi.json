@@ -12228,6 +12228,109 @@
         }
       }
     },
+    "/api/v1/log-skills/import": {
+      "post": {
+        "operationId": "logs.importSkillPackage",
+        "summary": "Import a validated skill ZIP atomically (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/LogSkillPackageMultipartImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSkillResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/package": {
+      "get": {
+        "operationId": "logs.exportSkillPackage",
+        "summary": "Export a skill revision as a ZIP (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": false,
+            "description": "Defaults to published; draft requires a saved draft.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "published",
+                "draft"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skill-templates": {
       "get": {
         "operationId": "logs.listSkillTemplates",
@@ -42603,6 +42706,28 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSkillResponse"
+      },
+      "LogSkillPackageMultipartImport": {
+        "type": "object",
+        "x-wiseeff-schema": "LogSkillPackageMultipartImport",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "One bounded skill ZIP; source snapshots are uploaded separately."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published"
+            ],
+            "default": "draft"
+          }
+        }
       },
       "LogSkillTemplateListResponse": {
         "type": "object",

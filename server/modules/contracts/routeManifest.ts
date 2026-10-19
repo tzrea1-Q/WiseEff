@@ -779,6 +779,8 @@ export const routeManifest = [
   { id: "logs.locateSourceStatement", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", module: "logs", stability: "mvp" },
   { id: "logs.sourceEvidence", method: "GET", path: "/api/v1/logs/:logId/evidence/:evidenceId/source", module: "logs", stability: "mvp" },
   { id: "logs.createSkill", method: "POST", path: "/api/v1/log-skills", module: "logs", stability: "mvp" },
+  { id: "logs.importSkillPackage", method: "POST", path: "/api/v1/log-skills/import", module: "logs", stability: "mvp" },
+  { id: "logs.exportSkillPackage", method: "GET", path: "/api/v1/log-skills/:skillId/package", module: "logs", stability: "mvp" },
   { id: "logs.listSkillTemplates", method: "GET", path: "/api/v1/log-skill-templates", module: "logs", stability: "mvp" },
   { id: "logs.getSkillSample", method: "GET", path: "/api/v1/log-skills/:skillId/sample", module: "logs", stability: "mvp" },
   { id: "logs.replaceSkillSample", method: "PUT", path: "/api/v1/log-skills/:skillId/sample", module: "logs", stability: "mvp" },

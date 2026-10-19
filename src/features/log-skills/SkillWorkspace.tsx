@@ -34,6 +34,7 @@ import { KnowledgeSection } from "./KnowledgeSection";
 import { IntegrationSection } from "./IntegrationSection";
 import { ParseTestsSection } from "./ParseTestsSection";
 import { AnalysisCasesSection, AnalysisCasePublishSummary } from "./AnalysisCasesSection";
+import { ExportSkillPackageDialog } from "./SkillPackageDialogs";
 import "./skill-workspace.css";
 
 export type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
@@ -119,8 +120,8 @@ function Overview({ skill, spec, setSpec, disabled, stats }: SectionProps) {
   return <section className="skill-section" aria-label="概览">
     <h2>概览</h2>
     <dl className="skill-facts"><dt>名称</dt><dd>{skill.name}</dd>
-      <dt>当前版本</dt><dd>v{skill.currentRevision.number} · {time(skill.currentRevision.publishedAt)}</dd>
-      <dt>发布者</dt><dd>{skill.currentRevision.publishedByDisplayName ?? (skill.currentRevision.publishedByUserId ? "已删除用户" : "系统")}</dd>
+      <dt>当前版本</dt><dd>{skill.currentRevision.status === "draft" ? "尚未发布" : `v${skill.currentRevision.number} · ${time(skill.currentRevision.publishedAt)}`}</dd>
+      <dt>发布者</dt><dd>{skill.currentRevision.status === "draft" ? "尚未发布" : skill.currentRevision.publishedByDisplayName ?? (skill.currentRevision.publishedByUserId ? "已删除用户" : "系统")}</dd>
       <dt>草稿状态</dt><dd>{skill.draft ? "未发布更改" : "无草稿"}</dd>
       <dt>近 7 天分析</dt><dd>{stats?.analyses7d ?? "暂无数据"}</dd>
       <dt>有用率</dt><dd>{stats?.helpfulRate7d == null ? "暂无反馈" : formatPercent(stats.helpfulRate7d)}</dd>
@@ -136,12 +137,15 @@ function Overview({ skill, spec, setSpec, disabled, stats }: SectionProps) {
   </section>;
 }
 
-function Versions({ skill, revisions, disabled, onRestore }: SectionProps) {
+function Versions({ skill, revisions, disabled, onRestore, repository, apiMode, canEdit, dirty }: SectionProps) {
+  const [exportOpen, setExportOpen] = useState(false);
   const [leftId, setLeftId] = useState(revisions.find((r) => r.status === "superseded")?.id ?? skill.currentRevision.id);
   const [rightId, setRightId] = useState<string | null>(null);
   const left = revisions.find((r) => r.id === leftId) ?? skill.currentRevision;
   const right = revisions.find((r) => r.id === rightId) ?? skill.currentRevision;
   return <section className="skill-section" aria-label="版本"><h2>版本</h2>
+    {apiMode && canEdit ? <Button variant="outline" disabled={disabled || !repository?.exportSkillPackage} onClick={() => setExportOpen(true)}>导出技能包</Button> : null}
+    {exportOpen && repository ? <ExportSkillPackageDialog skill={skill} dirty={dirty} repository={repository} onDismiss={() => setExportOpen(false)} /> : null}
     <DataTable rows={revisions} rowKey={(r) => r.id} ariaLabel="技能版本历史" selectedRowKey={left.id} columns={[
       { key: "number", header: "版本", render: (r) => <Button variant="link" size="sm" onClick={() => { setLeftId(r.id); setRightId(null); }}>v{r.number}</Button> },
       { key: "status", header: "状态", render: (r) => <span className="badge">{status[r.status]}</span> },
@@ -307,7 +311,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     if (cleaned.parseTests) { setTestsRunning(true); setTestError(null); }
     try {
       const draft = await repository!.saveSkillDraft!(skillId, cleaned, skill!.draft?.id ?? null, skill!.currentRevision.id);
-      setSkill({ ...skill!, draft }); setSpec(draft.spec);
+      setSkill({ ...skill!, draft, currentRevision: skill!.currentRevision.status === "draft" ? draft : skill!.currentRevision }); setSpec(draft.spec);
       setParsingYamlDraft(null);
       setRevisions([draft, ...revisions.filter((r) => r.status !== "draft")]);
       if (draft.parseTestRun) setTestExecution({ specKey: specJson(draft.spec), run: draft.parseTestRun });
@@ -360,7 +364,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       context={<>
         {!apiMode || !canEdit ? <p>{!apiMode ? "演示技能仅供查看；请在 API 模式下编辑。" : "仅供查看；编辑需要技能管理权限。"}</p> : null}
         {skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改"><strong>未发布更改</strong>
-          <Button variant="outline" disabled={disabled} onClick={() => ask("放弃草稿？", skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
+          <Button variant="outline" disabled={disabled || (skill.currentRevision.status === "draft" && !dirty)} onClick={() => ask("放弃草稿？", skill.currentRevision.status === "draft" ? "将放弃未保存的更改，保留已导入的首个草稿。" : skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
+            if (skill.currentRevision.status === "draft") { setSpec(structuredClone((skill.draft ?? skill.currentRevision).spec)); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
             if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
             void run(async () => { await repository!.discardSkillDraft!(skillId, skill.draft!.id); await refresh(); });
           })}>放弃草稿</Button>
@@ -412,7 +417,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
             onRun={() => { setPublishOpen(false); switchSection("tests", "cases"); }} />
           <p>测试结果仅供参考，不阻止发布。</p>
         </section>
-        <SkillSpecDiff before={skill.currentRevision.spec} after={spec} />
+        <SkillSpecDiff before={skill.currentRevision.status === "draft" ? { schemaVersion: "skill/v1" } : skill.currentRevision.spec} after={spec} />
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setPublishOpen(false)}>取消</Button>
           <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid || testsInvalid || signalsInvalid || !formatValid} aria-busy={pending} onClick={() => void run(async () => {
             const draft = dirty ? await save() : skill.draft!;

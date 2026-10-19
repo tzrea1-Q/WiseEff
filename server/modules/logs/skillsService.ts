@@ -66,11 +66,11 @@ function parseSpec(value: unknown, caps?: LogSkillBudgetCaps): LogSkillSpec {
   return result.data;
 }
 
-async function readSkill(db: Queryable, organizationId: string, skillId: string, budgetCaps = defaultLogSkillBudgetCaps) {
+export async function readSkill(db: Queryable, organizationId: string, skillId: string, budgetCaps = defaultLogSkillBudgetCaps) {
   const identity = await getLogDomainById(db, { organizationId, domainId: skillId });
   if (!identity) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
   const revisions = await listSkillRevisions(db, organizationId, skillId);
-  return { ...identity, budgetCaps, currentRevision: revisions.find((r) => r.status === "published")!,
+  return { ...identity, budgetCaps, currentRevision: (revisions.find((r) => r.status === "published") ?? revisions.find((r) => r.status === "draft"))!,
     draft: revisions.find((r) => r.status === "draft") ?? null };
 }
 
@@ -103,7 +103,8 @@ export async function listLogSkills(db: Queryable, auth: AuthContext, includeArc
         and ss.skill_id = sr.skill_id and ss.status = 'ready' order by ss.version_label) as ready_source_versions
       from log_skill_revisions sr where organization_id = $1 and status in ('published', 'draft')`, [auth.organization.id]);
   return { items: identities.map((identity) => {
-    const current = heads.rows.find((r) => r.skill_id === identity.id && r.status === "published")!;
+    const current = (heads.rows.find((r) => r.skill_id === identity.id && r.status === "published")
+      ?? heads.rows.find((r) => r.skill_id === identity.id && r.status === "draft"))!;
     const feedback = insights.filter((r) => r.logDomainId === identity.id);
     const total = feedback.reduce((sum, r) => sum + r.totalCount, 0);
     return { ...identity, currentRevision: { id: current.id, number: current.revision_number, publishedAt: current.published_at?.toISOString() ?? null },
@@ -174,7 +175,7 @@ export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId
     const baseSpec = (revisions.find((r) => r.status === "draft") ?? revisions.find((r) => r.status === "published"))?.spec;
     await validateSkillKnowledge(tx, auth, spec, baseSpec);
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, spec, spec.defaultSourceSnapshotId === baseSpec?.defaultSourceSnapshotId);
-    if (revisions.find((r) => r.status === "published")?.id !== basePublishedRevisionId) {
+    if ((revisions.find((r) => r.status === "published") ?? revisions.find((r) => r.status === "draft"))?.id !== basePublishedRevisionId) {
       throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill publication has changed.");
     }
     const draft = revisions.find((r) => r.status === "draft");
@@ -259,7 +260,9 @@ export async function discardLogSkillDraft(db: Database, auth: AuthContext, skil
   requireLogAdminDomains(auth);
   return withAuditedWrite(db, invocation, context, async (tx) => {
     await lockSkill(tx, auth.organization.id, skillId);
-    const draft = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((r) => r.status === "draft");
+    const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
+    const draft = revisions.find((r) => r.status === "draft");
+    if (!revisions.some((r) => r.status === "published")) throw new ApiError("CONFLICT", "Publish the initial draft before discarding later changes.");
     if (draft && draft.id !== draftRevisionId) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill draft has changed.");
     await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft' and id = $3`, [auth.organization.id, skillId, draftRevisionId]);
     return { result: undefined, audit: skillAudit(skillId, "log-skill-draft-discard") };

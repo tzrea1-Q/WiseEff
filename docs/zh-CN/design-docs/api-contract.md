@@ -360,6 +360,8 @@ DELETE /api/v1/log-skills/:skillId/sample
 GET  /api/v1/log-skills/:skillId
 POST /api/v1/log-skills/:skillId/parse-preview
 POST /api/v1/log-skills
+POST /api/v1/log-skills/import
+GET  /api/v1/log-skills/:skillId/package
 PUT  /api/v1/log-skills/:skillId/draft
 DELETE /api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId
 POST /api/v1/log-skills/:skillId/revisions/:revisionId/restore
@@ -391,6 +393,8 @@ GET  /api/v1/jobs/:jobId/events
 | `GET` | `/api/v1/log-skills/:skillId` | `{ item }`：技能身份、完整 `currentRevision` 与可空 `draft`。 |
 | `GET` | `/api/v1/log-skill-templates` | 需 `logs:admin-domains`。返回 `{ items: [{ id, label, description, spec }] }`，包含 `generic-text`、`linux-dmesg`、`android-logcat`、`json-lines`，分别预填流程大纲、基础格式和信号规则。JSON Lines 使用通用画像与 JSON level 字段信号。 |
 | `POST` | `/api/v1/log-skills` | `{ name, description?, startingPoint?: { templateId } \| { copyFromSkillId }, formatProfile? }` 创建身份与已发布版本 1，返回 `201 { item }`。复制优先取来源草稿，否则取当前发布版；不复制样例。跨组织来源返回 `404`。省略起点时使用通用模板，旧 `formatProfile` 请求仍有效并优先使用该画像。显式描述覆盖起点 spec 的描述。审计元数据记录 `templateId` 或 `copyFromSkillId`。 |
+| `GET` | `/api/v1/log-skills/:skillId/package?revision=published` | 需真人账号与 `logs:admin-domains`。返回带附件文件名的 `200 application/zip`，默认取已发布版本；`revision=draft` 取已保存草稿。按组织隔离，不可访问的技能返回 `404`。见[技能包格式](log-parsing-v1.md#技能包)。不包含源码快照与工作区样例。 |
+| `POST` | `/api/v1/log-skills/import` | 需真人账号、`logs:admin-domains` 及适用的知识权限。multipart `file` 为技能 ZIP，可选 `status: draft \| published` 默认 `draft`。返回与新建技能同形的 `201 { item }`。写入前先校验有界压缩包及全部文件；`400 VALIDATION_FAILED` 的详情保留精确包内路径／字段。名称重复沿用现有拒绝规则。技能身份、第一个版本、链接知识草稿、用例与审计全部原子写入，失败不留新增行；不复用来源元数据 id 作为目标 id。仅有草稿的技能在首次发布前，详情 `currentRevision` 为草稿，列表版本信息的 `publishedAt` 为 null。 |
 | `PUT` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`。`{ fileName, contentBase64 }` 替换技能不版本化的文本或日志包样例。原始上传与展开后的解码文本均最多 2 MiB，同时受配置的日志包上限及压缩包安全检查约束。复用 bundle intake 的 UTF-8／带 BOM 的 UTF-16 检测。返回 `{ item: metadata }`，同事务写入 `log-skill-sample-replace` 审计。对象名称独立；替换后保留旧对象。 |
 | `GET` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:view`。返回 `{ item: metadata & { content, contentFilePath, truncated, files } \| null }`；无样例为 null，技能不可访问为 `404`。`files` 每项为 `{path, sizeBytes, lineCount, status, skipReason, encoding, lossy, content?, truncated?}`。正文统一 LF，每个文件最多前 5000 行；顶层正文取第一个可分析文件。旧单文本样例返回一条清单记录。元数据包含 `id`、`skillId`、`fileName`、原始 `sizeBytes`、`sha256`、`encoding`、`lineCount`、可空 `uploadedByUserId`、`createdAt`、`updatedAt`，不暴露存储键。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`，按组织隔离，幂等返回 `204`；同事务写入 `log-skill-sample-delete`，保留对象与技能版本。 |
@@ -403,6 +407,8 @@ GET  /api/v1/jobs/:jobId/events
 | `POST` | `/api/v1/log-skills/:skillId/revisions/:revisionId/restore` | 将所选历史 spec 发布为下一编号的新版本，不改写历史内容；返回 `{ item: skill }`。技能锁内若存在草稿则返回 `409 LOG_SKILL_DRAFT_EXISTS`；来源不存在、跨组织或为草稿则返回 `404`。同一发布事务写入 `log-skill-restore`，元数据 `{ fromRevisionId, newRevisionId }`。 |
 | `GET` | `/api/v1/log-skills/:skillId/revisions` | `{ items: revision[] }`，版本号倒序。 |
 | `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`：`id`、`skillId`、`number`、`status`、`spec`、`contentHash`、创建和发布时间及用户。已发布/已替代版本内容不可变。账号删除时按既有历史保留策略清空作者/发布者引用，spec、哈希与发布事实不变。 |
+
+导入后仅有草稿的技能，在首次发布前保存草稿时，`basePublishedRevisionId` 传当前草稿头 id；`baseDraftRevisionId` 仍传所观察到的同一草稿 id。技能须保留一个版本，直接丢弃初始草稿返回 `409 CONFLICT`。导出所选草稿或发布版不存在时返回 `404 NOT_FOUND`。导入错误使用 `details.problems: string[]`，每项包含包内路径及可选字段；含知识的包还需 `knowledge:edit`，导出时须能读取每一个链接知识条目。
 
 `skill/v1` 增加可选 `procedure`：Markdown，去除首尾空白，最多 20000 字符，无版本升级。版本差异在「概览」组显示流程内容。
 

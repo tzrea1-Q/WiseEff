@@ -133,10 +133,10 @@ function preflightZipDirectory(bytes: Buffer, limits: typeof analysisCaseArchive
 }
 
 /** Validate the complete archive before callers persist any cases or fixture bytes. */
-export async function importAnalysisCaseArchive(
+export async function readBoundedZipArchive(
   bytes: Buffer,
   limits = analysisCaseArchiveLimits
-): Promise<ArchivedAnalysisCase[]> {
+): Promise<Map<string, Buffer>> {
   if (bytes.length > limits.maxCompressedBytes) throw new AnalysisCaseArchiveError(["archive.zip: compressed size limit exceeded"]);
   if (bytes.length < 4 || bytes.readUInt32LE(0) !== 0x04034b50) throw new AnalysisCaseArchiveError(["archive.zip: expected a ZIP archive"]);
   preflightZipDirectory(bytes, limits);
@@ -152,9 +152,19 @@ export async function importAnalysisCaseArchive(
     preserveNestedArchives: true, retainOriginalBytes: true
   });
   if (!unpacked.ok) throw new AnalysisCaseArchiveError([`archive.zip: ${unpacked.reason}`]);
+  return new Map(unpacked.files.map((file) => [file.path, file.bytes!]));
+}
+
+export async function importAnalysisCaseArchive(bytes: Buffer, limits = analysisCaseArchiveLimits): Promise<ArchivedAnalysisCase[]> {
+  return parseAnalysisCaseFiles(await readBoundedZipArchive(bytes, limits), limits);
+}
+
+/** Also used by skill packages, after the shared ZIP reader has bounded every entry. */
+export function parseAnalysisCaseFiles(entries: Map<string, Buffer>, limits = analysisCaseArchiveLimits): ArchivedAnalysisCase[] {
   const groups = new Map<string, Map<string, Buffer>>();
   const problems: string[] = [];
-  for (const file of unpacked.files) {
+  for (const [path, bytes] of entries) {
+    const file = { path, bytes };
     const parts = file.path.split("/");
     // Guides and baseline metadata may accompany the repository's real corpus.
     if (parts.length === 1 && ["README.md", "README.zh-CN.md", "baseline.json"].includes(file.path)) continue;
@@ -217,6 +227,13 @@ export async function importAnalysisCaseArchive(
         maxCompressedBytes: limits.maxCaseBytes, maxUnpackedBytes: limits.maxCaseBytes, maxFileBytes: limits.maxFileBytes, maxFiles: 100
       }) : undefined;
     if (originals && !originals.ok) problems.push(`${yamlPath}:bundleFiles: ${originals.reason}`);
+    if (originals?.ok) {
+      const analyzed = originals.files.filter((file) => file.status === "analyzed");
+      if (!analyzed.length) problems.push(`${yamlPath}:bundleFiles: no analyzable files`);
+      if (analyzed.reduce((size, file) => size + bundleFileUtf8Bytes(file).length, 0) > limits.maxCaseBytes) {
+        problems.push(`${yamlPath}:bundleFiles: normalized case logs exceed ${limits.maxCaseBytes}`);
+      }
+    }
     for (const [index, evidence] of (annotation.keyEvidence ?? []).entries()) {
       const original = originals?.ok ? originals.files.find((file) => file.path === evidence.file || `fixtures/${file.path}` === evidence.file) : undefined;
       const evidenceBytes = original?.status === "analyzed" ? bundleFileUtf8Bytes(original) : undefined;

@@ -19,6 +19,7 @@ export type AnalysisCaseInput = { name: string; expectations: AnalysisCaseExpect
 export type AnalysisCasePrefill = z.infer<typeof import("@wiseeff/dto-schemas").logAnalysisCasePrefillResponseSchema>;
 
 export interface SkillAuthoringRepository {
+  importSkillPackage?(file: File, status: "draft" | "published"): Promise<AnalysisSkill>;
   listSkillTemplates(): Promise<SkillTemplate[]>;
   createLogSkill(input: CreateSkillInput): Promise<AnalysisSkill>;
   getSkillSample(id: string): Promise<SkillSample | null>;
@@ -37,6 +38,7 @@ export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSou
 export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
 export interface SkillWorkspaceRepository {
+  exportSkillPackage?(id: string, revision: "published" | "draft"): Promise<Blob>;
   runSkillParseTests?(id: string, spec: SkillSpec): Promise<ParseTestRun>;
   signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"]; files?: SkillSpec["files"] }): Promise<SignalPreview>;
   generateExtractorPattern?(id: string, input: ExtractorPatternInput): Promise<ExtractorPatternPreview>;

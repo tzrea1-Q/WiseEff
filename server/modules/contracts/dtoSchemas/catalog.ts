@@ -145,6 +145,10 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogAnalysisCaseRunRequest: z.object({ caseIds: z.array(z.string().min(1)).min(1).max(20).optional() }),
   LogAnalysisCaseImportResponse: z.object({ items: z.array(logAnalysisCaseResponseSchema.shape.item) }),
   LogAnalysisCaseMultipartImport: z.object({ file: z.string().describe("ZIP archive in eval-cases/logs layout") }),
+  LogSkillPackageMultipartImport: z.object({
+    file: z.string().describe("Bounded skill ZIP containing SKILL.md, parsing.yaml, signals.yaml and tests.yaml"),
+    status: z.enum(["draft", "published"]).default("draft")
+  }),
   LogRunListResponse: logRunListResponseSchema,
   LogRunResponse: logRunResponseSchema,
   JobResponse: jobResponseSchema,
@@ -221,6 +225,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.listAnalysisCases", "logs.createAnalysisCase", "logs.updateAnalysisCase", "logs.deleteAnalysisCase",
   "logs.startAnalysisCaseRun", "logs.getAnalysisCaseRun", "logs.getAnalysisCaseTrace", "logs.getAnalysisCasePrefill",
   "logs.importAnalysisCases",
+  "logs.importSkillPackage",
   "logs.listSourceSnapshots", "logs.listSourceVersions", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot", "logs.locateSourceStatement", "logs.sourceEvidence",
   "logs.listDomains",
   "logs.createDomain",
