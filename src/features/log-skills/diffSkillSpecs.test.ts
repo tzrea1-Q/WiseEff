@@ -11,6 +11,13 @@ describe("diffSkillSpecs", () => {
     expect(diffSkillSpecs(base, { ...base, procedure: "## Steps\nCheck context." }).overview)
       .toContainEqual({ field: "procedure", before: undefined, after: "## Steps\nCheck context." });
   });
+  it("groups extractors added, changed and removed by id", () => {
+    const extractor = (id: string, pattern = "(?P<value>.+)") => ({ id, pattern, fields: { value: { type: "string" as const } } });
+    const before: SkillSpec = { ...base, parsing: { schemaVersion: "parsing/v1", extractors: [extractor("a"), extractor("b")] } };
+    const after: SkillSpec = { ...base, parsing: { schemaVersion: "parsing/v1", extractors: [extractor("b", "(?P<value>.*)"), extractor("c")] } };
+    expect(diffSkillSpecs(before, after).parsing).toMatchObject([{ id: "a", kind: "removed" }, { id: "b", kind: "changed" }, { id: "c", kind: "added" }]);
+    expect(diffSkillSpecs(before, structuredClone(before)).parsing).toEqual([]);
+  });
   it("reports overview and pretty-printed format line changes without mutating input", () => {
     const after = { ...base, description: "诊断", modelOverride: "m", formatProfile: { severityMap: { error: ["ALERT"] } } };
     const saved = structuredClone(after);

@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { logSkillDtoSchema, logSkillRevisionDtoSchema, logSkillSampleDtoSchema, logSkillTemplateListResponseSchema } from "@wiseeff/dto-schemas";
+import type { logSkillDtoSchema, logSkillRevisionDtoSchema, logSkillSampleDtoSchema, logSkillTemplateListResponseSchema, parsePreviewResponseSchema } from "@wiseeff/dto-schemas";
 
 export type SkillRevision = z.infer<typeof logSkillRevisionDtoSchema>;
 export type SkillSpec = SkillRevision["spec"];
@@ -15,8 +15,11 @@ export interface SkillAuthoringRepository {
   replaceSkillSample(id: string, file: File): Promise<void>;
   deleteSkillSample(id: string): Promise<void>;
 }
+export type ParsePreview = z.infer<typeof parsePreviewResponseSchema>;
 
 export interface SkillWorkspaceRepository {
+  parsePreview?(id: string, input: { parsing: unknown; sampleText: string; fileName?: string }): Promise<ParsePreview>;
+  getSkillSampleText?(id: string): Promise<{ text: string; fileName?: string } | null>;
   getLogSkill(id: string): Promise<AnalysisSkill>;
   listSkillRevisions(id: string): Promise<SkillRevision[]>;
   saveSkillDraft(id: string, spec: SkillSpec, baseDraftRevisionId: string | null, basePublishedRevisionId: string): Promise<SkillRevision>;

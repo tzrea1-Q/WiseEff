@@ -1031,6 +1031,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.replaceSkillSample": { summary: "Replace skill sample (text, up to 2 MiB)", tags: ["logs"], requestBody: "ReplaceLogSkillSampleRequest", responseBody: "LogSkillSampleReplaceResponse" },
   "logs.deleteSkillSample": { summary: "Delete skill sample", tags: ["logs"], successStatus: 204, responseBody: "LogSkillDiscardResponse" },
   "logs.getSkill": { summary: "Get analysis skill", tags: ["logs"], responseBody: "LogSkillResponse" },
+  "logs.parsePreview": { summary: "Preview unsaved parsing rules", tags: ["logs"], requestBody: "LogParsePreviewRequest", responseBody: "LogParsePreviewResponse" },
   "logs.saveSkillDraft": { summary: "Save skill draft", tags: ["logs"], requestBody: "LogSkillDraftRequest", responseBody: "LogSkillRevisionResponse", additionalResponses: { "409": "ErrorResponse" } },
   "logs.discardSkillDraft": { summary: "Discard skill draft", tags: ["logs"], successStatus: 204, responseBody: "LogSkillDiscardResponse",
     requestParameters: [{ name: "draftRevisionId", in: "query", required: true, description: "The draft id observed by the editor.", schema: { type: "string" } }],

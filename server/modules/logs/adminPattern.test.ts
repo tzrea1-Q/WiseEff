@@ -8,6 +8,13 @@ import {
 } from "./adminPattern";
 
 describe("compileLogPattern", () => {
+  it("exposes capture metadata and supports the explicit bounded assembly input size", () => {
+    const pattern = compileLogPattern("(?P<field>a)(b)?", "", 100_000);
+    expect(pattern.groupNames).toEqual(["field"]);
+    expect(pattern.groupCount).toBe(2);
+    expect(pattern.test("a".repeat(70_000))).toBe(true);
+    expect(pattern.test("a".repeat(100_001))).toBe(false);
+  });
   it("executes pathological nested repetition on a 50k line well under one second", () => {
     const input = `${"a".repeat(50_000)}b`;
     const started = performance.now();

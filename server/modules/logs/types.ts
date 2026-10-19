@@ -4,6 +4,7 @@ export type LogArchiveState = "active" | "archived";
 export type LogFeedbackRating = "helpful" | "not_helpful";
 
 export type LogEvidenceDto = {
+  decodedFields?: import("./parsing/spec").DecodedEvent[];
   filePath?: string | null;
   id: string;
   stageId: LogStage;

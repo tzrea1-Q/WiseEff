@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { logFormatProfileSchema, validateLogFormatProfile } from "./formatProfile";
 import { signalRuleSetSchema } from "./signalRules";
+import { parsingSpecSchema } from "./parsing/spec";
 
 export const logSkillSpecSchema = z.object({
   schemaVersion: z.literal("skill/v1"),
+  parsing: parsingSpecSchema.optional(),
   description: z.string().trim().max(2000).optional(),
   procedure: z.string().trim().max(20000).optional(),
   formatProfile: logFormatProfileSchema.superRefine((profile, ctx) => {

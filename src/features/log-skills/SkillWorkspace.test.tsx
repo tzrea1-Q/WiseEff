@@ -18,6 +18,11 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
   if (options.draft) skill.draft = { ...skill.currentRevision, id: "draft", number: 3, status: "draft", spec: { ...skill.currentRevision.spec, description: "草稿描述" } };
   const repository = {
     getSkillSample: vi.fn(async () => mockSkillSample),
+    getSkillSampleText: vi.fn(async () => null),
+    replaceSkillSample: vi.fn(async (_id: string, _file: File) => undefined),
+    deleteSkillSample: vi.fn(async () => undefined),
+    parsePreview: vi.fn(async () => ({ valid: true, truncated: false, issues: [], events: [],
+      counts: { total: 0, byExtractor: {}, errors: {} }, unmatchedLineCount: 0 })),
     getLogSkill: vi.fn(async () => structuredClone(skill)),
     listSkillRevisions: vi.fn(async () => [...(skill.draft ? [skill.draft] : []), skill.currentRevision, old]),
     saveSkillDraft: vi.fn<SkillWorkspaceRepository["saveSkillDraft"]>(async (_id, spec) => {
@@ -50,6 +55,33 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
 }
 
 describe("skill workspace", () => {
+  it("previews the mounted shared sample, follows replacements/deletion, and keeps sample scroll across sections", async () => {
+    const { repository } = setup({ section: "parsing" });
+    const sample = await screen.findByRole("region", { name: "样例内容" });
+    await screen.findByText(`使用右侧样例日志：${mockSkillSample.fileName}`);
+    sample.scrollTop = 120;
+    fireEvent.click(screen.getByRole("button", { name: "运行预览" }));
+    await waitFor(() => expect(repository.parsePreview).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ sampleText: mockSkillSample.content, fileName: mockSkillSample.fileName })));
+    expect(repository.getSkillSample).toHaveBeenCalledTimes(1);
+    expect(repository.getSkillSampleText).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "版本" }));
+    await userEvent.click(screen.getByRole("button", { name: "样例与解析" }));
+    expect(screen.getByRole("region", { name: "样例内容" })).toBe(sample);
+    expect(sample.scrollTop).toBe(120);
+    expect(repository.getSkillSample).toHaveBeenCalledTimes(1);
+    repository.getSkillSample.mockResolvedValueOnce({ ...mockSkillSample, fileName: "replacement.log", content: "replacement sample" });
+    fireEvent.change(screen.getByLabelText("选择样例日志"), { target: { files: [new File(["replacement sample"], "replacement.log")] } });
+    await screen.findByText("使用右侧样例日志：replacement.log");
+    fireEvent.click(screen.getByRole("button", { name: "运行预览" }));
+    await waitFor(() => expect(repository.parsePreview).toHaveBeenLastCalledWith("skill-charging", expect.objectContaining({ sampleText: "replacement sample", fileName: "replacement.log" })));
+    fireEvent.click(screen.getByRole("button", { name: "删除样例" }));
+    const dialog = screen.getByRole("dialog", { name: "删除样例日志？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除样例" }));
+    const fallback = await screen.findByRole("textbox", { name: "样例文本" });
+    fireEvent.change(fallback, { target: { value: "pasted fallback" } });
+    fireEvent.click(screen.getByRole("button", { name: "运行预览" }));
+    await waitFor(() => expect(repository.parsePreview).toHaveBeenLastCalledWith("skill-charging", expect.objectContaining({ sampleText: "pasted fallback", fileName: "sample.log" })));
+  });
   it("keeps the mounted sample and its scroll position across sections", async () => {
     const { repository } = setup();
     const sample = await screen.findByRole("region", { name: "样例内容" });
@@ -59,6 +91,22 @@ describe("skill workspace", () => {
     expect(screen.getByRole("region", { name: "样例内容" })).toBe(sample);
     expect(sample.scrollTop).toBe(120);
     expect(repository.getSkillSample).toHaveBeenCalledTimes(1);
+  });
+  it("edits parsing in the shared draft, saves and publishes it, and blocks invalid YAML", async () => {
+    const { repository } = setup({ section: "parsing" });
+    const editor = await screen.findByRole("textbox", { name: "代码视图 · YAML" });
+    fireEvent.change(editor, { target: { value: "schemaVersion: parsing/v1\nextractors: [" } });
+    expect(screen.getByRole("group", { name: "未发布更改" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    fireEvent.change(editor, { target: { value: "schemaVersion: parsing/v1\nextractors:\n  - id: current\n    pattern: '(?P<value>.+)'\n    fields:\n      value: {type: string}\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ parsing: expect.objectContaining({ schemaVersion: "parsing/v1", extractors: [expect.objectContaining({ id: "current" })] }) }), null, "current"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "发布" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "发布" }));
+    const dialog = screen.getByRole("dialog", { name: "发布技能" });
+    expect(within(dialog).getByLabelText("解析规则差异")).toHaveTextContent("current · 新增");
+    fireEvent.click(within(dialog).getByRole("button", { name: "发布" }));
+    await waitFor(() => expect(repository.publishSkill).toHaveBeenCalledWith("skill-charging", "saved"));
   });
   it("shows compact overview facts without leaking the internal skill id", async () => {
     setup();

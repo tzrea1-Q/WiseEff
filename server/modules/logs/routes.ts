@@ -34,6 +34,8 @@ import type { LogWebhookDeliverer } from "./webhookDelivery";
 import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, listLogSkillTemplates, publishLogSkill, readLogSkillRevisions, restoreLogSkillRevision, saveLogSkillDraft } from "./skillsService";
 import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "./skillSamplesService";
 import { logSkillSpecSchema } from "./skillSpec";
+import { previewLogSkillParsing } from "./skillsService";
+import { parsePreviewRequestSchema } from "./parsing/spec";
 import {
   createLogBodySchema,
   createLogDomainBodySchema,
@@ -291,6 +293,12 @@ export function registerLogRoutes(
     const { skillId } = parseWithSchema(skillParams, request.params);
     await deleteLogSkillSample(requireDb(options.db), auth, skillId, createUserInvocation(auth), { requestId: request.requestId });
     return { status: 204, body: undefined };
+  });
+  router.post("/api/v1/log-skills/:skillId/parse-preview", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const body = parseWithSchema(parsePreviewRequestSchema, request.body);
+    return { status: 200, body: await previewLogSkillParsing(requireDb(options.db), auth, skillId, body) };
   });
   router.get("/api/v1/log-skills/:skillId", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

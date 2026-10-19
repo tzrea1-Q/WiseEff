@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { MAX_LOG_PATTERN_INPUT_LENGTH } from "../../adminPattern";
 import { parseLogText } from "../../parser";
 import { runLogPrefilter } from "../../prefilter";
-import { executeLogAnalysisTool, LOG_ANALYSIS_TOOL_NAMES } from "./toolCatalog";
+import { availableLogAnalysisTools, executeLogAnalysisTool } from "./toolCatalog";
+import { parsingSpecSchema } from "../../parsing/spec";
+import { decodeLogFiles } from "../../parsing/engine";
 import type { LogAnalysisToolContext } from "./toolContext";
 
 function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnalysisToolContext {
@@ -27,6 +29,58 @@ function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnaly
 }
 
 describe("executeLogAnalysisTool dispatch", () => {
+  it("bounds serialized decoded output and fields without mutating stored events, preserving pagination", async () => {
+    const spec = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "large", pattern: "(?P<v>.*)", fields: { v: { type: "string" } } }] });
+    const events = Array.from({ length: 50 }, (_, i) => ({ v: 1 as const, source: "declarative" as const, extractor: "large", file: "a.log", line: i + 1,
+      fields: { v: { raw: "界".repeat(8000), value: "界".repeat(8000) } } }));
+    const context = buildContext({ decoding: { spec, events, counts: { total: 50, byExtractor: { large: 50 }, errors: {} } } });
+    const outcome = await executeLogAnalysisTool("query_events", { extractor: "large" }, context);
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect((outcome.result as { truncated: boolean }).truncated).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(outcome))).toBeLessThanOrEqual(16 * 1024);
+    if (outcome.ok) {
+      const result = outcome.result as { events: typeof events; nextCursor: string };
+      expect(result.events.length).toBeGreaterThan(0);
+      expect(result.nextCursor).toBe(String(result.events.length));
+      expect(Buffer.byteLength(JSON.stringify(result.events[0].fields.v))).toBeLessThanOrEqual(1024);
+      expect(events[0].fields.v.raw).toHaveLength(8000);
+      const next = await executeLogAnalysisTool("query_events", { extractor: "large", cursor: result.nextCursor,
+        where: [{ field: "v", op: "eq", value: events[0].fields.v.value }], limit: 1 }, context);
+      expect(next.ok).toBe(true);
+      if (next.ok) expect((next.result as { events: typeof events }).events[0].line).toBe(result.events.length + 1);
+    }
+    const invalid = await executeLogAnalysisTool("query_events", { extractor: "large", ["x".repeat(20_000)]: true }, context);
+    expect(invalid.ok).toBe(false);
+    expect(Buffer.byteLength(JSON.stringify(invalid))).toBeLessThanOrEqual(16 * 1024);
+  });
+  it("composes decoded tools per revision, describes counts, and queries typed values with bounded pagination", async () => {
+    const context = buildContext();
+    expect(await executeLogAnalysisTool("query_events", { extractor: "value" }, context)).toMatchObject({ ok: false });
+    expect(await executeLogAnalysisTool("describe_event_schema", {}, context)).toMatchObject({ ok: false });
+    const spec = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "value", pattern: "(?P<n>\\d+)", fields: { n: { type: "uint" } } }] });
+    context.decoding = { spec, ...decodeLogFiles(spec, [{ file: "a.log", lines: Array.from({ length: 55 }, (_, i) => String(i)) }, { file: "b.log", lines: ["5"] }]) };
+    expect(await executeLogAnalysisTool("describe_event_schema", {}, context)).toMatchObject({ ok: true, result: { extractors: [{ id: "value", fields: { n: { type: "uint" } }, count: 56 }] } });
+    const first = await executeLogAnalysisTool("query_events", { extractor: "value" }, context);
+    expect(first).toMatchObject({ ok: true, result: { nextCursor: "50" } });
+    if (first.ok) expect((first.result as { events: unknown[] }).events).toHaveLength(50);
+    expect(await executeLogAnalysisTool("query_events", { extractor: "value", cursor: "50" }, context)).toMatchObject({ ok: true, result: { nextCursor: null } });
+    for (const [op, expected, values] of [["eq", 5, [5]], ["ne", 5, [0, 1]], ["lt", 2, [0, 1]], ["lte", 1, [0, 1]], ["gt", 52, [53, 54]], ["gte", 53, [53, 54]], ["in", [3, 4], [3, 4]]] as const) {
+      const outcome = await executeLogAnalysisTool("query_events", { extractor: "value", file: "a.log", where: [{ field: "n", op, value: expected }], limit: 2 }, context);
+      expect(outcome.ok).toBe(true);
+      if (outcome.ok) expect((outcome.result as { events: Array<{ fields: { n: { value: number } } }> }).events.map((e) => e.fields.n.value)).toEqual(values);
+    }
+    for (const args of [{ extractor: "unknown" }, { extractor: "value", limit: 51 }, { extractor: "value", cursor: "bad" },
+      { extractor: "value", where: [{ field: "missing", op: "eq", value: 1 }] }, { extractor: "value", where: [{ field: "n", op: "in", value: 1 }] }]) {
+      expect(await executeLogAnalysisTool("query_events", args, context)).toMatchObject({ ok: false });
+    }
+    const labels = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "labels", pattern: "(?P<state>\\d+) (?P<data>\\w+) (?P<time>.+)", fields: {
+      state: { type: "enum", values: { "2": "thermal" } }, data: { type: "hexbytes" }, time: { type: "timestamp", format: "%Y-%m-%d" }
+    } }] });
+    context.decoding = { spec: labels, ...decodeLogFiles(labels, [{ file: "a.log", lines: ["2 ff 2026-10-19"] }]) };
+    for (const condition of [{ field: "state", op: "eq", value: "thermal" }, { field: "data", op: "eq", value: { hex: "ff", length: 1 } }, { field: "time", op: "gt", value: "2026-10-18T00:00:00.000Z" }]) {
+      expect(await executeLogAnalysisTool("query_events", { extractor: "labels", where: [condition] }, context)).toMatchObject({ ok: true, result: { events: [{ extractor: "labels" }] } });
+    }
+  });
   it("lists inventory, filters search by file glob, and requires an explicit range file", async () => {
     const context = buildContext();
     context.files = ["device/a.log", "device/b.log"].map((path) => ({ path, sizeBytes: 100, lineCount: context.parsed.rawLines.length,
@@ -47,7 +101,7 @@ describe("executeLogAnalysisTool dispatch", () => {
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.error).toContain('Unknown tool "write_parameter"');
-      for (const name of LOG_ANALYSIS_TOOL_NAMES) {
+      for (const name of availableLogAnalysisTools(buildContext())) {
         expect(outcome.error).toContain(name);
       }
     }

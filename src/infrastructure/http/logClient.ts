@@ -36,6 +36,7 @@ import {
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
 } from "@wiseeff/dto-schemas";
+import { parsePreviewResponseSchema } from "@wiseeff/dto-schemas";
 import {
   jobSnapshotFromDto,
   logDomainFromDto,
@@ -175,6 +176,19 @@ export function createHttpLogAnalysisRepository(
     return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
   }
   const repository: LogAnalysisRepository = {
+    async parsePreview(id, input) {
+      return parseContractDto(parsePreviewResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/parse-preview`, input), "LogParsePreviewResponse");
+    },
+    async getSkillSampleText(id) {
+      try {
+        const result = await apiClient.get<{ item: { content?: string; fileName?: string } | null }>(`/api/v1/log-skills/${encodeURIComponent(id)}/sample`);
+        const text = result.item?.content;
+        return typeof text === "string" ? { text, fileName: result.item?.fileName } : null;
+      } catch (error) {
+        if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") return null;
+        throw error;
+      }
+    },
     async listLogs(query?: LogListQuery) {
       const response = parseContractDto(
         logRecordListResponseSchema,

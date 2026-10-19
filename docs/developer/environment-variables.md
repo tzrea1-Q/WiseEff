@@ -203,6 +203,8 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | `LOG_BUNDLE_MAX_UNPACKED_BYTES` | `104857600` | bundle intake | Total original file bytes; intermediate inflated containers are also bounded; default 100 MiB. |
 | `LOG_BUNDLE_MAX_FILES` | `2000` | bundle intake | Maximum non-directory leaf files, including skipped files. |
 | `LOG_BUNDLE_MAX_FILE_BYTES` | `104857600` | bundle intake | Per-file original byte cap; default 100 MiB. Inflate also obeys the 200x ratio / 1 MiB floor. |
+| `LOG_DECODE_MAX_EVENTS` | `50000` | worker decoding | Per-run event retention cap across files/extractors; excess matches increment `event_cap`. Positive safe integer; malformed/zero/negative values use the default. |
+| `LOG_DECODE_MAX_MS` | `15000` | worker decoding | Elapsed decode budget in milliseconds; values above `20000` are clamped. The worker further limits decoding to one quarter of its remaining lease (no renewal), checking every line/flush/compilation and yielding after about 8 ms or 2000 checkpoints. Timeout retains completed events, discards unfinished groups, increments `time_cap` once and continues. Positive safe integer; malformed/zero/negative values use the default. |
 | `LOG_ANALYSIS_JUDGE_API_BASE_URL` | blank | quality eval judge | OpenAI-compatible endpoint for the LLM-as-judge in `npm run logs:eval:quality` (real-model mode). Unset → deterministic rubric stub. |
 | `LOG_ANALYSIS_JUDGE_MODEL` | blank | quality eval judge | Judge model id, recorded in the quality report. |
 | `LOG_ANALYSIS_JUDGE_API_KEY` | blank | quality eval judge | Secret. |
@@ -210,6 +212,8 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge calibration | Deterministic human-review sampling rate (0..1) for `docs/generated/log-analysis-judge-sample.md`; at least one judged case is always sampled. |
 
 Bundle defaults are sized for the stock 512 MiB API / 384 MiB worker containers in `ops/self-hosted/compose.yaml`, retaining the previous 100 MiB single-file envelope. Raising these limits requires increasing container memory until streaming intake (#1234) lands. `npx tsx scripts/log-bundle-memory-probe.ts` (three files totaling 95 MiB, including per-file storage and archive construction) measured 357 MiB peak RSS in a standalone process.
+
+Decoding defaults target the same stock 384 MiB worker: 50,000 retained events and a 15,000 ms elapsed decode budget. Raising event retention requires reviewing container memory; time is always capped at 20,000 ms and one quarter of the remaining lease. Parsing patterns are limited to 512 UTF-16 units/counts of 100, input to 6144 units per line and 16,384 per group. Preview independently caps validation/decoding at 100 ms with a watchdog, 5000 processed lines and 500 returned events, reporting `truncated`/`reason`. The worker streams JSONL through gzip and retains parsed input/event objects; the ordered array supports cursors and the evidence index shares objects. Artifact errors persist `artifact_error` with a null key and continue without decoded events. Run `npx tsx scripts/log-decode-memory-probe.ts` separately from tests for a 95 MiB, three-file decode/compress/index probe. It prints elapsed time, events, peak RSS, heap usage and interval-drift stalls; it has not been run for this change and does not establish stock-container acceptance.
 
 ## Log Analysis Result Webhooks
 

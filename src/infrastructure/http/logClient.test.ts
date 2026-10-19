@@ -122,6 +122,40 @@ it("uses workspace contracts, encodes ids and sends draft bases for all authorin
 });
 
 describe("createHttpLogAnalysisRepository", () => {
+  it("gets the real kernel report with string raw values and decoded evidence", async () => {
+    const evidence = [{
+      decodedFields: [{ v: 1, file: "kernel.log", line: 1, fields: {
+        ibus: { raw: "1450", value: 1450 }, temp: { raw: "71", value: 71 }, vbus: { raw: "9012", value: 9012 }
+      }, source: "declarative", extractor: "thermal" }],
+      id: "evidence-…-0", stageId: "rootcause", lineNumbers: [1, 3, 4],
+      inference: "Thermal protection reduced charging output.", suggestedAction: "…", filePath: "kernel.log", ruleHit: "thermal-foldback"
+    }];
+    const fetchMock = createFetchMock({ item: { ...baseLogDto, fileName: "kernel.log", evidence } });
+    const repository = createRepository(fetchMock);
+    expect((await repository.getLog("log-1"))?.evidence).toEqual(evidence);
+
+    const multilineEvidence = [{ ...evidence[0], decodedFields: [{ ...evidence[0].decodedFields[0], endLine: 4,
+      errors: [{ field: "temp", code: "conversion", message: "Invalid temperature" }] }] }];
+    fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...baseLogDto, evidence: multilineEvidence } }));
+    expect((await repository.getLog("log-1"))?.evidence).toEqual(multilineEvidence);
+  });
+
+  it("previews unsaved parsing and preserves decoded evidence across the HTTP port", async () => {
+    const preview = { valid: true, truncated: false, issues: [], events: [{ v: 1, source: "declarative", file: "a.log", line: 1, extractor: "state", fields: { state: { raw: "2", value: "thermal" } } }],
+      counts: { total: 1, byExtractor: { state: 1 }, errors: {} }, unmatchedLineCount: 0 };
+    const fetchMock = createFetchMock(preview);
+    const repository = createRepository(fetchMock);
+    const input = { parsing: { schemaVersion: "parsing/v1", extractors: [] }, sampleText: "sample", fileName: "a.log" };
+    await expect(repository.parsePreview!("skill/a", input)).resolves.toEqual(preview);
+    expect(fetchMock.mock.calls[0][0]).toContain("/log-skills/skill%2Fa/parse-preview");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(input);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...baseLogDto, evidence: [{ ...baseLogDto.evidence[0], decodedFields: preview.events }] } }));
+    await expect(repository.getLog("log-1")).resolves.toMatchObject({ evidence: [{ decodedFields: preview.events }] });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: { code: "NOT_FOUND", message: "unavailable", details: {} } }, 404));
+    await expect(repository.getSkillSampleText!("skill/a")).resolves.toBeNull();
+    fetchMock.mockResolvedValueOnce(jsonResponse({ item: { content: "stored", fileName: "a.log", truncated: false } }));
+    await expect(repository.getSkillSampleText!("skill/a")).resolves.toEqual({ text: "stored", fileName: "a.log" });
+  });
   it("sends repeated multipart file parts as one bundle and preserves inventory and evidence paths", async () => {
     const files = [new File(["first"], "a.log"), new File(["second"], "b.log")];
     const inventory = [{ path: "a.log", sizeBytes: 5, lineCount: 1, encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null }];

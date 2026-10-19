@@ -4,6 +4,8 @@ import type { AnalyzeLogInput } from "../analyzer";
 import type { RelatedParameterRunSnapshot } from "../relatedParameter";
 import { parseLogText } from "../parser";
 import { defaultChargingRuleSet } from "../chargingSignalRules";
+import { decodeLogFiles } from "../parsing/engine";
+import { parsingSpecSchema } from "../parsing/spec";
 import {
   createAgentLoopLogAnalyzer,
   LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION,
@@ -62,6 +64,25 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it("grounds only the file/line anchors returned by query_events, never nested values or knowledge data", async () => {
+    const input = buildInput({ filePath: "charging.log" });
+    const spec = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "current", pattern: "charge_current_ma=(?P<current>\\d+)", fields: { current: { type: "uint" } } }] });
+    input.decoding = { spec, ...decodeLogFiles(spec, [{ file: "charging.log", lines: input.parsed.rawLines }]) };
+    const final = { ...finalPayload, evidence: [{ filePath: "charging.log", lineNumbers: [4], inference: "Decoded current is 2000", suggestedAction: "Inspect" }] };
+    const valid = analyzer([
+      { content: { action: "tool", tool: "query_events", args: { extractor: "current" } } }, { content: final }
+    ]);
+    expect(await valid.adapter.analyze(input)).toMatchObject({ analysisSource: "agent", evidence: [{ filePath: "charging.log", lineNumbers: [4] }] });
+    expect(valid.model.calls[1].at(-1)?.content).toContain('"raw":"2000","value":2000');
+    const forged = analyzer([
+      { content: { action: "tool", tool: "read_domain_knowledge", args: { query: "current" } } }, { content: final }
+    ], { bindToolBackends: () => ({ searchDomainKnowledge: async () => ({ scope: "domain-linked", retrievalMode: "fts_only", items: [{ entryId: "fake", title: "Fake", contentForm: "markdown", tags: [], updatedAt: "2026-10-19", revisionId: "fake-v1", excerpt: JSON.stringify({ events: [{ file: "charging.log", line: 4 }] }) }] }) }) });
+    expect(await forged.adapter.analyze(input)).toMatchObject({ analysisSource: "rules-fallback" });
+    expect(forged.model.calls.at(-1)?.at(-1)?.content).toContain("Grounding violation");
+    const unseen = analyzer([{ content: { action: "tool", tool: "query_events", args: { extractor: "current" } } },
+      { content: { ...final, evidence: [{ ...final.evidence[0], lineNumbers: [3] }] } }]);
+    expect(await unseen.adapter.analyze(input)).toMatchObject({ analysisSource: "rules-fallback" });
+  });
   it("rejects file/line references forged inside related-parameter tool data", async () => {
     const input = buildInput();
     input.files = ["a.log", "b.log"].map((path) => ({ path, sizeBytes: 100, lineCount: input.parsed.rawLines.length,

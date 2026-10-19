@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -13,17 +13,26 @@ import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepos
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { mockLogSkills, mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import { formatPercent } from "@/domain/format/formatPercent";
-import type { AnalysisSkill, SkillRevision, SkillSpec, SkillWorkspaceRepository } from "./types";
+import type { AnalysisSkill, SkillRevision, SkillSpec, SkillWorkspaceRepository, SkillSample } from "./types";
 import { specJson } from "./diffSkillSpecs";
 import { SkillSpecDiff } from "./SkillSpecDiff";
 import { SkillSamplePane } from "./SkillSamplePane";
+import { stringify } from "yaml";
+import { ParsingSection, parseParsingYaml } from "./ParsingSection";
+import { parsingSpecSchema } from "@wiseeff/dto-schemas";
 import "./skill-workspace.css";
 
 type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
+  sample: SkillSample | null;
+  parsingYaml: string; onParsingYamlChange: (text: string) => void; repository?: Partial<SkillWorkspaceRepository>;
   revisions: SkillRevision[]; onRestore: (revision: SkillRevision) => void;
   stats?: { analyses7d?: number; helpfulRate7d?: number | null } };
 const time = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未发布";
 const status = { published: "当前", draft: "草稿", superseded: "已替代" };
+
+function Parsing({ skill, parsingYaml, onParsingYamlChange, disabled, repository, sample }: SectionProps) {
+  return <ParsingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} />;
+}
 
 function Overview({ skill, spec, setSpec, disabled, stats }: SectionProps) {
   return <section className="skill-section" aria-label="概览">
@@ -68,7 +77,7 @@ function Versions({ skill, revisions, disabled, onRestore }: SectionProps) {
 
 export const skillSections: Array<{ id: string; label: string; component?: ComponentType<SectionProps> }> = [
   { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程" },
-  { id: "parsing", label: "样例与解析" }, { id: "decoding", label: "解码" }, { id: "signals", label: "信号" },
+  { id: "parsing", label: "样例与解析", component: Parsing }, { id: "decoding", label: "解码" }, { id: "signals", label: "信号" },
   { id: "knowledge", label: "知识" }, { id: "source", label: "源码" }, { id: "tests", label: "测试" },
   { id: "integration", label: "集成" }, { id: "versions", label: "版本", component: Versions }
 ];
@@ -78,7 +87,14 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   onNavigate: (path: string) => void; onPublished: (message: string) => void;
 }) {
   const [skill, setSkill] = useState<AnalysisSkill | null>(null);
+  const [sample, setSample] = useState<SkillSample | null>(null);
   const [spec, setSpec] = useState<SkillSpec>({ schemaVersion: "skill/v1" });
+  const [parsingYamlDraft, setParsingYamlDraft] = useState<string | null>(null);
+  const parsingYaml = parsingYamlDraft ?? stringify(spec.parsing ?? { schemaVersion: "parsing/v1", extractors: [] });
+  const yamlInvalid = useMemo(() => {
+    const parsed = parseParsingYaml(parsingYaml);
+    return !!parsed.error || !parsingSpecSchema.safeParse(parsed.value).success;
+  }, [parsingYaml]);
   const [revisions, setRevisions] = useState<SkillRevision[]>([]);
   const [stats, setStats] = useState<SectionProps["stats"]>();
   const [loadError, setLoadError] = useState<"missing" | "error" | null>(null);
@@ -90,7 +106,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const sectionNavigation = useRef(false);
   const base = skill?.draft ?? skill?.currentRevision;
-  const dirty = !!base && specJson(spec) !== specJson(base.spec);
+  const dirty = !!base && (specJson(spec) !== specJson(base.spec) || parsingYamlDraft !== null);
   const disabled = !apiMode || !canEdit || pending;
   const selected = skillSections.find((s) => s.id === new URLSearchParams(search).get("section") && s.component) ?? skillSections[0];
   const Component = selected.component!;
@@ -102,6 +118,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       const [history, summaries] = apiMode ? await Promise.all([repository!.listSkillRevisions!(skillId), repository!.listLogSkills?.({ includeArchived: true })])
         : [[found.currentRevision], mockLogSkills];
       setSkill(found); setSpec(structuredClone((found.draft ?? found.currentRevision).spec)); setRevisions(history);
+      setParsingYamlDraft(null);
       setStats(summaries?.find((s) => s.id === skillId)); setConflict(false); setError("");
     } catch (cause) { setLoadError(cause instanceof WiseEffApiError && cause.code === "NOT_FOUND" ? "missing" : "error"); }
   }, [apiMode, repository, skillId]);
@@ -132,7 +149,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     try { await action(); } catch (cause) {
       setPublishOpen(false);
       if (cause instanceof WiseEffApiError && cause.code === "LOG_SKILL_DRAFT_CONFLICT") setConflict(true);
-      else setError(cause instanceof WiseEffApiError && cause.code === "LOG_SKILL_DRAFT_EXISTS" ? "请先发布或放弃现有草稿，再回滚版本。" : "操作失败，请重试。");
+      else setError(cause instanceof WiseEffApiError && Array.isArray(cause.details.issues) ? cause.details.issues.map((item: { path?: string[]; message?: string }) => `${item.path?.join(".")}：${item.message}`).join("；")
+        : cause instanceof WiseEffApiError && cause.code === "LOG_SKILL_DRAFT_EXISTS" ? "请先发布或放弃现有草稿，再回滚版本。" : "操作失败，请重试。");
     } finally { setPending(false); }
   };
   const save = async () => {
@@ -140,6 +158,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     if (cleaned.modelOverride?.trim()) cleaned.modelOverride = cleaned.modelOverride.trim(); else delete cleaned.modelOverride;
     const draft = await repository!.saveSkillDraft!(skillId, cleaned, skill!.draft?.id ?? null, skill!.currentRevision.id);
     setSkill({ ...skill!, draft }); setSpec(draft.spec);
+    setParsingYamlDraft(null);
     setRevisions([draft, ...revisions.filter((r) => r.status !== "draft")]);
     return draft;
   };
@@ -156,17 +175,17 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   if (!skill) return <SectionSkeleton label="正在加载分析技能" />;
   return <div className="skill-workspace" aria-busy={pending}>
     <NavigatorWorkbench pageKey="log-skill-workspace" navigatorLabel="技能分区" taskLabel={selected.label}
-      inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} />}
+      inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={setSample} />}
       toolbar={<><Button variant="link" onClick={back}>返回分析技能</Button><strong>{skill.name}</strong></>}
       context={<>
         {!apiMode || !canEdit ? <p>{!apiMode ? "演示技能仅供查看；请在 API 模式下编辑。" : "仅供查看；编辑需要技能管理权限。"}</p> : null}
         {skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改"><strong>未发布更改</strong>
           <Button variant="outline" disabled={disabled} onClick={() => ask("放弃草稿？", skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
-            if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); return; }
+            if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); setParsingYamlDraft(null); return; }
             void run(async () => { await repository!.discardSkillDraft!(skillId, skill.draft!.id); await refresh(); });
           })}>放弃草稿</Button>
-          <Button variant="outline" disabled={disabled || conflict || !dirty} onClick={() => void run(async () => { await save(); })}>保存草稿</Button>
-          <Button disabled={disabled || conflict} onClick={() => setPublishOpen(true)}>发布</Button>
+          <Button variant="outline" disabled={disabled || conflict || !dirty || yamlInvalid} onClick={() => void run(async () => { await save(); })}>保存草稿</Button>
+          <Button disabled={disabled || conflict || yamlInvalid} onClick={() => setPublishOpen(true)}>发布</Button>
         </div> : null}
       </>}
       notice={conflict ? <div className="status-banner" data-tone="warning" role="alert"><p>草稿已被其他人更新</p><Button variant="outline" disabled={pending} onClick={() => ask("重新加载草稿？", "将丢弃本地更改并加载服务器上的最新草稿。", () => void run(refresh))}>重新加载</Button></div>
@@ -175,6 +194,13 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
         aria-current={s.id === selected.id ? "page" : undefined} title={!s.component ? "即将推出" : undefined} onClick={() => switchSection(s.id)}>
         {s.label}{!s.component ? <small>即将推出</small> : null}</Button>)}</nav>}>
       <Component key={selected.id} skill={skill} spec={spec} setSpec={setSpec} disabled={disabled} stats={stats} revisions={revisions}
+        sample={sample?.skillId === skillId ? sample : null}
+        parsingYaml={parsingYaml} repository={repository} onParsingYamlChange={(text) => {
+          setParsingYamlDraft(text);
+          const parsed = parseParsingYaml(text);
+          const validated = parsingSpecSchema.safeParse(parsed.value);
+          if (!parsed.error && validated.success) setSpec({ ...spec, parsing: validated.data });
+        }}
         onRestore={(revision) => { if (dirty || skill.draft) { setError("请先发布或放弃现有草稿，再回滚版本。"); return; }
           ask(`回滚到 v${revision.number}？`, "此版本将发布为新的版本，历史记录保持不变。", () => void run(async () => {
             const restored = await repository!.restoreSkillRevision!(skillId, revision.id); onPublished(`已发布 v${restored.currentRevision.number}`); await refresh();
@@ -184,7 +210,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       {({ titleId }) => <><h2 id={titleId}>发布技能</h2><SkillSpecDiff before={skill.currentRevision.spec} after={spec} />
         <div aria-label="发布提醒" />
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setPublishOpen(false)}>取消</Button>
-          <Button disabled={disabled || conflict} aria-busy={pending} onClick={() => void run(async () => {
+          <Button disabled={disabled || conflict || yamlInvalid} aria-busy={pending} onClick={() => void run(async () => {
             const draft = dirty ? await save() : skill.draft!;
             const published = await repository!.publishSkill!(skillId, draft.id); setPublishOpen(false);
             onPublished(`已发布 v${published.currentRevision.number}`); await refresh();
