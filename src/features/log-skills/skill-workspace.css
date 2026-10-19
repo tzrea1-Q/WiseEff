@@ -81,6 +81,7 @@
 .skill-rule-output { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--space-10) * 3.5); align-items: start; gap: var(--space-3); }
 .skill-rule-add { justify-self: start; }
 .skill-rule-hits { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.skill-enum-option { display: inline-flex; align-items: center; gap: var(--space-1); }
 .skill-rule-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
 .skill-rule-error { color: var(--danger); overflow-wrap: anywhere; }
 .skill-signal-rule p { margin: 0; }

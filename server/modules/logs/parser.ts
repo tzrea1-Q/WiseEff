@@ -3,6 +3,7 @@ import { TextDecoder } from "node:util";
 import { compileLogPattern, createLogPatternCache, type LogPattern, type LogPatternCache } from "./adminPattern";
 import type { LogFormatProfile } from "./formatProfile";
 import { supportedLogExtensions } from "./status";
+import type { DecodedEvent } from "./parsing/spec";
 import { isSupportedStoredLogFileName, supportedLogArchiveExtensions } from "./unpack";
 
 export type ParsedLogSeverity = "error" | "warn" | "info";
@@ -14,6 +15,7 @@ export type ParsedLogEntry = {
   message: string;
   tokens: Record<string, string>;
   signalFields?: Record<string, string | number | boolean>;
+  signalEvents?: readonly DecodedEvent[];
 };
 
 export type ParseLogTextInput = {

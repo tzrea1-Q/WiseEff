@@ -121,6 +121,53 @@ describe("signal authoring", () => {
     expect(next.signalRules.rules[0].anyOf[0]).toEqual({ type: "window", condition: { type: "field", field: "status.temp", operator: "equals", value: 7 }, count: 2, seconds: 30 });
     expect(logSkillSpecSchema.parse(JSON.parse(JSON.stringify(next)))).toEqual(next);
   });
+  it("selects decoded meanings and numeric leaves with units, previews hits and highlights their sample line", async () => {
+    const spec = structuredClone(initial);
+    spec.parsing = { schemaVersion: "parsing/v1",
+      registers: { REG0C: { width: 8, fields: [{ name: "CHRG_FAULT", bits: [5, 4], enum: { "0": "normal", "2": "thermal_shutdown" } }, { name: "VOLTAGE", bits: [3, 0], unit: "mV" }] } },
+      registerMaps: { charger: { selectBy: "addr", cases: { "0x0C": "REG0C" } } },
+      extractors: [{ id: "dump", pattern: "addr=(?<addr>\\S+) val=(?<val>\\S+)", fields: { addr: { type: "uint" }, val: { type: "uint", decode: { registerMap: "charger" } } } }] };
+    spec.signalRules!.rules[0].anyOf = [{ type: "text", pattern: "timeout" }];
+    const sample = { ...mockSkillSample, content: "unmatched\naddr=0x0C val=0x20", lineCount: 2 };
+    const onChange = vi.fn();
+    const signalPreview = vi.fn<NonNullable<SkillWorkspaceRepository["signalPreview"]>>(async (_id, input) => ({ ...result,
+      hits: input.signalRules.rules[0].anyOf.some((condition) => condition.type === "field" && condition.field === "dump.val.fields.CHRG_FAULT.meaning" && condition.value === "thermal_shutdown")
+        ? [{ ruleId: "legacy", lineNumber: 2, excerpt: "addr=0x0C val=0x20" }] : [] }));
+    const repository = { signalPreview, getSkillSample: async () => sample };
+    function Harness() {
+      const [value, setValue] = useState(spec);
+      const [line, setLine] = useState<number | null>(null);
+      return <><SignalsSection skillId="s" spec={value} onChange={(next) => { setValue(next); onChange(next); }} disabled={false} repository={repository} sample={sample} onHit={setLine} />
+        <SkillSamplePane skillId="s" repository={repository} apiMode canEdit highlightedLine={line} /></>;
+    }
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
+    await choose("规则 1 条件 1类型", "抽取字段");
+    await userEvent.click(screen.getByRole("combobox", { name: "规则 1 条件 1抽取字段" }));
+    expect(screen.getByRole("option", { name: "dump › charger" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("option", { name: "dump.val.fields.VOLTAGE.value（mV）" })).toBeVisible();
+    await userEvent.click(screen.getByRole("option", { name: "dump.val.fields.CHRG_FAULT.meaning" }));
+    await choose("规则 1 条件 1值", "thermal_shutdown");
+    const condition = { type: "field", field: "dump.val.fields.CHRG_FAULT.meaning", operator: "equals", value: "thermal_shutdown" };
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual(condition);
+    expect(logSkillSpecSchema.safeParse(onChange.mock.lastCall![0]).success).toBe(true);
+    await waitFor(() => expect(screen.getByText(/命中 1 次/)).toBeVisible());
+    expect(signalPreview.mock.lastCall![1].parsing).toEqual(spec.parsing);
+    await userEvent.click(screen.getByRole("button", { name: "第 2 行：addr=0x0C val=0x20" }));
+    const pane = await screen.findByRole("region", { name: "样例内容" });
+    expect(within(pane).getByText("addr=0x0C val=0x20").parentElement).toHaveAttribute("data-highlighted", "true");
+    await userEvent.click(screen.getByRole("combobox", { name: "规则 1 条件 1比较方式" }));
+    expect(screen.queryByRole("option", { name: "在范围内" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "属于集合" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "thermal_shutdown" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "normal" }));
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual({ type: "field", field: condition.field, operator: "in", values: ["thermal_shutdown", "normal"] });
+    await userEvent.click(screen.getByRole("checkbox", { name: "normal" }));
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0].values).toEqual(["thermal_shutdown"]);
+    await choose("规则 1 条件 1抽取字段", "dump.val.fields.VOLTAGE.value（mV）");
+    await choose("规则 1 条件 1比较方式", "在范围内");
+    expect(onChange.mock.lastCall![0].signalRules.rules[0].anyOf[0]).toEqual({ type: "field", field: "dump.val.fields.VOLTAGE.value", operator: "range", min: 0, max: 100 });
+  });
   it("shows field paths for invalid RE2, unknown fields, reversed ranges and nonpositive windows", async () => {
     setup();
     await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
@@ -140,6 +187,22 @@ describe("signal authoring", () => {
     cleanup();
     setup(withCondition({ type: "window", condition: { type: "text", pattern: "error" }, count: 1, seconds: 0 }));
     expect(screen.getAllByRole("alert").some((item) => item.textContent?.includes("signalRules.rules.0.anyOf.0.seconds"))).toBe(true);
+  });
+  it("explains picker truncation and keeps an existing path beyond its cap editable", async () => {
+    const spec = structuredClone(initial);
+    spec.parsing = { schemaVersion: "parsing/v1", frames: {}, extractors: [{ id: "x", pattern: "(?<v>.+)", fields: { v: { type: "hexbytes", decode: { frame: "F0" } } } }] };
+    for (let i = 0; i < 4; i++) spec.parsing.frames![`F${i}`] = { fields: i === 3 ? []
+      : Array.from({ length: 32 }, (_, n) => ({ name: `f${n}`, type: "frame", frame: `F${i + 1}` })) };
+    spec.parsing.frames!.F0.fields.push({ name: "tail", type: "uint", length: 1 });
+    const path = "x.v.fields.tail.value";
+    spec.signalRules!.rules[0].anyOf = [{ type: "field", field: path, operator: "equals", value: 7 }];
+    setup(spec);
+    expect(screen.getByRole("status")).toHaveTextContent("其余路径可在代码视图中配置");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "展开规则 1" }));
+    expect(screen.getByRole("combobox", { name: "规则 1 条件 1抽取字段" })).toHaveTextContent(path);
+    await choose("规则 1 条件 1比较方式", "在范围内");
+    expect(screen.getByRole("spinbutton", { name: "规则 1 条件 1最小值" })).toHaveValue(0);
   });
   it("never sends a preview for an invalid draft or missing sample", async () => {
     vi.useFakeTimers();
