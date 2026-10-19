@@ -1,7 +1,8 @@
 import { compileLogPattern } from "./adminPattern";
 import { setImmediate } from "node:timers/promises";
+import { createContext, Script } from "node:vm";
 import type { ParsedLogEntry, ParseResult } from "./parser";
-import type { LogFileReader } from "./fileReader";
+import type { LogFileReader, LogFileLine } from "./fileReader";
 import { compileSignalCondition, type SignalRuleSet } from "./signalRules";
 
 export type LogSignalAnchor = { file: string; line: number; content: string };
@@ -180,7 +181,7 @@ function* extractLogSignalSteps(
 /** The worker yields between small batches; every checkpoint precedes bounded line work. */
 export async function extractLogSignalsCooperatively(
   files: Parameters<typeof extractLogSignalSteps>[0], signalRules?: SignalRuleSet,
-  options: { maxMs?: number; now?: () => number } = {}
+  options: { maxMs?: number; now?: () => number; hardTimeout?: boolean } = {}
 ): Promise<LogSignalSummary> {
   let partial: SignalStep | undefined;
   let active: { fileIndex: number; lines: ReturnType<LogFileReader["lines"]>; entries: ReturnType<LogFileReader["entries"]>; entry?: ParsedLogEntry } | undefined;
@@ -190,7 +191,10 @@ export async function extractLogSignalsCooperatively(
     const deadline = now() + Math.max(0, Math.min(options.maxMs ?? logSignalLimits().maxMs, logSignalLimits().maxMs));
     const realDeadline = performance.now() + Math.max(0, Math.min(options.maxMs ?? logSignalLimits().maxMs, logSignalLimits().maxMs));
     const steps = extractLogSignalSteps(files, signalRules);
-    let step = steps.next();
+    let step: ReturnType<typeof steps.next> = steps.next();
+    let nextLine: SignalLine | undefined;
+    // A constant callback only: administrator patterns are data, never VM source.
+    const watchdog = options.hardTimeout ? { script: new Script("advance()"), context: createContext({ advance: () => steps.next(nextLine) }) } : undefined;
     while (!step.done) {
       await setImmediate();
       const batchStart = now();
@@ -204,16 +208,16 @@ export async function extractLogSignalsCooperatively(
           return step.value;
         }
         let line: SignalLine | undefined;
-        const request = step.value.readLine;
+        const request: SignalStep["readLine"] = step.value.readLine;
         if (request) {
-          const reader = files[request.fileIndex].reader;
+          const reader: SignalFile["reader"] = files[request.fileIndex].reader;
           if (!reader) throw new Error("Invalid streaming signal input");
           if (active?.fileIndex !== request.fileIndex) {
             await close();
             active = { fileIndex: request.fileIndex, lines: reader.lines({ deadline: realDeadline }), entries: reader.entries({ deadline: realDeadline }) };
             active.entry = (await active.entries.next()).value;
           }
-          const raw = await active!.lines.next();
+          const raw: IteratorResult<LogFileLine> = await active!.lines.next();
           if (raw.done || raw.value.lineNumber !== request.lineNumber) throw new Error("Log text does not match its line index");
           while (active!.entry && active!.entry.lineNumber < request.lineNumber) active!.entry = (await active!.entries.next()).value;
           line = { rawContent: raw.value.content, entry: active!.entry?.lineNumber === request.lineNumber ? active!.entry : undefined };
@@ -225,7 +229,8 @@ export async function extractLogSignalsCooperatively(
             return step.value;
           }
         }
-        step = steps.next(line);
+        nextLine = line;
+        step = watchdog ? watchdog.script.runInContext(watchdog.context, { timeout: Math.max(1, Math.ceil(deadline - now())) }) : steps.next(line);
         if (now() - batchStart >= 8) break;
       }
     }
@@ -233,6 +238,10 @@ export async function extractLogSignalsCooperatively(
     step.value.templates.sort((a, b) => b.count - a.count);
     return step.value;
   } catch (error) {
+    if (partial && error && typeof error === "object" && "code" in error && error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") {
+      // The interrupted step may be halfway through mutating its summary.
+      return { ...emptySummary(), truncated: true, reason: "time_cap" };
+    }
     if (partial && error && typeof error === "object" && "code" in error && error.code === "LOG_READER_TIME_CAP") {
       partial.truncated = true; partial.reason = "time_cap";
       partial.templates.sort((a, b) => b.count - a.count);

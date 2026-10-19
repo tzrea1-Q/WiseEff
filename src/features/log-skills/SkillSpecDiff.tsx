@@ -2,7 +2,7 @@ import { diffSkillSpecs, specJson } from "./diffSkillSpecs";
 import type { SkillSpec } from "./types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const labels: Record<string, string> = { description: "描述", procedure: "诊断流程", knowledgeEntryIds: "知识条目", modelOverride: "模型覆盖", mode: "规则来源",
+const labels: Record<string, string> = { parseTests: "解析测试", description: "描述", procedure: "诊断流程", knowledgeEntryIds: "知识条目", modelOverride: "模型覆盖", mode: "规则来源",
   noHit: "未命中规则时", hitDefaults: "命中默认值", anyOf: "触发条件", stageId: "阶段", inference: "推断",
   suggestedAction: "建议操作", analysis: "分析", id: "规则标识", rulesOrder: "规则顺序", defaultSourceSnapshotId: "默认源码快照", statementPatterns: "自定义日志语句模式" };
 const display = (value: unknown) => value === undefined ? "未配置" : value === "default" ? "平台默认充电规则"
@@ -16,6 +16,7 @@ export function SkillSpecDiff({ before, after }: { before: SkillSpec; after: Ski
   const summary = [diff.counts.overview ? `概览 ${diff.counts.overview} 项` : null,
     diff.counts.procedure ? `诊断流程 ${diff.counts.procedure} 项` : null,
     diff.counts.knowledge ? `知识 ${diff.counts.knowledge} 项` : null,
+    diff.tests.length ? "解析测试已更改" : null,
     diff.counts.format ? `基础格式 ${diff.counts.format} 行` : null,
     diff.parsing.length ? `解析规则 ${diff.parsing.length} 项` : null,
     diff.counts.source ? `源码 ${diff.counts.source} 项` : null,
@@ -26,6 +27,7 @@ export function SkillSpecDiff({ before, after }: { before: SkillSpec; after: Ski
   </TableRow>);
   return <div className="skill-diff" aria-label="变更摘要">
     <p>{summary || "两个版本内容相同"}</p>
+    {diff.tests.length ? <section aria-label="解析测试差异"><h3>解析测试</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.tests)}</TableBody></Table></section> : null}
     {diff.overview.length ? <section aria-label="概览差异"><h3>概览</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.overview)}</TableBody></Table></section> : null}
     {diff.procedure.length ? <section aria-label="诊断流程差异"><h3>诊断流程</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.procedure)}</TableBody></Table></section> : null}
     {diff.knowledge.length ? <section aria-label="知识差异"><h3>知识</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.knowledge)}</TableBody></Table></section> : null}

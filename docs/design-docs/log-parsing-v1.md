@@ -74,6 +74,44 @@ Register work uses the existing line, event and elapsed-time budgets, with a che
 
 The paste-table dialog accepts at most 64 KiB UTF-8 and 512 input lines. Oversized input shows an error and cannot be imported. Preview distinguishes valid and rejected rows with text and icons, retains source line numbers and reasons, and shows the valid/rejected counts. The confirmation explicitly replaces all fields of the selected register with the valid rows; it does not append to the existing table.
 
+## Parse tests
+
+`skill/v1` accepts optional `parseTests` alongside `parsing` and `signalRules`. Tests are part of the draft's existing spec JSON and immutable published revision; no migration or test-result table is required. For the register configuration above, a test can be written as:
+
+```yaml
+parseTests:
+  - id: charger-thermal
+    name: Charger thermal shutdown
+    fileName: kernel.log
+    lines: ["addr=0x0C val=0x20"]
+    expect:
+      fields:
+        addr: 12
+        val: 32
+        val.fields.CHRG_FAULT.meaning: thermal_shutdown
+      signals: []
+      exactSignals: false
+```
+
+`id` is unique within the spec (1–100 characters); `name` is nonblank (at most 200 characters). `fileName` is optional (1–1024 characters), defaults to `sample.log`, and participates in extractor file-glob matching. Each `lines` item is one raw line, without CR or LF. The strict `expect` object accepts optional `fields`, `signals` and `exactSignals`.
+
+`expect.fields` maps dot-separated field paths to JSON values. Paths start at the event's `fields`, so nested register expectations use `val.fields.CHRG_FAULT.meaning`. Paths contain identifier segments and cannot contain prototype-access keys. Expected objects match recursively as subsets; all expectations must match the same decoded event. With multiple events, any fully matching event passes; on failure, the event with the fewest differences supplies the diff. A scalar expectation unwraps a converted field's `value` and normalizes numeric strings, including hexadecimal, against numbers. Explicit `.raw` expectations compare the original representation. Arrays compare as complete values. Missing values are reported as `actual: null, missing: true` with their field path, distinguishing an absent field from a present null.
+
+`expect.signals` lists expected rule ids, generic signal kinds or signal titles. Repeated hits and order do not matter. By default, extra signals are permitted; `exactSignals: true` also reports unexpected signals. Omitted field or signal expectations do not assert their absence; an empty signal list with exact mode asserts no signals.
+
+| Bound | Limit |
+| --- | --- |
+| Tests per skill | 50, with unique ids |
+| Input per test | 1–200 lines, at most 6144 UTF-16 code units per line |
+| Input across a run | 5000 lines and 1,048,576 UTF-16 code units |
+| Expectations per test | 200 field paths, each at most 1024 characters; 200 signals, each at most 200 characters; 65,536 serialized JSON code units; JSON nesting depth at most 12 |
+| Execution | 1000 ms for validation, decoding, signal extraction and comparison across all tests |
+| Decoded output across a run | Existing engine caps: 50,000 events, 4 MiB serialized output and 32,768 fields, plus per-event and per-line caps |
+
+One server runner uses the worker's cooperative decoder and signal extractor, including its format-profile parsing and real signal rules. It returns `{total, passed, failed, results, truncated}`. Each result contains `id`, `name`, `passed`, `diffs: [{path, expected, actual, missing?}]`, `missingSignals`, `unexpectedSignals`, actual `events` and signal ids, and an optional execution error. A deadline, decoding error or exhausted cap marks the affected test failed rather than claiming complete success.
+
+Draft save and publication return a fresh optional `parseTestRun`. `POST /api/v1/log-skills/:skillId/parse-tests` accepts `{spec}` to test current edits on demand under the same skill-administration permission and organization scope. Results are response data held only in the open workspace and matched to the tested spec, not persisted: recomputing bounded deterministic tests avoids storing a stale result or adding a migration. The Tests section uses field-path forms with a code-view fallback and an inline diff table. The publish dialog shows passed/total with a failure link; failed results never block publication.
+
 ## Multiline assembly
 
 `multiline` is `{start, continue?, end?, keyField?, maxLines}` with `1 <= maxLines <= 200`. Control patterns match individual raw lines. With `keyField`, every supplied control pattern must capture that declared field, and groups are assembled independently by its exact raw key within a file. Interleaving keys does not mix their text. Without a key there is one open group. A matching start opens a group and flushes the previous group with the same key; a matching end is included and flushes it. Matching continuation lines are included. Without a continuation pattern, an unkeyed group includes subsequent lines until an end, next start, EOF or limit. EOF flushes remaining groups. The extractor pattern runs on the group's lines joined by `\n`.

@@ -104,3 +104,7 @@
 .skill-decoding [aria-label="寄存器字段表"] th:last-child { width: var(--space-16); }
 .skill-decoding [aria-label="寄存器字段表"] td { vertical-align: top; white-space: normal; }
 .skill-register-properties { display: grid; gap: var(--space-2); }
+.skill-parse-tests [aria-label="解析测试列表"] { min-width: 0; }
+.skill-parse-tests [aria-label="解析测试差异"] td { vertical-align: top; }
+.skill-parse-tests code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.skill-section .skill-test-checkbox { display: flex; align-items: center; gap: var(--space-2); }

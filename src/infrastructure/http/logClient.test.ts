@@ -131,6 +131,17 @@ it("uses workspace contracts, encodes ids and sends draft bases for all authorin
   await expect(repository.discardSkillDraft!(skill.id, "draft")).rejects.toMatchObject({ code: "LOG_SKILL_DRAFT_CONFLICT" });
 });
 
+it("runs unsaved parse tests through the bounded server contract with an encoded skill id", async () => {
+  const run = { total: 1, passed: 0, failed: 1, truncated: false, results: [{ id: "test", name: "Sample", passed: false,
+    diffs: [{ path: "value", expected: 2, actual: null, missing: true }], missingSignals: [], unexpectedSignals: [], events: [], signals: [] }] };
+  const fetchMock = createFetchMock(run);
+  const spec = { schemaVersion: "skill/v1" as const, parseTests: [{ id: "test", name: "Sample", lines: ["value=1"], expect: { fields: { value: 2 } } }] };
+  await expect(createRepository(fetchMock).runSkillParseTests!("skill/a", spec)).resolves.toEqual(run);
+  expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills/skill%2Fa/parse-tests");
+  expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ spec });
+});
+
 it("uses source snapshot DTOs, multipart archives, and encoded skill/snapshot paths", async () => {
   const skill = mockSkillWorkspace("skill-charging")!;
   const snapshot = { id: "snapshot-1", skillId: skill.id, versionLabel: "v1", status: "queued", filesProcessed: 0, filesTotal: 0,

@@ -74,6 +74,44 @@ registers:
 
 粘贴表格对话框最多接受 UTF-8 64 KiB、512 行输入。超限显示错误并禁止导入。预览以文字和图标区分有效与被拒行，保留源行号和原因，并汇总有效/被拒行数。确认操作明确将当前寄存器的全部字段替换为有效行，不追加到原字段表。
 
+## 解析测试
+
+`skill/v1` 在 `parsing`、`signalRules` 之外接受可选 `parseTests`。测试保存在草稿已有的 spec JSON 中，随不可变版本发布；无需迁移或测试结果表。上述寄存器配置可搭配以下测试：
+
+```yaml
+parseTests:
+  - id: charger-thermal
+    name: Charger thermal shutdown
+    fileName: kernel.log
+    lines: ["addr=0x0C val=0x20"]
+    expect:
+      fields:
+        addr: 12
+        val: 32
+        val.fields.CHRG_FAULT.meaning: thermal_shutdown
+      signals: []
+      exactSignals: false
+```
+
+`id` 在规范内唯一（1–100 字符）；`name` 不能为空白（最多 200 字符）。可选 `fileName` 为 1–1024 字符，默认 `sample.log`，参与抽取器文件通配匹配。`lines` 每项是一条原始行，不含 CR 或 LF。严格的 `expect` 对象接受可选 `fields`、`signals` 和 `exactSignals`。
+
+`expect.fields` 将点分字段路径映射到 JSON 值。路径从事件的 `fields` 起算，因此嵌套寄存器字段使用 `val.fields.CHRG_FAULT.meaning`。路径各段为标识符，不接受原型访问键。期望对象递归按子集匹配，全部期望必须在同一个解码事件中满足。多事件时任一事件完全匹配即通过；失败时使用差异最少的事件生成差异。标量期望先解包转换字段的 `value`，数值字符串（含十六进制）与数字归一化比较。显式 `.raw` 期望比较原始表示。数组按完整值比较。缺失值在对应字段路径中报告为 `actual: null, missing: true`，与存在但为 null 的字段区分。
+
+`expect.signals` 列出期望规则 id、通用信号种类或信号标题，忽略重复命中与顺序。默认允许额外信号；`exactSignals: true` 还会报告多出的信号。省略字段或信号期望不表示要求其不存在；空信号列表加精确模式表示不应产生任何信号。
+
+| 上限 | 限制 |
+| --- | --- |
+| 每技能测试数 | 50，id 唯一 |
+| 每测试输入 | 1–200 行，每行最多 6144 个 UTF-16 码元 |
+| 每次运行输入总量 | 5000 行、1,048,576 个 UTF-16 码元 |
+| 每测试期望 | 200 个字段路径，每个最多 1024 字符；200 个信号，每个最多 200 字符；序列化 JSON 最多 65,536 个码元；JSON 嵌套深度最多 12 |
+| 执行 | 全部测试的校验、解码、信号提取与比较共 1000 ms |
+| 每次运行解码输出总量 | 沿用引擎上限：50,000 事件、4 MiB 序列化输出、32,768 字段，并受逐事件与逐行上限约束 |
+
+统一服务端运行器使用 Worker 的协作式解码器和信号提取器，包含格式画像解析与真实信号规则。返回 `{total, passed, failed, results, truncated}`。每项包含 `id`、`name`、`passed`、`diffs: [{path, expected, actual, missing?}]`、`missingSignals`、`unexpectedSignals`、实际 `events` 与信号 id，以及可选执行错误。截止时间、解码错误或上限耗尽使受影响测试失败，不报告为完整通过。
+
+保存草稿与发布返回新的可选 `parseTestRun`。`POST /api/v1/log-skills/:skillId/parse-tests` 接受 `{spec}`，按需检查当前编辑，沿用技能管理权限与组织范围。结果仅作为响应保留在打开的工作区，并关联所测试的规范，不持久化：有界确定性测试可重新计算，避免存储过期结果和新增迁移。「测试」分区提供字段路径表单、代码视图及内联差异表。发布对话框展示通过数/总数与失败项链接，测试失败不阻止发布。
+
 ## 多行组装
 
 `multiline` 为 `{start, continue?, end?, keyField?, maxLines}`，`maxLines` 为 1–200。控制模式逐原始行匹配。指定 `keyField` 时，每个已配置控制模式均须捕获该已声明字段，按其原始键在文件内分别组装，交错键不会混入彼此文本。没有键时只保留一个打开的组。start 打开新组并提交相同键的旧组；end 纳入组后提交；continue 纳入组。当无 continue 且无键时，后续行持续纳入，直到 end、新 start、文件结束或上限。文件结束提交未关闭的组。抽取器对组内行以 `\n` 连接后的文本执行匹配。

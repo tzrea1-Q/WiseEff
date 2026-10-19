@@ -4,11 +4,13 @@ import { signalRuleSetSchema } from "./signalRules";
 import { parsingSpecSchema } from "./parsing/spec";
 import { MAX_LOG_PATTERN_LENGTH } from "./adminPattern";
 import { compileSourceStatementPattern, MAX_STATEMENT_PATTERNS } from "./sourceStatements";
+import { parseTestsSchema } from "./parseTestSpec";
 
 export const logSkillSpecSchema = z.object({
   schemaVersion: z.literal("skill/v1"),
   knowledgeEntryIds: z.array(z.string().uuid()).max(200).refine((ids) => new Set(ids).size === ids.length, "Knowledge links must be unique").optional(),
   parsing: parsingSpecSchema.optional(),
+  parseTests: parseTestsSchema.optional(),
   description: z.string().trim().max(2000).optional(),
   procedure: z.string().trim().max(20000).optional(),
   formatProfile: logFormatProfileSchema.superRefine((profile, ctx) => {
@@ -27,3 +29,4 @@ export const logSkillSpecSchema = z.object({
 }).strict();
 
 export type LogSkillSpec = z.infer<typeof logSkillSpecSchema>;
+export const parseTestRequestSchema = z.object({ spec: logSkillSpecSchema }).strict();

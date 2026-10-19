@@ -16,6 +16,8 @@ import { decodeLogFilesCooperatively } from "./parsing/workerDecoding";
 import { MAX_DECODE_EVENTS } from "./parsing/engine";
 import { validateDefaultSourceSnapshot } from "./sourceSnapshots";
 import { validateSkillKnowledge } from "./skillKnowledge";
+import { runParseTests } from "./parseTests";
+import type { ParseTestRun } from "./parseTestSpec";
 
 export const PARSE_PREVIEW_MAX_MS = 100;
 export const PARSE_PREVIEW_MAX_LINES = 5000;
@@ -46,7 +48,9 @@ async function readSkill(db: Queryable, organizationId: string, skillId: string)
   if (!identity) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
   const revisions = await listSkillRevisions(db, organizationId, skillId);
   return { ...identity, currentRevision: revisions.find((r) => r.status === "published")!,
-    draft: revisions.find((r) => r.status === "draft") ?? null };
+    draft: revisions.find((r) => r.status === "draft") ?? null } as typeof identity & {
+      currentRevision: (typeof revisions)[number]; draft: (typeof revisions)[number] | null; parseTestRun?: ParseTestRun;
+    };
 }
 
 export async function getLogSkill(db: Queryable, auth: AuthContext, skillId: string) {
@@ -159,7 +163,8 @@ export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId
     // A new draft id on every save makes stale publish requests detectable.
     await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);
     const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec, userId: auth.user.id });
-    return { result: (await listSkillRevisions(tx, auth.organization.id, skillId)).find((r) => r.id === id)!,
+    const parseTestRun = spec.parseTests ? await runParseTests(spec) : undefined;
+    return { result: { ...(await listSkillRevisions(tx, auth.organization.id, skillId)).find((r) => r.id === id)!, ...(parseTestRun ? { parseTestRun } : {}) },
       audit: skillAudit(skillId, "log-skill-draft-save", { draftRevisionId: id }) };
   });
 }
@@ -176,8 +181,9 @@ export async function publishLogSkill(db: Database, auth: AuthContext, skillId: 
     if (draft) parseSpec(draft.spec);
     if (draft) await validateSkillKnowledge(tx, auth, draft.spec, draft.spec);
     if (draft) await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, draft.spec, true);
+    const parseTestRun = draft?.spec.parseTests ? await runParseTests(draft.spec) : undefined;
     await publishSkillRevision(tx, auth.organization.id, skillId, draftId, auth.user.id);
-    return { result: await readSkill(tx, auth.organization.id, skillId), audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
+    return { result: { ...await readSkill(tx, auth.organization.id, skillId), ...(parseTestRun ? { parseTestRun } : {}) }, audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
   });
 }
 
@@ -206,6 +212,13 @@ export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, s
     : decoded.events.length > 500 ? "event_cap" as const : undefined);
   return { valid: true, issues: [], ...decoded, unmatchedLineCount: decoded.unmatchedLineCount + Math.max(0, lines.length - PARSE_PREVIEW_MAX_LINES),
     events: decoded.events.slice(0, 500), truncated: !!reason, ...(reason ? { reason } : {}) };
+}
+
+export async function runLogSkillParseTests(db: Queryable, auth: AuthContext, skillId: string, spec: unknown) {
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  return runParseTests(parseSpec(spec));
 }
 
 export async function readLogSkillRevisions(db: Queryable, auth: AuthContext, skillId: string) {

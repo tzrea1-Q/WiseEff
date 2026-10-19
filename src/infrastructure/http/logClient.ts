@@ -41,7 +41,7 @@ import {
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
 } from "@wiseeff/dto-schemas";
-import { parsePreviewResponseSchema } from "@wiseeff/dto-schemas";
+import { parsePreviewResponseSchema, parseTestRunSchema } from "@wiseeff/dto-schemas";
 import {
   jobSnapshotFromDto,
   logDomainFromDto,
@@ -364,6 +364,9 @@ export function createHttpLogAnalysisRepository(
     },
     async saveSkillDraft(id, spec, baseDraftRevisionId, basePublishedRevisionId) {
       return parseContractDto(logSkillRevisionResponseSchema, await apiClient.put(`/api/v1/log-skills/${encodeURIComponent(id)}/draft`, { spec, baseDraftRevisionId, basePublishedRevisionId }), "LogSkillRevisionResponse").item;
+    },
+    async runSkillParseTests(id, spec) {
+      return parseContractDto(parseTestRunSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/parse-tests`, { spec }), "ParseTestRun");
     },
     async discardSkillDraft(id, draftRevisionId) {
       await apiClient.delete(`/api/v1/log-skills/${encodeURIComponent(id)}/draft?draftRevisionId=${encodeURIComponent(draftRevisionId)}`);
