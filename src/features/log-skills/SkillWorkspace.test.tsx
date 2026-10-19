@@ -65,6 +65,29 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
 }
 
 describe("skill workspace", () => {
+  it("preserves invalid register inputs across sections and blocks saving or publishing an older value", async () => {
+    setup({ section: "decoding" });
+    fireEvent.click(await screen.findByRole("button", { name: "新增寄存器" }));
+    fireEvent.click(screen.getByRole("button", { name: "新增字段" }));
+    const bits = screen.getByRole("textbox", { name: "字段 1 位范围" });
+    fireEvent.change(bits, { target: { value: "7:" } });
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    await userEvent.click(screen.getByRole("button", { name: "解码" }));
+    expect(screen.getByRole("textbox", { name: "字段 1 位范围" })).toHaveValue("7:");
+    fireEvent.change(screen.getByRole("textbox", { name: "字段 1 位范围" }), { target: { value: "7:0" } });
+    fireEvent.blur(screen.getByRole("textbox", { name: "字段 1 位范围" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "字段 1 枚举" }), { target: { value: '{"0":' } });
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    await userEvent.click(screen.getByRole("button", { name: "解码" }));
+    expect(screen.getByRole("textbox", { name: "字段 1 枚举" })).toHaveValue('{"0":');
+    fireEvent.change(screen.getByRole("textbox", { name: "字段 1 枚举" }), { target: { value: '{"0":"normal"}' } });
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "发布" })).toBeEnabled();
+  });
   it("keeps a model override editable and publishable when a superseded initial load finishes late", async () => {
     const skill = structuredClone(mockSkillWorkspace("skill-charging")!);
     let finishFirst!: (history: SkillRevision[]) => void;
@@ -404,7 +427,8 @@ describe("skill workspace", () => {
   it("keeps future sections disabled and switches freely without dropping local edits", async () => {
     const { onNavigate } = setup();
     fireEvent.change(await screen.findByRole("textbox", { name: "描述" }), { target: { value: "未保存" } });
-    expect(screen.getByRole("button", { name: /解码/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "解码" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /信号/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "版本" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging?section=versions");

@@ -318,7 +318,9 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 `skill/v1` 新增可选 `parsing: {schemaVersion: "parsing/v1", extractors}`，保存、发布和回滚均校验，错误为带路径的 `400`。严格规范、时间格式子集、上限和事件外壳见[解析参考](log-parsing-v1.md)。worker 只使用钉住版本，有抽取器的运行在解析完成后按当前任务租约保护写入迁移 0190 的产物键及 `{total, byExtractor, errors}`，provider 重试时仍保留；无抽取器保持旧行为。
 
-证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。寄存器节点另含嵌套 `fields`、可选枚举含义 `meaning` 和单位 `unit`，父节点仍保留原始寄存器值；不安全整数使用十进制字符串，树深度最多 8。报告在引用行下展示此树。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+
+`parsing` 还接受可选 `registers: Record<id, {width: 8|16|32|64, fields: {bits: [hi,lo], name, enum?, scale?, offset?, unit?, signed?, description?}[]}>` 和 `registerMaps: Record<id, {selectBy, cases: Record<地址或消息id, registerId>, default?}>`。抽取器的 `int`/`uint`/`hex` 字段配置 `decode: {register: id}` 或 `decode: {registerMap: id}`。保存、发布及既有未保存草稿预览均校验位重叠、越界、重名和引用，返回精确路径。映射无匹配分支或默认项时，事件记录 `unmatched_register`，不使运行失败。寄存器工作共享既有执行预算。参见 [BQ25890 示例与数值规则](log-parsing-v1.md#寄存器与寄存器映射)。
 
 以下是 ADR-0022 内部只读工具，不是 HTTP 端点，仅在钉住版本有抽取器时注册，沿用步数和 token 预算。
 
@@ -329,7 +331,7 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 grounding 只认可 query 工具自身 `events[].file/line`。endLine 范围、字段内嵌引用、结构元数据和非白名单工具返回的引用不能建立观察记录。
 
-`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值最多 1 KiB；超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
+`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值（包含嵌套寄存器树）最多 1 KiB；限额内完整返回子字段与含义，超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
 
 M2 日志合同锁定为组织级作用域（迁移 `0037` 移除 `projectId`）：
 

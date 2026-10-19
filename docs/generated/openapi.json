@@ -30091,6 +30091,18 @@
                                           "additionalProperties": false
                                         }
                                       ]
+                                    },
+                                    "meaning": {
+                                      "type": "string"
+                                    },
+                                    "unit": {
+                                      "type": "string"
+                                    },
+                                    "fields": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "type": "object"
+                                      }
                                     }
                                   },
                                   "required": [
@@ -30872,6 +30884,18 @@
                                           "additionalProperties": false
                                         }
                                       ]
+                                    },
+                                    "meaning": {
+                                      "type": "string"
+                                    },
+                                    "unit": {
+                                      "type": "string"
+                                    },
+                                    "fields": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "type": "object"
+                                      }
                                     }
                                   },
                                   "required": [
@@ -31524,6 +31548,18 @@
                                             "additionalProperties": false
                                           }
                                         ]
+                                      },
+                                      "meaning": {
+                                        "type": "string"
+                                      },
+                                      "unit": {
+                                        "type": "string"
+                                      },
+                                      "fields": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                          "type": "object"
+                                        }
                                       }
                                     },
                                     "required": [
@@ -32390,6 +32426,18 @@
                                           "additionalProperties": false
                                         }
                                       ]
+                                    },
+                                    "meaning": {
+                                      "type": "string"
+                                    },
+                                    "unit": {
+                                      "type": "string"
+                                    },
+                                    "fields": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "type": "object"
+                                      }
                                     }
                                   },
                                   "required": [
@@ -33125,6 +33173,112 @@
                               "parsing/v1"
                             ]
                           },
+                          "registers": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "width": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "enum": [
+                                        8
+                                      ]
+                                    },
+                                    {
+                                      "type": "number",
+                                      "enum": [
+                                        16
+                                      ]
+                                    },
+                                    {
+                                      "type": "number",
+                                      "enum": [
+                                        32
+                                      ]
+                                    },
+                                    {
+                                      "type": "number",
+                                      "enum": [
+                                        64
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "bits": {
+                                        "type": "object"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "enum": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "scale": {
+                                        "type": "number"
+                                      },
+                                      "offset": {
+                                        "type": "number"
+                                      },
+                                      "unit": {
+                                        "type": "string"
+                                      },
+                                      "signed": {
+                                        "type": "boolean"
+                                      },
+                                      "description": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "bits",
+                                      "name"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "width",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "registerMaps": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "selectBy": {
+                                  "type": "string"
+                                },
+                                "cases": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string"
+                                  }
+                                },
+                                "default": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "selectBy",
+                                "cases"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "extractors": {
                             "type": "array",
                             "items": {
@@ -33154,6 +33308,49 @@
                                             "enum": [
                                               "int",
                                               "uint",
+                                              "hex"
+                                            ]
+                                          },
+                                          "decode": {
+                                            "anyOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "register": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "register"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "registerMap": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "registerMap"
+                                                ],
+                                                "additionalProperties": false
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "type"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
                                               "float",
                                               "bool",
                                               "string",
@@ -33752,6 +33949,112 @@
                               "parsing/v1"
                             ]
                           },
+                          "registers": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "width": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "enum": [
+                                        8
+                                      ]
+                                    },
+                                    {
+                                      "type": "number",
+                                      "enum": [
+                                        16
+                                      ]
+                                    },
+                                    {
+                                      "type": "number",
+                                      "enum": [
+                                        32
+                                      ]
+                                    },
+                                    {
+                                      "type": "number",
+                                      "enum": [
+                                        64
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "bits": {
+                                        "type": "object"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "enum": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "scale": {
+                                        "type": "number"
+                                      },
+                                      "offset": {
+                                        "type": "number"
+                                      },
+                                      "unit": {
+                                        "type": "string"
+                                      },
+                                      "signed": {
+                                        "type": "boolean"
+                                      },
+                                      "description": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "bits",
+                                      "name"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "width",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "registerMaps": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "selectBy": {
+                                  "type": "string"
+                                },
+                                "cases": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string"
+                                  }
+                                },
+                                "default": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "selectBy",
+                                "cases"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "extractors": {
                             "type": "array",
                             "items": {
@@ -33781,6 +34084,49 @@
                                             "enum": [
                                               "int",
                                               "uint",
+                                              "hex"
+                                            ]
+                                          },
+                                          "decode": {
+                                            "anyOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "register": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "register"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "registerMap": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "registerMap"
+                                                ],
+                                                "additionalProperties": false
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "type"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
                                               "float",
                                               "bool",
                                               "string",
@@ -34392,6 +34738,112 @@
                             "parsing/v1"
                           ]
                         },
+                        "registers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "width": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "enum": [
+                                      8
+                                    ]
+                                  },
+                                  {
+                                    "type": "number",
+                                    "enum": [
+                                      16
+                                    ]
+                                  },
+                                  {
+                                    "type": "number",
+                                    "enum": [
+                                      32
+                                    ]
+                                  },
+                                  {
+                                    "type": "number",
+                                    "enum": [
+                                      64
+                                    ]
+                                  }
+                                ]
+                              },
+                              "fields": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "bits": {
+                                      "type": "object"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "enum": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "scale": {
+                                      "type": "number"
+                                    },
+                                    "offset": {
+                                      "type": "number"
+                                    },
+                                    "unit": {
+                                      "type": "string"
+                                    },
+                                    "signed": {
+                                      "type": "boolean"
+                                    },
+                                    "description": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "bits",
+                                    "name"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "width",
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "registerMaps": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "selectBy": {
+                                "type": "string"
+                              },
+                              "cases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string"
+                                }
+                              },
+                              "default": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "selectBy",
+                              "cases"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
                         "extractors": {
                           "type": "array",
                           "items": {
@@ -34421,6 +34873,49 @@
                                           "enum": [
                                             "int",
                                             "uint",
+                                            "hex"
+                                          ]
+                                        },
+                                        "decode": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "register": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "register"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "registerMap": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "registerMap"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
                                             "float",
                                             "bool",
                                             "string",
@@ -35584,6 +36079,18 @@
                                 "additionalProperties": false
                               }
                             ]
+                          },
+                          "meaning": {
+                            "type": "string"
+                          },
+                          "unit": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object"
+                            }
                           }
                         },
                         "required": [
@@ -35646,6 +36153,19 @@
                 "additionalProperties": {
                   "type": "number"
                 }
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "time_cap",
+                  "line_cap",
+                  "event_cap",
+                  "output_field_cap",
+                  "output_byte_cap"
+                ]
               }
             },
             "required": [
@@ -35666,7 +36186,9 @@
             "enum": [
               "time_cap",
               "line_cap",
-              "event_cap"
+              "event_cap",
+              "output_field_cap",
+              "output_byte_cap"
             ]
           }
         },
@@ -35707,6 +36229,112 @@
                       "parsing/v1"
                     ]
                   },
+                  "registers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "width": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "enum": [
+                                8
+                              ]
+                            },
+                            {
+                              "type": "number",
+                              "enum": [
+                                16
+                              ]
+                            },
+                            {
+                              "type": "number",
+                              "enum": [
+                                32
+                              ]
+                            },
+                            {
+                              "type": "number",
+                              "enum": [
+                                64
+                              ]
+                            }
+                          ]
+                        },
+                        "fields": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bits": {
+                                "type": "object"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "enum": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string"
+                                }
+                              },
+                              "scale": {
+                                "type": "number"
+                              },
+                              "offset": {
+                                "type": "number"
+                              },
+                              "unit": {
+                                "type": "string"
+                              },
+                              "signed": {
+                                "type": "boolean"
+                              },
+                              "description": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "bits",
+                              "name"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "width",
+                        "fields"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "registerMaps": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "selectBy": {
+                          "type": "string"
+                        },
+                        "cases": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "default": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "selectBy",
+                        "cases"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "extractors": {
                     "type": "array",
                     "items": {
@@ -35736,6 +36364,49 @@
                                     "enum": [
                                       "int",
                                       "uint",
+                                      "hex"
+                                    ]
+                                  },
+                                  "decode": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "register": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "register"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "registerMap": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "registerMap"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
                                       "float",
                                       "bool",
                                       "string",
@@ -36307,6 +36978,112 @@
                           "parsing/v1"
                         ]
                       },
+                      "registers": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "width": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "enum": [
+                                    8
+                                  ]
+                                },
+                                {
+                                  "type": "number",
+                                  "enum": [
+                                    16
+                                  ]
+                                },
+                                {
+                                  "type": "number",
+                                  "enum": [
+                                    32
+                                  ]
+                                },
+                                {
+                                  "type": "number",
+                                  "enum": [
+                                    64
+                                  ]
+                                }
+                              ]
+                            },
+                            "fields": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "bits": {
+                                    "type": "object"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "enum": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "scale": {
+                                    "type": "number"
+                                  },
+                                  "offset": {
+                                    "type": "number"
+                                  },
+                                  "unit": {
+                                    "type": "string"
+                                  },
+                                  "signed": {
+                                    "type": "boolean"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "bits",
+                                  "name"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "width",
+                            "fields"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "registerMaps": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "selectBy": {
+                              "type": "string"
+                            },
+                            "cases": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "string"
+                              }
+                            },
+                            "default": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "selectBy",
+                            "cases"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
                       "extractors": {
                         "type": "array",
                         "items": {
@@ -36336,6 +37113,49 @@
                                         "enum": [
                                           "int",
                                           "uint",
+                                          "hex"
+                                        ]
+                                      },
+                                      "decode": {
+                                        "anyOf": [
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "register": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "register"
+                                            ],
+                                            "additionalProperties": false
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "registerMap": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "registerMap"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "type"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": [
                                           "float",
                                           "bool",
                                           "string",
@@ -36956,6 +37776,112 @@
                             "parsing/v1"
                           ]
                         },
+                        "registers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "width": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "enum": [
+                                      8
+                                    ]
+                                  },
+                                  {
+                                    "type": "number",
+                                    "enum": [
+                                      16
+                                    ]
+                                  },
+                                  {
+                                    "type": "number",
+                                    "enum": [
+                                      32
+                                    ]
+                                  },
+                                  {
+                                    "type": "number",
+                                    "enum": [
+                                      64
+                                    ]
+                                  }
+                                ]
+                              },
+                              "fields": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "bits": {
+                                      "type": "object"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "enum": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "scale": {
+                                      "type": "number"
+                                    },
+                                    "offset": {
+                                      "type": "number"
+                                    },
+                                    "unit": {
+                                      "type": "string"
+                                    },
+                                    "signed": {
+                                      "type": "boolean"
+                                    },
+                                    "description": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "bits",
+                                    "name"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "width",
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "registerMaps": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "selectBy": {
+                                "type": "string"
+                              },
+                              "cases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string"
+                                }
+                              },
+                              "default": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "selectBy",
+                              "cases"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
                         "extractors": {
                           "type": "array",
                           "items": {
@@ -36985,6 +37911,49 @@
                                           "enum": [
                                             "int",
                                             "uint",
+                                            "hex"
+                                          ]
+                                        },
+                                        "decode": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "register": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "register"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "registerMap": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "registerMap"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
                                             "float",
                                             "bool",
                                             "string",

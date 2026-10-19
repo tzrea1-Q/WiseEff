@@ -202,8 +202,8 @@ export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, s
     events: [], counts: { total: 0, byExtractor: {}, errors: {} }, unmatchedLineCount: lines.length, truncated: false };
   const decoded = await decodeLogFilesCooperatively(result.data, [{ file: input.fileName ?? "sample.log", lines: lines.slice(0, PARSE_PREVIEW_MAX_LINES) }],
     { maxMs: Math.max(0, PARSE_PREVIEW_MAX_MS - (performance.now() - started)), maxEvents: MAX_DECODE_EVENTS, hardTimeout: true });
-  const reason = decoded.counts.errors.time_cap ? "time_cap" as const : lines.length > PARSE_PREVIEW_MAX_LINES ? "line_cap" as const
-    : decoded.events.length > 500 ? "event_cap" as const : undefined;
+  const reason = decoded.reason ?? (decoded.counts.errors.time_cap ? "time_cap" as const : lines.length > PARSE_PREVIEW_MAX_LINES ? "line_cap" as const
+    : decoded.events.length > 500 ? "event_cap" as const : undefined);
   return { valid: true, issues: [], ...decoded, unmatchedLineCount: decoded.unmatchedLineCount + Math.max(0, lines.length - PARSE_PREVIEW_MAX_LINES),
     events: decoded.events.slice(0, 500), truncated: !!reason, ...(reason ? { reason } : {}) };
 }

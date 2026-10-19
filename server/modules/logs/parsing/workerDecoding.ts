@@ -60,7 +60,9 @@ export async function decodeLogFilesCooperatively(spec: ParsingSpec, files: Arra
       // last completed checkpoint, including its counters. Never resume it.
       step.value.events.length = checkpoint!.eventCount;
       step.value.unmatchedLineCount = checkpoint!.unmatchedLineCount;
-      Object.assign(step.value.counts, checkpoint!.counts);
+      step.value.counts = checkpoint!.counts;
+      step.value.truncated = checkpoint!.counts.truncated;
+      step.value.reason = checkpoint!.counts.reason;
     }
     if (timedOut) break;
   }
@@ -108,13 +110,13 @@ async function decodeStreamingFiles(spec: ParsingSpec, files: Array<DecodeLogFil
       steps.return(step.value);
     }
     const { events, counts, unmatchedLineCount } = step.value;
-    return { events, counts, unmatchedLineCount };
+    return { events, counts, unmatchedLineCount, ...(counts.truncated ? { truncated: true, reason: counts.reason } : {}) };
   } catch (error) {
     if (!(error && typeof error === "object" && "code" in error && error.code === "LOG_READER_TIME_CAP")) throw error;
     step.value.counts.errors.time_cap = (step.value.counts.errors.time_cap ?? 0) + 1;
     steps.return(step.value);
     const { events, counts, unmatchedLineCount } = step.value;
-    return { events, counts, unmatchedLineCount };
+    return { events, counts, unmatchedLineCount, ...(counts.truncated ? { truncated: true, reason: counts.reason } : {}) };
   } finally { await active?.iterator.return(undefined); }
 }
 

@@ -113,7 +113,9 @@ Defaults: 100 MiB total uploaded bytes (`LOG_BUNDLE_MAX_COMPRESSED_BYTES`), 100 
 
 `skill/v1` gains optional `parsing: {schemaVersion: "parsing/v1", extractors}`; save, publish and restore validate it with path-bearing `400` errors. [Parsing reference](log-parsing-v1.md) defines the strict schema, timestamp subset, bounds and event envelope. Workers use the pinned revision. After parsing, each run with extractors records a gzip JSONL artifact key and `{total, byExtractor, errors}` counters in migration 0190's run columns under the current job lease; provider retries retain them. Runs without extractors remain unchanged.
 
-Evidence adds optional `decodedFields: DecodedEvent[]`, persisted as `log_evidence.decoded_fields`. Each event carries `v`, `source`, `extractor`, `file`, `line`, optional `endLine`, `fields` and optional errors. Only events whose exact file/start-line anchor is cited are attached. Converted fields retain raw text and typed values; enums display their labels. Loop, single-shot and rule reports share this behavior; result webhooks remain summary-only.
+Evidence adds optional `decodedFields: DecodedEvent[]`, persisted as `log_evidence.decoded_fields`. Each event carries `v`, `source`, `extractor`, `file`, `line`, optional `endLine`, `fields` and optional errors. Only events whose exact file/start-line anchor is cited are attached. Converted fields retain raw text and typed values; enums display their labels. Register nodes additionally carry nested `fields`, optional enum `meaning` and `unit`; the original raw register value remains on the parent. Unsafe integers are decimal strings, and tree depth is capped at 8. Reports render this tree below cited lines. Loop, single-shot and rule reports share this behavior; result webhooks remain summary-only.
+
+`parsing` also accepts optional `registers: Record<id, {width: 8|16|32|64, fields: {bits: [hi,lo], name, enum?, scale?, offset?, unit?, signed?, description?}[]}>` and `registerMaps: Record<id, {selectBy, cases: Record<addressOrMessageId, registerId>, default?}>`. Extractor `int`/`uint`/`hex` fields attach `decode: {register: id}` or `decode: {registerMap: id}`. Save/publication and the existing unsaved-draft preview validate overlap, range, duplicate names and references with exact paths. A map without a matching case/default records `unmatched_register` on the event and does not fail the run. Register work shares existing execution budgets. See the [BQ25890 example and value rules](log-parsing-v1.md#registers-and-register-maps).
 
 These internal read-only ADR-0022 tools exist only when the pinned revision has extractors; they are not HTTP endpoints and retain existing loop step/token budgets:
 
@@ -124,7 +126,7 @@ These internal read-only ADR-0022 tools exist only when the pinned revision has 
 
 Only query results' own `events[].file/line` anchors establish observation. End-line ranges and references embedded in fields, schema metadata or non-allowlisted tools do not establish grounding.
 
-`query_events` also returns `truncated: boolean`. Its serialized envelope is capped at 16 KiB; each field value at 1 KiB. Oversized values become marked string previews, and trailing fields can be omitted to fit one event. Filtering uses original values, and stored evidence is unchanged. The event-count cap remains 50; `nextCursor` resumes at the first unreturned event when the byte or count cap is reached.
+`query_events` also returns `truncated: boolean`. Its serialized envelope is capped at 16 KiB; each field value, including its nested register tree, at 1 KiB. Nested fields and meanings are returned intact when they fit. Oversized values become marked string previews, and trailing fields can be omitted to fit one event. Filtering uses original values, and stored evidence is unchanged. The event-count cap remains 50; `nextCursor` resumes at the first unreturned event when the byte or count cap is reached.
 
 ### Feedback quality insights (P3)
 
