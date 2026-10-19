@@ -429,7 +429,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [logActions, uploadDialogOpen]);
 
   const handleUploadLog = useCallback(
-    async (files: File[], supported: boolean, question?: string, logDomainId?: string, relatedParameterPin?: LogRelatedParameterPin) => {
+    async (files: File[], supported: boolean, question?: string, logDomainId?: string, relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string) => {
       const file = files[0];
       if (!logActions) {
         dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName: file.name, supported, question });
@@ -441,7 +441,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
 
       try {
-        await logActions.upload({ file, files, analysisQuestion: question, skillId: logDomainId,
+        await logActions.upload({ file, files, analysisQuestion: question, skillId: logDomainId, sourceVersion,
           ...(relatedParameterPin ? { relatedParameterPin } : {}) });
       } catch (error) {
         setPendingUpload(null);
@@ -642,7 +642,7 @@ function UploadLogDialog({
   parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">;
   onClose: () => void;
   onUpload: (files: File[], supported: boolean, question?: string, logDomainId?: string,
-    relatedParameterPin?: LogRelatedParameterPin) => Promise<void> | void;
+    relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string) => Promise<void> | void;
 }) {
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -650,6 +650,8 @@ function UploadLogDialog({
   const [selectedFileName, setSelectedFileName] = useState("");
   const [question, setQuestion] = useState("");
   const [selectedDomainId, setSelectedDomainId] = useState<string>(UNCATEGORIZED_LOG_DOMAIN_VALUE);
+  const [sourceVersion, setSourceVersion] = useState("");
+  const readySourceVersions = domains.find((domain) => domain.id === selectedDomainId)?.readySourceVersions ?? [];
   const [supported, setSupported] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -749,7 +751,8 @@ function UploadLogDialog({
       return;
     }
     setUploading(true);
-    void Promise.resolve(onUpload(selectedFiles, supported, question, resolvedDomainId, relatedParameterPin))
+    void Promise.resolve(onUpload(selectedFiles, supported, question, resolvedDomainId, relatedParameterPin,
+      readySourceVersions.includes(sourceVersion) ? sourceVersion : undefined))
       .catch((error) => setUploadError(presentError(error, "上传失败，请重试。")))
       .finally(() => setUploading(false));
   };
@@ -794,10 +797,19 @@ function UploadLogDialog({
             id="upload-log-domain"
             ariaLabel="分析技能（可选）"
             value={selectedDomainId}
-            onValueChange={setSelectedDomainId}
+            onValueChange={(value) => { setSelectedDomainId(value); setSourceVersion(""); }}
             options={[{ value: UNCATEGORIZED_LOG_DOMAIN_VALUE, label: "通用分析" }, ...domains.map((domain) => ({ value: domain.id, label: domain.name }))]}
           />
         </label>
+        {readySourceVersions.length ? (
+          <label className="upload-question-field" htmlFor="upload-source-version">
+            <span>源码版本（可选）</span>
+            <SelectControl id="upload-source-version" ariaLabel="源码版本（可选）" ariaDescribedBy="upload-source-version-help"
+              value={sourceVersion} disabled={uploading} onValueChange={setSourceVersion}
+              options={[{ value: "", label: "使用默认快照" }, ...readySourceVersions.map((version) => ({ value: version, label: version }))]} />
+            <span id="upload-source-version-help">选择源码快照版本；不选择时使用技能版本的默认快照。</span>
+          </label>
+        ) : null}
         {parameterRepository ? (
           <>
             <label className="upload-question-field" htmlFor="upload-parameter-project">
@@ -924,7 +936,7 @@ function ConfidenceBar({
 
 function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
   const degraded = classifyAnalysisDegradation(log);
-  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName && !log.knowledgeRevisions?.length) {
+  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName && !log.knowledgeRevisions?.length && !log.sourceSnapshotSelection) {
     return null;
   }
 
@@ -945,7 +957,18 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
         {log.logDomainName ? (
           <span className="analysis-provenance__badge analysis-provenance__badge--domain">技能 {log.logDomainName}{log.skillRevision ? ` · v${log.skillRevision.number}` : ""}</span>
         ) : null}
+        {log.sourceSnapshotSelection ? (
+          <span className="analysis-provenance__badge analysis-provenance__badge--domain" title={log.sourceSnapshot?.id}>
+            源码：{log.sourceSnapshotSelection === "matched_version" ? "版本匹配" : log.sourceSnapshotSelection === "default" ? "默认快照" : "无快照"}
+            {log.sourceSnapshot?.versionLabel ? ` ${log.sourceSnapshot.versionLabel}` : ""}
+            {log.sourceSnapshot && log.sourceSnapshot.status !== "ready" ? ` · ${{ queued: "等待索引", indexing: "索引中", failed: "索引失败", archived: "已归档" }[log.sourceSnapshot.status]}` : ""}
+            {log.requestedSourceVersion ? ` · 请求版本 ${log.requestedSourceVersion}` : ""}
+          </span>
+        ) : null}
       </div>
+      {log.requestedSourceVersion && log.sourceSnapshotSelection !== "matched_version" ? (
+        <p className="analysis-provenance__reason">未找到源码版本 {log.requestedSourceVersion}；{log.sourceSnapshot ? "已使用默认快照。" : "没有可用的默认快照。"}</p>
+      ) : null}
       {log.knowledgeRevisions?.length ? <details className="analysis-provenance__reason">
         <summary>实际检索的知识修订（{log.knowledgeRevisions.length}）</summary>
         <ul>{log.knowledgeRevisions.map(({ entryId, revisionId }) => <li key={`${entryId}:${revisionId}`}>

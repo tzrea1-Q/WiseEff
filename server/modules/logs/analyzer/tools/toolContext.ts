@@ -16,6 +16,8 @@ export type LogAnalysisToolContext = {
   decoding?: import("../../analyzer").AnalyzeLogInput["decoding"];
   sourceSnapshot?: import("../../analyzer").AnalyzeLogInput["sourceSnapshot"];
   locateLogStatement?: (line: string, limit: number) => Promise<import("../../sourceStatementRepository").SourceStatementMatches>;
+  searchSource?: (params: import("../../sourceSearchRepository").SourceSearchParams) => Promise<import("../../sourceSearchRepository").SourceSearchResult>;
+  readSourceRange?: (params: import("../../sourceSearchRepository").SourceRangeParams) => Promise<import("../../sourceSearchRepository").SourceRangeResult | null>;
   signalRules?: import("../../signalRules").SignalRuleSet;
   files?: import("../../analyzer").AnalyzeLogInput["files"];
   filePath?: string;

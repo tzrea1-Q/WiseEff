@@ -7,6 +7,11 @@ export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSche
 
 export const skillRevisionPinSchema = z.object({ id: z.string(), number: z.number().int().positive() });
 const knowledgeRevisionSchema = z.object({ entryId: z.string().uuid(), revisionId: z.string().uuid().optional() });
+const sourceProvenanceShape = {
+  sourceSnapshot: z.object({ id: z.string(), versionLabel: z.string().optional(), status: z.enum(["queued", "indexing", "ready", "failed", "archived"]) }).optional(),
+  sourceSnapshotSelection: z.enum(["matched_version", "default", "none"]).optional(),
+  requestedSourceVersion: z.string().optional()
+};
 
 export const logStageSchema = z.enum(["parse", "pattern", "rootcause", "report"]);
 export const logRecordStatusSchema = z.enum(["uploaded", "processing", "complete", "failed"]);
@@ -51,6 +56,7 @@ export const logEvidenceDtoSchema = z.object({
 
 export const logRecordDtoSchema = z.object({
   knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
+  ...sourceProvenanceShape,
   signalSummary: logSignalSummarySchema.optional(),
   files: z.array(logFileDtoSchema).optional(),
   skillRevision: skillRevisionPinSchema.nullable().optional(),
@@ -98,6 +104,7 @@ export const logJobDtoSchema = z.object({
 
 export const logRunDtoSchema = z.object({
   knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
+  ...sourceProvenanceShape,
   skillRevision: skillRevisionPinSchema.nullable().optional(),
   id: z.string(),
   logId: z.string(),
@@ -146,6 +153,8 @@ export const logSkillRevisionDtoSchema = z.object({
   publishedAt: z.string().nullable(), publishedByUserId: z.string().nullable(), publishedByDisplayName: z.string().nullable().optional()
 });
 export const logSkillListItemSchema = logDomainDtoSchema.extend({
+  hasSourceSnapshots: z.boolean().optional(),
+  readySourceVersions: z.array(z.string()).optional(),
   currentRevision: skillRevisionPinSchema.extend({ publishedAt: z.string().nullable() }),
   hasDraft: z.boolean(), analyses7d: z.number(), helpfulRate7d: z.number().nullable()
 });
@@ -178,6 +187,7 @@ export const logSourceSnapshotDtoSchema = z.object({
   error: z.string().nullable(), createdAt: z.string()
 });
 export const logSourceSnapshotListResponseSchema = itemsEnvelopeSchema(logSourceSnapshotDtoSchema);
+export const logSourceVersionListResponseSchema = itemsEnvelopeSchema(z.string());
 export const logSourceSnapshotResponseSchema = itemEnvelopeSchema(logSourceSnapshotDtoSchema);
 export const logSourceExcerptDtoSchema = z.object({
   snapshotId: z.string(), path: z.string(), line: z.number().int().positive(), versionLabel: z.string(),

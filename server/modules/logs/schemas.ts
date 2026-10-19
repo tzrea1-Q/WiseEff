@@ -55,6 +55,7 @@ export const createLogFileBodySchema = z
     relatedParameterId: nonEmptyString.optional(),
     relatedParameterPin: relatedParameterPinSchema.optional(),
     logDomainId: nonEmptyString.optional(),
+    sourceVersion: z.string().trim().min(1).max(200).optional(),
     skillId: nonEmptyString.optional()
   })
   .superRefine(rejectMismatchedRelatedParameterPin);
@@ -67,6 +68,7 @@ export const createLogBodySchema = z
     relatedParameterId: nonEmptyString.optional(),
     relatedParameterPin: relatedParameterPinSchema.optional(),
     logDomainId: nonEmptyString.optional(),
+    sourceVersion: z.string().trim().min(1).max(200).optional(),
     skillId: nonEmptyString.optional()
   })
   .superRefine(rejectMismatchedRelatedParameterPin);

@@ -186,26 +186,39 @@ describe("LogsPage api upload wiring", () => {
     expect(screen.getByRole("tab", { name: "报告" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("lists analysis skills in the upload dialog and passes the selected skillId", async () => {
+  it.each(["", "firmware-v7"])("offers ready source versions and uploads selection %j", async (sourceVersion) => {
     const chargingDomain = {
       id: "domain-charging",
       name: "charging-power",
+      hasSourceSnapshots: true,
+      readySourceVersions: ["firmware-v7", "firmware-v8"],
       status: "active" as const,
       createdAt: "2026-08-12T00:00:00.000Z",
       updatedAt: "2026-08-12T00:00:00.000Z"
     };
     const repository = renderApiLogs(
-      createLogRepository({ listLogDomains: vi.fn().mockResolvedValue([chargingDomain]) })
+      createLogRepository({ listLogDomains: vi.fn().mockResolvedValue([chargingDomain,
+        { ...chargingDomain, id: "indexing-only", name: "indexing-only", readySourceVersions: [] }]) })
     );
     const file = new File(["line"], "charging.log", { type: "text/plain" });
     await waitForApiRuntime(repository);
 
     openUploadDialog();
+    expect(screen.queryByLabelText("源码版本（可选）")).not.toBeInTheDocument();
     await waitFor(() => expect(repository.listLogDomains).toHaveBeenCalled());
     const domainSelect = await screen.findByLabelText(/分析技能/);
-    await userEvent.click(domainSelect);
-    expect(screen.getByRole("option", { name: /通用分析/ })).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole("option", { name: "charging-power" }));
+    await selectControlOption(domainSelect, chargingDomain.id);
+    const sourceSelect = screen.getByRole("combobox", { name: "源码版本（可选）" });
+    expect(sourceSelect).toHaveTextContent("使用默认快照");
+    expect(sourceSelect).toHaveAccessibleDescription("选择源码快照版本；不选择时使用技能版本的默认快照。");
+    await userEvent.click(sourceSelect);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["使用默认快照", "firmware-v7", "firmware-v8"]);
+    await userEvent.click(screen.getByRole("option", { name: "firmware-v7" }));
+    await selectControlOption(domainSelect, "indexing-only");
+    expect(screen.queryByLabelText("源码版本（可选）")).not.toBeInTheDocument();
+    await selectControlOption(domainSelect, chargingDomain.id);
+    expect(screen.getByRole("combobox", { name: "源码版本（可选）" })).toHaveTextContent("使用默认快照");
+    if (sourceVersion) await selectControlOption(screen.getByLabelText("源码版本（可选）"), sourceVersion);
 
     vi.useFakeTimers();
     chooseFile(file);
@@ -214,9 +227,11 @@ describe("LogsPage api upload wiring", () => {
     expect(repository.uploadLog).toHaveBeenCalledWith(
       expect.objectContaining({
         file,
-        skillId: "domain-charging"
+        skillId: "domain-charging",
+        ...(sourceVersion ? { sourceVersion } : {})
       })
     );
+    if (!sourceVersion) expect(vi.mocked(repository.uploadLog).mock.calls[0][0].sourceVersion).toBeUndefined();
   });
 
   it("uploads the exact selected project Binding and Definition revision, excluding foreign and incomplete pins", async () => {

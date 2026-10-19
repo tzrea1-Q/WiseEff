@@ -71,7 +71,7 @@ function makeObjectStore(): ObjectStore {
   };
 }
 
-function logRecord(overrides: Partial<LogRecordDto> = {}): LogRecordDto {
+function logRecord(overrides: Partial<LogRecordDto> = {}): LogRecordDto & { files: NonNullable<LogRecordDto["files"]> } {
   return {
     skillRevision: null,
     id: "log-1",
@@ -92,7 +92,8 @@ function logRecord(overrides: Partial<LogRecordDto> = {}): LogRecordDto {
     capturedAt: "2026-05-25T02:00:00.000Z",
     updatedAt: "2026-05-25T02:00:00.000Z",
     submittedBy: "Riley Chen",
-    ...overrides
+    ...overrides,
+    files: overrides.files ?? []
   };
 }
 
@@ -178,7 +179,8 @@ describe("log routes", () => {
           fileName: "charging-foldback.log",
           contentType: "text/plain",
           contentBase64: Buffer.from("WARN foldback").toString("base64"),
-          analysisQuestion: "Why did fast charging fold back?"
+          analysisQuestion: "Why did fast charging fold back?",
+          sourceVersion: " firmware-v7 "
         })
       }
     );
@@ -194,7 +196,8 @@ describe("log routes", () => {
         fileName: "charging-foldback.log",
         contentType: "text/plain",
         bytes: Buffer.from("WARN foldback"),
-        analysisQuestion: "Why did fast charging fold back?"
+        analysisQuestion: "Why did fast charging fold back?",
+        sourceVersion: "firmware-v7"
       },
       { requestId: "test-request" }
     );

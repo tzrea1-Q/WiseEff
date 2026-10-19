@@ -24,6 +24,9 @@ export type LogEvidenceDto = {
 
 export type LogRecordDto = {
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
+  sourceSnapshot?: LogRecord["sourceSnapshot"];
+  sourceSnapshotSelection?: LogRecord["sourceSnapshotSelection"];
+  requestedSourceVersion?: string;
   signalSummary?: LogRecord["signalSummary"];
   files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;
@@ -63,6 +66,8 @@ export type LogRecordDto = {
 };
 
 export type LogDomainDto = {
+  hasSourceSnapshots?: boolean;
+  readySourceVersions?: string[];
   currentRevision?: { id: string; number: number; publishedAt: string | null };
   hasDraft?: boolean;
   analyses7d?: number;
@@ -112,6 +117,9 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     fileName: dto.fileName,
     files: dto.files,
     signalSummary: dto.signalSummary,
+    sourceSnapshot: dto.sourceSnapshot,
+    sourceSnapshotSelection: dto.sourceSnapshotSelection,
+    requestedSourceVersion: dto.requestedSourceVersion,
     source: dto.source,
     fileSizeMB: Math.round((dto.fileSizeBytes / 1024 / 1024) * 10) / 10,
     status: statusLabels[dto.status],
@@ -152,6 +160,8 @@ export function logDomainFromDto(dto: LogDomainDto): LogDomain {
     status: dto.status,
     currentRevision: dto.currentRevision,
     hasDraft: dto.hasDraft,
+    hasSourceSnapshots: dto.hasSourceSnapshots,
+    readySourceVersions: dto.readySourceVersions,
     analyses7d: dto.analyses7d,
     helpfulRate7d: dto.helpfulRate7d,
     formatProfile: dto.formatProfile,

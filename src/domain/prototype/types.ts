@@ -206,6 +206,9 @@ export type ParameterSubmissionRound = {
 
 export type LogRecord = {
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
+  sourceSnapshot?: import("../logs/types").LogRecord["sourceSnapshot"];
+  sourceSnapshotSelection?: import("../logs/types").LogRecord["sourceSnapshotSelection"];
+  requestedSourceVersion?: string;
   signalSummary?: import("@/domain/logs/types").LogSignalSummary;
   files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;

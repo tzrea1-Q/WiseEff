@@ -177,12 +177,11 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     modelLabel: EVAL_MODEL_LABEL,
     tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
-    bindToolBackends: () => scenario.sourceMatches ? {
-      locateLogStatement: async () => {
-        returnedSourceLocations.push(...scenario.sourceMatches!.items.map(({ snapshotId, path, line }) => ({ snapshotId, path, line })));
-        return scenario.sourceMatches!;
-      }
-    } : {}
+    bindToolBackends: () => ({
+      ...(scenario.sourceMatches ? { locateLogStatement: async () => scenario.sourceMatches! } : {}),
+      ...(scenario.sourceSearch ? { searchSource: async () => scenario.sourceSearch! } : {}),
+      ...(scenario.sourceRange ? { readSourceRange: async () => scenario.sourceRange! } : {})
+    })
   });
 
   const output = await analyzeWithDegradation({
@@ -200,6 +199,19 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     retryBaseDelayMs: 1,
     now: () => new Date()
   });
+
+  // Inspect what the model actually saw, after catalog caps, rather than trusting backend fixtures.
+  for (const message of promptMessages) {
+    const match = /^Tool result for (locate_log_statement|search_source|read_source_range):\n(.*)$/s.exec(message.content);
+    if (!match) continue;
+    const result = JSON.parse(match[2]) as { snapshotId?: string; path?: string; lines?: Array<{ line: number }>;
+      items?: Array<{ snapshotId: string; path: string; line: number }> };
+    if (match[1] === "read_source_range" && result.snapshotId && result.path) {
+      returnedSourceLocations.push(...(result.lines ?? []).map(({ line }) => ({ snapshotId: result.snapshotId!, path: result.path!, line })));
+    } else {
+      returnedSourceLocations.push(...(result.items ?? []).map(({ snapshotId, path, line }) => ({ snapshotId, path, line })));
+    }
+  }
 
   return toScenarioResult(scenario, "loop", {
     output,

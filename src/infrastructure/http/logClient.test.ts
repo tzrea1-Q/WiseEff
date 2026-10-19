@@ -207,22 +207,25 @@ describe("createHttpLogAnalysisRepository", () => {
     const inventory = [{ path: "a.log", sizeBytes: 5, lineCount: 1, encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null }];
     const fetchMock = createFetchMock({ fileObject: { id: "file-1" }, log: { ...baseLogDto, files: inventory,
       evidence: [{ id: "e1", stageId: "rootcause", filePath: "a.log", lineNumbers: [1], inference: "failure", suggestedAction: "inspect" }] }, job: baseJobDto }, 201);
-    const result = await createRepository(fetchMock).uploadLog({ file: files[0], files, skillId: "skill-1", analysisQuestion: "why" });
+    const result = await createRepository(fetchMock).uploadLog({ file: files[0], files, skillId: "skill-1", analysisQuestion: "why", sourceVersion: "v7" });
     const form = fetchMock.mock.calls[0][1]?.body as FormData;
     expect(form.getAll("file")).toEqual(files); expect(form.get("skillId")).toBe("skill-1"); expect(form.get("analysisQuestion")).toBe("why");
+    expect(form.get("sourceVersion")).toBe("v7");
     expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty("Content-Type");
     expect(result.log.files).toEqual(inventory); expect(result.log.evidence[0].filePath).toBe("a.log");
   });
   it("reads skill publication summaries and preserves the run revision pin", async () => {
     const skill = { id: "skill-1", name: "设备诊断", status: "active", createdAt: "2026-10-18", updatedAt: "2026-10-18",
-      currentRevision: { id: "skill-v2", number: 2, publishedAt: "2026-10-18" }, hasDraft: true, analyses7d: 4, helpfulRate7d: 0.75 };
+      currentRevision: { id: "skill-v2", number: 2, publishedAt: "2026-10-18" }, hasDraft: true, hasSourceSnapshots: true,
+      readySourceVersions: ["v7"], analyses7d: 4, helpfulRate7d: 0.75 };
     const fetchMock = createFetchMock({ items: [skill] });
     const repository = createRepository(fetchMock);
     await expect(repository.listLogSkills?.({ includeArchived: true })).resolves.toEqual([skill]);
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills?includeArchived=true");
     const knowledgeRevisions = [{ entryId: "6bd19f72-6710-4bbc-9d04-0a30bf151043", revisionId: "11e090bc-c5ef-4544-9900-01adcb20f558" }];
-    fetchMock.mockResolvedValue(jsonResponse({ item: { ...baseLogDto, knowledgeRevisions, skillRevision: { id: "skill-v2", number: 2 } } }));
-    await expect(repository.getLog("log-1")).resolves.toMatchObject({ knowledgeRevisions, skillRevision: { id: "skill-v2", number: 2 } });
+    const provenance = { sourceSnapshot: { id: "source-v7", versionLabel: "v7", status: "ready" }, sourceSnapshotSelection: "matched_version", requestedSourceVersion: "v7" };
+    fetchMock.mockResolvedValue(jsonResponse({ item: { ...baseLogDto, knowledgeRevisions, skillRevision: { id: "skill-v2", number: 2 }, ...provenance } }));
+    await expect(repository.getLog("log-1")).resolves.toMatchObject({ knowledgeRevisions, skillRevision: { id: "skill-v2", number: 2 }, ...provenance });
   });
 
   it("sends skillId on upload and preserves explicit pinned rerun policy", async () => {
@@ -230,9 +233,9 @@ describe("createHttpLogAnalysisRepository", () => {
     const repository = createRepository(fetchMock);
     const file = new File(["INFO ok"], "device.log", { type: "text/plain" });
     Object.defineProperty(file, "arrayBuffer", { value: async () => new TextEncoder().encode("INFO ok").buffer });
-    await repository.uploadLog({ file, skillId: "skill-1" });
+    await repository.uploadLog({ file, skillId: "skill-1", sourceVersion: "v7" });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ fileName: "device.log", contentType: "text/plain",
-      contentBase64: btoa("INFO ok"), skillId: "skill-1" });
+      contentBase64: btoa("INFO ok"), skillId: "skill-1", sourceVersion: "v7" });
     fetchMock.mockResolvedValue(jsonResponse({ log: baseLogDto, job: baseJobDto }));
     await repository.rerunLog({ logId: "log-1", revisionPolicy: "pinned" });
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ revisionPolicy: "pinned" });

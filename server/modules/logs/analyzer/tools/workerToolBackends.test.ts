@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { expect, it, vi } from "vitest";
 
 import type { RelatedParameterRunSnapshot } from "../../relatedParameter";
-import type { Queryable } from "../../../../shared/database/client";
+import { createDatabase, type Queryable } from "../../../../shared/database/client";
 import { createWorkerLogAnalysisToolBackends } from "./workerToolBackends";
 
 const snapshot = {
@@ -22,10 +22,25 @@ const snapshot = {
   sourcePin: {}
 } as unknown as RelatedParameterRunSnapshot;
 
+it("binds source tools only to a ready run snapshot and rejects another snapshot before querying", async () => {
+  const query = vi.fn();
+  const db = createDatabase({ query } as unknown as Queryable);
+  const ready = createWorkerLogAnalysisToolBackends({ db, organizationId: "org-1", sourceSnapshot: { id: "source", status: "ready" } });
+  expect(ready.searchSource).toBeTypeOf("function");
+  expect(ready.readSourceRange).toBeTypeOf("function");
+  await expect(ready.readSourceRange!({ snapshotId: "other", path: "power.c", startLine: 1, endLine: 80 })).resolves.toBeNull();
+  expect(query).not.toHaveBeenCalled();
+  for (const status of ["queued", "indexing", "failed", "archived"] as const) {
+    const unavailable = createWorkerLogAnalysisToolBackends({ db, organizationId: "org-1", sourceSnapshot: { id: "source", status } });
+    expect(unavailable.searchSource).toBeUndefined();
+    expect(unavailable.readSourceRange).toBeUndefined();
+  }
+});
+
 it("serves the frozen canonical context without making a database parameter read", async () => {
   const query = vi.fn();
   const tools = createWorkerLogAnalysisToolBackends({
-    db: { query } as unknown as Queryable,
+    db: createDatabase({ query } as unknown as Queryable),
     organizationId: "org-1",
     relatedParameterId: "binding-1",
     relatedParameterSnapshot: snapshot
@@ -54,7 +69,7 @@ it("uses an immutable database root without wrapping query for related-parameter
   });
   const db = Object.freeze({ query });
   const tools = createWorkerLogAnalysisToolBackends({
-    db,
+    db: createDatabase(db),
     organizationId: "org-1",
     relatedParameterId: "binding-1",
     relatedParameterSnapshot: snapshot,
@@ -70,7 +85,7 @@ it("uses an immutable database root without wrapping query for related-parameter
 });
 
 it("fails closed when the related binding has no matching frozen snapshot", () => {
-  const db = { query: vi.fn() } as unknown as Queryable;
+  const db = createDatabase({ query: vi.fn() } as unknown as Queryable);
   expect(() => createWorkerLogAnalysisToolBackends({ db, organizationId: "org-1", relatedParameterId: "binding-1" })).toThrow(
     /snapshot is unavailable/
   );
@@ -97,7 +112,7 @@ it("exposes exact frozen history without reading live parameter data", async () 
     changedAt: "2026-10-07T00:00:00.000Z"
   }];
   const tools = createWorkerLogAnalysisToolBackends({
-    db: { query } as unknown as Queryable,
+    db: createDatabase({ query } as unknown as Queryable),
     organizationId: "org-1",
     relatedParameterId: "binding-1",
     relatedParameterSnapshot: { ...snapshot, recentChanges }
@@ -107,7 +122,7 @@ it("exposes exact frozen history without reading live parameter data", async () 
 });
 
 it("keeps old snapshots without history readable and unrelated logs unbound", async () => {
-  const db = { query: vi.fn() } as unknown as Queryable;
+  const db = createDatabase({ query: vi.fn() } as unknown as Queryable);
   const tools = createWorkerLogAnalysisToolBackends({
     db, organizationId: "org-1", relatedParameterId: "binding-1", relatedParameterSnapshot: snapshot
   });

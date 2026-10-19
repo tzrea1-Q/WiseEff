@@ -344,6 +344,33 @@ describe("LogsPage · Header", () => {
 describe("LogsPage · 分析来源与降级标注", () => {
   const completedTemplate = initialState.logs.find((log) => log.status === "Complete")!;
 
+  it("shows the selected source snapshot, requested version and unmatched-label fallback", () => {
+    window.history.replaceState(null, "", "/logs");
+    render(<App initialAppState={{ ...userState, logs: [{ ...completedTemplate,
+      sourceSnapshot: { id: "snapshot-default", versionLabel: "v2.4.0", status: "ready" as const },
+      sourceSnapshotSelection: "default" as const, requestedSourceVersion: "firmware-unknown"
+    }] }} />);
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(provenance).toHaveTextContent("源码：默认快照 v2.4.0 · 请求版本 firmware-unknown");
+    expect(provenance).not.toHaveTextContent("snapshot-default");
+    expect(provenance).not.toHaveTextContent("就绪");
+    expect(within(provenance).getByTitle("snapshot-default")).toHaveTextContent("源码：默认快照 v2.4.0");
+    expect(provenance).toHaveTextContent("未找到源码版本 firmware-unknown；已使用默认快照。");
+  });
+
+  it("shows a non-ready snapshot status alongside its version label", () => {
+    window.history.replaceState(null, "", "/logs");
+    render(<App initialAppState={{ ...userState, logs: [{ ...completedTemplate,
+      sourceSnapshot: { id: "snapshot-indexing", versionLabel: "v2.4.0", status: "indexing" as const },
+      sourceSnapshotSelection: "matched_version" as const, requestedSourceVersion: "v2.4.0"
+    }] }} />);
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(provenance).toHaveTextContent("源码：版本匹配 v2.4.0 · 索引中 · 请求版本 v2.4.0");
+    expect(provenance).not.toHaveTextContent("snapshot-indexing");
+    expect(within(provenance).getByTitle("snapshot-indexing")).toBeInTheDocument();
+    expect(provenance).not.toHaveTextContent("未找到源码版本");
+  });
+
   it("规则回退结果显著标注降级来源与原因", () => {
     window.history.replaceState(null, "", "/logs");
     const degradedState = {

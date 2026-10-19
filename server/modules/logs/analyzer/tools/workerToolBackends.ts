@@ -1,16 +1,17 @@
 import type { KnowledgeEmbeddingClient } from "../../../knowledge/indexing/embeddingClient";
 import { searchPublishedKnowledgeForLogAnalysis } from "../../../knowledge/logDomainRetrieval";
-import type { Queryable } from "../../../../shared/database/client";
+import type { Database } from "../../../../shared/database/client";
 import type { RelatedParameterRunSnapshot } from "../../relatedParameter";
 import type { LogAnalysisToolContext, RelatedParameterContext } from "./toolContext";
 import { locateLogStatements } from "../../sourceStatementRepository";
+import { readSourceRange, searchSource, type SourceRangeParams, type SourceSearchParams } from "../../sourceSearchRepository";
 
 /**
  * Production worker tool bindings. The related parameter is read only from the
  * immutable run snapshot; this module intentionally has no Catalog/table query.
  */
 export function createWorkerLogAnalysisToolBackends(input: {
-  db: Queryable;
+  db: Database;
   organizationId: string;
   logDomainId?: string;
   knowledgeEntryIds?: string[];
@@ -19,7 +20,7 @@ export function createWorkerLogAnalysisToolBackends(input: {
   relatedParameterSnapshot?: RelatedParameterRunSnapshot;
   sourceSnapshot?: import("../../analyzer").AnalyzeLogInput["sourceSnapshot"];
   embeddingClient?: KnowledgeEmbeddingClient;
-}): Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext" | "locateLogStatement"> {
+}): Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext" | "locateLogStatement" | "searchSource" | "readSourceRange"> {
   const snapshot = input.relatedParameterSnapshot;
   if (input.relatedParameterId && !snapshot) {
     throw new Error("Canonical related-parameter run snapshot is unavailable.");
@@ -54,7 +55,12 @@ export function createWorkerLogAnalysisToolBackends(input: {
     ...(input.sourceSnapshot?.status === "ready" ? {
       locateLogStatement: (line: string, limit: number) => locateLogStatements(input.db, {
         organizationId: input.organizationId, snapshotId: input.sourceSnapshot!.id, line, limit
-      })
+      }),
+      searchSource: (params: SourceSearchParams) => searchSource(input.db, {
+        ...params, organizationId: input.organizationId, snapshotId: input.sourceSnapshot!.id
+      }),
+      readSourceRange: (params: SourceRangeParams) => params.snapshotId === input.sourceSnapshot!.id
+        ? readSourceRange(input.db, { ...params, organizationId: input.organizationId }) : Promise.resolve(null)
     } : {}),
     searchDomainKnowledge: async (query: string) => {
       const result = await searchPublishedKnowledgeForLogAnalysis(input.db, {

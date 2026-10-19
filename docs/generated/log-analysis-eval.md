@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-10-19T12:38:21.925Z
+- Generated: 2026-10-19T15:01:59.289Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.1`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.source.1`
-- Scenarios: 32 (32 passed)
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.3`
+- Scenarios: 44 (44 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -18,6 +18,18 @@
 | provider-outage-degrades-honestly | degradation | single-shot | rules-fallback | provider-unavailable | PASS |
 | budget-exhausted-marked | degradation | single-shot | rules-fallback | token-budget-exhausted | PASS |
 | analysis-question-injected-and-answered | analysis-question | single-shot | agent | - | PASS |
+| loop-source-search-timeout-preserves-log-analysis | source-tools | loop | agent | - | PASS |
+| loop-source-search-literal-legal-and-grounded | source-tools | loop | agent | - | PASS |
+| loop-source-search-full-text-legal-and-grounded | source-tools | loop | agent | - | PASS |
+| loop-source-search-result-and-excerpt-caps | source-tools | loop | agent | - | PASS |
+| loop-source-search-byte-caps | source-tools | loop | agent | - | PASS |
+| loop-source-range-clamped-to-80-and-grounded | source-tools | loop | agent | - | PASS |
+| loop-source-range-unseen-line-rejected | source-tools | loop | agent | - | PASS |
+| loop-source-tools-unavailable-queued | source-tools | loop | agent | - | PASS |
+| loop-source-tools-unavailable-indexing | source-tools | loop | agent | - | PASS |
+| loop-source-tools-unavailable-failed | source-tools | loop | agent | - | PASS |
+| loop-source-tools-unavailable-archived | source-tools | loop | agent | - | PASS |
+| loop-source-tools-unavailable-no-snapshot | source-tools | loop | agent | - | PASS |
 | loop-source-location-returned-by-tool-grounded | source-grounding | loop | agent | - | PASS |
 | loop-unseen-source-location-with-grounded-log-rejected | source-grounding | loop | agent | - | PASS |
 | loop-source-wrong-snapshot-rejected | source-grounding | loop | agent | - | PASS |
