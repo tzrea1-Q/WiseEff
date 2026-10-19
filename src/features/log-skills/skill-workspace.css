@@ -38,7 +38,7 @@
 .skill-diff pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: inherit; font-family: var(--font-mono); }
 .skill-diff [data-change="add"] { background: var(--success-soft); }
 .skill-diff [data-change="remove"] { background: var(--danger-soft); }
-.skill-publish-dialog { background: var(--surface); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5); max-height: calc(100dvh - var(--space-8)); overflow: auto; box-shadow: var(--shadow-3); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.skill-publish-dialog { background: var(--surface); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5); max-height: calc(100dvh - var(--space-8)); overflow: auto; box-shadow: var(--shadow-3); display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; align-content: start; gap: var(--space-4); }
 .skill-publish-dialog .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 .skill-authoring-dialog { background: var(--surface); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5); max-height: calc(100dvh - var(--space-8)); overflow: auto; box-shadow: var(--shadow-3); }
 .skill-authoring-dialog form, .skill-authoring-dialog fieldset { display: grid; gap: var(--space-2); }
@@ -135,6 +135,22 @@
 .skill-decoding [aria-label="寄存器字段表"] th:last-child { width: var(--space-16); }
 .skill-decoding [aria-label="寄存器字段表"] td { vertical-align: top; white-space: normal; }
 .skill-register-properties { display: grid; gap: var(--space-2); }
+.skill-workspace .navigator-workbench__task, .skill-parse-tests, .skill-parse-tests section, .skill-parse-tests label { min-width: 0; }
+.skill-parse-tests input, .skill-parse-tests textarea { min-width: 0; max-width: 100%; }
+.skill-parse-tests input:not([type="checkbox"]), .skill-parse-tests textarea { width: 100%; }
+.skill-parse-tests th, .skill-parse-tests td { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.skill-parse-tests [aria-label="解析测试列表"] button { min-width: 0; max-width: 100%; height: auto; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.skill-parse-tests [aria-label="解析测试差异"] td { vertical-align: top; }
+.skill-parse-tests code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.skill-section .skill-test-checkbox { display: flex; align-items: start; gap: var(--space-2); }
+.skill-parse-test-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.skill-parse-test-toolbar > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.skill-parse-test-run-status { font-weight: 600; }
+.skill-parse-test-status[data-status="passed"] { color: var(--success); background: var(--success-soft); }
+.skill-parse-tests p, .skill-publish-test-summary p, .skill-test-changes li { margin: 0; overflow-wrap: anywhere; }
+.skill-publish-test-summary { display: grid; min-width: 0; gap: var(--space-2); padding: var(--space-3); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); background: var(--surface-sunken); }
+.skill-publish-test-summary button { justify-self: start; }
+.skill-test-changes { display: grid; gap: var(--space-2); margin: 0; padding-left: var(--space-5); }
 .skill-section > [role="tabpanel"], .skill-extractors, .skill-extractor-dialog { display: grid; gap: var(--space-3); min-width: 0; }
 .skill-section > [role="tabpanel"][hidden] { display: none; }
 .skill-extractor-line { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: var(--space-3); background: var(--surface-sunken); color: var(--text); border-radius: var(--radius-md); font: 400 var(--text-sm) / var(--leading-base) var(--font-mono); }

@@ -18,7 +18,7 @@ function setup(overrides: Partial<SectionProps> = {}) {
   function Harness() {
     const [current, setCurrent] = useState<AnalysisSkill>(skill);
     const [spec, setSpec] = useState<SkillSpec>(skill.currentRevision.spec);
-    return <IntegrationSection skill={current} spec={spec} setSpec={setSpec} disabled={false} sample={null} selectedLine={null} onLineSelect={() => undefined} onProfileValidityChange={() => undefined} onSignalHit={() => undefined}
+    return <IntegrationSection skill={current} spec={spec} setSpec={setSpec} disabled={false} sample={null} selectedLine={null} onLineSelect={() => undefined} onProfileValidityChange={() => undefined} onSignalHit={() => undefined} parseTestRun={null} onRunTests={() => undefined} testsRunning={false} testRunDisabled={false} onTestValidityChange={() => undefined}
       parsingYaml="" onParsingYamlChange={() => undefined} revisions={[]} onRestore={() => undefined} apiMode canEdit dirty={false}
       onSkillUpdated={setCurrent} onBusyChange={() => undefined} {...overrides} repository={repository} />;
   }

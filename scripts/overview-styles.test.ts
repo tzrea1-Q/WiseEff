@@ -16,4 +16,5 @@ describe("overview stylesheet token contract", () => {
     const rawLengths = declarations.filter((declaration) => /(?:\d|\.\d)[\d.]*(?:px|rem|em)\b/.test(declaration[2]));
     expect(rawLengths.map((declaration) => `${declaration[1]}: ${declaration[2].trim()}`)).toEqual([]);
   });
+
 });

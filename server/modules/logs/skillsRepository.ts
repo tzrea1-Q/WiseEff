@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { LogSkillSpec } from "./skillSpec";
+import type { ParseTestRun } from "./parseTestSpec";
 
 export type LogSkillRevisionDto = {
+  parseTestRun?: ParseTestRun;
   id: string;
   skillId: string;
   number: number;

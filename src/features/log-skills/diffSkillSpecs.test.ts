@@ -21,6 +21,20 @@ describe("diffSkillSpecs", () => {
     expect(diffSkillSpecs(base, after).integration).toHaveLength(2);
     expect(diffSkillSpecs(after, structuredClone(after)).integration).toEqual([]);
   });
+
+  it("matches parse tests by id and reports only changed authoring facets", () => {
+    const first = { id: "first", name: "First", lines: ["before"], expect: { fields: { value: 1 }, signals: ["signal"] } };
+    const removed = { ...first, id: "removed", name: "Removed" };
+    const added = { ...first, id: "added", name: "Added" };
+    const before = { ...base, parseTests: [first, removed] };
+    const after = { ...base, parseTests: [{ ...first, lines: ["after"], expect: { ...first.expect, fields: { value: 2 } } }, added] };
+    expect(diffSkillSpecs(before, after).tests).toEqual([
+      { id: "first", name: "First", kind: "changed", facets: ["lines", "expectFields"] },
+      { id: "removed", name: "Removed", kind: "removed", facets: ["name", "lines", "expectFields", "expectSignals"] },
+      { id: "added", name: "Added", kind: "added", facets: ["name", "lines", "expectFields", "expectSignals"] }
+    ]);
+    expect(diffSkillSpecs(before, structuredClone(before)).tests).toEqual([]);
+  });
   it.each([
     [undefined, "## Steps\nCheck context."],
     ["Old procedure", "New procedure"],

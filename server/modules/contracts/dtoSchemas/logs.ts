@@ -2,6 +2,10 @@ import { z } from "zod";
 
 import { itemEnvelopeSchema, itemsEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
 import { logSkillSpecSchema } from "../../logs/skillSpec";
+import { parseTestRunSchema } from "../../logs/parseTestSpec";
+export { parseTestSchema, parseTestSchema as parseTestCaseSchema, parseTestsSchema, parseTestRunSchema, parseTestResultSchema,
+  MAX_PARSE_TESTS, MAX_PARSE_TEST_LINES, MAX_PARSE_TEST_CHARS, MAX_PARSE_TEST_RUN_LINES } from "../../logs/parseTestSpec";
+export { parseTestRequestSchema } from "../../logs/skillSpec";
 import { decodedEventSchema } from "../../logs/parsing/spec";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "../../logs/parsing/spec";
 
@@ -148,6 +152,7 @@ export const logDomainDtoSchema = z.object({
 });
 
 export const logSkillRevisionDtoSchema = z.object({
+  parseTestRun: parseTestRunSchema.optional(),
   id: z.string(), skillId: z.string(), number: z.number().int().positive(),
   status: z.enum(["draft", "published", "superseded"]), spec: logSkillSpecSchema,
   contentHash: z.string(), createdByUserId: z.string().nullable(), createdAt: z.string(),
@@ -160,6 +165,7 @@ export const logSkillListItemSchema = logDomainDtoSchema.extend({
   hasDraft: z.boolean(), analyses7d: z.number(), helpfulRate7d: z.number().nullable()
 });
 export const logSkillDtoSchema = logDomainDtoSchema.extend({
+  parseTestRun: parseTestRunSchema.optional(),
   currentRevision: logSkillRevisionDtoSchema, draft: logSkillRevisionDtoSchema.nullable(),
   budgetCaps: z.object({ stepBudget: z.number().int().positive(), tokenBudget: z.number().int().positive() })
 });

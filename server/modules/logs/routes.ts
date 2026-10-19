@@ -38,7 +38,7 @@ import { createLogSkill, discardLogSkillDraft, getLogSkill, listLogSkills, listL
 import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "./skillSamplesService";
 import { logSkillSpecSchema } from "./skillSpec";
 import { previewLogSkillSignals, signalPreviewRequestSchema } from "./signalPreview";
-import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat } from "./skillsService";
+import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat, runLogSkillParseTests } from "./skillsService";
 import { parsePreviewRequestSchema } from "./parsing/spec";
 import { extractorPreviewRequestSchema } from "./parsing/extractorBuilder";
 import { formatPreviewRequestSchema } from "./formatProfile";
@@ -399,6 +399,12 @@ export function registerLogRoutes(
     const { skillId } = parseWithSchema(skillParams, request.params);
     const body = parseWithSchema(parsePreviewRequestSchema, request.body);
     return { status: 200, body: await previewLogSkillParsing(requireDb(options.db), auth, skillId, body) };
+  });
+  router.post("/api/v1/log-skills/:skillId/parse-tests", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const { skillId } = parseWithSchema(skillParams, request.params);
+    const body = parseWithSchema(z.object({ spec: z.unknown().refine((value) => value !== undefined, "Skill spec is required") }).strict(), request.body);
+    return { status: 200, body: await runLogSkillParseTests(requireDb(options.db), auth, skillId, body.spec) };
   });
   router.post("/api/v1/log-skills/:skillId/signals-preview", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

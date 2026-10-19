@@ -2,7 +2,8 @@ import { diffSkillSpecs, specJson } from "./diffSkillSpecs";
 import type { SkillSpec } from "./types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const labels: Record<string, string> = { description: "描述", procedure: "诊断流程", knowledgeEntryIds: "知识条目", modelOverride: "模型覆盖", mode: "规则来源",
+const labels: Record<string, string> = { name: "名称", lines: "样例行", fileName: "文件名", expectFields: "期望字段", expectSignals: "期望信号", exactSignals: "信号匹配方式",
+  description: "描述", procedure: "诊断流程", knowledgeEntryIds: "知识条目", modelOverride: "模型覆盖", mode: "规则来源",
   stepBudget: "步骤预算", tokenBudget: "令牌预算",
   noHit: "未命中规则时", hitDefaults: "命中默认值", anyOf: "触发条件", stageId: "阶段", inference: "推断",
   suggestedAction: "建议操作", analysis: "分析", id: "规则标识", rulesOrder: "规则顺序", defaultSourceSnapshotId: "默认源码快照", statementPatterns: "自定义日志语句模式" };
@@ -11,6 +12,8 @@ const display = (value: unknown) => value === undefined ? "未配置" : value ==
 
 export function SkillSpecDiff({ before, after }: { before: SkillSpec; after: SkillSpec }) {
   const diff = diffSkillSpecs(before, after);
+  const testChanges = ([["added", "新增"], ["changed", "修改"], ["removed", "删除"]] as const)
+    .map(([kind, label]) => { const count = diff.tests.filter((test) => test.kind === kind).length; return count ? `${label}解析测试 ${count}` : null; }).filter(Boolean).join(" · ");
   const ruleChanges = [diff.counts.added ? `新增 ${diff.counts.added}` : null,
     diff.counts.changed ? `修改 ${diff.counts.changed}` : null,
     diff.counts.removed ? `移除 ${diff.counts.removed}` : null].filter(Boolean).join(" / ");
@@ -18,6 +21,7 @@ export function SkillSpecDiff({ before, after }: { before: SkillSpec; after: Ski
     diff.counts.integration ? `集成 ${diff.counts.integration} 项` : null,
     diff.counts.procedure ? `诊断流程 ${diff.counts.procedure} 项` : null,
     diff.counts.knowledge ? `知识 ${diff.counts.knowledge} 项` : null,
+    testChanges || null,
     diff.counts.format ? `基础格式 ${diff.counts.format} 行` : null,
     diff.parsing.length ? `解析规则 ${diff.parsing.length} 项` : null,
     diff.counts.source ? `源码 ${diff.counts.source} 项` : null,
@@ -28,6 +32,9 @@ export function SkillSpecDiff({ before, after }: { before: SkillSpec; after: Ski
   </TableRow>);
   return <div className="skill-diff" aria-label="变更摘要">
     <p>{summary || "两个版本内容相同"}</p>
+    {diff.tests.length ? <section aria-label="解析测试差异"><h3>解析测试</h3><ul className="skill-test-changes">{diff.tests.map((test) => <li key={test.id}>
+      {{ added: "新增", changed: "修改", removed: "删除" }[test.kind]} {test.name}{test.kind === "changed" ? `：${test.facets.map((facet) => labels[facet] ?? facet).join("、")}` : ""}
+    </li>)}</ul></section> : null}
     {diff.overview.length ? <section aria-label="概览差异"><h3>概览</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.overview)}</TableBody></Table></section> : null}
     {diff.integration.length ? <section aria-label="集成差异"><h3>集成</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.integration)}</TableBody></Table></section> : null}
     {diff.procedure.length ? <section aria-label="诊断流程差异"><h3>诊断流程</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.procedure)}</TableBody></Table></section> : null}

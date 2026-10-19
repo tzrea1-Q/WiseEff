@@ -17,25 +17,29 @@ import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation"
 import { mockLogSkills, mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import { formatPercent } from "@/domain/format/formatPercent";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
-import type { AnalysisSkill, SkillRevision, SkillSpec, SkillSample, ParsePreview, SkillDryRun } from "./types";
+import type { AnalysisSkill, SkillRevision, SkillSpec, SkillSample, ParseTestRun, ParsePreview, SkillDryRun } from "./types";
 import { specJson } from "./diffSkillSpecs";
 import { SkillSpecDiff } from "./SkillSpecDiff";
 import { SkillSamplePane } from "./SkillSamplePane";
 import { stringify } from "yaml";
 import { ParsingSection, parseParsingYaml, boundedSamplePreview } from "./ParsingSection";
-import { parsingSpecSchema, logSkillSpecSchema } from "@wiseeff/dto-schemas";
+import { parsingSpecSchema, parseTestsSchema, logSkillSpecSchema } from "@wiseeff/dto-schemas";
 import { SignalsSection } from "./SignalsSection";
 import { DecodingSection } from "./DecodingSection";
 import { SourceSnapshots } from "./SourceSnapshots";
 import { SkillDryRunDrawer } from "./SkillDryRunDrawer";
 import { KnowledgeSection } from "./KnowledgeSection";
 import { IntegrationSection } from "./IntegrationSection";
+import { ParseTestsSection } from "./ParseTestsSection";
 import "./skill-workspace.css";
 
 export type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: SkillSpec) => void; disabled: boolean;
   sample: SkillSample | null;
   onSignalHit: (line: number) => void;
   selectedLine: number | null;
+  parseTestRun: ParseTestRun | null; onRunTests: () => void;
+  testsRunning: boolean; testRunDisabled: boolean; parseTestError?: string;
+  onTestValidityChange: (invalid: boolean) => void;
   onLineSelect: (line: number) => void; onProfileValidityChange: (valid: boolean) => void;
   parsingYaml: string; onParsingYamlChange: (text: string) => void;
   revisions: SkillRevision[]; onRestore: (revision: SkillRevision) => void;
@@ -58,6 +62,11 @@ function Signals({ skill, spec, setSpec, disabled, repository, sample, onSignalH
 }
 function Decoding({ skill, parsingYaml, onParsingYamlChange, disabled, repository, sample, selectedLine }: SectionProps) {
   return <DecodingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} selectedLine={selectedLine} />;
+}
+
+function Tests({ skill, spec, setSpec, disabled, repository, sample, selectedLine, parseTestRun, testsRunning, testRunDisabled, parseTestError, onRunTests, onBusyChange, onTestValidityChange }: SectionProps) {
+  return <ParseTestsSection skillId={skill.id} spec={spec} setSpec={setSpec} disabled={disabled} repository={repository}
+    sample={sample} selectedLine={selectedLine} result={parseTestRun} running={testsRunning} runDisabled={testRunDisabled} runError={parseTestError} onRun={onRunTests} onBusyChange={onBusyChange} onValidityChange={onTestValidityChange} />;
 }
 
 const procedureOutline = ["适用场景", "先检查什么", "根因判定", "常见误判", "建议动作"]
@@ -124,11 +133,11 @@ function Versions({ skill, revisions, disabled, onRestore }: SectionProps) {
   </section>;
 }
 
-export const skillSections: Array<{ id: string; label: string; component?: ComponentType<SectionProps> }> = [
-  { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程", component: Procedure },
+export const skillSections: Array<{ id: string; label: string; component?: ComponentType<SectionProps>; inspectorHidden?: boolean }> = [
+  { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程", component: Procedure, inspectorHidden: true },
   { id: "parsing", label: "样例与解析", component: Parsing }, { id: "decoding", label: "解码", component: Decoding }, { id: "signals", label: "信号", component: Signals },
-  { id: "knowledge", label: "知识", component: KnowledgeSection }, { id: "source", label: "源码", component: SourceSnapshots }, { id: "tests", label: "测试" },
-  { id: "integration", label: "集成", component: IntegrationSection }, { id: "versions", label: "版本", component: Versions }
+  { id: "knowledge", label: "知识", component: KnowledgeSection }, { id: "source", label: "源码", component: SourceSnapshots, inspectorHidden: true }, { id: "tests", label: "测试", component: Tests },
+  { id: "integration", label: "集成", component: IntegrationSection }, { id: "versions", label: "版本", component: Versions, inspectorHidden: true }
 ];
 
 export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, knowledgeRepository, knowledgeCapability, onNavigate, onPublished }: {
@@ -142,7 +151,15 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const updateSample = useCallback((next: SkillSample | null) => { setSample(next); setHighlight((value) => ({ ...value, line: null })); setSelectedLine(null); }, []);
   const [spec, setSpec] = useState<SkillSpec>({ schemaVersion: "skill/v1" });
+  const [testExecution, setTestExecution] = useState<{ specKey: string; run: ParseTestRun } | null>(null);
+  const [testsRunning, setTestsRunning] = useState(false);
+  const [testError, setTestError] = useState<{ specKey: string; message: string } | null>(null);
+  const parseTestError = testError?.specKey === specJson(spec) ? testError.message : undefined;
+  const [testsEditorInvalid, setTestsEditorInvalid] = useState(false);
+  const parseTestRun = !testsEditorInvalid && testExecution?.specKey === specJson(spec) ? testExecution.run : null;
   const [parsingYamlDraft, setParsingYamlDraft] = useState<string | null>(null);
+  const [editReset, setEditReset] = useState(0);
+  const testsInvalid = testsEditorInvalid || !parseTestsSchema.safeParse(spec.parseTests ?? []).success;
   const [formatValid, setFormatValid] = useState(true);
   const [editorReset, setEditorReset] = useState(0);
   const parsingYaml = parsingYamlDraft ?? stringify(spec.parsing ?? { schemaVersion: "parsing/v1", extractors: [] });
@@ -208,6 +225,9 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       if (generation !== loadGeneration.current) return;
       setSkill(found); setSpec(structuredClone((found.draft ?? found.currentRevision).spec)); setRevisions(history);
       setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1);
+      setEditReset((generation) => generation + 1);
+      setTestExecution(null);
+      setTestError(null);
       setStats(summaries?.find((s) => s.id === skillId)); setConflict(false); setError("");
     } catch (cause) {
       if (generation === loadGeneration.current) setLoadError(cause instanceof WiseEffApiError && cause.code === "NOT_FOUND" ? "missing" : "error");
@@ -253,11 +273,28 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   const save = async () => {
     const cleaned = { ...spec, ...(spec.description !== undefined ? { description: spec.description.trim() } : {}) };
     if (cleaned.modelOverride?.trim()) cleaned.modelOverride = cleaned.modelOverride.trim(); else delete cleaned.modelOverride;
-    const draft = await repository!.saveSkillDraft!(skillId, cleaned, skill!.draft?.id ?? null, skill!.currentRevision.id);
-    setSkill({ ...skill!, draft }); setSpec(draft.spec);
-    setParsingYamlDraft(null);
-    setRevisions([draft, ...revisions.filter((r) => r.status !== "draft")]);
-    return draft;
+    if (cleaned.parseTests) { setTestsRunning(true); setTestError(null); }
+    try {
+      const draft = await repository!.saveSkillDraft!(skillId, cleaned, skill!.draft?.id ?? null, skill!.currentRevision.id);
+      setSkill({ ...skill!, draft }); setSpec(draft.spec);
+      setParsingYamlDraft(null);
+      setRevisions([draft, ...revisions.filter((r) => r.status !== "draft")]);
+      if (draft.parseTestRun) setTestExecution({ specKey: specJson(draft.spec), run: draft.parseTestRun });
+      else if (draft.spec.parseTests && repository?.runSkillParseTests) {
+        const result = await repository.runSkillParseTests(skillId, draft.spec);
+        setTestExecution({ specKey: specJson(draft.spec), run: result });
+      }
+      return draft;
+    } finally { setTestsRunning(false); }
+  };
+  const executeTests = async () => {
+    if (!repository?.runSkillParseTests) return;
+    setTestsRunning(true); setTestError(null);
+    try {
+      const result = await repository.runSkillParseTests(skillId, spec);
+      setTestExecution({ specKey: specJson(spec), run: result });
+    } catch { setTestExecution(null); setTestError({ specKey: specJson(spec), message: "解析测试暂时无法运行，请重试。仍可发布技能。" }); }
+    finally { setTestsRunning(false); }
   };
   const ask = (title: string, description: string, action: () => void) => setConfirm({ title, description, action });
   const switchSection = (id: string) => {
@@ -274,12 +311,12 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
   if (!skill) return <SectionSkeleton label="正在加载分析技能" />;
   return <div className="skill-workspace" aria-busy={pending}>
     <NavigatorWorkbench pageKey="log-skill-workspace" navigatorLabel="技能分区" taskLabel={selected.label}
-      inspectorHidden={!["overview", "parsing", "decoding", "signals"].includes(selected.id)}
+      inspectorHidden={selected.inspectorHidden ?? false}
       inspectorLabel="样例日志" inspector={<SkillSamplePane key={skillId} skillId={skillId} repository={repository} apiMode={apiMode} canEdit={canEdit} onSampleChange={updateSample} highlightedLine={highlight.line} highlightRequest={highlight.request}
         selectedLine={selectedLine} onLineSelect={setSelectedLine} extractors={highlightSpec?.extractors}
         highlightPreview={currentHighlights?.preview} highlightError={currentHighlights?.error} />}
       toolbar={<><Button variant="link" onClick={back}>返回分析技能</Button><strong>{skill.name}</strong>
-        {apiMode && canEdit ? <Button variant="outline" disabled={dryRun?.status === "processing" ? pending : disabled || conflict || yamlInvalid || signalsInvalid || !formatValid || !sample || !repository?.startSkillDryRun || !repository?.getSkillDryRun}
+        {apiMode && canEdit ? <Button variant="outline" disabled={dryRun?.status === "processing" ? pending : disabled || conflict || yamlInvalid || testsInvalid || signalsInvalid || !formatValid || !sample || !repository?.startSkillDryRun || !repository?.getSkillDryRun}
           title={!sample ? "请先上传样例日志" : undefined} onClick={() => {
             if (dryRun?.status === "processing") { setDryRunOpen(true); return; }
             void run(async () => {
@@ -291,11 +328,11 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
         {!apiMode || !canEdit ? <p>{!apiMode ? "演示技能仅供查看；请在 API 模式下编辑。" : "仅供查看；编辑需要技能管理权限。"}</p> : null}
         {skill.draft || dirty ? <div className="skill-draft-bar" role="group" aria-label="未发布更改"><strong>未发布更改</strong>
           <Button variant="outline" disabled={disabled} onClick={() => ask("放弃草稿？", skill.draft ? "将删除已保存的草稿并放弃未保存的更改，当前发布版本不受影响。" : "将放弃未保存的更改，当前发布版本不受影响。", () => {
-            if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); return; }
+            if (!skill.draft) { setSpec(structuredClone(skill.currentRevision.spec)); setParsingYamlDraft(null); setFormatValid(true); setEditorReset((value) => value + 1); setEditReset((generation) => generation + 1); return; }
             void run(async () => { await repository!.discardSkillDraft!(skillId, skill.draft!.id); await refresh(); });
           })}>放弃草稿</Button>
-          <Button variant="outline" disabled={disabled || conflict || !dirty || yamlInvalid || budgetInvalid || signalsInvalid || !formatValid} onClick={() => void run(async () => { await save(); })}>保存草稿</Button>
-          <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid || signalsInvalid || !formatValid} onClick={() => setPublishOpen(true)}>发布</Button>
+          <Button variant="outline" disabled={disabled || conflict || !dirty || yamlInvalid || budgetInvalid || testsInvalid || signalsInvalid || !formatValid} onClick={() => void run(async () => { await save(); })}>保存草稿</Button>
+          <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid || testsInvalid || signalsInvalid || !formatValid} onClick={() => { setPublishOpen(true); if (repository?.runSkillParseTests) void run(executeTests); }}>发布</Button>
         </div> : null}
       </>}
       notice={conflict ? <div className="status-banner" data-tone="warning" role="alert"><p>草稿已被其他人更新</p><Button variant="outline" disabled={pending} onClick={() => ask("重新加载草稿？", "将丢弃本地更改并加载服务器上的最新草稿。", () => void run(refresh))}>重新加载</Button></div>
@@ -303,8 +340,9 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       navigator={<nav aria-label="技能分区导航">{skillSections.map((s) => <Button key={s.id} variant="ghost" disabled={!s.component || pending}
         aria-current={s.id === selected.id ? "page" : undefined} title={!s.component ? "即将推出" : undefined} onClick={() => switchSection(s.id)}>
         {s.label}{!s.component ? <small>即将推出</small> : null}</Button>)}</nav>}>
-      <Component key={selected.id === "parsing" ? `parsing-${editorReset}` : selected.id} skill={skill} spec={spec} setSpec={(next) => { setSpec(next); setFieldErrors({}); }} disabled={disabled} stats={stats} revisions={revisions} fieldErrors={{ ...fieldErrors, ...budgetErrors }}
+      <Component key={selected.id === "tests" ? `${selected.id}:${base?.id}:${editReset}` : selected.id === "parsing" ? `parsing-${editorReset}` : selected.id} skill={skill} spec={spec} setSpec={(next) => { setSpec(next); setFieldErrors({}); }} disabled={disabled} stats={stats} revisions={revisions} fieldErrors={{ ...fieldErrors, ...budgetErrors }}
         sample={sample?.skillId === skillId ? sample : null} selectedLine={selectedLine} onLineSelect={setSelectedLine} onProfileValidityChange={setFormatValid}
+        parseTestRun={parseTestRun} testsRunning={testsRunning} testRunDisabled={yamlInvalid || testsInvalid || signalsInvalid || !formatValid} parseTestError={parseTestError} onRunTests={() => void run(executeTests)} onTestValidityChange={setTestsEditorInvalid}
         onSignalHit={(line) => setHighlight((value) => ({ line, request: value.request + 1 }))}
         parsingYaml={parsingYaml} onParsingYamlChange={(text) => {
           setParsingYamlDraft(text);
@@ -324,14 +362,21 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     {dryRun && apiMode && canEdit ? <SkillDryRunDrawer key={dryRun.id} skillId={skillId} run={dryRun} repository={repository!}
       open={dryRunOpen} onClose={() => setDryRunOpen(false)} onRunChange={setDryRun} /> : null}
     <ModalDialog open={publishOpen} onDismiss={pending ? undefined : () => setPublishOpen(false)} className="skill-publish-dialog modal-card--lg">
-      {({ titleId }) => <><h2 id={titleId}>发布技能</h2><SkillSpecDiff before={skill.currentRevision.spec} after={spec} />
-        <div aria-label="发布提醒" />
+      {({ titleId }) => <><h2 id={titleId}>发布技能</h2>
+        <section className="skill-publish-test-summary" aria-label="发布前解析测试" aria-busy={testsRunning}>
+          <p role="status"><strong>{testsRunning ? "解析测试：运行中…" : parseTestRun ? `解析测试：通过 ${parseTestRun.passed} / ${parseTestRun.total}` : "解析测试：未运行"}</strong></p>
+          {!testsRunning && parseTestRun?.failed ? <><p>失败测试：{parseTestRun.results.filter((test) => !test.passed).map((test) => test.name).join("、")}</p>
+            <Button variant="link" onClick={() => { setPublishOpen(false); switchSection("tests"); }}>查看失败测试</Button></> : null}
+          {parseTestError ? <p role="alert">{parseTestError}</p> : null}
+          <p>测试失败不会阻止发布。</p>
+        </section>
+        <SkillSpecDiff before={skill.currentRevision.spec} after={spec} />
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setPublishOpen(false)}>取消</Button>
-          <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid || signalsInvalid || !formatValid} aria-busy={pending} onClick={() => void run(async () => {
+          <Button disabled={disabled || conflict || yamlInvalid || budgetInvalid || testsInvalid || signalsInvalid || !formatValid} aria-busy={pending} onClick={() => void run(async () => {
             const draft = dirty ? await save() : skill.draft!;
             const published = await repository!.publishSkill!(skillId, draft.id); setPublishOpen(false);
             onPublished(`已发布 v${published.currentRevision.number}`); await refresh();
-          })}>{pending ? "发布中…" : "发布"}</Button></div></>}
+          })}>{testsRunning ? "测试运行中…" : pending ? "发布中…" : "发布"}</Button></div></>}
     </ModalDialog>
     <ConfirmDialog open={!!confirm} title={confirm?.title ?? "确认"} description={confirm?.description ?? ""} confirmLabel="确认" pending={pending}
       onCancel={() => { leaveDecision.current?.resolve(false); leaveDecision.current = null; setConfirm(null); }} onConfirm={() => { const action = confirm?.action; setConfirm(null); action?.(); }} />
