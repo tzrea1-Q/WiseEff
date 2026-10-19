@@ -371,6 +371,8 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
   }
 
   if (routePath === "/dts-reload" || routePath === "/node-debugging") {
+    // Seeded rows can render while runtime hydration still makes the page inert.
+    await expect(page.getByRole("main")).toHaveAttribute("data-runtime-state", "ready", { timeout });
     // Wait for readiness to settle without assuming every user needs setup.
     // Returning users and connected users have no inline installer content.
     await expect(page.locator(".local-device-bridge-panel__readiness[aria-busy='false'], .local-device-bridge-panel__connected").first()).toBeVisible({ timeout });
