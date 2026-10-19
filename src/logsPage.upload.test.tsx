@@ -345,7 +345,7 @@ describe("LogsPage api upload wiring", () => {
     expect(repository.rerunLog).not.toHaveBeenCalled();
   });
 
-  it("allows unsupported extensions to reach the runtime", async () => {
+  it("warns for a single unsupported file and uploads it when explicitly confirmed", async () => {
     const failedLog = {
       ...apiLog,
       id: "api-failed-log",
@@ -359,9 +359,16 @@ describe("LogsPage api upload wiring", () => {
     await waitForApiRuntime(repository);
     vi.useFakeTimers();
 
-    openUploadDialog();
+    const dialog = openUploadDialog();
     chooseFile(file);
-    await confirmSelectedFile();
+    await act(async () => { vi.advanceTimersByTime(250); });
+    expect(dialog).toHaveTextContent("thermal.bin 格式不支持。");
+    expect(within(dialog).getByRole("button", { name: "知道了" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "确认上传" })).not.toBeInTheDocument();
+    expect(repository.uploadLog).not.toHaveBeenCalled();
+    const uploadButton = within(dialog).getByRole("button", { name: "仍然上传" });
+    expect(uploadButton).toHaveClass("danger");
+    await act(async () => { fireEvent.click(uploadButton); });
 
     expect(repository.uploadLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -498,11 +505,11 @@ describe("LogsPage api upload wiring", () => {
     expect(repository.uploadLog).toHaveBeenCalledTimes(1);
   });
 
-  it("lists multiple selected files and submits one bundle, preserving handled failure state", async () => {
+  it.each(["second.log", "second.bin"])("lists multiple selected files including %s and submits one bundle, preserving handled failure state", async (secondName) => {
     const uploadLog = vi.fn().mockRejectedValue(new Error("boom"));
     const repository = renderApiLogs(createLogRepository({ uploadLog }));
     const first = new File(["line"], "first.log", { type: "text/plain" });
-    const second = new File(["line"], "second.log", { type: "text/plain" });
+    const second = new File(["line"], secondName, { type: "text/plain" });
     await waitForApiRuntime(repository);
     vi.useFakeTimers();
     openUploadDialog();
@@ -512,7 +519,7 @@ describe("LogsPage api upload wiring", () => {
     });
 
     expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent("first.log");
-    expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent("second.log");
+    expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent(secondName);
     expect(repository.uploadLog).not.toHaveBeenCalled();
     await confirmSelectedFile();
     expect(toastWithText(logRuntimeFailureNotification)).toBeTruthy();

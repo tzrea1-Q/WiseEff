@@ -665,7 +665,8 @@ function UploadLogDialog({
       : files.length > 1 && files.some((file) => /\.(gz|tgz|zip|tar)$/i.test(file.name)) ? "请选择多个文本文件或一个压缩包。"
       : new Set(files.map((file) => file.name)).size !== files.length ? "不能上传同名文件。" : "";
     setUploadError(limitError);
-    const nextSupported = !limitError && (archivesSupported || files.every((file) => isSupportedLogFile(file.name, false)));
+    const nextSupported = !limitError && ((archivesSupported && files.length > 1)
+      || files.every((file) => isSupportedLogFile(file.name, archivesSupported)));
     setSupported(nextSupported);
     setPhase(files.length ? "validating" : "idle");
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
