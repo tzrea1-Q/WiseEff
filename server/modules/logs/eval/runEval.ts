@@ -1,4 +1,5 @@
 import { parseLogText } from "../parser";
+import type { AnalyzeLogInput, LogAnalysisAdapter } from "../analyzer";
 import { createAgentLoopLogAnalyzer, LOG_ANALYSIS_LOOP_PROMPT_VERSION } from "../analyzer/agentLoop";
 import { createLogAnalyzerFromEnv } from "../analyzer/analyzerFromEnv";
 import {
@@ -64,6 +65,29 @@ function capturePrompts(model: LogAnalysisChatModel, captured: LogAnalysisChatMe
   };
 }
 
+/** Compare to the real kernel's no-procedure protocol, rather than a copied prompt. */
+async function capturePlatformProtocol(
+  createAnalyzer: (model: LogAnalysisChatModel) => LogAnalysisAdapter,
+  input: AnalyzeLogInput
+): Promise<string> {
+  let protocol = "";
+  const analyzer = createAnalyzer({
+    async invoke(messages) {
+      protocol = messages.find((message) => message.role === "system")?.content ?? "";
+      return { content: "" };
+    }
+  });
+  await analyzeWithDegradation({
+    analyzer,
+    analyzeInput: { ...input, procedure: undefined },
+    job: { attemptCount: EVAL_MAX_ATTEMPTS },
+    maxAttempts: EVAL_MAX_ATTEMPTS,
+    retryBaseDelayMs: 1,
+    now: () => new Date()
+  });
+  return protocol;
+}
+
 function toScenarioResult(
   scenario: { name: string; category: string },
   kernel: "single-shot" | "loop",
@@ -112,6 +136,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
     analyzer,
     analyzeInput: {
       parsed,
+      procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
       logDomain: scenario.logDomain
     },
@@ -124,7 +149,11 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
   return toScenarioResult(scenario, "single-shot", {
     output,
     parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber),
-    promptMessages
+    promptMessages,
+    platformProtocol: scenario.procedure ? await capturePlatformProtocol(
+      (model) => createLlmLogAnalyzer({ model, modelLabel: EVAL_MODEL_LABEL, tokenBudget: EVAL_TOKEN_BUDGET }),
+      { parsed, analysisQuestion: scenario.analysisQuestion, logDomain: scenario.logDomain }
+    ) : undefined
   }, scenario.expectations);
 }
 
@@ -148,6 +177,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     analyzer,
     analyzeInput: {
       parsed,
+      procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
       logDomain: scenario.logDomain
     },
@@ -161,6 +191,11 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     output,
     parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber),
     promptMessages,
+    platformProtocol: scenario.procedure ? await capturePlatformProtocol(
+      (model) => createAgentLoopLogAnalyzer({ model, modelLabel: EVAL_MODEL_LABEL,
+        tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET, maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS }),
+      { parsed, analysisQuestion: scenario.analysisQuestion, logDomain: scenario.logDomain }
+    ) : undefined,
     modelCallCount: scriptedModel.calls.length
   }, scenario.expectations);
 }

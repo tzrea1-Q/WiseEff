@@ -9,10 +9,11 @@ import {
   type LogAnalysisDegradedReason
 } from "../analyzer";
 import { runLogPrefilter, type PrefilterFindings } from "../prefilter";
+import { appendSkillProcedure } from "./procedurePrompt";
 
 /** Versioned prompt: recorded on every report so eval baselines can gate prompt changes. */
-export const LOG_ANALYSIS_PROMPT_VERSION = "2026-10-18.bundle.1";
-export const LOG_ANALYSIS_PARAMETER_PROMPT_VERSION = "2026-10-18.bundle.related-parameter.1";
+export const LOG_ANALYSIS_PROMPT_VERSION = "2026-10-19.procedure.1";
+export const LOG_ANALYSIS_PARAMETER_PROMPT_VERSION = "2026-10-19.procedure.related-parameter.1";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot ? LOG_ANALYSIS_PARAMETER_PROMPT_VERSION : LOG_ANALYSIS_PROMPT_VERSION;
@@ -305,7 +306,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
       }
 
       const messages: LogAnalysisChatMessage[] = [
-        { role: "system", content: buildSystemPrompt(Boolean(input.relatedParameterSnapshot)) },
+        { role: "system", content: appendSkillProcedure(buildSystemPrompt(Boolean(input.relatedParameterSnapshot)), input.procedure) },
         { role: "user", content: buildUserPrompt(input, findings, excerpt) }
       ];
 

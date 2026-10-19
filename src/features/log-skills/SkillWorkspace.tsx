@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -7,12 +7,15 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ViewSwitch } from "@/components/ui/view-switch";
+import { TabPanel } from "@/components/ui/tab-panel";
 import { DataTable } from "@/components/admin/DataTable";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { mockLogSkills, mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import { formatPercent } from "@/domain/format/formatPercent";
+import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { AnalysisSkill, SkillRevision, SkillSpec, SkillWorkspaceRepository, SkillSample } from "./types";
 import { specJson } from "./diffSkillSpecs";
 import { SkillSpecDiff } from "./SkillSpecDiff";
@@ -32,6 +35,30 @@ const status = { published: "当前", draft: "草稿", superseded: "已替代" }
 
 function Parsing({ skill, parsingYaml, onParsingYamlChange, disabled, repository, sample }: SectionProps) {
   return <ParsingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} />;
+}
+
+const procedureOutline = ["适用场景", "先检查什么", "根因判定", "常见误判", "建议动作"]
+  .map((heading) => `## ${heading}\n请补充${heading}。`).join("\n\n");
+
+function Procedure({ spec, setSpec, disabled }: SectionProps) {
+  const [view, setView] = useState("edit");
+  const id = useId();
+  const procedure = spec.procedure ?? procedureOutline;
+  const preview = useMemo(() => renderMarkdownPreview(procedure), [procedure]);
+  return <section className="skill-section" aria-label="诊断流程"><h2>诊断流程</h2>
+    <ViewSwitch variant="tabs" ariaLabel="诊断流程视图" value={view} onValueChange={setView} items={[
+      { value: "edit", label: "编辑", id: `${id}-edit`, panelId: `${id}-edit-panel` },
+      { value: "preview", label: "预览", id: `${id}-preview`, panelId: `${id}-preview-panel` }
+    ]} />
+    <TabPanel id={`${id}-edit-panel`} aria-labelledby={`${id}-edit`} hidden={view !== "edit"}>
+      <label>诊断流程内容<Textarea disabled={disabled} rows={18} maxLength={20000} value={procedure}
+        aria-describedby={`${id}-count`} onChange={(event) => setSpec({ ...spec, procedure: event.target.value })} /></label>
+    </TabPanel>
+    <TabPanel id={`${id}-preview-panel`} aria-labelledby={`${id}-preview`} hidden={view !== "preview"}>
+      <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: preview }} />
+    </TabPanel>
+    <p id={`${id}-count`}>{procedure.length} / 20000 字符</p>
+  </section>;
 }
 
 function Overview({ skill, spec, setSpec, disabled, stats }: SectionProps) {
@@ -76,7 +103,7 @@ function Versions({ skill, revisions, disabled, onRestore }: SectionProps) {
 }
 
 export const skillSections: Array<{ id: string; label: string; component?: ComponentType<SectionProps> }> = [
-  { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程" },
+  { id: "overview", label: "概览", component: Overview }, { id: "procedure", label: "诊断流程", component: Procedure },
   { id: "parsing", label: "样例与解析", component: Parsing }, { id: "decoding", label: "解码" }, { id: "signals", label: "信号" },
   { id: "knowledge", label: "知识" }, { id: "source", label: "源码" }, { id: "tests", label: "测试" },
   { id: "integration", label: "集成" }, { id: "versions", label: "版本", component: Versions }

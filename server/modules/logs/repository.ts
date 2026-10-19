@@ -144,6 +144,7 @@ export type CreateLogRecordWithRunAndJobInput = {
 };
 
 export type LogWorkerRunSnapshot = {
+  procedure?: LogSkillSpec["procedure"];
   parsing?: LogSkillSpec["parsing"];
   jobId: string;
   organizationId: string;
@@ -303,6 +304,7 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
   return {
     jobId: row.job_id,
     skillRevisionId: row.skill_revision_id,
+    procedure: row.skill_revision_spec?.procedure,
     signalRules: row.skill_revision_spec?.signalRules,
     parsing: row.skill_revision_spec?.parsing,
     organizationId: row.organization_id,

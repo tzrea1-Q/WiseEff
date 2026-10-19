@@ -10,10 +10,11 @@ import type { SkillWorkspaceRepository, SkillRevision } from "./types";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const conflictError = () => new WiseEffApiError("LOG_SKILL_DRAFT_CONFLICT", "stale", {}, "request");
-function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean } = {}) {
+function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean; procedure?: string } = {}) {
   const skill = structuredClone(mockSkillWorkspace("skill-charging")!);
   const old: SkillRevision = { ...skill.currentRevision, id: "old", number: 1, status: "superseded", spec: { schemaVersion: "skill/v1", description: "旧描述" } };
   skill.currentRevision = { ...skill.currentRevision, id: "current", number: 2 };
+  if (options.procedure !== undefined) skill.currentRevision.spec.procedure = options.procedure;
   if (options.legacyDescription) delete skill.currentRevision.spec.description;
   if (options.draft) skill.draft = { ...skill.currentRevision, id: "draft", number: 3, status: "draft", spec: { ...skill.currentRevision.spec, description: "草稿描述" } };
   const repository = {
@@ -55,6 +56,69 @@ function setup(options: { section?: string; draft?: boolean; apiMode?: boolean; 
 }
 
 describe("skill workspace", () => {
+  it("prefills an absent procedure without creating an edit, and previews the five-heading outline", async () => {
+    setup({ section: "procedure" });
+    const editor = await screen.findByRole("textbox", { name: "诊断流程内容" });
+    const outline = ["适用场景", "先检查什么", "根因判定", "常见误判", "建议动作"];
+    for (const heading of outline) expect((editor as HTMLTextAreaElement).value).toContain(`## ${heading}`);
+    expect(editor).toHaveAttribute("maxlength", "20000");
+    expect(editor).toHaveAccessibleDescription(`${(editor as HTMLTextAreaElement).value.length} / 20000 字符`);
+    expect(screen.queryByRole("group", { name: "未发布更改" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+    const preview = screen.getByRole("tabpanel", { name: "预览" });
+    for (const heading of outline) expect(within(preview).getByRole("heading", { name: heading })).toBeVisible();
+    expect(preview).toHaveAttribute("tabindex", "0");
+    await userEvent.click(screen.getByRole("tab", { name: "编辑" }));
+    expect(editor).toBeVisible();
+    expect(screen.getByRole("tabpanel", { name: "编辑" })).not.toHaveAttribute("tabindex");
+  });
+  it("saves procedure edits, preserves them across sections, and publishes a readable field diff", async () => {
+    const { repository, onPublished } = setup({ section: "procedure", procedure: "## 先检查什么\n旧流程" });
+    const procedure = "## 先检查什么\n核对 **工具证据**。\n<script>alert(1)</script>";
+    fireEvent.change(await screen.findByRole("textbox", { name: "诊断流程内容" }), { target: { value: procedure } });
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+    const preview = screen.getByRole("tabpanel", { name: "预览" });
+    expect(within(preview).getByText("工具证据").tagName).toBe("STRONG");
+    expect(preview).toHaveTextContent("<script>alert(1)</script>");
+    expect(preview.querySelector("script")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "概览" }));
+    await userEvent.click(screen.getByRole("button", { name: "诊断流程" }));
+    expect(screen.getByRole("textbox", { name: "诊断流程内容" })).toHaveValue(procedure);
+    await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ procedure }), null, "current"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled());
+    await userEvent.click(screen.getByRole("button", { name: "发布" }));
+    const dialog = screen.getByRole("dialog", { name: "发布技能" });
+    expect(within(dialog).getByText("诊断流程 1 项")).toBeVisible();
+    expect(within(dialog).queryByLabelText("概览差异")).not.toBeInTheDocument();
+    const procedureDiff = within(dialog).getByLabelText("诊断流程差异");
+    const row = within(procedureDiff).getByRole("rowheader", { name: "诊断流程" }).closest("tr")!;
+    expect(within(row).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["## 先检查什么\n旧流程", procedure]);
+    await userEvent.click(within(dialog).getByRole("button", { name: "发布" }));
+    await waitFor(() => expect(onPublished).toHaveBeenCalledWith("已发布 v3"));
+    expect(repository.publishSkill).toHaveBeenCalledWith("skill-charging", "saved");
+    expect(screen.getByRole("textbox", { name: "诊断流程内容" })).toHaveValue(procedure);
+  });
+  it("discards a procedure edit and preserves an explicitly cleared procedure when saved", async () => {
+    const { repository } = setup({ section: "procedure", procedure: "已发布流程" });
+    const editor = await screen.findByRole("textbox", { name: "诊断流程内容" });
+    fireEvent.change(editor, { target: { value: "本地流程" } });
+    await userEvent.click(screen.getByRole("button", { name: "放弃草稿" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "放弃草稿？" })).getByRole("button", { name: "确认" }));
+    expect(editor).toHaveValue("已发布流程");
+    fireEvent.change(editor, { target: { value: "x".repeat(20000) } });
+    expect(screen.getByText("20000 / 20000 字符")).toBeVisible();
+    fireEvent.change(editor, { target: { value: "" } });
+    await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ procedure: "" }), null, "current"));
+    expect(editor).toHaveValue("");
+  });
+  it.each([{ apiMode: false }, { canEdit: false }])("keeps procedure authoring disabled and its preview available: %j", async (options) => {
+    setup({ ...options, section: "procedure" });
+    expect(await screen.findByRole("textbox", { name: "诊断流程内容" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+    expect(screen.getByRole("tabpanel", { name: "预览" })).toBeVisible();
+  });
   it("previews the mounted shared sample, follows replacements/deletion, and keeps sample scroll across sections", async () => {
     const { repository } = setup({ section: "parsing" });
     const sample = await screen.findByRole("region", { name: "样例内容" });
@@ -134,11 +198,14 @@ describe("skill workspace", () => {
     const description = await screen.findByRole("textbox", { name: "描述" });
     expect(screen.queryByRole("group", { name: "未发布更改" })).not.toBeInTheDocument();
     fireEvent.change(description, { target: { value: "新描述" } });
+    await userEvent.click(screen.getByRole("button", { name: "诊断流程" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "诊断流程内容" }), { target: { value: "新流程" } });
     const bar = screen.getByRole("group", { name: "未发布更改" });
     await userEvent.click(within(bar).getByRole("button", { name: "发布" }));
     const dialog = screen.getByRole("dialog", { name: "发布技能" });
     expect(within(dialog).getByLabelText("概览差异")).toHaveTextContent("新描述");
-    expect(within(dialog).getByLabelText("变更摘要")).toHaveTextContent("概览 1 项");
+    expect(within(dialog).getByText("概览 1 项 · 诊断流程 1 项")).toBeVisible();
+    expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["概览", "诊断流程"]);
     await userEvent.click(within(dialog).getByRole("button", { name: "发布" }));
     await waitFor(() => expect(onPublished).toHaveBeenCalledWith("已发布 v3"));
     expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ description: "新描述" }), null, "current");
@@ -260,7 +327,7 @@ describe("skill workspace", () => {
   it("keeps future sections disabled and switches freely without dropping local edits", async () => {
     const { onNavigate } = setup();
     fireEvent.change(await screen.findByRole("textbox", { name: "描述" }), { target: { value: "未保存" } });
-    expect(screen.getByRole("button", { name: /诊断流程/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /解码/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "版本" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging?section=versions");

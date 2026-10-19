@@ -20,14 +20,15 @@ import {
 } from "./llmAnalyzer";
 import { availableLogAnalysisTools, executeLogAnalysisTool, logAnalysisToolCatalog } from "./tools/toolCatalog";
 import type { LogAnalysisToolContext } from "./tools/toolContext";
+import { appendSkillProcedure } from "./procedurePrompt";
 
 /**
  * Versioned loop prompt: the P2 multi-step kernel speaks a different protocol than
  * the P1 single shot, so it carries its own version string on every report and in
  * both eval layers. Bump on any wording change.
  */
-export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.decoding.2";
-export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.decoding.related-parameter.2";
+export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.1";
+export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.related-parameter.1";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot
@@ -232,7 +233,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       };
 
       const messages: LogAnalysisChatMessage[] = [
-        { role: "system", content: buildLoopSystemPrompt(maxSteps, Boolean(input.relatedParameterSnapshot), toolContext) },
+        { role: "system", content: appendSkillProcedure(buildLoopSystemPrompt(maxSteps, Boolean(input.relatedParameterSnapshot), toolContext), input.procedure) },
         { role: "user", content: buildLoopMissionMessage(input, formatPrefilterFindings(findings, input.files, input.signalRules)) }
       ];
 

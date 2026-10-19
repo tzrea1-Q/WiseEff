@@ -14,16 +14,18 @@ export function SkillSpecDiff({ before, after }: { before: SkillSpec; after: Ski
     diff.counts.changed ? `修改 ${diff.counts.changed}` : null,
     diff.counts.removed ? `移除 ${diff.counts.removed}` : null].filter(Boolean).join(" / ");
   const summary = [diff.counts.overview ? `概览 ${diff.counts.overview} 项` : null,
+    diff.counts.procedure ? `诊断流程 ${diff.counts.procedure} 项` : null,
     diff.counts.format ? `基础格式 ${diff.counts.format} 行` : null,
+    diff.parsing.length ? `解析规则 ${diff.parsing.length} 项` : null,
     ruleChanges ? `信号规则：${ruleChanges}` : null,
-    diff.counts.signalSettings ? `规则设置 ${diff.counts.signalSettings} 项` : null,
-    diff.parsing.length ? `解析规则 ${diff.parsing.length} 项` : null].filter(Boolean).join(" · ");
+    diff.counts.signalSettings ? `规则设置 ${diff.counts.signalSettings} 项` : null].filter(Boolean).join(" · ");
   const fieldRows = (items: typeof diff.overview) => items.map((item) => <TableRow key={item.field}>
     <TableHead scope="row">{labels[item.field] ?? item.field}</TableHead><TableCell><pre>{display(item.before)}</pre></TableCell><TableCell><pre>{display(item.after)}</pre></TableCell>
   </TableRow>);
   return <div className="skill-diff" aria-label="变更摘要">
     <p>{summary || "两个版本内容相同"}</p>
     {diff.overview.length ? <section aria-label="概览差异"><h3>概览</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.overview)}</TableBody></Table></section> : null}
+    {diff.procedure.length ? <section aria-label="诊断流程差异"><h3>诊断流程</h3><Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(diff.procedure)}</TableBody></Table></section> : null}
     {diff.parsing.length ? <section aria-label="解析规则差异"><h3>解析规则</h3>{diff.parsing.map((extractor) => <section key={extractor.id}>
       <h4>{extractor.id} · {{ added: "新增", changed: "修改", removed: "移除" }[extractor.kind]}</h4>
       <Table className="table-fixed"><TableHeader><TableRow><TableHead>字段</TableHead><TableHead>变更前</TableHead><TableHead>变更后</TableHead></TableRow></TableHeader><TableBody>{fieldRows(extractor.fields)}</TableBody></Table>

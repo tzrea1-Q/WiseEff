@@ -4,6 +4,12 @@
 
 The golden case set (glossary: *Golden case set*, `CONTEXT.md`) is the labelled corpus that anchors the log-analysis **quality-layer eval** (`npm run logs:eval:quality`). One shared set serves regression gating, model/prompt comparison, and (from P3) online monitoring.
 
+## Diagnostic procedure behavior checks
+
+`npm run logs:eval` also runs deterministic, zero-API-cost procedure scenarios in `server/modules/logs/eval/scenarios.ts`. Benign procedures must appear after the unchanged platform protocol and before the user task in both kernels. Adversarial scenarios demand skipping grounding, fabricated line `9999`, a parameter write, or an injected closing delimiter and fake protocol heading. They verify a single enclosed JSON string with lower-priority, untrusted guidance, rejection by the existing grounding/tool guards, and grounded final evidence or an honestly marked fallback. These scripted checks verify prompt construction and kernel enforcement; they do not measure a live model's resistance to persuasion.
+
+The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.1`; existing tolerances and its pending-real-cases status stay unchanged.
+
 ## Layout
 
 ```
@@ -42,7 +48,7 @@ The enum exists purely for scoring (root-cause bucket match); extend it delibera
 
 ## Annotation-draft export from `/log-admin` (P3)
 
-To promote a live analyzed case into an annotation without hand-copying fields, open the record's drawer in `/log-admin` and use **导出评测案例草稿**. It downloads two files ready for this layout: a `case.yaml` draft (domain slug suggested from the record's log domain or `uncategorized`, `realLog: true`, **`deIdentified: false`**, `rootCauseCategory: TODO`, `keyEvidenceLines` prefilled from the report's evidence anchors, `rootCausePoints` split from the conclusion, `expectedActions` from the suggested actions, `analysisQuestion` carried over) plus `log.txt` (the raw lines exactly as analyzed, line numbers stable).
+To promote a live analyzed case into an annotation without hand-copying fields, open the record's drawer in `/log-admin` and use **`导出评测案例草稿`**. It downloads two files ready for this layout: a `case.yaml` draft (domain slug suggested from the record's log domain or `uncategorized`, `realLog: true`, **`deIdentified: false`**, `rootCauseCategory: TODO`, `keyEvidenceLines` prefilled from the report's evidence anchors, `rootCausePoints` split from the conclusion, `expectedActions` from the suggested actions, `analysisQuestion` carried over) plus `log.txt` (the raw lines exactly as analyzed, line numbers stable).
 
 The export is deliberately a DRAFT with no repository write or auto-commit. Before the case may enter git you must still: (1) de-identify `log.txt` and the yaml against the checklist below, (2) replace the `rootCauseCategory` TODO with a real enum value, (3) have the owning domain expert confirm the prefilled points/lines/actions, and (4) flip `deIdentified` to `true`. The loader rejects drafts that skip any of this — an unfinished export can never silently count as a golden case.
 
