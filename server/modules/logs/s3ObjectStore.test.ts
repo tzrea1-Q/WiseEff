@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -29,6 +30,24 @@ function createStore(transport: ObjectStorageTransport = createTransport()) {
 }
 
 describe("createS3ObjectStore", () => {
+  it("delegates streaming reads and rejects transports without streaming support", async () => {
+    const transport = createTransport({ getStream: vi.fn(async () => Readable.from([Buffer.from("source")])) });
+    const chunks: Buffer[] = [];
+    for await (const block of await createStore(transport).getStream!("org-1/source.zip")) chunks.push(block as Buffer);
+    expect(Buffer.concat(chunks).toString()).toBe("source");
+    expect(transport.getStream).toHaveBeenCalledWith({ bucket: "wiseeff-pilot", key: "org-1/source.zip" });
+    await expect(createStore().getStream!("org-1/source.zip")).rejects.toThrow("streaming reads");
+  });
+
+  it("streams the HTTP body without reading response.arrayBuffer", async () => {
+    const response = new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode("source")); controller.close(); } }));
+    const arrayBuffer = vi.spyOn(response, "arrayBuffer");
+    const transport = createHttpObjectStorageTransport({ endpoint: "https://storage.example.com", accessKeyId: "key", secretAccessKey: "secret", fetchImpl: vi.fn(async () => response) });
+    const chunks: Buffer[] = [];
+    for await (const block of await transport.getStream!({ bucket: "bucket", key: "org/source.zip" })) chunks.push(block as Buffer);
+    expect(Buffer.concat(chunks).toString()).toBe("source");
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
   it("stores objects under organization-scoped keys with checksum metadata", async () => {
     const transport = createTransport();
     const bytes = Buffer.from("fault", "utf8");

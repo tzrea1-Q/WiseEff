@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { logSkillDtoSchema, logSkillRevisionDtoSchema, logSkillSampleDtoSchema, logSkillTemplateListResponseSchema, parsePreviewResponseSchema } from "@wiseeff/dto-schemas";
+import type { logSkillDtoSchema, logSkillRevisionDtoSchema, logSkillSampleDtoSchema, logSkillTemplateListResponseSchema, parsePreviewResponseSchema, logSourceSnapshotDtoSchema } from "@wiseeff/dto-schemas";
 
 export type SkillRevision = z.infer<typeof logSkillRevisionDtoSchema>;
 export type SkillSpec = SkillRevision["spec"];
@@ -16,6 +16,7 @@ export interface SkillAuthoringRepository {
   deleteSkillSample(id: string): Promise<void>;
 }
 export type ParsePreview = z.infer<typeof parsePreviewResponseSchema>;
+export type SourceSnapshot = z.infer<typeof logSourceSnapshotDtoSchema>;
 
 export interface SkillWorkspaceRepository {
   parsePreview?(id: string, input: { parsing: unknown; sampleText: string; fileName?: string }): Promise<ParsePreview>;
@@ -26,4 +27,8 @@ export interface SkillWorkspaceRepository {
   discardSkillDraft(id: string, draftRevisionId: string): Promise<void>;
   publishSkill(id: string, draftRevisionId: string): Promise<AnalysisSkill>;
   restoreSkillRevision(id: string, revisionId: string): Promise<AnalysisSkill>;
+  listSourceSnapshots(id: string): Promise<SourceSnapshot[]>;
+  uploadSourceSnapshot(id: string, input: { versionLabel: string; file: File }): Promise<SourceSnapshot>;
+  setDefaultSourceSnapshot(id: string, snapshotId: string): Promise<AnalysisSkill>;
+  archiveSourceSnapshot(id: string, snapshotId: string): Promise<SourceSnapshot>;
 }

@@ -12,6 +12,7 @@ import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { resolveKnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
 import { ensureKnowledgeVectorColumn } from "./modules/knowledge/indexing/vectorEnsure";
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
+import { startSourceIndexWorkerLoop } from "./modules/logs/sourceIndexWorker";
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { createLogWebhookDeliverer } from "./modules/logs/webhookDelivery";
@@ -110,6 +111,8 @@ const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
     ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer })
     : undefined;
+const stopSourceIndexWorker = env.LOG_WORKER_ENABLED && db && objectStore
+  ? startSourceIndexWorkerLoop({ db, objectStore }) : undefined;
 // The outbox is polled in both analysis queue modes.
 const stopLogWebhookWorker = env.LOG_WORKER_ENABLED ? logWebhookDeliverer?.start() : undefined;
 const stopLogWebhookDeliveryRetention =
@@ -199,6 +202,7 @@ async function shutdown() {
 
   await Promise.all([
     stopLogWorker?.(),
+    stopSourceIndexWorker?.(),
     stopLogWebhookDeliveryRetention?.(),
     stopLogWebhookWorker?.(),
     stopKnowledgeIndexWorker?.(),

@@ -140,6 +140,12 @@ function buildSchemaPlaceholders() {
       relatedParameterPin: { type: "string", description: "JSON-encoded canonical parameter pin." }
     }
   };
+  schemas.LogSourceSnapshotMultipartUpload = {
+    type: "object", required: ["file", "versionLabel"], properties: {
+      file: { type: "string", format: "binary", description: "One .tar.gz, .tgz or .zip source archive." },
+      versionLabel: { type: "string", minLength: 1, maxLength: 200 }
+    }
+  };
   return schemas;
 }
 
@@ -188,8 +194,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
             requestBody: {
               required: true,
               content: {
-                ...jsonContent(schema.requestBody),
-                ...(route.id === "logs.uploadFile" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogBundleMultipartUpload" } } } : {})
+                ...(route.id === "logs.uploadSourceSnapshot" ? {} : jsonContent(schema.requestBody)),
+                ...(route.id === "logs.uploadFile" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogBundleMultipartUpload" } } } : {}),
+                ...(route.id === "logs.uploadSourceSnapshot" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogSourceSnapshotMultipartUpload" } } } : {})
               }
             }
           }

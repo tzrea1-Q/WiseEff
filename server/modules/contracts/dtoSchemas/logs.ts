@@ -148,6 +148,17 @@ export const logSkillSampleDtoSchema = logSkillSampleMetadataSchema.extend({ con
 export const logSkillSampleResponseSchema = itemEnvelopeSchema(logSkillSampleDtoSchema.nullable());
 export const logSkillSampleReplaceResponseSchema = itemEnvelopeSchema(logSkillSampleMetadataSchema);
 
+export const logSourceSnapshotDtoSchema = z.object({
+  id: z.string(), skillId: z.string(), versionLabel: z.string(),
+  status: z.enum(["queued", "indexing", "ready", "failed", "archived"]),
+  filesProcessed: z.number().int().nonnegative(), filesTotal: z.number().int().nonnegative(),
+  fileCount: z.number().int().nonnegative(), skippedCount: z.number().int().nonnegative(),
+  skippedFiles: z.array(z.object({ path: z.string(), reason: z.string() })),
+  error: z.string().nullable(), createdAt: z.string()
+});
+export const logSourceSnapshotListResponseSchema = itemsEnvelopeSchema(logSourceSnapshotDtoSchema);
+export const logSourceSnapshotResponseSchema = itemEnvelopeSchema(logSourceSnapshotDtoSchema);
+
 export const logDomainKnowledgeLinkDtoSchema = z.object({
   id: z.string(),
   logDomainId: z.string(),

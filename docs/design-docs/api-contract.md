@@ -114,6 +114,19 @@ Only query results' own `events[].file/line` anchors establish observation. End-
 
 `GET /api/v1/logs/feedback-insights` (`logs:view`, org-scoped) aggregates `log_feedback` into the `/log-admin` analysis-quality dashboard: one row per log domain × `analysisSource` × `promptVersion` with `totalCount`, `helpfulCount`, `helpfulRate` (0..1), and `lastFeedbackAt`. Optional `timeWindow=today|7d|30d` filters by feedback creation time (same interval semantics as `GET /api/v1/logs`). Feedback is attributed to the analysis run stamped on the row (`log_feedback.run_id`, captured from the log's current run at insert time); rows that still have a null `run_id` fall back to the log's current run. List/detail continue to read the current run's report. `logDomainId`/`logDomainName` are `null` for the uncategorized domain and `analysisSource`/`promptVersion` are `null` for legacy reports without provenance.
 
+### Source snapshot metadata and administration (#1243)
+
+| Method | Path | Shape |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-skills/:skillId/source-snapshots` | `200 { items: snapshot[] }`; requires `logs:view`. Metadata only, including archived snapshots. |
+| `POST` | `/api/v1/log-skills/:skillId/source-snapshots` | Multipart `{ versionLabel, file }` only; `201 { item: snapshot }` in `queued` state. Requires `logs:admin-domains`. |
+| `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default` | `200 { item: skill }`; creates or replaces the draft with `spec.defaultSourceSnapshotId`. Requires `logs:admin-domains`; takes effect on the next publication. |
+| `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive` | `200 { item: snapshot }` in `archived` state; requires `logs:admin-domains`. |
+
+The required trimmed `versionLabel` is 1–200 characters and unique per skill among non-archived snapshots (`409` on conflict). Archives are `.tar.gz`, `.tgz` or `.zip`; the default compressed cap is 100 MiB. The route body cap adds 64 KiB for multipart framing; excessive `Content-Length` is rejected before buffering, and actual request bytes remain bounded (`413` when exceeded). File bytes share the request buffer; JSON/base64 uploads are not supported. `LOG_SOURCE_*` controls upload/indexing limits; see the [environment reference](../developer/environment-variables.md#log-analysis-llm) and [runbook](../runbooks/log-analysis-llm.md#source-snapshots-1243) for the allowlist and safety rules. Skill/snapshot lookups require the same organization and skill; cross-scope identifiers return `404`. Archived snapshots cannot be newly selected as defaults (`409`). Save, publication and restore may retain unchanged archived defaults; all references must belong to the same organization and skill. Snapshot upload, default selection and archive record `log-source-snapshot-upload`, `log-source-snapshot-default` and `log-source-snapshot-archive` audit events in their database write transactions.
+
+Snapshot metadata includes `id`, `skillId`, `versionLabel`, `status` (`queued`, `indexing`, `ready`, `failed`, `archived`), `filesProcessed`, `filesTotal`, `fileCount`, `skippedCount`, `skippedFiles: [{ path, reason }]` (at most 200 details), nullable `error`, and `createdAt`. There is no public source-file or content route. Runs resolve the optional default from their immutable pinned revision and persist `source_snapshot_id`/`source_snapshot_status`. Unready or archived sources do not fail the run; the persisted report includes a Chinese availability note. This slice exposes only internal `{ id, status }` context, with source tools, statement indexing, source evidence and upload `sourceVersion` selection deferred to #1244/#1245.
+
 ## Debugging Parameter Semantics
 
 `GET /api/v1/debugging/parameters?protocol=adb` returns enabled, non-archived organization catalog rows with an enabled selected-protocol binding. Authorization uses org-level debugging permissions only.

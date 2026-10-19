@@ -460,6 +460,19 @@ GET  /api/v1/jobs/:jobId/events
 }
 ```
 
+### 源码快照元数据与管理（#1243）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-skills/:skillId/source-snapshots` | `200 { items: snapshot[] }`；需要 `logs:view`，只读元数据，包含已归档快照。 |
+| `POST` | `/api/v1/log-skills/:skillId/source-snapshots` | 仅支持 multipart `{ versionLabel, file }`；返回 `201 { item: snapshot }`，状态为 `queued`。需要 `logs:admin-domains`。 |
+| `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default` | `200 { item: skill }`；创建或替换草稿的 `spec.defaultSourceSnapshotId`，下次发布生效。需要 `logs:admin-domains`。 |
+| `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive` | `200 { item: snapshot }`，状态为 `archived`。需要 `logs:admin-domains`。 |
+
+必填 `versionLabel` 去首尾空白后为 1–200 字符，在技能的未归档快照中唯一，冲突返回 `409`。压缩包支持 `.tar.gz`、`.tgz` 和 `.zip`，默认压缩上限 100 MiB。路由请求体另加 64 KiB multipart 封装预算，过大的 `Content-Length` 在缓冲前拒绝，实际请求字节同样受限，超限返回 `413`；文件字节共享请求缓冲，不支持 JSON/base64 上传。上传和索引由 `LOG_SOURCE_*` 配置，白名单和安全规则见[环境变量](../developer/environment-variables.md#日志分析-llm)及[运行手册](../runbooks/log-analysis-llm.md#源码快照1243)。技能与快照查询必须匹配组织和技能，跨范围 id 返回 `404`。已归档快照不能被新选为默认值，返回 `409`；保存、发布和恢复可保留不变的已有归档默认值，所有引用仍须属于同一组织和技能。上传、默认设置和归档分别在数据库写入事务内记录 `log-source-snapshot-upload`、`log-source-snapshot-default` 和 `log-source-snapshot-archive` 审计。
+
+快照元数据含 `id`、`skillId`、`versionLabel`、`status`（`queued`、`indexing`、`ready`、`failed`、`archived`）、`filesProcessed`、`filesTotal`、`fileCount`、`skippedCount`、`skippedFiles: [{ path, reason }]`（最多 200 条）、可空 `error` 和 `createdAt`。不提供公开源码文件或内容路由。运行从其不可变固定版本解析默认快照，持久化 `source_snapshot_id`/`source_snapshot_status`；快照未就绪或已归档不使运行失败，报告持久化中文不可用提示。本切片只暴露内部 `{ id, status }` 上下文，源码工具、语句索引、源码证据及上传 `sourceVersion` 选择留给 #1244/#1245。
+
 ## 7. Product Feedback
 
 Internal Beta「问题反馈」与日志分析反馈分离，按认证用户的 `organization_id` 隔离。活跃登录用户可以提交反馈、维护自己的草稿，并在反馈中心补充信息。`mine` 和草稿接口校验提交人身份；管理员分诊、负责人列表及管理员附件读取要求 `admin:access`。

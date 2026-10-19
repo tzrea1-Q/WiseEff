@@ -54,6 +54,8 @@ import { createRouter, type RouteRequest } from "./shared/http/router";
 import { isRootDatabase, type Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import { loadLogBundleLimits } from "./config/env";
+import { getSourceSnapshotLimits } from "./modules/logs/sourceArchive";
+import { ApiError } from "./shared/http/errors";
 import type { JsonWebKey } from "node:crypto";
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
@@ -348,10 +350,14 @@ export const DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES = DEBUG_CATALOG_MAX_DOCUMENT_BY
 export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
 
-export function resolveRouteBodyLimit({ method, path }: { method: string; path: string }) {
+export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
   if (method === "PUT" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+sample\/*$/.test(path)) {
     // Base64 of one 2 MiB sample plus a bounded JSON envelope.
     return MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH + 64 * 1024;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+source-snapshots\/*$/.test(path)) {
+    if (contentType !== undefined && contentType !== "multipart/form-data") throw new ApiError("VALIDATION_FAILED", "Source uploads require multipart/form-data.");
+    return getSourceSnapshotLimits().maxCompressedBytes + 64 * 1024;
   }
   if (method === "POST" && /^\/+api\/+v1\/+log-files\/*$/.test(path)) {
     // Bound collection too: allow JSON base64 expansion and multipart headers.

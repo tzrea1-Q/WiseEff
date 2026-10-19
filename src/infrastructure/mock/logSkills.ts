@@ -1,5 +1,5 @@
 import type { LogDomain } from "@/domain/logs/types";
-import type { AnalysisSkill, SkillSample, SkillTemplate } from "@/features/log-skills/types";
+import type { AnalysisSkill, SkillSample, SkillTemplate, SourceSnapshot } from "@/features/log-skills/types";
 
 export const mockSkillTemplates: SkillTemplate[] = [
   ["generic-text", "通用文本日志"], ["linux-dmesg", "Linux 内核 dmesg"],
@@ -11,6 +11,8 @@ export const mockSkillSample: SkillSample = { id: "sample-charging", skillId: "s
   sizeBytes: sampleContent.length, sha256: "seed", encoding: "utf-8", lineCount: 2, uploadedByUserId: null,
   createdAt: "2026-10-18T00:00:00.000Z", updatedAt: "2026-10-18T00:00:00.000Z",
   content: sampleContent, truncated: false };
+// Workspace authoring is API-only; the mock source section has no uploaded archives.
+export const mockSourceSnapshots: SourceSnapshot[] = [];
 
 export const mockLogSkills: LogDomain[] = [{
   id: "skill-charging", name: "充电诊断", description: "充电链路日志分析", status: "active",

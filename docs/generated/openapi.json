@@ -11088,6 +11088,178 @@
         }
       }
     },
+    "/api/v1/log-skills/{skillId}/source-snapshots": {
+      "get": {
+        "operationId": "logs.listSourceSnapshots",
+        "summary": "List source snapshot metadata",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSourceSnapshotListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "logs.uploadSourceSnapshot",
+        "summary": "Upload a version-labelled source archive",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/LogSourceSnapshotMultipartUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSourceSnapshotResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/source-snapshots/{snapshotId}/default": {
+      "post": {
+        "operationId": "logs.defaultSourceSnapshot",
+        "summary": "Set the skill draft default source snapshot",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSkillResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/source-snapshots/{snapshotId}/archive": {
+      "post": {
+        "operationId": "logs.archiveSourceSnapshot",
+        "summary": "Archive a source snapshot",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSourceSnapshotResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skill-templates": {
       "get": {
         "operationId": "logs.listSkillTemplates",
@@ -31794,6 +31966,9 @@
                       "modelOverride": {
                         "type": "string"
                       },
+                      "defaultSourceSnapshotId": {
+                        "type": "string"
+                      },
                       "signalRules": {
                         "type": "object",
                         "properties": {
@@ -32398,6 +32573,9 @@
                         "additionalProperties": false
                       },
                       "modelOverride": {
+                        "type": "string"
+                      },
+                      "defaultSourceSnapshotId": {
                         "type": "string"
                       },
                       "signalRules": {
@@ -33019,6 +33197,9 @@
                     "modelOverride": {
                       "type": "string"
                     },
+                    "defaultSourceSnapshotId": {
+                      "type": "string"
+                    },
                     "signalRules": {
                       "type": "object",
                       "properties": {
@@ -33534,6 +33715,202 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSkillDiscardResponse"
       },
+      "LogSourceSnapshotListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "skillId": {
+                  "type": "string"
+                },
+                "versionLabel": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "indexing",
+                    "ready",
+                    "failed",
+                    "archived"
+                  ]
+                },
+                "filesProcessed": {
+                  "type": "number"
+                },
+                "filesTotal": {
+                  "type": "number"
+                },
+                "fileCount": {
+                  "type": "number"
+                },
+                "skippedCount": {
+                  "type": "number"
+                },
+                "skippedFiles": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "skillId",
+                "versionLabel",
+                "status",
+                "filesProcessed",
+                "filesTotal",
+                "fileCount",
+                "skippedCount",
+                "skippedFiles",
+                "error",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceSnapshotListResponse"
+      },
+      "LogSourceSnapshotUploadRequest": {
+        "type": "object",
+        "properties": {
+          "versionLabel": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "versionLabel",
+          "fileName"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceSnapshotUploadRequest"
+      },
+      "LogSourceSnapshotResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "skillId": {
+                "type": "string"
+              },
+              "versionLabel": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "indexing",
+                  "ready",
+                  "failed",
+                  "archived"
+                ]
+              },
+              "filesProcessed": {
+                "type": "number"
+              },
+              "filesTotal": {
+                "type": "number"
+              },
+              "fileCount": {
+                "type": "number"
+              },
+              "skippedCount": {
+                "type": "number"
+              },
+              "skippedFiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "skillId",
+              "versionLabel",
+              "status",
+              "filesProcessed",
+              "filesTotal",
+              "fileCount",
+              "skippedCount",
+              "skippedFiles",
+              "error",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSourceSnapshotResponse"
+      },
       "LogParsePreviewRequest": {
         "type": "object",
         "properties": {
@@ -33992,6 +34369,9 @@
                 "additionalProperties": false
               },
               "modelOverride": {
+                "type": "string"
+              },
+              "defaultSourceSnapshotId": {
                 "type": "string"
               },
               "signalRules": {
@@ -34571,6 +34951,9 @@
                     "additionalProperties": false
                   },
                   "modelOverride": {
+                    "type": "string"
+                  },
+                  "defaultSourceSnapshotId": {
                     "type": "string"
                   },
                   "signalRules": {
@@ -35199,6 +35582,9 @@
                       "additionalProperties": false
                     },
                     "modelOverride": {
+                      "type": "string"
+                    },
+                    "defaultSourceSnapshotId": {
                       "type": "string"
                     },
                     "signalRules": {
@@ -47711,6 +48097,25 @@
           "relatedParameterPin": {
             "type": "string",
             "description": "JSON-encoded canonical parameter pin."
+          }
+        }
+      },
+      "LogSourceSnapshotMultipartUpload": {
+        "type": "object",
+        "required": [
+          "file",
+          "versionLabel"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "One .tar.gz, .tgz or .zip source archive."
+          },
+          "versionLabel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
           }
         }
       }

@@ -27,6 +27,8 @@ import {
   logSkillTemplateListResponseSchema,
   logSkillSampleResponseSchema,
   logSkillSampleReplaceResponseSchema,
+  logSourceSnapshotListResponseSchema,
+  logSourceSnapshotResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
   logFileUploadResponseSchema,
@@ -361,6 +363,22 @@ export function createHttpLogAnalysisRepository(
     },
     async restoreSkillRevision(id, revisionId) {
       return parseContractDto(logSkillResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/restore`, {}), "LogSkillResponse").item;
+    },
+    async listSourceSnapshots(id) {
+      return parseContractDto(logSourceSnapshotListResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots`), "LogSourceSnapshotListResponse").items;
+    },
+    async uploadSourceSnapshot(id, { versionLabel, file }) {
+      const body = new FormData();
+      body.append("versionLabel", versionLabel);
+      body.append("file", file);
+      const response = await apiClient.raw(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots`, { method: "POST", body });
+      return parseContractDto(logSourceSnapshotResponseSchema, await response.json(), "LogSourceSnapshotResponse").item;
+    },
+    async setDefaultSourceSnapshot(id, snapshotId) {
+      return parseContractDto(logSkillResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/default`, {}), "LogSkillResponse").item;
+    },
+    async archiveSourceSnapshot(id, snapshotId) {
+      return parseContractDto(logSourceSnapshotResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/source-snapshots/${encodeURIComponent(snapshotId)}/archive`, {}), "LogSourceSnapshotResponse").item;
     },
     async listLogDomains(query?: LogDomainListQuery) {
       const response = parseContractDto(

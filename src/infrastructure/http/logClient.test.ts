@@ -121,6 +121,34 @@ it("uses workspace contracts, encodes ids and sends draft bases for all authorin
   await expect(repository.discardSkillDraft!(skill.id, "draft")).rejects.toMatchObject({ code: "LOG_SKILL_DRAFT_CONFLICT" });
 });
 
+it("uses source snapshot DTOs, multipart archives, and encoded skill/snapshot paths", async () => {
+  const skill = mockSkillWorkspace("skill-charging")!;
+  const snapshot = { id: "snapshot-1", skillId: skill.id, versionLabel: "v1", status: "queued", filesProcessed: 0, filesTotal: 0,
+    fileCount: 0, skippedCount: 0, skippedFiles: [], error: null, createdAt: "2026-10-19T00:00:00.000Z" };
+  const fetchMock = createFetchMock({ items: [snapshot] });
+  const repository = createRepository(fetchMock);
+  await expect(repository.listSourceSnapshots!("skill/a")).resolves.toEqual([snapshot]);
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/log-skills/skill%2Fa/source-snapshots");
+  const file = new File(["compressed source"], "source.tgz", { type: "application/gzip" });
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: snapshot }, 201));
+  await expect(repository.uploadSourceSnapshot!("skill/a", { versionLabel: "v1", file })).resolves.toEqual(snapshot);
+  const request = fetchMock.mock.calls.at(-1)![1]!;
+  expect(request.method).toBe("POST");
+  expect(request.body).toBeInstanceOf(FormData);
+  expect((request.body as FormData).get("file")).toBe(file);
+  expect((request.body as FormData).get("versionLabel")).toBe("v1");
+  expect(request.headers).not.toHaveProperty("Content-Type");
+  const draft = { ...skill.currentRevision, id: "draft", status: "draft", spec: { ...skill.currentRevision.spec, defaultSourceSnapshotId: snapshot.id } };
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...skill, draft } }));
+  await expect(repository.setDefaultSourceSnapshot!("skill/a", "snap/b")).resolves.toMatchObject({ draft: { spec: { defaultSourceSnapshotId: snapshot.id } } });
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/skill%2Fa/source-snapshots/snap%2Fb/default");
+  fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...snapshot, status: "archived" } }));
+  await expect(repository.archiveSourceSnapshot!("skill/a", "snap/b")).resolves.toMatchObject({ status: "archived" });
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/skill%2Fa/source-snapshots/snap%2Fb/archive");
+  fetchMock.mockResolvedValueOnce(jsonResponse({ items: [{ ...snapshot, status: "unexpected" }] }));
+  await expect(repository.listSourceSnapshots!(skill.id)).rejects.toMatchObject({ code: "INTERNAL_ERROR", details: { reason: "contract-drift" } });
+});
+
 describe("createHttpLogAnalysisRepository", () => {
   it("gets the real kernel report with string raw values and decoded evidence", async () => {
     const evidence = [{

@@ -120,6 +120,24 @@ JS
 - JSONL 逐事件经 `createGzip()` 流式压缩并处理背压，只收集压缩块供对象存储 Buffer 使用。顺序事件数组保留既有抽取器/组完成顺序与游标偏移；文件/行证据索引引用同一批对象，不复制字段或 raw 值。把索引直接展平会在多个抽取器重访同一行时改变查询顺序。
 - 协调者可在测试之外运行 `npx tsx scripts/log-decode-memory-probe.ts`。探针构造三个总计 95 MiB 的内核式日志文件，约 20% 行匹配，使用 worker 的解码、压缩与索引函数及显式默认上限，输出耗时毫秒、保留事件数/错误、进程峰值 RSS、最终与采样峰值 heapUsed，以及由 10 ms `setInterval` 漂移测得的最长停顿。耗时/停顿不含输入构造，进程峰值 RSS 包含构造；它只隔离验证解码路径，不代表完整解析/分析流程。本次变更尚无实测结果。
 
+## 源码快照（#1243）
+
+跳过文件单元格显示总数和简短的原因统计；点击「查看」打开可分页的路径与原因表格。明细列表被截断时，原因统计明确只覆盖已列出的路径。目录条目和 macOS 元数据（`._*`、`__MACOSX/`、`.DS_Store`）不会进入文件清单、进度或跳过计数，但仍受压缩包条目数、路径/类型校验和累计解压安全预算限制。
+
+技能管理员在工作区「源码」分区上传单个 `.tar.gz`、`.tgz` 或 `.zip` 压缩包，并填写必填版本标签。同一技能的未归档快照中标签唯一。上传后进入 `queued`，索引器依次置为 `indexing` 和 `ready` 或 `failed`，失败保留原因。`filesProcessed / filesTotal` 显示进度；tar 在索引前先流式校验并计数，确定稳定的总文件数。表格只在存在排队或索引中的快照时轮询，最多显示 200 个跳过路径及原因，同时保留完整跳过总数。`logs:view` 可读元数据；上传、设为默认和归档需要 `logs:admin-domains`，写入带审计。
+
+源码索引器随日志 worker 启动：由独立 `npm run worker:logs` 进程处理时，API 保持 `LOG_WORKER_ENABLED=false`。最后进度更新超过五分钟的索引尝试可被重新领取；尝试令牌阻止旧 worker 覆盖已归档或被重新领取的快照。失败快照保留原因；需要复用标签时先归档，再上传替代快照。
+
+默认限制是压缩上传 100 MiB（`LOG_SOURCE_MAX_COMPRESSED_BYTES=104857600`）、累计解包 1 GiB（`LOG_SOURCE_MAX_UNPACKED_BYTES=1073741824`）、单文件 2 MiB（`LOG_SOURCE_MAX_FILE_BYTES=2097152`）和 20,000 个文件（`LOG_SOURCE_MAX_FILES=20000`）。值必须是正的安全整数。跳过文件仍消耗解包字节和文件数预算；压缩包条目另有文件数上限两倍的限制。上传仅使用 multipart `{ versionLabel, file }`，避免 base64 复制超出标准 API 的 512 MiB 内存预算。路由请求体上限为压缩上限加 64 KiB 表单封装开销，过大的 `Content-Length` 在缓冲前拒绝，实际请求流同样受限；文件字节共享有界请求缓冲。对象存储流式读取、临时压缩文件和逐文件处理避免将整个压缩包或目录树保留在索引器内存；每个活跃尝试需预留一个压缩包的临时磁盘空间。
+
+白名单包括 `.c`、`.h`、`.cc`、`.cpp`、`.cxx`、`.hpp`、`.hh`、`.hxx`、`.S`、`.s`、`.java`、`.kt`、`.kts`、`.py`、`.go`、`.rs`、`.js`、`.jsx`、`.mjs`、`.cjs`、`.ts`、`.tsx`、`.sh`、`.bash`、`.zsh`、`.mk`、`.cmake`、`.dts`、`.dtsi`、`.json`、`.yaml`、`.yml`、`.toml`、`.gradle`、`.xml`、`.properties`、`.cfg`、`.conf`、`.ini`、`.proto`、`.sql`、`.rb`、`.swift`、`.m` 和 `.mm`。构建文件名支持 Makefile、GNUmakefile、CMakeLists.txt、Kconfig 和 Kconfig.*、Dockerfile、meson、meson.build、meson_options.txt、BUILD、BUILD.bazel、WORKSPACE。扩展名和文件名匹配不区分大小写，汇编扩展名在白名单中保留两种拼写。
+
+跳过原因区分不支持类型、超大文件、二进制/非 UTF-8 内容及忽略目录。忽略的目录段为 `third_party`、`third-party`、`thirdparty`、`vendor`、`vendors`、`node_modules`、`external`、`.git`、`.svn`、`.hg`、`__pycache__`、`.venv` 和 `venv`，不区分大小写。拒绝路径穿越、绝对/超长路径、重复路径、链接/设备/特殊文件、损坏压缩包、加密或不支持的 ZIP 条目、ZIP64 和重叠 ZIP 范围。累计限制按实际解压字节计数，包含跳过条目；ZIP 实际大小与 CRC 必须匹配。符合条件的文件保存路径、大小、SHA-256、行数和语言，并生成最多 200 行或 32 KiB 字符的分块，使用 PostgreSQL 全文与 trigram GIN 索引。
+
+「设为默认」更新或创建技能草稿的可选 `defaultSourceSnapshotId`；发布后才影响新运行。已归档快照不能被新选为默认值；已有归档引用可在保存、发布和恢复历史版本时保持不变，保留历史 spec。每次运行解析其固定版本的默认快照，记录观察到的快照 id/状态。排队、索引中、失败或已归档的默认快照不导致分析失败，持久化报告会说明源码不可用，例如「源码快照仍在索引，本次分析未使用源码」。本切片不增加源码工具、公开内容路由，也不将源码文本放入模型提示词。语句索引、检索工具、源码证据及上传 `sourceVersion` 匹配仍由 #1244/#1245 负责。
+
+单独运行 `npx tsx scripts/log-source-memory-probe.ts`，不要加入测试。默认探针流式处理由 512 个达到 2 MiB 上限的文件组成的 1 GiB tar.gz，执行解包与 UTF-8 分块序列化，不保留此前文件；输出峰值 RSS/堆内存，并断言 RSS 低于标准 worker 的 384 MiB 上限。另行运行 `npx tsx scripts/log-source-memory-probe.ts --upload`，通过共享 HTTP 解析器流式上传 100 MiB multipart 请求，断言 RSS 低于标准 API 的 512 MiB 上限。探针不包含 PostgreSQL 持久化或完整生产 API 进程；将实测 RSS 记入本次运行证据。
+
 ## 证据
 
 记录：

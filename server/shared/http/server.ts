@@ -31,6 +31,13 @@ export type MultipartBody = {
 export const DEFAULT_MAX_REQUEST_BODY_BYTES = Number.POSITIVE_INFINITY;
 
 async function readRequestBytes(request: IncomingMessage, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
+  const declared = Number(request.headers["content-length"]);
+  if (Number.isSafeInteger(declared) && declared > maxBytes) {
+    throw new ApiError("PAYLOAD_TOO_LARGE", `Request body exceeds the ${maxBytes} byte transport limit.`, { maxBytes });
+  }
+  // Known bounded uploads need one buffer, rather than retaining chunks plus a copy.
+  const bytes = Number.isSafeInteger(declared) && declared >= 0 && Number.isFinite(maxBytes)
+    ? Buffer.allocUnsafe(declared) : undefined;
   const chunks: Buffer[] = [];
   let length = 0;
   for await (const chunk of request) {
@@ -41,10 +48,14 @@ async function readRequestBytes(request: IncomingMessage, maxBytes = DEFAULT_MAX
         maxBytes
       });
     }
-    chunks.push(buffer);
+    if (bytes) {
+      if (length > bytes.length) throw new ApiError("VALIDATION_FAILED", "Request body exceeds Content-Length.");
+      buffer.copy(bytes, length - buffer.length);
+    } else chunks.push(buffer);
   }
 
-  return Buffer.concat(chunks);
+  if (bytes && length !== bytes.length) throw new ApiError("VALIDATION_FAILED", "Incomplete request body.");
+  return bytes ?? Buffer.concat(chunks, length);
 }
 
 function getContentType(request: IncomingMessage) {
@@ -89,39 +100,41 @@ function parseContentDisposition(value: string | undefined) {
 function parseMultipartBody(bytes: Buffer, boundary: string): MultipartBody {
   const fields: Record<string, string> = {};
   const files: MultipartBody["files"] = [];
-  const marker = `--${boundary}`;
-  const body = bytes.toString("binary");
-
-  for (const rawPart of body.split(marker).slice(1, -1)) {
-    const part = rawPart.startsWith("\r\n") ? rawPart.slice(2) : rawPart;
-    const headerEndIndex = part.indexOf("\r\n\r\n");
-    if (headerEndIndex === -1) {
-      continue;
+  const marker = Buffer.from(`\r\n--${boundary}`);
+  let start = bytes.indexOf(Buffer.from(`--${boundary}\r\n`));
+  if (start < 0) throw new ApiError("VALIDATION_FAILED", "Invalid multipart boundary.");
+  start += boundary.length + 4;
+  while (start < bytes.length) {
+    let end = bytes.indexOf(marker, start);
+    while (end >= 0) {
+      const suffix = bytes.toString("latin1", end + marker.length, end + marker.length + 2);
+      const afterClosing = end + marker.length + 2;
+      if (suffix === "\r\n" || suffix === "--" && (afterClosing === bytes.length || bytes.toString("latin1", afterClosing, afterClosing + 2) === "\r\n")) break;
+      end = bytes.indexOf(marker, end + marker.length);
     }
-
-    const headers = parsePartHeaders(part.slice(0, headerEndIndex));
+    if (end < 0) throw new ApiError("VALIDATION_FAILED", "Incomplete multipart body.");
+    const headerEndIndex = bytes.indexOf("\r\n\r\n", start);
+    if (headerEndIndex < start || headerEndIndex > end || headerEndIndex - start > 16 * 1024) {
+      throw new ApiError("VALIDATION_FAILED", "Invalid multipart headers.");
+    }
+    const headers = parsePartHeaders(bytes.toString("latin1", start, headerEndIndex));
     const disposition = parseContentDisposition(headers["content-disposition"]);
     const fieldName = disposition.name;
-    if (!fieldName) {
-      continue;
-    }
-
-    let content = part.slice(headerEndIndex + 4);
-    if (content.endsWith("\r\n")) {
-      content = content.slice(0, -2);
-    }
-
-    const contentBytes = Buffer.from(content, "binary");
-    if (disposition.filename !== undefined) {
+    const contentBytes = bytes.subarray(headerEndIndex + 4, end);
+    if (fieldName && disposition.filename !== undefined) {
       files.push({
         fieldName,
         fileName: Buffer.from(disposition.filename, "binary").toString("utf8"),
         contentType: headers["content-type"] ?? "application/octet-stream",
         bytes: contentBytes
       });
-    } else {
+    } else if (fieldName) {
       fields[fieldName] = contentBytes.toString("utf8");
     }
+    const afterMarker = end + marker.length;
+    if (bytes.toString("latin1", afterMarker, afterMarker + 2) === "--") break;
+    if (bytes.toString("latin1", afterMarker, afterMarker + 2) !== "\r\n") throw new ApiError("VALIDATION_FAILED", "Invalid multipart delimiter.");
+    start = afterMarker + 2;
   }
 
   return { kind: "multipart", fields, files };
@@ -269,7 +282,7 @@ export function createHttpServer(
     metrics?: MetricsRegistry;
     tracing?: Pick<TracingBoundary, "withSpan">;
     /** Per-request body collection bound; returns the default when the route has no declared limit. */
-    maxBodyBytes?: (request: { method: string; path: string }) => number;
+    maxBodyBytes?: (request: { method: string; path: string; contentType?: string }) => number;
   } = {}
 ) {
   const server = createServer(async (request, response) => {
@@ -288,7 +301,7 @@ export function createHttpServer(
       const url = new URL(request.url ?? "/", "http://localhost");
       const method = request.method as HttpMethod;
       const route = router.matchRoutePattern?.(method, url.pathname) ?? url.pathname;
-      const maxBodyBytes = options.maxBodyBytes?.({ method, path: url.pathname }) ?? DEFAULT_MAX_REQUEST_BODY_BYTES;
+      const maxBodyBytes = options.maxBodyBytes?.({ method, path: url.pathname, contentType: getContentType(request) }) ?? DEFAULT_MAX_REQUEST_BODY_BYTES;
       const spanAttributes: Record<string, string | number | boolean> = {
         method: request.method ?? "GET",
         route,

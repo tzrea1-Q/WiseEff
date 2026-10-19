@@ -18,6 +18,7 @@ import {
   type LogWebhookDeliveryRetentionLoopStarter
 } from "./webhookRetention";
 import { startLogWorkerLoop, type LogWorkerWebhooks, type ProcessLogWorkerOptions } from "./worker";
+import { startSourceIndexWorkerLoop } from "./sourceIndexWorker";
 
 type RawWorkerEnv = {
   DATABASE_URL?: string;
@@ -159,6 +160,7 @@ export function createLogWorkerRuntime({
         );
       }
 
+      const stopSourceIndex = startSourceIndexWorkerLoop({ db, objectStore }, intervalMs);
       const stopRetention = retention?.enabled
         ? startRetentionLoop({ db, keepPerDomain: retention.keepPerDomain })
         : undefined;
@@ -166,6 +168,7 @@ export function createLogWorkerRuntime({
 
       return async () => {
         const retentionShutdown = stopRetention?.();
+        stopSourceIndex();
         const workerShutdown = stopWorker();
         await Promise.all([retentionShutdown, workerShutdown, stopWebhooks?.()]);
       };

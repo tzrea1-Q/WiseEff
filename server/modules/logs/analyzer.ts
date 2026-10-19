@@ -16,6 +16,8 @@ export type AnalyzeLogInput = {
   /** Untrusted diagnostic guidance from this run's immutable skill revision. */
   procedure?: string;
   decoding?: { spec: import("./parsing/spec").ParsingSpec; events: import("./parsing/spec").DecodedEvent[]; counts: import("./parsing/spec").DecodeCounts };
+  /** Pinned revision's source availability at worker execution; source tools bind this scope later. */
+  sourceSnapshot?: { id: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" } | null;
   files?: Array<import("./filesRepository").LogFileDto & { parsed?: Extract<ParseResult, { ok: true }> }>;
   filePath?: string;
   signalRules?: SignalRuleSet;

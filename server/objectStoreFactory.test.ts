@@ -7,6 +7,26 @@ import { createTracingBoundary, type TraceExporter } from "./observability/traci
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
 
 describe("createObjectStoreFromEnv", () => {
+  it("preserves and traces streaming reads through the runtime wrapper", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "wiseeff-stream-factory-"));
+    const spans: Parameters<TraceExporter>[0][] = [];
+    try {
+      const objectStore = createObjectStoreFromEnv({ OBJECT_STORE_MODE: "local", OBJECT_STORE_ROOT: rootDir }, {
+        tracing: createTracingBoundary({ enabled: true, serviceName: "wiseeff-worker", exporter: (span) => { spans.push(span); } })
+      });
+      const bytes = Buffer.from("streamed factory bytes");
+      const stored = await objectStore.put({ organizationId: "org-factory", fileName: "source.tgz", contentType: "application/gzip", bytes });
+      expect(objectStore.getStream).toBeTypeOf("function");
+      const chunks: Buffer[] = [];
+      for await (const chunk of await objectStore.getStream!(stored.storageKey)) chunks.push(chunk as Buffer);
+      expect(Buffer.concat(chunks)).toEqual(bytes);
+      expect(spans.map((span) => ({ name: span.name, ...span.attributes }))).toEqual([
+        { name: "object_store.operation", operation: "put", mode: "local", service: "wiseeff-worker" },
+        { name: "object_store.operation", operation: "getStream", mode: "local", service: "wiseeff-worker" }
+      ]);
+      expect(JSON.stringify(spans)).not.toContain(stored.storageKey);
+    } finally { await rm(rootDir, { recursive: true, force: true }); }
+  });
   it("preserves bounded reads through the production tracing wrapper", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "wiseeff-object-store-factory-"));
     const spans: Parameters<TraceExporter>[0][] = [];
@@ -98,10 +118,14 @@ describe("createObjectStoreFromEnv", () => {
       bytes: Buffer.from("private log", "utf8")
     });
     await objectStore.get(stored.storageKey);
+    const stream = await objectStore.getStream!(stored.storageKey);
+    const streamed: Buffer[] = [];
+    for await (const chunk of stream) streamed.push(chunk as Buffer);
+    expect(Buffer.concat(streamed).toString()).toBe("wiseeff-s3-health");
     await objectStore.checkHealth();
 
-    expect(spans.map((span) => span.attributes.operation)).toEqual(["put", "get", "checkHealth"]);
-    expect(spans.map((span) => span.attributes.mode)).toEqual(["s3", "s3", "s3"]);
+    expect(spans.map((span) => span.attributes.operation)).toEqual(["put", "get", "getStream", "checkHealth"]);
+    expect(spans.map((span) => span.attributes.mode)).toEqual(["s3", "s3", "s3", "s3"]);
     expect(spans.every((span) => span.name === "object_store.operation")).toBe(true);
     expect(JSON.stringify(spans)).not.toContain("secret-bucket");
     expect(JSON.stringify(spans)).not.toContain("org-secret");

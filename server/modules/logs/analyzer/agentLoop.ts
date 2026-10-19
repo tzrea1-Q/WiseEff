@@ -170,6 +170,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       const findings = runLogPrefilter(input.files?.find((file) => file.parsed)?.parsed?.entries ?? input.parsed.entries, input.signalRules);
       const toolContext: LogAnalysisToolContext = {
         decoding: input.decoding,
+        sourceSnapshot: input.sourceSnapshot ?? null,
         files: input.files,
         filePath: input.filePath,
         signalRules: input.signalRules,

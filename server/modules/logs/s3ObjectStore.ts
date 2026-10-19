@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 import {
   rejectUnsafeStorageKey,
@@ -20,6 +21,7 @@ export type ObjectStoragePutInput = {
 export type ObjectStorageTransport = {
   put(input: ObjectStoragePutInput): Promise<void>;
   get(input: { bucket: string; key: string }): Promise<Buffer>;
+  getStream?(input: { bucket: string; key: string }): Promise<Readable>;
   getBounded?(input: { bucket: string; key: string; maxBytes: number }): Promise<Buffer>;
   head(input: { bucket: string; key?: string }): Promise<void | { ok: boolean; error?: string; metadata?: Record<string, string> }>;
   delete(input: { bucket: string; key: string }): Promise<void>;
@@ -236,6 +238,18 @@ export function createHttpObjectStorageTransport(options: {
       return Buffer.from(await response.arrayBuffer());
     },
 
+    async getStream(input) {
+      rejectUnsafeStorageKey(input.key);
+      const url = storageUrl(options.endpoint, input.bucket, input.key);
+      const response = await fetchImpl(url, {
+        method: "GET",
+        headers: signedHeaders({ method: "GET", url, accessKeyId: options.accessKeyId,
+          secretAccessKey: options.secretAccessKey, region: options.region })
+      });
+      await assertOk(response);
+      return response.body ? Readable.fromWeb(response.body) : Readable.from([]);
+    },
+
     async getBounded(input) {
       rejectUnsafeStorageKey(input.key);
       const url = storageUrl(options.endpoint, input.bucket, input.key);
@@ -344,6 +358,11 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): ObjectStore 
     async get(storageKey) {
       rejectUnsafeStorageKey(storageKey);
       return transport.get({ bucket: options.bucket, key: storageKey });
+    },
+    async getStream(storageKey) {
+      rejectUnsafeStorageKey(storageKey);
+      if (!transport.getStream) throw new Error("Object storage transport does not support streaming reads.");
+      return transport.getStream({ bucket: options.bucket, key: storageKey });
     },
     async getBounded(storageKey, maxBytes) {
       rejectUnsafeStorageKey(storageKey);

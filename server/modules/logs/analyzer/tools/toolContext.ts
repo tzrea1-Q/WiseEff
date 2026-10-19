@@ -13,6 +13,7 @@ import type { RelatedParameterChange, RelatedParameterRunSnapshot } from "../../
  */
 export type LogAnalysisToolContext = {
   decoding?: import("../../analyzer").AnalyzeLogInput["decoding"];
+  sourceSnapshot?: import("../../analyzer").AnalyzeLogInput["sourceSnapshot"];
   signalRules?: import("../../signalRules").SignalRuleSet;
   files?: import("../../analyzer").AnalyzeLogInput["files"];
   filePath?: string;
