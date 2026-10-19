@@ -50,7 +50,8 @@ describe("WorkbenchCanvasHistorySession", () => {
   it("loads compare bytes for unified-diff from currentVersionId", async () => {
     const session = createWorkbenchCanvasHistorySession();
     const downloadVersion = vi.fn(async (_projectId: string, _fileId: string, versionId: string) => ({
-      bytes: new TextEncoder().encode(versionId === "v-hist" ? "hist" : "tip")
+      contentType: "text/plain",
+      bytes: new TextEncoder().encode(versionId === "v-hist" ? "\ufeffhist\r\n" : "\ufefftip\r\n")
     }));
     await session.loadModeSource({
       canvasMode: "unified-diff",
@@ -61,8 +62,8 @@ describe("WorkbenchCanvasHistorySession", () => {
       workingSource: "fallback",
       repo: { downloadVersion }
     });
-    expect(session.historySource).toBe("hist");
-    expect(session.compareSource).toBe("tip");
+    expect(session.historySource).toBe("\ufeffhist\r\n");
+    expect(session.compareSource).toBe("\ufefftip\r\n");
     expect(downloadVersion).toHaveBeenCalledTimes(2);
   });
 
@@ -75,7 +76,7 @@ describe("WorkbenchCanvasHistorySession", () => {
       versionId: "v1",
       workingSource: "w",
       repo: {
-        downloadVersion: vi.fn(async () => ({ bytes: new TextEncoder().encode("hist") }))
+        downloadVersion: vi.fn(async () => ({ contentType: "text/plain", bytes: new TextEncoder().encode("hist") }))
       }
     });
     expect(session.historySource).toBe("hist");

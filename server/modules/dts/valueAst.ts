@@ -1,5 +1,5 @@
 import type { DtsCell, DtsValue, DtsValueSegment } from "./types";
-import { EMPTY_PROPERTY_NAMES } from "./valueTyping";
+import { stripDtsComments } from "./preprocess";
 
 export interface DtsValueParseResult {
   value: DtsValue;
@@ -9,6 +9,7 @@ export interface DtsValueParseResult {
 type CellWidth = 8 | 16 | 32 | 64;
 
 const VALID_WIDTHS: ReadonlySet<number> = new Set([8, 16, 32, 64]);
+const EMPTY_PROPERTY_NAMES = new Set(["ranges", "dma-ranges"]);
 
 /**
  * Parse a property RHS into a lossless typed value AST. Bool/empty properties are
@@ -23,8 +24,8 @@ export function parseDtsValue(propertyName: string, rawText: string): DtsValuePa
     };
   }
 
-  const trimmed = rawText.trim();
-  if (isByteLiteral(trimmed)) {
+  const trimmed = stripDtsComments(rawText).trim();
+  if (trimmed.startsWith("[")) {
     return { value: parseByteLiteral(trimmed), rawText };
   }
 
@@ -96,7 +97,7 @@ function tryPreserveRawFormatting(value: DtsValue, previousRawText: string): str
       if (previous.kind !== "cells") return null;
       return tryPreserveCellsFormatting(value, previous, previousRawText);
     case "mixed":
-      return null;
+      return JSON.stringify(value) === JSON.stringify(previous) ? previousRawText : null;
     default: {
       const exhaustive: never = value;
       void exhaustive;
@@ -106,10 +107,12 @@ function tryPreserveRawFormatting(value: DtsValue, previousRawText: string): str
 }
 
 function tryPreserveBytesFormatting(values: number[], previousRawText: string): string | null {
-  const trimmed = previousRawText.trim();
-  if (!isByteLiteral(trimmed)) return null;
-  const inner = trimmed.slice(1, -1);
-  const matches = [...inner.matchAll(/[0-9A-Fa-f]{2}/g)];
+  const semantic = stripDtsComments(previousRawText);
+  if (!isByteLiteral(semantic.trim())) return null;
+  const start = semantic.indexOf("[") + 1;
+  const end = semantic.lastIndexOf("]");
+  const inner = previousRawText.slice(start, end);
+  const matches = [...semantic.slice(start, end).matchAll(/[0-9A-Fa-f]{2}/g)];
   if (matches.length !== values.length) return null;
 
   let out = "";
@@ -118,14 +121,15 @@ function tryPreserveBytesFormatting(values: number[], previousRawText: string): 
     const match = matches[i]!;
     const start = match.index ?? 0;
     out += inner.slice(cursor, start);
-    out += values[i]!.toString(16).padStart(2, "0");
+    out += Number.parseInt(match[0], 16) === values[i]
+      ? match[0]
+      : values[i]!.toString(16).padStart(2, "0");
     cursor = start + match[0].length;
   }
   out += inner.slice(cursor);
 
-  const prefix = previousRawText.slice(0, previousRawText.indexOf("[") + 1);
-  const suffixStart = previousRawText.lastIndexOf("]");
-  const suffix = previousRawText.slice(suffixStart);
+  const prefix = previousRawText.slice(0, start);
+  const suffix = previousRawText.slice(end);
   return `${prefix}${out}${suffix}`;
 }
 
@@ -161,13 +165,14 @@ function tryPreserveCellsFormatting(
 
 /** Replace each top-level item span in-place so commas/whitespace between items stay intact. */
 function joinTopLevelItems(previousRawText: string, patchedItems: string[]): string {
+  const semantic = stripDtsComments(previousRawText);
   const ranges: Array<{ start: number; end: number }> = [];
   let depth = 0;
   let inString = false;
   let start = 0;
 
   for (let i = 0; i < previousRawText.length; i += 1) {
-    const ch = previousRawText[i];
+    const ch = semantic[i];
     if (inString) {
       if (ch === "\\") {
         i += 1;
@@ -212,8 +217,9 @@ function joinTopLevelItems(previousRawText: string, patchedItems: string[]): str
 }
 
 function patchCellsGroupItem(itemRaw: string, bits: CellWidth, cells: DtsCell[]): string | null {
-  const angleStart = itemRaw.indexOf("<");
-  const angleEnd = itemRaw.lastIndexOf(">");
+  const semantic = stripDtsComments(itemRaw);
+  const angleStart = semantic.indexOf("<");
+  const angleEnd = semantic.lastIndexOf(">");
   if (angleStart < 0 || angleEnd < 0 || angleEnd < angleStart) return null;
 
   const prefix = itemRaw.slice(0, angleStart + 1);
@@ -228,7 +234,7 @@ function patchCellsGroupItem(itemRaw: string, bits: CellWidth, cells: DtsCell[])
     }
   }
 
-  const matches = [...inner.matchAll(CELL_TOKEN_RE)];
+  const matches = [...semantic.slice(angleStart + 1, angleEnd).matchAll(CELL_TOKEN_RE)];
   if (matches.length !== cells.length) return null;
 
   let out = "";
@@ -251,8 +257,7 @@ function renderSegment(segment: DtsValueSegment): string {
 
 function renderCellsValue(bits: CellWidth, groups: DtsCell[][]): string {
   const prefix = bits === 32 ? "" : `/bits/ ${bits} `;
-  const body = groups.map((group) => `<${group.map(renderCell).join(" ")}>`).join(",");
-  return `${prefix}${body}`;
+  return groups.map((group) => `${prefix}<${group.map(renderCell).join(" ")}>`).join(",");
 }
 
 function renderCell(cell: DtsCell): string {
@@ -281,13 +286,14 @@ type ParsedItem = StringItem | CellsItem;
 
 /** Split a value's raw text on top-level commas, respecting `<...>` depth and `"..."` quoting. */
 function splitTopLevelItems(rawText: string): string[] {
+  const semantic = stripDtsComments(rawText);
   const items: string[] = [];
   let depth = 0;
   let inString = false;
   let start = 0;
 
   for (let i = 0; i < rawText.length; i += 1) {
-    const ch = rawText[i];
+    const ch = semantic[i];
     if (inString) {
       if (ch === "\\") {
         i += 1;
@@ -302,10 +308,12 @@ function splitTopLevelItems(rawText: string): string[] {
     }
     if (ch === "<") {
       depth += 1;
+      if (depth > 1) throw new SyntaxError("Nested DTS cell groups are not supported");
       continue;
     }
     if (ch === ">") {
       depth -= 1;
+      if (depth < 0) throw new SyntaxError("Unexpected closing DTS cell bracket");
       continue;
     }
     if (ch === "," && depth === 0) {
@@ -313,6 +321,8 @@ function splitTopLevelItems(rawText: string): string[] {
       start = i + 1;
     }
   }
+  if (inString) throw new SyntaxError("Unterminated DTS string");
+  if (depth !== 0) throw new SyntaxError("Unterminated DTS cell group");
   items.push(rawText.slice(start));
   return items;
 }
@@ -321,7 +331,7 @@ const STRING_RE = /^"((?:\\.|[^"\\])*)"$/;
 const BITS_GROUP_RE = /^\/bits\/\s+(\d+)\s+<([^>]*)>$/;
 
 function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
-  const trimmed = itemRawWithWhitespace.trim();
+  const trimmed = stripDtsComments(itemRawWithWhitespace).trim();
 
   const stringMatch = STRING_RE.exec(trimmed);
   if (stringMatch) {
@@ -338,7 +348,7 @@ function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
     return { type: "cells", bits, cells: parseCellsGroup(bitsMatch[2], bits) };
   }
 
-  if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+  if (/^<[^<>]*>$/.test(trimmed)) {
     return { type: "cells", bits: 32, cells: parseCellsGroup(trimmed.slice(1, -1), 32) };
   }
 
@@ -348,8 +358,20 @@ function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
 const CELL_TOKEN_RE = /&[A-Za-z_][A-Za-z0-9_]*|\(-(?:0[xX][0-9A-Fa-f]+|\d+)\)|-?0[xX][0-9A-Fa-f]+|-?\d+/g;
 
 function parseCellsGroup(inner: string, width: CellWidth): DtsCell[] {
-  const tokens = inner.match(CELL_TOKEN_RE) ?? [];
-  return tokens.map((token) => parseCellToken(token, width));
+  const cells: DtsCell[] = [];
+  let cursor = 0;
+  for (const match of inner.matchAll(CELL_TOKEN_RE)) {
+    const start = match.index!;
+    if (inner.slice(cursor, start).trim() !== "" || (cursor > 0 && start === cursor)) {
+      throw new SyntaxError(`Invalid DTS cell token at position ${cursor + 1}`);
+    }
+    cells.push(parseCellToken(match[0], width));
+    cursor = start + match[0].length;
+  }
+  if (inner.slice(cursor).trim() !== "") {
+    throw new SyntaxError(`Invalid DTS cell token at position ${cursor + 1}`);
+  }
+  return cells;
 }
 
 function parseCellToken(token: string, width: CellWidth): DtsCell {
@@ -398,10 +420,13 @@ function combineItems(items: ParsedItem[]): DtsValue {
 }
 
 function isByteLiteral(trimmed: string): boolean {
-  return /^\[[0-9A-Fa-f\s]+\]$/.test(trimmed);
+  return /^\[(?:\s*[0-9A-Fa-f]{2})*\s*\]$/.test(trimmed);
 }
 
 function parseByteLiteral(trimmed: string): DtsValue {
+  if (!isByteLiteral(trimmed)) {
+    throw new SyntaxError("Byte arrays require complete pairs of hexadecimal digits: [00 ff …]");
+  }
   const inner = trimmed.slice(1, -1);
   const values = (inner.match(/[0-9A-Fa-f]{2}/g) ?? []).map((hex) => Number.parseInt(hex, 16));
   return { kind: "bytes", values };

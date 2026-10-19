@@ -42,8 +42,15 @@ export type DtsStructuralNode = {
   source?: DtsSourceLocator;
 };
 
+export type DtsNavigationScope = { navigationScope?: "organization" };
+
+export type DtsStructureNavigation =
+  | { status: "ready"; catalogReleaseId: string; managedNodePaths: string[] }
+  | { status: "unavailable"; reason: "catalog-unavailable" | "registration-unavailable" };
+
 export type DtsStructureResult = {
   nodes: DtsStructuralNode[];
+  navigation?: DtsStructureNavigation;
 };
 
 export type DtsSearchBy = "path" | "address" | "label" | "compatible" | "value" | "file";
@@ -51,7 +58,7 @@ export type DtsSearchBy = "path" | "address" | "label" | "compatible" | "value" 
 export type DtsSearchQuery = {
   q: string;
   by?: DtsSearchBy;
-};
+} & DtsNavigationScope;
 
 export type DtsSearchHit = {
   fileId: string;
@@ -336,7 +343,7 @@ export type DtsStructuredSubmissionRound = {
  * New UI must consume this port; do not call HTTP clients directly from panels.
  */
 export interface DtsStructuredRepository {
-  getStructure(projectId: string, fileId: string, versionId: string): Promise<DtsStructureResult>;
+  getStructure(projectId: string, fileId: string, versionId: string, options?: DtsNavigationScope): Promise<DtsStructureResult>;
   search(projectId: string, query: DtsSearchQuery): Promise<DtsSearchResult>;
 
   listConfigSets(projectId: string): Promise<DtsConfigSet[]>;

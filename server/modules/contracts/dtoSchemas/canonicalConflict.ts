@@ -1,17 +1,18 @@
 import { z } from "zod";
+import { sourceRevisionCandidatePreviewSchema } from "./sourceRevision";
 
 const id = z.string().min(1);
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const choice = z.enum(["file", "draft"]);
 const candidateRequestReceiptSchema = z.object({
   id, status: z.enum(["pending", "approved", "rejected", "withdrawn"]),
-  kind: z.enum(["single", "batch"])
+  kind: z.enum(["single", "batch", "source_revision"])
 });
 
 export const canonicalSourceCandidatePreviewResponseSchema = z.object({
-  item: z.object({ kind: z.enum(["legacy", "canonical"]), canSubmit: z.boolean(),
+  item: z.union([z.object({ kind: z.enum(["legacy", "canonical"]), canSubmit: z.boolean(),
     candidateId: id, format: z.enum(["json", "dts"]),
-    request: candidateRequestReceiptSchema.optional() }).passthrough()
+    request: candidateRequestReceiptSchema.optional() }).passthrough(), sourceRevisionCandidatePreviewSchema])
 });
 
 export const canonicalSourceConflictSubmitRequestSchema = z.object({

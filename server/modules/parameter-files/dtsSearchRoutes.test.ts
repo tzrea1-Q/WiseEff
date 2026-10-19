@@ -152,4 +152,25 @@ describe("dts search routes", () => {
     expect(response.body.error.code).toBe("FORBIDDEN");
     expect(dtsSearchService.searchProjectDts).not.toHaveBeenCalled();
   });
+
+  it("passes scoped navigation with authenticated organization and principal", async () => {
+    const db = makeDb();
+    vi.mocked(dtsSearchService.searchProjectDts).mockResolvedValue(hitsBody);
+    const response = await requestJson(makeServer({ db, auth: makeViewOnlyAuth() }),
+      "/api/v1/projects/project-1/dts-search?q=sample&navigationScope=organization&organizationId=other-org");
+    expect(response.status).toBe(200);
+    expect(dtsSearchService.searchProjectDts).toHaveBeenCalledWith(db, {
+      organizationId: "org-1", principalId: "user-1", projectId: "project-1", q: "sample", navigationScope: "organization",
+    });
+  });
+
+  it("rejects unsupported navigation scopes and unauthorized scoped searches", async () => {
+    const db = makeDb();
+    const invalid = await requestJson(makeServer({ db }), "/api/v1/projects/project-1/dts-search?q=sample&navigationScope=all");
+    expect(invalid.status).toBe(400);
+    const forbidden = await requestJson(makeServer({ db, auth: makeNoViewAuth() }),
+      "/api/v1/projects/project-1/dts-search?q=sample&navigationScope=organization");
+    expect(forbidden.status).toBe(403);
+    expect(dtsSearchService.searchProjectDts).not.toHaveBeenCalled();
+  });
 });

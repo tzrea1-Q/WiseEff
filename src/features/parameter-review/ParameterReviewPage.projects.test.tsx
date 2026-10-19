@@ -6,6 +6,10 @@ import { initialState } from "@/mockData";
 import type { PrototypeState } from "@/domain/prototype/types";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 
+vi.mock("@/application/parameters/parameterFileRuntime", () => ({
+  resolveParameterFileRepository: () => ({ listSourceRevisionRequests: async () => [] })
+}));
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");

@@ -5,6 +5,10 @@ import type { AppRuntime } from "@/app/appRuntime";
 import { useLayoutEffect } from "react";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 
+vi.mock("@/application/parameters/parameterFileRuntime", () => ({
+  resolveParameterFileRepository: () => ({ listSourceRevisionRequests: async () => [] })
+}));
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/parameter-review");

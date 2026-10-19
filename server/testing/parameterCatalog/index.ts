@@ -6,6 +6,7 @@ export {
   S2_SCH_0179_FINGERPRINT,
   S2_SCH_0180_FINGERPRINT,
   S2_SCH_0181_FINGERPRINT,
+  S2_SCH_0182_FINGERPRINT,
   S2_SCH_LIVE_FINGERPRINT,
   assertCheckedEmptyCatalog,
   assertCheckedEmptyDatabase,
@@ -47,6 +48,7 @@ export {
 
 export {
   knowledgeCatalogBundle,
+  createCatalogSnapshotFixture,
   installKnowledgeDefinitionReferencesCatalogFixture,
   installKnowledgeDefinitionLifecycleFixture,
 } from "./registryProjection";

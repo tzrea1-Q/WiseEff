@@ -313,7 +313,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page.locator(`[id="${panelId}"]`)).toBeVisible();
     await page.getByRole("button", { name: "筛选", exact: true }).click();
     const changeType = page.getByRole("combobox", { name: "变更类型", exact: true });
-    expect((await readSelectControlOptions(changeType)).map((option) => option.label)).toEqual(["全部类型", "软件配置", "配置文件移除", "参数与节点"]);
+    expect((await readSelectControlOptions(changeType)).map((option) => option.label)).toEqual(["全部类型", "软件配置", "DTS 来源修改", "配置文件移除", "参数与节点"]);
     await selectControlOption(changeType, "value");
     const queue = page.getByRole("table", { name: "审阅队列", exact: true });
     await expect(queue).toHaveCount(1);

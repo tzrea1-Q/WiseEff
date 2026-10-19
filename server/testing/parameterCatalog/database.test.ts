@@ -9,6 +9,7 @@ import {
   S2_SCH_0176_FINGERPRINT,
   S2_SCH_0179_FINGERPRINT,
   S2_SCH_0180_FINGERPRINT,
+  S2_SCH_0182_FINGERPRINT,
   S2_SCH_LIVE_FINGERPRINT,
   assertCheckedEmptyCatalog,
   assertCheckedEmptyDatabase,
@@ -89,6 +90,8 @@ describe("disposable real-pgvector parameter catalog database", {
     expect(S2_SCH_0171_FINGERPRINT).not.toBe(S2_SCH_CONTRACT_FINGERPRINT);
     expect(S2_SCH_LIVE_FINGERPRINT).not.toBe(S2_SCH_0171_FINGERPRINT);
     expect(S2_SCH_LIVE_FINGERPRINT).not.toBe(S2_SCH_CONTRACT_FINGERPRINT);
+    expect(S2_SCH_0182_FINGERPRINT).toBe("2ab9046e3ceb66ab9f91b1d7eb96e5d929f9b25f8b3fda0bb0c190fcac761fd5");
+    expect(S2_SCH_LIVE_FINGERPRINT).not.toBe(S2_SCH_0182_FINGERPRINT);
     expect(new Set([S2_SCH_0176_FINGERPRINT, S2_SCH_0179_FINGERPRINT,
       S2_SCH_0180_FINGERPRINT, S2_SCH_LIVE_FINGERPRINT]).size).toBe(4);
     expect(database.schemaFingerprint).toBe(S2_SCH_LIVE_FINGERPRINT);

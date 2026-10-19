@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { CheckCircle2, Info } from "lucide-react";
 import { SectionEmpty } from "@/components/common/SectionState";
 
@@ -16,6 +16,7 @@ import { buildUnifiedDiff, formatSourceCanvasEmpty, type WorkbenchCanvasMode } f
 import { candidateStatusLabels } from "./WorkbenchCandidateList";
 
 export type WorkbenchSourceCanvasProps = {
+  workingEditor?: ReactNode;
   sourceRegionRef: RefObject<HTMLElement | null>;
   selectedConfigSetName: string;
   selectedMember: DtsConfigSetMemberFile | null;
@@ -52,6 +53,7 @@ export type WorkbenchSourceCanvasProps = {
 };
 
 export function WorkbenchSourceCanvas({
+  workingEditor,
   sourceRegionRef,
   selectedConfigSetName,
   selectedMember,
@@ -123,7 +125,7 @@ export function WorkbenchSourceCanvas({
     line.scrollIntoView({ block: "center", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }
   return (
-    <main className="configuration-workbench__source" aria-label={`${selectedConfigSetName} · 只读 ${sourceFormatLabel} 源码`} ref={sourceRegionRef} tabIndex={-1}>
+    <main className="configuration-workbench__source" aria-label={`${selectedConfigSetName} · ${workingEditor && canvasMode === "working" ? "" : "只读 "}${sourceFormatLabel} 源码`} ref={sourceRegionRef} tabIndex={-1}>
       {selectedMember || (canvasMode === "candidate" && candidateId) ? (
         <header className="configuration-workbench__source-head">
           <div>
@@ -246,7 +248,7 @@ export function WorkbenchSourceCanvas({
       !modeSourceError &&
       selectedMember &&
       canvasMode === "working" &&
-      source ? (
+      source && !workingEditor ? (
         <ProjectPrimaryDtsViewer
           className="configuration-workbench__code"
           fileName={selectedMember.fileName}
@@ -262,6 +264,7 @@ export function WorkbenchSourceCanvas({
           bodyAriaLabel={sourceBodyAriaLabel}
         />
       ) : null}
+      {workingEditor}
       {!modeSourceLoading &&
       !modeSourceError &&
       selectedMember &&

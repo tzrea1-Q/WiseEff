@@ -239,7 +239,7 @@ export function PageRouter({
     if (!debuggingGateway) {
       return undefined;
     }
-    return async (protocol: DtsReloadDeployProtocol, bridgeId?: string) => {
+    return async (protocol?: DtsReloadDeployProtocol, bridgeId?: string) => {
       const normalizedBridgeId = bridgeId?.trim();
       const targets = await debuggingGateway.detectTargets({
         protocol,

@@ -1168,6 +1168,10 @@ export const routeManifest = [
   { id: "xiaoze.deleteThread", method: "DELETE", path: "/api/v1/agent/xiaoze/threads/:threadId", module: "agent", stability: "mvp" },
 
   { id: "parameterFiles.listFiles", method: "GET", path: "/api/v1/projects/:projectId/parameter-files", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.listSourceRevisionRequests", method: "GET", path: "/api/v2/projects/:projectId/source-revision-requests", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.getSourceRevisionRequest", method: "GET", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.reviewSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/review", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.withdrawSourceRevisionRequest", method: "POST", path: "/api/v2/projects/:projectId/source-revision-requests/:requestId/withdraw", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.uploadFile", method: "POST", path: "/api/v1/projects/:projectId/parameter-files", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.listFileVersions", method: "GET", path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.uploadFileVersion", method: "POST", path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions", module: "parameter-files", stability: "mvp" },

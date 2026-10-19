@@ -1635,6 +1635,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "navigationScope",
+            "in": "query",
+            "required": false,
+            "description": "Also resolve directly matched organization-registered nodes for navigation; full nodes remain available.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "organization"
+              ]
+            }
           }
         ],
         "responses": {
@@ -1649,6 +1661,9 @@
             }
           },
           "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
@@ -1701,7 +1716,7 @@
       },
       "post": {
         "operationId": "parameters.createParameterFileCandidate",
-        "summary": "Upload a staged candidate file version without activating Working configuration",
+        "summary": "Upload a staged candidate; source_revision intent requires original file/config versions and a scoped mutation key",
         "tags": [
           "parameters"
         ],
@@ -1743,6 +1758,12 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "413": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -1856,7 +1877,7 @@
     "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-preview": {
       "get": {
         "operationId": "parameterFiles.previewCanonicalCandidate",
-        "summary": "Preview a staged candidate against exact canonical source pins",
+        "summary": "Preview a staged candidate against exact source pins or its complete source_revision proof and impact",
         "tags": [
           "parameter-files"
         ],
@@ -2193,6 +2214,42 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "path",
+                "address",
+                "label",
+                "compatible",
+                "value",
+                "file"
+              ]
+            }
+          },
+          {
+            "name": "navigationScope",
+            "in": "query",
+            "required": false,
+            "description": "Restrict node/property results to organization-managed nodes and structural ancestors; file-name results remain reachable.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "organization"
+              ]
             }
           }
         ],
@@ -16446,6 +16503,260 @@
         }
       }
     },
+    "/api/v2/projects/{projectId}/source-revision-requests": {
+      "get": {
+        "operationId": "parameterFiles.listSourceRevisionRequests",
+        "summary": "List the submitter's and eligible assigned reviewer's whole-DTS source requests",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "withdrawn"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionRequestListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/source-revision-requests/{requestId}": {
+      "get": {
+        "operationId": "parameterFiles.getSourceRevisionRequest",
+        "summary": "Read a visible whole-DTS source request and its verified immutable source diff",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionRequestDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/source-revision-requests/{requestId}/review": {
+      "post": {
+        "operationId": "parameterFiles.reviewSourceRevisionRequest",
+        "summary": "Approve or reject the frozen whole-source proof as its separate assigned file administrator and software reviewer",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRevisionReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/source-revision-requests/{requestId}/withdraw": {
+      "post": {
+        "operationId": "parameterFiles.withdrawSourceRevisionRequest",
+        "summary": "Withdraw the submitter's pending whole-source request without changing active source",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRevisionWithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRevisionRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/parameter-files/{fileId}/versions": {
       "get": {
         "operationId": "parameterFiles.listFileVersions",
@@ -17440,7 +17751,7 @@
     "/api/v1/projects/{projectId}/parameter-file-candidates/{candidateId}/source-submit": {
       "post": {
         "operationId": "parameterFiles.submitCanonicalCandidate",
-        "summary": "Submit one source candidate through canonical draft and human review",
+        "summary": "Submit a source candidate for human review; source_revision candidates require assignedToUserId and clientMutationId",
         "tags": [
           "parameter-files"
         ],
@@ -18515,6 +18826,174 @@
       },
       "StructuralReadResponse": {
         "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "nodePath": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "unitAddress": {
+                  "type": "string"
+                },
+                "labels": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "compatible": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "properties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "valueType": {
+                        "type": "string",
+                        "enum": [
+                          "u32-array",
+                          "bytes",
+                          "string-list",
+                          "phandle-list",
+                          "mixed",
+                          "bool",
+                          "empty"
+                        ]
+                      },
+                      "rawText": {
+                        "type": "string"
+                      },
+                      "normalizedValue": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "object",
+                        "properties": {
+                          "startOffset": {
+                            "type": "number"
+                          },
+                          "endOffset": {
+                            "type": "number"
+                          },
+                          "startLine": {
+                            "type": "number"
+                          },
+                          "startColumn": {
+                            "type": "number"
+                          },
+                          "endLine": {
+                            "type": "number"
+                          },
+                          "endColumn": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "startOffset",
+                          "endOffset",
+                          "startLine",
+                          "startColumn",
+                          "endLine",
+                          "endColumn"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "valueType",
+                      "rawText",
+                      "normalizedValue"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "phandleRefs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "fromProperty": {
+                        "type": "string"
+                      },
+                      "targetLabel": {
+                        "type": "string"
+                      },
+                      "resolvedTargetPath": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fromProperty",
+                      "targetLabel"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "startOffset": {
+                      "type": "number"
+                    },
+                    "endOffset": {
+                      "type": "number"
+                    },
+                    "startLine": {
+                      "type": "number"
+                    },
+                    "startColumn": {
+                      "type": "number"
+                    },
+                    "endLine": {
+                      "type": "number"
+                    },
+                    "endColumn": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "startOffset",
+                    "endOffset",
+                    "startLine",
+                    "startColumn",
+                    "endLine",
+                    "endColumn"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "nodePath",
+                "name",
+                "labels",
+                "properties",
+                "phandleRefs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "navigation": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "nodes"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "StructuralReadResponse"
       },
       "ParameterFileCandidateListResponse": {
@@ -18522,7 +19001,66 @@
         "x-wiseeff-schema": "ParameterFileCandidateListResponse"
       },
       "CreateParameterFileCandidateRequest": {
-        "type": "object",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "intent": {
+                "type": "string",
+                "enum": [
+                  "source_revision"
+                ]
+              },
+              "expectedCurrentVersionId": {
+                "type": "string"
+              },
+              "expectedConfigRevisionId": {
+                "type": "string"
+              },
+              "clientMutationId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileName",
+              "contentBase64",
+              "fileId",
+              "intent",
+              "expectedCurrentVersionId",
+              "expectedConfigRevisionId",
+              "clientMutationId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileName",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        ],
         "x-wiseeff-schema": "CreateParameterFileCandidateRequest"
       },
       "ParameterFileCandidateResponse": {
@@ -18540,6 +19078,77 @@
       },
       "DtsSearchResponse": {
         "type": "object",
+        "properties": {
+          "hits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fileId": {
+                  "type": "string"
+                },
+                "fileName": {
+                  "type": "string"
+                },
+                "versionId": {
+                  "type": "string"
+                },
+                "nodePath": {
+                  "type": "string"
+                },
+                "propertyName": {
+                  "type": "string"
+                },
+                "snippet": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "startOffset": {
+                      "type": "number"
+                    },
+                    "endOffset": {
+                      "type": "number"
+                    },
+                    "startLine": {
+                      "type": "number"
+                    },
+                    "startColumn": {
+                      "type": "number"
+                    },
+                    "endLine": {
+                      "type": "number"
+                    },
+                    "endColumn": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "startOffset",
+                    "endOffset",
+                    "startLine",
+                    "startColumn",
+                    "endLine",
+                    "endColumn"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "fileId",
+                "fileName",
+                "versionId",
+                "nodePath"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "hits"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DtsSearchResponse"
       },
       "ProjectModuleListResponse": {
@@ -23520,6 +24129,40 @@
                               "afterSourceDigest"
                             ],
                             "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dts-source-absence-v1"
+                                ]
+                              },
+                              "scannerVersion": {
+                                "type": "string",
+                                "enum": [
+                                  "dts-config-v1"
+                                ]
+                              },
+                              "beforeValueDigest": {
+                                "type": "string"
+                              },
+                              "beforeSourceDigest": {
+                                "type": "string"
+                              },
+                              "afterSourceDigest": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "scannerVersion",
+                              "beforeValueDigest",
+                              "beforeSourceDigest",
+                              "afterSourceDigest"
+                            ],
+                            "additionalProperties": false
                           }
                         ]
                       },
@@ -23646,6 +24289,45 @@
                           "nodeOccurrenceId",
                           "fileVersionId",
                           "propertyName"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "dts-source-absence"
+                            ]
+                          },
+                          "basePropertyOccurrenceId": {
+                            "type": "string"
+                          },
+                          "baseNodeOccurrenceId": {
+                            "type": "string"
+                          },
+                          "baseFileVersionId": {
+                            "type": "string"
+                          },
+                          "fileVersionId": {
+                            "type": "string"
+                          },
+                          "propertyName": {
+                            "type": "string"
+                          },
+                          "logicalNodeId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "basePropertyOccurrenceId",
+                          "baseNodeOccurrenceId",
+                          "baseFileVersionId",
+                          "fileVersionId",
+                          "propertyName",
+                          "logicalNodeId"
                         ],
                         "additionalProperties": false
                       },
@@ -29428,6 +30110,40 @@
                           "afterSourceDigest"
                         ],
                         "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "dts-source-absence-v1"
+                            ]
+                          },
+                          "scannerVersion": {
+                            "type": "string",
+                            "enum": [
+                              "dts-config-v1"
+                            ]
+                          },
+                          "beforeValueDigest": {
+                            "type": "string"
+                          },
+                          "beforeSourceDigest": {
+                            "type": "string"
+                          },
+                          "afterSourceDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "scannerVersion",
+                          "beforeValueDigest",
+                          "beforeSourceDigest",
+                          "afterSourceDigest"
+                        ],
+                        "additionalProperties": false
                       }
                     ]
                   },
@@ -29554,6 +30270,45 @@
                       "nodeOccurrenceId",
                       "fileVersionId",
                       "propertyName"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "dts-source-absence"
+                        ]
+                      },
+                      "basePropertyOccurrenceId": {
+                        "type": "string"
+                      },
+                      "baseNodeOccurrenceId": {
+                        "type": "string"
+                      },
+                      "baseFileVersionId": {
+                        "type": "string"
+                      },
+                      "fileVersionId": {
+                        "type": "string"
+                      },
+                      "propertyName": {
+                        "type": "string"
+                      },
+                      "logicalNodeId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "basePropertyOccurrenceId",
+                      "baseNodeOccurrenceId",
+                      "baseFileVersionId",
+                      "fileVersionId",
+                      "propertyName",
+                      "logicalNodeId"
                     ],
                     "additionalProperties": false
                   },
@@ -44365,6 +45120,521 @@
         "type": "object",
         "x-wiseeff-schema": "ParameterFileListResponse"
       },
+      "SourceRevisionRequestListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "candidateId": {
+                  "type": "string"
+                },
+                "fileId": {
+                  "type": "string"
+                },
+                "fileName": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "withdrawn"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "submitterUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "assignedToUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "submitterName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "assignedToName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerNote": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "proofDigest": {
+                  "type": "string"
+                },
+                "impact": {
+                  "type": "object",
+                  "properties": {
+                    "parameterChanges": {
+                      "type": "number"
+                    },
+                    "nodeAdditions": {
+                      "type": "number"
+                    },
+                    "nodeRemovals": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "parameterChanges",
+                    "nodeAdditions",
+                    "nodeRemovals"
+                  ],
+                  "additionalProperties": false
+                },
+                "before": {
+                  "type": "string"
+                },
+                "after": {
+                  "type": "string"
+                },
+                "appliedSourceResult": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "configRevisionId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "configRevisionId",
+                    "fileVersionId"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "id",
+                "projectId",
+                "candidateId",
+                "fileId",
+                "fileName",
+                "configSetId",
+                "status",
+                "reason",
+                "submitterUserId",
+                "assignedToUserId",
+                "reviewerUserId",
+                "reviewerNote",
+                "createdAt",
+                "updatedAt",
+                "proofDigest",
+                "impact"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SourceRevisionRequestListResponse"
+      },
+      "SourceRevisionRequestDetailResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "withdrawn"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "submitterUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assignedToUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "submitterName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assignedToName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerNote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "proofDigest": {
+                "type": "string"
+              },
+              "impact": {
+                "type": "object",
+                "properties": {
+                  "parameterChanges": {
+                    "type": "number"
+                  },
+                  "nodeAdditions": {
+                    "type": "number"
+                  },
+                  "nodeRemovals": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "parameterChanges",
+                  "nodeAdditions",
+                  "nodeRemovals"
+                ],
+                "additionalProperties": false
+              },
+              "before": {
+                "type": "string"
+              },
+              "after": {
+                "type": "string"
+              },
+              "appliedSourceResult": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "configRevisionId",
+                  "fileVersionId"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "id",
+              "projectId",
+              "candidateId",
+              "fileId",
+              "fileName",
+              "configSetId",
+              "status",
+              "reason",
+              "submitterUserId",
+              "assignedToUserId",
+              "reviewerUserId",
+              "reviewerNote",
+              "createdAt",
+              "updatedAt",
+              "proofDigest",
+              "impact",
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SourceRevisionRequestDetailResponse"
+      },
+      "SourceRevisionReviewRequest": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "proofDigest": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "proofDigest"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SourceRevisionReviewRequest"
+      },
+      "SourceRevisionRequestResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "withdrawn"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "submitterUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assignedToUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "submitterName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assignedToName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerNote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "proofDigest": {
+                "type": "string"
+              },
+              "impact": {
+                "type": "object",
+                "properties": {
+                  "parameterChanges": {
+                    "type": "number"
+                  },
+                  "nodeAdditions": {
+                    "type": "number"
+                  },
+                  "nodeRemovals": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "parameterChanges",
+                  "nodeAdditions",
+                  "nodeRemovals"
+                ],
+                "additionalProperties": false
+              },
+              "before": {
+                "type": "string"
+              },
+              "after": {
+                "type": "string"
+              },
+              "appliedSourceResult": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "configRevisionId",
+                  "fileVersionId"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "id",
+              "projectId",
+              "candidateId",
+              "fileId",
+              "fileName",
+              "configSetId",
+              "status",
+              "reason",
+              "submitterUserId",
+              "assignedToUserId",
+              "reviewerUserId",
+              "reviewerNote",
+              "createdAt",
+              "updatedAt",
+              "proofDigest",
+              "impact"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SourceRevisionRequestResponse"
+      },
+      "SourceRevisionWithdrawRequest": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SourceRevisionWithdrawRequest"
+      },
       "UploadParameterFileRequest": {
         "type": "object",
         "x-wiseeff-schema": "UploadParameterFileRequest"
@@ -44486,66 +45756,247 @@
         "type": "object",
         "properties": {
           "item": {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "legacy",
-                  "canonical"
-                ]
-              },
-              "canSubmit": {
-                "type": "boolean"
-              },
-              "candidateId": {
-                "type": "string"
-              },
-              "format": {
-                "type": "string",
-                "enum": [
-                  "json",
-                  "dts"
-                ]
-              },
-              "request": {
+            "anyOf": [
+              {
                 "type": "object",
                 "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "pending",
-                      "approved",
-                      "rejected",
-                      "withdrawn"
-                    ]
-                  },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "single",
-                      "batch"
+                      "legacy",
+                      "canonical"
                     ]
+                  },
+                  "canSubmit": {
+                    "type": "boolean"
+                  },
+                  "candidateId": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "json",
+                      "dts"
+                    ]
+                  },
+                  "request": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "approved",
+                          "rejected",
+                          "withdrawn"
+                        ]
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "single",
+                          "batch",
+                          "source_revision"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "status",
+                      "kind"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
-                  "id",
-                  "status",
-                  "kind"
+                  "kind",
+                  "canSubmit",
+                  "candidateId",
+                  "format"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "source_revision"
+                    ]
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "dts"
+                    ]
+                  },
+                  "candidateId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "configSetId": {
+                    "type": "string"
+                  },
+                  "baseVersionId": {
+                    "type": "string"
+                  },
+                  "configRevisionId": {
+                    "type": "string"
+                  },
+                  "before": {
+                    "type": "string"
+                  },
+                  "after": {
+                    "type": "string"
+                  },
+                  "proofToken": {
+                    "type": "string"
+                  },
+                  "baseDigest": {
+                    "type": "string"
+                  },
+                  "proposedDigest": {
+                    "type": "string"
+                  },
+                  "canSubmit": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "diagnostics": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "severity": {
+                          "type": "string",
+                          "enum": [
+                            "error",
+                            "warning"
+                          ]
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "file": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        },
+                        "column": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "severity",
+                        "code",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "impact": {
+                    "type": "object",
+                    "properties": {
+                      "parameterChanges": {
+                        "type": "number"
+                      },
+                      "nodeAdditions": {
+                        "type": "number"
+                      },
+                      "nodeRemovals": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "parameterChanges",
+                      "nodeAdditions",
+                      "nodeRemovals"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "reviewers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "userId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "userId",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "request": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "approved",
+                          "rejected",
+                          "withdrawn"
+                        ]
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "source_revision"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "status",
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "kind",
+                  "format",
+                  "candidateId",
+                  "fileId",
+                  "configSetId",
+                  "baseVersionId",
+                  "configRevisionId",
+                  "before",
+                  "after",
+                  "proofToken",
+                  "baseDigest",
+                  "proposedDigest",
+                  "canSubmit",
+                  "diagnostics",
+                  "impact",
+                  "reviewers"
                 ],
                 "additionalProperties": false
               }
-            },
-            "required": [
-              "kind",
-              "canSubmit",
-              "candidateId",
-              "format"
-            ],
-            "additionalProperties": true
+            ]
           }
         },
         "required": [
@@ -44576,7 +46027,8 @@
                 "type": "string",
                 "enum": [
                   "single",
-                  "batch"
+                  "batch",
+                  "source_revision"
                 ]
               }
             },
@@ -45294,10 +46746,68 @@
       },
       "CanonicalSourceSubmitRequest": {
         "type": "object",
+        "properties": {
+          "expectedCurrentVersionId": {
+            "type": "string"
+          },
+          "expectedProofToken": {
+            "type": "string"
+          },
+          "expectedWorkflowProofToken": {
+            "type": "string"
+          },
+          "assignedToUserId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "clientMutationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedCurrentVersionId",
+          "expectedProofToken",
+          "reason"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "CanonicalSourceSubmitRequest"
       },
       "CanonicalSourceSubmissionResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "withdrawn"
+                ]
+              },
+              "replayed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "requestId",
+              "status",
+              "replayed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "CanonicalSourceSubmissionResponse"
       },
       "CanonicalSourceRollbackRequest": {

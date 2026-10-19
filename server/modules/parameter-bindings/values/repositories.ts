@@ -79,13 +79,15 @@ export async function loadDeletedSourceAnchors(
   input: { organizationId: string; projectId: string; configSetId: string },
 ): Promise<DeletedSourceAnchorRow[]> {
   return (await tx.query<DeletedSourceAnchorRow>(
-    `select pin.format,pin.locator,pin.file_id as "fileId",occurrence.logical_node_id as "logicalNodeId",logical.node_locator as "nodeLocator"
+    `select pin.format,pin.locator,pin.file_id as "fileId",occurrence.logical_node_id as "logicalNodeId",
+       coalesce(logical.node_locator,base_node.node_path) as "nodeLocator"
        from parameter_catalog.project_value_source_pins pin
        join parameter_catalog.${projectParameterValues} value on value.id=pin.project_value_id and value.value_state='deleted'
        join parameter_catalog.project_parameter_bindings binding on binding.id=pin.binding_id and binding.current_value_id=value.id
        join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
        left join public.dts_logical_node_revisions logical on logical.logical_node_id=occurrence.logical_node_id
          and logical.config_revision_id=pin.config_revision_id
+       left join public.dts_node_occurrences base_node on base_node.id=pin.locator->>'baseNodeOccurrenceId'
       where pin.organization_id=$1 and pin.project_id=$2 and occurrence.config_set_id=$3 and pin.value_state='deleted'`,
     [input.organizationId, input.projectId, input.configSetId],
   )).rows;
@@ -168,6 +170,58 @@ export async function loadSourceBindingCohort(tx: Queryable, input: { organizati
 /** Read-only cohort projection for previews and workflow discovery. It never takes row locks. */
 export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
   return querySourceBindingCohort(tx, input, false);
+}
+
+export async function loadProjectBindingCatalogReleaseIds(tx: Queryable, input: { organizationId: string; projectId: string }) {
+  return (await tx.query<{ catalogReleaseId: string }>(
+    `select distinct catalog_release_id as "catalogReleaseId" from parameter_catalog.current_project_parameter_bindings
+     where organization_id=$1 and project_id=$2 order by catalog_release_id`, [input.organizationId, input.projectId])).rows
+    .map((row) => row.catalogReleaseId);
+}
+
+/** Terminal source identity remains owned even when the active cohort excludes it. */
+export async function hasDeletedSourceBinding(tx: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; fileId: string; logicalNodeId: string; definitionId: string;
+}): Promise<boolean> {
+  const result = await tx.query(`select binding.id from parameter_catalog.project_parameter_bindings binding
+    join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+    join parameter_catalog.${projectParameterValues} value on value.id=binding.current_value_id
+    where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
+      and occurrence.file_id=$4 and occurrence.logical_node_id=$5 and binding.definition_id=$6 and value.value_state='deleted'`,
+  [input.organizationId, input.projectId, input.configSetId, input.fileId, input.logicalNodeId, input.definitionId]);
+  return result.rows.length !== 0;
+}
+
+export async function hasSourceConfigurationDrafts(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }): Promise<boolean> {
+  const result = await tx.query(`select draft.id from public.project_parameter_value_drafts draft
+    join parameter_catalog.project_parameter_bindings binding on binding.id=draft.binding_id
+    join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+    where draft.organization_id=$1 and draft.project_id=$2 and occurrence.config_set_id=$3 limit 1`,
+  [input.organizationId, input.projectId, input.configSetId]);
+  return result.rows.length !== 0;
+}
+
+/** Lock the complete retained Binding cohort in the caller's source-apply transaction. */
+export async function lockSourceConfigurationBindings(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }): Promise<void> {
+  await tx.query(`select binding.id from parameter_catalog.project_parameter_bindings binding
+    join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+    where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3 order by binding.id for update of binding nowait`,
+  [input.organizationId, input.projectId, input.configSetId]);
+}
+
+/** Exact owner receipt after a registered source property is first materialized. */
+export async function loadCreatedSourceBindingReceipt(tx: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; fileId: string; logicalNodeId: string; definitionId: string; configRevisionId: string;
+}) {
+  return (await tx.query<{ bindingId: string; oldValueId: string; newValueId: string; sourcePinId: string; historyEventId: string }>(
+    `select binding.id as "bindingId",history.old_current_value_id as "oldValueId",binding.current_value_id as "newValueId",
+       pin.id as "sourcePinId",history.id as "historyEventId" from parameter_catalog.current_project_parameter_bindings binding
+     join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+     join parameter_catalog.project_value_source_pins pin on pin.project_value_id=binding.current_value_id and pin.binding_id=binding.id
+     join parameter_catalog.binding_history_events history on history.new_current_value_id=binding.current_value_id and history.binding_id=binding.id
+     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
+       and occurrence.file_id=$4 and binding.logical_node_id=$5 and binding.definition_id=$6 and pin.config_revision_id=$7`,
+  [input.organizationId, input.projectId, input.configSetId, input.fileId, input.logicalNodeId, input.definitionId, input.configRevisionId])).rows[0] ?? null;
 }
 
 /** Historical pin reads use exact owner/value identity, never the current file tip. */
@@ -440,6 +494,17 @@ export const casCurrentTip = async (
           exists (select 1 from parameter_catalog.${projectParameterValues} initial
             where initial.id=binding.current_value_id and initial.binding_id=binding.id
               and initial.source_ref='canonical-binding-identity')
+          or exists (select 1 from public.project_parameter_value_change_requests request
+            join parameter_catalog.project_value_source_pins base_pin on base_pin.binding_id=binding.id and base_pin.project_value_id=$2
+              and base_pin.organization_id=binding.organization_id and base_pin.project_id=binding.project_id
+              and base_pin.source_occurrence_id=binding.source_occurrence_id and base_pin.value_state='present'
+            join parameter_catalog.${projectParameterValues} next_value on next_value.id=$3 and next_value.binding_id=binding.id
+            where request.id=$4 and request.organization_id=binding.organization_id and request.project_id=binding.project_id
+              and request.status='pending' and request.request_kind='source_revision'
+              and request.source_revision_context->'cohort' @> jsonb_build_array(jsonb_build_object(
+                'bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id))
+              and next_value.value_state=case when exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
+                where target->>'bindingId'=binding.id and target->>'action'='delete') then 'deleted' else 'present' end)
           or exists (select 1 from public.project_parameter_value_change_requests request
             join parameter_catalog.project_value_source_pins base_pin on base_pin.id=request.source_pin_id
               and base_pin.binding_id=request.binding_id and base_pin.project_value_id=request.base_current_value_id

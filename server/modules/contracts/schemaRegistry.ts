@@ -267,8 +267,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "parameters.getParameterFileStructure": {
     summary: "Read structured DTS nodes/properties for a file version (includes source locators)",
     tags: ["parameters"],
+    requestParameters: [{ name: "navigationScope", in: "query", schema: { type: "string", enum: ["organization"] },
+      description: "Also resolve directly matched organization-registered nodes for navigation; full nodes remain available." }],
     responseBody: "StructuralReadResponse",
-    additionalResponses: { "404": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "parameters.listParameterFileCandidates": {
     summary: "List staged parameter-file candidates for a project",
@@ -277,12 +279,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "parameters.createParameterFileCandidate": {
-    summary: "Upload a staged candidate file version without activating Working configuration",
+    summary: "Upload a staged candidate; source_revision intent requires original file/config versions and a scoped mutation key",
     tags: ["parameters"],
     requestBody: "CreateParameterFileCandidateRequest",
     responseBody: "ParameterFileCandidateResponse",
     successStatus: 201,
-    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "413": "ErrorResponse" }
   },
   "parameters.getParameterFileCandidate": {
     summary: "Read one staged parameter-file candidate",
@@ -318,8 +320,14 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "parameters.searchDts": {
     summary: "Search project DTS structure by path/address/label/compatible/value/file (omit by for all)",
     tags: ["parameters"],
+    requestParameters: [
+      { name: "q", in: "query", required: true, schema: { type: "string" } },
+      { name: "by", in: "query", schema: { type: "string", enum: ["path", "address", "label", "compatible", "value", "file"] } },
+      { name: "navigationScope", in: "query", schema: { type: "string", enum: ["organization"] },
+        description: "Restrict node/property results to organization-managed nodes and structural ancestors; file-name results remain reachable." }
+    ],
     responseBody: "DtsSearchResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "500": "ErrorResponse" }
   },
 
   "parameters.listProjectModules": {
@@ -1714,6 +1722,36 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterFileListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "parameterFiles.listSourceRevisionRequests": {
+    summary: "List the submitter's and eligible assigned reviewer's whole-DTS source requests",
+    tags: ["parameter-files"],
+    requestParameters: [
+      { name: "mine", in: "query", schema: { type: "string", enum: ["true", "false"] } },
+      { name: "status", in: "query", schema: { type: "string", enum: ["pending", "approved", "rejected", "withdrawn"] } }
+    ],
+    responseBody: "SourceRevisionRequestListResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.getSourceRevisionRequest": {
+    summary: "Read a visible whole-DTS source request and its verified immutable source diff",
+    tags: ["parameter-files"],
+    responseBody: "SourceRevisionRequestDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.reviewSourceRevisionRequest": {
+    summary: "Approve or reject the frozen whole-source proof as its separate assigned file administrator and software reviewer",
+    tags: ["parameter-files"],
+    requestBody: "SourceRevisionReviewRequest",
+    responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.withdrawSourceRevisionRequest": {
+    summary: "Withdraw the submitter's pending whole-source request without changing active source",
+    tags: ["parameter-files"],
+    requestBody: "SourceRevisionWithdrawRequest",
+    responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.uploadFile": {
     summary: "Upload a project parameter file (new file or new version) and sync drafts",
     tags: ["parameter-files"],
@@ -1854,7 +1892,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterFiles.previewCanonicalCandidate": {
-    summary: "Preview a staged candidate against exact canonical source pins",
+    summary: "Preview a staged candidate against exact source pins or its complete source_revision proof and impact",
     tags: ["parameter-files"],
     responseBody: "CanonicalSourceCandidatePreviewResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
@@ -1880,7 +1918,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterFiles.submitCanonicalCandidate": {
-    summary: "Submit one source candidate through canonical draft and human review",
+    summary: "Submit a source candidate for human review; source_revision candidates require assignedToUserId and clientMutationId",
     tags: ["parameter-files"],
     requestBody: "CanonicalSourceSubmitRequest",
     responseBody: "CanonicalSourceSubmissionResponse",

@@ -971,6 +971,9 @@ export function registerCatalogProjectValueConsumerRoutes(
       select request_kind from public.project_parameter_value_change_requests
        where id=$1 and organization_id=$2 and project_id=$3`,
       [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
+    if (kind === "source_revision") {
+      throw new ApiError("CONFLICT", "Whole-source requests use the source revision detail endpoint.", { reason: "source-request-kind-mismatch" });
+    }
     if (kind === "batch") {
       const item = await db.transaction(async (tx) => {
         const frozen = await getCanonicalBatchValueChangeForAuth(tx, auth, params);
@@ -1108,6 +1111,9 @@ export function registerCatalogProjectValueConsumerRoutes(
          where id=$1 and organization_id=$2 and project_id=$3`,
         [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
       if (!requestKind) throw new ApiError("NOT_FOUND", "Canonical value request was not found.");
+      if (requestKind === "source_revision") {
+        throw new ApiError("CONFLICT", "Whole-source requests use the source revision review endpoint.", { reason: "source-request-kind-mismatch" });
+      }
       if (requestKind === "member-removal") {
         const item = await reviewCanonicalMemberRemoval(db, options.objectStore, auth, {
           ...params, decision: body.decision, proofDigest: body.memberProofDigest ?? "",
@@ -1305,6 +1311,9 @@ export function registerCatalogProjectValueConsumerRoutes(
         select request_kind from public.project_parameter_value_change_requests
          where id=$1 and organization_id=$2 and project_id=$3`,
         [params.requestId, auth.organization.id, params.projectId])).rows[0]?.request_kind;
+      if (requestKind === "source_revision") {
+        throw new ApiError("CONFLICT", "Whole-source requests use the source revision withdrawal endpoint.", { reason: "source-request-kind-mismatch" });
+      }
       if (requestKind === "member-removal") {
         const item = await withdrawCanonicalMemberRemoval(db, auth, {
           ...params, invocation: createUserInvocation(auth), traceId: request.requestId,

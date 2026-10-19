@@ -22,7 +22,7 @@ import {
 import { createEvidenceIngest, fingerprintCanonical } from "../../parameter-governance/evidence";
 import { isTestDatabaseAvailable } from "../../../testing/testDatabase";
 import { readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../values";
-import { readCanonicalSchemaFingerprint, S2_SCH_LIVE_FINGERPRINT } from "../../../testing/parameterCatalog";
+import { readCanonicalSchemaFingerprint, S2_SCH_0182_FINGERPRINT, S2_SCH_LIVE_FINGERPRINT } from "../../../testing/parameterCatalog";
 import {
   migrationsDir,
   withTempDatabase as withSharedTempDatabase
@@ -35,7 +35,7 @@ async function applyFeedbackSuccessors(db: Database, connectionString: string) {
     "select name, checksum from schema_migrations order by name",
   )).rows;
   expect(historical.at(-1)?.name).toBe("0182_legacy_dismissed_identity_reader.sql");
-  expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+  expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0182_FINGERPRINT);
   const files = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
   expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));
   const current = (await db.query<{ name: string; checksum: string }>(
@@ -469,7 +469,7 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
       await applyMigrations(db, migrationsDir, { through: "0150_product_feedback_v2.sql" });
       await seedPopulatedGraph(db, connectionString);
       await seedPopulatedObservations(db);
-      const before = (await db.query("select * from parameter_catalog.project_parameter_bindings order by id")).rows;
+      const before = (await db.query<{ id: string }>("select * from parameter_catalog.project_parameter_bindings order by id")).rows;
       const observations = (await db.query("select * from parameter_catalog.parameter_observations order by id")).rows;
       const runner = new pg.Client({ connectionString });
       await runner.connect();
@@ -487,7 +487,7 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         await expect(applyMigrations(interruptedDb, migrationsDir)).rejects.toThrow(/closed|ended|not queryable/i);
         expect(interrupted).toBe(true);
       } finally { await runner.end().catch(() => undefined); }
-      expect((await db.query("select to_regclass('parameter_catalog.project_parameter_source_occurrences') as relation")).rows[0]?.relation).toBeNull();
+      expect((await db.query<{ relation: string | null }>("select to_regclass('parameter_catalog.project_parameter_source_occurrences') as relation")).rows[0]?.relation).toBeNull();
       expect((await db.query("select * from parameter_catalog.project_parameter_bindings order by id")).rows).toEqual(before);
       expect((await db.query("select * from parameter_catalog.parameter_observations order by id")).rows).toEqual(observations);
       expect((await db.query("select name from schema_migrations where name >= '0151'")).rows).toEqual([]);
@@ -544,7 +544,7 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         await applyFeedbackSuccessors(resumedDb, connectionString);
         expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([]);
         const receipt = (await resumedDb.query("select * from schema_migrations order by name")).rows;
-        const bindings = (await resumedDb.query("select * from parameter_catalog.project_parameter_bindings order by id")).rows;
+        const bindings = (await resumedDb.query<{ id: string }>("select * from parameter_catalog.project_parameter_bindings order by id")).rows;
         expect(bindings.map(({ id }) => id)).toEqual(before.map(({ id }) => id));
         for (const name of (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql") && name < "0151")) {
           await symlink(join(migrationsDir, name), join(olderInventory, name));
@@ -760,21 +760,21 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         await reconnectPool.end();
       }
       expect(
-        (await db.query(
+        (await db.query<{ count: number }>(
           `select count(*)::int as count
              from parameter_catalog.parameter_observations
             where id = 'observation-src-occ-0151'`
         )).rows[0]?.count
       ).toBe(1);
       expect(
-        (await db.query(
+        (await db.query<{ count: number }>(
           `select count(*)::int as count
              from parameter_catalog.parameter_observation_matches
             where observation_id = 'observation-src-occ-0151'`
         )).rows[0]?.count
       ).toBe(1);
       expect(
-        (await db.query(
+        (await db.query<{ count: number }>(
           `select count(*)::int as count
              from parameter_catalog.parameter_review_evidence
             where id = 'review-evidence-src-occ-0151'`
@@ -807,7 +807,7 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
           `select parameter_catalog.canonical_dts_parameter_locator_digest($1::jsonb) as digest`,
           [JSON.stringify(vector.locator)]
         );
-        const expected = vector.expected ??
+        const expected = "expected" in vector ? vector.expected :
           `sha256:${createHash("sha256")
             .update(serializeContract(vector.locator as ContractJsonValue))
             .digest("hex")}`;

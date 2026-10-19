@@ -58,13 +58,13 @@ describe("debugging schemas", () => {
   it("trims and requires target detection device input when provided", () => {
     expect(() => detectTargetsBodySchema.parse({ deviceId: "   " })).toThrow();
     expect(detectTargetsBodySchema.parse({ deviceId: "sim-device-1" })).toEqual({
-      deviceId: "sim-device-1",
-      protocol: "hdc"
+      deviceId: "sim-device-1"
     });
     expect(detectTargetsBodySchema.parse({ bridgeId: "br-1" })).toEqual({
-      bridgeId: "br-1",
-      protocol: "hdc"
+      bridgeId: "br-1"
     });
+    expect(detectTargetsBodySchema.parse({})).toEqual({});
+    expect(detectTargetsBodySchema.parse({ protocol: "hdc" })).toEqual({ protocol: "hdc" });
   });
 
   it("requires node session and path for reads", () => {
