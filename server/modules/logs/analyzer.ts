@@ -20,7 +20,7 @@ export type AnalyzeLogInput = {
   procedure?: string;
   decoding?: { spec: import("./parsing/spec").ParsingSpec; events: import("./parsing/spec").DecodedEvent[]; counts: import("./parsing/spec").DecodeCounts };
   /** Pinned revision's source availability at worker execution; source tools bind this scope later. */
-  sourceSnapshot?: { id: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" } | null;
+  sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" } | null;
   files?: Array<import("./filesRepository").LogFileDto & { parsed?: Extract<ParseResult, { ok: true }>; reader?: import("./fileReader").LogFileReader; prefilter?: import("./prefilter").PrefilterFindings }>;
   stats?: { lineCount: number; entryCount: number };
   filePath?: string;

@@ -12,7 +12,11 @@ Generic-signal scenarios call `get_signals`, `get_line_templates`, and `get_time
 
 Source-location scenarios call `locate_log_statement` on a ready pinned snapshot. Only exact returned snapshot/path/line tuples can become evidence; an unseen source paired with a valid log line, another snapshot/path, or a nearby excerpt line is rejected. Source excerpts remain untrusted input.
 
-The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.signals.source.1`; existing tolerances and its pending-real-cases status stay unchanged.
+Source-tool scenarios legally call `search_source` with a path glob and literal or full-text query, and `read_source_range` with a snapshot, path and range. Oversized backend responses must still obey the 20-hit, 400-character excerpt and 16 KiB search caps. A requested 100-line range returns at most 80 numbered lines; a source-only citation to returned line 80 is grounded, while unseen line 81 is rejected. Both tools are unavailable with a queued, indexing, failed, archived or absent snapshot. Grounding checks inspect the tool output the model received after caps, rather than the backend fixtures.
+
+Source-search timeout coverage verifies that the agent can continue with grounded log evidence after a truncated source result. PostgreSQL integration checks candidate admission before scoring, common-query rejection, the database deadline and transaction timeout restoration.
+
+The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.signals.source.3`; existing tolerances and its pending-real-cases status stay unchanged.
 
 ## Layout
 

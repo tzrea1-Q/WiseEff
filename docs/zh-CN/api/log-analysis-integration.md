@@ -10,6 +10,10 @@
 
 `POST /api/v1/log-files`,内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。通过 `logDomainId` 绑定已注册业务域(`GET /api/v1/log-domains` 可列出);不传则回落到内置未分类域——域选择永远不会阻塞上传。
 
+可选字段 `sourceVersion` 为源码快照版本标签（去除首尾空白后 1–200 字符），用于选择钉住技能所属的匹配快照。匹配快照即使仍在排队、索引中或索引失败，也会被选中；只有快照就绪时才向 Agent 提供源码工具。没有匹配标签或未传标签时，使用钉住版本的默认快照。未知标签会记录在报告来源中，并在该处附上简短回退说明。JSON 上传、multipart 上传以及从已有文件创建记录的 `POST /api/v1/logs` 均接受此字段。`GET /api/v1/log-skills` 返回 `hasSourceSnapshots` 和 `readySourceVersions`；后者是就绪快照版本标签数组，不含快照元数据。上传对话框提供这些标签及默认快照选项；集成 API 仍接受自由填写的版本标签。
+
+`GET /api/v1/log-skills/{skillId}/source-versions` 仅返回技能所属组织内就绪快照的标签，如 `{ "items": ["v2.4.0"] }`。持有 `logs:view`，或账号有效且持有 `logs:upload` 的用户均可访问，包含仅有上传权限的客户端；其他组织的技能返回 `404`。此接口不暴露快照 id、状态、文件清单或源码内容。
+
 ```bash
 curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
   -H "Authorization: Bearer $TOKEN" \
@@ -18,7 +22,7 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
     --arg content "$(base64 < charging-foldback.log)" \
     --arg domain "$LOG_DOMAIN_ID" \
     '{fileName: "charging-foldback.log", contentType: "text/plain",
-      contentBase64: $content, logDomainId: $domain,
+      contentBase64: $content, logDomainId: $domain, sourceVersion: "firmware-v7",
       analysisQuestion: "Why did fast charging fold back?"}')"
 ```
 
@@ -33,6 +37,8 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 ## 3. 获取结果
 
 `GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据(含行号锚点)、建议动作,以及溯源字段 `analysisSource` / `degradedReason`——`rules-fallback` 是降级分析,绝不冒充完整 Agent 分析。
+
+记录及运行列表（`GET /api/v1/logs/{logId}/runs`）显示源码溯源：`sourceSnapshot: { id, versionLabel, status }` 标识所用快照，`sourceSnapshotSelection` 为 `matched_version`（版本匹配）、`default`（默认快照）或 `none`（无快照），`requestedSourceVersion` 保留传入的标签。传入标签但结果为 `default` 或 `none` 表示未找到该标签。选择说明仅出现在来源区域，不写入报告结论。源码证据位置必须出现于工具结果；`search_source` 返回有界的排序摘录，`read_source_range` 返回所选快照中最多 80 行带行号的源码。
 
 记录另有当前运行的可选 `signalSummary: { signals, templates, truncatedSignals, truncatedTemplates }`。不选择技能也生成通用信号，钉住的技能另提供自身信号命中。信号带种类、严重度、来源、出现次数和有界的 `file:line` 锚点及摘录；模板带归一化文本、次数和首末锚点。判断摘要是否完整前，先检查截断标记；旧记录可以没有该字段。规则回退同时使用通用和所钉技能的信号，保留降级标记与置信度上限。字段和内部 Agent 工具见 [API 合同](../design-docs/api-contract.md)；这些工具不新增 REST 端点。
 

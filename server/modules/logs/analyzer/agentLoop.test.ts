@@ -65,6 +65,27 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it("grounds exact source search hits and numbered range lines, rejecting unread source lines", async () => {
+    const input = buildInput({ sourceSnapshot: { id: "source", status: "ready" } });
+    for (const tool of ["search_source", "read_source_range"] as const) {
+      for (const line of [5, 6]) {
+        const final = { ...finalPayload, evidence: [{ lineNumbers: [], sourceLocation: { snapshotId: "source", path: "power.c", line },
+          inference: "Power logic", suggestedAction: "Inspect power logic" }] };
+        const run = analyzer([
+          { content: { action: "tool", tool, args: tool === "search_source" ? { pathGlob: "*.c", query: "power" }
+            : { snapshotId: "source", path: "power.c", startLine: 5, endLine: 5 } } },
+          ...Array.from({ length: line === 5 ? 1 : 3 }, () => ({ content: final }))
+        ], { bindToolBackends: () => ({
+          searchSource: async () => ({ items: [{ snapshotId: "source", path: "power.c", line: 5, excerpt: "power();", rank: 1, versionLabel: "v1" }], truncated: false }),
+          readSourceRange: async () => ({ snapshotId: "source", path: "power.c", startLine: 5, endLine: 5, totalLines: 10,
+            truncated: false, lines: [{ line: 5, content: "power();" }] })
+        }) });
+        const output = await run.adapter.analyze(input);
+        expect(output.analysisSource).toBe(line === 5 ? "agent" : "rules-fallback");
+        if (line === 5) expect(output.evidence).toMatchObject([{ sourceLocation: { snapshotId: "source", path: "power.c", line: 5 } }]);
+      }
+    }
+  });
   it("grounds only the file/line anchors returned by query_events, never nested values or knowledge data", async () => {
     const input = buildInput({ filePath: "charging.log" });
     const spec = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "current", pattern: "charge_current_ma=(?P<current>\\d+)", fields: { current: { type: "uint" } } }] });

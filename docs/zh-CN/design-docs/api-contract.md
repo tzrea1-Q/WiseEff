@@ -489,7 +489,13 @@ GET  /api/v1/jobs/:jobId/events
 
 必填 `versionLabel` 去首尾空白后为 1–200 字符，在技能的未归档快照中唯一，冲突返回 `409`。压缩包支持 `.tar.gz`、`.tgz` 和 `.zip`，默认压缩上限 100 MiB。路由请求体另加 64 KiB multipart 封装预算，过大的 `Content-Length` 在缓冲前拒绝，实际请求字节同样受限，超限返回 `413`；文件字节共享请求缓冲，不支持 JSON/base64 上传。上传和索引由 `LOG_SOURCE_*` 配置，白名单和安全规则见[环境变量](../developer/environment-variables.md#日志分析-llm)及[运行手册](../runbooks/log-analysis-llm.md#源码快照1243)。技能与快照查询必须匹配组织和技能，跨范围 id 返回 `404`。已归档快照不能被新选为默认值，返回 `409`；保存、发布和恢复可保留不变的已有归档默认值，所有引用仍须属于同一组织和技能。上传、默认设置和归档分别在数据库写入事务内记录 `log-source-snapshot-upload`、`log-source-snapshot-default` 和 `log-source-snapshot-archive` 审计。
 
-快照元数据含 `id`、`skillId`、`versionLabel`、`status`（`queued`、`indexing`、`ready`、`failed`、`archived`）、`filesProcessed`、`filesTotal`、`fileCount`、`skippedCount`、`skippedFiles: [{ path, reason }]`（最多 200 条）、可空 `error` 和 `createdAt`。不提供公开源码文件或内容路由。运行从其不可变固定版本解析默认快照，持久化 `source_snapshot_id`/`source_snapshot_status`；快照未就绪或已归档不使运行失败，报告持久化中文不可用提示。本切片只暴露内部 `{ id, status }` 上下文，源码工具、语句索引、源码证据及上传 `sourceVersion` 选择留给 #1244/#1245。
+快照元数据含 `id`、`skillId`、`versionLabel`、`status`（`queued`、`indexing`、`ready`、`failed`、`archived`）、`filesProcessed`、`filesTotal`、`fileCount`、`skippedCount`、`skippedFiles: [{ path, reason }]`（最多 200 条）、可空 `error` 和 `createdAt`。上传可选传入 `sourceVersion`（去除首尾空白后 1–200 字符）。Worker 在钉住版本所属组织和技能内匹配未归档快照，不要求就绪；否则使用该版本的默认快照。记录和运行返回 `sourceSnapshot: { id, status }`、`sourceSnapshotSelection`（`matched_version`、`default`、`none`）及可选 `requestedSourceVersion`。标签未匹配时附加回退说明。快照未就绪或已归档不会使分析失败，报告会说明源码不可用。
+
+只有快照就绪的运行才提供 `locate_log_statement`、`search_source` 和 `read_source_range`。检索接收 `pathGlob`、`query`、可选 `mode`（`literal`、`full_text`）及 `limit`（1–20）。字面量查询至少含三个连续字母或数字，不得含换行。全文与三元组索引最多选取 200 个分块，另有有界查询覆盖最多 200 个行内分块边界。排序命中返回快照、路径、行号和最多 400 字符的摘录。范围读取须传入运行的 `snapshotId`、`path`、`startLine` 和 `endLine`，限制为 80 行、每行 1,000 字符，返回带行号的内容。两个工具均限制总输出为 16 KiB，并标记截断。源码证据必须引用工具实际返回的位置，相邻行和省略行不算已看到。报告查看者只能读取已持久化引用周围的有界摘录，没有通用源码浏览端点。
+
+检索在评分前最多接纳 201 个匹配分块 id，额外的一个仅用于检测截断；只对前 200 个候选评分排序，不对整个快照排序。所有查询至少需要三个字符。没有字面路径前缀且匹配超过 200 个分块时，工具拒绝查询并提示缩小通配路径或细化查询。每次检索语句在事务内设置一秒 PostgreSQL 超时；超时回滚该事务范围，返回 `{ items: [], truncated: true, reason: "statement_timeout" }`。成功时恢复外层事务原有的超时设置。源码检索超时不会使日志分析失败。
+
+字面量排序只对匹配附近的 400 字符评分。单行分块复用已索引的全文匹配结果，不再重新解析该行。调用方设置了更短的非零数据库超时时，保留该上限。
 
 ## 7. Product Feedback
 

@@ -41,6 +41,8 @@ export type LogWebhookDelivery = {
 
 /** Org-scoped log domain registration (业务域); absence on a record = 未分类域. */
 export type LogDomain = {
+  hasSourceSnapshots?: boolean;
+  readySourceVersions?: string[];
   currentRevision?: { id: string; number: number; publishedAt: string | null };
   hasDraft?: boolean;
   analyses7d?: number;
@@ -128,6 +130,9 @@ export type LogSignalSummary = {
 };
 
 export type LogRecord = {
+  sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" };
+  sourceSnapshotSelection?: "matched_version" | "default" | "none";
+  requestedSourceVersion?: string;
   signalSummary?: LogSignalSummary;
   files?: LogFile[];
   skillRevision?: { id: string; number: number } | null;

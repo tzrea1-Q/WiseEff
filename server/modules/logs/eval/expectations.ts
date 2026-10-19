@@ -23,6 +23,8 @@ export type LogEvalExpectation =
   | { type: "expectsNoDegradation" }
   | { type: "expectsGroundedEvidence" }
   | { type: "expectsSourceLocations"; locations: SourceLocation[] }
+  | { type: "expectsSourceToolBounds"; tool: "search_source" | "read_source_range"; maxBytes: number;
+      maxItems?: number; expectedItems?: number; maxExcerptChars?: number; expectedLines?: number; endLine?: number; truncated: boolean }
   | { type: "expectsEvidenceNotCitingLines"; lineNumbers: number[] }
   | { type: "expectsPromptVersionRecorded"; promptVersion: string }
   | { type: "expectsPromptContains"; substrings: string[] }
@@ -87,6 +89,21 @@ export function evaluateLogEvalExpectation(
       const actual = result.output.evidence.flatMap((item) => item.sourceLocation ? [item.sourceLocation] : []);
       const pass = JSON.stringify(actual) === JSON.stringify(expectation.locations);
       return pass ? { pass: true } : { pass: false, message: `Unexpected source locations: ${JSON.stringify(actual)}` };
+    }
+    case "expectsSourceToolBounds": {
+      const prefix = `Tool result for ${expectation.tool}:\n`;
+      const content = result.promptMessages.find((message) => message.role === "user" && message.content.startsWith(prefix))?.content.slice(prefix.length);
+      if (!content) return { pass: false, message: `No successful ${expectation.tool} result was observed` };
+      const output = JSON.parse(content) as { truncated: boolean; startLine?: number; endLine?: number;
+        items?: Array<{ excerpt: string }>; lines?: Array<{ line: number }> };
+      const pass = Buffer.byteLength(content, "utf8") <= expectation.maxBytes && output.truncated === expectation.truncated
+        && (expectation.maxItems === undefined || (output.items?.length ?? Infinity) <= expectation.maxItems)
+        && (expectation.expectedItems === undefined || output.items?.length === expectation.expectedItems)
+        && (expectation.maxExcerptChars === undefined || !!output.items?.every((item) => item.excerpt.length <= expectation.maxExcerptChars!))
+        && (expectation.expectedLines === undefined || output.lines?.length === expectation.expectedLines
+          && output.lines.every(({ line }, index) => line === output.startLine! + index))
+        && (expectation.endLine === undefined || output.endLine === expectation.endLine && output.lines?.at(-1)?.line === expectation.endLine);
+      return pass ? { pass: true } : { pass: false, message: `${expectation.tool} output exceeded its expected bounds or did not report truncation` };
     }
     case "expectsEvidenceNotCitingLines": {
       const banned = new Set(expectation.lineNumbers);

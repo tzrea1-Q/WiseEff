@@ -46,6 +46,7 @@ export type LogRelatedParameterPin = {
 };
 
 export type LogUploadInput = {
+  sourceVersion?: string;
   skillId?: string;
   file: File;
   files?: File[];

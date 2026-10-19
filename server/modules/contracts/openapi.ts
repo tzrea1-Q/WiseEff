@@ -137,6 +137,7 @@ function buildSchemaPlaceholders() {
     type: "object", required: ["file"], properties: {
       file: { type: "array", minItems: 1, items: { type: "string", format: "binary" }, description: "Several plain files or one archive; repeated file parts form one log bundle." },
       analysisQuestion: { type: "string" }, skillId: { type: "string" }, logDomainId: { type: "string" },
+      sourceVersion: { type: "string", minLength: 1, maxLength: 200, description: "Source snapshot version label; unmatched labels fall back to the pinned revision's default snapshot." },
       relatedParameterPin: { type: "string", description: "JSON-encoded canonical parameter pin." }
     }
   };
