@@ -182,6 +182,28 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
     expect((await upload(bound.token, skills[0])).status).toBe(401);
   }, 120_000);
 
+  it("audits readable lifecycle actions and safe object/skill names for bound and unbound credentials", async () => {
+    const skillName = "Audit credential skill";
+    const created = await request<{ item: Skill }>("POST", "/api/v1/log-skills", { name: skillName });
+    expect(created.status).toBe(201);
+    for (const skillId of [null, created.body.item.id]) {
+      const credential = await issue(skillId ? "Bound audit pipeline" : "Unbound audit pipeline", skillId);
+      const path = `/api/v1/log-integration-credentials/${credential.item.id}`;
+      const rotated = await request<Issued>("POST", `${path}/rotate`, {});
+      expect(rotated.status).toBe(200);
+      rememberSecret(rotated.body.token);
+      expect((await request("POST", `${path}/revoke`, {})).status).toBe(200);
+      const audits = await db.query<{ kind: string; action: string; metadata: Record<string, unknown> }>(
+        "select kind,action,metadata from audit_events where organization_id=$1 and target_id=$2",
+        [organizations[0], credential.item.id]);
+      expect(audits.rows).toHaveLength(3);
+      for (const [action, label] of [["issue", "签发集成凭据"], ["rotate", "轮换集成凭据"], ["revoke", "撤销集成凭据"]]) {
+        expect(audits.rows).toContainEqual({ kind: `log-integration-credential-${action}`, action: label,
+          metadata: { name: credential.item.name, skillId, skillName: skillId ? skillName : null, initiator: "user" } });
+      }
+    }
+  }, 120_000);
+
   it("rejects credentials before every non-allowlisted route handler or domain query, including public and future routes", async () => {
     const credential = await issue("Boundary probe");
     const routes = buildWiseEffRouter(options()).router.listRoutes();

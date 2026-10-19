@@ -33,9 +33,11 @@ async function readCredential(db: Queryable, organizationId: string, id: string)
   return dto(row);
 }
 
-function credentialAudit(id: string, action: "issue" | "rotate" | "revoke", metadata: Record<string, unknown>): AuditSpec {
-  return { app: "log-analysis", kind: `log-integration-credential-${action}`, action, severity: "Medium",
-    projectId: null, targetType: "log-integration-credential", targetId: id, metadata };
+function credentialAudit(item: { id: string; name: string; skillId: string | null; skillName: string | null }, action: "issue" | "rotate" | "revoke"): AuditSpec {
+  const actions = { issue: "签发集成凭据", rotate: "轮换集成凭据", revoke: "撤销集成凭据" };
+  return { app: "log-analysis", kind: `log-integration-credential-${action}`, action: actions[action], severity: "Medium",
+    projectId: null, targetType: "log-integration-credential", targetId: item.id,
+    metadata: { name: item.name, skillId: item.skillId, skillName: item.skillName } };
 }
 
 export async function listIntegrationCredentials(db: Queryable, auth: AuthContext) {
@@ -61,8 +63,8 @@ export async function issueIntegrationCredential(db: Database, auth: AuthContext
     }
     await tx.query(`insert into log_integration_credentials (id,organization_id,name,skill_id,secret_hash,created_by)
       values ($1,$2,$3,$4,$5,$6)`, [id, auth.organization.id, input.name, input.skillId ?? null, hashIntegrationSecret(secret), auth.user.id]);
-    return { result: { item: await readCredential(tx, auth.organization.id, id), token: `wie_${id}_${secret}` },
-      audit: credentialAudit(id, "issue", { name: input.name, skillId: input.skillId ?? null }) };
+    const item = await readCredential(tx, auth.organization.id, id);
+    return { result: { item, token: `wie_${id}_${secret}` }, audit: credentialAudit(item, "issue") };
   });
 }
 
@@ -73,8 +75,8 @@ export async function rotateIntegrationCredential(db: Database, auth: AuthContex
     const updated = await tx.query(`update log_integration_credentials set secret_hash=$3,rotated_at=clock_timestamp()
       where organization_id=$1 and id=$2 and status='active' returning id`, [auth.organization.id, id, hashIntegrationSecret(secret)]);
     if (!updated.rows.length) throw new ApiError("NOT_FOUND", "Active integration credential was not found.");
-    return { result: { item: await readCredential(tx, auth.organization.id, id), token: `wie_${id}_${secret}` },
-      audit: credentialAudit(id, "rotate", {}) };
+    const item = await readCredential(tx, auth.organization.id, id);
+    return { result: { item, token: `wie_${id}_${secret}` }, audit: credentialAudit(item, "rotate") };
   });
 }
 
@@ -84,6 +86,6 @@ export async function revokeIntegrationCredential(db: Database, auth: AuthContex
     const updated = await tx.query(`update log_integration_credentials set status='revoked',revoked_at=clock_timestamp()
       where organization_id=$1 and id=$2 and status='active' returning id`, [auth.organization.id, id]);
     const item = await readCredential(tx, auth.organization.id, id);
-    return { result: { item }, audit: updated.rows.length ? credentialAudit(id, "revoke", {}) : null };
+    return { result: { item }, audit: updated.rows.length ? credentialAudit(item, "revoke") : null };
   });
 }
