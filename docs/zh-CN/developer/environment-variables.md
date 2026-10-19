@@ -181,6 +181,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 每次分析的最大模型步数；超出触发标注为 `token-budget-exhausted` 的提前收敛。 |
 | `LOG_ANALYSIS_JOB_MAX_MS` | `600000` | worker 尝试时限 | 从任务认领开始，覆盖预处理、分析与持久化的总墙钟时限；续租不会重置截止时间。须为不超过 `2147483647` 的正整数；中央环境校验拒绝无效值，直接独立调用 worker 时回退默认值。 |
 | `LOG_ANALYSIS_PREPROCESS_MAX_MS` | `20000` | 信号与解码共享时限 | 从信号提取开始的固定合计额度，并受本次尝试剩余墙钟时限约束。续租不补充额度；`LOG_SIGNAL_MAX_MS` 和 `LOG_DECODE_MAX_MS` 仍分别约束各阶段。校验与独立调用回退规则同 `LOG_ANALYSIS_JOB_MAX_MS`。 |
+| `LOG_DRY_RUN_MAX_CONCURRENT` | `2` | 技能试运行并发接收 | 整数 1–4，无效值回退为 2。PostgreSQL 原子地执行此跨 API 实例的保守总量上限，每组织最多一个执行。各实例应使用相同值。直到执行实际结束才释放容量，包括超时后仍在退出的工作。容量已满时，在读取样例或调用分析器前返回 `429 RATE_LIMITED`，提示「试运行繁忙，请稍后重试」。 |
 | `LOG_BUNDLE_MAX_COMPRESSED_BYTES` | `104857600` | 日志包接入 | 上传总字节数（含普通文件），multipart 默认 100 MiB；JSON/base64 另受解码文件 32 MiB 上限约束。 |
 | `LOG_BUNDLE_MAX_UNPACKED_BYTES` | `104857600` | 日志包接入 | 文件原始字节及规范化 UTF-8 文本总量；中间解压容器也受限，默认 100 MiB。 |
 | `LOG_BUNDLE_MAX_FILES` | `2000` | 日志包接入 | 非目录叶文件数上限，包含跳过文件。 |

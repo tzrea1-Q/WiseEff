@@ -106,6 +106,10 @@ async function* scanLines(store: ObjectStore, key: string, startByte: number, st
       append(chunk.subarray(from, at)); from = at + 1; pendingCr = byte === 13;
       yield finish();
       if (lineNumber > endLine) return;
+      if (lineNumber % 256 === 0) {
+        await setImmediate();
+        if (options.deadline !== undefined && performance.now() >= options.deadline) throw new LogReaderDeadlineError();
+      }
     }
     append(chunk.subarray(from));
     await setImmediate();

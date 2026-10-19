@@ -318,7 +318,7 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 `skill/v1` 新增可选 `parsing: {schemaVersion: "parsing/v1", extractors}`，保存、发布和回滚均校验，错误为带路径的 `400`。严格规范、时间格式子集、上限和事件外壳见[解析参考](log-parsing-v1.md)。worker 只使用钉住版本，有抽取器的运行在解析完成后按当前任务租约保护写入迁移 0190 的产物键及 `{total, byExtractor, errors}`，provider 重试时仍保留；无抽取器保持旧行为。
 
-证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。寄存器节点另含嵌套 `fields`、可选枚举含义 `meaning` 和单位 `unit`，父节点仍保留原始寄存器值；不安全整数使用十进制字符串，树深度最多 8。报告在引用行下展示此树。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。寄存器节点另含嵌套 `fields`、可选枚举含义 `meaning` 和单位 `unit`，父节点仍保留原始寄存器值；不安全整数使用十进制字符串。帧/寄存器构件最多嵌套 8 层，输出树允许最多 25 层结构以容纳 TLV 外壳及寄存器叶节点。报告在引用行下展示此树。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
 
 `parsing` 还接受可选 `registers: Record<id, {width: 8|16|32|64, fields: {bits: [hi,lo], name, enum?, scale?, offset?, unit?, signed?, description?}[]}>` 和 `registerMaps: Record<id, {selectBy, cases: Record<地址或消息id, registerId>, default?}>`。抽取器的 `int`/`uint`/`hex` 字段配置 `decode: {register: id}` 或 `decode: {registerMap: id}`。保存、发布及既有未保存草稿预览均校验位重叠、越界、重名和引用，返回精确路径。映射无匹配分支或默认项时，事件记录 `unmatched_register`，不使运行失败。寄存器工作共享既有执行预算。参见 [BQ25890 示例与数值规则](log-parsing-v1.md#寄存器与寄存器映射)。
 
@@ -331,7 +331,13 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 grounding 只认可 query 工具自身 `events[].file/line`。endLine 范围、字段内嵌引用、结构元数据和非白名单工具返回的引用不能建立观察记录。
 
-`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值（包含嵌套寄存器树）最多 1 KiB；限额内完整返回子字段与含义，超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
+`parsing` 还接受 `frames: Record<id, {endian?: "big" | "little", fields: FrameField[]}>`。有序具名字段支持 `uint`/`int`、固定或先前字段决定长度的 `bytes`、嵌套 `register`/`frame`、按先前解码值选择的 `switch`、使用常量或先前字段计数且可乘固定倍数的 `repeat`，以及配置 tag/length 宽度和已知 tag 引用的 TLV。switch/TLV 数字键沿用寄存器映射的归一化规则，未知 TLV tag 保留原始字节。抽取器十六进制/字节字段使用 `decode: {frame: id}`，包括 `hexbytes`、`base64bytes` 及十六进制 `bytes` 别名。帧十六进制输入支持空白和可选 `0x`。[帧规范与 USB-PD 示例](log-parsing-v1.md#字节布局帧)定义封闭的字段结构和路径查找规则。
+
+帧校验和支持 `sum8`、`xor8`、`crc8`（多项式 `0x07`）、`crc16-ccitt`（`0x1021`，初值 `0xFFFF`）、`crc16-modbus`（反射形式 `0x8005`，初值 `0xFFFF`）及 IEEE `crc32`。校验字段声明相对所在帧的半开区间 `range: [start, endExclusive]`、存储字节数及字节序，覆盖范围不得包含该字段自身存储校验和的字节或与其他校验范围重叠。解码节点在既有 raw/value/meaning/unit/fields 树外增加 `byteOffset`、`byteLength` 和可选 `checksum: {expected, actual, ok}`。`checksum_mismatch` 是事件错误，保留节点并继续分析。
+
+帧/寄存器合计最多嵌套 8 层，单帧输入最多 4096 字节，每个 repeat 乘倍数后最多 256 项，单事件解码元素合计最多 1024，每个 TLV 字段最多 256 项。输出共享单事件 1024 字段/32 KiB、单运行 32,768 字段/4 MiB 和时间预算。保存、发布及未保存草稿预览拒绝未知引用、循环、向前路径、无效长度和重叠校验范围，返回精确路径；运行时超限记录具体事件错误。无需迁移或新增端点；嵌套帧字段沿用报告证据与解码事件工具及其既有响应上限。
+
+`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值（包含嵌套寄存器/帧树）最多 1 KiB；限额内完整返回子字段与含义，超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
 
 M2 日志合同锁定为组织级作用域（迁移 `0037` 移除 `projectId`）：
 
@@ -438,7 +444,7 @@ GET  /api/v1/jobs/:jobId/events
 
 只读 Agent 始终具有 `get_signals`（可选 `kind`、`severity`、`offset`、`limit`）、`get_line_templates`（`offset`、`limit`）和 `get_timeline`（ISO `time` 或 `file` + `line`，以及 `before`/`after`）。分页偏移非负，每页 1–20 条。时间线上下文前后各最多 20 行，按时间戳跨文件排序。只有实际返回的锚点与日志行算已读证据；不在返回页或窗口中的真实行仍算未读。这些是 Worker 内部工具，不是新增 HTTP 端点。
 
-分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，写入要求 `logs:admin-domains`；每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save`、`log-skill-publish`、`log-skill-draft-discard` 或 `log-skill-restore` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、状态、知识关联和 Webhook 配置仍属于身份。工作区描述按版本管理，发布时同步身份行描述；旧 PATCH 仍可独立编辑身份描述。版本 DTO 另有可选的 `publishedByDisplayName`，供工作区显示发布者。
+分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，但轨迹与试运行要求 `logs:admin-domains`；写入要求 `logs:admin-domains`。每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save`、`log-skill-publish`、`log-skill-draft-discard` 或 `log-skill-restore` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、状态、知识关联和 Webhook 配置仍属于身份。工作区描述按版本管理，发布时同步身份行描述；旧 PATCH 仍可独立编辑身份描述。版本 DTO 另有可选的 `publishedByDisplayName`，供工作区显示发布者。
 
 上传、创建与 rerun 接受 `skillId`，`logDomainId` 继续作为别名。rerun 接受 `revisionPolicy: "current" | "pinned"`，默认 `current` 使用当前发布版本；`pinned` 复用前一次运行版本，不能同时更换技能。未分类运行保持 null 钉住值并使用平台默认配置。记录和运行 DTO 暴露 `skillRevision: { id, number } | null`；结果 Webhook 增加可空 `skillRevisionId`、`skillRevisionNumber`。Worker 只从所钉版本读取格式画像、模型覆盖和信号规则。
 
@@ -451,6 +457,23 @@ GET  /api/v1/jobs/:jobId/events
 默认限制：上传总字节 100 MiB（`LOG_BUNDLE_MAX_COMPRESSED_BYTES`），文件总原始字节 100 MiB（`LOG_BUNDLE_MAX_UNPACKED_BYTES`），最多 2000 文件（`LOG_BUNDLE_MAX_FILES`），单文件 100 MiB（`LOG_BUNDLE_MAX_FILE_BYTES`）。整个压缩包和每次 inflate 都受 200 倍压缩比约束（1 MiB 最低预算），并受单文件/剩余总大小限制；tar.gz 的中间 tar 容器也受剩余总大小约束，含 tar 头及填充。普通单文件默认仍至多 100 MiB；配置后的上传、总大小、单文件限制取最小值。服务端最终判定，客户端仅作明显超限预检。
 
 **反馈质量洞察（P3）**：`GET /api/v1/logs/feedback-insights`（`logs:view`，组织隔离）把 `log_feedback` 聚合给 `/log-admin`「分析质量」看板：按业务域 × `analysisSource` × `promptVersion` 每组一行，含 `totalCount`、`helpfulCount`、`helpfulRate`（0..1）与 `lastFeedbackAt`。可选 `timeWindow=today|7d|30d` 按反馈创建时间过滤（与 `GET /api/v1/logs` 相同的区间语义）。反馈归因到写入时戳记的分析 run（`log_feedback.run_id`，取当时日志的 `current_run_id`）；`run_id` 仍为空的历史行回退到日志当前 run。列表/详情仍读取当前 run 的报告。未分类域的 `logDomainId`/`logDomainName` 为 `null`，无来源信息的历史报告 `analysisSource`/`promptVersion` 为 `null`。
+
+### 分析轨迹与草稿试运行（#1230）
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| `GET` | `/api/v1/logs/:logId/trace` | 返回记录当前分析运行的 `{ steps }`，按步骤序号排序。需要 `logs:admin-domains`，只有 `logs:view` 时返回 `403`。记录不存在或跨组织时返回 `404`。 |
+| `POST` | `/api/v1/log-skills/:skillId/dry-runs` | 用已配置的分析器，在技能已存样例上运行已保存草稿；返回 `202 { run }`。需要 `logs:admin-domains`。缺少草稿或样例时返回 `409 CONFLICT`；技能不存在或跨组织时返回 `404`。总并发或组织并发已满时返回 `429 RATE_LIMITED`，提示「试运行繁忙，请稍后重试」，且不启动分析。 |
+| `GET` | `/api/v1/log-skills/:skillId/dry-runs/:runId` | 返回 `{ run, steps }`，轨迹按序排列；需要 `logs:admin-domains`，且运行必须属于当前组织及指定技能。不存在、跨组织或已清理的运行返回 `404`。 |
+| `GET` | `/api/v1/log-skills/:skillId/dry-runs/:runId/lines` | 返回接收运行时所捕获样例的 `{ item: { file, startLine, endLine, totalLines, lines } }`；技能后续替换样例不改变此读取。需要 `logs:admin-domains`。查询参数为精确样例 `file` 及正整数、首尾均包含的 `startLine` / `endLine`，最多 400 行；窗口不合法为 `400`，运行不可访问或文件不匹配为 `404`。 |
+
+试运行的 `run` 包含 `id`、`skillRevisionId`、`status`（`processing`、`complete` 或 `failed`）、整数 `progress`（0–100）、可空的 `report` 与 `error`，以及 `createdAt`。轮询至终态；完成报告沿用既有结论与证据契约。启动前先保存草稿并上传样例。接收运行时捕获草稿规范供本次执行，并保留版本 id；后续替换或删除草稿不会使已接收的运行切换版本。
+
+试运行使用独立的 `log_skill_dry_runs` 表，不使用带标记的日志记录。它不创建 `log_records`、分析作业或结果 Webhook 事件，因此不会进入 `/logs` 列表、计数或搜索。PostgreSQL 将跨 API 实例的接收操作串行化：每组织最多一个运行，总并发取 `LOG_DRY_RUN_MAX_CONCURRENT`（默认 2，有效范围 1–4；无效值回退为 2）。此共享数据库上限保守地限制跨实例总量，也限制单进程并发；各实例应配置相同值。容量已满的请求不读取样例、不调用分析器。执行受现有分析预算约束，超时取 120 秒与所配置最长作业时限的较小值。样例准备沿用 worker 的流式读取、每行 64 KiB 上限及有界引用摘要，只将最多 400 行且不超过 128 KiB 的预览解析到内存。信号提取和解码在共享预处理预算内保留既有时间、事件及行上限。接收运行时，每技能保留最近 10 次，清理更早的终态运行及其轨迹。
+
+每个活动运行持有 PostgreSQL 会话 advisory lock，作为所属进程仍存活的标记。启动恢复与状态读取时的惰性恢复会将所属锁已消失或已过截止时间的处理中运行标为失败，提示「服务重启，试运行已中断」。即使超时后界面已显示失败，也要等底层执行实际结束才释放容量。抽屉提供「重试」。两处轨迹均汇总步骤数、工具调用次数及已报告的输入/输出 token 数，并标记降级或提前收敛。报告中的日志行标签打开既有日志查看器，试运行轨迹标签仅展示文本。
+
+每步轨迹包含 `index`（1–200）、`kind`（`tool-call`、`model-turn`、`early-convergence`、`rule-fallback` 或 `degradation`）、可空的 `tool`、结构化 `arguments`、`resultBytes`、`lines: [{ file, line, snapshotId? }]`、`outcome`（`ok`、`error` 或 `truncated`）、可空的 `reason`，以及模型服务提供时的可选 `inputTokens` / `outputTokens`。每次运行最多保存 200 步；每步最多 50 个行引用，并共用 64 KiB 的引用序列化预算。含 `snapshotId` 的引用标识源码位置，界面显示为源码标签，不打开日志文件；日志行标签打开既有日志查看器抽屉。参数键使用白名单，保留有限数值、布尔值和 null。`file` 字符串只有与本次输入文件清单中已校验的包内相对路径匹配时才保留，并截断为最多 120 字符。其他字符串（包括查询和匹配模式）及复合值替换为 `[redacted]`；schema 另将字符串参数值、工具名和原因限制在 120 字符内。轨迹绝不包含原始提示词、系统消息、诊断流程正文、知识正文或模型服务载荷。轨迹通过组织复合外键引用普通运行或试运行父行，仅管理员可见的报告标签页展示这些摘要。
 
 创建日志文件：
 

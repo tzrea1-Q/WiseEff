@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { compileFileGlob, compileLogPattern, createLogPatternCache, type LogPatternCache } from "../adminPattern";
 import { withLogPatternBudget } from "../patternBudget";
+import { frameSchema, validateFrames } from "./frameSpec";
 
 export const MAX_PARSING_PATTERN_CHARS = 512;
 export const MAX_PARSING_LINE_CHARS = 6144;
@@ -20,11 +21,14 @@ export function compileParsingPattern(source: string, flags = "", maxInputLength
 const identifier = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,99}$/);
 const fieldName = z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/).max(100);
 const decodeReference = z.union([z.object({ register: identifier }).strict(), z.object({ registerMap: identifier }).strict()]);
-const simple = ["float", "bool", "string", "hexbytes", "base64bytes"] as const;
+const frameReference = z.object({ frame: identifier }).strict();
+const simple = ["float", "bool", "string"] as const;
 const enumValues = z.record(z.string().max(100), z.string().max(MAX_REGISTER_ENUM_LABEL_CHARS))
   .refine((values) => Object.keys(values).length <= MAX_REGISTER_ENUM_VALUES, `At most ${MAX_REGISTER_ENUM_VALUES} enum values`);
 export const fieldSpecSchema = z.union([
-  z.object({ type: z.enum(["int", "uint", "hex"]), decode: decodeReference.optional() }).strict(),
+  z.object({ type: z.enum(["int", "uint"]), decode: decodeReference.optional() }).strict(),
+  z.object({ type: z.literal("hex"), decode: z.union([decodeReference, frameReference]).optional() }).strict(),
+  z.object({ type: z.enum(["bytes", "hexbytes", "base64bytes"]), decode: frameReference.optional() }).strict(),
   z.object({ type: z.enum(simple) }).strict(),
   z.object({ type: z.literal("enum"), values: enumValues }).strict(),
   z.object({ type: z.literal("timestamp"), format: z.string().min(1).max(200) }).strict()
@@ -63,6 +67,7 @@ export const parsingSpecSchema = withLogPatternBudget(z.object({
   schemaVersion: z.literal("parsing/v1"),
   registers: z.record(identifier, registerSchema).refine((v) => Object.keys(v).length <= MAX_REGISTERS, `At most ${MAX_REGISTERS} registers`).optional(),
   registerMaps: z.record(identifier, registerMapSchema).refine((v) => Object.keys(v).length <= 200, "At most 200 register maps").optional(),
+  frames: z.record(identifier, frameSchema).refine((v) => Object.keys(v).length <= 32, "At most 32 frames").optional(),
   extractors: z.array(z.object({
     id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,99}$/),
     files: z.array(z.string().min(1).max(1024)).max(200).optional(),
@@ -73,6 +78,7 @@ export const parsingSpecSchema = withLogPatternBudget(z.object({
   }).strict()).max(200)
 }).strict().superRefine((spec, ctx) => {
   const cache = createLogPatternCache();
+  validateFrames(spec, ctx);
   const add = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
   for (const [id, register] of Object.entries(spec.registers ?? {})) {
     const names = new Set<string>(), occupied = new Set<number>();
@@ -129,9 +135,11 @@ export const parsingSpecSchema = withLogPatternBudget(z.object({
     let registerCaptures = 0;
     for (const [name, field] of Object.entries(extractor.fields)) {
       if ("decode" in field && field.decode) {
-        if (++registerCaptures > MAX_REGISTER_DECODE_CAPTURES) issue(["fields", name, "decode"], `at most ${MAX_REGISTER_DECODE_CAPTURES} register-decoded captures`);
+        if (++registerCaptures > MAX_REGISTER_DECODE_CAPTURES) issue(["fields", name, "decode"], `at most ${MAX_REGISTER_DECODE_CAPTURES} decoded captures`);
         if ("register" in field.decode) {
           if (!Object.hasOwn(spec.registers ?? {}, field.decode.register)) issue(["fields", name, "decode", "register"], "unknown register");
+        } else if ("frame" in field.decode) {
+          if (!Object.hasOwn(spec.frames ?? {}, field.decode.frame)) issue(["fields", name, "decode", "frame"], "unknown frame");
         } else {
           const map = spec.registerMaps?.[field.decode.registerMap];
           if (!map) issue(["fields", name, "decode", "registerMap"], "unknown register map");
@@ -152,12 +160,16 @@ export type RegisterField = z.infer<typeof registerFieldSchema>;
 export const decodedScalarSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null(),
   z.object({ hex: z.string(), length: z.number().int().nonnegative() }).strict()]);
 export const MAX_DECODE_DEPTH = 8;
+// Repeats and TLVs add collection/item wrappers without another decoder invocation.
+export const MAX_DECODE_TREE_DEPTH = MAX_DECODE_DEPTH * 3 + 1;
 type DecodedScalar = z.infer<typeof decodedScalarSchema>;
-export type DecodedValue = DecodedScalar | { raw: string; value: DecodedScalar; meaning?: string; unit?: string; fields?: Record<string, DecodedValue> };
+export type DecodedValue = DecodedScalar | { raw: string; value: DecodedScalar; meaning?: string; unit?: string; byteOffset?: number; byteLength?: number; checksum?: { expected: number; actual: number; ok: boolean }; fields?: Record<string, DecodedValue> };
 function decodedAtDepth(depth: number): z.ZodType<DecodedValue> {
   return z.union([decodedScalarSchema, z.object({ raw: z.string(), value: decodedScalarSchema,
     meaning: z.string().optional(), unit: z.string().optional(),
-    fields: depth < MAX_DECODE_DEPTH ? z.record(z.lazy(() => decodedAtDepth(depth + 1))).optional() : z.never().optional()
+    byteOffset: z.number().int().nonnegative().optional(), byteLength: z.number().int().nonnegative().optional(),
+    checksum: z.object({ expected: z.number().int().nonnegative(), actual: z.number().int().nonnegative(), ok: z.boolean() }).strict().optional(),
+    fields: depth < MAX_DECODE_TREE_DEPTH ? z.record(z.lazy(() => decodedAtDepth(depth + 1))).optional() : z.never().optional()
   }).strict()]);
 }
 export const decodedValueSchema = decodedAtDepth(1);

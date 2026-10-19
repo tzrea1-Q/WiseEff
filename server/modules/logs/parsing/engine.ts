@@ -3,6 +3,7 @@ import type { DecodedEvent, DecodedValue, DecodeCounts, DecodeTruncationReason, 
 import { compileParsingPattern, MAX_PARSING_LINE_CHARS, MAX_PARSING_MATCH_CHARS, timestampFormat, registerCaseKey } from "./spec";
 import { decodeRegister, exactInteger, integerValue, RegisterDecodeError } from "./registers";
 export { generateExtractorPattern } from "./extractorBuilder";
+import { decodeFrame, frameBytes } from "./frames";
 
 export const MAX_DECODE_LINE_BYTES = 8192;
 export const MAX_DECODE_EVENTS = 50_000;
@@ -37,6 +38,10 @@ function timestamp(raw: string, { names, pattern }: ReturnType<typeof timestampF
 }
 
 function decode(raw: string, spec: FieldSpec, timeFormat?: ReturnType<typeof timestampFormat>): DecodedValue {
+  if ("decode" in spec && spec.decode && "frame" in spec.decode && spec.type !== "base64bytes") {
+    const bytes = frameBytes(raw);
+    return { raw, value: { hex: bytes.toString("hex"), length: bytes.length } };
+  }
   let value: DecodedValue;
   switch (spec.type) {
     case "string": return raw;
@@ -56,12 +61,15 @@ function decode(raw: string, spec: FieldSpec, timeFormat?: ReturnType<typeof tim
       if (!Object.hasOwn(spec.values, raw)) throw new Error("Unknown enum value");
       value = spec.values[raw]; break;
     case "timestamp": value = timestamp(raw, timeFormat!); break;
-    case "hexbytes": case "base64bytes": {
-      const hex = spec.type === "hexbytes";
+    case "bytes": case "hexbytes": case "base64bytes": {
+      const hex = spec.type !== "base64bytes";
       const encoded = hex ? raw.replace(/\s/g, "") : raw;
       if (!(hex ? /^(?:[\da-f]{2})*$/i : /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).test(encoded)) throw new Error("Invalid byte encoding");
       const length = hex ? encoded.length / 2 : encoded.length / 4 * 3 - (encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0);
-      if (length > MAX_DECODE_FIELD_BYTES) throw new Error("byte_cap");
+      if (length > MAX_DECODE_FIELD_BYTES) {
+        if ("decode" in spec && spec.decode && "frame" in spec.decode) throw new RegisterDecodeError("frame_length", "Frame length exceeds 4096 bytes");
+        throw new Error("byte_cap");
+      }
       const bytes = Buffer.from(encoded, hex ? "hex" : "base64");
       if (!hex && bytes.toString("base64") !== raw) throw new Error("Noncanonical base64");
       value = { hex: bytes.toString("hex"), length }; break;
@@ -159,12 +167,31 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeInputFile[]
           yield result;
           const raw = match.groups?.[name];
           try { if (raw == null) throw new Error("Group did not participate"); retainField(event.fields, name, decode(raw, field, timeFormats.get(name))); }
-          catch (cause) { const message = cause instanceof Error ? cause.message : String(cause); error(message === "byte_cap" ? "byte_cap" : "invalid_field", message === "byte_cap" ? `Decoded bytes exceed ${MAX_DECODE_FIELD_BYTES} bytes` : message, name); }
+          catch (cause) { const message = cause instanceof Error ? cause.message : String(cause); error(cause instanceof RegisterDecodeError ? cause.code : message === "byte_cap" ? "byte_cap" : "invalid_field", message === "byte_cap" ? `Decoded bytes exceed ${MAX_DECODE_FIELD_BYTES} bytes` : message, name); }
           if (result.truncated) return;
         }
-        if (match) for (const [name, field] of Object.entries(extractor.fields)) {
+        const frameBudget = { elements: 0 };
+        // Resolve scalar/register captures first, independent of declaration order.
+        const decodeEntries = Object.entries(extractor.fields).sort(([, a], [, b]) => Number("decode" in a && !!a.decode && "frame" in a.decode) - Number("decode" in b && !!b.decode && "frame" in b.decode));
+        if (match) for (const [name, field] of decodeEntries) {
           if (!("decode" in field) || !field.decode || !Object.hasOwn(event.fields, name)) continue;
           try {
+            if ("frame" in field.decode) {
+              const parent = event.fields[name];
+              if (!parent || typeof parent !== "object" || !("value" in parent) || !parent.value || typeof parent.value !== "object" || !("hex" in parent.value)) continue;
+              const steps = decodeFrame(Buffer.from(parent.value.hex, "hex"), field.decode.frame, spec, event.fields, frameBudget);
+              let step = steps.next();
+              while (!step.done) { yield result; step = steps.next(); }
+              const next = { ...step.value.value, raw: match.groups![name] };
+              const count = (fields: Record<string, DecodedValue>): number => Object.values(fields).reduce<number>((sum, value) => sum + 1 + (value && typeof value === "object" && "fields" in value && value.fields ? count(value.fields) : 0), 0);
+              const children = count(next.fields ?? {}), bytes = jsonBytes(next) - jsonBytes(parent);
+              if (fieldCount + children > MAX_DECODE_EVENT_FIELDS) throw new RegisterDecodeError("field_cap", `Decoded event exceeds ${MAX_DECODE_EVENT_FIELDS} fields`);
+              if (eventBytes + bytes + eventSizeReserve > MAX_DECODE_EVENT_BYTES) trimmed = true;
+              else if (fitsRun(children, bytes)) { event.fields[name] = next; fieldCount += children; eventBytes += bytes; }
+              for (const item of step.value.errors) error(item.code, item.message, `${name}.${item.field}`);
+              if (result.truncated) return;
+              continue;
+            }
             let registerId: string | undefined;
             if ("register" in field.decode) registerId = field.decode.register;
             else {

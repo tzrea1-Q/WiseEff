@@ -42,6 +42,9 @@ import { extractorPreviewRequestSchema } from "./parsing/extractorBuilder";
 import { formatPreviewRequestSchema } from "./formatProfile";
 import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
 import { sourceSnapshotUploadSchema } from "./schemas";
+import type { LogAnalysisAdapter } from "./analyzer";
+import { getLogTrace, getSkillDryRun, getSkillDryRunLines, startSkillDryRun } from "./dryRuns";
+import { requireLogAdminDomains } from "./policy";
 import {
   createLogBodySchema,
   createLogDomainBodySchema,
@@ -124,6 +127,7 @@ export function registerLogRoutes(
     db?: Database;
     objectStore?: ObjectStore;
     logAnalysisQueue?: LogAnalysisQueue;
+    analyzer?: LogAnalysisAdapter;
     webhooks?: LogWebhookRouteContext;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
@@ -131,6 +135,28 @@ export function registerLogRoutes(
   router.get("/api/v1/log-skills/:skillId/source-versions", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     return { status: 200, body: await listLogSkillSourceVersions(requireDb(options.db), auth, request.params.skillId) };
+  });
+  router.get("/api/v1/logs/:logId/trace", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await getLogTrace(requireDb(options.db), auth, request.params.logId) };
+  });
+  router.post("/api/v1/log-skills/:skillId/dry-runs", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    // Authorization happens before reporting analyzer availability.
+    requireLocalOrganization(auth);
+    requireLogAdminDomains(auth);
+    if (!options.analyzer) throw new ApiError("INTERNAL_ERROR", "Configured log analyzer is required for dry runs.");
+    return { status: 202, body: await startSkillDryRun(requireDb(options.db), requireObjectStore(options.objectStore), options.analyzer, auth, request.params.skillId) };
+  });
+  router.get("/api/v1/log-skills/:skillId/dry-runs/:runId", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await getSkillDryRun(requireDb(options.db), auth, request.params.skillId, request.params.runId) };
+  });
+  router.get("/api/v1/log-skills/:skillId/dry-runs/:runId/lines", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const item = await getSkillDryRunLines(requireDb(options.db), requireObjectStore(options.objectStore), auth,
+      request.params.skillId, request.params.runId, parseWithSchema(logLineRangeQuerySchema, request.query));
+    return { status: 200, body: { item } };
   });
   router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);

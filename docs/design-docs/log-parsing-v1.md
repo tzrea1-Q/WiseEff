@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese reference](../zh-CN/design-docs/log-parsing-v1.md)
 
-`skill/v1` accepts optional `parsing`. The decoding core implements extraction, typed conversion, registers and register maps. Frames, lookups, decoded-value signals and scripts are later additions. The construct set is closed: unknown keys are rejected on draft save and publication with issue paths.
+`skill/v1` accepts optional `parsing`. The decoding core implements extraction, typed conversion, registers, register maps and byte-layout frames. Lookups, decoded-value signals and scripts are later additions. The construct set is closed: unknown keys are rejected on draft save and publication with issue paths.
 
 ```yaml
 schemaVersion: parsing/v1
@@ -17,7 +17,7 @@ extractors:
 
 ## Schema and matching
 
-The strict root is `{schemaVersion: "parsing/v1", extractors: Extractor[], registers?, registerMaps?}` (at most 200 extractors). Each extractor has a unique `id` (letter followed by up to 99 letters, digits, underscores or hyphens), `pattern`, `fields`, optional `files`, and optional `multiline`. All capture groups must be named and correspond exactly to declared fields. Use `(?:...)` for grouping without capture. Administrator patterns use `compileLogPattern` and RE2JS; lookaround and backreferences are rejected, with no native-regex fallback. Parsing patterns are at most 512 UTF-16 code units, with counted repetition bounds at most 100. Extraction uses unanchored search unless the author supplies anchors; dot matches newlines in assembled text. Each matching extractor produces at most one event per line or assembled group.
+The strict root is `{schemaVersion: "parsing/v1", extractors: Extractor[], registers?, registerMaps?, frames?}` (at most 200 extractors). Each extractor has a unique `id` (letter followed by up to 99 letters, digits, underscores or hyphens), `pattern`, `fields`, optional `files`, and optional `multiline`. All capture groups must be named and correspond exactly to declared fields. Use `(?:...)` for grouping without capture. Administrator patterns use `compileLogPattern` and RE2JS; lookaround and backreferences are rejected, with no native-regex fallback. Parsing patterns are at most 512 UTF-16 code units, with counted repetition bounds at most 100. Extraction uses unanchored search unless the author supplies anchors; dot matches newlines in assembled text. Each matching extractor produces at most one event per line or assembled group.
 
 `files` is an optional list of at most 200 case-sensitive path globs, each at most 1024 characters. `*` matches within one path segment, `?` matches one non-slash character, and `**` matches across slashes; `**/` can match zero directories. Other characters are literal. Omission selects all analyzed files; an empty list selects none. Skipped files are never decoded. Paths and one-based line numbers refer to the original file inventory.
 
@@ -35,6 +35,7 @@ The shared compiler bounds program size for format profiles, extractors, signals
 | `enum` | Required `values: Record<raw, label>` with at most 64 entries and labels at most 128 UTF-16 code units; exact raw-key lookup yields its string label. Unknown keys are field errors. |
 | `timestamp` | Required `format`; converts to UTC ISO 8601 with milliseconds, as specified below. |
 | `hexbytes` | Even number of hexadecimal digits, ignoring whitespace (including assembled newlines). Outputs lowercase `{hex, length}`. |
+| `bytes` | Alias of `hexbytes`; frame decoding accepts an optional `0x` prefix. |
 | `base64bytes` | Canonical standard Base64 with padding when required; no whitespace or URL-safe alphabet. Outputs lowercase `{hex, length}`. |
 
 String fields are plain strings. Converted fields retain `{raw: string, value: scalar | {hex, length}}`, including enum labels. A failed field is omitted from `fields` and has a field-specific error; other fields remain available. Optional groups that did not participate are errors rather than invented empty values.
@@ -72,9 +73,70 @@ registers:
 
 For `addr=0x0C val=0x20`, `val.value` is 32; `val.fields.CHRG_FAULT.value` is 2 with `meaning: "thermal_shutdown"`, while `WATCHDOG_FAULT` and `NTC_FAULT` are 0. Each child preserves its extracted bit value as `raw`. Signed fields use two's complement at the field's width before applying `value * scale + offset` (defaults 1 and 0); `unit` remains separate metadata. Enum labels are `meaning`, preserving the numeric value. Unscaled 64-bit values outside the safe integer range use decimal strings; scaling an unsafe integer records `register_precision` rather than losing precision. Values outside the register width record `register_range`.
 
-Register work uses the existing line, event and elapsed-time budgets, with a checkpoint per bit field, at most 1024 total fields per event (`field_cap` on overflow), and decoded-tree depth at most 8. No executable expressions or scripts are admitted. The parsing engine module remains the shared interface for validation, line/group decoding and pattern generalization. Workspace forms and YAML code view write the same `ParsingSpec`; serializing to YAML and parsing back preserves register definitions and map references.
+Register work uses the existing line, event and elapsed-time budgets, with a checkpoint per bit field, at most 1024 total fields per event (`field_cap` on overflow), and frame/register construct nesting at most 8. The event contract permits 25 structural tree levels to accommodate TLV collection/item/payload wrappers and register leaves within those 8 construct levels. No executable expressions or scripts are admitted. The parsing engine module remains the shared interface for validation, line/group decoding and pattern generalization. Workspace forms and YAML code view write the same `ParsingSpec`; serializing to YAML and parsing back preserves register definitions and map references.
 
 The paste-table dialog accepts at most 64 KiB UTF-8 and 512 input lines. Oversized input shows an error and cannot be imported. Preview distinguishes valid and rejected rows with text and icons, retains source line numbers and reasons, and shows the valid/rejected counts. The confirmation explicitly replaces all fields of the selected register with the valid rows; it does not append to the existing table.
+
+## Byte-layout frames
+
+`frames` maps definition ids to `{endian?: "big" | "little", fields: FrameField[]}`, with at most 32 frames and 64 fields per frame. Each switch/TLV map has at most 256 cases. Fields consume bytes in array order; offsets are computed rather than authored. The frame default is big-endian. A field's `endian` overrides its frame's default for integer, tag, length and checksum storage. An extractor attaches `decode: {frame: "packet"}` to a `hex`, `bytes`, `hexbytes` or `base64bytes` capture; frame hex input accepts optional `0x` and whitespace. Decoding preserves raw bytes and nests the decoded fields below the capture.
+
+Every frame field has `name` and `type`, with the following options:
+
+| Type | Options and behavior |
+| --- | --- |
+| `uint`, `int` | `length: 1 | 2 | 4 | 8`, optional `endian`, `scale`, `offset`, `unit`, `enum` and `register`. Signed integers use two's complement before scale/offset. Register references decode the unscaled integer into nested bit fields. |
+| `bytes` | `length` is a fixed nonnegative byte count or an earlier integer field path. Keeps `{hex, length}` without interpreting its contents. |
+| `register` | `register` id, `length: 1 | 2 | 4 | 8`, optional `endian`; reads an integer and applies the referenced register. |
+| `frame` | `frame` id and optional fixed or field-driven `length`; applies the nested frame to that sub-slice. |
+| `switch` | `on` is an earlier field path, `cases` maps values to `{frame: id}` or `{register: id}`, with optional `default`, `length` and `endian`. Numeric keys normalize exactly like register-map keys; `"0x01"` and `"1"` cannot coexist. A miss without a default is an event decode error. |
+| `repeat` | `frame` id, `count` as a constant or earlier integer field path, optional positive integer `multiplier`. Repeats the sub-frame `count * multiplier` times. |
+| `tlv` | `tagSize` and `lengthSize` are each `1 | 2 | 4`; optional `endian` and `length` bound the region. `cases` maps tags to frame/register references. Each length counts value bytes only; unknown tags retain their raw value bytes. |
+| `checksum` | `algorithm`, covered `range: [start, endExclusive]`, stored `length: 1 | 2 | 4`, optional `endian`. Range offsets are relative to the containing frame. The covered bytes cannot include this field's own stored checksum bytes. |
+
+Paths use dotted decoded field names, including nested register fields. Resolution first checks earlier fields in the containing frame, then already decoded extractor fields, such as `hdr.num_objects`. Field-driven lengths, counts and selectors must be available before the consuming field; forward references are rejected. Values used as lengths or counts must be nonnegative integers. Save, publication and preview share validation for duplicate names, unknown references, cycles, lengths, case-key collisions, forward references and checksum ranges, with exact paths such as `frames.packet.fields.2.count` or `frames.packet.fields.3.cases.0x01.frame`. Validation does not execute arbitrary expressions.
+
+Checksum algorithms are fixed: `sum8` adds bytes modulo 256; `xor8` XORs bytes; `crc8` uses polynomial `0x07`; `crc16-ccitt` uses polynomial `0x1021` and initial value `0xFFFF`; `crc16-modbus` uses reflected polynomial `0x8005` and initial value `0xFFFF`; `crc32` is IEEE CRC-32. Checksum nodes retain `checksum: {expected, actual, ok}`, where expected is calculated from the covered bytes and actual is read from the stored field. A mismatch preserves both values and records an event decode error; the analysis run continues. For ASCII `123456789`, expected CRC values are `0xF4`, `0x29B1`, `0x4B37` and `0xCBF43926`, respectively. Covered ranges from different checksum fields must not overlap either; static offsets are checked during validation and dynamic offsets during decoding.
+
+Frames and registers share a maximum nesting depth of 8. Each frame input is at most 4096 bytes. Every repeat is at most 256 elements after multiplication; frame fields, register fields, repeat elements and TLV items share an event-wide element cap of 1024. Each TLV field is at most 256 items. Bounds and malformed/truncated input produce precise event decode errors while retaining completed work: `frame_depth`, `frame_length`, `repeat_count`, `frame_elements`, `tlv_items` and `frame_range`. Switch misses use `unmatched_switch`; checksum mismatches use `checksum_mismatch`. Field iteration, repeated elements, TLV items and checksum work share the existing time budget and checkpoints. All frame nodes count toward the existing 1024-field event cap, 32 KiB event size, 32,768-field run cap and 4 MiB serialized run cap.
+
+Decoded frame nodes add `byteOffset` and `byteLength` so the workspace can map fields to sample bytes. The hex view fits 16, 8 or 4 bytes per row to the available width, with a matching offset gutter. Field selection highlights its bytes, and byte selection selects the corresponding field; outlines and font weight supplement color without adding glyphs to byte cells. Field rows show decoded preview values and inline checksum status. Plain integer values include decimal and hexadecimal forms; values with units or enum meanings retain their existing display. A field after variable-length content shows a relative offset, such as `+2 after payload`. Forms and YAML code view round-trip the same frame definitions and references.
+
+### USB-PD example
+
+```yaml
+schemaVersion: parsing/v1
+extractors:
+  - id: pd_rx
+    pattern: 'hdr=(?P<hdr>0x[0-9A-Fa-f]+) data=(?P<data>[0-9A-Fa-f]+)'
+    fields:
+      hdr: {type: uint, decode: {register: pd_header}}
+      data: {type: hexbytes, decode: {frame: pd_data}}
+registers:
+  pd_header:
+    width: 16
+    fields:
+      - {name: msg_type, bits: [4, 0], enum: {"1": Source_Capabilities}}
+      - {name: num_objects, bits: [14, 12]}
+  fixed_pdo:
+    width: 32
+    fields:
+      - {name: supply_type, bits: [31, 30], enum: {"0": fixed}}
+      - {name: voltage, bits: [19, 10], scale: 50, unit: mV}
+      - {name: max_current, bits: [9, 0], scale: 10, unit: mA}
+frames:
+  pd_data:
+    fields:
+      - {name: objects, type: repeat, frame: pd_object, count: hdr.num_objects}
+  pd_object:
+    endian: little
+    fields:
+      - {name: pdo, type: register, register: fixed_pdo, length: 4}
+```
+
+`hdr=0x2161 data=2C9101082CD10200` yields header message type 1 with meaning `Source_Capabilities` and count 2. The payload yields two fixed PDOs: 5000 mV / 3000 mA and 9000 mV / 3000 mA. The logged header is already an integer; when the header is part of wire bytes, a 2-byte little-endian register field reads `61 21` as `0x2161`.
+
+Frame, register and register-map bindings share the limit of eight decoded captures per extractor.
 
 ## Multiline assembly
 
@@ -110,7 +172,7 @@ Events remain in an ordered array for stable `query_events` cursor offsets and e
 {"v":1,"source":"declarative","extractor":"current","file":"kernel.log","line":412,"fields":{"current":{"raw":"0x10","value":16},"state":{"raw":"2","value":"thermal"}}}
 ```
 
-Contract: `{v: 1, source: "declarative", extractor, file, line, endLine?, fields: Record<string, DecodedValue>, errors?: {field?, code, message}[]}`. `DecodedValue` is a JSON scalar, `{hex, length}`, or `{raw, value, meaning?, unit?, fields?: Record<string, DecodedValue>}` around a scalar/byte value. Register fields form a nested tree under the original value; large integers use decimal strings rather than lossy JSON numbers. `source: "script"` is reserved for future isolated sandbox parsing; it is not accepted or executed by this implementation.
+Contract: `{v: 1, source: "declarative", extractor, file, line, endLine?, fields: Record<string, DecodedValue>, errors?: {field?, code, message}[]}`. `DecodedValue` is a JSON scalar, `{hex, length}`, or `{raw, value, meaning?, unit?, byteOffset?, byteLength?, checksum?: {expected, actual, ok}, fields?: Record<string, DecodedValue>}` around a scalar/byte value. Register and frame fields form a nested tree under the original value; large integers use decimal strings rather than lossy JSON numbers. `source: "script"` is reserved for future isolated sandbox parsing; it is not accepted or executed by this implementation.
 
 The worker decodes analyzed files using the pinned immutable revision, writes one gzip JSONL object for the run, and stores its key and counters in `log_analysis_runs.decoded_events_object_key` and `decoded_event_counts` after parsing under the current job lease. Provider retries retain this metadata. Runs without extractors keep these columns null and write no decoding object. `log_evidence.decoded_fields` and DTO `decodedFields` contain the decoded events whose exact file/start-line anchors were cited. Keeping the event envelope prevents collisions between fields from different extractors or cited lines. Shared worker decoration covers loop, single-shot and rules-fallback reports.
 

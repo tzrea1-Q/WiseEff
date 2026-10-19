@@ -399,6 +399,7 @@ export function PageRouter({
           parameterActions={parameterActions}
           runtime={runtime}
           knowledgeCapability={knowledgeCapability}
+          sessionPermissions={sessionPermissions}
         />
       );
     case "log-admin":

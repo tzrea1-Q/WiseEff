@@ -31,6 +31,48 @@ const authFor = (organizationId = "decode-org", admin = true) => makeTestAuthCon
 const parsing = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "current", pattern: "charge_current_ma=(?P<current>\\d+)", fields: { current: { type: "uint" } } }] });
 
 describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", () => {
+  it("decodes an uploaded frame into nested stored fields, agent tool results and report evidence", async () => {
+    const ephemeral = await createEphemeralTestDatabase("decodeframe");
+    const db = createPostgresDatabase(ephemeral.url), objectStore = createMemoryObjectStore();
+    const auth = authFor(), invocation = createUserInvocation(auth);
+    try {
+      await seedCoreGraph(db, { organization: { id: auth.organization.id, name: "Frame decoding" }, users: [{ id: auth.user.id, name: "Admin" }] });
+      const skill = await createLogSkill(db, auth, { name: "Frame samples" }, invocation, { requestId: "decode-frame" });
+      const frameParsing = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", registers: {
+        status: { width: 8, fields: [{ name: "code", bits: [3, 0], enum: { "15": "ready" } }] }
+      }, frames: {
+        sample: { fields: [{ name: "status", type: "register", register: "status", length: 1 }] },
+        packet: { fields: [{ name: "count", type: "uint", length: 1 }, { name: "samples", type: "repeat", count: "count", frame: "sample" }] }
+      }, extractors: [{ id: "packet", pattern: "data=(?P<payload>[0-9A-Fa-f]+)", fields: { payload: { type: "hex", decode: { frame: "packet" } } } }] });
+      const draft = await saveLogSkillDraft(db, auth, skill.id, { schemaVersion: "skill/v1", parsing: frameParsing }, null, skill.currentRevision.id, invocation, { requestId: "decode-frame" });
+      await publishLogSkill(db, auth, skill.id, draft.id, invocation, { requestId: "decode-frame" });
+      const model = createScriptedLogAnalysisModel([
+        { content: { action: "tool", tool: "query_events", args: { extractor: "packet" } } },
+        { content: { action: "final", conclusion: "Frame contains two samples", impact: "Second sample is ready", severity: "Info", confidence: 0.9,
+          suggestedActions: ["Inspect the samples"], evidence: [{ filePath: "frame.log", lineNumbers: [1], inference: "Second status code is ready", suggestedAction: "Inspect status" }] } }
+      ]);
+      const uploaded = await uploadLogFile(db, objectStore, auth, { fileName: "frame.log", contentType: "text/plain", bytes: Buffer.from("data=020a0f"), logDomainId: skill.id });
+      expect(await processLogAnalysisJobById({ db, objectStore, jobId: uploaded.job!.id,
+        analyzer: createAgentLoopLogAnalyzer({ model, modelLabel: "scripted", maxSteps: 3, tokenBudget: 100_000 }) })).toEqual({ status: "processed" });
+      const report = await getLogRecord(db, auth, uploaded.log.id);
+      expect(report.status).toBe("complete");
+      expect(logRecordDtoSchema.safeParse(report).success).toBe(true);
+      expect(report.evidence).toMatchObject([{ filePath: "frame.log", lineNumbers: [1], decodedFields: [{ fields: { payload: { fields: {
+        count: { value: 2 }, samples: { fields: {
+          "0": { fields: { status: { fields: { code: { value: 10 } } } } },
+          "1": { fields: { status: { fields: { code: { value: 15, meaning: "ready" } } } } }
+        } }
+      } } } }] }]);
+      const stored = (await db.query<{ decoded_events_object_key: string; decoded_event_counts: unknown }>(
+        "select decoded_events_object_key, decoded_event_counts from log_analysis_runs where id=$1", [uploaded.job!.runId])).rows[0];
+      expect(stored.decoded_event_counts).toEqual({ total: 1, byExtractor: { packet: 1 }, errors: {} });
+      const artifact = gunzipSync(await objectStore.get(stored.decoded_events_object_key)).toString().trim().split("\n").map((line) => decodedEventSchema.parse(JSON.parse(line)));
+      expect(artifact).toEqual(report.evidence[0].decodedFields);
+      expect(model.calls[1].at(-1)?.content).toContain('"meaning":"ready"');
+      expect((await db.query("select decoded_fields from log_evidence where run_id=$1", [uploaded.job!.runId])).rows).toEqual([{ decoded_fields: artifact }]);
+    } finally { await db.close(); await ephemeral.drop(); }
+  }, 120_000);
+
   it("decodes an uploaded BQ25890 register map into stored events and cited report fields", async () => {
     const ephemeral = await createEphemeralTestDatabase("decoderegister");
     const db = createPostgresDatabase(ephemeral.url), objectStore = createMemoryObjectStore();
@@ -302,9 +344,9 @@ describe.skipIf(!available)("decoded event runs and preview over PostgreSQL", ()
       expect((await request(extractorPath, extractorInput)).status).toBe(403);
       expect((await request(formatPath, formatInput)).status).toBe(403);
       auth = authFor();
-      const invalid = { schemaVersion: "skill/v1", parsing: { ...parsing, frames: {} } };
+      const invalid = { schemaVersion: "skill/v1", parsing: { ...parsing, frames: { broken: { fields: [{ name: "bad", type: "uint", length: 3 }] } } } };
       expect(await request(`/api/v1/log-skills/${skill.id}/draft`, { spec: invalid, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id }, "PUT"))
-        .toMatchObject({ status: 400, body: { error: { details: { issues: [expect.objectContaining({ path: ["spec", "parsing"] })] } } } });
+        .toMatchObject({ status: 400, body: { error: { details: { issues: [expect.objectContaining({ path: ["spec", "parsing", "frames", "broken", "fields", 0, "length"] })] } } } });
       const draft = await saveLogSkillDraft(db, auth, skill.id, { schemaVersion: "skill/v1", parsing }, null, skill.currentRevision.id, createUserInvocation(auth), { requestId: "decoding-test" });
       // Simulate an obsolete invalid draft written before current validation.
       await db.query("update log_skill_revisions set spec=$2::jsonb where id=$1", [draft.id, JSON.stringify(invalid)]);

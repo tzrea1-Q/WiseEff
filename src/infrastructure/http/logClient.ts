@@ -18,6 +18,9 @@ import { parseContractDto } from "./parseContractDto";
 import {
   jobResponseSchema,
   logJobDtoSchema,
+  logTraceResponseSchema,
+  logSkillDryRunResponseSchema,
+  logSkillDryRunDetailResponseSchema,
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
   logSkillListResponseSchema,
@@ -183,6 +186,19 @@ export function createHttpLogAnalysisRepository(
     return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
   }
   const repository: LogAnalysisRepository = {
+    async getLogTrace(logId) {
+      return parseContractDto(logTraceResponseSchema, await apiClient.get(`${routeLogPath(logId)}/trace`), "LogTraceResponse").steps;
+    },
+    async startSkillDryRun(id) {
+      return parseContractDto(logSkillDryRunResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/dry-runs`, {}), "LogSkillDryRunResponse").run;
+    },
+    async getSkillDryRun(id, runId) {
+      return parseContractDto(logSkillDryRunDetailResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/dry-runs/${encodeURIComponent(runId)}`), "LogSkillDryRunDetailResponse");
+    },
+    async getSkillDryRunLines(id, runId, file, startLine, endLine) {
+      const params = new URLSearchParams({ file, startLine: String(startLine), endLine: String(endLine) });
+      return parseContractDto(logLineRangeResponseSchema, await apiClient.get(appendQuery(`/api/v1/log-skills/${encodeURIComponent(id)}/dry-runs/${encodeURIComponent(runId)}/lines`, params)), "LogLineRangeResponse").item;
+    },
     async getLogLines(logId, file, startLine, endLine) {
       const params = new URLSearchParams({ file, startLine: String(startLine), endLine: String(endLine) });
       return parseContractDto(logLineRangeResponseSchema,
