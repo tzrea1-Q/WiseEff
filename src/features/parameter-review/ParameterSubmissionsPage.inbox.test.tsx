@@ -7,6 +7,10 @@ import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
 import { ParameterSubmissionsPage } from "./ParameterSubmissionsPage";
 
+vi.mock("@/application/parameters/parameterFileRuntime", () => ({
+  resolveParameterFileRepository: () => ({ listSourceRevisionRequests: async () => [] })
+}));
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");

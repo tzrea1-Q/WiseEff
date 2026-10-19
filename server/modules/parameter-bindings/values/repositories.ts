@@ -79,13 +79,15 @@ export async function loadDeletedSourceAnchors(
   input: { organizationId: string; projectId: string; configSetId: string },
 ): Promise<DeletedSourceAnchorRow[]> {
   return (await tx.query<DeletedSourceAnchorRow>(
-    `select pin.format,pin.locator,pin.file_id as "fileId",occurrence.logical_node_id as "logicalNodeId",logical.node_locator as "nodeLocator"
+    `select pin.format,pin.locator,pin.file_id as "fileId",occurrence.logical_node_id as "logicalNodeId",
+       coalesce(logical.node_locator,base_node.node_path) as "nodeLocator"
        from parameter_catalog.project_value_source_pins pin
        join parameter_catalog.${projectParameterValues} value on value.id=pin.project_value_id and value.value_state='deleted'
        join parameter_catalog.project_parameter_bindings binding on binding.id=pin.binding_id and binding.current_value_id=value.id
        join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
        left join public.dts_logical_node_revisions logical on logical.logical_node_id=occurrence.logical_node_id
          and logical.config_revision_id=pin.config_revision_id
+       left join public.dts_node_occurrences base_node on base_node.id=pin.locator->>'baseNodeOccurrenceId'
       where pin.organization_id=$1 and pin.project_id=$2 and occurrence.config_set_id=$3 and pin.value_state='deleted'`,
     [input.organizationId, input.projectId, input.configSetId],
   )).rows;
@@ -440,6 +442,17 @@ export const casCurrentTip = async (
           exists (select 1 from parameter_catalog.${projectParameterValues} initial
             where initial.id=binding.current_value_id and initial.binding_id=binding.id
               and initial.source_ref='canonical-binding-identity')
+          or exists (select 1 from public.project_parameter_value_change_requests request
+            join parameter_catalog.project_value_source_pins base_pin on base_pin.binding_id=binding.id and base_pin.project_value_id=$2
+              and base_pin.organization_id=binding.organization_id and base_pin.project_id=binding.project_id
+              and base_pin.source_occurrence_id=binding.source_occurrence_id and base_pin.value_state='present'
+            join parameter_catalog.${projectParameterValues} next_value on next_value.id=$3 and next_value.binding_id=binding.id
+            where request.id=$4 and request.organization_id=binding.organization_id and request.project_id=binding.project_id
+              and request.status='pending' and request.request_kind='source_revision'
+              and request.source_revision_context->'cohort' @> jsonb_build_array(jsonb_build_object(
+                'bindingId',binding.id,'oldValueId',$2::text,'sourcePinId',base_pin.id))
+              and next_value.value_state=case when exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
+                where target->>'bindingId'=binding.id and target->>'action'='delete') then 'deleted' else 'present' end)
           or exists (select 1 from public.project_parameter_value_change_requests request
             join parameter_catalog.project_value_source_pins base_pin on base_pin.id=request.source_pin_id
               and base_pin.binding_id=request.binding_id and base_pin.project_value_id=request.base_current_value_id

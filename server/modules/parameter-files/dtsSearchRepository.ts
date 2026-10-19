@@ -23,7 +23,35 @@ export type DtsSearchInput = {
   q: string;
   /** When omitted, search all dimensions. */
   by?: DtsSearchBy;
+  navigation?: ReadonlyMap<string, {
+    managedNodePaths: ReadonlySet<string>;
+    visibleNodePaths: ReadonlySet<string>;
+  }>;
 };
+
+/** One project-scoped read supplies complete compatible lists for every current file. */
+export async function readProjectDtsNavigationNodes(
+  db: Queryable,
+  input: Pick<DtsSearchInput, "organizationId" | "projectId">,
+): Promise<Array<{ versionId: string; nodePath: string; name: string; compatible?: string; properties: { name: string; rawText: string }[] }>> {
+  const result = await db.query<{
+    version_id: string; node_path: string; name: string; compatible: string | null; raw_compatible: string | null;
+  }>(`
+    select v.id as version_id, n.node_path, n.name, n.compatible,
+           (select p.raw_text from dts_properties p
+             where p.node_id = n.id and p.name = 'compatible'
+             order by p.sort_order asc, p.id asc limit 1) as raw_compatible
+    ${FILE_SCOPE}
+    order by v.id, n.sort_order asc, n.id asc
+  `, [input.organizationId, input.projectId]);
+  return result.rows.map((row) => ({
+    versionId: row.version_id,
+    nodePath: row.node_path,
+    name: row.name,
+    ...(row.compatible !== null ? { compatible: row.compatible } : {}),
+    properties: row.raw_compatible === null ? [] : [{ name: "compatible", rawText: row.raw_compatible }],
+  }));
+}
 
 type HitRow = {
   file_id: string;
@@ -312,6 +340,13 @@ export async function searchDtsStructuralModel(
 
   const scopeParams: unknown[] = [input.organizationId, input.projectId, q];
   const by = input.by;
+  const scoped = (hits: DtsSearchHitDto[], dimension: DtsSearchBy) => {
+    if (!input.navigation || dimension === "file") return hits;
+    return hits.filter((hit) => {
+      const paths = input.navigation?.get(hit.versionId);
+      return (dimension === "value" || dimension === "compatible" ? paths?.managedNodePaths : paths?.visibleNodePaths)?.has(hit.nodePath) === true;
+    });
+  };
 
   if (!by) {
     const groups = await Promise.all([
@@ -322,13 +357,14 @@ export async function searchDtsStructuralModel(
       searchByCompatible(db, scopeParams),
       searchByValue(db, scopeParams),
     ]);
-    return { hits: mergeHits(groups) };
+    const dimensions: DtsSearchBy[] = ["file", "path", "address", "label", "compatible", "value"];
+    return { hits: mergeHits(groups.map((hits, index) => scoped(hits, dimensions[index]!))) };
   }
 
-  if (by === "path") return { hits: await searchByPath(db, scopeParams) };
-  if (by === "address") return { hits: await searchByAddress(db, scopeParams) };
-  if (by === "label") return { hits: await searchByLabel(db, scopeParams) };
-  if (by === "compatible") return { hits: await searchByCompatible(db, scopeParams) };
+  if (by === "path") return { hits: scoped(await searchByPath(db, scopeParams), by) };
+  if (by === "address") return { hits: scoped(await searchByAddress(db, scopeParams), by) };
+  if (by === "label") return { hits: scoped(await searchByLabel(db, scopeParams), by) };
+  if (by === "compatible") return { hits: scoped(await searchByCompatible(db, scopeParams), by) };
   if (by === "file") return { hits: await searchByFile(db, scopeParams) };
-  return { hits: await searchByValue(db, scopeParams) };
+  return { hits: scoped(await searchByValue(db, scopeParams), "value") };
 }

@@ -3,6 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import { createDtsStructuredClient } from "./dtsStructuredClient";
 
 describe("createDtsStructuredClient", () => {
+  it("encodes organization scope on structure and search and preserves navigation metadata", async () => {
+    const navigation = { status: "ready", catalogReleaseId: "release-1", managedNodePaths: ["soc/charger"] };
+    const get = vi.fn().mockResolvedValueOnce({ nodes: [], navigation }).mockResolvedValueOnce({ hits: [] });
+    const client = createDtsStructuredClient({ get } as never);
+    expect((await client.getStructure("p/1", "f/1", "v/1", { navigationScope: "organization" })).navigation)
+      .toEqual(navigation);
+    expect(get).toHaveBeenLastCalledWith("/api/v1/projects/p%2F1/parameter-files/f%2F1/versions/v%2F1/structure?navigationScope=organization");
+    await client.search("p/1", { q: "charger & power", by: "path", navigationScope: "organization" });
+    expect(get).toHaveBeenLastCalledWith("/api/v1/projects/p%2F1/dts-search?q=charger+%26+power&by=path&navigationScope=organization");
+  });
+
   it("maps structure and search endpoints with path encoding and unwraps hits", async () => {
     const locator = {
       startOffset: 10,

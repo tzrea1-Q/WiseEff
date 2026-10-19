@@ -1,12 +1,17 @@
-import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
+import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
-import { expect, test, type APIResponse, type Page } from "playwright/test";
+import { expect, test, type APIResponse, type Page, type Response } from "playwright/test";
 import type { DtsReleaseReadiness } from "../../src/application/ports/DtsStructuredRepository";
+import type { ParameterFileSourcePreview, SourceRevisionRequest } from "../../src/application/ports/ParameterFileRepository";
+import { createPostgresDatabase } from "../../server/shared/database/client";
+import { makeTestAuthContext } from "../../server/testing/authContext";
+import { setParameterIdentityMode } from "../../server/modules/parameter-kernel/parameterIdentityMode";
+import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
 
-import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
@@ -22,17 +27,13 @@ import { registerCatalogDriverSubjects } from "./helpers/topologyFixture";
 import {
   assertPostCutoverIdentity,
   bindHardwareUserToProject,
-  submitBindingDraftViaApi,
   disposablePageUrl,
   lookupParameterFileVersion,
   numericCellsDts,
   seedIsolatedBinding,
-  seedIsolatedBindings,
   seedSemanticFileUiConflict,
   startSwappedDisposablePostCutoverRuntime,
-  type RestoreDisposablePostCutoverRuntime,
-  type IsolatedBinding,
-  type BindingDraftHandle
+  type RestoreDisposablePostCutoverRuntime
 } from "./helpers/semanticBindingFixture";
 import {
   disposableRuntimeOutcomeFromTestInfo,
@@ -59,6 +60,48 @@ const hardwareHeaders = () => authHeadersForRole("hardware-user");
 
 async function ensureInspectorOpen(page: Page) {
   await ensureWorkbenchInspectorOpen(page);
+}
+
+async function submitSourceFromEditor(page: Page, source: string, reason: string) {
+  const editor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
+  await expect(editor).toHaveAttribute("aria-readonly", "true");
+  await page.getByRole("radio", { name: "编辑", exact: true }).click();
+  await expect(editor).toHaveAttribute("aria-readonly", "false");
+  await editor.fill(source);
+  await page.getByRole("radio", { name: "预览", exact: true }).click();
+  await expect(editor).toHaveAttribute("aria-readonly", "true");
+  await expect(page.getByText("未保存修改", { exact: true })).toBeVisible();
+  const candidateResponse = page.waitForResponse((response) => response.request().method() === "POST"
+    && new URL(response.url()).pathname === `/api/v1/projects/${projectId}/parameter-file-candidates`);
+  const previewResponse = page.waitForResponse((response) => response.request().method() === "GET"
+    && new URL(response.url()).pathname.endsWith("/source-preview"), { timeout: 60_000 });
+  await page.getByRole("button", { name: "保存修改", exact: true }).click();
+  const candidate = await candidateResponse;
+  expect(candidate.status(), await candidate.text()).toBe(201);
+  expect(candidate.request().postDataJSON()).toMatchObject({ intent: "source_revision",
+    expectedCurrentVersionId: expect.any(String), expectedConfigRevisionId: expect.any(String), clientMutationId: expect.any(String) });
+  const preview = await previewResponse;
+  expect(preview.status(), await preview.text()).toBe(200);
+  const item = (await preview.json()).item as ParameterFileSourcePreview;
+  expect(item).toMatchObject({ kind: "source_revision", format: "dts", canSubmit: true, after: source,
+    baseVersionId: expect.any(String), configRevisionId: expect.any(String), proofToken: expect.any(String) });
+  const reviewer = item.reviewers?.find((entry) => entry.userId === acceptanceCast.acceptanceAdmin.userId)
+    ?? item.reviewers?.find((entry) => Object.values(acceptanceCast).some((actor) => actor.userId === entry.userId));
+  expect(reviewer, "server must offer an eligible non-author reviewer").toBeDefined();
+  const dialog = page.getByRole("dialog", { name: "保存 DTS 修改" });
+  await expect(dialog.getByRole("region", { name: "DTS 修改差异", exact: true })).toBeVisible();
+  await dialog.getByRole("textbox", { name: "DTS 修改原因" }).fill(reason);
+  await selectControlOption(dialog.getByRole("combobox", { name: "DTS 软件审核人" }), reviewer!.userId);
+  const submittedResponse = page.waitForResponse((response) => response.request().method() === "POST"
+    && new URL(response.url()).pathname.endsWith("/source-submit"), { timeout: 60_000 });
+  await dialog.getByRole("button", { name: "提交审核", exact: true }).click();
+  const submitted = await submittedResponse;
+  expect(submitted.status(), await submitted.text()).toBe(200);
+  const receipt = (await submitted.json()).item as { requestId: string; status: string };
+  expect(receipt).toMatchObject({ requestId: expect.any(String), status: "pending" });
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("已提交审核 · 工作配置尚未更新", { exact: true })).toBeVisible();
+  return { candidate, preview, item, submitted, receipt, reviewer: reviewer! };
 }
 const sampleDts = `/dts-v1/;
 / {
@@ -313,7 +356,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         await expect(page.getByRole("button", { name: "保存版本快照", exact: true })).toBeDisabled();
       }
       await page.getByRole("button", { name: "关闭配置版本", exact: true }).click();
-      await expect(page.getByRole("main", { name: /只读 DTS 源码$/ })).toContainText("Configuration tracer");
+      await expect(page.getByRole("textbox", { name: "DTS 源码", exact: true })).toContainText("Configuration tracer");
       expect(memberRequests.some((url) => url.includes(`/config-sets/${configSetId}/files`))).toBe(true);
 
       await page.setViewportSize({ width: 1440, height: 900 });
@@ -515,39 +558,41 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
-  test("canonical structured save stages for review and hands off to submission", async ({ page, request }, testInfo) => {
+  test("saves a whole-source comment for review without changing the working configuration", async ({ page, request }, testInfo) => {
     // @acceptance PROJ-CONFIG-EDIT-001
     // @operation PROJ-CONFIG-EDIT-001
+    test.setTimeout(180_000);
     const headers = adminHeaders();
-    const previousRequests = await withPgClient(async (client) => (await client.query<{ id: string }>(
-      `select id from project_parameter_value_change_requests
-       where organization_id=$1 and project_id=$2 and submitter_user_id=$3
-         and reason=$4 and status='pending'`,
-      [organizationId, projectId, acceptanceCast.xuYun.userId, "Issue 1062 structured staging browser proof"]
-    )).rows);
-    for (const previous of previousRequests) {
-      const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${previous.id}/withdraw`),
-        { headers, data: { reason: "Clean up interrupted issue 1062 browser submission" } });
+    const previous = await request.get(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests?mine=true&status=pending`), { headers });
+    expect(previous.status(), await previous.text()).toBe(200);
+    for (const item of (await previous.json()).items as SourceRevisionRequest[]) {
+      if (item.reason !== "PROJ-CONFIG-EDIT-001 source comment review") continue;
+      const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${item.id}/withdraw`), { headers });
       expect(withdrawn.status(), await withdrawn.text()).toBe(200);
-    }
-    const previousDrafts = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts`), { headers });
-    expect(previousDrafts.status(), await previousDrafts.text()).toBe(200);
-    for (const previous of (await previousDrafts.json()).items.filter((item: { reason: string }) =>
-      item.reason === "Issue 1062 structured staging browser proof")) {
-      const removed = await request.delete(apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts/${previous.id}`), { headers });
-      expect(removed.status(), await removed.text()).toBe(200);
     }
     const listed = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
     expect(listed.status(), await listed.text()).toBe(200);
     const bindings = (await listed.json()).items as Array<{ id: string; propertyKey: string; currentValueId: string;
-      sourceFileId: string; sourceNodePath: string; effectiveValue: { kind: string; groups?: Array<Array<{ value: string }>> } }>;
+      sourceFileId: string; sourceNodePath: string }>;
     const binding = bindings.find((item) => item.propertyKey === "r_charger_uohm");
     expect(binding).toBeDefined();
     const configSets = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), { headers });
+    expect(configSets.status(), await configSets.text()).toBe(200);
     const configSet = (await configSets.json()).items.find((item: { name: string }) => item.name === "default");
+    expect(configSet).toBeDefined();
+    const files = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), { headers });
+    expect(files.status(), await files.text()).toBe(200);
+    const selectedFile = (await files.json()).items.find((item: { id: string }) => item.id === binding!.sourceFileId);
+    expect(selectedFile.currentVersionId).toEqual(expect.any(String));
+    const file = { fileId: selectedFile.id as string, versionId: selectedFile.currentVersionId as string };
+    const sourcePath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/content`;
+    const source = await request.get(apiRoute(sourcePath), { headers });
+    expect(source.status(), await source.text()).toBe(200);
+    const before = await source.text();
+    const edited = `${before}\n/* PROJ-CONFIG-EDIT-001 reviewed comment */\n`;
     const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({
       configSet: configSet.id, file: binding!.sourceFileId, node: binding!.sourceNodePath,
-      property: binding!.propertyKey, sourceMode: "structured"
+      property: binding!.propertyKey
     })}`;
     await signInBrowserAsRole(page, "admin", route);
     await dismissXiaozeHint(page);
@@ -556,55 +601,40 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }).click();
     await ensureInspectorOpen(page);
     const inspector = page.getByRole("complementary", { name: "配置检查器" });
-    const editor = inspector.getByRole("textbox", { name: "数值 1" });
-    await expect(editor).toBeVisible();
-    const target = String(Number(binding!.effectiveValue.groups![0]![0]!.value) + 1);
-    await editor.fill(target);
-    const tasks = page.getByRole("region", { name: "配置任务" });
-    await tasks.getByLabel("变更原因").fill("Issue 1062 structured staging browser proof");
-    const stagedResponse = page.waitForResponse((response) => response.request().method() === "POST"
-      && response.url().endsWith(`/parameter-bindings/${binding!.id}/drafts`));
-    await tasks.getByRole("button", { name: /保存为待审核草稿/ }).click();
-    const staged = await stagedResponse;
-    expect(staged.status(), await staged.text()).toBe(201);
-    const draft = (await staged.json()).item;
-    expect(draft).toMatchObject({ pending: true, currentValueId: binding!.currentValueId,
-      projectParameterBindingId: binding!.id, writeTarget: { role: "canonical-project-value-draft" } });
-    await expect(tasks).toContainText("已保存 1 项待审核草稿，当前值未变。提交审核并获通过后生效。");
-    await expect(tasks.getByText(/已(?:保存|暂存) 1 项待审核草稿/)).toHaveCount(1);
-    const receipt = tasks.getByRole("region", { name: "待审核草稿回执" });
-    await receipt.getByText("溯源信息", { exact: true }).click();
-    await expect(receipt.getByLabel("完整溯源数据", { exact: true })).toBeVisible();
-    await expect(receipt).toContainText(draft.draftId);
-    await expect(receipt).toContainText(binding!.currentValueId);
-    await expect(tasks).not.toContainText("已写入正式项目值");
-    await page.screenshot({ path: testInfo.outputPath("structured-staged-receipt.png"), fullPage: true });
-    await tasks.getByRole("button", { name: "前往提交审核" }).click();
-    await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${projectId}`));
-    const submission = page.getByRole("region", { name: "参数修改提交" });
-    for (const select of await submission.getByRole("combobox").all()) {
-      await expect.poll(async () => (await readSelectControlOptions(select)).some((option) => option.value && !option.disabled)).toBe(true);
-      const option = (await readSelectControlOptions(select)).find((option) => option.value && !option.disabled)?.value;
-      if (option) await selectControlOption(select, option);
+    await expect(inspector.getByRole("region", { name: "当前属性说明" })).toBeVisible();
+    await expect(inspector.getByRole("group", { name: "属性值编辑" })).toHaveCount(0);
+    let submitted: Awaited<ReturnType<typeof submitSourceFromEditor>> | undefined;
+    try {
+      submitted = await submitSourceFromEditor(page, edited, "PROJ-CONFIG-EDIT-001 source comment review");
+      expect(submitted.item.impact).toEqual({ parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 });
+      const detail = await request.get(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${submitted.receipt.requestId}`), { headers });
+      expect(detail.status(), await detail.text()).toBe(200);
+      expect((await detail.json()).item).toMatchObject({ status: "pending", before, after: edited,
+        assignedToUserId: submitted.reviewer.userId, proofDigest: submitted.item.proofToken });
+      const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
+      expect(after.status(), await after.text()).toBe(200);
+      expect((await after.json()).items.find((item: { id: string }) => item.id === binding!.id).currentValueId).toBe(binding!.currentValueId);
+      const currentFiles = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), { headers });
+      expect(currentFiles.status(), await currentFiles.text()).toBe(200);
+      expect((await currentFiles.json()).items.find((item: { id: string }) => item.id === file.fileId).currentVersionId).toBe(file.versionId);
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.getByRole("link", { name: "查看提交记录", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=${projectId}&request=`));
+      await expect(page.getByRole("region", { name: "DTS 整文件审核" })).toContainText("PROJ-CONFIG-EDIT-001 source comment review");
+      await page.screenshot({ path: testInfo.outputPath("source-comment-review.png"), fullPage: true });
+      await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Whole-source comment review submission",
+        status: "passed", role: "Admin", route, page, testInfo, assertions: ["ui", "api", "screenshot"],
+        api: [summarizeApiResponse(submitted.candidate, { method: "POST", path: `/api/v1/projects/${projectId}/parameter-file-candidates` }),
+          summarizeApiResponse(submitted.submitted, { method: "POST", path: `/api/v1/projects/${projectId}/parameter-file-candidates/${submitted.item.candidateId}/source-submit`,
+            responseSummary: "pending complete-source request; zero parameter changes; current file and Value unchanged" }),
+          summarizeApiResponse(detail, { method: "GET", path: `/api/v2/projects/${projectId}/source-revision-requests/${submitted.receipt.requestId}` })],
+        notes: "API mode at 1440x900; preview/edit preserve the complete source, server pins both bases and derives reviewer eligibility, submission history shows frozen before/after. No approval in this shared fixture." });
+    } finally {
+      if (submitted) {
+        const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${submitted.receipt.requestId}/withdraw`), { headers });
+        expect(withdrawn.status(), await withdrawn.text()).toBe(200);
+      }
     }
-    const submittedResponse = page.waitForResponse((response) => response.request().method() === "POST"
-      && response.url().endsWith(`/parameter-value-drafts/${draft.draftId}/submit`));
-    await submission.getByRole("button", { name: /提交/ }).click();
-    const submitted = await submittedResponse;
-    expect(submitted.status(), await submitted.text()).toBe(201);
-    expect((await submitted.json()).item).toMatchObject({ status: "pending", bindingId: binding!.id });
-    const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
-    expect((await after.json()).items.find((item: { id: string }) => item.id === binding!.id).currentValueId).toBe(binding!.currentValueId);
-    await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Canonical structured staging and submission",
-      status: "passed", role: "Admin", route, page, testInfo, assertions: ["ui", "api", "screenshot"],
-      api: [summarizeApiResponse(staged, { method: "POST", path: `/api/v2/projects/${projectId}/parameter-bindings/${binding!.id}/drafts`,
-        responseSummary: "pending canonical draft; current value unchanged" }),
-      summarizeApiResponse(submitted, { method: "POST", path: `/api/v2/projects/${projectId}/parameter-value-drafts/${draft.draftId}/submit`,
-        responseSummary: "pending canonical change request; current value unchanged" })],
-      notes: "API mode at 1440x900; exact occurrence staged, receipt reference shown, user handed off to submission. No review approval or formal value apply." });
-    const withdrawn = await request.post(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${(await submitted.json()).item.id}/withdraw`),
-      { headers, data: { reason: "Clean up issue 1062 browser submission" } });
-    expect(withdrawn.status(), await withdrawn.text()).toBe(200);
   });
 
   test("navigates source-located structure spans, search, and deep links in API mode", async ({ page, request }, testInfo) => {
@@ -618,7 +648,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
 / {
 	board {
 		model = "SourceNav";
-		compatible = "wiseeff,source-nav";
+		compatible = "mt,mt5788";
+	};
+	unregistered_source {
+		compatible = "wiseeff,unregistered-source-nav";
+		hidden_model = "Unregistered source remains locatable";
 	};
 };
 `;
@@ -626,12 +660,14 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     const overlayDts = `/dts-v1/;
 / {
 	${overlayNode} {
+		compatible = "mt,mt5788";
 		status = "okay";
 	};
 };
 `;
 
     try {
+      await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
       const primaryUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
         headers: adminHeaders(),
         data: {
@@ -679,20 +715,25 @@ test.describe("project configuration workbench read-only browser acceptance", ()
 
       const structureResponse = await request.get(
         apiRoute(
-          `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/versions/${primaryBody.version.id}/structure`
+          `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/versions/${primaryBody.version.id}/structure?navigationScope=organization`
         ),
         { headers: adminHeaders() }
       );
       expect(structureResponse.ok()).toBe(true);
       const structureBody = (await structureResponse.json()) as {
         nodes: Array<{ nodePath: string; source?: { startLine: number; endLine: number }; properties: Array<{ name: string; source?: unknown }> }>;
+        navigation: { status: string; managedNodePaths: string[] };
       };
       const board = structureBody.nodes.find((node) => node.nodePath === "board");
       expect(board?.source?.startLine).toBeGreaterThanOrEqual(1);
       expect(board?.properties.some((property) => property.name === "model" && property.source)).toBe(true);
+      expect(structureBody.navigation).toMatchObject({ status: "ready", managedNodePaths: expect.arrayContaining(["board"]) });
+      expect(structureBody.navigation.managedNodePaths).not.toContain("unregistered_source");
+      expect(structureBody.nodes.find((node) => node.nodePath === "unregistered_source")?.properties
+        .some((property) => property.name === "hidden_model" && property.source)).toBe(true);
 
       const searchResponse = await request.get(
-        apiRoute(`/api/v1/projects/${projectId}/dts-search?q=${encodeURIComponent(primaryFileName)}`),
+        apiRoute(`/api/v1/projects/${projectId}/dts-search?q=${encodeURIComponent(primaryFileName)}&navigationScope=organization`),
         { headers: adminHeaders() }
       );
       expect(searchResponse.ok()).toBe(true);
@@ -709,6 +750,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       );
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
 
+      await expect(page.getByRole("treeitem", { name: "节点 unregistered_source", exact: true })).toHaveCount(0);
+      const hiddenSearch = await request.get(apiRoute(`/api/v1/projects/${projectId}/dts-search?q=unregistered_source&navigationScope=organization`), { headers: adminHeaders() });
+      expect(hiddenSearch.status(), await hiddenSearch.text()).toBe(200);
+      expect((await hiddenSearch.json()).hits.filter((hit: { fileId: string }) => hit.fileId === primaryBody.item.id)).toHaveLength(0);
+
       await page.getByRole("treeitem", { name: "节点 board" }).click();
       await expect(page).toHaveURL(new RegExp(`node=board`));
       await expect(page.locator('[data-focused="true"]').first()).toBeVisible();
@@ -724,6 +770,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page).toHaveURL(new RegExp(`file=${overlayBody.item.id}`));
       await expect(page).toHaveURL(new RegExp(`configSet=${configSetId}`));
       await expect(page.getByRole("heading", { name: overlayFileName })).toBeVisible();
+
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}&node=unregistered_source&property=hidden_model&inspector=selection`
+      );
+      await expect(page.getByRole("textbox", { name: "DTS 源码", exact: true })).toContainText("Unregistered source remains locatable");
+      await expect(page.getByRole("treeitem", { name: "节点 unregistered_source", exact: true })).toHaveCount(0);
+      await expect(page.locator('[data-focused="true"]').first()).toBeVisible();
 
       await page.goto(
         `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}&node=board&property=model&sourceMode=structured`
@@ -782,7 +835,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
 / {
 	board {
 		model = "InspectV1";
-		compatible = "wiseeff,inspect";
+		compatible = "mt,mt5788";
 	};
 };
 `;
@@ -790,12 +843,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
 / {
 	board {
 		model = "InspectV2";
-		compatible = "wiseeff,inspect";
+		compatible = "mt,mt5788";
 	};
 };
 `;
 
     try {
+      await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
       const uploadV1 = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
         headers: adminHeaders(),
         data: {
@@ -870,7 +924,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(inspector.getByText("只读", { exact: true })).toHaveCount(0);
 
       await page.getByRole("treeitem", { name: "属性 board/model" }).click();
-      await expect(inspector.getByRole("group", { name: "属性值编辑" })).toBeVisible();
+      await expect(inspector.getByRole("region", { name: "当前属性说明" })).toContainText("InspectV2");
+      await expect(inspector.getByRole("group", { name: "属性值编辑" })).toHaveCount(0);
+      await expect(page.getByRole("textbox", { name: "DTS 源码", exact: true })).toHaveAttribute("aria-readonly", "true");
       await expect(inspector.getByLabel("规范化预览")).toHaveCount(0);
       await expect(inspector.locator(".configuration-workbench__region-head")).toContainText("model");
       await expect(inspector).toContainText("InspectV2");
@@ -1159,213 +1215,177 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
-  test("restores compatible session drafts after reload and guards stale-base locally", async ({
-    page,
-    request
-  }, testInfo) => {
+  test("restores complete DTS drafts after reload and preserves them when the server base advances", async ({ page, request }, testInfo) => {
     // @acceptance PROJ-CONFIG-DRAFT-001
     // @operation PROJ-CONFIG-DRAFT-001
-    // Compatible restore + leave confirm + stale-base (localStorage base mutation) + logout clear
-    // are proven in the browser. Cross-user / cross-org isolation is covered by
-    // sessionDraftStorage + ProjectConfigurationWorkbench component tests.
     const suffix = randomUUID();
-    const configSetName = `session-draft-${suffix}`;
-    const primaryFileName = `acceptance-session-draft-${suffix}.dts`;
+    const configSetName = `source-draft-${suffix}`;
+    const primaryFileName = `acceptance-source-draft-${suffix}.dts`;
     const sample = `/dts-v1/;
 / {
-	board {
-		model = "DraftV1";
-		compatible = "wiseeff,draft";
-	};
+  board {
+    model = "DraftV1";
+    compatible = "wiseeff,source-draft";
+  };
 };
 `;
-    const draftReason = "acceptance recoverable session draft";
-    const storageKey = "wiseeff.pcw.sessionDrafts.v1";
-
+    const edited = sample.replace("DraftV1", "DraftV2");
+    const advanced = sample.replace("DraftV1", "ServerV3");
     try {
       const upload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
-        headers: adminHeaders(),
-        data: {
-          fileName: primaryFileName,
-          contentBase64: Buffer.from(sample, "utf8").toString("base64")
-        }
+        headers: adminHeaders(), data: { fileName: primaryFileName, contentBase64: Buffer.from(sample).toString("base64") }
       });
-      expect(upload.ok()).toBe(true);
-      const uploadBody = (await upload.json()) as {
-        item: { id: string; fileName: string };
-        version: { id: string; versionNumber: number };
-      };
-
-      const structureResponse = await request.get(
-        apiRoute(
-          `/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/versions/${uploadBody.version.id}/structure`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(structureResponse.ok()).toBe(true);
-
-      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-        headers: adminHeaders(),
-        data: { name: configSetName, description: "Session draft acceptance" }
+      expect(upload.status(), await upload.text()).toBe(201);
+      const uploaded = await upload.json() as { item: { id: string }; version: { id: string } };
+      const created = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(), data: { name: configSetName, description: "Whole-source recovery acceptance" }
       });
-      expect(createConfigSet.status()).toBe(201);
-      const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
-      const configSetId = configSetBody.item.id;
-
-      const addMember = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
-        { headers: adminHeaders(), data: { fileId: uploadBody.item.id, role: "base", sortOrder: 0 } }
-      );
-      expect(addMember.ok()).toBe(true);
-
-      const workbenchUrl = `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(uploadBody.item.id)}`;
-
-      await signInBrowserAsRole(page, "admin");
-      await page.goto(workbenchUrl);
-      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-
-      await page.getByRole("treeitem", { name: "节点 board" }).click();
-      await page.getByRole("treeitem", { name: "属性 board/model" }).click();
-      await ensureInspectorOpen(page);
-      const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
-      await expect(stringInput).toBeEnabled();
-      await stringInput.fill("DraftV2");
-
-      const tasks = page.getByRole("region", { name: "配置任务" });
-      await expect(tasks).toBeVisible();
-      await expect(tasks).toContainText("未提交变更");
-      await expect(tasks.getByRole("checkbox", { name: /board\/model/ })).toBeChecked();
-      await tasks.getByLabel("变更原因").fill(draftReason);
-
-      await expect
-        .poll(async () =>
-          page.evaluate(
-            ([key, expectedReason]) => {
-              const raw = window.localStorage.getItem(key);
-              if (!raw) return false;
-              try {
-                const parsed = JSON.parse(raw) as {
-                  buckets?: Array<{
-                    reason?: string;
-                    drafts?: Record<string, unknown>;
-                    selectedKeys?: string[];
-                  }>;
-                };
-                const bucket = parsed.buckets?.[0];
-                return Boolean(
-                  bucket &&
-                    bucket.reason === expectedReason &&
-                    bucket.drafts &&
-                    Object.keys(bucket.drafts).length > 0 &&
-                    (bucket.selectedKeys?.length ?? 0) > 0
-                );
-              } catch {
-                return false;
-              }
-            },
-            [storageKey, draftReason] as const
-          )
-        )
-        .toBe(true);
-
-      await page.reload({ waitUntil: "networkidle" });
-      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-      const restoredTasks = page.getByRole("region", { name: "配置任务" });
-      await expect(restoredTasks).toBeVisible();
-      await expect(restoredTasks.getByRole("checkbox", { name: /board\/model/ })).toBeChecked({
-        timeout: 15_000
+      expect(created.status(), await created.text()).toBe(201);
+      const configSetId = (await created.json()).item.id as string;
+      const added = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`), {
+        headers: adminHeaders(), data: { fileId: uploaded.item.id, role: "base", sortOrder: 0 }
       });
-      await expect(restoredTasks.getByLabel("变更原因")).toHaveValue(draftReason);
-      await expect(restoredTasks).toContainText("DraftV2");
+      expect(added.status(), await added.text()).toBe(201);
+      const baseVersionId = uploaded.version.id;
+      // Initial fixture only: create the resolved revision from the already frozen
+      // v1 through its production owner; later source changes still require review.
+      const fixtureDb = createPostgresDatabase(databaseUrl!);
+      setParameterIdentityMode("semantic");
+      try {
+        const revision = await ingestConfigRevision(fixtureDb, {
+          organizationId, projectId, configSetId, entryFile: primaryFileName,
+          includeSearchPaths: ["."], overlayOrder: [], members: [{
+            fileId: uploaded.item.id, fileVersionId: baseVersionId,
+            fileName: primaryFileName, sourceName: primaryFileName,
+            role: "base", sortOrder: 0, content: sample
+          }]
+        }, makeTestAuthContext({ organizationId, userId: acceptanceCast.acceptanceAdmin.userId }));
+        expect(revision.status).toBe("resolved");
+        const current = await fixtureDb.query<{ current_version_id: string }>(
+          "select current_version_id from project_parameter_files where id=$1 and organization_id=$2",
+          [uploaded.item.id, organizationId]
+        );
+        expect(current.rows[0]?.current_version_id).toBe(baseVersionId);
+      } finally {
+        setParameterIdentityMode(null);
+        await fixtureDb.close();
+      }
+      const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: configSetId, file: uploaded.item.id })}`;
+      await signInBrowserAsRole(page, "admin", route);
+      await dismissXiaozeHint(page);
+      const editor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
+      await expect(editor).toHaveAttribute("aria-readonly", "true");
+      await page.getByRole("radio", { name: "编辑", exact: true }).click();
+      await editor.fill(edited);
+      await expect(page.getByText("未保存修改", { exact: true })).toBeVisible();
+      const storedDraft = () => page.evaluate((fileId) => new Promise<{
+        sourceText: string; base: { fileVersionId: string; configRevisionId: string }; generation: number;
+      } | null>((resolve, reject) => {
+        const opened = indexedDB.open("wiseeff-source-drafts", 1);
+        opened.onerror = () => reject(opened.error);
+        opened.onsuccess = () => {
+          const database = opened.result;
+          const transaction = database.transaction("drafts", "readonly");
+          const read = transaction.objectStore("drafts").getAll();
+          read.onsuccess = () => resolve((read.result as Array<{ draft: {
+            sourceText: string; scope: { fileId: string }; base: { fileVersionId: string; configRevisionId: string }; generation: number;
+          } | null }>).find((record) => record.draft?.scope.fileId === fileId)?.draft ?? null);
+          read.onerror = () => reject(read.error);
+          transaction.oncomplete = () => database.close();
+        };
+      }), uploaded.item.id);
+      await expect.poll(async () => (await storedDraft())?.sourceText).toBe(edited);
+      expect((await storedDraft())?.base).toMatchObject({ fileVersionId: baseVersionId, configRevisionId: expect.any(String) });
 
+      await page.getByRole("radio", { name: "预览", exact: true }).click();
+      await expect(editor).toHaveAttribute("aria-readonly", "true");
+      await expect(editor).toContainText("DraftV2");
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.reload();
+      await expect(editor).toContainText("DraftV2");
+      await expect(editor).toHaveAttribute("aria-readonly", "true");
+      await expect(page.getByText("未保存修改", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: /项目清单/ }).click();
-      const leaveDialog = page.getByRole("dialog", { name: "离开配置工作台" });
-      await expect(leaveDialog).toBeVisible();
-      await leaveDialog.getByRole("button", { name: "留在本页" }).click();
-      await expect(leaveDialog).toHaveCount(0);
-      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
+      const leave = page.getByRole("dialog", { name: "离开配置工作台" });
+      await expect(leave).toBeVisible();
+      await leave.getByRole("button", { name: "留在本页" }).click();
+      await expect(leave).toHaveCount(0);
 
-      await page.evaluate(
-        ([key, staleBase]) => {
-          const raw = window.localStorage.getItem(key);
-          if (!raw) throw new Error("expected session draft storage before stale mutation");
-          const parsed = JSON.parse(raw) as {
-            version: 1;
-            buckets: Array<{ scope: { baseVersionId: string } }>;
-          };
-          if (!parsed.buckets[0]) throw new Error("expected at least one draft bucket");
-          parsed.buckets[0].scope.baseVersionId = staleBase;
-          window.localStorage.setItem(key, JSON.stringify(parsed));
-        },
-        [storageKey, `stale-${uploadBody.version.id}`] as const
-      );
+      const oldDraft = await storedDraft();
+      expect(oldDraft).toMatchObject({ sourceText: edited, base: { fileVersionId: baseVersionId, configRevisionId: expect.any(String) } });
+      const mutationId = randomUUID();
+      const advancedCandidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`), {
+        headers: adminHeaders(), data: { fileName: primaryFileName, fileId: uploaded.item.id, intent: "source_revision",
+          contentBase64: Buffer.from(advanced).toString("base64"), expectedCurrentVersionId: baseVersionId,
+          expectedConfigRevisionId: oldDraft!.base.configRevisionId, clientMutationId: mutationId }
+      });
+      expect(advancedCandidate.status(), await advancedCandidate.text()).toBe(201);
+      const advancedCandidateId = (await advancedCandidate.json()).item.id as string;
+      const advancedPreview = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${advancedCandidateId}/source-preview`), { headers: adminHeaders() });
+      expect(advancedPreview.status(), await advancedPreview.text()).toBe(200);
+      const preview = (await advancedPreview.json()).item as ParameterFileSourcePreview;
+      expect(preview).toMatchObject({ kind: "source_revision", canSubmit: true, before: sample, after: advanced });
+      const reviewer = Object.values(acceptanceCast).find((actor) => preview.reviewers?.some((eligible) => eligible.userId === actor.userId));
+      expect(reviewer, "the base advance needs an eligible non-author reviewer").toBeDefined();
+      expect(reviewer!.userId).not.toBe(acceptanceCast.xuYun.userId);
+      const advancedSubmit = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${advancedCandidateId}/source-submit`), {
+        headers: adminHeaders(), data: { expectedCurrentVersionId: baseVersionId, expectedProofToken: preview.proofToken,
+          clientMutationId: mutationId, assignedToUserId: reviewer!.userId, reason: "PROJ-CONFIG-DRAFT-001 advance authoritative source" }
+      });
+      expect(advancedSubmit.status(), await advancedSubmit.text()).toBe(200);
+      const advanceRequestId = (await advancedSubmit.json()).item.requestId as string;
+      const advanceReviewPath = `/api/v2/projects/${projectId}/source-revision-requests/${advanceRequestId}/review`;
+      const advancedResponse = await request.post(apiRoute(advanceReviewPath), {
+        headers: authHeadersForUser(reviewer!.userId, reviewer!.email, reviewer!.name),
+        data: { decision: "approve", proofDigest: preview.proofToken, note: "Advance the server source while retaining the earlier browser draft" }
+      });
+      expect(advancedResponse.status(), await advancedResponse.text()).toBe(200);
+      const approved = (await advancedResponse.json()).item as SourceRevisionRequest;
+      expect(approved).toMatchObject({ status: "approved", reviewerUserId: reviewer!.userId,
+        appliedSourceResult: { fileVersionId: expect.any(String), configRevisionId: expect.any(String) } });
+      const advancedVersionId = approved.appliedSourceResult!.fileVersionId;
+      expect(advancedVersionId).not.toBe(baseVersionId);
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.reload();
+      await expect(page.getByRole("alert").filter({ hasText: "文件或配置版本已更新" })).toBeVisible();
+      await expect(editor).toContainText("DraftV2");
+      await expect(page.getByRole("button", { name: "保存修改", exact: true })).toBeDisabled();
+      const downloadPromise = page.waitForEvent("download");
+      await page.getByRole("button", { name: "下载草稿", exact: true }).click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toBe(primaryFileName);
+      const downloadPath = await download.path();
+      expect(downloadPath).toBeTruthy();
+      expect(await readFile(downloadPath!, "utf8")).toBe(edited);
+      expect((await storedDraft())?.base.fileVersionId).toBe(baseVersionId);
 
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-      const staleTasks = page.getByRole("region", { name: "配置任务" });
-      await expect(staleTasks).toBeVisible();
-      await expect(staleTasks).toContainText(/基线版本已变更/);
-      await expect(staleTasks.getByRole("checkbox", { name: /board\/model/ })).toBeVisible();
-      await expect(staleTasks.getByRole("button", { name: "校验所选" })).toHaveCount(0);
-      await expect(staleTasks.getByRole("button", { name: /保存为待审核草稿/ })).toBeDisabled();
-
-      // Logout clearing is wired in App.handleLogout → clearSessionDraftsForLogout().
-      // Browser auth logout may 404 depending on AUTH_PROVIDER; prove the storage clear
-      // contract here, then reload while still authenticated so drafts cannot restore.
-      await page.evaluate((key) => {
-        window.localStorage.removeItem(key);
-      }, storageKey);
-      await page.reload({ waitUntil: "networkidle" });
-      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-      await expect(page.getByRole("checkbox", { name: /board\/model/ })).toHaveCount(0);
-      await expect(page.getByRole("region", { name: "配置任务" }).getByText("DraftV2")).toHaveCount(0);
-      await expect
-        .poll(async () =>
-          page.evaluate((key) => window.localStorage.getItem(key), storageKey)
-        )
-        .toBeNull();
-
-      const evidencePath = await writeOperationJsonArtifact(
-        testInfo,
-        "project-configuration-workbench-session-drafts.json",
-        {
-          route: page.url(),
-          configSetId,
-          fileId: uploadBody.item.id,
-          versionId: uploadBody.version.id,
-          restoredReason: draftReason,
-          staleBaseProvenVia: "localStorage baseVersionId mutation",
-          logoutClearContract: "clearSessionDraftsForLogout storage key + App.handleLogout wiring"
-        }
-      );
+      await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+      const discard = page.getByRole("dialog", { name: "放弃本地 DTS 修改？" });
+      await discard.getByRole("button", { name: "放弃修改", exact: true }).click();
+      await expect(discard).toHaveCount(0);
+      await expect(editor).toContainText("ServerV3");
+      await expect(page.getByText("未保存修改", { exact: true })).toHaveCount(0);
+      await expect.poll(storedDraft).toMatchObject({ sourceText: advanced, base: {
+        fileVersionId: advancedVersionId, configRevisionId: approved.appliedSourceResult!.configRevisionId
+      } });
+      await page.reload();
+      await expect(editor).toContainText("ServerV3");
+      await expect(editor).not.toContainText("DraftV2");
+      const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-source-recovery.json", {
+        route: page.url(), configSetId, fileId: uploaded.item.id,
+        originalVersionId: baseVersionId, advancedVersionId,
+        recoveredText: edited, staleBaseProvenVia: "assigned non-author approval of a source revision",
+        discardProvenVia: "UI discard persists the latest clean source/base and reloads"
+      });
       await recordOperationEvidence({
-        operationId: "PROJ-CONFIG-DRAFT-001",
-        title: "configuration workbench recoverable session drafts",
-        status: "passed",
-        role: "Admin",
-        route: `/parameter-admin/projects/${projectId}/configuration`,
-        page,
-        testInfo,
-        assertions: ["ui", "api", "screenshot"],
-        artifacts: [evidencePath],
-        api: [
-          summarizeApiResponse(structureResponse, {
-            method: "GET",
-            path: `/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/versions/${uploadBody.version.id}/structure`,
-            responseSummary: "structure loaded for draft fixture"
-          })
-        ],
-        notes:
-          "Compatible drafts restored after reload; leave ConfirmDialog appeared when dirty; stale-base via localStorage mutation blocked validate/submit while drafts stayed inspectable; storage clear (logout contract) prevented restore. Cross-user isolation and App.handleLogout → clearSessionDraftsForLogout wiring covered by component/storage tests + App import."
+        operationId: "PROJ-CONFIG-DRAFT-001", title: "Recoverable complete DTS source draft",
+        status: "passed", role: "Admin", route, page, testInfo, assertions: ["ui", "api", "screenshot"], artifacts: [evidencePath],
+        api: [summarizeApiResponse(upload, { method: "POST", path: `/api/v1/projects/${projectId}/parameter-files` }),
+          summarizeApiResponse(advancedResponse, { method: "POST", path: advanceReviewPath })],
+        notes: "Native IndexedDB draft survives preview mode and reload; navigation asks before leaving. A real server version advance preserves the old source, disables save and permits exact-byte download. UI discard clears recovery and reloads the current source."
       });
     } finally {
-      await cleanupSemanticAcceptanceArtifacts({
-        organizationId,
-        projectId,
-        configSetNames: [configSetName],
-        fileNames: [primaryFileName]
-      });
+      await cleanupSemanticAcceptanceArtifacts({ organizationId, projectId, configSetNames: [configSetName], fileNames: [primaryFileName] });
     }
   });
 
@@ -1478,9 +1498,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const missingVisible = await missing.isVisible().catch(() => false);
       if (missingVisible) {
         await expect(missing).toBeVisible();
-        await expect(page.getByRole("main", { name: /只读 DTS 源码$/ })).toBeVisible();
+        await expect(page.getByRole("main", { name: /DTS 源码$/ })).toBeVisible();
       } else {
-        await expect(page.getByRole("main", { name: /只读 DTS 源码$/ })).toBeVisible();
+        await expect(page.getByRole("main", { name: /DTS 源码$/ })).toBeVisible();
       }
 
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-activity.json", {
@@ -2732,7 +2752,10 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     }
     const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
       label: "pcw_sem",
-      markerPurpose: "pcw-semantic"
+      markerPurpose: "pcw-semantic",
+      apiEnv: Object.fromEntries(["WISEEFF_DTS_TOOLCHAIN_DIR", "WISEEFF_DTC_PATH", "WISEEFF_FDTOVERLAY_PATH", "WISEEFF_DT_VALIDATE_PATH"]
+        .map((key) => [key, process.env[key]])
+        .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0))
     });
     disposableRuntime = started.runtime;
     restoreDisposable = started.restore;
@@ -2745,149 +2768,116 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
-  test("edits a property through typed inspector, session dock, and typed binding draft", async ({
-    page,
-    request
-  }, testInfo) => {
+  test("edits complete DTS source and applies it only after the assigned reviewer approves", async ({ page, request, browser }, testInfo) => {
     // @acceptance PROJ-CONFIG-EDIT-001
     // @operation PROJ-CONFIG-EDIT-001
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     const sample = `/dts-v1/;
 / {
-	board {
-		rx_mod_cm_cfg = "EditV1";
-		compatible = "mt,mt5788";
-	};
+  board {
+    rx_mod_cm_cfg = "EditV1";
+    compatible = "mt,mt5788";
+  };
 };
 `;
-    let binding: IsolatedBinding | undefined;
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const binding = await seedIsolatedBinding(request, {
+      propertyKey: "rx_mod_cm_cfg", dts: sample, rawValuePattern: '"EditV1"', nodeLocatorPattern: "board",
+      reason: "PROJ-CONFIG-EDIT-001 semantic binding", timeoutMs: 60_000
+    });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const structurePath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/structure`;
+    const structureResponse = await request.get(apiRoute(structurePath), { headers: adminHeaders() });
+    expect(structureResponse.status(), await structureResponse.text()).toBe(200);
+    const structure = await structureResponse.json() as { nodes: Array<{ nodePath: string; properties: Array<{ name: string }> }> };
+    expect(structure.nodes.find((node) => node.nodePath === "board")?.properties.some((property) => property.name === "rx_mod_cm_cfg")).toBe(true);
+    const workbenchPath = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId, file: file.fileId })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
+    await dismissXiaozeHint(page);
+    await expect(page.getByRole("heading", { name: binding.fileName })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("treeitem", { name: "属性 board/rx_mod_cm_cfg", exact: true }).click();
+    await expect(page.getByRole("treeitem", { name: "属性 board/rx_mod_cm_cfg", exact: true })).toHaveAttribute("data-property-identity", "board::rx_mod_cm_cfg");
+    await ensureInspectorOpen(page);
+    const inspector = page.getByRole("complementary", { name: "配置检查器" });
+    await expect(inspector.getByRole("region", { name: "当前属性说明" })).toContainText('"EditV1"');
+    await expect(inspector.getByRole("group", { name: "属性值编辑" })).toHaveCount(0);
+    const sourcePath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/content`;
+    const source = await request.get(apiRoute(sourcePath), { headers: adminHeaders() });
+    expect(source.status(), await source.text()).toBe(200);
+    const before = await source.text();
+    const edited = before.replace('"EditV1"', '"EditV2"');
+    expect(edited).not.toBe(before);
+    const submitted = await submitSourceFromEditor(page, edited, "PROJ-CONFIG-EDIT-001 reviewed whole DTS edit");
+    expect(submitted.item.impact).toMatchObject({ parameterChanges: 1, nodeAdditions: 0, nodeRemovals: 0 });
+    const requestPath = `/api/v2/projects/${projectId}/source-revision-requests/${submitted.receipt.requestId}`;
+    const pending = await request.get(apiRoute(requestPath), { headers: adminHeaders() });
+    expect(pending.status(), await pending.text()).toBe(200);
+    expect((await pending.json()).item).toMatchObject({ status: "pending", before, after: edited, assignedToUserId: submitted.reviewer.userId });
+    const bindingsPath = `/api/v2/projects/${projectId}/parameter-bindings`;
+    const initial = await request.get(apiRoute(bindingsPath), { headers: adminHeaders() });
+    expect(initial.status(), await initial.text()).toBe(200);
+    const beforeBinding = (await initial.json()).items.find((item: { id: string }) => item.id === binding.bindingId);
+    expect(beforeBinding).toMatchObject({ effectiveValue: { kind: "strings", values: ["EditV1"] }, rawValue: '"EditV1"' });
+    expect((await lookupParameterFileVersion({ fileName: binding.fileName })).versionId).toBe(file.versionId);
 
+    const reviewer = Object.values(acceptanceCast).find((actor) => actor.userId === submitted.reviewer.userId);
+    expect(reviewer).toBeDefined();
+    const reviewContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    let approval: Response;
     try {
-      await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
-      binding = await seedIsolatedBinding(request, {
-        propertyKey: "rx_mod_cm_cfg",
-        dts: sample,
-        rawValuePattern: '"EditV1"',
-        nodeLocatorPattern: "board",
-        reason: "PROJ-CONFIG-EDIT-001 semantic binding",
-        timeoutMs: 60_000
-      });
-      const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+      const reviewerPage = await reviewContext.newPage();
+      await signInBrowserAsUser(reviewerPage, reviewer!.userId, reviewer!.email, reviewer!.name,
+        disposablePageUrl(disposableRuntime, `/parameter-review?project=${projectId}&request=${submitted.receipt.requestId}&type=source`));
+      await dismissXiaozeHint(reviewerPage);
+      const review = reviewerPage.getByRole("region", { name: "DTS 整文件审核" });
+      await expect(review).toContainText("EditV1");
+      await expect(review).toContainText("EditV2");
+      await review.getByRole("textbox", { name: "DTS 审核说明" }).fill("Reviewed exact source and pinned parameter change");
+      const approvedResponse = reviewerPage.waitForResponse((response) => response.request().method() === "POST"
+        && new URL(response.url()).pathname === `${requestPath}/review`, { timeout: 60_000 });
+      await review.getByRole("button", { name: "批准并应用 DTS", exact: true }).click();
+      approval = await approvedResponse;
+      expect(approval.status(), await approval.text()).toBe(200);
+      expect((await approval.json()).item).toMatchObject({ status: "approved", id: submitted.receipt.requestId });
+      await expect(review.getByRole("button", { name: "批准并应用 DTS", exact: true })).toHaveCount(0);
+    } finally { await reviewContext.close(); }
 
-      const structureResponse = await request.get(
-        apiRoute(
-          `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/structure`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(structureResponse.ok()).toBe(true);
-      const structureBody = (await structureResponse.json()) as {
-        nodes: Array<{ nodePath: string; properties: Array<{ name: string; rawText: string }> }>;
-      };
-      const board = structureBody.nodes.find((node) => node.nodePath === "board");
-      expect(board?.properties.some((property) => property.name === "rx_mod_cm_cfg")).toBe(true);
-
-      const workbenchPath = `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(binding.configSetId)}&file=${encodeURIComponent(file.fileId)}`;
-      await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
-      await dismissXiaozeHint(page);
-      await expect(page.getByRole("heading", { name: binding.fileName })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByLabel(/只读 DTS 源码$/).locator('[contenteditable="true"]')).toHaveCount(0);
-
-      await page.getByRole("treeitem", { name: "节点 board" }).click();
-      await page.getByRole("treeitem", { name: "属性 board/rx_mod_cm_cfg" }).click();
-      await ensureInspectorOpen(page);
-      const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      await expect(inspector.getByRole("group", { name: "属性值编辑" })).toBeVisible();
-      await expect(inspector).toContainText("当前值");
-      const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
-      await expect(stringInput).toBeEnabled();
-      await stringInput.fill("EditV2");
-
-      const tasks = page.getByRole("region", { name: "配置任务" });
-      await expect(tasks).toBeVisible();
-      await expect(tasks).toContainText("未提交变更");
-      await expect(tasks.getByRole("checkbox", { name: /board\/rx_mod_cm_cfg/ })).toBeChecked();
-      await expect(page.getByRole("treeitem", { name: "属性 board/rx_mod_cm_cfg" })).toHaveAttribute(
-        "data-property-identity",
-        "board::rx_mod_cm_cfg"
-      );
-      await expect(page.locator('[data-session-gutter="board::rx_mod_cm_cfg"]')).toHaveCount(1);
-
-      const reason = "PROJ-CONFIG-EDIT-001 typed binding draft";
-      await tasks.getByLabel("变更原因").fill(reason);
-      await expect(tasks.getByRole("button", { name: "校验所选" })).toHaveCount(0);
-      const stagedResponsePromise = page.waitForResponse((response) => response.request().method() === "POST"
-        && new URL(response.url()).pathname === `/api/v2/projects/${projectId}/parameter-bindings/${binding!.bindingId}/drafts`);
-      await tasks.getByRole("button", { name: /保存为待审核草稿/ }).click();
-      const stagedResponse = await stagedResponsePromise;
-      expect(stagedResponse.status(), await stagedResponse.text()).toBe(201);
-      const stagedBody = await stagedResponse.json() as { item: Omit<BindingDraftHandle, "reason"> };
-      const draft: BindingDraftHandle = { ...stagedBody.item, reason };
-      expect(draft.projectParameterBindingId).toBe(binding.bindingId);
-      await expect(tasks.getByRole("region", { name: "待审核草稿回执" })).toContainText("提交审核并获通过后生效");
-      const reviewSubmission = await submitBindingDraftViaApi(request, { projectId, draft, reason });
-      expect(reviewSubmission.status, reviewSubmission.bodyText).toBe(201);
-      expect(reviewSubmission.requestId).toBeTruthy();
-      const submitted = { draft, requestId: reviewSubmission.requestId! };
-      expect(submitted.draft.rawText).toMatch(/EditV2/);
-      const requests = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests`), {
-        headers: adminHeaders()
-      });
-      expect(requests.status(), await requests.text()).toBe(200);
-      expect((await requests.json()).items.find((item: { id: string }) => item.id === submitted.requestId)).toMatchObject({
-        status: "pending", bindingId: binding.bindingId, draftId: submitted.draft.draftId
-      });
-      const bindings = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), {
-        headers: adminHeaders()
-      });
-      expect(bindings.status(), await bindings.text()).toBe(200);
-      expect((await bindings.json()).items.find((item: { id: string }) => item.id === binding!.bindingId)).toMatchObject({
-        effectiveValue: { kind: "strings", values: ["EditV1"] }, rawValue: '"EditV1"'
-      });
-
-      const evidencePath = await writeOperationJsonArtifact(
-        testInfo,
-        "project-configuration-workbench-structured-edit.json",
-        {
-          route: page.url(),
-          configSetId: binding.configSetId,
-          fileId: file.fileId,
-          versionId: file.versionId,
-          bindingId: binding.bindingId,
-          draftId: submitted.draft.draftId,
-          requestId: submitted.requestId,
-          targetValue: submitted.draft.rawText
-        }
-      );
-      await recordOperationEvidence({
-        operationId: "PROJ-CONFIG-EDIT-001",
-        title: "configuration workbench structured edit session",
-        status: "passed",
-        role: "Admin",
-        route: `/parameter-admin/projects/${projectId}/configuration`,
-        page,
-        testInfo,
-        assertions: ["ui", "api", "screenshot"],
-        artifacts: [evidencePath],
-        api: [
-          summarizeApiResponse(structureResponse, {
-            method: "GET",
-            path: `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/structure`,
-            responseSummary: "structure loaded"
-          }),
-          {
-            method: "POST",
-            path: `/api/v2/projects/${projectId}/parameter-bindings/${binding.bindingId}/drafts`,
-            status: 201,
-            responseSummary: `draftId=${submitted.draft.draftId}; targetValue=${submitted.draft.rawText}`
-          }
-        ],
-        notes:
-          "Typed property edit entered the session dock with shared markers; saving validated and staged the same binding draft on the disposable post-cutover runtime; submitting that draft for review left the official value unchanged."
-      });
-    } finally {
-      // The disposable post-cutover database is discarded with the runtime.
-    }
+    const applied = await request.get(apiRoute(requestPath), { headers: adminHeaders() });
+    expect(applied.status(), await applied.text()).toBe(200);
+    const receipt = (await applied.json()).item as SourceRevisionRequest;
+    expect(receipt).toMatchObject({ status: "approved", before, after: edited, reviewerUserId: reviewer!.userId,
+      appliedSourceResult: { configRevisionId: expect.any(String), fileVersionId: expect.any(String) } });
+    expect(receipt.appliedSourceResult!.fileVersionId).not.toBe(file.versionId);
+    const current = await request.get(apiRoute(bindingsPath), { headers: adminHeaders() });
+    expect(current.status(), await current.text()).toBe(200);
+    const afterBinding = (await current.json()).items.find((item: { id: string }) => item.id === binding.bindingId);
+    expect(afterBinding).toMatchObject({ id: beforeBinding.id, definitionId: beforeBinding.definitionId,
+      effectiveValue: { kind: "strings", values: ["EditV2"] }, rawValue: '"EditV2"' });
+    expect(afterBinding.currentValueId).not.toBe(beforeBinding.currentValueId);
+    const activeFile = await lookupParameterFileVersion({ fileName: binding.fileName });
+    expect(activeFile.versionId).toBe(receipt.appliedSourceResult!.fileVersionId);
+    const contentPath = `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${activeFile.versionId}/content`;
+    const content = await request.get(apiRoute(contentPath), { headers: adminHeaders() });
+    expect(content.status(), await content.text()).toBe(200);
+    expect(await content.text()).toBe(edited);
+    await page.getByRole("button", { name: "检查审核结果", exact: true }).click();
+    await expect(page.getByText("当前工作配置", { exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "DTS 源码", exact: true })).toContainText("EditV2");
+    const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-source-edit.json", {
+      route: page.url(), configSetId: binding.configSetId, fileId: file.fileId, bindingId: binding.bindingId,
+      baseVersionId: file.versionId, requestId: submitted.receipt.requestId, reviewerUserId: reviewer!.userId,
+      oldValueId: beforeBinding.currentValueId, newValueId: afterBinding.currentValueId, appliedSourceResult: receipt.appliedSourceResult
+    });
+    await recordOperationEvidence({
+      operationId: "PROJ-CONFIG-EDIT-001", title: "Complete DTS edit with assigned human approval",
+      status: "passed", role: "Admin", route: workbenchPath, page, testInfo, assertions: ["ui", "api", "screenshot"], artifacts: [evidencePath],
+      api: [summarizeApiResponse(structureResponse, { method: "GET", path: structurePath }),
+        summarizeApiResponse(submitted.submitted, { method: "POST", path: `/api/v1/projects/${projectId}/parameter-file-candidates/${submitted.item.candidateId}/source-submit` }),
+        summarizeApiResponse(approval!, { method: "POST", path: `${requestPath}/review` }),
+        summarizeApiResponse(content, { method: "GET", path: contentPath, responseSummary: "exact reviewed source bytes" })],
+      notes: "Real registered Binding fixture on the disposable API runtime. The whole-file editor stages immutable source; current file and Value stay unchanged while pending. The server-eligible assigned reviewer approves in a separate browser context; exact source, stable Binding identity, new Value and config/file receipt agree."
+    });
   });
 
   test("activates existing- and new-file candidates with CAS stale safety", async ({ page, request }, testInfo) => {

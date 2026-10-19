@@ -174,6 +174,13 @@ export type ProjectParameterFileCandidateDto = {
   activatedAt?: string;
   activatedByUserId?: string;
   activatedVersionId?: string;
+  sourceRevisionContext?: SourceRevisionCandidateContext;
+  clientMutationId?: string;
+};
+
+export type SourceRevisionCandidateContext = {
+  kind: "source_revision"; configSetId: string; baseConfigRevisionId: string;
+  baseVersionId: string; clientMutationId: string;
 };
 
 export type InsertParameterFileCandidateInput = {
@@ -194,6 +201,9 @@ export type InsertParameterFileCandidateInput = {
   blockers?: CandidateBlocker[];
   createdByUserId?: string;
   attribution?: TrustedInvocationDomainAttribution;
+  sourceRevisionContext?: SourceRevisionCandidateContext;
+  clientMutationId?: string;
+  clientMutationDigest?: string;
 };
 
 export type UpdateParameterFileCandidateParseResultInput = {

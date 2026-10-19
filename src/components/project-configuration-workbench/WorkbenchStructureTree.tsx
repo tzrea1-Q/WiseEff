@@ -28,6 +28,7 @@ export type WorkbenchStructureTreeProps = {
   /** Expand so levels 1..defaultExpandDepth are visible. Default 2. */
   defaultExpandDepth?: number;
   showValues?: boolean;
+  emptyMessage?: string;
 };
 
 export function WorkbenchStructureTree({
@@ -40,7 +41,8 @@ export function WorkbenchStructureTree({
   onSelectProperty,
   ariaLabel,
   defaultExpandDepth = 2,
-  showValues = false
+  showValues = false,
+  emptyMessage = "没有可展示的结构节点。"
 }: WorkbenchStructureTreeProps) {
   const roots = useMemo(() => buildWorkbenchStructureTree(nodes), [nodes]);
   const { byId } = useMemo(() => workbenchStructureTreeIndex(roots), [roots]);
@@ -251,7 +253,7 @@ export function WorkbenchStructureTree({
     return (
       <div role="group" aria-label={ariaLabel} className="dts-topology-navigator__empty">
         <div role="treeitem" aria-disabled="true" aria-selected="false" aria-live="polite">
-          没有可展示的结构节点。
+          {emptyMessage}
         </div>
       </div>
     );

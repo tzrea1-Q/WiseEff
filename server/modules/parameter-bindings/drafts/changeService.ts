@@ -201,6 +201,9 @@ export async function assertSingleRequestReview(
       where request.id=$1 and request.organization_id=$2 and request.project_id=$3`,
     [requestId, auth.organization.id, projectId]
   )).rows[0];
+  if (request && request.request_kind !== "single" && request.request_kind !== "batch") {
+    throw new ApiError("CONFLICT", "This source request requires its dedicated review workflow.", { reason: "source-request-kind-mismatch" });
+  }
   if (request?.request_kind === "batch") {
     throw new ApiError("CONFLICT", "The batch source commit proof is not available for review.", {
       reason: "canonical-batch-source-commit-unavailable"

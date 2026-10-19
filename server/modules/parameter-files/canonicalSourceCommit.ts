@@ -50,6 +50,13 @@ export async function assertDeletedAnchorsRemainAbsent(
       const content = anchor.fileId === input.candidateFileId ? input.candidateAfter : input.baseFiles[fileIndex]!.content;
       proveJsonSourceMemberAbsent(content, anchor.locator.pointer, anchor.locator.rootPointer);
     } else {
+      if (anchor.locator.kind === "dts-source-absence" && anchor.logicalNodeId && typeof anchor.locator.propertyName === "string") {
+        const restored = (await listObservedProperties(asValueClient(db), input.revisionId)).some((property) =>
+          property.logicalNodeId === anchor.logicalNodeId && property.fileId === anchor.fileId
+          && property.propertyKey === anchor.locator.propertyName);
+        if (restored) conflict("Source revision would restore a terminal deleted source occurrence.");
+        continue;
+      }
       if (!anchor.logicalNodeId || anchor.locator.kind !== "dts-delete" || typeof anchor.locator.propertyName !== "string") conflict("Deleted DTS anchor has invalid proof.");
       const member = (await db.query<{ file_version_id: string }>(
         `select file_version_id from dts_config_revision_members where config_revision_id=$1 and file_id=$2`,

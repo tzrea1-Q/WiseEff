@@ -1,271 +1,104 @@
-import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import {
-  StructuredValueEditor,
-  type StructuredValueChange,
-  type StructuredValueEditorProps,
-} from "./StructuredValueEditor";
+import { StructuredValueEditor, type StructuredValueEditorProps } from "./StructuredValueEditor";
 
-function ControlledEditor({
-  onChange,
-  rawText: initialRaw,
-  present: initialPresent,
-  ...rest
-}: StructuredValueEditorProps) {
-  const [rawText, setRawText] = useState(initialRaw);
-  const [present, setPresent] = useState(initialPresent);
-  return (
-    <StructuredValueEditor
-      {...rest}
-      rawText={rawText}
-      present={present}
-      onChange={(next: StructuredValueChange) => {
-        setRawText(next.rawText);
-        if (typeof next.present === "boolean") {
-          setPresent(next.present);
-        }
-        onChange(next);
-      }}
-    />
-  );
+function ControlledEditor(props: StructuredValueEditorProps) {
+  const [draft, setDraft] = useState({ rawText: props.rawText, present: props.present, editorState: props.editorState });
+  return <StructuredValueEditor {...props} {...draft} onChange={(next) => {
+    setDraft({ rawText: next.rawText, present: next.present, editorState: next.editorState });
+    props.onChange(next);
+  }} />;
 }
 
-describe("StructuredValueEditor", () => {
-  it("renders a multi-cell matrix for u32-array and emits normalized rawText", () => {
-    const onChange = vi.fn();
-    render(
-      <ControlledEditor
-        propertyName="reg"
-        valueType="u32-array"
-        rawText="<0xB 0x4b>"
-        onChange={onChange}
-      />
-    );
-
-    const cells = screen.getAllByRole("textbox", { name: /数值/i });
-    expect(cells.length).toBeGreaterThanOrEqual(2);
-    expect(cells[0]).toHaveValue("0xB");
-    expect(cells[1]).toHaveValue("0x4b");
-
-    fireEvent.change(cells[0], { target: { value: "0xb" } });
-    expect(onChange).toHaveBeenCalled();
-    const last = onChange.mock.calls.at(-1)?.[0];
-    expect(last).toMatchObject({
-      rawText: "<0xb 0x4b>",
-      valueType: "u32-array",
-      normalizedValue: "<0xb 0x4b>",
-      valid: true,
-    });
+describe("DTS raw value editing", () => {
+  it.each([
+    { valueType: "string-list" as const, propertyName: "names", rawText: '"a,b", "", "a,b"' },
+    { valueType: "u32-array" as const, propertyName: "reg", rawText: "<1 2>, <3 4>" },
+    { valueType: "bytes" as const, propertyName: "data", rawText: "[00 ff 7f]" },
+    { valueType: "bytes" as const, propertyName: "count", rawText: "/bits/ 64 <9007199254740993>" },
+    { valueType: "phandle-list" as const, propertyName: "clocks", rawText: "<&clock &clock>" },
+    { valueType: "mixed" as const, propertyName: "mixed", rawText: '"alpha", <&clock 1 2>' },
+    { valueType: "bool" as const, propertyName: "enabled", rawText: "" },
+    { valueType: "empty" as const, propertyName: "ranges", rawText: "" }
+  ])("uses one raw textarea for $propertyName without type controls", (props) => {
+    render(<StructuredValueEditor {...props} onChange={vi.fn()} />);
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "DTS 原文" })).toHaveValue(props.rawText);
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("marks illegal u32 cell input invalid with aria-invalid and field-error", () => {
+  it("preserves formatting, group boundaries and exact 64-bit values", () => {
     const onChange = vi.fn();
-    render(
-      <ControlledEditor
-        propertyName="reg"
-        valueType="u32-array"
-        rawText="<0x1>"
-        onChange={onChange}
-        showErrors
-      />
-    );
-
-    const cell = screen.getByRole("textbox", { name: /数值 1/i });
-    fireEvent.change(cell, { target: { value: "0xGG" } });
-
-    const last = onChange.mock.calls.at(-1)?.[0];
-    expect(last.valid).toBe(false);
-    expect(last.error).toBeTruthy();
-    expect(cell).toHaveAttribute("aria-invalid", "true");
-    expect(document.querySelector(".field-error")).toBeTruthy();
+    render(<ControlledEditor propertyName="count" valueType="u32-array" rawText="<1>" onChange={onChange} />);
+    const rawText = " /bits/ 64 <9007199254740993>,\n/bits/ 64 <18446744073709551615> ";
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: rawText } });
+    expect(screen.getByRole("textbox")).toHaveValue(rawText);
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ rawText, valid: true, present: true }));
   });
 
-  it("renders bytes width + byte cells and builds /bits/ rawText", () => {
+  it("keeps invalid text and exposes its syntax error on blur", () => {
     const onChange = vi.fn();
-    render(
-      <ControlledEditor
-        propertyName="reg_config"
-        valueType="bytes"
-        rawText="/bits/ 8 <0x19 0x01>"
-        onChange={onChange}
-      />
-    );
-
-    expect(screen.getByLabelText("位宽")).toHaveValue(8);
-    const bytes = screen.getAllByRole("textbox", { name: /字节/i });
-    expect(bytes).toHaveLength(2);
-
-    fireEvent.change(bytes[1], { target: { value: "0xAB" } });
-    const last = onChange.mock.calls.at(-1)?.[0];
-    expect(last.rawText).toBe("/bits/ 8 <0x19 0xAB>");
-    expect(last.normalizedValue).toBe("/bits/ 8 <0x19 0xab>");
-    expect(last.valid).toBe(true);
+    render(<ControlledEditor propertyName="reg" valueType="u32-array" rawText="<1>" onChange={onChange} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "<1 0x" } });
+    expect(screen.getByRole("textbox")).toHaveValue("<1 0x");
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ rawText: "<1 0x", valid: false }));
+    fireEvent.blur(screen.getByRole("textbox"));
+    expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("textbox")).toHaveAccessibleDescription(/DTS 取值无效/);
   });
 
-  it("renders string-list rows with add/remove and emits quoted list", () => {
+  it("checks pinned constraints, supports deletion and restores the property with raw input", () => {
     const onChange = vi.fn();
-    render(
-      <ControlledEditor
-        propertyName="compatible"
-        valueType="string-list"
-        rawText='"a", "b"'
-        onChange={onChange}
-      />
-    );
-
-    expect(screen.getByDisplayValue("a")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("b")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /添加字符串|add string/i }));
-    const lastAdd = onChange.mock.calls.at(-1)?.[0];
-    expect(lastAdd.rawText).toBe('"a", "b", ""');
-
-    fireEvent.click(screen.getByRole("button", { name: /移除字符串 2|remove string 2/i }));
-    const lastRemove = onChange.mock.calls.at(-1)?.[0];
-    expect(lastRemove.rawText).toBe('"a", ""');
+    render(<ControlledEditor propertyName="reg" valueType="u32-array" rawText="<4>"
+      valueSchema={{ type: "integer", maximum: 8 }} onChange={onChange} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "<9>" } });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ valid: false, error: "取值不能大于 8" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "/delete-property/" } });
+    expect(screen.getByRole("textbox")).toHaveValue("/delete-property/");
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ rawText: "", valid: true, present: false }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "<7>" } });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ rawText: "<7>", valid: true, present: true }));
   });
 
-  it("renders phandle-list label multi-select and emits &label cells", () => {
+  it("keeps a blank boolean present and allows empty properties to be edited", () => {
     const onChange = vi.fn();
-    render(
-      <ControlledEditor
-        propertyName="interrupt-parent"
-        valueType="phandle-list"
-        rawText="<&a>"
-        availableLabels={["a", "b", "gpio"]}
-        onChange={onChange}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("checkbox", { name: "b" }));
-    const last = onChange.mock.calls.at(-1)?.[0];
-    expect(last.rawText).toBe("<&a &b>");
-    expect(last.valueType).toBe("phandle-list");
-    expect(last.normalizedValue).toBe("<&a &b>");
-    expect(last.valid).toBe(true);
+    const { rerender } = render(<StructuredValueEditor propertyName="enabled" valueType="bool" rawText="" present={false} onChange={onChange} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ rawText: "", present: true, valid: true }));
+    rerender(<StructuredValueEditor propertyName="ranges" valueType="empty" rawText="" onChange={onChange} />);
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "<1 2>" } });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ rawText: "<1 2>", valid: true }));
   });
 
-  it("expresses bool presence separately from validity", () => {
+  it("retains legacy unconfirmed input until it is explicitly edited", () => {
     const onChange = vi.fn();
-    render(
-      <ControlledEditor
-        propertyName="weak_source_sleep_enabled"
-        valueType="bool"
-        rawText=""
-        present
-        onChange={onChange}
-      />
-    );
-
-    const toggle = screen.getByRole("checkbox", { name: /布尔|bool|开关/i });
-    expect(toggle).toBeChecked();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-
-    fireEvent.click(toggle);
-    expect(onChange.mock.calls.at(-1)?.[0]).toMatchObject({
-      rawText: "",
-      valueType: "bool",
-      present: false,
-      valid: true,
-    });
-    expect(toggle).not.toBeChecked();
-
-    fireEvent.click(screen.getByRole("checkbox", { name: /布尔|bool|开关/i }));
-    expect(onChange.mock.calls.at(-1)?.[0]).toMatchObject({
-      rawText: "",
-      valueType: "bool",
-      present: true,
-      normalizedValue: "true",
-      valid: true,
-    });
-    expect(screen.getByRole("checkbox", { name: /布尔|bool|开关/i })).toBeChecked();
-  });
-
-  it("syncs bool present from controlled props when parent updates", () => {
-    const onChange = vi.fn();
-    const { rerender } = render(
-      <StructuredValueEditor
-        propertyName="weak_source_sleep_enabled"
-        valueType="bool"
-        rawText=""
-        present
-        onChange={onChange}
-      />
-    );
-
-    expect(screen.getByRole("checkbox", { name: /布尔|bool|开关/i })).toBeChecked();
-
-    rerender(
-      <StructuredValueEditor
-        propertyName="weak_source_sleep_enabled"
-        valueType="bool"
-        rawText=""
-        present={false}
-        onChange={onChange}
-      />
-    );
-
-    expect(screen.getByRole("checkbox", { name: /布尔|bool|开关/i })).not.toBeChecked();
-  });
-
-  it("renders empty as a readonly note without editable controls", () => {
-    const onChange = vi.fn();
-    render(
-      <StructuredValueEditor
-        propertyName="ranges"
-        valueType="empty"
-        rawText=""
-        onChange={onChange}
-      />
-    );
-
-    expect(screen.getByText(/空属性（只读）/)).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    render(<ControlledEditor propertyName="names" valueType="string-list" rawText='"old"' showErrors
+      editorState={{ kind: "string-input", format: "lines", text: 'a,b\n\n quote" ' }} onChange={onChange} />);
+    expect(screen.getByRole("textbox")).toHaveValue('"a,b", "", " quote\\" "');
+    expect(screen.getByRole("textbox")).toHaveAccessibleDescription(/已恢复旧版未确认输入/);
     expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: '"confirmed"' } });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ rawText: '"confirmed"', valid: true }));
+    expect(onChange.mock.calls.at(-1)?.[0].editorState).toBeUndefined();
   });
 
-  it("renders mixed as a code textarea with parameter-admin-code-editor class", () => {
-    const onChange = vi.fn();
-    render(
-      <ControlledEditor
-        propertyName="gpio_int"
-        valueType="mixed"
-        rawText="<&gpio 29 0>"
-        onChange={onChange}
-      />
-    );
-
-    const editor = screen.getByRole("textbox", { name: /值|mixed|raw/i });
-    expect(editor).toHaveClass("parameter-admin-code-editor");
-    expect(editor).toHaveValue("<&gpio 29 0>");
-
-    fireEvent.change(editor, { target: { value: "<1 2>,<3 4>" } });
-    const last = onChange.mock.calls.at(-1)?.[0];
-    expect(last).toMatchObject({
-      rawText: "<1 2>,<3 4>",
-      valueType: "mixed",
-      normalizedValue: "<1 2 3 4>",
-      valid: true,
-    });
+  it("retains legacy numeric bulk text without discarding unfinished content", () => {
+    render(<StructuredValueEditor propertyName="reg" valueType="u32-array" rawText="<1>" showErrors onChange={vi.fn()}
+      editorState={{ kind: "numeric-input", format: "table", text: "1\t\n0x", source: { kind: "cells", bits: 32, groups: [["1"]] } }} />);
+    expect(screen.getByRole("textbox")).toHaveValue("1\t\n0x");
+    expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
   });
 
-  it("emits normalized values without a preview or dangling preview descriptions", () => {
+  it("honors permission locks and external undo", () => {
     const onChange = vi.fn();
-    const { container } = render(
-      <ControlledEditor
-        propertyName="reg"
-        valueType="u32-array"
-        rawText="<0xB 0x4B>"
-        onChange={onChange}
-      />
-    );
-
-    fireEvent.change(screen.getByRole("textbox", { name: "数值 1" }), { target: { value: "0xC" } });
-    expect(onChange).toHaveBeenLastCalledWith({
-      rawText: "<0xC 0x4B>", valueType: "u32-array", normalizedValue: "<0xc 0x4b>", valid: true, error: undefined
-    });
-    expect(screen.queryByLabelText(/normalized|规范化|预览/i)).not.toBeInTheDocument();
-    expect(container.querySelector('[id$="-normalized"], [aria-describedby*="-normalized"]')).toBeNull();
+    const { rerender } = render(<StructuredValueEditor propertyName="names" valueType="string-list" rawText='"old"' disabled onChange={onChange} />);
+    expect(screen.getByRole("textbox")).toBeDisabled();
+    rerender(<StructuredValueEditor propertyName="names" valueType="string-list" rawText='"undo"' onChange={onChange} />);
+    expect(screen.getByRole("textbox")).toHaveValue('"undo"');
   });
 });

@@ -1523,7 +1523,7 @@ export async function verifyCanonicalSourceReimport(
   }
   const manifest = source.manifest;
   const file = source.files[manifest.members.findIndex((member) => member.fileId === manifest.fileId)]!;
-  if (source.manifest.locator.kind === "dts-delete") return source;
+  if (source.manifest.locator.kind === "dts-delete" || source.manifest.locator.kind === "dts-source-absence") return source;
   if (source.manifest.locator.kind === "json-delete") {
     if (typeof source.manifest.locator.pointer !== "string" || typeof source.manifest.locator.rootPointer !== "string") throw new ApiError("CONFLICT", "Deleted JSON source has no exact absence proof.");
     const file = source.files[source.manifest.members.findIndex((member) => member.fileId === source.manifest.fileId)]!;

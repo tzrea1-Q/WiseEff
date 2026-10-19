@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type {
   DtsReleaseReadinessIssue,
@@ -22,7 +22,9 @@ import { ViewSwitch } from "@/components/ui/view-switch";
 import { Button } from "@/components/ui/button";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { WorkbenchCandidateList, useWorkbenchCandidates } from "./WorkbenchCandidateList";
-import { WorkbenchPropertyDefinition } from "./WorkbenchPropertyDefinition";
+import { WorkbenchPropertyDefinitionContent, useWorkbenchPropertyDefinition } from "./WorkbenchPropertyDefinition";
+import { validateDtsValueAgainstSchema } from "@/domain/dts/dtsValueSchema";
+import { validateDtsValue } from "@/domain/dts/dtsValueClient";
 import { useToast } from "@/components/common/toast/ToastProvider";
 import { presentError } from "@/infrastructure/http/presentError";
 import type { AuditEventListResponse, ListAuditEventsParams } from "@/domain/audit/types";
@@ -52,6 +54,9 @@ import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
 import { WorkbenchConfigurationFilesDialog } from "./WorkbenchConfigurationFilesDialog";
 import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
+import { WorkbenchSourceEditingPane } from "./WorkbenchSourceEditingPane";
+import { createSourceEditSession } from "@/application/project-configuration/sourceEditSession";
+import type { WorkbenchDtsEditorSessions } from "./WorkbenchDtsEditor";
 import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
 import { resolveParamAdminProjectsReturnPath } from "@/hooks/useParamAdminProjectsSearch";
@@ -161,6 +166,7 @@ export function ProjectConfigurationWorkbench({
     members,
     membersBoundConfigSetId,
     source,
+    sourceIdentity,
     configSetsLoading,
     filesLoading,
     membersLoading,
@@ -174,6 +180,8 @@ export function ProjectConfigurationWorkbench({
     membersRetry,
     sourceRetry,
     structureNodes,
+    structureNavigation,
+    structureNavigationError,
     structureLoading,
     structureError,
     structureRetry
@@ -199,6 +207,27 @@ export function ProjectConfigurationWorkbench({
   } = useReleaseBaselineSession();
   const revisionGate = useConfigRevisionGateSession();
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const sourceDiscarding = useRef(false);
+  const sourceEditSession = useMemo(() => {
+    const session = createSourceEditSession();
+    return { ...session, change: (...args: Parameters<typeof session.change>) => {
+      if (!sourceDiscarding.current) session.change(...args);
+    } };
+  }, []);
+  const sourceEditorSessions = useMemo<WorkbenchDtsEditorSessions>(() => new Map(), []);
+  const sourceEditSnapshot = useSyncExternalStore(sourceEditSession.subscribe, sourceEditSession.getSnapshot, sourceEditSession.getSnapshot);
+  const [sourceBufferDirty, setSourceBufferDirty] = useState(false);
+  const sourceDraftsDirty = sourceBufferDirty || Object.values(sourceEditSnapshot.files).some((file) => file.dirty);
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!sourceDraftsDirty) return;
+      void sourceEditSession.flush();
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => { window.removeEventListener("beforeunload", beforeUnload); void sourceEditSession.flush(); };
+  }, [sourceDraftsDirty, sourceEditSession]);
   const [createConfigSetOpen, setCreateConfigSetOpen] = useState(false);
   const [inspectorLevelOverride, setInspectorLevelOverride] = useState<InspectorLevel | null>(null);
   const [fileVersions, setFileVersions] = useState<ProjectParameterFileVersion[]>([]);
@@ -276,6 +305,8 @@ export function ProjectConfigurationWorkbench({
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
   const [tasksOpen, setTasksOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [leaveError, setLeaveError] = useState("");
+  const [leavePending, setLeavePending] = useState(false);
   const [draftCopyStatus, setDraftCopyStatus] = useState("");
   const draftCopyFallbackRef = useRef<HTMLTextAreaElement | null>(null);
   const sessionDraftStorage = draftStorage ?? localStorage;
@@ -288,6 +319,7 @@ export function ProjectConfigurationWorkbench({
     validateStatus,
     submitError,
     submitStatus,
+    storageError,
     stagedDrafts,
     submitting: submittingEdits,
     rows: sessionDraftRows,
@@ -763,9 +795,11 @@ export function ProjectConfigurationWorkbench({
       project.id,
       selectedMemberFileId,
       selectedMemberVersionId,
-      dtsRepository
+      dtsRepository,
+      apiMode ? { navigationScope: "organization" } : undefined
     );
   }, [
+    apiMode,
     dtsRepository,
     project.id,
     selectedMemberFileId,
@@ -843,8 +877,8 @@ export function ProjectConfigurationWorkbench({
   );
 
   const runUnifiedSearch = useCallback(async () => {
-    await navigationSession.runSearch(project.id, dtsRepository);
-  }, [dtsRepository, navigationSession, project.id]);
+    await navigationSession.runSearch(project.id, dtsRepository, apiMode ? { navigationScope: "organization" } : undefined);
+  }, [apiMode, dtsRepository, navigationSession, project.id]);
 
   const handleSearchHit = useCallback(
     (hit: DtsSearchHit) => {
@@ -1068,7 +1102,7 @@ export function ProjectConfigurationWorkbench({
     candidateId,
     selectedNodePath,
     selectedPropertyName,
-    sessionDraftsDirty,
+    sessionDraftsDirty: sessionDraftsDirty || sourceDraftsDirty,
     notifyMutation,
     setInspectorOpen,
     setTasksOpen
@@ -1327,14 +1361,6 @@ export function ProjectConfigurationWorkbench({
     [sessionDraftRows]
   );
 
-  const availableLabels = useMemo(() => {
-    const labels = new Set<string>();
-    for (const node of structureNodes) {
-      for (const label of node.labels) labels.add(label);
-    }
-    return Array.from(labels);
-  }, [structureNodes]);
-
   const criticalLocked =
     Boolean(selectedStructureNode) &&
     !canEditCritical &&
@@ -1352,6 +1378,27 @@ export function ProjectConfigurationWorkbench({
   const activePropertyDraft = activePropertyDraftKey
     ? sessionDrafts[activePropertyDraftKey]
     : undefined;
+
+  const propertyDefinition = useWorkbenchPropertyDefinition({
+    projectId: project.id, revisionId: revisionGate.selectedRevisionId,
+    fileId: selectedMember?.fileId ?? null, nodePath: selectedStructureNode?.nodePath ?? null,
+    propertyName: selectedStructureProperty?.name ?? null,
+    topologyRepository, catalogRepository: memberRemovalRepository
+  });
+  const valueShape = propertyDefinition.detail?.valueShape;
+  const propertyValueSchema = valueShape && typeof valueShape === "object" && "schema" in valueShape ? valueShape.schema : undefined;
+
+  // A late definition response revalidates the same draft, never replaces its input.
+  useEffect(() => {
+    if (propertyDefinition.status !== "ready" || !activePropertyDraft || !selectedMember || !selectedStructureNode || !selectedStructureProperty || activePropertyDraft.editorState || activePropertyDraft.present === false) return;
+    const syntax = validateDtsValue(activePropertyDraft.rawText, selectedStructureProperty.name);
+    const error = syntax.error ?? validateDtsValueAgainstSchema(selectedStructureProperty.name, activePropertyDraft.rawText, propertyValueSchema);
+    const valid = syntax.valid && !error;
+    if (activePropertyDraft.valid === valid && activePropertyDraft.error === error) return;
+    structuredEditSession.change({ fileId: selectedMember.fileId, nodePath: selectedStructureNode.nodePath, propertyName: selectedStructureProperty.name }, {
+      ...activePropertyDraft, valid, error
+    });
+  }, [activePropertyDraft, propertyDefinition.status, propertyValueSchema, selectedMember, selectedStructureNode, selectedStructureProperty, structuredEditSession]);
 
   const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
   const sessionDraftScope = useMemo<SessionDraftScope | null>(() => {
@@ -1436,18 +1483,33 @@ export function ProjectConfigurationWorkbench({
   }, [structuredEditSession]);
 
   const handleLeaveWorkbench = useCallback(() => {
-    if (sessionDraftsDirty) {
+    if (sessionDraftsDirty || sourceDraftsDirty) {
       setLeaveConfirmOpen(true);
       return;
     }
     onNavigate(resolveParamAdminProjectsReturnPath(search));
-  }, [onNavigate, search, sessionDraftsDirty]);
+  }, [onNavigate, search, sessionDraftsDirty, sourceDraftsDirty]);
 
   const handleDiscardAndLeave = useCallback(() => {
-    structuredEditSession.discard();
-    setLeaveConfirmOpen(false);
-    onNavigate(resolveParamAdminProjectsReturnPath(search));
-  }, [onNavigate, search, structuredEditSession]);
+    if (sourceDiscarding.current) return;
+    sourceDiscarding.current = true;
+    setLeavePending(true);
+    setLeaveError("");
+    void (async () => {
+      try {
+        const results = await Promise.all(Object.values(sourceEditSession.getSnapshot().files).map((file) => sourceEditSession.discard(file.scope)));
+        if (results.some((ok) => !ok)) throw new Error("无法清除本地恢复副本，请重试或先下载草稿。");
+        sourceEditorSessions.clear();
+        structuredEditSession.discard();
+        setSourceBufferDirty(false);
+        setLeaveConfirmOpen(false);
+        onNavigate(resolveParamAdminProjectsReturnPath(search));
+      } catch (cause) {
+        sourceDiscarding.current = false;
+        setLeaveError(presentError(cause, "放弃本地修改失败，请重试。"));
+      } finally { setLeavePending(false); }
+    })();
+  }, [onNavigate, search, sourceEditSession, sourceEditorSessions, structuredEditSession]);
 
   const handleStructuredValueChange = useCallback(
     (next: StructuredValueChange) => {
@@ -1470,10 +1532,10 @@ export function ProjectConfigurationWorkbench({
           normalizedValue: next.normalizedValue,
           valid: next.valid,
           ...(next.error ? { error: next.error } : {}),
-          ...(typeof next.present === "boolean" ? { present: next.present } : {})
+          ...(typeof next.present === "boolean" ? { present: next.present } : {}),
+          ...(next.editorState ? { editorState: next.editorState } : {})
         }
       );
-      setTasksOpen(true);
     },
     [
       editorLocked,
@@ -1493,6 +1555,7 @@ export function ProjectConfigurationWorkbench({
         fileName: selectedMember.fileName,
         dtsRepository,
         catalogRepository: topologyRepository,
+        definitionRepository: memberRemovalRepository,
         revisionId: revisionGate.selectedRevisionId,
         configSetId: selectedConfigSet?.id
       });
@@ -1506,6 +1569,7 @@ export function ProjectConfigurationWorkbench({
   }, [
     canEdit,
     dtsRepository,
+    memberRemovalRepository,
     project.id,
     revisionGate.selectedRevisionId,
     selectedConfigSet,
@@ -1534,6 +1598,11 @@ export function ProjectConfigurationWorkbench({
           setTasksOpen(open);
         }}
         sessionDraftRows={sessionDraftRows}
+        storageError={storageError}
+        onLocateDraft={(row) => {
+          setTasksOpen(false);
+          selectStructureTarget(row.fileId, row.nodePath, row.propertyName, true);
+        }}
         syncEvidence={syncEvidence}
         canonicalSyncCheck={canonicalSyncCheck}
         exportEvidence={exportEvidence}
@@ -1608,9 +1677,11 @@ export function ProjectConfigurationWorkbench({
                   onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: selectedConfigSet.id,
                     file: candidate.fileId ?? null, candidate: candidate.id, sourceMode: "candidate", version: null, node: null, property: null, inspector: "candidates" }));
                 }} />}
-              propertyDefinition={selectedMember && selectedStructureNode && selectedStructureProperty ? <WorkbenchPropertyDefinition
-                projectId={project.id} revisionId={revisionGate.selectedRevisionId} fileId={selectedMember.fileId} nodePath={selectedStructureNode.nodePath}
-                propertyName={selectedStructureProperty.name} topologyRepository={topologyRepository} catalogRepository={memberRemovalRepository} /> : null}
+              propertyDefinition={selectedStructureProperty ? <WorkbenchPropertyDefinitionContent state={propertyDefinition} propertyName={selectedStructureProperty.name} /> : null}
+              propertyValueSchema={propertyValueSchema}
+              draftStorageError={storageError}
+              onDiscardPropertyDraft={() => { if (activePropertyDraftKey) structuredEditSession.discard(activePropertyDraftKey); }}
+              onOpenDrafts={() => setTasksOpen(true)}
               onRetryVersions={() => setVersionsReloadToken((value) => value + 1)}
               baselines={configBaselines}
               releasedBaseline={releasedBaseline}
@@ -1626,7 +1697,8 @@ export function ProjectConfigurationWorkbench({
               onRetryBaselineMembers={() => { void releaseBaselineSession.loadPinnedMembers(project.id, dtsRepository); }}
               canAdmin={canAdmin}
               releaseReadiness={readinessError ? null : releaseReadiness}
-              sessionDraftsDirty={sessionDraftsDirty}
+              sessionDraftsDirty={sessionDraftsDirty || sourceDraftsDirty}
+              sourceEditing={selectedMember?.format === "dts"}
               readinessLoading={readinessLoading}
               onOpenCreateBaseline={handleOpenCreateBaseline}
               releaseIssues={readinessLoading ? <SectionSkeleton label="正在检查配置版本…" />
@@ -1691,7 +1763,6 @@ export function ProjectConfigurationWorkbench({
               selectedStructureNode={selectedStructureNode}
               selectedStructureProperty={selectedStructureProperty}
               activePropertyDraft={activePropertyDraft}
-              availableLabels={availableLabels}
               editorLocked={editorLocked}
               criticalLocked={criticalLocked}
               staleDraftLocked={staleDraftLocked}
@@ -1728,7 +1799,7 @@ export function ProjectConfigurationWorkbench({
         tabId={showContentTabs ? `project-configuration-${contentTab}-tab` : undefined}
         inspectorLabel="检查器面板"
         inspectorOverlay={narrowViewport}
-        primaryAction={<WorkbenchReleaseReadinessSummary readiness={releaseReadiness} loading={readinessLoading} error={readinessError} localSessionDirty={sessionDraftsDirty}
+        primaryAction={<WorkbenchReleaseReadinessSummary readiness={releaseReadiness} loading={readinessLoading} error={readinessError} localSessionDirty={sessionDraftsDirty || sourceDraftsDirty}
               readOnly={!canAdmin}
               pressed={inspectorOpen && inspectorLevel === "release"} disabled={!selectedConfigSet}
               onRetry={() => setReadinessRetry((value) => value + 1)} onOpenIssues={() => openInspector("release")} />}
@@ -1815,6 +1886,9 @@ export function ProjectConfigurationWorkbench({
             structureError={structureError}
             onStructureRetry={() => workspaceLoadSession.retryStructure()}
             structureNodes={structureNodes}
+            organizationNavigation={apiMode}
+            structureNavigation={structureNavigation}
+            structureNavigationError={structureNavigationError}
             selectedNodePath={selectedNodePath}
             selectedPropertyName={selectedPropertyName}
             sessionDrafts={sessionDrafts}
@@ -1832,6 +1906,23 @@ export function ProjectConfigurationWorkbench({
       >
         {!selectedConfigSet ? <SectionEmpty message="选择或新建配置以查看项目配置。" /> : null}
         {contentTab === "source" && selectedConfigSet ? <WorkbenchSourceCanvas
+            workingEditor={selectedMember?.format === "dts" && selectedMember.currentVersionId && source && resolvedOrganizationId
+              && !sourceLoading && !sourceError && sourceIdentity?.projectId === project.id
+              && sourceIdentity.fileId === selectedMember.fileId && sourceIdentity.versionId === selectedMember.currentVersionId ? <WorkbenchSourceEditingPane
+              scope={{ userId: currentUserId, organizationId: resolvedOrganizationId, projectId: project.id, configSetId: selectedConfigSet.id, fileId: selectedMember.fileId }}
+              session={sourceEditSession} editorSessions={sourceEditorSessions} fileName={selectedMember.fileName} baseVersionId={selectedMember.currentVersionId}
+              configRevisionId={revisionGate.loading || revisionGate.error ? null : revisionGate.revisions
+                .filter((revision) => revision.configSetId === selectedConfigSet.id && ["resolved", "validated", "compiled", "pending_approval"].includes(revision.status))
+                .sort((left, right) => right.revisionNumber - left.revisionNumber)[0]?.id ?? null}
+              source={source} repository={fileRepository} canEdit={apiMode && canEdit && canAdmin}
+              visible={canvasMode === "working"} legacyDraftsDirty={sessionDraftsDirty} onOpenLegacyDrafts={() => setTasksOpen(true)}
+              onDirtyChange={setSourceBufferDirty} onRefresh={() => {
+                workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers(); workspaceLoadSession.retrySource();
+                workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1); setVersionsReloadToken((value) => value + 1);
+                if (topologyRepository) void revisionGate.session.load(project.id, selectedConfigSet.id, topologyRepository);
+              }} focusSpan={focusSpan} focusLine={focusLineOverride ?? restoredScrollLine}
+              findQuery={findQuery} findNextToken={findNextToken} onVisibleLineChange={handleVisibleLineChange}
+            /> : undefined}
             sourceRegionRef={sourceRegionRef}
             selectedConfigSetName={selectedConfigSet.name === "default" ? "默认配置" : selectedConfigSet.name}
             selectedMember={selectedMember ?? null}
@@ -2016,7 +2107,9 @@ export function ProjectConfigurationWorkbench({
         releaseOpen={releaseBaselineOpen}
         restoreOpen={restoreBaselineOpen}
         leaveOpen={leaveConfirmOpen}
-        sessionDraftsDirty={sessionDraftsDirty}
+        leaveError={leaveError}
+        leavePending={leavePending}
+        sessionDraftsDirty={sessionDraftsDirty || sourceDraftsDirty}
         baselineActionError={baselineActionError}
         newBaselineName={newBaselineName}
         onNewBaselineNameChange={setNewBaselineName}

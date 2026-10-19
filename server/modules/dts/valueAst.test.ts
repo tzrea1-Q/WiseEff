@@ -60,6 +60,29 @@ describe("parseDtsValue / renderDtsValue", () => {
     expect(() => parseDtsValue("reg_config", "/bits/ 8 <0x100>")).toThrow();
   });
 
+  it.each([
+    '<1 junk 2>', '<1 2', '<0xGG>', '<1+2>', '<1-2>', '<<1>>',
+    '"a" junk', '"a",', '"a', '[0 ff]', '[00 fff]', '[00] trailing',
+    '/bits/ 7 <1>', '/bits/ 8 <256>', '/bits/ 16 <-32769>', '<4294967296>',
+    '/bits/ 64 <18446744073709551616>', '/bits/ 64 <-9223372036854775809>',
+  ])("rejects unconsumed or out-of-range tokens: %s", (raw) => {
+    expect(() => parseDtsValue("value", raw)).toThrow();
+  });
+
+  it.each([
+    '[00 FF]', '/bits/ 8 <255 (-128)>', '/bits/ 16 <65535 (-32768)>',
+    '<4294967295 (-2147483648)>', '/bits/ 64 <18446744073709551615 (-9223372036854775808)>',
+    '"a", <1>',
+  ])("round-trips exact supported boundaries and mixed segments: %s", (raw) => {
+    const { value } = parseDtsValue("value", raw);
+    expect(renderDtsValue(value, raw)).toBe(raw);
+  });
+
+  it("retains the bit width of every reconstructed group", () => {
+    const { value } = parseDtsValue("value", "/bits/ 16 <1>, /bits/ 16 <2>");
+    expect(parseDtsValue("value", renderDtsValue(value)).value).toEqual(value);
+  });
+
   it("keeps distinct floating-looking string tokens byte-identical", () => {
     const raw = '"0.5", "-32767", "6|9|10"';
     const { value } = parseDtsValue("comp_para", raw);

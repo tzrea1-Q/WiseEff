@@ -37,6 +37,8 @@ type CandidateRow = TrustedInvocationDomainAttributionRow & {
   activated_at: string | Date | null;
   activated_by_user_id: string | null;
   activated_version_id: string | null;
+  source_revision_context: ProjectParameterFileCandidateDto["sourceRevisionContext"] | null;
+  client_mutation_id: string | null;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -67,7 +69,9 @@ function toCandidateDto(row: CandidateRow): ProjectParameterFileCandidateDto {
     abandonedByUserId: row.abandoned_by_user_id ?? undefined,
     activatedAt: row.activated_at ? dateTimeToIso(row.activated_at) : undefined,
     activatedByUserId: row.activated_by_user_id ?? undefined,
-    activatedVersionId: row.activated_version_id ?? undefined
+    activatedVersionId: row.activated_version_id ?? undefined,
+    sourceRevisionContext: row.source_revision_context ?? undefined,
+    clientMutationId: row.client_mutation_id ?? undefined
   };
 }
 
@@ -78,7 +82,8 @@ const candidateSelect = `
   initiator_type, initiator_principal_deleted, initiator_system_kind, initiator_system_name,
   initiator_session_id, initiator_tool_call_id, initiator_approval_id,
   created_at, updated_at,
-  abandoned_at, abandoned_by_user_id, activated_at, activated_by_user_id, activated_version_id
+  abandoned_at, abandoned_by_user_id, activated_at, activated_by_user_id, activated_version_id,
+  source_revision_context, client_mutation_id
 `;
 
 export async function insertParameterFileCandidate(
@@ -92,13 +97,14 @@ export async function insertParameterFileCandidate(
       base_version_id, storage_key, checksum, size_bytes, parsed_index,
       diagnostics, impact, blockers, created_by_user_id,
       initiator_type, initiator_system_kind, initiator_system_name,
-      initiator_session_id, initiator_tool_call_id, initiator_approval_id
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id,
+      source_revision_context, client_mutation_id, client_mutation_digest
     )
     values (
       $1, $2, $3, $4, $5, $6, $7,
       $8, $9, $10, $11, $12::jsonb,
       $13::jsonb, $14::jsonb, $15::jsonb, $16,
-      $17, $18, $19, $20, $21, $22
+      $17, $18, $19, $20, $21, $22, $23::jsonb, $24, $25
     )
     returning ${candidateSelect}
     `,
@@ -124,7 +130,9 @@ export async function insertParameterFileCandidate(
       input.attribution?.systemName ?? null,
       input.attribution?.sessionId ?? null,
       input.attribution?.toolCallId ?? null,
-      input.attribution?.approvalId ?? null
+      input.attribution?.approvalId ?? null,
+      input.sourceRevisionContext ? JSON.stringify(input.sourceRevisionContext) : null,
+      input.clientMutationId ?? null, input.clientMutationDigest ?? null
     ]
   );
 

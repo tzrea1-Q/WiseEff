@@ -328,9 +328,10 @@ const hasArrayConstraints = (schema: SupportedValueSchema): boolean =>
 export const assertCanonicalValueConstraints = (
   revision: DefinitionRevisionSnapshot,
   payload: ProjectValuePayload,
+  fullSchema = false,
 ): void => {
   const schema = revision.content.valueShape.schema as SupportedValueSchema;
-  if (!hasArrayConstraints(schema)) return;
+  if (!fullSchema && !hasArrayConstraints(schema)) return;
   let value: unknown = payload.value;
   const cellGroups = "type" in schema && schema.type === "array" && schema.items && "type" in schema.items
     && schema.items.type === "array" && (schema.items.minItems !== undefined || schema.items.maxItems !== undefined);
@@ -339,12 +340,19 @@ export const assertCanonicalValueConstraints = (
       const parsed = dtsValueSchema.safeParse(value);
       if (parsed.success) {
         const dts = parsed.data as DtsValue;
-        if (dts.kind === "cells") {
-          const groups = dts.groups.map((group) => group.map((cell) => cell.kind === "integer" ? Number(cell.value) : `&${cell.label}`));
+        // Vendor bytes use a string schema for their DTS text representation.
+        if (fullSchema && "type" in schema && schema.type === "string"
+          && (dts.kind === "bytes" || (dts.kind === "cells" && dts.bits === 8
+            && dts.groups.every((group) => group.every((cell) => cell.kind === "integer"))))) {
+          value = renderDtsValue(dts);
+        } else if (dts.kind === "cells") {
+          const groups = dts.groups.map((group) => group.map((cell) => cell.kind === "integer"
+            ? fullSchema ? BigInt(cell.value) : Number(cell.value) : fullSchema ? { reference: cell.label } : `&${cell.label}`));
           value = "type" in schema && schema.type === "array" && schema.items && "type" in schema.items && schema.items.type === "array"
             ? groups : groups.flat();
+          if (fullSchema && "type" in schema && schema.type !== "array" && Array.isArray(value) && value.length === 1) value = value[0];
         } else if (dts.kind === "bytes") {
-          value = renderDtsValue(dts);
+          value = fullSchema ? dts.values.map(BigInt) : renderDtsValue(dts);
         }
       }
     } else if ("type" in schema && schema.type === "array" && (!cellGroups || payload.kind === "number" || payload.kind === "number-array")) {
@@ -352,7 +360,20 @@ export const assertCanonicalValueConstraints = (
       if (schema.items && "type" in schema.items && schema.items.type === "array") value = [value];
     }
   }
-  if (!exampleMatchesSchema(schema, value)) {
+  const matchesExact = (shape: SupportedValueSchema, candidate: unknown): boolean => {
+    if (!("type" in shape)) return true;
+    if (shape.type === "integer" || shape.type === "number") {
+      if (typeof candidate !== "bigint" && (typeof candidate !== "number" || !Number.isFinite(candidate)
+        || (shape.type === "integer" && !Number.isInteger(candidate)))) return false;
+      return (shape.minimum === undefined || candidate >= shape.minimum) && (shape.maximum === undefined || candidate <= shape.maximum);
+    }
+    if (shape.type === "array") return Array.isArray(candidate)
+      && (shape.minItems === undefined || candidate.length >= shape.minItems)
+      && (shape.maxItems === undefined || candidate.length <= shape.maxItems)
+      && (!shape.items || candidate.every((entry) => matchesExact(shape.items!, entry)));
+    return shape.type === "null" ? candidate === null : typeof candidate === shape.type;
+  };
+  if (!(fullSchema ? matchesExact(schema, value) : exampleMatchesSchema(schema, value))) {
     throw new ApiError("VALIDATION_FAILED", "Value does not satisfy its Catalog Definition revision.", {
       reason: "definition-value-constraint",
       definitionId: revision.definitionId,
@@ -491,7 +512,18 @@ const writeAppend = async (
         and request.candidate_binding_manifest @> $4::jsonb
         and $5::boolean = (target.id is null)
         and (target.id is null or (target.base_current_value_id=$7 and target.source_pin_id=base_pin.id))
-        and $8 = case when target.action='delete' then 'deleted' else 'present' end`,
+        and $8 = case when target.action='delete' then 'deleted' else 'present' end
+      union all
+      select request.id from public.project_parameter_value_change_requests request
+      join parameter_catalog.project_value_source_pins base_pin on base_pin.binding_id=$6 and base_pin.project_value_id=$7
+        and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id and base_pin.value_state='present'
+      where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.status='pending'
+        and request.request_kind='source_revision'
+        and request.source_revision_context->'cohort' @> $4::jsonb
+        and $5::boolean = not exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
+          where target->>'bindingId'=$6)
+        and $8=case when exists(select 1 from jsonb_array_elements(request.source_revision_context->'targets') target
+          where target->>'bindingId'=$6 and target->>'action'='delete') then 'deleted' else 'present' end`,
     [command.sourceCommit.requestId,stored.organization_id,stored.project_id,
       JSON.stringify([{ bindingId: stored.id,oldValueId: command.expectedTip }]),
       command.sourceCommit.derived,stored.id,command.expectedTip,command.valueState ?? "present"]);

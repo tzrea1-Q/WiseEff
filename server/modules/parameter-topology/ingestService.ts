@@ -73,6 +73,13 @@ export { offsetToLineColumn };
 
 export type ConfigRevisionIngestOptions = {
   sourceCommit?: { baseConfigRevisionId: string };
+  reviewedSource?: ReviewedSourceContinuity;
+};
+
+/** Frozen by the whole-source owner after read-only continuity inspection. */
+export type ReviewedSourceContinuity = {
+  baseConfigRevisionId: string;
+  nodes: Array<Omit<PersistedLogicalNodeRevision, "id"> & { isNew: boolean }>;
 };
 
 const schemasRoot = join(
@@ -347,12 +354,15 @@ async function buildLogicalRevisionsWithContinuity(
     revisionNumber: number;
     registry: SchemaRegistry;
     sourceCommit?: { baseConfigRevisionId: string };
+    reviewedSource?: ReviewedSourceContinuity;
+    continuityBaseConfigRevisionId?: string;
   },
 ): Promise<ContinuityBuildResult> {
   const previousRows = await listPreviousLogicalNodeSnapshots(tx, {
     configSetId: input.configSetId,
     beforeRevisionNumber: input.revisionNumber,
-    baseConfigRevisionId: input.sourceCommit?.baseConfigRevisionId,
+    baseConfigRevisionId: input.sourceCommit?.baseConfigRevisionId ?? input.reviewedSource?.baseConfigRevisionId
+      ?? input.continuityBaseConfigRevisionId,
   });
   const previousSnapshotsBase = previousRows.map(toPreviousSnapshot);
 
@@ -363,6 +373,32 @@ async function buildLogicalRevisionsWithContinuity(
         locatorDepth(a.nodeLocator) - locatorDepth(b.nodeLocator) ||
         a.nodeLocator.localeCompare(b.nodeLocator),
     );
+
+  if (input.reviewedSource) {
+    const frozen = input.reviewedSource.nodes;
+    const previousIds = new Set(previousRows.map((row) => row.logicalNodeId));
+    if (frozen.length !== sorted.length || new Set(frozen.map((row) => row.logicalNodeId)).size !== frozen.length) {
+      throw new ApiError("CONFLICT", "Reviewed DTS continuity has a different node cohort.");
+    }
+    const revisions = sorted.map((node) => {
+      const row = frozen.find((entry) => entry.nodeLocator === node.nodeLocator);
+      const compatibleProperty = node.properties.get("compatible");
+      const compatible = compatibleProperty && !compatibleProperty.deleted
+        ? compatibleProperty.normalizedValue || compatibleProperty.rawText : undefined;
+      const parent = parentLocator(node.nodeLocator);
+      const parentId = parent ? frozen.find((entry) => entry.nodeLocator === parent)?.logicalNodeId : null;
+      if (!row || row.name !== node.name || row.unitAddress !== node.unitAddress || row.compatible !== compatible
+        || row.parentLogicalNodeId !== parentId || row.isNew === previousIds.has(row.logicalNodeId)) {
+        throw new ApiError("CONFLICT", "Reviewed DTS continuity no longer matches the source.");
+      }
+      return { ...row, id: randomUUID() };
+    });
+    return { revisions, logicalNodesToInsert: frozen.filter((row) => row.isNew).map((row) => ({
+      id: row.logicalNodeId, organizationId: input.organizationId, projectId: input.projectId,
+      configSetId: input.configSetId
+    })), revisionByLocator: new Map(revisions.map((row) => [row.nodeLocator, row])),
+    stableLogicalIdByLocator: new Map(revisions.map((row) => [row.nodeLocator, row.logicalNodeId])), ambiguous: [] };
+  }
 
   if (input.sourceCommit) {
     // Only the source owner uses this branch, after revalidating the exact
@@ -449,6 +485,29 @@ async function buildLogicalRevisionsWithContinuity(
   const stableByProvisional = new Map<string, string>();
   const ambiguous: ContinuityBuildResult["ambiguous"] = [];
 
+  if (input.continuityBaseConfigRevisionId) {
+    // A complete unchanged identity tuple is positive continuity evidence for
+    // source revisions; the locator alone never selects a prior identity.
+    const previousByLocator = new Map(previousRows.map((row) => [row.nodeLocator, row]));
+    for (const node of sorted) {
+      const previous = previousByLocator.get(node.nodeLocator);
+      const candidate = provisionalByLocator.get(node.nodeLocator)!;
+      const compatibleProperty = node.properties.get("compatible");
+      const compatible = compatibleProperty && !compatibleProperty.deleted
+        ? compatibleProperty.normalizedValue || compatibleProperty.rawText : undefined;
+      const parent = parentLocator(node.nodeLocator);
+      const provisionalParent = parent ? provisionalByLocator.get(parent)?.logicalNodeId : null;
+      const stableParent = provisionalParent ? stableByProvisional.get(provisionalParent) : null;
+      if (previous && previous.name === node.name && previous.unitAddress === node.unitAddress
+        && previous.compatible === compatible && previous.reg === extractReg(node)
+        && previous.parentLogicalNodeId === stableParent) {
+        claimedProvisional.add(candidate.logicalNodeId);
+        stableByProvisional.set(candidate.logicalNodeId, previous.logicalNodeId);
+        driverVersionByLocator.set(node.nodeLocator, previous.driverSchemaVersionId ?? null);
+      }
+    }
+  }
+
   const previousInDepthOrder = [...previousSnapshots].sort(
     (a, b) =>
       locatorDepth(a.nodeLocator) - locatorDepth(b.nodeLocator) ||
@@ -456,6 +515,7 @@ async function buildLogicalRevisionsWithContinuity(
   );
 
   for (const previous of previousInDepthOrder) {
+    if ([...stableByProvisional.values()].includes(previous.logicalNodeId)) continue;
     const available = candidates.filter(
       (candidate) => !claimedProvisional.has(candidate.logicalNodeId),
     );
@@ -549,6 +609,33 @@ async function buildLogicalRevisionsWithContinuity(
     stableLogicalIdByLocator,
     ambiguous,
   };
+}
+
+/** No revisions, logical identities, bindings or values are written by preview. */
+export async function prepareReviewedSourceContinuity(tx: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; baseConfigRevisionId: string;
+  effectiveNodes: Map<string, DtsEffectiveNode>; sourceDigest: string;
+}): Promise<ReviewedSourceContinuity> {
+  const base = (await tx.query<{ revision_number: number }>(
+    "select revision_number from dts_config_revisions where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4",
+    [input.baseConfigRevisionId, input.organizationId, input.projectId, input.configSetId])).rows[0];
+  if (!base) throw new ApiError("CONFLICT", "Source continuity base is unavailable.");
+  const registry = await getCachedOrganizationSchemaRegistry(tx, { schemasRoot, organizationId: input.organizationId });
+  const prepared = await buildLogicalRevisionsWithContinuity(tx, { ...input, registry,
+    revisionNumber: base.revision_number + 1, continuityBaseConfigRevisionId: input.baseConfigRevisionId });
+  if (prepared.ambiguous.length) throw new ApiError("CONFLICT", "DTS node identity continuity requires an explicit mapping decision.", {
+    reason: "logical-continuity-decision-needed", nodes: prepared.ambiguous.map((row) => row.previous.nodeLocator)
+  });
+  const newIds = new Map(prepared.logicalNodesToInsert.map((row) => {
+    const node = prepared.revisions.find((entry) => entry.logicalNodeId === row.id)!;
+    return [row.id, `srnode_${contentHash(`${input.configSetId}:${input.baseConfigRevisionId}:${input.sourceDigest}:${node.nodeLocator}`)}`];
+  }));
+  return { baseConfigRevisionId: input.baseConfigRevisionId, nodes: prepared.revisions.map(({ id: _id, unitAddress, compatible, ...row }) => ({
+    ...row, ...(unitAddress === undefined ? {} : { unitAddress }), ...(compatible === undefined ? {} : { compatible }),
+    logicalNodeId: newIds.get(row.logicalNodeId) ?? row.logicalNodeId,
+    parentLogicalNodeId: row.parentLogicalNodeId ? newIds.get(row.parentLogicalNodeId) ?? row.parentLogicalNodeId : null,
+    isNew: newIds.has(row.logicalNodeId)
+  })) };
 }
 
 async function discoverAttributionModules(
@@ -750,6 +837,7 @@ async function ingestConfigRevisionTx(
     revisionNumber,
     registry,
     sourceCommit: options?.sourceCommit,
+    reviewedSource: options?.reviewedSource,
   });
 
   if (continuity.ambiguous.length) {
@@ -808,7 +896,7 @@ async function ingestConfigRevisionTx(
     }
   }
 
-  if (!options?.sourceCommit) {
+  if (!options?.sourceCommit && !options?.reviewedSource) {
     await discoverAttributionModules(tx, {
       organizationId: manifest.organizationId,
       effectiveNodes: resolved.effective.nodesByLocator,

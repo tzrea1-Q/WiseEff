@@ -10,9 +10,10 @@ import { createConfigSet, addConfigSetFile } from "../../../server/modules/param
 import { uploadProjectParameterFile } from "../../../server/modules/parameter-files/service";
 import { setParameterIdentityMode } from "../../../server/modules/parameter-kernel/parameterIdentityMode";
 
-import { authHeadersForRole } from "./bearerAuth";
+import { authHeadersForRole, authHeadersForUser } from "./bearerAuth";
 import { withPgClient } from "./database";
 import { apiRoute } from "./runtime";
+import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./roleFixtures";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const primarySources: Record<string, string> = {
@@ -221,7 +222,8 @@ export async function registerCatalogDriverSubjects(
   request: APIRequestContext,
   subjects: ReadonlyArray<{ subjectId: string; canonicalName: string }>
 ): Promise<void> {
-  const headers = adminHeaders();
+  await seedAcceptanceRoleMatrix();
+  const headers = authHeadersForUser(acceptanceAdminOnlyUser.userId, acceptanceAdminOnlyUser.email, acceptanceAdminOnlyUser.name);
   const current = await request.get(apiRoute("/api/v2/catalog"), { headers });
   if (!current.ok()) throw new Error(`read current Catalog failed: ${current.status()} ${await current.text()}`);
   const releaseId = ((await current.json()) as { item: { catalogReleaseId: string } }).item.catalogReleaseId;

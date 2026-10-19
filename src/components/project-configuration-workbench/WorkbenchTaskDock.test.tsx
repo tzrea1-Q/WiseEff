@@ -80,6 +80,18 @@ describe("workbench tasks", () => {
     fireEvent.click(screen.getByRole("button", { name: "全部撤销" }));
     expect(props.onDiscardAllDrafts).toHaveBeenCalledOnce();
   });
+  it("summarizes long arrays and locates the original parameter without dropping storage warnings", () => {
+    const values = Array.from({ length: 200 }, (_, index) => index);
+    const changed = [...values]; changed[120] = 300;
+    const row = { fileId: "file", nodePath: "/board", propertyName: "array", identity: "/board::array", key: "file::/board::array",
+      beforeRawText: `<${values.join(" ")}>`, rawText: `<${changed.join(" ")}>`, normalizedValue: "", startLine: 1, valid: true };
+    const props = renderDock({ tasksOpen: true, sessionDraftRows: [row], onLocateDraft: vi.fn(), storageError: "修改仅当前页面保留" });
+    expect(screen.getByText("1 项取值变更")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("修改仅当前页面保留");
+    fireEvent.click(screen.getByRole("button", { name: "编辑 /board/array" }));
+    expect(props.onLocateDraft).toHaveBeenCalledWith(row);
+    expect(screen.queryByText(row.rawText)).not.toBeInTheDocument();
+  });
   it("keeps staged receipt identities in one disclosure and preserves the submission handoff", async () => {
     const props = renderDock({ tasksOpen: true, submitStatus: "已暂存 1 项待审核草稿；当前值未变。", stagedDrafts: [{ key: "file::/board::status", draftId: "draft-1",
       bindingId: "binding-1", currentValueId: "value-1", pending: true }] });

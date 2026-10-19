@@ -1,4 +1,5 @@
 import { canPerform } from "@/app/permissions";
+import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { type PageProps } from "@/app/routes";
 import { toLegacyInitializationReview } from "@/application/parameters/initializationUiMappers";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -66,6 +67,7 @@ export function ParameterReviewPage({
   runtime,
   runtimeMode
 }: PageProps) {
+  const sourceRepository = useMemo(() => runtimeMode === "api" ? resolveParameterFileRepository("api") : undefined, [runtimeMode]);
   const reviewProjectId = getContextQuery(search).projectId || state.activeProjectId;
   const parameterRepository = runtime?.parameterRepository;
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
@@ -594,6 +596,7 @@ export function ParameterReviewPage({
   return (
     <WorkbenchLayout title={reviewPageTitle}>
       <ReviewInbox projectId={canonicalProjectId} repository={runtimeMode === "api" ? runtime?.parameterCatalogRepository : undefined}
+        sourceRepository={sourceRepository}
         state={state} search={search} canReview={canReviewCanonical} legacyRows={inboxLegacyRows}
         onNavigate={onNavigate}
         busy={actionPending || batchProgress !== null}

@@ -1,6 +1,6 @@
 import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { Button } from "@/components/ui/button";
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { candidateStatusLabels } from "./WorkbenchCandidateList";
 import { Lock, TriangleAlert, X } from "lucide-react";
@@ -49,6 +49,7 @@ const ORIGIN_LABELS: Record<ProjectParameterFileVersion["origin"], string> = {
 };
 
 export type WorkbenchInspectorPanelProps = {
+  sourceEditing?: boolean;
   inspectorPersistent: boolean;
   narrowViewport: boolean;
   inspectorLevel: InspectorLevel;
@@ -119,13 +120,16 @@ export type WorkbenchInspectorPanelProps = {
   selectedStructureNode: DtsStructuralNode | null;
   selectedStructureProperty: DtsStructuralProperty | null;
   activePropertyDraft: SessionPropertyDraft | undefined;
-  availableLabels: string[];
   editorLocked: boolean;
   criticalLocked: boolean;
   staleDraftLocked: boolean;
   onStructuredValueChange: (change: StructuredValueChange) => void;
   revisionGate?: ReactNode;
   propertyDefinition?: ReactNode;
+  propertyValueSchema?: unknown;
+  draftStorageError?: string;
+  onDiscardPropertyDraft?: () => void;
+  onOpenDrafts?: () => void;
   candidateList?: ReactNode;
   sourceUpdateUpload?: ReactNode;
   sourceUpdateReview?: ReactNode;
@@ -134,6 +138,7 @@ export type WorkbenchInspectorPanelProps = {
 };
 
 export function WorkbenchInspectorPanel({
+  sourceEditing = false,
   inspectorPersistent,
   narrowViewport,
   inspectorLevel,
@@ -204,13 +209,16 @@ export function WorkbenchInspectorPanel({
   selectedStructureNode,
   selectedStructureProperty,
   activePropertyDraft,
-  availableLabels,
   editorLocked,
   criticalLocked,
   staleDraftLocked,
   onStructuredValueChange,
   revisionGate,
   propertyDefinition,
+  propertyValueSchema,
+  draftStorageError = "",
+  onDiscardPropertyDraft,
+  onOpenDrafts,
   candidateList,
   sourceUpdateUpload,
   sourceUpdateReview,
@@ -218,6 +226,42 @@ export function WorkbenchInspectorPanel({
   onRetryVersions
 }: WorkbenchInspectorPanelProps) {
   const closeVersionsRef = useRef<HTMLButtonElement>(null);
+  const editorIdentity = JSON.stringify([selectedMember?.fileId, selectedStructureNode?.nodePath, selectedStructureProperty?.name]);
+  const [showPropertyErrors, setShowPropertyErrors] = useState(false);
+  const editorRegionRef = useRef<HTMLElement>(null);
+  useEffect(() => { setShowPropertyErrors(false); }, [editorIdentity]);
+  const propertyEditor = selectedStructureProperty && selectedStructureNode ? <section ref={editorRegionRef} className="configuration-workbench__property-editor" aria-label="当前属性">
+    <div className="configuration-workbench__property-summary"><code>{selectedStructureNode.nodePath || "/"}</code></div>
+    {propertyDefinition}
+    {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? <p className="configuration-workbench__risk-note" role="note">
+      <TriangleAlert size={16} aria-hidden="true" /><span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
+    </p> : null}
+    {editorLocked ? <p className="configuration-workbench__locked" role="note"><Lock size={16} aria-hidden="true" /><span>{staleDraftLocked
+      ? "基线版本已变更：会话草稿仅可检查或复制。请先基于当前基线继续编辑，再修改取值。"
+      : criticalLocked ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
+        : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}</span></p> : null}
+    <div className="configuration-workbench__typed-editor" role="group" aria-label="属性值编辑">
+      <StructuredValueEditor key={editorIdentity} propertyName={selectedStructureProperty.name} valueType={selectedStructureProperty.valueType}
+        rawText={activePropertyDraft?.rawText ?? selectedStructureProperty.rawText} present={activePropertyDraft?.present}
+        editorState={activePropertyDraft?.editorState} valueSchema={propertyValueSchema}
+        showErrors={showPropertyErrors}
+        disabled={editorLocked}
+        onChange={onStructuredValueChange} />
+    </div>
+    <div className="configuration-workbench__property-feedback">
+      <p role="status">{draftStorageError || (activePropertyDraft ? activePropertyDraft.valid === false ? "本地修改 · 该参数有待修正的输入" : "已保留本地修改 · 尚未保存为待审核草稿" : "当前文件值 · 尚无本地修改")}</p>
+      {activePropertyDraft?.valid === false ? <p role="alert">{activePropertyDraft.error || "请修正输入后再保存。"}</p> : null}
+      <div className="configuration-workbench__inspector-actions">
+        {activePropertyDraft?.valid === false ? <Button variant="outline" size="sm" onClick={() => { setShowPropertyErrors(true); editorRegionRef.current?.querySelector("textarea")?.focus(); }}>定位错误</Button> : null}
+        {activePropertyDraft && onDiscardPropertyDraft ? <Button variant="ghost" size="sm" disabled={editorLocked} onClick={onDiscardPropertyDraft}>撤销当前参数</Button> : null}
+        {activePropertyDraft && onOpenDrafts ? <Button variant="ghost" size="sm" onClick={onOpenDrafts}>查看本轮更改</Button> : null}
+      </div>
+    </div>
+    <details className="configuration-workbench__property-baseline"><summary>查看原值与差异 · v{selectedMember?.currentVersionNumber ?? "—"}</summary>
+      <p>当前文件值</p><pre>{selectedStructureProperty.rawText || "空值"}</pre>
+      {activePropertyDraft ? <><p>本地修改{activePropertyDraft.present === false ? " · 将删除属性" : ""}</p><pre>{activePropertyDraft.rawText || "空值"}</pre></> : null}
+    </details>
+  </section> : null;
   if (inspectorLevel === "release") {
     const busy = Boolean(pendingAction && ["create-baseline", "release-baseline", "restore-baseline"].includes(pendingAction));
     const issues = releaseReadiness ? [...releaseReadiness.blockers, ...releaseReadiness.warnings] : [];
@@ -291,41 +335,11 @@ export function WorkbenchInspectorPanel({
       </div>
       <div className="configuration-workbench__inspector-body">
         {inspectorLevel === "candidates" ? <>{sourceUpdateUpload}{candidateList}</> : null}
-        {inspectorLevel === "property" && selectedStructureProperty && selectedStructureNode ? (
-          <section className="configuration-workbench__property-editor" aria-label="当前属性">
-            {propertyDefinition}
-            <p className="configuration-workbench__property-current">当前值 <code>{selectedStructureProperty.rawText || "空值"}</code></p>
-              {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? (
-                <p className="configuration-workbench__risk-note" role="note">
-                  <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
-                  <span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
-                </p>
-              ) : null}
-              <div className="configuration-workbench__typed-editor" role="group" aria-label="属性值编辑">
-                {editorLocked ? (
-                  <p className="configuration-workbench__locked" role="note">
-                    <Lock size={16} strokeWidth={2} aria-hidden="true" />
-                    <span>
-                      {staleDraftLocked
-                        ? "基线版本已变更：会话草稿仅可检查或复制。请先基于当前基线继续编辑，再修改取值。"
-                        : criticalLocked
-                          ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
-                          : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
-                    </span>
-                  </p>
-                ) : null}
-                <StructuredValueEditor
-                  propertyName={selectedStructureProperty.name}
-                  valueType={selectedStructureProperty.valueType}
-                  rawText={activePropertyDraft?.rawText ?? selectedStructureProperty.rawText}
-                  present={activePropertyDraft?.present}
-                  availableLabels={availableLabels}
-                  disabled={editorLocked || selectedStructureProperty.valueType === "empty"}
-                  onChange={onStructuredValueChange}
-                />
-              </div>
-          </section>
-        ) : null}
+        {inspectorLevel === "property" ? sourceEditing ? <section aria-label="当前属性说明">
+          {propertyDefinition}
+          <p>在源码区切换到编辑模式可修改完整 DTS。</p>
+          <pre>{selectedStructureProperty?.rawText}</pre>
+        </section> : propertyEditor : null}
         <div className="configuration-workbench__context-details">
         <div className="configuration-workbench__inspector-details">
           {inspectorLevel === "candidates" && activeCandidate && canvasMode === "candidate" ? (
@@ -363,7 +377,7 @@ export function WorkbenchInspectorPanel({
                   <div>
                     <dt>来源工作流</dt>
                     <dd>
-                      {sourcePreview.request ? "已提交审核" : sourcePreview.kind === "canonical" ? "需要人工审核" : canActivate ? "确认后可应用" : sourceWorkflowSetCanonical ? "当前配置受审核保护，暂不支持直接应用新文件候选。" : !canAdmin ? "需要项目管理员确认。" : "来源校验尚未满足应用条件。"}
+                      {sourcePreview.request ? "已提交审核" : sourcePreview.kind === "canonical" || sourcePreview.kind === "source_revision" ? "需要人工审核" : canActivate ? "确认后可应用" : sourceWorkflowSetCanonical ? "当前配置受审核保护，暂不支持直接应用新文件候选。" : !canAdmin ? "需要项目管理员确认。" : "来源校验尚未满足应用条件。"}
                       {sourcePreview.reason && !(batchPreview && sourcePreview.reason === "canonical-batch-review-required")
                         ? <small> · {sourceReviewReason(sourcePreview.reason)}</small> : null}
                     </dd>
@@ -397,7 +411,7 @@ export function WorkbenchInspectorPanel({
                       <dd>
                         <span>
                           审核状态：{({ pending: "待审核", approved: "已通过", rejected: "已驳回", withdrawn: "已撤回" } as Record<string, string>)[sourcePreview.request?.status ?? sourceReviewResult?.status ?? ""] ?? "请查看审核详情"}
-                          {sourcePreview.request ? ` · ${sourcePreview.request.kind === "batch" ? "批量" : "单目标"}` : ""}
+                          {sourcePreview.request ? ` · ${sourcePreview.request.kind === "source_revision" ? "整文件" : sourcePreview.request.kind === "batch" ? "批量" : "单目标"}` : ""}
                         </span>
                         <button className="button subtle" type="button" onClick={onOpenReview}>
                           查看审核

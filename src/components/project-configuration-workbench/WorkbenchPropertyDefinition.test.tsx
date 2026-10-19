@@ -131,4 +131,18 @@ describe("WorkbenchPropertyDefinition", () => {
     await act(async () => { resolveOld([binding()]); });
     expect(input.catalogRepository.getDefinitionRevision).not.toHaveBeenCalled();
   });
+
+  it("shares the configuration binding read across property selections and displays authored schema limits", async () => {
+    const input = props();
+    input.topologyRepository.listBindings.mockResolvedValue([binding(), binding({ id: "second", propertyKey: "values" })]);
+    input.catalogRepository.getDefinitionRevision.mockResolvedValue({ item: { ...definition().item,
+      valueShape: { kind: "json-schema", schema: { type: "array", minItems: 2, maxItems: 2, items: { type: "integer", maximum: 9 } } }
+    } });
+    const { rerender } = render(<WorkbenchPropertyDefinition {...input} />);
+    expect(await screen.findByText("固定 2 项；每项：最大 9")).toBeInTheDocument();
+    rerender(<WorkbenchPropertyDefinition {...input} propertyName="values" />);
+    await waitFor(() => expect(input.catalogRepository.getDefinitionRevision).toHaveBeenCalledTimes(2));
+    expect(input.topologyRepository.listBindings).toHaveBeenCalledOnce();
+    expect(screen.getByText("固定 2 项；每项：最大 9")).toBeInTheDocument();
+  });
 });

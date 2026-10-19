@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { DtsStructuralNode } from "@/application/ports/DtsStructuredRepository";
 import {
   buildWorkbenchStructureTree,
+  selectWorkbenchNavigationNodes,
   workbenchExpansionPath,
   workbenchIdsToExpandUpToDepth,
   workbenchStructureTreeIndex
@@ -27,6 +28,35 @@ function node(nodePath: string): DtsStructuralNode {
 }
 
 describe("workbenchStructureTreeModel", () => {
+  it("keeps only registered instances and actual ancestors from a large DTS without changing full nodes", () => {
+    const paths = ["", "soc", "soc/bus@1", "soc/bus@1/charger@0", "soc/bus@1/charger@1", "soc/power", "soc/power/battery0",
+      "soc/bus@10", "soc/bus@1/charger@0/unrelated-child",
+      ...Array.from({ length: 5000 }, (_, index) => `soc/unrelated@${index}`)];
+    const nodes = paths.map((path) => ({ ...node(path), properties: [{
+      name: "status", valueType: "string-list" as const, rawText: '"disabled"', normalizedValue: "disabled"
+    }], status: "disabled" }));
+    const managed = ["soc/bus@1/charger@0", "soc/bus@1/charger@1", "soc/power/battery0"];
+    const visible = selectWorkbenchNavigationNodes(nodes, managed);
+    expect(nodes).toHaveLength(5009);
+    expect(visible.map((item) => item.nodePath)).toEqual([
+      "soc", "soc/bus@1", ...managed.slice(0, 2), "soc/power", managed[2]
+    ]);
+    expect(visible.filter((item) => item.properties.length).map((item) => item.nodePath)).toEqual(managed);
+    expect(nodes.every((item) => item.properties.length === 1)).toBe(true);
+    expect(visible.find((item) => item.nodePath === managed[0])).toBe(nodes[3]);
+    expect(selectWorkbenchNavigationNodes(nodes, [])).toEqual([]);
+    expect(selectWorkbenchNavigationNodes(nodes, ["missing/child"])).toEqual([]);
+    expect(workbenchExpansionPath(workbenchStructureTreeIndex(buildWorkbenchStructureTree(visible)).byId,
+      "soc/unrelated@0")).toEqual([]);
+  });
+
+  it("handles absolute path segments and keeps a directly matched synthetic root from exposing unrelated nodes", () => {
+    const nodes = ["/", "/soc", "/soc/bus@1", "/soc/bus@10", "/soc/bus@1/device"].map(node);
+    expect(selectWorkbenchNavigationNodes(nodes, ["/soc/bus@1/device"]).map((item) => item.nodePath))
+      .toEqual(["/soc", "/soc/bus@1", "/soc/bus@1/device"]);
+    expect(buildWorkbenchStructureTree(selectWorkbenchNavigationNodes(nodes, ["/"]))).toEqual([]);
+  });
+
   it("builds a nested tree from flat node paths", () => {
     const roots = buildWorkbenchStructureTree([
       node("amba"),

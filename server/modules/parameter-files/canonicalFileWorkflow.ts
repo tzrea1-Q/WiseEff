@@ -573,6 +573,7 @@ async function inspectCandidate(
   if (!candidate) {
     throw new ApiError("NOT_FOUND", "Candidate file version was not found.", input);
   }
+  if (candidate.sourceRevisionContext) throw new ApiError("CONFLICT", "Whole-source candidates require their explicit source revision workflow.", { reason: "source-revision-workflow-required" });
   if (!candidate.fileId || !candidate.baseVersionId || !candidate.storageKey) {
     return { workflow: { canonical: false, bindingCount: 0 }, candidate, reason: "candidate-has-no-existing-file-base" };
   }
@@ -987,6 +988,7 @@ async function prepareCanonicalCandidateBatchLocked(
   if (!candidate?.fileId || !candidate.baseVersionId) {
     throw new ApiError("NOT_FOUND", "Canonical source candidate has no owned existing file.");
   }
+  if (candidate.sourceRevisionContext) throw new ApiError("CONFLICT", "Whole-source candidates cannot be interpreted as parameter batches.", { reason: "source-revision-workflow-required" });
   const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: candidate.fileId });
   if (!workflow.canonical || !workflow.configSetId) {
     throw new ApiError("CONFLICT", "Candidate is not attached to a canonical source.", { reason: "file-is-not-canonical" });

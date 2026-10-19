@@ -87,10 +87,10 @@ export type CandidateVersionFlow = CandidateVersionFlowSnapshot & {
 };
 
 function decodeSourceBytes(bytes: Uint8Array): string {
-  return new TextDecoder().decode(bytes);
+  return new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }).decode(bytes);
 }
 
-function fileToContentBase64(file: File): Promise<string> {
+export function fileToContentBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error("Failed to read candidate file."));
