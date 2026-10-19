@@ -581,7 +581,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
     const evidenceCard = page.locator(".evidence-card").filter({ hasText: /thermal|foldback/i }).first();
     await expect(evidenceCard).toContainText(/thermal|foldback/i);
-    await evidenceCard.click();
+    await evidenceCard.locator(".evidence-card__body > p").click();
     await expect
       .poll(async () =>
         page.evaluate(() =>
