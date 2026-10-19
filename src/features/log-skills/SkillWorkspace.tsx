@@ -18,7 +18,7 @@ import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation"
 import { mockLogSkills, mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import { formatPercent } from "@/domain/format/formatPercent";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
-import type { AnalysisSkill, SkillRevision, SkillSpec, SkillWorkspaceRepository, SkillSample, ParseTestRun, ParsePreview, SkillDryRun } from "./types";
+import type { AnalysisSkill, SkillRevision, SkillSpec, SkillWorkspaceRepository, SkillSample, ParseTestRun, ParsePreview, SkillDryRun, AnalysisCaseList } from "./types";
 import { specJson } from "./diffSkillSpecs";
 import { SkillSpecDiff } from "./SkillSpecDiff";
 import { SkillSamplePane } from "./SkillSamplePane";
@@ -48,6 +48,7 @@ type SectionProps = { skill: AnalysisSkill; spec: SkillSpec; setSpec: (spec: Ski
   knowledgeRepository?: KnowledgeRepository; knowledgeCapability?: KnowledgeCapability;
   onSkillUpdated: (skill: AnalysisSkill) => void; onBusyChange: (busy: boolean) => void;
   beforeCaseRun: () => Promise<unknown>;
+  testTab: "parse" | "cases"; onTestTabChange: (tab: "parse" | "cases") => void;
   stats?: { analyses7d?: number; helpfulRate7d?: number | null } };
 const time = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "尚未发布";
 const status = { published: "当前", draft: "草稿", superseded: "已替代" };
@@ -65,12 +66,25 @@ function Decoding({ skill, parsingYaml, onParsingYamlChange, disabled, repositor
   return <DecodingSection skillId={skill.id} yaml={parsingYaml} onChange={onParsingYamlChange} disabled={disabled} repository={repository} sample={sample} selectedLine={selectedLine} />;
 }
 
-function Tests({ skill, spec, setSpec, disabled, repository, apiMode, canEdit, sample, selectedLine, parseTestRun, testsRunning, testRunDisabled, parseTestError, onRunTests, onBusyChange, onTestValidityChange, beforeCaseRun }: SectionProps) {
-  return <>
-    <ParseTestsSection skillId={skill.id} spec={spec} setSpec={setSpec} disabled={disabled} repository={repository}
-      sample={sample} selectedLine={selectedLine} result={parseTestRun} running={testsRunning} runDisabled={testRunDisabled} runError={parseTestError} onRun={onRunTests} onBusyChange={onBusyChange} onValidityChange={onTestValidityChange} />
-    <AnalysisCasesSection skillId={skill.id} repository={apiMode ? repository : undefined} canEdit={canEdit && !disabled} beforeRun={beforeCaseRun} />
-  </>;
+function Tests({ skill, spec, setSpec, disabled, repository, apiMode, canEdit, dirty, sample, selectedLine, parseTestRun, testsRunning, testRunDisabled, parseTestError, onRunTests, onBusyChange, onTestValidityChange, beforeCaseRun, testTab, onTestTabChange }: SectionProps) {
+  const id = useId();
+  const [cases, setCases] = useState<AnalysisCaseList | null>(null);
+  const caseRun = cases?.latestRun;
+  const casesCurrent = cases?.current && !dirty && caseRun?.status === "complete" && caseRun.skillRevisionId === skill.draft?.id;
+  return <section className="skill-section skill-tests" aria-label="测试"><h2>测试</h2>
+    <ViewSwitch variant="tabs" ariaLabel="测试类型" value={testTab} onValueChange={(value) => onTestTabChange(value as "parse" | "cases")} items={[
+      { value: "parse", label: <>解析测试 <small>{testsRunning ? "运行中" : parseTestRun ? `通过 ${parseTestRun.passed} / ${parseTestRun.total}` : "未运行"}</small></>, id: `${id}-parse`, panelId: `${id}-parse-panel` },
+      { value: "cases", label: <>分析用例 <small>{casesCurrent ? `通过 ${caseRun.results.filter((result) => result.draft.passed).length} / ${cases.items.length}` : "未运行"}</small></>, id: `${id}-cases`, panelId: `${id}-cases-panel` }
+    ]} />
+    <TabPanel id={`${id}-parse-panel`} aria-labelledby={`${id}-parse`} hidden={testTab !== "parse"}>
+      <ParseTestsSection key={(skill.draft ?? skill.currentRevision).id} skillId={skill.id} spec={spec} setSpec={setSpec} disabled={disabled} repository={repository}
+        sample={sample} selectedLine={selectedLine} result={parseTestRun} running={testsRunning} runDisabled={testRunDisabled} runError={parseTestError} onRun={onRunTests} onBusyChange={onBusyChange} onValidityChange={onTestValidityChange} />
+    </TabPanel>
+    <TabPanel id={`${id}-cases-panel`} aria-labelledby={`${id}-cases`} hidden={testTab !== "cases"}>
+      <AnalysisCasesSection skillId={skill.id} repository={apiMode ? repository : undefined} canEdit={canEdit && !disabled} beforeRun={beforeCaseRun} onResultsChange={setCases}
+        draftId={skill.draft?.id ?? null} dirty={dirty} />
+    </TabPanel>
+  </section>;
 }
 
 const procedureOutline = ["适用场景", "先检查什么", "根因判定", "常见误判", "建议动作"]
@@ -286,10 +300,12 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
     finally { setTestsRunning(false); }
   };
   const ask = (title: string, description: string, action: () => void) => setConfirm({ title, description, action });
-  const switchSection = (id: string) => {
+  const switchSection = (id: string, tab?: "parse" | "cases") => {
     if (!formatValid) { setError("请先修正基础格式，再切换分区。"); return; }
     setError("");
     const query = new URLSearchParams(search); query.set("section", id);
+    if (tab) query.set("tab", tab);
+    else if (id === "tests" && !["parse", "cases"].includes(query.get("tab") ?? "")) query.set("tab", "parse");
     sectionNavigation.current = true;
     onNavigate(`/log-admin/skills/${encodeURIComponent(skillId)}?${query}`);
     sectionNavigation.current = false;
@@ -329,7 +345,8 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       navigator={<nav aria-label="技能分区导航">{skillSections.map((s) => <Button key={s.id} variant="ghost" disabled={!s.component || pending}
         aria-current={s.id === selected.id ? "page" : undefined} title={!s.component ? "即将推出" : undefined} onClick={() => switchSection(s.id)}>
         {s.label}{!s.component ? <small>即将推出</small> : null}</Button>)}</nav>}>
-      <Component key={selected.id === "tests" ? `${selected.id}:${base?.id}:${editReset}` : selected.id === "parsing" ? `parsing-${editorReset}` : selected.id} skill={skill} spec={spec} setSpec={setSpec} disabled={disabled} stats={stats} revisions={revisions}
+      <Component key={selected.id === "tests" ? `${selected.id}:${skillId}:${editReset}` : selected.id === "parsing" ? `parsing-${editorReset}` : selected.id} skill={skill} spec={spec} setSpec={setSpec} disabled={disabled} stats={stats} revisions={revisions}
+        testTab={new URLSearchParams(search).get("tab") === "cases" ? "cases" : "parse"} onTestTabChange={(tab) => switchSection("tests", tab)}
         sample={sample?.skillId === skillId ? sample : null} selectedLine={selectedLine} onLineSelect={setSelectedLine} onProfileValidityChange={setFormatValid}
         parseTestRun={parseTestRun} testsRunning={testsRunning} testRunDisabled={yamlInvalid || testsInvalid || signalsInvalid || !formatValid} parseTestError={parseTestError} onRunTests={() => void run(executeTests)} onTestValidityChange={setTestsEditorInvalid}
         onSignalHit={(line) => setHighlight((value) => ({ line, request: value.request + 1 }))}
@@ -341,7 +358,7 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
         }}
         repository={repository} apiMode={apiMode} canEdit={canEdit} dirty={dirty} onBusyChange={setPending}
         beforeCaseRun={async () => {
-          if (pending || yamlInvalid || conflict) throw new Error("请先修正草稿错误再运行用例。");
+          if (pending || yamlInvalid || testsInvalid || !formatValid || conflict) throw new Error("请先修正草稿错误再运行用例。");
           if ((dirty || !skill.draft) && !await run(async () => { await save(); })) throw new Error("草稿保存失败，请重试后再运行用例。");
         }}
         knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
@@ -356,16 +373,18 @@ export function SkillWorkspace({ skillId, search, repository, apiMode, canEdit, 
       open={dryRunOpen} onClose={() => setDryRunOpen(false)} onRunChange={setDryRun} /> : null}
     <ModalDialog open={publishOpen} onDismiss={pending ? undefined : () => setPublishOpen(false)} className="skill-publish-dialog modal-card--lg">
       {({ titleId }) => <><h2 id={titleId}>发布技能</h2>
-        <section className="skill-publish-test-summary" aria-label="发布前解析测试" aria-busy={testsRunning}>
+        <section className="skill-publish-test-summary" aria-label="发布前测试"><h3>发布前测试</h3>
+          <section aria-label="发布前解析测试" aria-busy={testsRunning}>
           <p role="status"><strong>{testsRunning ? "解析测试：运行中…" : parseTestRun ? `解析测试：通过 ${parseTestRun.passed} / ${parseTestRun.total}` : "解析测试：未运行"}</strong></p>
           {!testsRunning && parseTestRun?.failed ? <><p>失败测试：{parseTestRun.results.filter((test) => !test.passed).map((test) => test.name).join("、")}</p>
-            <Button variant="link" onClick={() => { setPublishOpen(false); switchSection("tests"); }}>查看失败测试</Button></> : null}
+            <Button variant="link" onClick={() => { setPublishOpen(false); switchSection("tests", "parse"); }}>查看失败测试</Button></> : null}
           {parseTestError ? <p role="alert">{parseTestError}</p> : null}
-          <p>测试失败不会阻止发布。</p>
+          </section>
+          <AnalysisCasePublishSummary skillId={skillId} draftId={skill.draft?.id} dirty={dirty} repository={repository}
+            onRun={() => { setPublishOpen(false); switchSection("tests", "cases"); }} />
+          <p>测试结果仅供参考，不阻止发布。</p>
         </section>
         <SkillSpecDiff before={skill.currentRevision.spec} after={spec} />
-        <AnalysisCasePublishSummary skillId={skillId} draftId={skill.draft?.id} dirty={dirty} repository={repository}
-          onRun={() => { setPublishOpen(false); switchSection("tests"); }} />
         <div className="dialog-actions"><Button variant="outline" disabled={pending} onClick={() => setPublishOpen(false)}>取消</Button>
           <Button disabled={disabled || conflict || yamlInvalid || testsInvalid || signalsInvalid || !formatValid} aria-busy={pending} onClick={() => void run(async () => {
             const draft = dirty ? await save() : skill.draft!;

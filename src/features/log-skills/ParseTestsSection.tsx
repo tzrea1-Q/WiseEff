@@ -99,7 +99,7 @@ export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository
     } catch { setError("无法从样例创建测试，请检查解析规则和样例行后重试。"); }
     finally { addingRef.current = false; if (active.current) { setAdding(false); onBusyChange(false); } }
   };
-  return <section className="skill-section skill-parse-tests" aria-label="测试"><h2>测试</h2>
+  return <section className="skill-section skill-parse-tests" aria-label="解析测试"><h3>解析测试</h3>
     <p>样例行与期望字段、信号随版本保存。保存草稿和发布前运行；失败不会阻止发布。</p>
     <div className="skill-parse-test-toolbar"><Button disabled={disabled || adding || tests.length >= MAX_PARSE_TESTS} aria-busy={adding} onClick={() => void add()}>新增测试</Button>
       <Button variant="outline" disabled={disabled || adding || running || runDisabled || !validation.success || !repository?.runSkillParseTests} aria-busy={running} onClick={onRun}>运行测试</Button>

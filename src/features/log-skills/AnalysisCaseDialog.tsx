@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,7 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
   const [refusal, setRefusal] = useState(initial.expectations.expectRefusal);
   const [degraded, setDegraded] = useState(initial.expectations.expectedDegradedReason ?? "");
   const [files, setFiles] = useState<File[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -121,7 +122,10 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
       <h2 id={titleId}>{title}</h2>
       <p>保留原始日志包，使用真实模型对比草稿与已发布版本。每行填写一条根因或建议。</p>
       <label>用例名称（必填）<Input aria-label="用例名称" required maxLength={200} disabled={pending} value={name} {...fieldProps("name")} onChange={(event) => setName(event.target.value)} /></label>{fieldError("name")}
-      {uploadRequired ? <label>原始日志包（必填）<Input aria-label="原始日志包" type="file" multiple required disabled={pending} {...fieldProps("files")} onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /></label> : null}{fieldError("files")}
+      {uploadRequired ? <div className="grid justify-items-start gap-2"><span>原始日志包（必填）</span>
+        <Button type="button" variant="outline" disabled={pending} {...fieldProps("files")} onClick={() => fileInput.current?.click()}>选择文件</Button>
+        <input ref={fileInput} hidden aria-label="原始日志包" type="file" multiple required disabled={pending} onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+      </div> : null}{fieldError("files")}
       {uploadRequired ? <p>最多 100 个文件、10 MiB；可选择多个文本日志或一个压缩包。</p> : null}
       {originalUploads?.length || availableFiles.length || files.length ? <section aria-label="原始日志文件"><h3>原始日志文件</h3><ul>{originalUploads?.length
         ? originalUploads.map((file) => <li key={file.fileName}>{file.fileName} · {formatBytes(file.sizeBytes)}</li>)
@@ -145,7 +149,7 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
             min={row.mode === "line" ? 1 : undefined} maxLength={row.mode === "pattern" ? 500 : undefined} disabled={pending} value={row.value} {...fieldProps(`value-${index}`)} onChange={(event) => updateEvidence(index, { value: event.target.value })} /></label>{fieldError(`value-${index}`)}
           <Button type="button" size="sm" variant="outline" aria-label={`移除证据 ${index + 1}`} disabled={pending} onClick={() => setEvidence((rows) => rows.filter((_, at) => at !== index))}>移除</Button>
         </div>)}
-        {fieldError("evidence")}<Button type="button" size="sm" variant="outline" disabled={pending || evidence.length >= 500} onClick={() => setEvidence((rows) => [...rows, { file: paths[0] ?? "", mode: "line", value: "" }])}>添加证据</Button>
+        {fieldError("evidence")}<Button type="button" size="sm" variant="outline" className="justify-self-start" disabled={pending || evidence.length >= 500} onClick={() => setEvidence((rows) => [...rows, { file: paths[0] ?? "", mode: "line", value: "" }])}>添加证据</Button>
       </fieldset>
       <label>期望建议动作{!refusal ? "（必填）" : "（可选）"}<Textarea aria-label="期望建议动作" required={!refusal} rows={3} maxLength={20000} disabled={pending} value={actions} {...fieldProps("actions")} onChange={(event) => setActions(event.target.value)} /></label>{fieldError("actions")}
       <label className="flex items-center gap-2"><input type="checkbox" disabled={pending} checked={refusal} onChange={(event) => setRefusal(event.target.checked)} />期望拒答或证据不足</label>

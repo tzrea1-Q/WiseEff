@@ -63,7 +63,6 @@ export function AnalysisCasePublishSummary({ skillId, draftId, dirty, repository
     if (repository?.listAnalysisCases) void repository.listAnalysisCases(skillId).then((value) => { if (active) setData(value); }, () => { if (active) setFailed(true); });
     return () => { active = false; };
   }, [repository, skillId, draftId]);
-  if (!repository?.listAnalysisCases || (data && !data.items.length)) return null;
   const run = data?.latestRun;
   const current = data?.current && !dirty && run?.status === "complete" && run.skillRevisionId === draftId
     && run.results.length === data.items.length;
@@ -71,15 +70,18 @@ export function AnalysisCasePublishSummary({ skillId, draftId, dirty, repository
   const regressed = run?.results.filter((result) => (result.delta ?? 0) < 0).length ?? 0;
   return <div aria-label="分析用例发布摘要">
     {current ? <p>分析用例：通过 {run.results.filter((result) => result.draft.passed).length} / {data!.items.length}（较已发布 +{improved} / −{regressed}）</p>
-      : <><p>{failed ? "分析用例结果暂不可用。" : "分析用例尚未针对当前草稿完整运行。"}</p><Button type="button" variant="link" onClick={onRun}>运行分析用例</Button></>}
-    <p>测试结果仅供参考，不阻止发布。</p>
+      : <p>{failed ? "分析用例：结果暂不可用。" : "分析用例：未运行"}</p>}
+    <Button type="button" variant="link" onClick={onRun}>{current ? "查看分析用例" : "运行分析用例"}</Button>
   </div>;
 }
 
-export function AnalysisCasesSection({ skillId, repository, canEdit, beforeRun }: {
+export function AnalysisCasesSection({ skillId, repository, canEdit, beforeRun, onResultsChange, draftId, dirty = false }: {
   skillId: string; repository?: Partial<SkillWorkspaceRepository>; canEdit: boolean; beforeRun: () => Promise<unknown>;
+  onResultsChange?: (results: AnalysisCaseList | null) => void;
+  draftId?: string | null; dirty?: boolean;
 }) {
   const [data, setData] = useState<AnalysisCaseList | null>(null);
+  useEffect(() => { onResultsChange?.(data); }, [data, onResultsChange]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<AnalysisCase | "new" | null>(null);
@@ -91,6 +93,7 @@ export function AnalysisCasesSection({ skillId, repository, canEdit, beforeRun }
   const refresh = useCallback(async () => { if (repository?.listAnalysisCases) setData(await repository.listAnalysisCases(skillId)); }, [repository, skillId]);
   useEffect(() => { let active = true; if (repository?.listAnalysisCases) void repository.listAnalysisCases(skillId).then((value) => { if (active) setData(value); }, (cause) => { if (active) setError(presentError(cause, "无法加载分析用例。")); }); return () => { active = false; }; }, [repository, skillId]);
   const run = data?.latestRun;
+  const current = data?.current && !dirty && (draftId === undefined || run?.skillRevisionId === draftId);
   useEffect(() => {
     if (run?.status !== "processing" || !repository?.getAnalysisCaseRun) return;
     let active = true;
@@ -146,13 +149,13 @@ export function AnalysisCasesSection({ skillId, repository, canEdit, beforeRun }
     {importStatus ? <p role="status">{importStatus}</p> : null}
     {run ? <div role="status" aria-live="polite"><p>{run.status === "processing" ? `正在运行分析用例… ${run.progress}%` : run.status === "complete" ? "分析用例运行完成" : "分析用例运行失败"}</p>
       {run.status === "processing" ? <progress aria-label="分析用例运行进度" max={100} value={run.progress} /> : null}
-      {!data.current && run.status !== "processing" ? <p>以下为历史结果，请针对当前草稿重新运行。</p> : null}
+      {!current && run.status !== "processing" ? <p>以下为历史结果，请针对当前草稿重新运行。</p> : null}
       {run.error ? <p role="alert">分析用例运行失败或已中断，请重试。</p> : null}</div> : null}
     {error ? <div role="alert"><p>{error}</p><Button variant="link" onClick={() => void action(refresh)}>重新加载</Button></div> : null}
     <DataTable fluid rows={data.items} rowKey={(item) => item.id} ariaLabel="分析用例列表" emptyMessage="还没有分析用例，添加日志包和期望结果后开始回归测试。" columns={[
       { key: "name", header: "用例", render: (item) => <><strong>{item.name}</strong><p>{item.files.map((file) => file.path).join("、")}</p></> },
       { key: "scores", header: "草稿 / 已发布 / 变化", render: (item) => { const last = lastResult(item.id); const result = last?.result; return result ? <>
-        {last!.runId !== run?.id || !data.current ? <p>历史结果</p> : null}
+        {last!.runId !== run?.id || !current ? <p>历史结果</p> : null}
         <p>草稿 {score(result.draft.score)} · {result.draft.passed ? "通过" : "未通过"} · {degradation(result.draft)}</p>
         <p>已发布 {result.published ? `${score(result.published.score)} · ${result.published.passed ? "通过" : "未通过"} · ${degradation(result.published)}` : "—"}</p><p>变化 {delta(result.delta)}</p></> : "尚未运行"; } },
       { key: "actions", header: "操作", render: (item) => { const last = lastResult(item.id); return <RowActionMenu label={`${item.name}操作`}
@@ -176,7 +179,7 @@ export function AnalysisCasesSection({ skillId, repository, canEdit, beforeRun }
             })}>{traces[revision] ? "刷新轨迹" : "加载轨迹"}</Button>
               {traces[revision] ? <AnalysisTrace steps={traces[revision]} analysis={outcome.report} /> : null}</details>
           </OutcomeDetails> : null; }) : null}</div>
-        <Button variant="outline" onClick={() => setDetails(null)}>关闭</Button></>}
+        <div className="dialog-actions"><Button variant="outline" onClick={() => setDetails(null)}>关闭</Button></div></>}
     </ModalDialog>
   </section>;
 }

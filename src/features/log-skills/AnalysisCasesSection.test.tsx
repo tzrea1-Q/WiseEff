@@ -24,6 +24,19 @@ const run: AnalysisCaseRun = { id: "run", skillRevisionId: "draft", publishedRev
     published: { score: 60, passed: false, report, traceReference: "trace-published" }, delta: 20 }], error: null, createdAt: "2026-10-19" };
 
 describe("analysis cases", () => {
+  it("marks retained results historical when the workspace draft changes or has unsaved edits", async () => {
+    const repository = { listAnalysisCases: async () => ({ items: [item], latestRun: run, current: true }) };
+    const props = { skillId: "skill", repository, canEdit: false, beforeRun: async () => undefined };
+    const { rerender } = render(<AnalysisCasesSection {...props} draftId="draft" />);
+    await screen.findByRole("table", { name: "分析用例列表" });
+    expect(screen.queryByText("以下为历史结果，请针对当前草稿重新运行。")).not.toBeInTheDocument();
+    rerender(<AnalysisCasesSection {...props} draftId="draft" dirty />);
+    expect(screen.getByText("以下为历史结果，请针对当前草稿重新运行。")).toBeVisible();
+    rerender(<AnalysisCasesSection {...props} draftId="saved-new-draft" />);
+    expect(screen.getByText("以下为历史结果，请针对当前草稿重新运行。")).toBeVisible();
+    expect(screen.getByRole("table")).toHaveTextContent("历史结果");
+  });
+
   it("lists scores, edits expectations, runs one or all and inspects the shared trace", async () => {
     let latestRun: AnalysisCaseRun | null = run;
     const repository = { listAnalysisCases: vi.fn(async () => ({ items: [item], latestRun, current: true })),
@@ -70,7 +83,7 @@ describe("analysis cases", () => {
     if (dirty) { fireEvent.click(await screen.findByRole("button", { name: "运行分析用例" })); expect(onRun).toHaveBeenCalled();
       expect(screen.queryByText(/通过 1/)).not.toBeInTheDocument(); }
     else expect(await screen.findByText("分析用例：通过 1 / 1（较已发布 +1 / −0）")).toBeInTheDocument();
-    expect(screen.getByText("测试结果仅供参考，不阻止发布。")).toBeInTheDocument();
+    expect(screen.queryByText("测试结果仅供参考，不阻止发布。")).not.toBeInTheDocument();
   });
 
   it("offers no mutating actions to a viewer and shows the empty state", async () => {
@@ -154,7 +167,22 @@ describe("analysis cases", () => {
     expect(screen.getByRole("textbox", { name: "用例名称" })).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByText("请输入用例名称。")).toBeInTheDocument();
     expect(screen.getByText("请选择原始日志文件或压缩包。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择文件" })).toHaveAccessibleDescription("请选择原始日志文件或压缩包。");
     expect(screen.getByText("请至少添加一条关键证据。")).toBeInTheDocument();
+  });
+
+  it("opens the multiple-file picker from the visible outline action and lists selected uploads", async () => {
+    render(<AnalysisCaseDialog initial={{ name: "多文件用例", expectations: emptyCaseExpectations }} uploadRequired onSave={vi.fn()} onClose={vi.fn()} />);
+    const chooser = screen.getByRole("button", { name: "选择文件" });
+    expect(chooser).toHaveAttribute("data-variant", "outline");
+    const input = screen.getByLabelText("原始日志包");
+    expect(input).toHaveAttribute("hidden"); expect(input).toHaveAttribute("multiple");
+    const open = vi.spyOn(input, "click");
+    await userEvent.click(chooser); expect(open).toHaveBeenCalledOnce();
+    fireEvent.change(input, { target: { files: [new File(["one"], "device.log"), new File(["two"], "driver.log")] } });
+    const selected = screen.getByRole("region", { name: "原始日志文件" });
+    expect(selected).toHaveTextContent("device.log"); expect(selected).toHaveTextContent("driver.log");
+    expect(within(selected).getAllByRole("listitem")).toHaveLength(2);
   });
 
   it("maps a server field path to a specific accessible Chinese error", async () => {

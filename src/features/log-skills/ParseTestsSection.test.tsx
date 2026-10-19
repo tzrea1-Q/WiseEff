@@ -166,9 +166,9 @@ describe("parse test workspace", () => {
     const summary = within(dialog).getByRole("region", { name: "发布前解析测试" });
     expect(within(summary).getByText("失败测试：Charge fault")).toBeVisible();
     expect(summary.compareDocumentPosition(within(dialog).getByLabelText("变更摘要")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(dialog).getByText("测试失败不会阻止发布。")).toBeVisible();
+    expect(within(dialog).getByText("测试结果仅供参考，不阻止发布。")).toBeVisible();
     fireEvent.click(within(dialog).getByRole("button", { name: "查看失败测试" }));
-    expect(onNavigate).toHaveBeenCalledWith(expect.stringContaining("section=tests"));
+    expect(onNavigate).toHaveBeenCalledWith(expect.stringContaining("section=tests&tab=parse"));
     fireEvent.click(screen.getByRole("button", { name: "发布" }));
     await waitFor(() => expect(within(screen.getByRole("dialog", { name: "发布技能" })).getByRole("button", { name: "发布" })).toBeEnabled());
     fireEvent.click(within(screen.getByRole("dialog", { name: "发布技能" })).getByRole("button", { name: "发布" }));
@@ -228,7 +228,7 @@ describe("parse test workspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: "发布" }));
     const dialog = screen.getByRole("dialog", { name: "发布技能" });
     expect(within(dialog).getByRole("status")).toHaveTextContent("解析测试：未运行");
-    expect(within(dialog).getByText("测试失败不会阻止发布。")).toBeVisible();
+    expect(within(dialog).getByText("测试结果仅供参考，不阻止发布。")).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "发布" })).toBeEnabled();
   });
 });
