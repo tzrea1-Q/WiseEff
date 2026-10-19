@@ -159,6 +159,15 @@ export function createHttpLogAnalysisRepository(
   const baseUrl = options.baseUrl ?? resolveWiseEffApiBaseUrl();
   const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl });
 
+  async function uploadFiles(input: LogUploadInput): Promise<LogUploadResponse> {
+    if (!input.files) return apiClient.post<LogUploadResponse>("/api/v1/log-files", uploadBody(input, await fileToBase64(input.file)));
+    const form = new FormData();
+    for (const file of input.files) form.append("file", file);
+    if (input.analysisQuestion) form.append("analysisQuestion", input.analysisQuestion);
+    if (input.skillId ?? input.logDomainId) form.append("skillId", (input.skillId ?? input.logDomainId)!);
+    if (input.relatedParameterPin) form.append("relatedParameterPin", JSON.stringify(input.relatedParameterPin));
+    return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
+  }
   const repository: LogAnalysisRepository = {
     async listLogs(query?: LogListQuery) {
       const response = parseContractDto(
@@ -186,7 +195,7 @@ export function createHttpLogAnalysisRepository(
     async uploadLog(input: LogUploadInput) {
       const response = parseContractDto(
         logFileUploadResponseSchema,
-        await apiClient.post<LogUploadResponse>("/api/v1/log-files", uploadBody(input, await fileToBase64(input.file))),
+        await uploadFiles(input),
         "LogFileUploadResponse"
       );
       return {

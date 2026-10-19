@@ -39,6 +39,7 @@ export type LogRelatedParameterPin = {
 export type LogUploadInput = {
   skillId?: string;
   file: File;
+  files?: File[];
   analysisQuestion?: string;
   relatedParameterPin?: LogRelatedParameterPin;
   /** Optional log-domain binding; absent = 未分类域 (upload is never blocked by domain selection). */

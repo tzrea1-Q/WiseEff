@@ -52,6 +52,7 @@ import { DEBUG_CATALOG_MAX_DOCUMENT_BYTES } from "./modules/debugging/schemas";
 import { createRouter, type RouteRequest } from "./shared/http/router";
 import { isRootDatabase, type Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
+import { loadLogBundleLimits } from "./config/env";
 import type { JsonWebKey } from "node:crypto";
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
@@ -347,6 +348,10 @@ export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
 
 export function resolveRouteBodyLimit({ method, path }: { method: string; path: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+log-files\/*$/.test(path)) {
+    // Bound collection too: allow JSON base64 expansion and multipart headers.
+    return Math.ceil(loadLogBundleLimits().maxCompressedBytes * 4 / 3) + 4 * 1024 * 1024;
+  }
   if (
     method === "POST" &&
     (path === "/api/v1/debugging/admin/catalog/import" || path === "/api/v1/debugging/admin/catalog/import-preview")

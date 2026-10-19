@@ -65,6 +65,7 @@ export type DebugDeviceTransport = "simulator" | "hdc" | "adb" | "multi";
 export type TimeWindow = "today" | "7d" | "30d";
 
 export type LogEvidence = {
+  filePath?: string | null;
   id: string;
   stageId: LogStageId;
   lineNumbers: number[];
@@ -201,6 +202,7 @@ export type ParameterSubmissionRound = {
 };
 
 export type LogRecord = {
+  files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;
   id: string;
   reportId: string;

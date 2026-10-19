@@ -45,7 +45,7 @@ const conclusionByRuleHit: Array<{ ruleHit: string; conclusion: string; impact: 
 ];
 
 function parseExcerptLineNumbers(prompt: string): number[] {
-  return [...prompt.matchAll(/^L(\d+): /gm)].map((match) => Number(match[1]));
+  return [...prompt.matchAll(/^(?:".*":)?L(\d+): /gm)].map((match) => Number(match[1]));
 }
 
 function parseRuleHits(prompt: string): RuleHitSummary[] {
@@ -75,6 +75,8 @@ export function createDeterministicLogAnalysisModel(): LogAnalysisChatModel {
       }
 
       const excerptLines = parseExcerptLineNumbers(prompt);
+      const excerptFile = prompt.match(/^(".*"):L\d+: /m)?.[1];
+      const filePath = excerptFile ? JSON.parse(excerptFile) as string : undefined;
       const ruleHits = parseRuleHits(prompt);
       const analysisQuestion = parseAnalysisQuestion(prompt);
       const excerptSet = new Set(excerptLines);
@@ -104,6 +106,7 @@ export function createDeterministicLogAnalysisModel(): LogAnalysisChatModel {
           : ["Collect more context from the device and adjacent logs before escalating."],
         evidence: [
           {
+            filePath,
             lineNumbers: citedLines,
             inference: matched
               ? `Deterministic analysis matched the ${matched.ruleHit} pattern on the cited lines.`
@@ -128,13 +131,14 @@ export function createDeterministicLogAnalysisModel(): LogAnalysisChatModel {
 }
 
 type PrefilterToolResult = {
+  files?: Array<{ file: string; findings: { result: PrefilterToolResult } }>;
   ruleHits?: string[];
   evidence?: Array<{ ruleHit?: string; lineNumbers?: number[] }>;
   anomalyLineNumbers?: number[];
 };
 
 type LineRangeToolResult = {
-  lines?: Array<{ lineNumber: number; content: string }>;
+  lines?: Array<{ file?: string; lineNumber: number; content: string }>;
 };
 
 function parseToolResult<T>(messages: LogAnalysisChatMessage[], toolName: string): T | undefined {
@@ -179,7 +183,9 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
       }
 
       const analysisQuestion = parseAnalysisQuestion(promptText);
-      const prefilterResult = parseToolResult<PrefilterToolResult>(messages, "get_prefilter_findings");
+      const bundlePrefilter = parseToolResult<PrefilterToolResult>(messages, "get_prefilter_findings");
+      const filePath = bundlePrefilter?.files?.[0]?.file;
+      const prefilterResult = bundlePrefilter?.files?.[0]?.findings.result ?? bundlePrefilter;
       const lineRangeResult = parseToolResult<LineRangeToolResult>(messages, "read_line_range");
       const mustConverge = messages.some(
         (message) => message.role === "user" && message.content.startsWith("Budget exhausted:")
@@ -198,7 +204,7 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
           {
             action: "tool",
             tool: "read_line_range",
-            args: { startLine: Math.max(1, focusLine - 2), endLine: focusLine + 2 }
+            args: { ...(filePath ? { file: filePath } : {}), startLine: Math.max(1, focusLine - 2), endLine: focusLine + 2 }
           },
           messages
         );
@@ -231,6 +237,7 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
             suggestedActions: ["Collect more context from the device and adjacent logs before escalating."],
             evidence: [
               {
+                filePath,
                 lineNumbers: fallbackLines,
                 inference: "The reviewed window did not confirm a known anomaly pattern.",
                 suggestedAction: "Re-run the analysis with a longer log capture if symptoms persist."
@@ -258,6 +265,7 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
             : ["Collect more context from the device and adjacent logs before escalating."],
           evidence: [
             {
+              filePath,
               lineNumbers: citedLines,
               inference: matched
                 ? `Deterministic loop analysis matched the ${matched.ruleHit} pattern on the lines read in this run.`

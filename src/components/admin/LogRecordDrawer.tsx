@@ -253,7 +253,7 @@ export function LogRecordDrawer({
                 <li key={evidence.id} className="space-y-1 text-[11px] leading-relaxed text-muted-foreground">
                   <div className="flex items-center justify-between gap-2 font-mono">
                     <span className="text-foreground">{STAGE_LABELS[evidence.stageId]}</span>
-                    <span>L{evidence.lineNumbers.join(", L")}</span>
+                    <span>{evidence.filePath ? evidence.lineNumbers.map((line) => `${evidence.filePath}:${line}`).join(", ") : `L${evidence.lineNumbers.join(", L")}`}</span>
                   </div>
                   <p>{evidence.inference}</p>
                   <p className="text-foreground">{evidence.suggestedAction}</p>

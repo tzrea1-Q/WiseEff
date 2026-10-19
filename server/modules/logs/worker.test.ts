@@ -413,6 +413,27 @@ function createFakeWorkerDb(fixture = createFixture()) {
 }
 
 describe("log worker", () => {
+  it("loads analyzed inventory per file, preserving local line numbers and hiding object keys from the analyzer", async () => {
+    const { db } = createFakeWorkerDb();
+    const originalQuery = db.query.bind(db);
+    db.query = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      if (text.includes("from log_files")) return { rows: ["a.log", "b.log"].map((path) => ({
+        path, sizeBytes: 20, lineCount: 2, encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null, objectKey: path
+      })) as Row[], rowCount: 2 };
+      return originalQuery<Row>(text, values);
+    };
+    const seen: AnalyzeLogInput[] = [];
+    const objectStore = createObjectStore(Buffer.from("ERROR code=E_FILE\n"));
+    const outcome = await processNextLogAnalysisJob({ db, objectStore, analyzer: {
+      async analyze(input) { seen.push(input); return createRuleBasedLogAnalyzer().analyze(input); }
+    } });
+    expect(outcome).toBe("processed");
+    expect(seen[0].files).toMatchObject([
+      { path: "a.log", parsed: { entries: [{ lineNumber: 1 }] } },
+      { path: "b.log", parsed: { entries: [{ lineNumber: 1 }] } }
+    ]);
+    expect(JSON.stringify(seen[0].files)).not.toContain("objectKey");
+  });
   it("leases a queued job to one worker and prevents a second claim", async () => {
     const { db, fixture } = createFakeWorkerDb();
 

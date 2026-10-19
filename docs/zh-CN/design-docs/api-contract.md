@@ -378,7 +378,7 @@ GET  /api/v1/jobs/:jobId/events
 
 业务域 DTO 携带 `modelOverride?` 与 Webhook 摘要 `{ enabled, url?, secretConfigured, secretLastFour? }`——签名密钥本身只写不读。出站结果 Webhook 的载荷与签名方案（`X-WiseEff-Signature` = 对 `timestamp.rawBody` 的 HMAC-SHA256,`X-WiseEff-Timestamp` 重放窗口）见 [`docs/zh-CN/api/log-analysis-integration.md`](../api/log-analysis-integration.md);投递尽力而为,绝不阻塞分析。
 
-`POST /api/v1/log-files` 在 M2 接受 JSON base64 内容，后续可替换为签名上传凭证而不改变 `POST /api/v1/logs` 的分析合同。
+`POST /api/v1/log-files` 接受 JSON base64 或 multipart 多文件内容，保持 `POST /api/v1/logs` 的分析合同。
 
 分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，写入要求 `logs:admin-domains`；每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save` 或 `log-skill-publish` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、描述、状态、知识关联和 Webhook 配置仍属于身份。
 
@@ -386,7 +386,11 @@ GET  /api/v1/jobs/:jobId/events
 
 上传、创建与 rerun 接受可选 `logDomainId`：必须属于本组织且为 `active`，否则 `400`；缺省即内建未分类域语义（通用分析，上传绝不因域选择被阻塞）。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
 
-**压缩包上传（P3）**：上传文件名可为 `.gz`（单文件 gzip，内层名须保留受支持文本扩展 —— `.log`、`.txt`、`.csv` 或 `.json`，如 `app.log.gz`）或 `.zip`（恰好一个非目录条目、条目名为受支持文本扩展；支持 stored/deflate，不支持加密）。服务端在入库前解压，对象存储与后续所有证据行号均指向解压后的 UTF-8 文本。解压失败（流损坏、多条目 zip、条目名不支持、超限）走既有"不支持格式"路径：`failed` 记录 + 可读 `failureReason`，不创建分析任务。防炸弹尺寸纪律（常量见 `server/modules/logs/unpack.ts`）：解压后内容绝对上限 **100 MB**（既有文本日志上界），且不超过压缩体的 **200 倍**（1 MB 下限保护小压缩包不被误伤）。
+`POST /api/v1/log-files` 接受原有 JSON base64 请求，也接受 multipart/form-data：重复的 `file` 字段（多个普通文件）作为一个日志包；也可上传一个压缩包，不能与其他文件混传。支持 `.tar`、`.tar.gz`/`.tgz`、多条目 `.zip`（stored/deflate）和 `.gz`；gzip 内层名为 `.tar` 时按 tar.gz 处理。内层压缩包最多再展开一次，路径以前一层压缩条目名作为目录前缀。目录跳过；规范化相对路径最多 1024 个 UTF-8 字节。路径穿越（包括反斜杠与 `..` 段）、绝对路径、链接、设备、FIFO、加密 zip、重复规范化路径、损坏或超限压缩包生成失败记录：`failureReason` 说明规则原因，使用 `inline/` 伪存储键，不写对象存储，也不创建分析任务。接口仍返回 `201`，并写入 `log-upload-failed` 审计及 `{ fileName, failureReason }` 元数据。日志包及压缩包原因使用中文；不支持扩展名的单个普通文件保留原英文格式提示。非预期解码或压缩异常统一返回压缩包完整性提示，不暴露内部错误。
+
+每条记录返回 `files: [{ path, sizeBytes, lineCount, encoding, lossy, status, skipReason }]`；证据增加可空的 `filePath`，行号始终相对于该文件。`encoding` 为 `utf-8|utf-16le|utf-16be`：识别 UTF-8 及 BOM、UTF-16 LE/BE BOM，其余以 UTF-8 有损解码并标记 `lossy`。无 UTF-16 BOM 且前 8 KiB 含 NUL、解码后含 PostgreSQL 文本不支持的 U+0000，或文本样本中控制字符占比大于 20% 的文件列为已跳过（「二进制文件」）；不支持扩展名也列出原因。`.log/.txt/.csv/.json` 和内容为文本的无扩展名文件参与分析。只有跳过文件的包仍保存清单及失败记录，不创建任务。原始文本逐文件存为 UTF-8；旧记录没有清单时继续读取原单对象。结果 webhook 仍仅发送摘要，不含证据或原始文本。
+
+默认限制：上传总字节 100 MiB（`LOG_BUNDLE_MAX_COMPRESSED_BYTES`），文件总原始字节 100 MiB（`LOG_BUNDLE_MAX_UNPACKED_BYTES`），最多 2000 文件（`LOG_BUNDLE_MAX_FILES`），单文件 100 MiB（`LOG_BUNDLE_MAX_FILE_BYTES`）。整个压缩包和每次 inflate 都受 200 倍压缩比约束（1 MiB 最低预算），并受单文件/剩余总大小限制；tar.gz 的中间 tar 容器也受剩余总大小约束，含 tar 头及填充。普通单文件默认仍至多 100 MiB；配置后的上传、总大小、单文件限制取最小值。服务端最终判定，客户端仅作明显超限预检。
 
 **反馈质量洞察（P3）**：`GET /api/v1/logs/feedback-insights`（`logs:view`，组织隔离）把 `log_feedback` 聚合给 `/log-admin`「分析质量」看板：按业务域 × `analysisSource` × `promptVersion` 每组一行，含 `totalCount`、`helpfulCount`、`helpfulRate`（0..1）与 `lastFeedbackAt`。可选 `timeWindow=today|7d|30d` 按反馈创建时间过滤（与 `GET /api/v1/logs` 相同的区间语义）。反馈归因到写入时戳记的分析 run（`log_feedback.run_id`，取当时日志的 `current_run_id`）；`run_id` 仍为空的历史行回退到日志当前 run。列表/详情仍读取当前 run 的报告。未分类域的 `logDomainId`/`logDomainName` 为 `null`，无来源信息的历史报告 `analysisSource`/`promptVersion` 为 `null`。
 

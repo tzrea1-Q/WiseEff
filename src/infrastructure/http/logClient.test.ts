@@ -61,6 +61,17 @@ function createRepository(fetchMock: typeof fetch) {
 }
 
 describe("createHttpLogAnalysisRepository", () => {
+  it("sends repeated multipart file parts as one bundle and preserves inventory and evidence paths", async () => {
+    const files = [new File(["first"], "a.log"), new File(["second"], "b.log")];
+    const inventory = [{ path: "a.log", sizeBytes: 5, lineCount: 1, encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null }];
+    const fetchMock = createFetchMock({ fileObject: { id: "file-1" }, log: { ...baseLogDto, files: inventory,
+      evidence: [{ id: "e1", stageId: "rootcause", filePath: "a.log", lineNumbers: [1], inference: "failure", suggestedAction: "inspect" }] }, job: baseJobDto }, 201);
+    const result = await createRepository(fetchMock).uploadLog({ file: files[0], files, skillId: "skill-1", analysisQuestion: "why" });
+    const form = fetchMock.mock.calls[0][1]?.body as FormData;
+    expect(form.getAll("file")).toEqual(files); expect(form.get("skillId")).toBe("skill-1"); expect(form.get("analysisQuestion")).toBe("why");
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty("Content-Type");
+    expect(result.log.files).toEqual(inventory); expect(result.log.evidence[0].filePath).toBe("a.log");
+  });
   it("reads skill publication summaries and preserves the run revision pin", async () => {
     const skill = { id: "skill-1", name: "设备诊断", status: "active", createdAt: "2026-10-18", updatedAt: "2026-10-18",
       currentRevision: { id: "skill-v2", number: 2, publishedAt: "2026-10-18" }, hasDraft: true, analyses7d: 4, helpfulRate7d: 0.75 };

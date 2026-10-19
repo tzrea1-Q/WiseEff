@@ -10,7 +10,7 @@ describe("log analysis behavior eval harness", () => {
 
     expect(report.promptVersion).toBe(LOG_ANALYSIS_PROMPT_VERSION);
     expect(report.loopPromptVersion).toBe(LOG_ANALYSIS_LOOP_PROMPT_VERSION);
-    expect(report.failed).toBe(0);
+    expect(report.failed, JSON.stringify(report.scenarios.filter((scenario) => !scenario.pass))).toBe(0);
     expect(report.scenarios.length).toBeGreaterThanOrEqual(14);
     expect(report.scenarios.filter((scenario) => scenario.kernel === "loop").length).toBeGreaterThanOrEqual(8);
     expect(report.scenarios.every((scenario) => scenario.pass)).toBe(true);

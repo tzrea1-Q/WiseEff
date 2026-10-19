@@ -12,6 +12,9 @@ import type { RelatedParameterChange, RelatedParameterRunSnapshot } from "../../
  * snapshot authorized.
  */
 export type LogAnalysisToolContext = {
+  signalRules?: import("../../signalRules").SignalRuleSet;
+  files?: import("../../analyzer").AnalyzeLogInput["files"];
+  filePath?: string;
   parsed: Extract<ParseResult, { ok: true }>;
   prefilter: PrefilterFindings;
   /** Bound to the log's organization + domain link set; absent = retrieval unavailable (offline eval). */

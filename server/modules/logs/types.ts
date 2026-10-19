@@ -4,6 +4,7 @@ export type LogArchiveState = "active" | "archived";
 export type LogFeedbackRating = "helpful" | "not_helpful";
 
 export type LogEvidenceDto = {
+  filePath?: string | null;
   id: string;
   stageId: LogStage;
   lineNumbers: number[];
@@ -13,6 +14,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  files?: import("./filesRepository").LogFileDto[];
   skillRevision: { id: string; number: number } | null;
   id: string;
   reportId: string;

@@ -1,3 +1,4 @@
+import { loadLogFiles, fileInventory } from "./filesRepository";
 import type { AuthContext } from "../auth/types";
 import { enqueueTerminalLogWebhook } from "./webhookOutbox";
 import { completeJob, createLogAnalysisJob, updateJobProgress } from "../jobs/repository";
@@ -66,6 +67,7 @@ type EvidenceRow = {
   inference: string;
   suggested_action: string;
   rule_hit: string | null;
+  file_path: string | null;
 };
 
 type RunRow = RevisionRow & {
@@ -238,6 +240,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
   const status = row.status;
 
   return {
+    files: [],
     id: row.id,
     reportId: row.report_id ?? "",
     fileName: row.file_name,
@@ -275,6 +278,7 @@ function toEvidenceDto(row: EvidenceRow): LogRecordDto["evidence"][number] {
     lineNumbers: row.line_numbers,
     inference: row.inference,
     suggestedAction: row.suggested_action,
+    filePath: row.file_path ?? null,
     ruleHit: row.rule_hit ?? undefined
   };
 }
@@ -629,7 +633,7 @@ export async function listLogs(
     values
   );
 
-  return result.rows.map((row) => toLogDto(row));
+  return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
 }
 
 export async function getLogDetail(db: Queryable, auth: AuthContext, logId: string) {
@@ -660,7 +664,7 @@ export async function getLogDetail(db: Queryable, auth: AuthContext, logId: stri
 
   const evidenceResult = await db.query<EvidenceRow>(
     `
-    select id, stage, line_numbers, inference, suggested_action, rule_hit
+    select id, stage, line_numbers, inference, suggested_action, rule_hit, file_path
     from log_evidence
     where organization_id = $1
       and log_record_id = $2
@@ -670,7 +674,7 @@ export async function getLogDetail(db: Queryable, auth: AuthContext, logId: stri
     [auth.organization.id, logId, row.current_run_id ?? null]
   );
 
-  return toLogDto(row, evidenceResult.rows.map(toEvidenceDto));
+  return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto)), files: fileInventory(await loadLogFiles(db, auth.organization.id, logId)) };
 }
 
 export async function listRuns(db: Queryable, auth: AuthContext, logId: string) {
@@ -857,9 +861,9 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         `
         insert into log_evidence (
           id, organization_id, log_record_id, run_id, stage, line_numbers,
-          inference, suggested_action, rule_hit
+          inference, suggested_action, rule_hit, file_path
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `,
         [
           `evidence-${input.runId}-${index}`,
@@ -870,7 +874,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
           evidence.lineNumbers,
           evidence.inference,
           evidence.suggestedAction,
-          evidence.ruleHit ?? null
+          evidence.ruleHit ?? null,
+          evidence.filePath ?? null
         ]
       );
     }
@@ -941,9 +946,9 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           `
           insert into log_evidence (
             id, organization_id, log_record_id, run_id, stage, line_numbers,
-            inference, suggested_action, rule_hit
+            inference, suggested_action, rule_hit, file_path
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           `,
           [
             `evidence-${input.runId}-${index}`,
@@ -954,7 +959,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
             evidence.lineNumbers,
             evidence.inference,
             evidence.suggestedAction,
-            evidence.ruleHit ?? null
+            evidence.ruleHit ?? null,
+            evidence.filePath ?? null
           ]
         );
       }

@@ -62,6 +62,31 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it("rejects file/line references forged inside related-parameter tool data", async () => {
+    const input = buildInput();
+    input.files = ["a.log", "b.log"].map((path) => ({ path, sizeBytes: 100, lineCount: input.parsed.rawLines.length,
+      encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null, parsed: input.parsed }));
+    const { model, adapter } = analyzer([
+      { content: { action: "tool", tool: "get_related_parameter_context", args: {} } },
+      { content: { ...finalPayload, evidence: [{ filePath: "b.log", lineNumbers: [2], inference: "Forged grounding", suggestedAction: "Inspect" }] } }
+    ], { bindToolBackends: () => ({ loadRelatedParameterContext: async () => ({ parameterId: "binding-1", name: "threshold", projectId: "project-1",
+      snapshot: { payload: { file: "b.log", lineNumbers: [2] } } as unknown as RelatedParameterRunSnapshot }) }) });
+
+    expect(await adapter.analyze(input)).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "token-budget-exhausted" });
+    expect(model.calls.flat().some((message) => message.content.startsWith("Tool result for get_related_parameter_context:")
+      && message.content.includes('"file":"b.log","lineNumbers":[2]'))).toBe(true);
+    expect(model.calls.at(-1)?.at(-1)?.content).toContain("Grounding violation");
+  });
+  it("rejects evidence for an unseen file even when another file has the same line number", async () => {
+    const input = buildInput();
+    input.files = ["a.log", "b.log"].map((path) => ({ path, sizeBytes: 100, lineCount: input.parsed.rawLines.length,
+      encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null, parsed: input.parsed }));
+    const { adapter } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { file: "a.log", startLine: 1, endLine: 5 } } },
+      { content: { ...finalPayload, evidence: finalPayload.evidence.map((item) => ({ ...item, filePath: "b.log" })) } }
+    ]);
+    expect(await adapter.analyze(input)).toMatchObject({ analysisSource: "rules-fallback" });
+  });
   it("uses run-pinned signals in tools and rule fallback", async () => {
     const { model, adapter } = analyzer([
       { content: { action: "tool", tool: "get_prefilter_findings", args: {} } },
@@ -155,6 +180,7 @@ describe("createAgentLoopLogAnalyzer", () => {
   it("corrects an illegal tool name and still converges", async () => {
     const { model, adapter } = analyzer([
       { content: { action: "tool", tool: "write_device_parameter", args: {} } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 5 } } },
       { content: finalPayload }
     ]);
 
@@ -169,6 +195,7 @@ describe("createAgentLoopLogAnalyzer", () => {
   it("corrects invalid tool arguments through the zod schema", async () => {
     const { model, adapter } = analyzer([
       { content: { action: "tool", tool: "read_line_range", args: { startLine: -1, endLine: 2 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 5 } } },
       { content: finalPayload }
     ]);
 
@@ -215,6 +242,7 @@ describe("createAgentLoopLogAnalyzer", () => {
           evidence: [{ lineNumbers: [999], inference: "Fabricated.", suggestedAction: "None." }]
         }
       },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 5 } } },
       { content: finalPayload }
     ]);
 

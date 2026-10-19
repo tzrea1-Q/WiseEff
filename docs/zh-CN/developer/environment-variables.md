@@ -179,11 +179,17 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_DETERMINISTIC` | `.env.example` 为 `true`，代码默认 `false` | 离线开发/测试/评测 | 使用确定性桩模型（`model` 记 `deterministic`），无需 provider 且就绪检查通过。生产必须配置真实 provider 并保持 `false`。 |
 | `LOG_ANALYSIS_KERNEL` | `loop` | 分析内核选择 | `loop` = P2 有界多步 agent（五个只读工具，默认）；`single-shot` = P1 单发内核，保留为配置回退。 |
 | `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 每次分析的最大模型步数；超出触发标注为 `token-budget-exhausted` 的提前收敛。 |
+| `LOG_BUNDLE_MAX_COMPRESSED_BYTES` | `104857600` | 日志包接入 | 上传文件总字节数（含普通文件），默认 100 MiB。 |
+| `LOG_BUNDLE_MAX_UNPACKED_BYTES` | `104857600` | 日志包接入 | 文件原始字节总量；中间解压容器也受限，默认 100 MiB。 |
+| `LOG_BUNDLE_MAX_FILES` | `2000` | 日志包接入 | 非目录叶文件数上限，包含跳过文件。 |
+| `LOG_BUNDLE_MAX_FILE_BYTES` | `104857600` | 日志包接入 | 单文件原始字节上限，默认 100 MiB；解压还受 200 倍压缩比及 1 MiB 最低预算限制。 |
 | `LOG_ANALYSIS_JUDGE_API_BASE_URL` | 空 | 效果层评测 judge | `npm run logs:eval:quality` 真模型模式下 LLM-as-judge 的 OpenAI-compatible 端点；未配置时使用确定性 rubric 桩。 |
 | `LOG_ANALYSIS_JUDGE_MODEL` | 空 | 效果层评测 judge | judge 模型名，写入质量报告。 |
 | `LOG_ANALYSIS_JUDGE_API_KEY` | 空 | 效果层评测 judge | secret。 |
 | `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | 效果层评测 judge | judge 请求超时。 |
 | `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge 校准 | `docs/generated/log-analysis-judge-sample.md` 人工复核清单的确定性抽样率（0..1）；至少抽 1 条已评分案例。 |
+
+日志包默认值按 `ops/self-hosted/compose.yaml` 中 512 MiB API / 384 MiB worker 容器的内存预算设置，沿用原单文件 100 MiB 上限。流式接入（#1234）落地前，提高这些限制必须同时增加容器内存。`npx tsx scripts/log-bundle-memory-probe.ts`（3 个文件、总计 95 MiB，含逐文件存储与压缩包构造）在独立进程中测得峰值 RSS 357 MiB。
 
 ## 日志分析结果 Webhook
 

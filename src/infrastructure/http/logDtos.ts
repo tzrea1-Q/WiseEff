@@ -10,6 +10,7 @@ import type {
 } from "@/domain/logs/types";
 
 export type LogEvidenceDto = {
+  filePath?: string | null;
   id: string;
   stageId: LogEvidence["stageId"];
   lineNumbers: number[];
@@ -19,6 +20,7 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;
   id: string;
   reportId: string;
@@ -102,6 +104,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     reportId: dto.reportId,
     skillRevision: dto.skillRevision ?? null,
     fileName: dto.fileName,
+    files: dto.files,
     source: dto.source,
     fileSizeMB: Math.round((dto.fileSizeBytes / 1024 / 1024) * 10) / 10,
     status: statusLabels[dto.status],

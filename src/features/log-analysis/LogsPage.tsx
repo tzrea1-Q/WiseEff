@@ -67,7 +67,7 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-type LogsAuxTab = "report" | "metadata" | "related";
+type LogsAuxTab = "report" | "files" | "metadata" | "related";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 
 function createEmptyLogRecord(): LogRecord {
@@ -158,18 +158,20 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [selectedLogId]);
   const hasActiveLog = Boolean(selectedLog);
   const activeLog = selectedLog ?? emptyLogRecord;
+  const rawFilePath = activeLog.files?.find((file) => file.status === "analyzed")?.path ?? activeLog.fileName;
   const relatedParameterUnlocated = Boolean(logActions && activeLog.relatedParameterId && !activeLog.relatedParameterProjectId);
   const evidenceByLine = useMemo(() => {
     const map = new Map<number, LogEvidence[]>();
 
     for (const evidence of activeLog.evidence) {
+      if (evidence.filePath && evidence.filePath !== rawFilePath) continue;
       for (const lineNumber of evidence.lineNumbers) {
         map.set(lineNumber, [...(map.get(lineNumber) ?? []), evidence]);
       }
     }
 
     return map;
-  }, [activeLog]);
+  }, [activeLog, rawFilePath]);
   const matchLines = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) {
@@ -246,7 +248,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     setFocusedEvidenceId(id);
     const evidence = activeLog.evidence.find((item) => item.id === id);
     const firstLine = evidence?.lineNumbers[0];
-    if (!firstLine) {
+    if (!firstLine || (evidence?.filePath && evidence.filePath !== rawFilePath)) {
       return;
     }
 
@@ -303,7 +305,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       "## 证据链",
       ...activeLog.evidence.flatMap((evidence, index) => [
         `### 证据 ${String(index + 1).padStart(2, "0")} · ${STAGE_LABELS[evidence.stageId]}`,
-        ...evidence.lineNumbers.map((lineNumber) => `> \`${activeLog.rawLines[lineNumber - 1] ?? ""}\``),
+        ...evidence.lineNumbers.map((lineNumber) => evidence.filePath ? `> ${evidence.filePath}:${lineNumber}` : `> \`${activeLog.rawLines[lineNumber - 1] ?? ""}\``),
         "",
         `**推断**：${evidence.inference}`,
         "",
@@ -386,7 +388,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [logActions, uploadDialogOpen]);
 
   const handleUploadLog = useCallback(
-    async (file: File, supported: boolean, question?: string, logDomainId?: string, relatedParameterPin?: LogRelatedParameterPin) => {
+    async (files: File[], supported: boolean, question?: string, logDomainId?: string, relatedParameterPin?: LogRelatedParameterPin) => {
+      const file = files[0];
       if (!logActions) {
         dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName: file.name, supported, question });
         setUploadDialogOpen(false);
@@ -397,7 +400,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
 
       try {
-        await logActions.upload({ file, analysisQuestion: question, skillId: logDomainId,
+        await logActions.upload({ file, files, analysisQuestion: question, skillId: logDomainId,
           ...(relatedParameterPin ? { relatedParameterPin } : {}) });
       } catch (error) {
         setPendingUpload(null);
@@ -430,7 +433,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         tabId={`logs-aux-tab-${auxTab}`}
         toolbar={<ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
           onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
-          items={([["report", "报告"], ["metadata", "元数据"], ["related", "相关"]] as const)
+          items={([["report", "报告"], ["files", "文件"], ["metadata", "元数据"], ["related", "相关"]] as const)
             .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} />}
         primaryAction={<button className="button primary" type="button" onClick={openUploadDialog}>
           <Upload size={16} />上传新日志
@@ -447,7 +450,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           </div>
         </aside>}
       >
-      {auxTab !== "metadata" ? <div className="logs-v2-main">
+      {auxTab === "files" ? <LogFilesTable log={activeLog} /> : auxTab !== "metadata" ? <div className="logs-v2-main">
         {auxTab === "report" || activeLog.status === "Complete" ? <LogConclusionCard
           log={activeLog}
           onAskAgent={onAskAgent}
@@ -466,6 +469,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
             <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
             <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
               <PanelHeader title="分析结果" meta={logStatusLabels[activeLog.status]} />
+              {(activeLog.files?.filter((file) => file.status === "analyzed").length ?? 0) > 1
+                ? <p className="px-3 text-sm text-muted-foreground">当前原始日志：{rawFilePath}；证据按各自文件与行号定位。</p> : null}
               <div className="logs-v2-split">
                 <RawLogViewer
                   activeMatchIndex={activeMatchIndex}
@@ -483,6 +488,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
                   onSearchQueryChange={setSearchQuery}
                 />
                 <EvidenceChainPanel
+                  rawFilePath={rawFilePath}
                   evidence={activeLog.evidence}
                   focusedEvidenceId={focusedEvidenceId}
                   hoveredLine={hoveredLine}
@@ -581,11 +587,12 @@ function UploadLogDialog({
   parameterRepository?: Pick<ParameterRepository, "listProjects">;
   parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">;
   onClose: () => void;
-  onUpload: (file: File, supported: boolean, question?: string, logDomainId?: string,
+  onUpload: (files: File[], supported: boolean, question?: string, logDomainId?: string,
     relatedParameterPin?: LogRelatedParameterPin) => Promise<void> | void;
 }) {
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState("");
   const [selectedFileName, setSelectedFileName] = useState("");
   const [question, setQuestion] = useState("");
   const [selectedDomainId, setSelectedDomainId] = useState<string>(UNCATEGORIZED_LOG_DOMAIN_VALUE);
@@ -650,60 +657,29 @@ function UploadLogDialog({
     };
   }, []);
 
-  const validateFile = (file: File) => {
-    const nextSupported = isSupportedLogFile(file.name, archivesSupported);
-
-    setSelectedFile(file);
-    setSelectedFileName(file.name);
+  const selectFiles = (files: File[]) => {
+    setSelectedFiles(files);
+    setSelectedFileName(files.map((file) => file.name).join("、"));
+    const limitError = files.length > 2000 ? "文件数超过默认 2000 个上限，实际以服务端配置为准。"
+      : files.reduce((sum, file) => sum + file.size, 0) > 100 * 1024 * 1024 ? "上传总大小超过默认 100 MiB 上限，实际以服务端配置为准。"
+      : files.length > 1 && files.some((file) => /\.(gz|tgz|zip|tar)$/i.test(file.name)) ? "请选择多个文本文件或一个压缩包。"
+      : new Set(files.map((file) => file.name)).size !== files.length ? "不能上传同名文件。" : "";
+    setUploadError(limitError);
+    const nextSupported = !limitError && (archivesSupported || files.every((file) => isSupportedLogFile(file.name, false)));
     setSupported(nextSupported);
-    setPhase("validating");
-
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-    }
-    timerRef.current = window.setTimeout(() => {
-      setPhase(nextSupported ? "confirm" : "unsupported");
-      timerRef.current = null;
-    }, 200);
+    setPhase(files.length ? "validating" : "idle");
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => { setPhase(files.length ? nextSupported ? "confirm" : "unsupported" : "idle"); timerRef.current = null; }, 200);
   };
-
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) {
-      setSelectedFile(null);
-      setSelectedFileName("");
-      setSupported(false);
-      setPhase("idle");
-      return;
-    }
-    if (files.length > 1) {
-      if (!associationReady) return;
-      for (let i = 0; i < files.length; i++) {
-        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name, archivesSupported), question, resolvedDomainId, relatedParameterPin)).catch(() => undefined);
-      }
-      return;
-    }
-    validateFile(files[0]);
-  };
-
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => selectFiles(Array.from(event.target.files ?? []));
   const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault();
-    setDragging(false);
-    const files = event.dataTransfer.files;
-    if (!files || files.length === 0) return;
-    if (files.length > 1) {
-      if (!associationReady) return;
-      for (let i = 0; i < files.length; i++) {
-        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name, archivesSupported), question, resolvedDomainId, relatedParameterPin)).catch(() => undefined);
-      }
-      return;
-    }
-    validateFile(files[0]);
+    event.preventDefault(); setDragging(false); selectFiles(Array.from(event.dataTransfer.files));
   };
 
   const resetSelection = () => {
     setPhase("idle");
-    setSelectedFile(null);
+    setSelectedFiles([]);
+    setUploadError("");
     setSelectedFileName("");
     setSupported(false);
     setQuestion("");
@@ -714,12 +690,12 @@ function UploadLogDialog({
   };
 
   const uploadSelected = () => {
-    if (!selectedFile || uploading || !associationReady) {
+    if (!selectedFiles.length || uploading || !associationReady) {
       return;
     }
     setUploading(true);
-    void Promise.resolve(onUpload(selectedFile, supported, question, resolvedDomainId, relatedParameterPin))
-      .catch(() => undefined)
+    void Promise.resolve(onUpload(selectedFiles, supported, question, resolvedDomainId, relatedParameterPin))
+      .catch((error) => setUploadError(presentError(error, "上传失败，请重试。")))
       .finally(() => setUploading(false));
   };
 
@@ -732,7 +708,7 @@ function UploadLogDialog({
             <h2 id={titleId}><strong>上传日志</strong></h2>
             <p>
               {archivesSupported
-                ? "选择 .log / .txt / .csv / .json 文本日志，或单文件 .gz、单条目 .zip 压缩包（服务端解压后分析）。"
+                ? "选择多个 .log / .txt / .csv / .json 文本日志，或一个 .tar / .tar.gz / .tgz / .zip / .gz 压缩包。"
                 : "选择 .log、.txt、.csv 或 .json 文本日志，雷泽会模拟创建分析任务。"}
             </p>
           </div>
@@ -749,6 +725,14 @@ function UploadLogDialog({
           <span>选择日志文件（支持拖放多份）</span>
           <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept={accept ?? undefined} multiple onChange={handleFileChange} />
         </label>
+        {selectedFiles.length ? <ul aria-label="已选文件" className="space-y-2">
+          {selectedFiles.map((file, index) => <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 text-sm">
+            <span className="min-w-0 break-all">{file.name} · {(file.size / 1024).toFixed(1)} KiB</span>
+            <button className="button subtle" type="button" disabled={uploading} aria-label={`移除 ${file.name}`}
+              onClick={() => selectFiles(selectedFiles.filter((_, at) => at !== index))}>移除</button>
+          </li>)}
+        </ul> : null}
+        {uploadError ? <p role="alert">{uploadError}</p> : null}
         <label className="upload-question-field" htmlFor="upload-log-domain">
           <span>分析技能（可选）</span>
           <SelectControl
@@ -798,12 +782,14 @@ function UploadLogDialog({
           ) : phase === "validating" ? (
             <p>正在读取 {selectedFileName}...</p>
           ) : phase === "confirm" ? (
-            <p><strong>{selectedFileName}</strong> 已通过格式检查，可以进入分析队列。</p>
+            <p><strong>{selectedFileName}</strong> 已选择，确认后由服务端校验并分析。</p>
+          ) : uploadError ? (
+            <p><strong>{selectedFileName}</strong> 请核对以上提示，服务端将执行完整校验。</p>
           ) : (
             <p>
               <strong>{selectedFileName}</strong> 格式不支持。
               {archivesSupported
-                ? "请优先上传 .log / .txt / .csv / .json 文本日志，或单文件 .gz、单条目 .zip 压缩包。"
+                ? "请上传文本日志或 .tar / .tar.gz / .tgz / .zip / .gz 压缩包。"
                 : "请优先上传 .log / .txt / .csv / .json 文本日志。"}
             </p>
           )}
@@ -1317,6 +1303,7 @@ function RawLogViewer({
 
 function EvidenceChainPanel({
   evidence,
+  rawFilePath,
   rawLines,
   focusedEvidenceId,
   hoveredLine,
@@ -1324,6 +1311,7 @@ function EvidenceChainPanel({
   onClickEvidence
 }: {
   evidence: LogEvidence[];
+  rawFilePath: string;
   rawLines: string[];
   focusedEvidenceId: string | null;
   hoveredLine: number | null;
@@ -1336,7 +1324,7 @@ function EvidenceChainPanel({
       <div className="evidence-chain-list">
         {evidence.map((item, index) => {
           const focused = item.id === focusedEvidenceId;
-          const relatedToHoveredLine = hoveredLine !== null && item.lineNumbers.includes(hoveredLine);
+          const relatedToHoveredLine = hoveredLine !== null && (!item.filePath || item.filePath === rawFilePath) && item.lineNumbers.includes(hoveredLine);
 
           return (
             <EvidenceCard
@@ -1395,7 +1383,7 @@ function EvidenceCard({
         <strong>{STAGE_LABELS[evidence.stageId]}</strong>
       </header>
       <div className="evidence-card__body">
-        <code>{evidence.lineNumbers.map((lineNumber) => `#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`).join("\n")}</code>
+        <code>{evidence.lineNumbers.map((lineNumber) => evidence.filePath ? `${evidence.filePath}:${lineNumber}` : `#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`).join("\n")}</code>
         <p>{evidence.inference}</p>
         {evidence.ruleHit ? <small>命中规则：{evidence.ruleHit}</small> : null}
       </div>
@@ -1415,4 +1403,18 @@ function LogMetadata({ log }: { log: LogRecord }) {
       <div><dt>采集时间</dt><dd>{log.capturedAt}</dd></div>
     </dl>
   );
+}
+
+function LogFilesTable({ log }: { log: LogRecord }) {
+  if (!log.files?.length) return <EmptyState text="该历史记录暂无文件清单。" />;
+  return <section className="analysis-card overflow-auto" aria-label="日志文件清单">
+    <table className="w-full text-left text-sm">
+      <thead><tr>{["路径", "大小", "行数", "编码", "状态"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
+      <tbody>{log.files.map((file) => <tr key={file.path} className="border-t border-border">
+        <td className="p-3 break-all">{file.path}</td><td className="p-3">{(file.sizeBytes / 1024).toFixed(1)} KiB</td>
+        <td className="p-3">{file.lineCount}</td><td className="p-3">{file.encoding.toUpperCase()}{file.lossy ? " · 有损解码" : ""}</td>
+        <td className="p-3">{file.status === "analyzed" ? "已分析" : `已跳过 · ${file.skipReason}`}</td>
+      </tr>)}</tbody>
+    </table>
+  </section>;
 }

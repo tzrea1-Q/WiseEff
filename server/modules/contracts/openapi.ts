@@ -133,6 +133,13 @@ function buildSchemaPlaceholders() {
     }
   }
 
+  schemas.LogBundleMultipartUpload = {
+    type: "object", required: ["file"], properties: {
+      file: { type: "array", minItems: 1, items: { type: "string", format: "binary" }, description: "Several plain files or one archive; repeated file parts form one log bundle." },
+      analysisQuestion: { type: "string" }, skillId: { type: "string" }, logDomainId: { type: "string" },
+      relatedParameterPin: { type: "string", description: "JSON-encoded canonical parameter pin." }
+    }
+  };
   return schemas;
 }
 
@@ -180,7 +187,10 @@ export function buildOpenApiDocument(): OpenApiDocument {
         ? {
             requestBody: {
               required: true,
-              content: jsonContent(schema.requestBody)
+              content: {
+                ...jsonContent(schema.requestBody),
+                ...(route.id === "logs.uploadFile" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogBundleMultipartUpload" } } } : {})
+              }
             }
           }
         : {}),

@@ -1,3 +1,4 @@
+import type { MultipartBody } from "../../shared/http/server";
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -119,10 +120,22 @@ export function registerLogRoutes(
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
     const auth = await getAuth(options.getCurrentAuthContext, request);
-    const body = parseWithSchema(createLogFileBodySchema, request.body);
-    const bytes = Buffer.from(body.contentBase64, "base64");
+    const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
+    const files = multipart?.files.filter((file) => file.fieldName === "file");
+    if (multipart && !files?.length) throw new ApiError("VALIDATION_FAILED", "请选择至少一个日志文件");
+    let fields: Record<string, unknown> = multipart?.fields ?? {};
+    if (multipart?.fields.relatedParameterPin) {
+      try { fields = { ...fields, relatedParameterPin: JSON.parse(multipart.fields.relatedParameterPin) }; }
+      catch { throw new ApiError("VALIDATION_FAILED", "关联参数格式无效"); }
+    }
+    const body = parseWithSchema(createLogFileBodySchema, multipart ? {
+      ...fields, fileName: files![0].fileName, contentType: files![0].contentType,
+      contentBase64: "AA==" // Validate metadata without duplicating multipart bytes as base64.
+    } : request.body);
+    const bytes = files?.[0].bytes ?? Buffer.from(body.contentBase64, "base64");
     const result = await uploadLogFile(db, objectStore, auth, {
-      fileName: body.fileName,
+      files,
+      fileName: files && files.length > 1 ? `${files[0].fileName} 等 ${files.length} 个文件` : body.fileName,
       contentType: body.contentType,
       bytes,
       analysisQuestion: body.analysisQuestion,

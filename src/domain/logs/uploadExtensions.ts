@@ -1,10 +1,10 @@
 /**
  * Text-log extensions shared by the mock runtime and the /logs upload precheck.
  * Keep in lockstep with `supportedLogExtensions` in `server/modules/logs/status.ts`.
- * Archives (.gz / .zip) stay API-only because only the server unpacks them.
+ * Archives and extensionless content sniffing stay API-only.
  */
 export const supportedTextLogExtensions = ["log", "txt", "csv", "json"] as const;
-export const supportedLogArchiveExtensions = ["gz", "zip"] as const;
+export const supportedLogArchiveExtensions = ["gz", "zip", "tar", "tgz"] as const;
 
 const textExtensionSet = new Set<string>(supportedTextLogExtensions);
 const archiveExtensionSet = new Set<string>(supportedLogArchiveExtensions);
@@ -22,7 +22,7 @@ export function isSupportedTextLogFileName(fileName: string): boolean {
 export function isSupportedLogUploadFileName(fileName: string, archivesSupported = false): boolean {
   const extension = fileExtension(fileName);
   if (!extension) {
-    return false;
+    return archivesSupported;
   }
   if (textExtensionSet.has(extension)) {
     return true;
