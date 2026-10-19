@@ -33,7 +33,7 @@ describe.skipIf(!available)("source snapshot governance over PostgreSQL", () => 
       const otherSkill = await createLogSkill(db, auth(), { name: "Sibling skill" }, createUserInvocation(auth()), context);
       let currentAuth = auth();
       const router = createRouter();
-      registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => currentAuth });
+      registerLogRoutes(router, { db, objectStore, skillBudgetCaps: { stepBudget: 4, tokenBudget: 5000 }, getCurrentAuthContext: () => currentAuth });
       const request = <T,>(path: string, method = "GET", body?: unknown) => requestJson<T>(
         createHttpServer(router, { maxBodyBytes: resolveRouteBodyLimit }), path,
         { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -85,7 +85,9 @@ describe.skipIf(!available)("source snapshot governance over PostgreSQL", () => 
       currentAuth = auth();
       await db.query(`delete from log_source_snapshots where id <> $1`, [id]);
       expect((await upload(base, "v1")).status).toBe(409);
-      expect((await request(`${base}/${id}/default`, "POST")).status).toBe(200);
+      expect(await request(`${base}/${id}/default`, "POST")).toMatchObject({
+        status: 200, body: { item: { budgetCaps: { stepBudget: 4, tokenBudget: 5000 } } }
+      });
       const afterDefault = await getLogSkill(db, auth(), skill.id);
       expect(afterDefault.currentRevision).toEqual(skill.currentRevision);
       expect(afterDefault.draft?.spec.defaultSourceSnapshotId).toBe(id);

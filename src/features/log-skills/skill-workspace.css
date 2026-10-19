@@ -1,15 +1,16 @@
 @import "../../components/common/status-banner.css";
 
 .skill-workspace { position: relative; z-index: var(--z-content-base); isolation: isolate; }
+.skill-workspace, .skill-workspace .navigator-workbench__task { min-width: 0; }
 .skill-workspace .navigator-workbench__context { position: sticky; top: 0; z-index: var(--z-content-sticky); background: var(--surface); }
 .skill-draft-bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
 .skill-draft-bar strong { margin-right: auto; }
 .skill-workspace nav { display: grid; padding: var(--space-2); gap: var(--space-1); }
 .skill-workspace nav button { justify-content: space-between; }
 .skill-workspace nav [aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
-.skill-section { padding: var(--space-4); display: grid; gap: var(--space-4); font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
+.skill-section { padding: var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: var(--space-4); font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
 .skill-section h2, .skill-section h3, .skill-publish-dialog h2, .skill-diff h3 { margin: 0; font: 600 var(--text-lg) / var(--leading-lg) var(--font-sans); }
-.skill-section > section { display: grid; gap: var(--space-3); }
+.skill-section > section { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: var(--space-3); }
 .skill-section label { display: grid; gap: var(--space-2); }
 .skill-section textarea { min-height: calc(var(--space-8) * 4); resize: vertical; }
 .skill-yaml-editor { display: flex; min-width: 0; border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
@@ -20,6 +21,12 @@
 .skill-section .skill-facts dt, .skill-section .skill-facts dd { margin: 0; font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
 .skill-facts dt { color: var(--text-muted); }
 .skill-facts dd { color: var(--text); overflow-wrap: anywhere; }
+.skill-integration-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.skill-integration input:not([type="checkbox"]) { min-width: 0; max-width: min(100%, var(--skill-integration-text-width)); }
+.skill-integration input[type="number"] { max-width: min(100%, var(--skill-integration-number-width)); }
+.skill-section .skill-webhook-toggle { display: flex; align-items: center; }
+.skill-section .skill-field-error { color: var(--danger); }
+.skill-curl-example { padding: var(--space-3); overflow-x: auto; max-width: 100%; background: var(--surface-sunken); border-radius: var(--radius-md); font: 400 var(--text-sm) / var(--leading-base) var(--font-mono); }
 .skill-compare-selectors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .skill-diff { display: grid; gap: var(--space-3); min-width: 0; font: 400 var(--text-base) / var(--leading-base) var(--font-sans); }
 .skill-diff section, .skill-diff [data-slot="table-container"] { min-width: 0; max-width: 100%; }

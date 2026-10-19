@@ -1,6 +1,6 @@
 import { selectControlOption } from "@/test/selectControlOption";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { useState } from "react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { useReducer, useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,7 +18,8 @@ import { initialState } from "./mockData";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
 import { createApiClient } from "@/infrastructure/http/apiClient";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
-import { renderApp } from "@/test/harness";
+import { createTestAppPorts, createTestLogAnalysisRepository, renderApp } from "@/test/harness";
+import { reducer } from "@/application/state/appState";
 
 const userState = { ...initialState, activeRoleId: "user" };
 
@@ -40,10 +41,69 @@ function FakeXiaozeToggle() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   window.history.replaceState(null, "", "/");
 });
 
 describe("LogsPage · Header", () => {
+  it("resumes a hydrated processing report without an upload and stops refreshing after completion", async () => {
+    vi.useFakeTimers();
+    const processing = { ...initialState.logs[0], status: "Processing" as const };
+    const complete = { ...processing, status: "Complete" as const, conclusion: "Thermal foldback reduced charging output." };
+    const repository = createTestLogAnalysisRepository([processing], {
+      getLog: vi.fn().mockResolvedValueOnce(processing).mockResolvedValue(complete)
+    });
+    const runtime = createTestAppPorts({ overrides: { logAnalysisRepository: repository } });
+    function RestoredLogs() {
+      const [state, dispatch] = useReducer(reducer, { ...userState, logs: [processing] });
+      return <LogsPage search="" state={state} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />;
+    }
+    render(<RestoredLogs />);
+    expect(screen.getByRole("heading", { name: "AI 正在分析..." })).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(screen.getByRole("heading", { name: complete.conclusion })).toBeInTheDocument();
+    expect(repository.uploadLog).not.toHaveBeenCalled();
+    expect(repository.rerunLog).not.toHaveBeenCalled();
+    const completedCalls = vi.mocked(repository.getLog).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    expect(repository.getLog).toHaveBeenCalledTimes(completedCalls);
+  });
+
+  it.each(["selection", "unmount"])("cancels a processing refresh on %s", async (cancel) => {
+    vi.useFakeTimers();
+    const processing = { ...initialState.logs[0], status: "Processing" as const };
+    let resolve!: (record: (typeof initialState.logs)[number]) => void;
+    const repository = createTestLogAnalysisRepository([processing], {
+      getLog: vi.fn().mockReturnValue(new Promise<(typeof initialState.logs)[number]>((complete) => { resolve = complete; }))
+    });
+    const runtime = createTestAppPorts({ overrides: { logAnalysisRepository: repository } });
+    const dispatch = vi.fn();
+    const view = render(<LogsPage search="" state={{ ...userState, logs: [processing] }} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(repository.getLog).toHaveBeenCalledWith(processing.id);
+    if (cancel === "selection") view.rerender(<LogsPage search="" state={{ ...userState, logs: [] }} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />);
+    else view.unmount();
+    await act(async () => {
+      resolve({ ...processing, status: "Complete" });
+      await vi.advanceTimersByTimeAsync(300_000);
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(repository.getLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds processing recovery retries to five minutes", async () => {
+    vi.useFakeTimers();
+    const processing = { ...initialState.logs[0], status: "Processing" as const };
+    const repository = createTestLogAnalysisRepository([processing]);
+    const runtime = createTestAppPorts({ overrides: { logAnalysisRepository: repository } });
+    render(<LogsPage search="" state={{ ...userState, logs: [processing] }} dispatch={() => undefined} runtime={runtime} onNavigate={() => undefined} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    const exhaustedCalls = vi.mocked(repository.getLog).mock.calls.length;
+    expect(exhaustedCalls).toBeGreaterThan(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    expect(repository.getLog).toHaveBeenCalledTimes(exhaustedCalls);
+  });
+
   it.each(["selection", "deep link"])("hydrates a completed kernel report from detail on %s and renders decoded evidence", async (entry) => {
     const evidence = [{
       decodedFields: [{ v: 1, file: "kernel.log", line: 1, fields: {

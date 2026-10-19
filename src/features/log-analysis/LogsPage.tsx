@@ -16,6 +16,7 @@ import { SearchField } from "@/components/common/SearchField";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
 import type { LogRelatedParameterPin } from "@/application/ports/LogAnalysisRepository";
+import { adaptivePollDelayMs } from "@/application/logs/logRuntime";
 import type { ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
@@ -151,6 +152,33 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       if (!cancelled) dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "日志详情加载失败，请稍后重试。") });
     });
     return () => { cancelled = true; };
+  }, [logRepository, selectedLog, dispatch]);
+
+  // A reload loses the upload/rerun job poll; resume the selected report from its summary.
+  useEffect(() => {
+    if (!logRepository || !selectedLog || selectedLog.status !== "Processing") return;
+    let cancelled = false;
+    let timer: number | undefined;
+    let attempt = 0;
+    let scheduledMs = 0;
+    const schedule = () => {
+      const delayMs = adaptivePollDelayMs(attempt++);
+      if (scheduledMs + delayMs > 300_000) return;
+      scheduledMs += delayMs;
+      timer = window.setTimeout(() => {
+        void logRepository.getLog(selectedLog.id).then((record) => {
+          if (cancelled) return;
+          if (record?.id === selectedLog.id && record.status !== "Processing"
+            && record.updatedAtIso >= selectedLog.updatedAtIso) {
+            dispatch({ type: "UPSERT_LOG_RECORD", log: record });
+          } else schedule();
+        }, (error: unknown) => {
+          if (!cancelled) dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "日志详情加载失败，请稍后重试。") });
+        });
+      }, delayMs);
+    };
+    schedule();
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [logRepository, selectedLog, dispatch]);
 
   // API mode hydrates logs after mount, so a deep-linked id may not exist yet

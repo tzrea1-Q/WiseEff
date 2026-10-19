@@ -643,7 +643,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     ]
   },
   {
-    name: "loop-token-budget-early-convergence",
+    name: "loop-token-budget-fallback",
     category: "loop-convergence",
     fileName: "charging.log",
     logContent: chargingLog,
@@ -656,10 +656,10 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
       { content: { ...loopFinalPayload, confidence: 0.9 } }
     ],
     expectations: [
-      { type: "expectsAnalysisSource", source: "agent" },
+      { type: "expectsAnalysisSource", source: "rules-fallback" },
       { type: "expectsDegradedReason", reason: "token-budget-exhausted" },
-      { type: "expectsConfidenceAtMost", value: 0.5 },
-      { type: "expectsModelCallCount", count: 2 },
+      { type: "expectsConfidenceAtMost", value: 0.85 },
+      { type: "expectsModelCallCount", count: 1 },
       { type: "expectsGroundedEvidence" }
     ]
   },

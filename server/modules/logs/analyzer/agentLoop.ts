@@ -133,6 +133,8 @@ export type CreateAgentLoopAnalyzerOptions = {
   model: LogAnalysisChatModel;
   modelLabel: string;
   tokenBudget: number;
+  /** False retains the existing global-budget accounting and convergence policy. */
+  enforceTokenBudgetBeforeCall?: boolean;
   maxSteps: number;
   fallback?: LogAnalysisAdapter;
   telemetry?: LogAnalysisLlmTelemetry;
@@ -148,14 +150,15 @@ export type CreateAgentLoopAnalyzerOptions = {
  * checkpointer, no ToolRegistry) over run-scoped read-only tools. Every step the model
  * emits strict JSON: either one tool call or the final conclusion. Illegal tool
  * names/arguments get a corrective message and count toward a consecutive-invalid
- * threshold; exhausted steps or token budget trigger one early-convergence attempt
- * whose result is marked degraded (`token-budget-exhausted`) with capped confidence;
- * anything less lands on the deterministic rule fallback with the same honest marker.
+ * threshold. Explicit revision budgets stop further calls after reported usage
+ * reaches the limit. Factory-created runs without a token override preserve the
+ * legacy global-budget convergence attempt. Both paths retain honest degradation.
  */
 export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptions): LogAnalysisAdapter {
   const fallback = options.fallback ?? createRuleBasedLogAnalyzer();
   const now = options.now ?? (() => Date.now());
   const maxSteps = Math.max(1, options.maxSteps);
+  const enforceReportedBudget = options.enforceTokenBudgetBeforeCall !== false;
 
   async function degradeToFallback(input: AnalyzeLogInput, reason: LogAnalysisDegradedReason): Promise<AnalyzeLogOutput> {
     options.telemetry?.recordDegraded?.({ reason, model: options.modelLabel });
@@ -282,7 +285,8 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       let usedTokens = 0;
       let invalidStreak = 0;
 
-      const invokeModel = async (): Promise<string> => {
+      const invokeModel = async (): Promise<string | null> => {
+        if (enforceReportedBudget && usedTokens >= options.tokenBudget) return null;
         const startedAtMs = now();
         let response: Awaited<ReturnType<LogAnalysisChatModel["invoke"]>>;
         try {
@@ -306,11 +310,10 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           );
         }
 
-        const inputTokens =
-          response.usage?.inputTokens ??
-          Math.ceil(messages.reduce((total, message) => total + message.content.length, 0) / CHARS_PER_TOKEN);
-        const outputTokens = response.usage?.outputTokens ?? Math.ceil(response.content.length / CHARS_PER_TOKEN);
-        usedTokens += inputTokens + outputTokens;
+        const inputTokens = response.usage?.inputTokens ?? (enforceReportedBudget ? undefined
+          : Math.ceil(messages.reduce((total, message) => total + message.content.length, 0) / CHARS_PER_TOKEN));
+        const outputTokens = response.usage?.outputTokens ?? (enforceReportedBudget ? undefined : Math.ceil(response.content.length / CHARS_PER_TOKEN));
+        usedTokens += (inputTokens ?? 0) + (outputTokens ?? 0);
         const parsedOutput = parseLoopStep(response.content);
         const validOutput = parsedOutput !== undefined && (parsedOutput.action === "tool"
           || groundLlmEvidence(parsedOutput.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources).length > 0);
@@ -354,6 +357,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         await input.onProgress?.({ step, maxSteps });
 
         const content = await invokeModel();
+        if (content === null) return degradeToFallback(input, "token-budget-exhausted");
         const parsedStep = parseLoopStep(content);
 
         if (!parsedStep) {
@@ -421,8 +425,8 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         }
       }
 
-      // Steps or budget exhausted without a grounded final: one early-convergence
-      // attempt, marked degraded on success, rule fallback otherwise.
+      // Step exhaustion allows one early-convergence call only while the reported
+      // token budget remains; exhausted tokens use the existing rule fallback.
       await input.onProgress?.({ step: maxSteps, maxSteps });
       await emitLogTrace(input, { kind: "early-convergence", reason: "token-budget-exhausted" });
       messages.push({
@@ -432,6 +436,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       });
 
       const convergenceContent = await invokeModel();
+      if (convergenceContent === null) return degradeToFallback(input, "token-budget-exhausted");
       const convergenceStep = parseLoopStep(convergenceContent);
       if (convergenceStep && convergenceStep.action === "final") {
         const grounded = groundLlmEvidence(convergenceStep.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources);

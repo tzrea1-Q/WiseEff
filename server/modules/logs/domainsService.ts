@@ -10,6 +10,7 @@ import { getEntryById as getKnowledgeEntryById } from "../knowledge/repository";
 import { canReadEntry } from "../knowledge/policy";
 import {
   findLogDomainByName,
+  findLogDomainBySkillKey,
   getLogDomainById,
   insertLogDomain,
   listLogDomainKnowledgeLinks,
@@ -27,6 +28,7 @@ import { listRecentLogWebhookDeliveries, type LogWebhookDeliveryDto } from "./we
 import type { LogWebhookDeliverer, LogWebhookDeliveryOutcome } from "./webhookDelivery";
 import { validateWebhookUrl } from "./webhookSecurity";
 import { insertSkillRevision, listSkillRevisions, lockSkill } from "./skillsRepository";
+import { skillKeySchema } from "./schemas";
 
 export type CreateLogDomainInput = {
   name: string;
@@ -36,6 +38,7 @@ export type CreateLogDomainInput = {
 
 export type UpdateLogDomainInput = {
   domainId: string;
+  skillKey?: string;
   name?: string;
   description?: string | null;
   /** undefined = keep; null = clear the stored profile. */
@@ -145,6 +148,9 @@ export async function updateLogDomainRecord(
 ): Promise<LogDomainDto> {
   requireLogAdminDomains(auth);
   const name = input.name !== undefined ? trimmedName(input.name) : undefined;
+  if (input.skillKey !== undefined && !skillKeySchema.safeParse(input.skillKey).success) {
+    throw new ApiError("VALIDATION_FAILED", "Analysis skill key is invalid.", { fieldErrors: { skillKey: "Use 2–63 lowercase letters, digits or hyphens, starting with a letter or digit." } });
+  }
   const formatProfile =
     input.formatProfile === undefined ? undefined : input.formatProfile === null ? null : parseFormatProfileOrThrow(input.formatProfile);
 
@@ -153,6 +159,15 @@ export async function updateLogDomainRecord(
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+    }
+    if (input.skillKey !== undefined && input.skillKey !== existing.skillKey) {
+      // Serialize key allocation and edits in this organization, including the
+      // database creation trigger, before checking the unique constraint.
+      await tx.query("select pg_advisory_xact_lock(hashtextextended('log-skill-key:' || $1, 0))", [auth.organization.id]);
+      const conflicting = await findLogDomainBySkillKey(tx, { organizationId: auth.organization.id, skillKey: input.skillKey });
+      if (conflicting) throw new ApiError("VALIDATION_FAILED", "Analysis skill key is already used in this organization.", {
+        fieldErrors: { skillKey: "This skill key is already used in this organization." }
+      });
     }
     const revisioned = input.formatProfile !== undefined || input.modelOverride !== undefined || input.description !== undefined;
     const revisions = revisioned ? await listSkillRevisions(tx, auth.organization.id, input.domainId) : [];
@@ -171,6 +186,7 @@ export async function updateLogDomainRecord(
     const domain = await updateLogDomainRow(tx, {
       organizationId: auth.organization.id,
       domainId: input.domainId,
+      skillKey: input.skillKey,
       name,
       description: input.description,
       formatProfile,
@@ -210,7 +226,10 @@ export async function updateLogDomainRecord(
           status: domain.status,
           formatProfileChanged: input.formatProfile !== undefined,
           modelOverrideChanged: input.modelOverride !== undefined,
-          modelOverride: domain.modelOverride ?? null
+          modelOverride: domain.modelOverride ?? null,
+          ...(input.skillKey !== undefined && input.skillKey !== existing.skillKey ? {
+            previousSkillKey: existing.skillKey, skillKey: domain.skillKey
+          } : {})
         }
       })
     };

@@ -85,7 +85,7 @@ describe("buildLogResultWebhookPayload", () => {
   });
 
   it("stays a compact summary and never carries raw log content", () => {
-    const payload = buildLogResultWebhookPayload(resultInput({ skillRevisionId: "skill-v2", skillRevisionNumber: 2 }));
+    const payload = buildLogResultWebhookPayload(resultInput({ skillKey: "charging", skillRevisionId: "skill-v2", skillRevisionNumber: 2 }));
     expect(payload).toEqual({
       eventId: "log-result:run-1",
       event: "log-analysis.completed",
@@ -93,6 +93,8 @@ describe("buildLogResultWebhookPayload", () => {
       runId: "run-1",
       skillRevisionId: "skill-v2",
       skillRevisionNumber: 2,
+      skill: { id: "domain-1", key: "charging", revisionId: "skill-v2", revisionNumber: 2 },
+      degraded: false,
       fileName: "charging.log",
       logDomainId: "domain-1",
       status: "complete",
@@ -112,6 +114,12 @@ describe("buildLogResultWebhookPayload", () => {
     const payload = buildLogResultWebhookPayload(resultInput({ conclusion: "x".repeat(1000) }));
     expect(payload.conclusionSummary).toHaveLength(WEBHOOK_CONCLUSION_SUMMARY_MAX_CHARS);
     expect(payload.conclusionSummary!.endsWith("…")).toBe(true);
+  });
+
+  it("marks rule fallback and retains an available degradation reason", () => {
+    expect(buildLogResultWebhookPayload(resultInput({ analysisSource: "rules-fallback", degradedReason: "provider unavailable" })))
+      .toMatchObject({ degraded: true, degradedReason: "provider unavailable" });
+    expect(buildLogResultWebhookPayload(resultInput({ analysisSource: "rules-fallback" })).degraded).toBe(true);
   });
 
   it("links failed runs to the log workbench without a report id", () => {

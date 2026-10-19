@@ -34,8 +34,10 @@ export type AnalyzeLogInput = {
   logDomain?: {
     name: string;
     description?: string;
-    /** Per-domain model-name override (P3b); endpoint/key/budget stay global. */
+    /** Pinned skill revision overrides; endpoint and credentials stay global. */
     modelOverride?: string;
+    stepBudget?: number;
+    tokenBudget?: number;
   };
   /**
    * P2 loop-kernel run context (internal input, not part of the output contract):

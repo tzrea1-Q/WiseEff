@@ -23,7 +23,9 @@ describe.skipIf(!available)("source indexing over PostgreSQL", () => {
       await applyMigrations(db, migrationsDir, { through: "0192_log_signal_summary.sql" });
       await seedCoreGraph(db, { organization: { id: "upgrade-org" }, users: [{ id: "upgrade-admin" }] });
       await db.transaction(async (tx) => {
-        await insertLogDomain(tx, { id: "upgrade-skill", organizationId: "upgrade-org", name: "Upgrade" });
+        // Seed the historical schema before skill_key exists.
+        await tx.query(`insert into log_domains (id, organization_id, name)
+          values ('upgrade-skill', 'upgrade-org', 'Upgrade')`);
         await insertSkillRevision(tx, { skillId: "upgrade-skill", organizationId: "upgrade-org", userId: "upgrade-admin", spec: { schemaVersion: "skill/v1" }, published: true });
       });
       await db.query(`insert into log_source_snapshots(id,organization_id,skill_id,version_label,storage_key,file_name,status)

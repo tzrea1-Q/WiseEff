@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { SkillSpecDiff } from "./SkillSpecDiff";
 import type { SkillSpec } from "./types";
@@ -12,6 +12,16 @@ it("includes ordered file applicability and roles in publication differences", (
   expect(screen.getByRole("region", { name: "适用文件差异" })).toHaveTextContent("charger/**");
   expect(screen.getByRole("region", { name: "适用文件差异" })).toHaveTextContent("充电");
   expect(screen.getByLabelText("变更摘要").querySelector("p")).toHaveTextContent("适用文件 1 项");
+});
+
+it("makes model and budget changes visible in integration publication review", () => {
+  render(<SkillSpecDiff before={{ ...spec, modelOverride: "previous-model", stepBudget: 4, tokenBudget: 4000 }} after={{ ...spec, stepBudget: 5, tokenBudget: 5000 }} />);
+  expect(screen.getByLabelText("变更摘要").querySelector("p")).toHaveTextContent(/^集成 3 项$/);
+  const integration = screen.getByLabelText("集成差异");
+  expect(within(integration).getByRole("row", { name: "模型覆盖 previous-model 未配置" })).toBeVisible();
+  expect(within(integration).getByRole("row", { name: "步骤预算 4 5" })).toBeVisible();
+  expect(within(integration).getByRole("row", { name: "令牌预算 4000 5000" })).toBeVisible();
+  expect(screen.queryByLabelText("概览差异")).not.toBeInTheDocument();
 });
 
 it("shows only nonzero change groups and a single identical-content message", () => {

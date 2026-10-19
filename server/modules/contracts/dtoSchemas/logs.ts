@@ -141,6 +141,7 @@ export const logDomainWebhookSummarySchema = z.object({
 
 export const logDomainDtoSchema = z.object({
   id: z.string(),
+  skillKey: z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/),
   name: z.string(),
   description: z.string().optional(),
   status: logDomainStatusSchema,
@@ -166,7 +167,8 @@ export const logSkillListItemSchema = logDomainDtoSchema.extend({
 });
 export const logSkillDtoSchema = logDomainDtoSchema.extend({
   parseTestRun: parseTestRunSchema.optional(),
-  currentRevision: logSkillRevisionDtoSchema, draft: logSkillRevisionDtoSchema.nullable()
+  currentRevision: logSkillRevisionDtoSchema, draft: logSkillRevisionDtoSchema.nullable(),
+  budgetCaps: z.object({ stepBudget: z.number().int().positive(), tokenBudget: z.number().int().positive() })
 });
 export const logSkillListResponseSchema = itemsEnvelopeSchema(logSkillListItemSchema);
 export const logSkillResponseSchema = itemEnvelopeSchema(logSkillDtoSchema);

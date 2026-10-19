@@ -468,6 +468,14 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 
 上传、创建与 rerun 接受 `skillId`，`logDomainId` 继续作为别名。rerun 接受 `revisionPolicy: "current" | "pinned"`，默认 `current` 使用当前发布版本；`pinned` 复用前一次运行版本，不能同时更换技能。未分类运行保持 null 钉住值并使用平台默认配置。记录和运行 DTO 暴露 `skillRevision: { id, number } | null`；结果 Webhook 增加可空 `skillRevisionId`、`skillRevisionNumber`。Worker 只从所钉版本读取格式画像、模型覆盖和信号规则。
 
+技能身份新增组织内唯一的 `skillKey`，满足 `^[a-z0-9][a-z0-9-]{1,62}$`。创建时按名称生成 slug，非 ASCII 名称或碰撞时添加短 id 后缀；迁移 0202 回填已有技能。改名、发布不改变 key。管理员可通过 `PATCH /api/v1/log-domains/:domainId` 修改 `skillKey`，同事务审计；非法或重复 key 返回字段错误。`POST /api/v1/log-files`（JSON/multipart）和 `POST /api/v1/logs` 均接受 `skillKey`，保留 `skillId`、`logDomainId`。选择字段仅在调用方组织内解析，同时提供时必须一致，冲突返回 `400 VALIDATION_FAILED`，未知或跨组织 key 拒绝；上传钉住当前已发布版本。
+
+工作区「集成」统一编辑 key、展示上传示例、配置和测试 Webhook、查看投递记录、编辑模型及预算。「概览」保留指引，旧管理页提供工作区链接，不再重复编辑。`spec.stepBudget`、`spec.tokenBudget` 为可选正整数，随版本发布，省略时使用全局默认。服务端拒绝超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值，返回 `VALIDATION_FAILED` 字段错误；技能详情提供 `budgetCaps`。旧版本在平台上限降低后仍受运行时上限约束。Webhook 和 key 继续属于即时生效的身份设置。
+
+保存及发布还校验 `stepBudget >= 1`、`tokenBudget >= min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`，错误指向具体字段路径。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含收敛调用，不做 token 估算。单次完成可能超过剩余预算；已报告用量达到预算后，不再发起后续调用。没有得到已接地最终报告时，耗尽运行返回 `rules-fallback` 及 `degradedReason: "token-budget-exhausted"`。没有版本 `tokenBudget` 时，既有平台全局预算计量及提前收敛行为不变。
+
+结果 Webhook 在保留 `logDomainId`、`skillRevisionId`、`skillRevisionNumber` 及其他旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }`、`degraded: boolean`。旧未钉住运行的版本字段可为 null；规则回退或存在降级原因时 `degraded` 为 true，有原因时保留 `degradedReason`。终态入队快照保存 key 和钉住版本，重试保持相同载荷；同步测试事件维持原格式。参见[集成指南](../api/log-analysis-integration.md)。
+
 上传、创建与 rerun 接受可选 `logDomainId`：必须属于本组织且为 `active`，否则 `400`；缺省即内建未分类域语义（通用分析，上传绝不因域选择被阻塞）。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
 
 `POST /api/v1/log-files` 接受原有 JSON base64 请求，也接受 multipart/form-data：重复的 `file` 字段（多个普通文件）作为一个日志包；也可上传一个压缩包，不能与其他文件混传。支持 `.tar`、`.tar.gz`/`.tgz`、多条目 `.zip`（stored/deflate）和 `.gz`；gzip 内层名为 `.tar` 时按 tar.gz 处理。内层压缩包最多再展开一次，路径以前一层压缩条目名作为目录前缀。目录跳过；规范化相对路径最多 1024 个 UTF-8 字节。路径穿越（包括反斜杠与 `..` 段）、绝对路径、链接、设备、FIFO、加密 zip、重复规范化路径、损坏或超限压缩包生成失败记录：`failureReason` 说明规则原因，使用 `inline/` 伪存储键，不写对象存储，也不创建分析任务。接口仍返回 `201`，并写入 `log-upload-failed` 审计及 `{ fileName, failureReason }` 元数据。日志包及压缩包原因使用中文；不支持扩展名的单个普通文件保留原英文格式提示。非预期解码或压缩异常统一返回压缩包完整性提示，不暴露内部错误。

@@ -1,6 +1,6 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-10-19T21:32:08.605Z
+- Generated: 2026-10-19T22:01:49.006Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.1`
 - Loop prompt version: `2026-10-19.loop.procedure.signals.source.3`
 - Scenarios: 45 (45 passed)
@@ -50,7 +50,7 @@
 | loop-persistent-illegal-calls-degrade-honestly | loop-tool-legality | loop | rules-fallback | token-budget-exhausted | 8 | PASS |
 | loop-step-limit-early-convergence | loop-convergence | loop | agent | token-budget-exhausted | 6 | PASS |
 | trace-redacts-prompts-procedure-and-provider-payloads | trace-privacy | loop | agent | - | 7 | PASS |
-| loop-token-budget-early-convergence | loop-convergence | loop | agent | token-budget-exhausted | 4 | PASS |
+| loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 5 | PASS |
 | loop-honest-refusal-on-insufficient-evidence | loop-honesty | loop | agent | - | 5 | PASS |
 | loop-multi-step-grounding-enforced | loop-grounding | loop | agent | - | 4 | PASS |
 | loop-domain-model-override-applied | model-override | loop | agent | - | - | PASS |
