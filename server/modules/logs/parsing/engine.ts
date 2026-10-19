@@ -2,6 +2,7 @@ import { compileFileGlob } from "../adminPattern";
 import type { DecodedEvent, DecodedValue, DecodeCounts, DecodeTruncationReason, FieldSpec, ParsingSpec } from "./spec";
 import { compileParsingPattern, MAX_PARSING_LINE_CHARS, MAX_PARSING_MATCH_CHARS, timestampFormat, registerCaseKey } from "./spec";
 import { decodeRegister, exactInteger, integerValue, RegisterDecodeError } from "./registers";
+export { generateExtractorPattern } from "./extractorBuilder";
 
 export const MAX_DECODE_LINE_BYTES = 8192;
 export const MAX_DECODE_EVENTS = 50_000;

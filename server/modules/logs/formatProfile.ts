@@ -50,6 +50,16 @@ export const logFormatProfileSchema = z
   })
   .strict();
 
+export const formatPreviewRequestSchema = z.object({
+  sampleText: z.string().max(1024 * 1024),
+  formatProfile: z.unknown().refine((value) => value !== undefined, "Format profile is required")
+}).strict();
+const previewLineSchema = z.object({ line: z.number().int().positive(), text: z.string(), timestamp: z.string().optional(), severity: z.enum(["error", "warn", "info"]) });
+export const formatPreviewResponseSchema = z.object({
+  lines: z.array(previewLineSchema),
+  entries: z.array(previewLineSchema.omit({ line: true }).extend({ lineNumbers: z.array(z.number().int().positive()) }))
+});
+
 export type ValidateLogFormatProfileResult =
   | { ok: true; profile: LogFormatProfile }
   | { ok: false; issues: string[] };

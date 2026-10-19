@@ -11760,6 +11760,100 @@
         }
       }
     },
+    "/api/v1/log-skills/{skillId}/extractor-preview": {
+      "post": {
+        "operationId": "logs.extractorPreview",
+        "summary": "Generate and preview an extractor pattern",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogExtractorPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogExtractorPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-skills/{skillId}/format-preview": {
+      "post": {
+        "operationId": "logs.formatPreview",
+        "summary": "Preview an unsaved basic format profile",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "skillId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogFormatPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogFormatPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skills/{skillId}/draft": {
       "put": {
         "operationId": "logs.saveSkillDraft",
@@ -36956,6 +37050,317 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogParsePreviewResponse"
+      },
+      "LogExtractorPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "string"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "number"
+                },
+                "end": {
+                  "type": "number"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "int",
+                    "uint",
+                    "hex",
+                    "float",
+                    "string",
+                    "quoted"
+                  ]
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "name",
+                "type"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "sampleLines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "generalizeNumbers": {
+            "type": "boolean"
+          },
+          "pattern": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "segments",
+          "sampleLines"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogExtractorPreviewRequest"
+      },
+      "LogExtractorPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "int",
+                        "uint",
+                        "hex"
+                      ]
+                    },
+                    "decode": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "register": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "register"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "registerMap": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "registerMap"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "float",
+                        "bool",
+                        "string",
+                        "hexbytes",
+                        "base64bytes"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "enum"
+                      ]
+                    },
+                    "values": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "values"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "timestamp"
+                      ]
+                    },
+                    "format": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "format"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "matchedLines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "type": "number"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "line",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "matchCount": {
+            "type": "number"
+          },
+          "totalLines": {
+            "type": "number"
+          },
+          "coverage": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "pattern",
+          "fields",
+          "matchedLines",
+          "matchCount",
+          "totalLines",
+          "coverage"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogExtractorPreviewResponse"
+      },
+      "LogFormatPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "sampleText": {
+            "type": "string"
+          },
+          "formatProfile": {}
+        },
+        "required": [
+          "sampleText",
+          "formatProfile"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogFormatPreviewRequest"
+      },
+      "LogFormatPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "type": "number"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "error",
+                    "warn",
+                    "info"
+                  ]
+                }
+              },
+              "required": [
+                "line",
+                "text",
+                "severity"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "error",
+                    "warn",
+                    "info"
+                  ]
+                },
+                "lineNumbers": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "required": [
+                "text",
+                "severity",
+                "lineNumbers"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "lines",
+          "entries"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogFormatPreviewResponse"
       },
       "LogSkillDraftRequest": {
         "type": "object",

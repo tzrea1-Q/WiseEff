@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ParsingSection } from "./ParsingSection";
 import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 import type { ParsePreview, SkillWorkspaceRepository } from "./types";
@@ -28,8 +29,9 @@ describe("parsing code view", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("100 ms");
     expect(screen.getByRole("table", { name: "解析预览结果" })).toHaveTextContent("state = thermal");
   });
-  it("shows YAML errors with line numbers and disables preview, then recovers", () => {
+  it("shows YAML errors with line numbers and disables preview, then recovers", async () => {
     setup();
+    await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
     fireEvent.change(screen.getByRole("textbox", { name: "代码视图 · YAML" }), { target: { value: "schemaVersion: parsing/v1\nextractors: [\n" } });
     expect(screen.getByRole("alert")).toHaveTextContent(/第 \d+ 行/);
     expect(screen.getByRole("button", { name: "运行预览" })).toBeDisabled();

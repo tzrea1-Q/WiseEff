@@ -1,0 +1,10 @@
+.skill-format-form { display: grid; gap: var(--space-3); min-width: 0; }
+.skill-format-form h3, .skill-format-form p, .skill-format-form pre { margin: 0; }
+.skill-format-form label { display: grid; gap: var(--space-2); }
+.skill-format-form fieldset { display: grid; gap: var(--space-3); margin: 0; padding: var(--space-3); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); min-width: 0; }
+.skill-format-toolbar, .skill-format-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.skill-format-toolbar { flex-wrap: wrap; justify-content: space-between; }
+.skill-format-level { display: grid; gap: var(--space-2); min-width: 0; }
+.skill-format-level > button { justify-self: start; }
+.skill-format-form textarea { min-height: calc(var(--space-8) * 4); font-family: var(--font-mono); }
+.skill-format-form pre, .skill-format-form code { white-space: pre-wrap; overflow-wrap: anywhere; font: 400 var(--text-sm) / var(--leading-base) var(--font-mono); }

@@ -3,7 +3,7 @@ import type { Queryable } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import * as domains from "./domainsRepository";
 import * as workerDecoding from "./parsing/workerDecoding";
-import { previewLogSkillParsing, PARSE_PREVIEW_MAX_MS } from "./skillsService";
+import { previewLogSkillParsing, previewLogSkillExtractor, previewLogSkillFormat, PARSE_PREVIEW_MAX_MS } from "./skillsService";
 import { parsePreviewResponseSchema, parsingSpecSchema } from "./parsing/spec";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
@@ -15,6 +15,23 @@ function skill() {
 }
 
 describe("parsing preview service bounds", () => {
+  it("requires admin permission and an organization-owned skill for authoring previews", async () => {
+    const input = { line: "n=1", segments: [{ start: 2, end: 3, name: "n", type: "uint" as const }], sampleLines: ["n=2", "x=2"] };
+    const lookup = skill();
+    expect(await previewLogSkillExtractor(db, auth, "skill", input)).toMatchObject({ matchCount: 1, coverage: 0.5 });
+    expect(lookup).toHaveBeenCalledWith(db, { organizationId: auth.organization.id, domainId: "skill" });
+    const viewer = makeTestAuthContext({ organizationId: "org-preview", permissions: ["logs:view"] });
+    await expect(previewLogSkillExtractor(db, viewer, "skill", input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(previewLogSkillFormat(db, viewer, "skill", { sampleText: "n=1", formatProfile: {} })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    lookup.mockResolvedValue(null);
+    await expect(previewLogSkillExtractor(db, auth, "foreign", input)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(previewLogSkillFormat(db, auth, "foreign", { sampleText: "n=1", formatProfile: {} })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+  it("surfaces invalid RE2 and format schema failures as validation errors", async () => {
+    skill();
+    await expect(previewLogSkillExtractor(db, auth, "skill", { line: "", segments: [], pattern: "(?=x)", sampleLines: [] })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    await expect(previewLogSkillFormat(db, auth, "skill", { sampleText: "x", formatProfile: { timestampPattern: "(?=x)" } })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
   it("keeps preview limits independent of worker environment settings", async () => {
     skill();
     vi.stubEnv("LOG_DECODE_MAX_MS", "1");

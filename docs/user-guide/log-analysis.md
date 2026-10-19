@@ -14,6 +14,12 @@ In API mode, Admins with `logs:admin-domains` can open a skill in `/log-admin?ta
 
 Save the draft, review the procedure's before/after text in the publish dialog, then publish to create a revision. Discard draft deletes the saved draft and unsaved edits, restoring the current published revision. Draft edits do not change queued analyses or reruns explicitly pinned to an older revision; new uploads use the current published revision. Procedures guide the read-only agent and cannot authorize writes or replace log evidence. Rule-fallback analysis ignores them.
 
+## Build extractors and configure the basic format
+
+Open a skill's Samples and parsing section. Select a line in the docked sample pane or the section, then choose Create extractor from this line. Click segments, or shift-click a range, name each field and choose its type. Key/value pairs remain natural segments; numeric values, hexadecimal registers and quoted strings can be generalized. Review the pattern, hit count, coverage and matching lines before adding the extractor. Advanced mode allows direct RE2 pattern editing and shows validation errors. Editing an extractor uses the same builder. The sample pane identifies matching rules with distinct colors, rule ids and a text legend.
+
+The Basic format form edits the existing `formatProfile`: timestamp pattern, severity patterns for error/warn/info, and either indentation or a start pattern for multi-line entries. The live sample preview shows detected timestamps, each line's severity and the original line numbers grouped into entries. Timestamp capture group 1 is used when present; severity checks error, warn and info in that order. Patterns use RE2. Code view edits the same JSON object and round-trips without converting existing profiles. Invalid code or patterns must be corrected before saving or publishing. Form changes do not migrate profiles or change parsing semantics. Live basic-format preview is limited to the first 500 lines and 1 MiB, with at most 6,144 characters per line.
+
 ## Decode registers in a skill
 
 Open a skill in `/log-admin?tab=skills` and choose Decode. Add a register, give it an id and select its width (8, 16, 32 or 64 bits). The field table edits inclusive high/low bits, name, enum labels, scale, offset, unit, signedness and description. Bits must fit the width, must not overlap and cannot share a name. The bit bar runs from high bit to low bit; field names and bit ranges identify each segment alongside its color.
