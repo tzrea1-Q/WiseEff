@@ -23,7 +23,7 @@ function editorClassNames(): string[] {
     },
     bytes: {
       propertyName: "reg-config",
-      rawText: "/bits/ 8 <0x19>",
+      rawText: "[19]",
     },
     "string-list": {
       propertyName: "compatible",
@@ -32,7 +32,6 @@ function editorClassNames(): string[] {
     "phandle-list": {
       propertyName: "interrupt-parent",
       rawText: "<&gpio>",
-      availableLabels: ["gpio"],
     },
     bool: {
       propertyName: "enabled",
@@ -45,7 +44,7 @@ function editorClassNames(): string[] {
     },
     mixed: {
       propertyName: "mixed-value",
-      rawText: "<0x1>",
+      rawText: '"a", <0x1>',
     },
   } satisfies Record<
     DtsValueType,
@@ -72,16 +71,12 @@ function editorClassNames(): string[] {
 }
 
 describe("StructuredValueEditor styling contract", () => {
-  it("emits at least one class per sub-editor", () => {
+  it("uses the same raw editor styles for every value type", () => {
     const classNames = editorClassNames();
 
     expect(classNames).toContain("structured-value-editor");
-    expect(classNames).toContain("structured-value-u32-matrix");
-    expect(classNames).toContain("structured-value-bytes");
-    expect(classNames).toContain("structured-value-string-list");
-    expect(classNames).toContain("structured-value-phandle-list");
-    expect(classNames).toContain("structured-value-bool");
     expect(classNames).toContain("structured-value-mixed");
+    expect(classNames).toHaveLength(2);
   });
 
   it("styles every class the component emits", () => {

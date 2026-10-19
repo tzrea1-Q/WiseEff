@@ -1,10 +1,4 @@
-declare module "js-yaml" {
-  const yaml: {
-    load(input: string, options?: unknown): unknown;
-    dump(input: unknown, options?: unknown): string;
-  };
-  export default yaml;
-}
+/// <reference path="./js-yaml.d.ts" />
 
 declare module "node:fs" {
   export function existsSync(path: string): boolean;

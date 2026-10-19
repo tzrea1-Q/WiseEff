@@ -23,6 +23,7 @@ import {
   S2_SCH_0179_FINGERPRINT,
   S2_SCH_0180_FINGERPRINT,
   S2_SCH_0181_FINGERPRINT,
+  S2_SCH_0182_FINGERPRINT,
   S2_SCH_LIVE_FINGERPRINT,
   readCanonicalSchemaFingerprint,
 } from "../../../testing/parameterCatalog";
@@ -489,7 +490,7 @@ async function commitCanonicalDriverCatalog(
   }
 }
 
-async function aclFingerprint(db: { query(text: string): Promise<{ rows: unknown[] }> }): Promise<string> {
+async function aclSnapshot(db: { query(text: string): Promise<{ rows: unknown[] }> }) {
   const query = async <Row>(text: string): Promise<Row[]> => {
     const result = await db.query(text);
     return result.rows as Row[];
@@ -621,20 +622,11 @@ async function aclFingerprint(db: { query(text: string): Promise<{ rows: unknown
         order by table_name, privilege_type
       `);
 
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        owners,
-        roleAttrs,
-        tableGrants,
-        columnGrants,
-        functionExecute,
-        schemaUsage,
-        members,
-        publicOwnerGrants,
-      }),
-    )
-    .digest("hex");
+  return { owners, roleAttrs, tableGrants, columnGrants, functionExecute, schemaUsage, members, publicOwnerGrants };
+}
+
+async function aclFingerprint(db: { query(text: string): Promise<{ rows: unknown[] }> }): Promise<string> {
+  return createHash("sha256").update(JSON.stringify(await aclSnapshot(db))).digest("hex");
 }
 
 async function applyFeedbackSuccessors(db: Database, connectionString: string) {
@@ -642,9 +634,15 @@ async function applyFeedbackSuccessors(db: Database, connectionString: string) {
     "select name, checksum from schema_migrations order by name",
   )).rows;
   expect(historical.at(-1)?.name).toBe("0182_legacy_dismissed_identity_reader.sql");
-  const beforeAcl = await aclFingerprint(db);
+  const beforeAcl = await aclSnapshot(db);
   const files = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
-  expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter((name) => name > "0182_legacy_dismissed_identity_reader.sql"));
+  const feedbackLast = "0189_log_skill_samples.sql";
+  expect(await applyMigrations(db, migrationsDir, { through: feedbackLast })).toEqual(files.filter(
+    (name) => name > "0182_legacy_dismissed_identity_reader.sql" && name <= feedbackLast,
+  ));
+  expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0182_FINGERPRINT);
+  expect(await aclSnapshot(db)).toEqual(beforeAcl);
+  expect(await applyMigrations(db, migrationsDir)).toEqual(files.filter((name) => name > feedbackLast));
   const current = (await db.query<{ name: string; checksum: string }>(
     "select name, checksum from schema_migrations order by name",
   )).rows;
@@ -654,7 +652,44 @@ async function applyFeedbackSuccessors(db: Database, connectionString: string) {
     expect(checksum).toBe(createHash("sha256").update(await fs.readFile(path.join(migrationsDir, name), "utf8")).digest("hex"));
   }
   expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
-  expect(await aclFingerprint(db)).toBe(beforeAcl);
+  const sourceFunctions = [
+    { name: "assert_source_revision_cohort_receipt", arguments: "", security_definer: true },
+    { name: "assert_source_revision_request", arguments: "", security_definer: true },
+    { name: "canonical_source_absence_locator_digest", arguments: "locator jsonb", security_definer: false },
+    { name: "protect_source_revision_context", arguments: "", security_definer: false },
+    { name: "protect_source_revision_request", arguments: "", security_definer: false },
+    { name: "valid_source_revision_absence_pin", arguments: "pin_id text", security_definer: true },
+  ];
+  const afterAcl = await aclSnapshot(db);
+  const { owners: beforeOwners, functionExecute: beforeExecute, ...beforeUnchanged } = beforeAcl;
+  const { owners: afterOwners, functionExecute: afterExecute, ...afterUnchanged } = afterAcl;
+  expect(afterUnchanged).toEqual(beforeUnchanged);
+  const rowStrings = (rows: unknown[]) => rows.map((row) => JSON.stringify(row)).sort();
+  expect(rowStrings(afterOwners)).toEqual(rowStrings([...beforeOwners, ...sourceFunctions.map((item) => ({
+    kind: "function", name: `${item.name}(${item.arguments})`, owner: CATALOG_MIGRATION_OWNER,
+  }))]));
+  const roles = ["public", CATALOG_SYNCHRONIZER_ROLE, PARAMETER_GOVERNANCE_WRITER_ROLE,
+    "catalog_mod_d02_capture_owner", "wiseeff_mod_d02_capture", "wiseeff_mod_d02_source_reader"];
+  expect(rowStrings(afterExecute)).toEqual(rowStrings([...beforeExecute, ...sourceFunctions.flatMap((item) => roles.map((role_name) => ({
+    role_name, function_name: `parameter_catalog.${item.name}`, can_execute: false,
+  })))]));
+  const sourceGuards = await db.query<{
+    name: string; arguments: string; owner: string; security_definer: boolean; settings: string[];
+    direct_execute_denied: boolean; private_execute_acl: boolean;
+  }>(`select p.proname as name, pg_catalog.pg_get_function_identity_arguments(p.oid) as arguments,
+      pg_catalog.pg_get_userbyid(p.proowner) as owner, p.prosecdef as security_definer, p.proconfig as settings,
+      not exists(select 1 from pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl
+        where acl.grantee<>p.proowner and acl.privilege_type='EXECUTE') as private_execute_acl,
+      not exists(select 1 from unnest($2::text[]) role_name
+        where pg_catalog.has_function_privilege(role_name,p.oid,'execute')) as direct_execute_denied
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='parameter_catalog' and p.proname=any($1::text[]) order by p.proname`,
+  [sourceFunctions.map((item) => item.name), [...roles, "catalog_publication_coordinator_role", "catalog_baseline_reader_role",
+    "catalog_verification_writer_role", "catalog_verifier_role"]]);
+  expect(sourceGuards.rows).toEqual(sourceFunctions.map((item) => ({ ...item, owner: CATALOG_MIGRATION_OWNER,
+    settings: item.name === "canonical_source_absence_locator_digest" ? ["search_path=pg_catalog, parameter_catalog"]
+      : ["search_path=pg_catalog, parameter_catalog, public"], direct_execute_denied: true, private_execute_acl: true,
+  })));
   expect(await applyMigrations(db, migrationsDir)).toEqual([]);
 }
 
@@ -1532,7 +1567,7 @@ describe("0138 Catalog role migration paths", () => {
         expect(await applyMigrations(db, migrationsDir, {
           through: "0182_legacy_dismissed_identity_reader.sql",
         })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
-        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0182_FINGERPRINT);
         const expectedChecksums = {
           "0172_canonical_batch_draft_impact.sql": "6a40b58507c134884adff408c416bcae4249adcf008eb93bee8f901a7c649a53",
           "0173_canonical_batch_draft_impact_pair.sql": "26924e1a0ef7e4f94cc47bd6cce6a79f0727e400109bee5685e38b6e362fedfb",
@@ -1733,7 +1768,7 @@ describe("0138 Catalog role migration paths", () => {
       expect(await applyMigrations(db, migrationsDir, {
         through: "0182_legacy_dismissed_identity_reader.sql",
       })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
-      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0182_FINGERPRINT);
       expect((await db.query("select name, checksum from schema_migrations order by name")).rows.slice(0, -3))
         .toEqual(upgradedReceipts);
       await applyFeedbackSuccessors(db, connectionString);
@@ -2146,7 +2181,7 @@ describe("0138 Catalog role migration paths", () => {
         expect(await applyMigrations(db, migrationsDir, {
           through: "0182_legacy_dismissed_identity_reader.sql",
         })).toEqual(["0182_legacy_dismissed_identity_reader.sql"]);
-        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+        expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0182_FINGERPRINT);
         await applyFeedbackSuccessors(db, connectionString);
         upgrade = await aclFingerprint(db);
       },

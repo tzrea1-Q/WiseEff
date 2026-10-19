@@ -110,8 +110,9 @@ API 导入向导的匹配、模块选项与逐行核对仅使用项目规范 Bin
 
 P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直接 new HTTP client）：
 
+- 配置工作台的 DTS 源码采用延迟加载的 CodeMirror 6，支持「预览 / 编辑」，两种模式共用文档、搜索、选区、折叠和撤销历史。右侧仅显示固定定义说明。整文件草稿按用户、组织、项目、配置和文件隔离，存于 IndexedDB，并用事务代数校验防止多标签页覆盖；旧属性草稿仍独立保留。保存固定精确源码及文件/配置基线，经 `ParameterFileRepository` 预览并提交 `source_revision` 审核。「待审核」不代表工作配置已更新，批准回执也不会清除之后继续输入的内容。大差异复用虚拟视口编辑器。左侧仍只显示已登记模块及其 DTS 实际父节点，定位范围随编辑映射，正式结构在批准后刷新。
 - `submitStructuredEdits`：经 `POST /api/v1/projects/:projectId/dts-structured-edits/submit` 提交结构化编辑；CR 与 CST 回写载荷用 `rawText`（非 `normalizedValue`）保真。共享验收/CI 库为 post-cutover（语义身份）。`PROJ-CONFIG-EDIT-001` / `PARAM-DTS-EDIT-002` 在可丢弃 post-cutover 运行时上证明 live submit。
-- `StructuredValueEditor`：按 `valueType` 编辑 `rawText`（与后端值类型对齐的客户端校验）。
+- `StructuredValueEditor` 根据 DTS AST 选择紧凑的有序字符串/数值/字节编辑、可搜索的有序引用、布尔属性存在性及完整混合原文。侧栏预览六项，展开窗口每页五十项，共用同一份本地草稿。普通字符串批量输入每行一项，保留空项、重复项和内容中的逗号，预览后选择替换或追加；DTS 原文模式保留语法。未完成数值和未确认批量文本以严格读取的 `StructuredEditorState` 持久保留，不能作为有效目标保存。语法校验消费全部字符并保持 64 位精度。Binding 固定定义修订的 `valueShape.schema` 为编辑器提供范围及项数约束，迟到元数据只重新校验、不覆盖输入。输入只更新底部计数，不自动展开任务；原值折叠展示，存储失败明确提示仅当前页面保留，保存回执仅清除仍匹配发送快照的草稿。生效值仍来自人工审核及 CST 回写。
 - `DtsStructureBrowserPanel`：结构浏览、属性编辑、本地变更集聚合与「提交变更请求」；需 `parameter:edit`（`canEdit`），安全关键节点另需 `parameter:edit-critical`（`canEditCritical`）。
 - 配置工作台统一检索：路径 / `@地址` / 标签 / compatible / 值检索，挂在规范路由 `/parameter-admin/projects/:projectId/configuration` 的源结构区（旧 `DtsSearchPanel` 页面式挂载已随 cutover 移除）。
 - `ConfigSetBaselinePanel`：配置 / 基线 / 对比 / 发布 / 导出，同对话框「配置 / 基线」标签；对比变更集行映射真实参数并可走同一提交端口。

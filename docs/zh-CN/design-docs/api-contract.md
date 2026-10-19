@@ -661,6 +661,23 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 
 审计动作：`parameter-file-upload`、`parameter-file-rollback`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
 
+### DTS 整文件来源审核
+
+既有候选创建接口增加 `{ intent: "source_revision", fileId, expectedCurrentVersionId, expectedConfigRevisionId, clientMutationId, fileName, contentBase64 }`。固定单份非空且最多 2 MiB 的 DTS 及完整配置成员上下文，不改变活跃状态。候选 source-preview 返回 `kind: "source_revision"`、精确 `before` / `after`、诊断、影响、证明令牌及当前合资格的软件审核人。既有 source-review 提交另需范围内的幂等键；同键同内容重放，不同内容冲突。每个配置集最多一个待审来源请求。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v2/projects/:projectId/source-revision-requests?mine=true&status=pending` | `mine=true` 读取本人提交，否则读取分配给当前合资格审核人的请求。 |
+| `GET` | `/api/v2/projects/:projectId/source-revision-requests/:requestId` | 按权限读取固定源码差异、上下文摘要、影响及应用后的文件/配置回执。 |
+| `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/review` | `{ decision: "approve" | "reject", proofDigest, note? }`；要求当前指定审核人且不能自审。 |
+| `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/withdraw` | 提交人撤回待审请求，不更新活跃来源。 |
+
+`source_revision` 是独立且不可变的请求类型，支持注释、未登记内容等零参数目标的变更；保留旧 single/batch 约束与独立分发。固定证明包含精确文件、配置和成员版本、摘要、Catalog/组织登记、Binding/值/来源 pin 集合、身份连续性及新增项计划。提交和批准都重新核对当前权限、版本及上下文；历史固定定义使用其历史 Catalog 快照校验，当前 Catalog 指针变化要求重新预览。登记校验暂在事务内持有表级共享锁，会串行化登记写入；按组织设置版本栅栏是已记录的扩展方向。
+
+值校验保留 Catalog 的厂商 bytes 投影：string schema 接受合法字节字面量或纯整数字节宽度 8 的 cells，按 DTS 文本校验。数值 schema 继续按精确整数值及边界校验；此投影不把普通数值 cells 或引用放宽为字符串，也不跳过未变化的已登记值。
+
+批准通过既有 owner，在同一事务推进文件/配置版本、结构 occurrence、稳定 Binding、值、pin、历史、审计和经校验的回执。对象存储或关系写入失败均不留下部分活跃状态。实际生效的绑定属性被删除时，使用 `dts-source-absence` / `dts-source-absence-v1`，锚定真实修改前 occurrence 和修改后配置，不伪造删除节点或删除历史。当前重新加入同一来源中已终止删除的绑定 occurrence，会在预览阶段返回 `source-occurrence-restoration-requires-mapping`，需显式身份映射流程。下载保留经确认的精确字节，包括注释、数值写法、BOM 和一致换行。本流程不重命名全局定义、不改变成员、不发布基线，也不写设备。
+
 ### 结构化读取与 DTS 检索（P3）
 
 | 方法 | 路径 | 说明 |
@@ -668,6 +685,10 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | 从 `dts_*` 读取某一文件版本的结构化模型（请求内不重解析）。返回 `{ nodes }`；节点含类型化 `properties`（`valueType`/`rawText`/`normalizedValue`）、`phandleRefs`，以及 ingest 时写入的可选 `source` 定位器（`startOffset`/`endOffset`/`startLine`/`startColumn`/`endLine`/`endColumn`）。需要 `parameter:view`。 |
 | `GET` | `/api/v1/projects/:projectId/dts-search` | 在项目当前文件版本的 `dts_*` 上检索。查询：`q`（必填），可选 `by` = `path`\|`address`\|`label`\|`compatible`\|`value`\|`file`（省略 `by` 表示全维度含文件名）。返回 `{ hits }`，可含 `source` 定位器。需要 `parameter:view`。 |
 Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上持久化源码定位器，并在 structure/search 读取中返回（不重解析）。
+
+两个读取接口均接受可选 `navigationScope=organization`。Structure 继续返回完整 `nodes`，并增加 `navigation`：成功为 `{ status: "ready", catalogReleaseId, managedNodePaths }`，不可用为 `{ status: "unavailable", reason: "catalog-unavailable" | "registration-unavailable" }`。成功路径只标识直接匹配到有效 Catalog 主体、且在认证组织中有效登记的节点，包含禁用实例及尚无参数值的实例。识别复用 Catalog 的 compatible、正式别名规则，仅在节点未声明 compatible 时按节点名称回退。客户端补齐实际 DTS 祖先作为导航路径，并隐藏仅作祖先的节点属性；保留祖先不会保留其无关后代。成功空集合与读取不可用必须区分。文件结构使用请求中的版本，组织登记使用当前状态，不是由 `catalogReleaseId` 固定的历史组织状态。
+
+范围内搜索在既有项目搜索范围中，对每个现行文件版本应用同一规则。节点结果可包含结构祖先，属性结果只属于直接命中的节点；没有节点命中时仍可返回文件名结果。Catalog 或登记读取不可用时，范围内搜索返回 `500`（`INTERNAL_ERROR`）；未指定范围的读取保持原有行为。组织和操作者来自服务端认证上下文，不接受查询参数指定。导航范围仅影响展示，完整源码、编辑校验及授权仍由原有规则决定。
 
 | `POST` | `/api/v1/projects/:projectId/dts-structured-edits/submit` | 将一条或多条结构化 DTS 属性编辑提交为参数提交轮次。请求体：`{ edits: [{ fileId, nodePath, propertyName, rawText, reason? }], reason?, assignees? }`。按 `source_file_name`/`source_node_path` 映射到 `project_parameter_value`，创建草稿并提交 CR；`targetValue` 使用 `rawText`（非 `normalizedValue`）。返回 `201 { item }`（含 CR 项的提交轮次）。需要 `parameter:edit`；敏感节点规则适用（关键路径需 `parameter:edit-critical`；Agent 写 critical 节点拒绝）。审计：`parameter-structured-edit-submit`。 |
 

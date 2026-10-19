@@ -20,6 +20,26 @@ function parentPathOf(nodePath: string): string | null {
   return nodePath.slice(0, slash);
 }
 
+/** Navigation gets a view of managed instances and their actual ancestor paths. */
+export function selectWorkbenchNavigationNodes(
+  nodes: DtsStructuralNode[],
+  managedNodePaths: string[]
+): DtsStructuralNode[] {
+  const managed = new Set(managedNodePaths);
+  const visible = new Set<string>();
+  const paths = new Set(nodes.map((node) => node.nodePath));
+  for (const path of managed) {
+    if (!paths.has(path)) continue;
+    let current: string | null = path;
+    while (current !== null && !visible.has(current)) {
+      visible.add(current);
+      current = parentPathOf(current);
+    }
+  }
+  return nodes.filter((node) => visible.has(node.nodePath))
+    .map((node) => managed.has(node.nodePath) ? node : { ...node, properties: [] });
+}
+
 /** Build a true parent/child tree from flat DTS structure nodes keyed by nodePath. */
 export function buildWorkbenchStructureTree(nodes: DtsStructuralNode[]): WorkbenchStructureTreeNode[] {
   const sorted = [...nodes].sort((left, right) => left.nodePath.localeCompare(right.nodePath));

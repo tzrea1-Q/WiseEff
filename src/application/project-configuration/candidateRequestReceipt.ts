@@ -9,8 +9,9 @@ export function permitsFreshBatchRequest(receipt: Receipt | undefined): boolean 
 
 export function candidateReceiptMessage(receipt: Receipt): string {
   if (receipt.status === "pending" || receipt.status === "approved") {
-    return `已有${receipt.kind === "batch" ? "批量" : "单目标"}审核请求 ${receipt.id}（${receipt.status}），不能重复提交。`;
+    return `已有${receipt.kind === "source_revision" ? "整文件" : receipt.kind === "batch" ? "批量" : "单目标"}审核请求 ${receipt.id}（${receipt.status}），不能重复提交。`;
   }
+  if (receipt.kind === "source_revision") return `整文件请求 ${receipt.id} 已${receipt.status === "rejected" ? "驳回" : "撤回"}；请回到源码编辑重新校验并创建新请求。`;
   return receipt.kind === "single"
     ? `单目标请求 ${receipt.id} 已${receipt.status === "rejected" ? "驳回" : "撤回"}；原候选没有新的可提交选择。`
     : `批量请求 ${receipt.id} 已${receipt.status === "rejected" ? "驳回" : "撤回"}；须重新获取来源和冲突证明后才能提交新请求。`;

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useMemo, type RefObject } from "react";
 import { FileCode2 } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
 
@@ -7,11 +7,13 @@ import type {
   DtsConfigSet,
   DtsConfigSetMemberFile,
   DtsSearchHit,
-  DtsStructuralNode
+  DtsStructuralNode,
+  DtsStructureNavigation
 } from "@/application/ports/DtsStructuredRepository";
 import type { ProjectParameterFile } from "@/application/ports/ParameterFileRepository";
 import type { SessionPropertyDraft } from "@/application/project-configuration/sessionDrafts";
 import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
+import { selectWorkbenchNavigationNodes } from "./workbenchStructureTreeModel";
 
 const ROLE_LABELS: Record<ConfigSetRole, string> = {
   base: "基础",
@@ -68,6 +70,9 @@ export type WorkbenchSourceTreeProps = {
   structureError: string;
   onStructureRetry: () => void;
   structureNodes: DtsStructuralNode[];
+  organizationNavigation?: boolean;
+  structureNavigation?: DtsStructureNavigation | null;
+  structureNavigationError?: string;
   selectedNodePath: string | null;
   selectedPropertyName: string | null;
   sessionDrafts: Record<string, SessionPropertyDraft>;
@@ -109,6 +114,9 @@ export function WorkbenchSourceTree({
   structureError,
   onStructureRetry,
   structureNodes,
+  organizationNavigation = false,
+  structureNavigation = null,
+  structureNavigationError = "",
   selectedNodePath,
   selectedPropertyName,
   sessionDrafts,
@@ -121,6 +129,17 @@ export function WorkbenchSourceTree({
   pendingAction,
   onAssignUngroupedFile
 }: WorkbenchSourceTreeProps) {
+  const navigationNodes = useMemo(() => organizationNavigation
+    ? structureNavigation?.status === "ready"
+      ? selectWorkbenchNavigationNodes(structureNodes, structureNavigation.managedNodePaths)
+      : []
+    : structureNodes, [organizationNavigation, structureNavigation, structureNodes]);
+  const navigationError = organizationNavigation && structureNavigation?.status !== "ready"
+    ? structureNavigationError || "组织配置导航暂时不可用，请重试。" : "";
+  const targetOutsideNavigation = organizationNavigation && structureNavigation?.status === "ready"
+    && Boolean(selectedNodePath) && structureNodes.some((node) => node.nodePath === selectedNodePath)
+    && !navigationNodes.some((node) => node.nodePath === selectedNodePath
+      && (!selectedPropertyName || node.properties.some((property) => property.name === selectedPropertyName)));
   const sourceSetMutationBlocked =
     sourceWorkflowSetLoading ||
     !sourceWorkflowSetReady ||
@@ -257,9 +276,21 @@ export function WorkbenchSourceTree({
                       </button>
                     </div>
                   ) : null}
-                  {!structureLoading && !structureError ? (
+                  {!structureLoading && !structureError && navigationError ? (
+                    <div role="alert" className="configuration-workbench__scoped-error">
+                      <p>{navigationError}</p>
+                      <button className="button subtle" type="button" onClick={onStructureRetry}>
+                        重试配置导航
+                      </button>
+                    </div>
+                  ) : null}
+                  {!structureLoading && !structureError && !navigationError && targetOutsideNavigation ? (
+                    <p role="status">目标不在当前导航范围，已定位到源码。</p>
+                  ) : null}
+                  {!structureLoading && !structureError && !navigationError ? (
                     <WorkbenchStructureTree
-                      nodes={structureNodes}
+                      nodes={navigationNodes}
+                      emptyMessage={organizationNavigation ? "当前文件没有匹配组织已登记模块的节点。" : undefined}
                       fileId={item.fileId}
                       selectedNodePath={selectedNodePath}
                       selectedPropertyName={selectedPropertyName}

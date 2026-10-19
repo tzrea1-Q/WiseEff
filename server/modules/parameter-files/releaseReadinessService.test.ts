@@ -154,6 +154,24 @@ describe.skipIf(!databaseAvailable)("evaluateReleaseReadiness", () => {
     expect(result.releasedBaselineId).toBe("bl-released");
   });
 
+  it.each(["error", "warning"] as const)("keeps distinct %s diagnostics without repeating an issue identity", async (severity) => {
+    const diagnostic = { file: "effective.dtb", severity, message: "from schema $id: repeated.yaml" };
+    const distinct = { ...diagnostic, message: "another schema failure" };
+    const gate: ValidationGateResult = { ok: severity === "warning", mode: severity === "warning" ? "warn" : "block",
+      requiresConfirmation: severity === "warning", diagnostics: [diagnostic, diagnostic, distinct], compiler: "dtc" };
+    const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, { validationGate: gate });
+    const issues = severity === "error" ? result.blockers : result.warnings;
+    expect(issues).toHaveLength(2);
+    expect(new Set(issues.map((issue) => issue.id)).size).toBe(2);
+    expect(issues.map((issue) => issue.message)).toEqual(expect.arrayContaining([diagnostic.message, distinct.message]));
+    expect(result.level).toBe(severity === "error" ? "blocked" : "warning");
+    expect(result.canRelease).toBe(false);
+    const unique = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: { ...gate, diagnostics: [diagnostic, distinct] }
+    });
+    expect(result.gateToken).toBe(unique.gateToken);
+  });
+
   it("stays ready (not in-sync) when a released tip exists but working has drifted", async () => {
     await seedReleasedBaseline("ver-1");
     // New working version with a different storage key: content drifted.

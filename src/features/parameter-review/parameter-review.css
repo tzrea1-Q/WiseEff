@@ -1393,6 +1393,13 @@
   min-width: 0;
 }
 
+.review-source-diff__editor {
+  height: calc(var(--space-16) * 5);
+  overflow: hidden;
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-md);
+}
+
 .review-source-diff__rows {
   max-height: calc(var(--space-16) * 5);
   scroll-margin-top: var(--space-16);

@@ -99,7 +99,7 @@ export type DtsReloadPageProps = {
   createBridgePairingCode?: () => Promise<DeviceBridgePairingCode>;
   /** Optional reachable-target detection (same seam as /node-debugging detectTargets). */
   detectTargets?: (
-    protocol: DtsReloadDeployProtocol,
+    protocol?: DtsReloadDeployProtocol,
     bridgeId?: string
   ) => Promise<DtsReloadReachableTarget[]>;
   /** Test/demo seam: seed deploy target without the removed manual targetRef field. */
@@ -513,7 +513,7 @@ export function DtsReloadPage({
     setTargetDetectionError("");
     setDetectingTargets(true);
     try {
-      const targets = await detectDeviceTargets((connectionProtocol) => detectTargets(connectionProtocol, requestBridgeId));
+      const targets = await detectDeviceTargets(() => detectTargets(undefined, requestBridgeId));
       const current = session.getSnapshot();
       if (detectRequestSeqRef.current !== requestSeq || current.historyRunLoading || current.starting || current.deploying || current.restoring) return;
 
@@ -539,7 +539,7 @@ export function DtsReloadPage({
         }
         if (scopedTargets.length === 1) {
           const only = scopedTargets[0]!.targetRef.trim();
-          session.setProtocol(scopedTargets[0]!.protocol);
+          if (scopedTargets[0]!.protocol) session.setProtocol(scopedTargets[0]!.protocol);
           if (only && session.getSnapshot().targetRef !== only) {
             session.setTargetRef(only);
           }

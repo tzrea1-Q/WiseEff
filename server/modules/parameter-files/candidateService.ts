@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { asAuditTx, writeAuditEventInTx, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
@@ -15,7 +15,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import { buildIngestDriverSummary } from "../parameter-modules/ingestDriverSummary";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
-import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { diffResolvedDts } from "./baselineDiff";
@@ -98,6 +98,10 @@ export type CreateCandidateInput = {
   fileName: string;
   bytes: Buffer;
   fileId?: string;
+  intent?: "source_revision";
+  expectedCurrentVersionId?: string;
+  expectedConfigRevisionId?: string;
+  clientMutationId?: string;
 };
 
 function requireCandidateAdmin(auth: AuthContext) {
@@ -378,11 +382,40 @@ async function createCandidateInScope(
   const trustedContext = normalizeCandidateCreationContext(auth, context, "parameter file candidate creation");
   requireCandidateAdmin(auth);
 
+  const sourceRevision = input.intent === "source_revision";
+  const mutationDigest = sourceRevision ? createHash("sha256").update(JSON.stringify({
+    fileId: input.fileId, fileName: input.fileName, baseVersionId: input.expectedCurrentVersionId,
+    baseConfigRevisionId: input.expectedConfigRevisionId,
+    content: createHash("sha256").update(input.bytes).digest("hex")
+  })).digest("hex") : undefined;
+  const replay = async (tx: Queryable) => {
+    if (!sourceRevision) return null;
+    const row = (await tx.query<{ id: string; client_mutation_digest: string }>(
+      `select id,client_mutation_digest from public.project_parameter_file_candidates
+       where organization_id=$1 and project_id=$2 and created_by_user_id=$3 and client_mutation_id=$4`,
+      [auth.organization.id, input.projectId, auth.user.id, input.clientMutationId])).rows[0];
+    if (!row) return null;
+    if (row.client_mutation_digest !== mutationDigest) throw new ApiError("CONFLICT", "Candidate mutation key was already used for different source content.");
+    return getParameterFileCandidateById(tx, { organizationId: auth.organization.id, projectId: input.projectId, candidateId: row.id });
+  };
+  if (sourceRevision) {
+    if (!canEditParameters(auth, input.projectId)) throw new ApiError("FORBIDDEN", "Project edit permission is required.");
+    if (!input.fileId || !input.expectedCurrentVersionId || !input.expectedConfigRevisionId
+      || !input.clientMutationId?.trim() || input.clientMutationId.length > 160) {
+      throw new ApiError("VALIDATION_FAILED", "Whole-source candidates require file/config base versions and a mutation key.");
+    }
+    try { new TextDecoder("utf-8", { fatal: true }).decode(input.bytes); }
+    catch { throw new ApiError("VALIDATION_FAILED", "DTS source must be valid UTF-8."); }
+    const previous = await replay(db);
+    if (previous) return previous;
+  }
+
   const fileName = input.fileName.trim();
   if (!fileName) {
     throw new ApiError("VALIDATION_FAILED", "Candidate fileName is required.");
   }
   const format = detectFormat(fileName);
+  if (sourceRevision && format !== "dts") throw new ApiError("VALIDATION_FAILED", "Whole-source editing supports DTS files only.");
   const sizeBytes = input.bytes.byteLength;
   if (sizeBytes > MAX_FILE_BYTES) {
     throw new ApiError("VALIDATION_FAILED", "Project parameter file exceeds the 2MB limit.", {
@@ -456,6 +489,30 @@ async function createCandidateInScope(
   });
 
   const persist = async (tx: Database) => {
+    let sourceRevisionContext: ProjectParameterFileCandidateDto["sourceRevisionContext"];
+    if (sourceRevision) {
+      await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+        `source-revision-candidate:${auth.organization.id}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`
+      ]);
+      const previous = await replay(tx);
+      if (previous) return previous;
+      const current = (await tx.query<{ config_set_id: string; current_version_id: string }>(
+        `select file.config_set_id,file.current_version_id from public.project_parameter_files file
+         join public.dts_config_set config on config.id=file.config_set_id and config.organization_id=file.organization_id
+           and config.project_id=file.project_id
+         where file.id=$1 and file.organization_id=$2 and file.project_id=$3 for update of config,file`,
+        [fileId, auth.organization.id, input.projectId])).rows[0];
+      const revision = current ? (await tx.query<{ id: string }>(
+        `select id from public.dts_config_revisions where config_set_id=$1 and organization_id=$2 and project_id=$3
+         and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
+        [current.config_set_id, auth.organization.id, input.projectId])).rows[0] : undefined;
+      if (!current || current.current_version_id !== input.expectedCurrentVersionId || revision?.id !== input.expectedConfigRevisionId) {
+        throw new ApiError("CONFLICT", "The file or configuration changed since editing started.", { reason: "source-revision-base-stale" });
+      }
+      baseVersionId = current.current_version_id;
+      sourceRevisionContext = { kind: "source_revision", configSetId: current.config_set_id,
+        baseVersionId, baseConfigRevisionId: input.expectedConfigRevisionId!, clientMutationId: input.clientMutationId! };
+    }
     const uploading = await insertParameterFileCandidate(tx, {
       id: candidateId,
       organizationId: auth.organization.id,
@@ -468,6 +525,9 @@ async function createCandidateInScope(
       storageKey: stored.storageKey,
       checksum: stored.checksumSha256,
       sizeBytes: stored.fileSizeBytes,
+      sourceRevisionContext,
+      clientMutationId: sourceRevision ? input.clientMutationId : undefined,
+      clientMutationDigest: mutationDigest,
       createdByUserId: trustedContext.invocation
         ? trustedAccountableUser(trustedContext.invocation)?.id
         : auth.user.id,
@@ -711,6 +771,7 @@ export async function recomputeCandidateImpact(
       candidateId: input.candidateId
     });
   }
+  if (existing.sourceRevisionContext) throw new ApiError("CONFLICT", "Create a new whole-source candidate to revalidate an editor revision.", { reason: "source-revision-workflow-required" });
   await assertNoCanonicalWorkflowMutation(db, existing, auth.organization.id, input.projectId);
   if (!["ready", "blocked", "failed", "stale"].includes(existing.status)) {
     throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be recomputed.", {
@@ -846,6 +907,7 @@ export async function activateCandidate(
       candidateId: input.candidateId
     });
   }
+  if (existing.sourceRevisionContext) throw new ApiError("CONFLICT", "Whole-source editor candidates require source review.", { reason: "source-revision-workflow-required" });
   if (existing.status !== "ready") {
     throw new ApiError("VALIDATION_FAILED", "Only ready candidates can be activated.", {
       candidateId: existing.id,

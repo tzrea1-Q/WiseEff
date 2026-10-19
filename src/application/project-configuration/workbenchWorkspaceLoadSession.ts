@@ -1,7 +1,9 @@
 import type {
   DtsConfigSet,
   DtsConfigSetMemberFile,
+  DtsNavigationScope,
   DtsStructuralNode,
+  DtsStructureNavigation,
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type {
@@ -35,10 +37,13 @@ export type WorkbenchWorkspaceLoadSnapshot = {
   membersError: string;
   membersRetry: number;
   source: string;
+  sourceIdentity: { projectId: string; fileId: string; versionId: string } | null;
   sourceLoading: boolean;
   sourceError: string;
   sourceRetry: number;
   structureNodes: DtsStructuralNode[];
+  structureNavigation: DtsStructureNavigation | null;
+  structureNavigationError: string;
   structureLoading: boolean;
   structureError: string;
   structureRetry: number;
@@ -64,7 +69,8 @@ export type WorkbenchWorkspaceLoadSession = WorkbenchWorkspaceLoadSnapshot & {
     projectId: string,
     fileId: string | null,
     versionId: string | null,
-    repo: Pick<DtsStructuredRepository, "getStructure">
+    repo: Pick<DtsStructuredRepository, "getStructure">,
+    options?: DtsNavigationScope
   ): Promise<void>;
   retryConfigSets(): void;
   retryFiles(): void;
@@ -77,7 +83,7 @@ export type WorkbenchWorkspaceLoadSession = WorkbenchWorkspaceLoadSnapshot & {
 };
 
 function decodeSourceBytes(bytes: Uint8Array): string {
-  return new TextDecoder().decode(bytes);
+  return new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }).decode(bytes);
 }
 
 function emptySnapshot(): WorkbenchWorkspaceLoadSnapshot {
@@ -96,10 +102,13 @@ function emptySnapshot(): WorkbenchWorkspaceLoadSnapshot {
     membersError: "",
     membersRetry: 0,
     source: "",
+    sourceIdentity: null,
     sourceLoading: false,
     sourceError: "",
     sourceRetry: 0,
     structureNodes: [],
+    structureNavigation: null,
+    structureNavigationError: "",
     structureLoading: false,
     structureError: "",
     structureRetry: 0
@@ -122,10 +131,13 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
   let membersError = "";
   let membersRetry = 0;
   let source = "";
+  let sourceIdentity: WorkbenchWorkspaceLoadSnapshot["sourceIdentity"] = null;
   let sourceLoading = false;
   let sourceError = "";
   let sourceRetry = 0;
   let structureNodes: DtsStructuralNode[] = [];
+  let structureNavigation: DtsStructureNavigation | null = null;
+  let structureNavigationError = "";
   let structureLoading = false;
   let structureError = "";
   let structureRetry = 0;
@@ -153,10 +165,13 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
       membersError,
       membersRetry,
       source,
+      sourceIdentity,
       sourceLoading,
       sourceError,
       sourceRetry,
       structureNodes,
+      structureNavigation,
+      structureNavigationError,
       structureLoading,
       structureError,
       structureRetry
@@ -217,6 +232,9 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
     get source() {
       return snapshot.source;
     },
+    get sourceIdentity() {
+      return snapshot.sourceIdentity;
+    },
     get sourceLoading() {
       return snapshot.sourceLoading;
     },
@@ -228,6 +246,12 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
     },
     get structureNodes() {
       return snapshot.structureNodes;
+    },
+    get structureNavigation() {
+      return snapshot.structureNavigation;
+    },
+    get structureNavigationError() {
+      return snapshot.structureNavigationError;
     },
     get structureLoading() {
       return snapshot.structureLoading;
@@ -323,12 +347,14 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
       if (!fileId || !versionId) {
         sourceGeneration += 1;
         source = "";
+        sourceIdentity = null;
         sourceError = "";
         sourceLoading = false;
         emit();
         return;
       }
       const generation = ++sourceGeneration;
+      sourceIdentity = null;
       sourceLoading = true;
       sourceError = "";
       emit();
@@ -336,6 +362,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
         const result = await repo.downloadVersion(projectId, fileId, versionId);
         if (generation !== sourceGeneration) return;
         source = decodeSourceBytes(result.bytes);
+        sourceIdentity = { projectId, fileId, versionId };
       } catch (error: unknown) {
         if (generation !== sourceGeneration) return;
         source = "";
@@ -347,7 +374,10 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
         }
       }
     },
-    async loadStructure(projectId, fileId, versionId, repo) {
+    async loadStructure(projectId, fileId, versionId, repo, options) {
+      structureNavigation = null;
+      structureNavigationError = "";
+      structureNodes = [];
       if (!fileId || !versionId) {
         structureGeneration += 1;
         structureNodes = [];
@@ -361,9 +391,15 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
       structureError = "";
       emit();
       try {
-        const result = await repo.getStructure(projectId, fileId, versionId);
+        const result = options?.navigationScope
+          ? await repo.getStructure(projectId, fileId, versionId, options)
+          : await repo.getStructure(projectId, fileId, versionId);
         if (generation !== structureGeneration) return;
         structureNodes = result.nodes;
+        structureNavigation = result.navigation ?? null;
+        if (options?.navigationScope && result.navigation?.status !== "ready") {
+          structureNavigationError = "组织配置导航暂时不可用，请重试。";
+        }
       } catch (error: unknown) {
         if (generation !== structureGeneration) return;
         structureNodes = [];

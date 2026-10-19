@@ -4,6 +4,7 @@ import { RefreshCw, ArrowRight, Inbox, SlidersHorizontal, X } from "lucide-react
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PageProps } from "@/app/routes";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues } from "@/components/tableFilterUtils";
@@ -22,10 +23,11 @@ import { CanonicalMemberRemovalReviewPanel } from "./CanonicalMemberRemovalRevie
 import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
 import { canonicalStatusLabels } from "./canonicalSubmissionTracking";
 import { useReviewQueueKeyboard } from "./useReviewQueueKeyboard";
+import { SourceRevisionReviewPanel } from "./SourceRevisionReviewPanel";
 
 export type ReviewInboxRow = {
   id: string;
-  kind: "legacy" | "value" | "member";
+  kind: "legacy" | "value" | "member" | "source";
   typeLabel?: string;
   projectId: string;
   project: string;
@@ -46,6 +48,7 @@ export type ReviewInboxRow = {
 type Props = {
   projectId: string;
   repository?: ParameterCatalogRepository;
+  sourceRepository?: ParameterFileRepository;
   state: PageProps["state"];
   search: string;
   mineOnly?: boolean;
@@ -65,19 +68,19 @@ type Props = {
   busy?: boolean;
 };
 
-const typeLabels = { all: "全部类型", value: "软件配置", member: "配置文件移除", legacy: "参数与节点" };
+const typeLabels = { all: "全部类型", value: "软件配置", source: "DTS 来源修改", member: "配置文件移除", legacy: "参数与节点" };
 const searchProfile: SearchProfile<ReviewInboxRow> = { fields: [
   { name: "request", weight: 5, getValues: (row) => [row.id, row.title, row.objectLabel, row.changeSummary] },
   { name: "context", weight: 2, getValues: (row) => [row.project, row.module, row.submitter, row.assignedTo, row.status] }
 ] };
 
-export function ReviewInbox({ projectId, repository, state, search, mineOnly = false, canReview = false,
+export function ReviewInbox({ projectId, repository, sourceRepository, state, search, mineOnly = false, canReview = false,
   legacyRows, renderLegacyDetail, onLegacySelect, renderRowSelection, renderRowTitle, selectAll, queueActions,
   onRequestsChanged, loading: legacyLoading = false, error: legacyError, onVisibleLegacyIds, onNavigate, busy = false }: Props) {
   const [query, setQuery] = useState(search);
   const [refresh, setRefresh] = useState(0);
-  const identityScope = useMemo(() => ({ repository, projectId, mineOnly, canReview, userId: state.currentUserId, roleId: state.activeRoleId }),
-    [repository, projectId, mineOnly, canReview, state.currentUserId, state.activeRoleId]);
+  const identityScope = useMemo(() => ({ repository, sourceRepository, projectId, mineOnly, canReview, userId: state.currentUserId, roleId: state.activeRoleId }),
+    [repository, sourceRepository, projectId, mineOnly, canReview, state.currentUserId, state.activeRoleId]);
   const loadScope = useMemo(() => ({ ...identityScope, identity: identityScope,
     projects: state.configDraft.projects, users: state.users, parameters: state.parameters, refresh
   }), [identityScope, state.configDraft.projects, state.users, state.parameters, refresh]);
@@ -124,12 +127,22 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
     void Promise.all([
       repository.listProjectValueChangeRequests?.(projectId, scope).then((response) => response.items) ?? [],
       (mineOnly || canReview) ? repository.listProjectValueBatchChangeRequests?.(projectId, scope).then((response) => response.items) ?? [] : [],
-      repository.listMemberRemovalRequests?.(projectId, scope).then((response) => response.items) ?? []
-    ]).then(([values, batches, members]) => {
+      repository.listMemberRemovalRequests?.(projectId, scope).then((response) => response.items) ?? [],
+      sourceRepository?.listSourceRevisionRequests?.(projectId, scope) ?? []
+    ]).then(([values, batches, members, sources]) => {
       if (cancelled) return;
       const project = projects.find((item) => item.id === projectId)?.name ?? projectId;
       const userName = (id: string | null) => id === null ? "已注销用户" : users.find((user) => user.id === id)?.name ?? "项目成员";
       setCanonicalProjection({ scope: loadScope, error: null, rows: [
+        ...sources.map((request): ReviewInboxRow => ({ id: request.id, kind: "source", projectId, project,
+          module: "配置文件", objectLabel: request.fileName, changeSummary: `${request.impact.parameterChanges} 项参数变化 · DTS 来源修改`,
+          title: request.reason, submitter: request.submitterName ?? userName(request.submitterUserId),
+          assignedToId: request.assignedToUserId,
+          assignedTo: request.assignedToName ?? userName(request.assignedToUserId),
+          createdAt: request.createdAt, handledAt: request.status === "pending" ? undefined : request.updatedAt,
+          handledBy: request.status === "withdrawn" ? request.submitterName ?? userName(request.submitterUserId)
+            : request.reviewerUserId ? request.reviewerName ?? userName(request.reviewerUserId) : undefined,
+          status: canonicalStatusLabels[request.status], view: request.status === "pending" ? "pending" : "history" })),
         ...[...values, ...batches].map((request): ReviewInboxRow => {
           const parameter = "bindingId" in request ? parameters.find((item) => item.id === request.bindingId) : undefined;
           return { id: request.id, kind: "value", projectId, project,
@@ -371,7 +384,10 @@ export function ReviewInbox({ projectId, repository, state, search, mineOnly = f
     {selected ? <aside className="review-detail" ref={detailRef} tabIndex={-1} aria-labelledby={`${tabsId}-detail-heading`}>
       <h2 id={`${tabsId}-detail-heading`} className="sr-only">{mineOnly ? "提交详情" : "审阅详情"}</h2>
       <p className="review-inbox__detail-context sr-only">{selected.project} · {selected.typeLabel ?? typeLabels[selected.kind]}</p>
-      {selected.kind === "legacy" ? renderLegacyDetail(selected) : selected.kind === "value" ? <CanonicalProjectValueReviewPanel
+      {selected.kind === "source" && sourceRepository ? <SourceRevisionReviewPanel key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.id])}
+        projectId={projectId} requestId={selected.id} repository={sourceRepository} currentUserId={state.currentUserId} canReview={canReview}
+        refreshVersion={detailRefresh} onRequestsChanged={changed} onBusyChange={setDetailBusy} />
+      : selected.kind === "legacy" ? renderLegacyDetail(selected) : selected.kind === "value" ? <CanonicalProjectValueReviewPanel
         key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.kind, selected.id])} refreshVersion={detailRefresh} projectId={projectId} repository={repository} currentUserId={state.currentUserId} canReview={canReview}
         mineOnly={mineOnly} initialRequestId={selected.id} detailOnly externalView={view} users={state.users} parameters={state.parameters} onRequestsChanged={changed} onBusyChange={setDetailBusy}
         onSelectRequest={(id) => { if (id) select(id); }} /> : <CanonicalMemberRemovalReviewPanel key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.kind, selected.id])} refreshVersion={detailRefresh}

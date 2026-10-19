@@ -33,6 +33,7 @@ import {
   submitBindingDraftViaApi
 } from "./helpers/semanticBindingFixture";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
+import { registerCatalogDriverSubjects } from "./helpers/topologyFixture";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -205,9 +206,16 @@ test.describe("DTS structured product browser acceptance", () => {
     const peerFileName = `acceptance-dts-peer-${randomUUID()}.dts`;
     const configSetName = `acceptance-cs-${randomUUID().slice(0, 8)}`;
     const baselineName = `acceptance-bl-${randomUUID().slice(0, 8)}`;
+    const sourceDts = sampleDts.replaceAll('"vendor,chip123"', '"mt,mt5788"').replace("\t\t\tchip@70 {", `\t\t\tunregistered_chip@71 {
+\t\t\t\tcompatible = "wiseeff,unregistered-structured-search";
+\t\t\t\treg = <0x71>;
+\t\t\t\tstatus = "okay";
+\t\t\t};
+\t\t\tchip@70 {`);
 
     try {
-      const primary = await uploadDtsFile(request, primaryFileName, sampleDts);
+      await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+      const primary = await uploadDtsFile(request, primaryFileName, sourceDts);
       const peer = await uploadDtsFile(request, peerFileName, peerDts);
 
       const structureResponse = await request.get(
@@ -233,6 +241,7 @@ test.describe("DTS structured product browser acceptance", () => {
       expect(nodes.length).toBeGreaterThan(0);
       const chip = nodes.find((node) => node.nodePath.includes("chip@6E"));
       expect(chip).toBeTruthy();
+      expect(nodes.some((node) => node.nodePath.endsWith("unregistered_chip@71"))).toBe(true);
       const typedProps = chip?.properties ?? [];
       expect(typedProps.some((prop) => prop.valueType && prop.rawText != null)).toBe(true);
       const valueTypes = new Set(typedProps.map((prop) => prop.valueType));
@@ -414,6 +423,11 @@ test.describe("DTS structured product browser acceptance", () => {
       }
       const searchForm = page.getByRole("form", { name: "统一结构搜索" });
       await expect(searchForm).toBeVisible({ timeout: 20_000 });
+      await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).fill("chip");
+      await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).press("Enter");
+      await expect(page.getByLabel("搜索结果")).toContainText("chip@6E");
+      await expect(page.getByLabel("搜索结果")).toContainText("chip@70");
+      await expect(page.getByLabel("搜索结果")).not.toContainText("unregistered_chip");
       await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).fill("chip@6E");
       await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).press("Enter");
       await expect(page.getByLabel("搜索结果")).toContainText(/chip@6E/, { timeout: 20_000 });
@@ -461,7 +475,7 @@ test.describe("DTS structured product browser acceptance", () => {
         notes: "Created config set + baseline via API; configuration workbench config-set inspector visible."
       });
 
-      const nextVersionContent = sampleDts.replace("reg = <0x6e>;", "reg = <0x6f>;");
+      const nextVersionContent = sourceDts.replace("reg = <0x6e>;", "reg = <0x6f>;");
       const nextVersion = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/parameter-files/${primary.fileId}/versions`),
         {

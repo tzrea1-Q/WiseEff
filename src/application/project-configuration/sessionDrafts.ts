@@ -4,6 +4,7 @@ import {
   type ParameterSourceLookup
 } from "@/application/parameters/structuredChangeSet";
 import type { DtsStructuralNode, DtsStructuralProperty } from "@/application/ports/DtsStructuredRepository";
+import type { StructuredEditorState } from "@/domain/dts/structuredEditorState";
 
 export type SessionPropertyDraft = {
   rawText: string;
@@ -11,10 +12,11 @@ export type SessionPropertyDraft = {
   present?: boolean;
   valid?: boolean;
   error?: string;
+  editorState?: StructuredEditorState;
 };
 
 export function isUnchangedSessionDraft(draft: SessionPropertyDraft, property: DtsStructuralProperty): boolean {
-  return draft.valid !== false && draft.present !== false && draft.rawText === property.rawText;
+  return !draft.editorState && draft.valid !== false && draft.present !== false && draft.rawText === property.rawText;
 }
 
 export type SessionDraftIdentity = {
@@ -50,6 +52,7 @@ export type SessionDraftRow = SessionDraftIdentity & {
   present?: boolean;
   valid: boolean;
   error?: string;
+  editorState?: StructuredEditorState;
 };
 
 export function listSessionDraftRows(input: {
@@ -80,8 +83,9 @@ export function listSessionDraftRows(input: {
         normalizedValue: draft.normalizedValue,
         ...(typeof draft.present === "boolean" ? { present: draft.present } : {}),
         startLine: property.source?.startLine ?? node.source?.startLine ?? null,
-        valid: draft.valid !== false,
-        ...(draft.error ? { error: draft.error } : {})
+        valid: !draft.editorState && draft.valid !== false,
+        ...(draft.error ? { error: draft.error } : {}),
+        ...(draft.editorState ? { editorState: draft.editorState } : {})
       });
     }
   }

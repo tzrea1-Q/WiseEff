@@ -112,7 +112,7 @@ describe("createCandidateVersionFlow", () => {
     const downloadCandidate = vi.fn(async () => ({
       contentType: "text/plain",
       fileName: "board.dts",
-      bytes: new TextEncoder().encode("model = \"x\";")
+      bytes: new TextEncoder().encode("\ufeffmodel = \"x\";\r\n")
     }));
     const repo = { getCandidate, downloadCandidate } as Pick<
       ParameterFileRepository,
@@ -123,7 +123,7 @@ describe("createCandidateVersionFlow", () => {
     await flow.load("proj-1", "cand-1", repo);
 
     expect(flow.candidate?.id).toBe("cand-1");
-    expect(flow.sourceText).toContain("model");
+    expect(flow.sourceText).toBe("\ufeffmodel = \"x\";\r\n");
     expect(flow.loading).toBe(false);
 
     flow.clear();

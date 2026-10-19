@@ -23,6 +23,7 @@ import type {
   ResolveConflictsBulkInput,
   ResolveParameterFileConflictInput,
   SubmitParameterFileSourceReviewInput,
+  SourceRevisionRequest,
   UploadParameterFileInput
 } from "@/application/ports/ParameterFileRepository";
 import { createApiClient } from "./apiClient";
@@ -100,6 +101,29 @@ function routeCandidateSourcePreview(projectId: string, candidateId: string) {
 
 export function createParameterFileClient(client: ApiClient = createDefaultApiClient()): ParameterFileRepository {
   return {
+    async listSourceRevisionRequests(projectId, query = {}) {
+      const params = new URLSearchParams();
+      if (query.mine) params.set("mine", "true");
+      if (query.status) params.set("status", query.status);
+      const response = await client.get<{ items: SourceRevisionRequest[] }>(
+        `/api/v2/projects/${encodeURIComponent(projectId)}/source-revision-requests?${params}`);
+      return response.items;
+    },
+    async getSourceRevisionRequest(projectId, requestId) {
+      const response = await client.get<ItemEnvelope<SourceRevisionRequest>>(
+        `/api/v2/projects/${encodeURIComponent(projectId)}/source-revision-requests/${encodeURIComponent(requestId)}`);
+      return response.item;
+    },
+    async reviewSourceRevisionRequest(projectId, requestId, input) {
+      const response = await client.post<ItemEnvelope<SourceRevisionRequest>>(
+        `/api/v2/projects/${encodeURIComponent(projectId)}/source-revision-requests/${encodeURIComponent(requestId)}/review`, input);
+      return response.item;
+    },
+    async withdrawSourceRevisionRequest(projectId, requestId) {
+      const response = await client.post<ItemEnvelope<SourceRevisionRequest>>(
+        `/api/v2/projects/${encodeURIComponent(projectId)}/source-revision-requests/${encodeURIComponent(requestId)}/withdraw`, {});
+      return response.item;
+    },
     async listFiles(projectId: string) {
       const response = await client.get<ItemsEnvelope<ProjectParameterFile>>(routeProjectFiles(projectId));
       return response.items;

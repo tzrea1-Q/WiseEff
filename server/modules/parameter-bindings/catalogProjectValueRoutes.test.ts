@@ -269,7 +269,7 @@ describe("catalog published-value import apply route", () => {
         currentValue: "2000"
       }
     ]);
-    vi.mocked(db.query).mockResolvedValue({ rows: [] });
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
 
     const response = await requestJson(makeServer({ db }), "/api/v1/parameter-import-batches", {
       method: "POST",
@@ -352,7 +352,7 @@ describe("catalog published-value import apply route", () => {
         currentValue: "2000"
       }
     ]);
-    vi.mocked(db.query).mockResolvedValue({ rows: [] });
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
 
     const response = await requestJson(makeServer({ db }), "/api/v1/parameter-import-batches", {
       method: "POST",
@@ -618,7 +618,8 @@ describe("catalog published-value save authorization", () => {
   it("creates a pending draft and never writes the canonical current value", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
-      rows: [{ format: "dts", config_revision_id: "rev-1", property_occurrence_id: "property-1", node_locator: "/charger", compatible: "acme,power" }]
+      rows: [{ format: "dts", config_revision_id: "rev-1", property_occurrence_id: "property-1", node_locator: "/charger", compatible: "acme,power" }],
+      rowCount: 1
     });
     vi.mocked(catalogSync.findCatalogBindingRow).mockResolvedValue({
       ...catalogBinding,
@@ -630,7 +631,14 @@ describe("catalog published-value save authorization", () => {
       definitionId: "pdef_acme_power_iin_max",
       effectiveRevisionId: "rev-def-1",
       currentValueId: "val-1",
-      targetValue: "<2000>"
+      targetValue: "<2000>",
+      sourceFormat: "dts",
+      baseRevisionId: "rev-1",
+      sourcePinId: "pin-1",
+      candidateId: null,
+      reason: draftBody.reason,
+      updatedAt: "2026-09-15T00:00:00.000Z",
+      action: "set"
     });
     vi.mocked(sensitiveNode.assertTrustedSensitiveNodeWriteAllowed).mockResolvedValue(undefined as never);
 
@@ -653,7 +661,8 @@ describe("catalog published-value save authorization", () => {
   it("allows an admin to create a pending draft on any project", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
-      rows: [{ format: "dts", config_revision_id: "rev-1", property_occurrence_id: "property-1", node_locator: "/charger", compatible: "acme,power" }]
+      rows: [{ format: "dts", config_revision_id: "rev-1", property_occurrence_id: "property-1", node_locator: "/charger", compatible: "acme,power" }],
+      rowCount: 1
     });
     vi.mocked(catalogSync.findCatalogBindingRow).mockResolvedValue(catalogBinding);
     vi.mocked(drafts.createCanonicalValueDraft).mockResolvedValue({
@@ -662,7 +671,14 @@ describe("catalog published-value save authorization", () => {
       definitionId: "pdef_acme_power_iin_max",
       effectiveRevisionId: "rev-def-1",
       currentValueId: "val-1",
-      targetValue: "<2000>"
+      targetValue: "<2000>",
+      sourceFormat: "dts",
+      baseRevisionId: "rev-1",
+      sourcePinId: "pin-1",
+      candidateId: null,
+      reason: draftBody.reason,
+      updatedAt: "2026-09-15T00:00:00.000Z",
+      action: "set"
     });
     vi.mocked(sensitiveNode.assertTrustedSensitiveNodeWriteAllowed).mockResolvedValue(undefined as never);
 
@@ -882,7 +898,7 @@ describe("canonical import apply boundary", () => {
 });
 
 describe("canonical value change request routes", () => {
-  const changeRequest = {
+  const changeRequest: drafts.CanonicalValueChangeRequestDto = {
     id: "pvcr-1",
     projectId: "project-1",
     draftId: "pvdr-1",
@@ -891,6 +907,10 @@ describe("canonical value change request routes", () => {
     effectiveRevisionId: "rev-def-1",
     status: "pending" as const,
     targetValue: "<2000>",
+    sourceFormat: "dts",
+    baseRevisionId: "revision-1",
+    baseCurrentValueId: "val-1",
+    action: "set",
     reason: "raise input current",
     submitterUserId: "user-1",
     assignedToUserId: null,
@@ -930,8 +950,9 @@ describe("canonical value change request routes", () => {
   it("routes approval authorization to the shared audited owner", async () => {
     const db = makeDb();
     vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue({} as never);
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ request_kind: "single" }] } as never)
-      .mockResolvedValue({ rows: [{ format: "json", config_revision_id: "revision-1" }] });
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ request_kind: "single" }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ request_kind: "single", assigned_to_user_id: null, has_conflict_decision: false }], rowCount: 1 })
+      .mockResolvedValue({ rows: [{ format: "json", config_revision_id: "revision-1" }], rowCount: 1 });
     const viewer = makeAuth({ permissions: ["parameter:view", "parameter:review"] });
     vi.mocked(drafts.reviewCanonicalValueChange).mockRejectedValueOnce(new ApiError("FORBIDDEN", "Parameter edit permission is required."));
 

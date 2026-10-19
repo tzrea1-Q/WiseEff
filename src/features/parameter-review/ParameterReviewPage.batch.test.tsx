@@ -7,6 +7,10 @@ import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterPageActions } from "@/app/routes";
 import type { AppRuntime } from "@/app/appRuntime";
 
+vi.mock("@/application/parameters/parameterFileRuntime", () => ({
+  resolveParameterFileRepository: () => ({ listSourceRevisionRequests: async () => [] })
+}));
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");

@@ -13,6 +13,8 @@ import { canonicalConflictDtoSchemaCatalog } from "./canonicalConflict";
 import { canonicalBatchRollbackDtoSchemaCatalog } from "./canonicalBatchRollback";
 import { canonicalManualSyncDtoSchemaCatalog } from "./canonicalManualSync";
 import { productFeedbackCoveredRouteIds, productFeedbackDtoSchemaCatalog } from "./productFeedback";
+import { structuralReadResponseSchema, dtsSearchResponseSchema } from "./dtsStructure";
+import { sourceRevisionCoveredRouteIds, sourceRevisionDtoSchemaCatalog } from "./sourceRevision";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...coreDtoSchemaCatalog,
@@ -20,13 +22,17 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...canonicalConflictDtoSchemaCatalog,
   ...canonicalBatchRollbackDtoSchemaCatalog,
   ...canonicalManualSyncDtoSchemaCatalog,
-  ...productFeedbackDtoSchemaCatalog
+  ...productFeedbackDtoSchemaCatalog,
+  ...sourceRevisionDtoSchemaCatalog,
+  StructuralReadResponse: structuralReadResponseSchema,
+  DtsSearchResponse: dtsSearchResponseSchema
 };
 
 export const dtoSchemaCoveredRouteIds = [
   ...coreDtoSchemaCoveredRouteIds,
   ...parameterCatalogCoveredRouteIds,
-  ...productFeedbackCoveredRouteIds
+  ...productFeedbackCoveredRouteIds,
+  ...sourceRevisionCoveredRouteIds
 ] as const;
 
 export type DtoSchemaCoveredRouteId = (typeof dtoSchemaCoveredRouteIds)[number];
@@ -47,6 +53,7 @@ export * from "./canonicalConflict";
 export * from "./canonicalBatchRollback";
 export * from "./canonicalManualSync";
 export * from "./productFeedback";
+export * from "./sourceRevision";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
 export { logSkillSpecSchema } from "../../logs/skillSpec";
 export { signalRuleSetSchema, signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";

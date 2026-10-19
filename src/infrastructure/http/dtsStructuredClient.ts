@@ -8,6 +8,7 @@ import type {
   DtsConfigSetMemberFile,
   DtsConfigSetFile,
   DtsExportConfigSetResult,
+  DtsNavigationScope,
   DtsReleaseBaseline,
   DtsReleaseBaselineResult,
   DtsReleaseReadiness,
@@ -33,8 +34,9 @@ function routeProject(projectId: string) {
   return `/api/v1/projects/${encodeURIComponent(projectId)}`;
 }
 
-function routeStructure(projectId: string, fileId: string, versionId: string) {
-  return `${routeProject(projectId)}/parameter-files/${encodeURIComponent(fileId)}/versions/${encodeURIComponent(versionId)}/structure`;
+function routeStructure(projectId: string, fileId: string, versionId: string, options?: DtsNavigationScope) {
+  const suffix = options?.navigationScope ? `?navigationScope=${options.navigationScope}` : "";
+  return `${routeProject(projectId)}/parameter-files/${encodeURIComponent(fileId)}/versions/${encodeURIComponent(versionId)}/structure${suffix}`;
 }
 
 function routeSearch(projectId: string, query: DtsSearchQuery) {
@@ -43,6 +45,7 @@ function routeSearch(projectId: string, query: DtsSearchQuery) {
   if (query.by) {
     params.set("by", query.by);
   }
+  if (query.navigationScope) params.set("navigationScope", query.navigationScope);
   return `${routeProject(projectId)}/dts-search?${params.toString()}`;
 }
 
@@ -96,8 +99,8 @@ function routeStructuredEditsSubmit(projectId: string) {
 
 export function createDtsStructuredClient(client: ApiClient = createDefaultApiClient()): DtsStructuredRepository {
   return {
-    async getStructure(projectId, fileId, versionId) {
-      return client.get<DtsStructureResult>(routeStructure(projectId, fileId, versionId));
+    async getStructure(projectId, fileId, versionId, options) {
+      return client.get<DtsStructureResult>(routeStructure(projectId, fileId, versionId, options));
     },
     async search(projectId, query) {
       const response = await client.get<DtsSearchResult>(routeSearch(projectId, query));

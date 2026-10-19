@@ -117,7 +117,7 @@ async function countPendingChangeRequests(
 
 function sortIssues(issues: ReleaseReadinessIssue[]) {
   const severityRank = { blocker: 0, warning: 1 };
-  return [...issues].sort((a, b) => {
+  return [...new Map(issues.map((issue) => [issue.id, issue])).values()].sort((a, b) => {
     const severity = severityRank[a.severity] - severityRank[b.severity];
     if (severity !== 0) return severity;
     return a.id.localeCompare(b.id);

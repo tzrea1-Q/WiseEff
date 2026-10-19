@@ -337,8 +337,8 @@ export function createDebuggingRuntimeActions({
 
       return runApi(dispatch, async () => {
         const api = requireGateway(gateway);
-        const detect = (connectionProtocol: DebugConnectionProtocol) => api.detectTargets({
-          protocol: connectionProtocol,
+        const detect = (connectionProtocol?: DebugConnectionProtocol) => api.detectTargets({
+          ...(connectionProtocol ? { protocol: connectionProtocol } : {}),
           ...(options?.bridgeId ? { bridgeId: options.bridgeId } : {})
         });
         const detectedTargets = options?.autoDetectProtocol

@@ -54,6 +54,7 @@ import {
   createBaselineBody,
   createConfigSetBody,
   dtsSearchQuerySchema,
+  structuralReadQuerySchema,
   releaseBaselineBody,
   submitStructuredEditsBodySchema
 } from "./schemas";
@@ -69,6 +70,8 @@ import {
   recomputeCandidateImpact
 } from "./candidateService";
 import { searchProjectDts } from "./dtsSearchService";
+import { registerSourceRevisionRoutes } from "./sourceRevisionRoutes";
+import { previewSourceRevisionCandidate, submitSourceRevisionCandidate } from "./sourceRevisionService";
 import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
 import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./types";
@@ -130,7 +133,11 @@ const uploadVersionBodySchema = z.object({
 const createCandidateBodySchema = z.object({
   fileName: z.string().min(1),
   contentBase64: z.string().min(1),
-  fileId: z.string().min(1).optional()
+  fileId: z.string().min(1).optional(),
+  intent: z.literal("source_revision").optional(),
+  expectedCurrentVersionId: z.string().min(1).optional(),
+  expectedConfigRevisionId: z.string().min(1).optional(),
+  clientMutationId: z.string().min(1).max(200).optional()
 });
 
 const activateCandidateBodySchema = z.object({
@@ -152,7 +159,8 @@ const canonicalSourceSubmitBodySchema = z.object({
   expectedProofToken: z.string().min(1),
   expectedWorkflowProofToken: z.string().min(1).optional(),
   assignedToUserId: z.string().min(1).optional(),
-  reason: z.string().trim().min(1).max(2000)
+  reason: z.string().trim().min(1).max(2000),
+  clientMutationId: z.string().min(1).max(200).optional()
 }).strict();
 
 const canonicalSourceRollbackBodySchema = z.object({
@@ -279,6 +287,7 @@ export function registerParameterFileRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  registerSourceRevisionRoutes(router, options);
   const refusalAuditSink = options.refusalAuditSink
     ? (assertTrustedRefusalAuditSink(options.refusalAuditSink), options.refusalAuditSink)
     : options.db && isRootDatabase(options.db)
@@ -446,6 +455,9 @@ export function registerParameterFileRoutes(
     const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithVersionIdSchema, request.params);
+    const query = parseWithSchema(structuralReadQuerySchema, {
+      navigationScope: firstQueryValue(request.query.navigationScope),
+    }, "Invalid DTS structure query.");
     const file = await requireProjectFile(db, auth, params.projectId, params.fileId);
     const version = await getFileVersionById(db, { versionId: params.versionId });
     if (!version || version.fileId !== file.id) {
@@ -454,7 +466,12 @@ export function registerParameterFileRoutes(
         versionId: params.versionId
       });
     }
-    const body = await getParameterFileVersionStructure(db, version.id);
+    const body = query.navigationScope
+      ? await getParameterFileVersionStructure(db, version.id, {
+          organizationId: auth.organization.id,
+          principalId: auth.user.id,
+        })
+      : await getParameterFileVersionStructure(db, version.id);
 
     return { status: 200, body };
   });
@@ -468,7 +485,8 @@ export function registerParameterFileRoutes(
       dtsSearchQuerySchema,
       {
         q: firstQueryValue(request.query.q) ?? "",
-        by: firstQueryValue(request.query.by)
+        by: firstQueryValue(request.query.by),
+        navigationScope: firstQueryValue(request.query.navigationScope),
       },
       "Invalid DTS search query."
     );
@@ -477,6 +495,7 @@ export function registerParameterFileRoutes(
       projectId: params.projectId,
       q: query.q,
       ...(query.by ? { by: query.by } : {}),
+      ...(query.navigationScope ? { navigationScope: query.navigationScope, principalId: auth.user.id } : {}),
     });
 
     return { status: 200, body };
@@ -861,7 +880,11 @@ export function registerParameterFileRoutes(
         projectId: params.projectId,
         fileName: body.fileName.trim(),
         bytes: decodeContentBase64(body.contentBase64),
-        fileId: body.fileId
+        fileId: body.fileId,
+        intent: body.intent,
+        expectedCurrentVersionId: body.expectedCurrentVersionId,
+        expectedConfigRevisionId: body.expectedConfigRevisionId,
+        clientMutationId: body.clientMutationId
       },
       { requestId: request.requestId }
     );
@@ -900,7 +923,10 @@ export function registerParameterFileRoutes(
     const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
-    const item = await previewCanonicalCandidate(db, requireObjectStore(options.objectStore), auth, params);
+    const candidate = await getCandidate(db, auth, params);
+    const item = candidate.sourceRevisionContext
+      ? await previewSourceRevisionCandidate(db, requireObjectStore(options.objectStore), auth, params)
+      : await previewCanonicalCandidate(db, requireObjectStore(options.objectStore), auth, params);
     return { status: 200, body: { item } };
   });
 
@@ -1072,6 +1098,15 @@ export function registerParameterFileRoutes(
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
     const body = parseWithSchema(canonicalSourceSubmitBodySchema, request.body, "Invalid canonical source submit payload.");
+    const candidate = await getCandidate(db, auth, params);
+    if (candidate.sourceRevisionContext) {
+      if (!body.assignedToUserId || !body.clientMutationId) throw new ApiError("VALIDATION_FAILED", "A source reviewer and mutation key are required.");
+      const item = await submitSourceRevisionCandidate(db, objectStore, auth, {
+        ...params, expectedCurrentVersionId: body.expectedCurrentVersionId, expectedProofToken: body.expectedProofToken,
+        assignedToUserId: body.assignedToUserId, reason: body.reason, clientMutationId: body.clientMutationId
+      }, { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink: requireSubmissionRefusalSink() });
+      return { status: 200, body: { item } };
+    }
     const item = await submitCanonicalCandidate(db, objectStore, auth, {
       projectId: params.projectId,
       candidateId: params.candidateId,

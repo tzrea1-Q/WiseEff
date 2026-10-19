@@ -22,6 +22,14 @@ const configSets = [
 ] as const;
 
 describe("WorkbenchNavigationSession", () => {
+  it("propagates organization navigation scope to project search", async () => {
+    const session = createWorkbenchNavigationSession();
+    const search = vi.fn().mockResolvedValue({ hits: [] });
+    session.setSearchDraft(" charger ");
+    await session.runSearch("proj", { search }, { navigationScope: "organization" });
+    expect(search).toHaveBeenCalledExactlyOnceWith("proj", { q: "charger", navigationScope: "organization" });
+  });
+
   it("distinguishes a completed empty search from the initial state and clears it with the input", async () => {
     const session = createWorkbenchNavigationSession();
     expect(session.searchQuery).toBeNull();

@@ -117,7 +117,7 @@ describe("createDebuggingRuntimeActions", () => {
     let state = { ...initialState };
     const session = createNodeDebuggingSession({ initialParameters: [], initialProtocol: "hdc" });
     const gateway = createGateway({
-      detectTargets: vi.fn(async (input) => input?.protocol === supported
+      detectTargets: vi.fn(async (input) => !input?.protocol || input.protocol === supported
         ? [{ ...apiTarget, id: `${supported}-target`, protocol: supported, bridgeId: "local" }] : []),
       createSession: vi.fn(async (input) => ({ ...apiSession, protocol: input.protocol, targetId: input.targetId })),
       listRuntimeNodes: vi.fn(async (query) => query?.protocol === "adb" ? oldCatalog : [{ ...apiParameter, name: "HDC catalog" }]),
@@ -148,14 +148,13 @@ describe("createDebuggingRuntimeActions", () => {
   it.each(["hdc", "adb"] as const)("automatically creates a %s session from the detected device", async (protocol) => {
     const target = { ...apiTarget, protocol, bridgeId: "local-bridge", deviceId: "bridge:local-bridge" };
     const gateway = createGateway({
-      detectTargets: vi.fn(async (input) => input?.protocol === protocol ? [target] : []),
+      detectTargets: vi.fn(async (input) => !input?.protocol || input.protocol === protocol ? [target] : []),
       createSession: vi.fn(async () => ({ ...apiSession, protocol }))
     });
     const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch: vi.fn(),
       getState: () => ({ ...initialState, devices: [] }) });
     const result = await actions.detectAndStartSession({ autoDetectProtocol: true, bridgeId: "local-bridge" });
-    expect(gateway.detectTargets).toHaveBeenCalledWith({ protocol: "hdc", bridgeId: "local-bridge" });
-    expect(gateway.detectTargets).toHaveBeenCalledWith({ protocol: "adb", bridgeId: "local-bridge" });
+    expect(gateway.detectTargets).toHaveBeenCalledExactlyOnceWith({ bridgeId: "local-bridge" });
     expect(gateway.createSession).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       protocol, targetId: target.id, bridgeId: "local-bridge", deviceId: "bridge:local-bridge"
     }));
@@ -164,9 +163,11 @@ describe("createDebuggingRuntimeActions", () => {
   });
 
   it("discovers both transports before presenting multiple device candidates without creating sessions", async () => {
-    const gateway = createGateway({ detectTargets: vi.fn(async (input) => [{ ...apiTarget,
-      id: `bridge:local:${input?.protocol}:device`, protocol: input!.protocol!, bridgeId: "local", targetRef: `${input?.protocol}-device`
-    }]) });
+    const gateway = createGateway({ detectTargets: vi.fn(async (input) => (["hdc", "adb"] as const)
+      .filter((protocol) => !input?.protocol || input.protocol === protocol)
+      .map((protocol) => ({ ...apiTarget,
+        id: `bridge:local:${protocol}:device`, protocol, bridgeId: "local", targetRef: `${protocol}-device`
+      }))) });
     const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch: vi.fn(), getState: () => initialState });
     const result = await actions.detectAndStartSession({ autoDetectProtocol: true, bridgeId: "local" });
     expect("candidates" in result && result.candidates.map((target) => target.protocol)).toEqual(["hdc", "adb"]);
