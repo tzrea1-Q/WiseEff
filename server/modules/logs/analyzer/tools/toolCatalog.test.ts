@@ -48,6 +48,50 @@ describe("executeLogAnalysisTool dispatch", () => {
     expect(await executeLogAnalysisTool("locate_log_statement", { file: file.path, anchorLine: 402 }, context)).toMatchObject({ ok: false });
   });
 
+  it("preserves a source-search deadline as a truncated result and gives helpful admission errors", async () => {
+    const context = buildContext({ sourceSnapshot: { id: "snapshot", status: "ready" },
+      searchSource: async () => ({ items: [], truncated: true, reason: "statement_timeout" }) });
+    expect(await executeLogAnalysisTool("search_source", { pathGlob: "drivers/**", query: "return", limit: 1 }, context))
+      .toEqual({ ok: true, result: { items: [], truncated: true, reason: "statement_timeout" } });
+    for (const mode of ["literal", "full_text"])
+      expect(await executeLogAnalysisTool("search_source", { pathGlob: "**", query: "ab", mode }, context)).toMatchObject({ ok: false });
+    context.searchSource = async () => { throw new Error("Source query is too common without a literal path prefix. Narrow pathGlob."); };
+    expect(await executeLogAnalysisTool("search_source", { pathGlob: "**", query: "return" }, context))
+      .toMatchObject({ ok: false, error: expect.stringContaining("Narrow pathGlob") });
+  });
+
+  it("bounds source search and numbered reads before exposing source locations", async () => {
+    let requestedEnd = 0;
+    const context = buildContext({ sourceSnapshot: { id: "snapshot", status: "ready" },
+      searchSource: async () => ({ items: Array.from({ length: 30 }, (_, i) => ({ snapshotId: "snapshot", path: `power/${i}.c`,
+        line: i + 1, excerpt: "界".repeat(800), rank: 1, versionLabel: "v1" })), truncated: false }),
+      readSourceRange: async (params) => {
+        requestedEnd = params.endLine;
+        return { snapshotId: "snapshot", path: "power/main.c", startLine: 1, endLine: 100, totalLines: 100,
+          truncated: false, lines: Array.from({ length: 100 }, (_, i) => ({ line: i + 1, content: "line" })) };
+      } });
+    expect(availableLogAnalysisTools(context)).toEqual(expect.arrayContaining(["search_source", "read_source_range"]));
+    const search = await executeLogAnalysisTool("search_source", { pathGlob: "power/**/*.c", query: "power", limit: 20 }, context);
+    expect(search).toMatchObject({ ok: true, result: { truncated: true } });
+    expect(Buffer.byteLength(JSON.stringify(search))).toBeLessThanOrEqual(16 * 1024);
+    if (search.ok) {
+      const items = (search.result as { items: Array<{ excerpt: string }> }).items;
+      expect(items.length).toBeLessThanOrEqual(20);
+      expect(items.every((item) => item.excerpt.length <= 400)).toBe(true);
+    }
+    const read = await executeLogAnalysisTool("read_source_range", { snapshotId: "snapshot", path: "power/main.c", startLine: 1, endLine: 100 }, context);
+    expect(requestedEnd).toBe(80);
+    expect(read).toMatchObject({ ok: true, result: { endLine: 80, truncated: true, lines: expect.any(Array) } });
+    if (read.ok) expect((read.result as { lines: unknown[] }).lines).toHaveLength(80);
+    expect(await executeLogAnalysisTool("search_source", { pathGlob: "**", query: "ab" }, context)).toMatchObject({ ok: false });
+    expect(await executeLogAnalysisTool("read_source_range", { snapshotId: "other", path: "power/main.c", startLine: 1, endLine: 80 }, context))
+      .toMatchObject({ ok: false, error: "Source snapshot does not match this run." });
+    context.sourceSnapshot = { id: "snapshot", status: "indexing" };
+    expect(availableLogAnalysisTools(context)).not.toContain("search_source");
+    expect(availableLogAnalysisTools(context)).not.toContain("read_source_range");
+    expect(await executeLogAnalysisTool("search_source", { pathGlob: "**", query: "power" }, context)).toMatchObject({ ok: false });
+  });
+
   it("offers source location only for ready snapshots, resolves log anchors and caps returned citations", async () => {
     let observed = "";
     const context = buildContext({ filePath: "charging.log", sourceSnapshot: { id: "snapshot", status: "ready" },

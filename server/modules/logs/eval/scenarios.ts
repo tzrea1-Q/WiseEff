@@ -41,6 +41,8 @@ export type LogLoopEvalScenario = {
   tokenBudget?: number;
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
   sourceMatches?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["locateLogStatement"]>>>;
+  sourceSearch?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["searchSource"]>>>;
+  sourceRange?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["readSourceRange"]>>>;
   expectations: LogEvalExpectation[];
 };
 
@@ -240,7 +242,119 @@ const nominalLog = [
   "2026-08-10T09:01:31Z INFO agentd config checksum stable checksum=9f31aa"
 ].join("\n");
 
+const sourceSearchHit = { snapshotId: "thermal-source", path: "drivers/power/thermal.c", line: 4,
+  versionLabel: "v1", excerpt: "if (temperature > limit) reduce_current();", rank: 1 };
+const sourceRange = { snapshotId: "thermal-source", path: "drivers/power/thermal.c", startLine: 1, endLine: 100,
+  totalLines: 100, truncated: false, lines: Array.from({ length: 100 }, (_, index) => ({ line: index + 1, content: `thermal_check_${index + 1}();` })) };
+
+function sourceFinal(line: number, path = sourceSearchHit.path) {
+  return { ...loopFinalPayload, evidence: [{ lineNumbers: [],
+    sourceLocation: { snapshotId: "thermal-source", path, line },
+    inference: "The reviewed code applies thermal protection.", suggestedAction: "Inspect the thermal threshold." }] };
+}
+
 export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
+  {
+    name: "loop-source-search-timeout-preserves-log-analysis",
+    category: "source-tools",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    sourceSnapshot: { id: "thermal-source", status: "ready" },
+    sourceSearch: { items: [], truncated: true, reason: "statement_timeout" },
+    script: [
+      { content: { action: "tool", tool: "search_source", args: { pathGlob: "drivers/power/**", query: "return", limit: 1 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: { ...loopFinalPayload, conclusion: `${loopFinalPayload.conclusion} Source search timed out; this conclusion uses log evidence only.` } }
+    ],
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" }, { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" }, { type: "expectsSourceLocations", locations: [] },
+      { type: "expectsSourceToolBounds", tool: "search_source", maxBytes: 16384, expectedItems: 0, truncated: true },
+      { type: "requiresSubstringsInConclusion", substrings: ["Source search timed out"] },
+      { type: "expectsModelCallCount", count: 3 }
+    ]
+  },
+  ...(["literal", "full_text"] as const).map((mode): LogLoopEvalScenario => ({
+    name: `loop-source-search-${mode.replaceAll("_", "-")}-legal-and-grounded`,
+    category: "source-tools",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    sourceSnapshot: { id: "thermal-source", status: "ready" },
+    sourceSearch: { items: [sourceSearchHit], truncated: false },
+    script: [
+      { content: { action: "tool", tool: "search_source", args: { pathGlob: "drivers/power/**/*.c", query: "temperature", mode } } },
+      { content: sourceFinal(4) }
+    ],
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" }, { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" },
+      { type: "expectsSourceLocations", locations: [{ snapshotId: "thermal-source", path: sourceSearchHit.path, line: 4 }] },
+      { type: "expectsModelCallCount", count: 2 }
+    ]
+  })),
+  ...[false, true].map((largePaths): LogLoopEvalScenario => ({
+    name: `loop-source-search-${largePaths ? "byte" : "result-and-excerpt"}-caps`,
+    category: "source-tools",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    sourceSnapshot: { id: "thermal-source", status: "ready" },
+    sourceSearch: { truncated: false, items: Array.from({ length: 30 }, (_, index) => ({ ...sourceSearchHit,
+      path: largePaths ? `drivers/${"x".repeat(990)}.c` : sourceSearchHit.path,
+      line: index + 1, excerpt: "temperature ".repeat(100) })) },
+    script: [
+      { content: { action: "tool", tool: "search_source", args: { pathGlob: "**/*.c", query: "temperature", limit: 20 } } },
+      { content: sourceFinal(1, largePaths ? `drivers/${"x".repeat(990)}.c` : sourceSearchHit.path) }
+    ],
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" }, { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" },
+      { type: "expectsSourceToolBounds", tool: "search_source", maxBytes: 16384, maxItems: 20,
+        ...(!largePaths ? { expectedItems: 20 } : {}), maxExcerptChars: 400, truncated: true },
+      { type: "expectsModelCallCount", count: 2 }
+    ]
+  })),
+  ...[false, true].map((unseen): LogLoopEvalScenario => ({
+    name: `loop-source-range-${unseen ? "unseen-line-rejected" : "clamped-to-80-and-grounded"}`,
+    category: "source-tools",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    sourceSnapshot: { id: "thermal-source", status: "ready" },
+    sourceRange,
+    script: [
+      { content: { action: "tool", tool: "read_source_range", args: { snapshotId: "thermal-source", path: sourceRange.path, startLine: 1, endLine: 100 } } },
+      ...(unseen ? [{ content: sourceFinal(81) }] : []),
+      { content: sourceFinal(80) }
+    ],
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" }, { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" },
+      { type: "expectsSourceLocations", locations: [{ snapshotId: "thermal-source", path: sourceRange.path, line: 80 }] },
+      { type: "expectsSourceToolBounds", tool: "read_source_range", maxBytes: 16384, expectedLines: 80, endLine: 80, truncated: true },
+      ...(unseen ? [{ type: "expectsPromptContains" as const, substrings: ["Grounding violation"] }] : []),
+      { type: "expectsModelCallCount", count: unseen ? 3 : 2 }
+    ]
+  })),
+  ...(["queued", "indexing", "failed", "archived", null] as const).map((status): LogLoopEvalScenario => ({
+    name: `loop-source-tools-unavailable-${status ?? "no-snapshot"}`,
+    category: "source-tools",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    sourceSnapshot: status ? { id: "thermal-source", status } : null,
+    sourceSearch: { items: [sourceSearchHit], truncated: false },
+    sourceRange,
+    script: [
+      { content: { action: "tool", tool: "search_source", args: { pathGlob: "**/*.c", query: "temperature" } } },
+      { content: { action: "tool", tool: "read_source_range", args: { snapshotId: "thermal-source", path: sourceRange.path, startLine: 1, endLine: 10 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: loopFinalPayload }
+    ],
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" }, { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" }, { type: "expectsSourceLocations", locations: [] },
+      { type: "expectsPromptContains", substrings: ['Unknown tool "search_source"', 'Unknown tool "read_source_range"'] },
+      { type: "expectsModelCallCount", count: 4 }
+    ]
+  })),
   {
     name: "loop-source-location-returned-by-tool-grounded",
     category: "source-grounding",

@@ -94,6 +94,8 @@
 }
 
 .analysis-provenance__badge {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -123,6 +125,7 @@
 }
 
 .analysis-provenance__reason {
+  overflow-wrap: anywhere;
   margin: 0;
   padding: var(--space-2) var(--space-3);
   color: var(--warning);
@@ -674,6 +677,7 @@
 }
 
 .upload-file-field input,
+.upload-question-field input,
 .upload-question-field textarea,
 .upload-question-field select {
   width: 100%;

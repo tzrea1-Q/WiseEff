@@ -561,6 +561,7 @@ async function processClaimedLogAnalysisJob(
       jobId: snapshot.jobId,
       leaseOwner,
       sourceSnapshot: snapshot.sourceSnapshot,
+      sourceSnapshotSelection: snapshot.sourceSnapshotSelection,
       report: {
         signalSummary,
         confidence: analysis.confidence,

@@ -25,6 +25,9 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  sourceSnapshot?: import("./analyzer").AnalyzeLogInput["sourceSnapshot"];
+  sourceSnapshotSelection?: "matched_version" | "default" | "none";
+  requestedSourceVersion?: string;
   signalSummary?: import("./genericSignals").LogSignalSummary;
   files?: import("./filesRepository").LogFileDto[];
   skillRevision: { id: string; number: number } | null;
