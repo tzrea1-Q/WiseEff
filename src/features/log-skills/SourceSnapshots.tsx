@@ -6,10 +6,12 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { SelectControl } from "@/components/common/SelectControl";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { mockSourceSnapshots } from "@/infrastructure/mock/logSkills";
-import type { AnalysisSkill, SkillWorkspaceRepository, SourceSnapshot } from "./types";
+import type { AnalysisSkill, SkillWorkspaceRepository, SourceSnapshot, SourceStatementMatches } from "./types";
 
 const labels = { queued: "等待索引", indexing: "索引中", ready: "就绪", failed: "索引失败", archived: "已归档" };
 const tones = { queued: "text-[var(--info)] bg-[var(--info-soft)]", indexing: "text-[var(--info)] bg-[var(--info-soft)]", ready: "text-[var(--success)] bg-[var(--success-soft)]", failed: "text-[var(--danger)] bg-[var(--danger-soft)]", archived: "text-muted-foreground bg-muted" };
@@ -39,10 +41,17 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
   const [formError, setFormError] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [trySnapshotId, setTrySnapshotId] = useState("");
+  const [tryLine, setTryLine] = useState("");
+  const [tryPending, setTryPending] = useState(false);
+  const [tryError, setTryError] = useState("");
+  const [matches, setMatches] = useState<SourceStatementMatches | null>(null);
   const labelRef = useRef<HTMLInputElement>(null);
   const errorId = useId();
   const editable = apiMode && canEdit;
   const defaultId = (skill.draft ?? skill.currentRevision).spec.defaultSourceSnapshotId;
+  const readySnapshots = items?.filter((item) => item.status === "ready") ?? [];
+  const selectedTrySnapshot = readySnapshots.find((item) => item.id === trySnapshotId) ?? readySnapshots.find((item) => item.id === defaultId) ?? readySnapshots[0];
   useEffect(() => {
     let mounted = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -75,6 +84,13 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
       });
     } catch (cause) { setFormError(presentError(cause, "上传失败，请检查版本标签是否重复及压缩包大小后重试。")); }
   }
+  async function tryLocate() {
+    if (!selectedTrySnapshot || !tryLine.trim() || !repository?.locateSourceStatement) return;
+    setTryPending(true); setTryError(""); setMatches(null);
+    try { setMatches(await repository.locateSourceStatement(skill.id, selectedTrySnapshot.id, tryLine.trim())); }
+    catch (cause) { setTryError(presentError(cause, "定位失败，请稍后重试。")); }
+    finally { setTryPending(false); }
+  }
   return <section className="skill-section" aria-label="源码"><h2>源码</h2>
     <p>默认快照随下一次技能发布生效。快照尚未就绪时，日志分析会继续完成并注明未使用源码。</p>
     {editable ? <div><Button disabled={disabled} onClick={() => { setVersionLabel(""); setFile(null); setFormError(""); setUploadOpen(true); }}>上传快照</Button></div> : null}
@@ -101,6 +117,25 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
           confirmation: { title: "归档源码快照？", description: `将归档“${item.versionLabel}”。已发布版本的引用保留，使用此快照的后续分析将注明源码不可用。`, confirmLabel: "归档" },
           onSelect: async () => { await mutate(async () => { await repository!.archiveSourceSnapshot!(skill.id, item.id); setRefresh((value) => value + 1); }); }
         }]} /> : undefined} />}
+    {editable && items && !loadFailed ? <section className="grid gap-3" aria-label="日志语句试一试">
+      <h3>试一试</h3><p>粘贴一条日志，在就绪快照中定位输出语句；结果仅供核对。</p>
+      {!readySnapshots.length ? <SectionEmpty title="暂无就绪快照" message="快照索引完成后可定位日志语句。" /> : <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void tryLocate(); }}>
+        <label className="grid gap-2">选择就绪快照<SelectControl ariaLabel="选择就绪快照" value={selectedTrySnapshot?.id ?? ""} disabled={tryPending}
+          options={readySnapshots.map((item) => ({ value: item.id, label: item.versionLabel }))} onValueChange={(value) => { setTrySnapshotId(value); setMatches(null); setTryError(""); }} /></label>
+        <label className="grid gap-2">日志行<Textarea rows={2} maxLength={4000} disabled={tryPending} value={tryLine} placeholder="粘贴一条日志，例如 thermal foldback: temp=71"
+          onChange={(event) => { setTryLine(event.target.value); setMatches(null); setTryError(""); }} /></label>
+        <div><Button type="submit" disabled={tryPending || !tryLine.trim() || !repository?.locateSourceStatement} aria-busy={tryPending}>{tryPending ? "定位中…" : "定位语句"}</Button></div>
+      </form>}
+      {tryError ? <p role="alert">{tryError}</p> : null}
+      {matches ? <div aria-live="polite">{matches.items.length ? <ul className="grid gap-3">{matches.items.map((match) => <li key={`${match.snapshotId}:${match.path}:${match.line}`} className="grid gap-1">
+        <strong className="break-all">{match.path}:{match.line}</strong><span>{match.versionLabel} · 匹配置信度 {Math.round(match.confidence * 100)}%</span>
+        <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs" aria-label={`${match.path} 源码摘录`}>{match.excerpt.split("\n").map((line, index) => {
+          const lineNumber = match.startLine + index;
+          const matched = lineNumber === match.line;
+          return <span key={lineNumber} aria-label={matched ? `匹配源码行 ${lineNumber}` : undefined} className={matched ? "bg-[var(--accent-soft)] font-semibold" : undefined}>{matched ? "> " : "  "}{lineNumber}: {line}{"\n"}</span>;
+        })}</pre>
+      </li>)}</ul> : <SectionEmpty title="未找到匹配语句" message="请核对快照版本或尝试其他日志行。" />}{matches.truncated ? <p>结果已达上限，仅显示部分匹配。</p> : null}</div> : null}
+    </section> : null}
     <ModalDialog open={!!skippedSnapshot} onDismiss={() => setSkippedSnapshot(null)} className="skill-publish-dialog w-full max-w-4xl">
       {({ titleId }) => skippedSnapshot ? <>
         <h2 id={titleId}>跳过的源码文件</h2><p className="break-all">{skippedSnapshot.versionLabel}</p>

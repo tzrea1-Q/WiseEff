@@ -16,7 +16,8 @@ export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
   const overview = fields({ description: a.description, modelOverride: a.modelOverride },
     { description: b.description, modelOverride: b.modelOverride });
   const procedure = fields({ procedure: a.procedure }, { procedure: b.procedure });
-  const source = fields({ defaultSourceSnapshotId: a.defaultSourceSnapshotId }, { defaultSourceSnapshotId: b.defaultSourceSnapshotId });
+  const source = fields({ defaultSourceSnapshotId: a.defaultSourceSnapshotId, statementPatterns: a.source?.statementPatterns },
+    { defaultSourceSnapshotId: b.defaultSourceSnapshotId, statementPatterns: b.source?.statementPatterns });
   const format = buildTextDiffLines(specJson(a.formatProfile), specJson(b.formatProfile));
   const before = new Map(a.signalRules?.rules.map((rule) => [rule.id, rule]));
   const after = new Map(b.signalRules?.rules.map((rule) => [rule.id, rule]));

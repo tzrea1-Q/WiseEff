@@ -15,6 +15,7 @@ export type LogAnalysisToolContext = {
   signalSummary?: import("../../genericSignals").LogSignalSummary;
   decoding?: import("../../analyzer").AnalyzeLogInput["decoding"];
   sourceSnapshot?: import("../../analyzer").AnalyzeLogInput["sourceSnapshot"];
+  locateLogStatement?: (line: string, limit: number) => Promise<import("../../sourceStatementRepository").SourceStatementMatches>;
   signalRules?: import("../../signalRules").SignalRuleSet;
   files?: import("../../analyzer").AnalyzeLogInput["files"];
   filePath?: string;

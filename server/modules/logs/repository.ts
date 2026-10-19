@@ -63,6 +63,10 @@ type LogRecordRow = RevisionRow & {
 };
 
 type EvidenceRow = {
+  source_snapshot_id?: string | null;
+  source_path?: string | null;
+  source_line?: number | null;
+  source_version_label?: string | null;
   decoded_fields?: import("./parsing/spec").DecodedEvent[] | null;
   id: string;
   stage: LogStage;
@@ -284,6 +288,10 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
 
 function toEvidenceDto(row: EvidenceRow): LogRecordDto["evidence"][number] {
   return {
+    ...(row.source_snapshot_id && row.source_path && row.source_line ? {
+      sourceLocation: { snapshotId: row.source_snapshot_id, path: row.source_path, line: row.source_line },
+      ...(row.source_version_label ? { sourceVersionLabel: row.source_version_label } : {})
+    } : {}),
     ...(row.decoded_fields ? { decodedFields: row.decoded_fields } : {}),
     id: row.id,
     stageId: row.stage,
@@ -681,12 +689,14 @@ export async function getLogDetail(db: Queryable, auth: AuthContext, logId: stri
 
   const evidenceResult = await db.query<EvidenceRow>(
     `
-    select id, stage, line_numbers, inference, suggested_action, rule_hit, file_path, decoded_fields
-    from log_evidence
-    where organization_id = $1
-      and log_record_id = $2
-      and ($3::text is null or run_id = $3)
-    order by created_at asc, id asc
+    select e.id, e.stage, e.line_numbers, e.inference, e.suggested_action, e.rule_hit, e.file_path, e.decoded_fields,
+      e.source_snapshot_id, e.source_path, e.source_line, s.version_label as source_version_label
+    from log_evidence e
+    left join log_source_snapshots s on s.id = e.source_snapshot_id and s.organization_id = e.organization_id
+    where e.organization_id = $1
+      and e.log_record_id = $2
+      and ($3::text is null or e.run_id = $3)
+    order by e.created_at asc, e.id asc
     `,
     [auth.organization.id, logId, row.current_run_id ?? null]
   );
@@ -902,9 +912,9 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         `
         insert into log_evidence (
           id, organization_id, log_record_id, run_id, stage, line_numbers,
-          inference, suggested_action, rule_hit, file_path, decoded_fields
+          inference, suggested_action, rule_hit, file_path, decoded_fields, source_snapshot_id, source_path, source_line
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14)
         `,
         [
           `evidence-${input.runId}-${index}`,
@@ -917,7 +927,10 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
           evidence.suggestedAction,
           evidence.ruleHit ?? null,
           evidence.filePath ?? null,
-          evidence.decodedFields ? jsonb(evidence.decodedFields) : null
+          evidence.decodedFields ? jsonb(evidence.decodedFields) : null,
+          evidence.sourceLocation?.snapshotId ?? null,
+          evidence.sourceLocation?.path ?? null,
+          evidence.sourceLocation?.line ?? null
         ]
       );
     }
@@ -990,9 +1003,9 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           `
           insert into log_evidence (
             id, organization_id, log_record_id, run_id, stage, line_numbers,
-            inference, suggested_action, rule_hit, file_path, decoded_fields
+            inference, suggested_action, rule_hit, file_path, decoded_fields, source_snapshot_id, source_path, source_line
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14)
           `,
           [
             `evidence-${input.runId}-${index}`,
@@ -1005,7 +1018,10 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
             evidence.suggestedAction,
             evidence.ruleHit ?? null,
             evidence.filePath ?? null,
-            evidence.decodedFields ? jsonb(evidence.decodedFields) : null
+            evidence.decodedFields ? jsonb(evidence.decodedFields) : null,
+            evidence.sourceLocation?.snapshotId ?? null,
+            evidence.sourceLocation?.path ?? null,
+            evidence.sourceLocation?.line ?? null
           ]
         );
       }

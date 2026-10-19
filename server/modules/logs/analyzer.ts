@@ -46,6 +46,7 @@ export type AnalyzeLogInput = {
 };
 
 export type AnalyzeLogEvidence = {
+  sourceLocation?: { snapshotId: string; path: string; line: number };
   decodedFields?: import("./parsing/spec").DecodedEvent[];
   filePath?: string | null;
   stageId: LogAnalysisStageId;

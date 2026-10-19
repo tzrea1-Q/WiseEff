@@ -30,6 +30,8 @@ export const logFileDtoSchema = z.object({
   lossy: z.boolean(), status: z.enum(["analyzed", "skipped"]), skipReason: z.string().nullable()
 });
 export const logEvidenceDtoSchema = z.object({
+  sourceLocation: z.object({ snapshotId: z.string(), path: z.string(), line: z.number().int().positive() }).optional(),
+  sourceVersionLabel: z.string().optional(),
   decodedFields: z.array(decodedEventSchema).optional(),
   filePath: z.string().nullable().optional(),
   id: z.string(),
@@ -168,6 +170,14 @@ export const logSourceSnapshotDtoSchema = z.object({
 });
 export const logSourceSnapshotListResponseSchema = itemsEnvelopeSchema(logSourceSnapshotDtoSchema);
 export const logSourceSnapshotResponseSchema = itemEnvelopeSchema(logSourceSnapshotDtoSchema);
+export const logSourceExcerptDtoSchema = z.object({
+  snapshotId: z.string(), path: z.string(), line: z.number().int().positive(), versionLabel: z.string(),
+  startLine: z.number().int().positive(), excerpt: z.string()
+});
+export const logSourceEvidenceResponseSchema = itemEnvelopeSchema(logSourceExcerptDtoSchema);
+export const logSourceLocateRequestSchema = z.object({ line: z.string().trim().min(1).max(4000) }).strict();
+export const logSourceStatementMatchSchema = logSourceExcerptDtoSchema.extend({ confidence: z.number().min(0).max(1) });
+export const logSourceLocateResponseSchema = z.object({ items: z.array(logSourceStatementMatchSchema).max(20), truncated: z.boolean().optional() });
 
 export const logDomainKnowledgeLinkDtoSchema = z.object({
   id: z.string(),

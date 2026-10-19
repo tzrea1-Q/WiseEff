@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AnalyzeLogInput } from "../analyzer";
 import { defaultChargingRuleSet } from "../chargingSignalRules";
@@ -6,7 +6,7 @@ import { extractLogSignals } from "../genericSignals";
 import { parseLogText } from "../parser";
 import { createAgentLoopLogAnalyzer } from "./agentLoop";
 import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel } from "./deterministicModel";
-import { createLlmLogAnalyzer } from "./llmAnalyzer";
+import { createLlmLogAnalyzer, type LogAnalysisChatMessage } from "./llmAnalyzer";
 
 const chargingLog = [
   "2026-10-19T00:00:01Z INFO charge session started requested_ma=6000",
@@ -72,4 +72,57 @@ it("does not ground a single-shot skill hit using another file's identical line 
   const report = JSON.parse(response.content);
   expect(report.conclusion).not.toMatch(/thermal foldback/i);
   expect(report.evidence).toMatchObject([{ filePath: "generic.log", lineNumbers: [3] }]);
+});
+
+describe("deterministic loop source citations", () => {
+  const sourceLocation = { snapshotId: "thermal-source", path: "src/thermal.c", line: 4 };
+  const sourceMatch = { ...sourceLocation, versionLabel: "v7", excerpt: "thermal warning", startLine: 1, confidence: 0.9 };
+
+  it.each([true, false])("locates the top cited log line once and cites only a returned match (match=%s)", async (match) => {
+    const locateLogStatement = vi.fn(async () => ({ items: match ? [sourceMatch] : [], truncated: false }));
+    const input = { ...inputFor([{ path: "charging.log", content: chargingLog }]),
+      sourceSnapshot: { id: "thermal-source", status: "ready" as const } };
+    const report = await createAgentLoopLogAnalyzer({ model: createDeterministicLogAnalysisLoopModel(), modelLabel: "deterministic",
+      tokenBudget: 100_000, maxSteps: 6, bindToolBackends: () => ({ locateLogStatement }) }).analyze(input);
+    expect(locateLogStatement).toHaveBeenCalledExactlyOnceWith(chargingLog.split("\n")[report.evidence[0].lineNumbers[0] - 1], 1);
+    expect(report).toMatchObject({ analysisSource: "agent", confidence: 0.82 });
+    expect(report.evidence[0].lineNumbers).toContain(3);
+    expect(report.evidence[0].sourceLocation).toEqual(match ? sourceLocation : undefined);
+  });
+
+  it.each(["indexing", "failed"] as const)("preserves the log-only report with a %s snapshot", async (status) => {
+    const locateLogStatement = vi.fn(async () => ({ items: [sourceMatch], truncated: false }));
+    const input = inputFor([{ path: "charging.log", content: chargingLog }]);
+    const analyzer = createAgentLoopLogAnalyzer({ model: createDeterministicLogAnalysisLoopModel(), modelLabel: "deterministic",
+      tokenBudget: 100_000, maxSteps: 6, bindToolBackends: () => ({ locateLogStatement }) });
+    const baseline = await analyzer.analyze(input);
+    expect(await analyzer.analyze({ ...input, sourceSnapshot: { id: "thermal-source", status } })).toEqual(baseline);
+    expect(locateLogStatement).not.toHaveBeenCalled();
+  });
+
+  it("converges without source lookup after its tool budget is exhausted", async () => {
+    const locateLogStatement = vi.fn(async () => ({ items: [sourceMatch], truncated: false }));
+    const report = await createAgentLoopLogAnalyzer({ model: createDeterministicLogAnalysisLoopModel(), modelLabel: "deterministic",
+      tokenBudget: 100_000, maxSteps: 2, bindToolBackends: () => ({ locateLogStatement }) }).analyze({
+      ...inputFor([{ path: "charging.log", content: chargingLog }]), sourceSnapshot: { id: "thermal-source", status: "ready" }
+    });
+    expect(report).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted" });
+    expect(report.evidence[0].sourceLocation).toBeUndefined();
+    expect(locateLogStatement).not.toHaveBeenCalled();
+  });
+
+  it("does not retry a rejected source lookup", async () => {
+    const messages: LogAnalysisChatMessage[] = [
+      { role: "system", content: "Available tools:\n- locate_log_statement: Locate source" },
+      { role: "user", content: `Tool result for get_prefilter_findings:\n${JSON.stringify({ anomalyLineNumbers: [1] })}` },
+      { role: "user", content: `Tool result for read_line_range:\n${JSON.stringify({ lines: [{ lineNumber: 1, content: "ordinary" }] })}` }
+    ];
+    const model = createDeterministicLogAnalysisLoopModel();
+    const response = await model.invoke(messages);
+    expect(JSON.parse(response.content)).toMatchObject({ action: "tool", tool: "locate_log_statement", args: { line: "ordinary", limit: 1 } });
+    messages.push({ role: "assistant", content: response.content }, { role: "user", content: "Tool call rejected: unavailable" });
+    const report = JSON.parse((await model.invoke(messages)).content);
+    expect(report.action).toBe("final");
+    expect(report.evidence[0].sourceLocation).toBeUndefined();
+  });
 });

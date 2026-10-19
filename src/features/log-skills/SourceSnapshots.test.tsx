@@ -18,7 +18,9 @@ function setup(options: { items?: SourceSnapshot[]; canEdit?: boolean; apiMode?:
     listSourceSnapshots: vi.fn(async () => options.items ?? [snapshot]),
     uploadSourceSnapshot: vi.fn(async () => snapshot),
     setDefaultSourceSnapshot: vi.fn(async () => skill),
-    archiveSourceSnapshot: vi.fn(async () => ({ ...snapshot, status: "archived" as const }))
+    archiveSourceSnapshot: vi.fn(async () => ({ ...snapshot, status: "archived" as const })),
+    locateSourceStatement: vi.fn(async () => ({ items: [{ snapshotId: snapshot.id, path: "drivers/thermal.c", line: 9,
+      versionLabel: snapshot.versionLabel, startLine: 8, excerpt: 'if (hot) {\n  pr_warn("thermal foldback: temp=%d\\n", temp);\n} // <img src=x onerror=alert(1)>', confidence: 0.95 }], truncated: true }))
   };
   if (options.loading) repository.listSourceSnapshots.mockReturnValue(new Promise(() => {}));
   if (options.failure) repository.listSourceSnapshots.mockRejectedValueOnce(new Error("secret backend details"));
@@ -99,6 +101,7 @@ describe("source snapshots section", () => {
     expect(screen.queryByRole("button", { name: "上传快照" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "设为默认" })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: /快照操作/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "日志语句试一试" })).not.toBeInTheDocument();
   });
 
   it("validates required fields and archive extension, then uploads the original file and trimmed label", async () => {
@@ -152,5 +155,43 @@ describe("source snapshots section", () => {
     await userEvent.click(await screen.findByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(repository.setDefaultSourceSnapshot).toHaveBeenCalledWith("skill-charging", "candidate"));
     expect(onSkillUpdated).toHaveBeenCalledWith(skill);
+  });
+
+  it("locates a pasted line in the chosen ready snapshot and shows capped results", async () => {
+    const { repository } = setup({ items: [{ ...snapshot, id: "queued", status: "queued" }, snapshot] });
+    await screen.findByRole("combobox", { name: "选择就绪快照" });
+    expect(screen.getByRole("button", { name: "定位语句" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "日志行" }), { target: { value: " thermal foldback: temp=71 " } });
+    await userEvent.click(screen.getByRole("button", { name: "定位语句" }));
+    expect(repository.locateSourceStatement).toHaveBeenCalledWith("skill-charging", snapshot.id, "thermal foldback: temp=71");
+    expect(await screen.findByText("drivers/thermal.c:9")).toBeVisible();
+    expect(screen.getByText("v1.0 · 匹配置信度 95%")).toBeVisible();
+    const sourceExcerpt = screen.getByLabelText("drivers/thermal.c 源码摘录");
+    const matchedLine = screen.getByLabelText("匹配源码行 9");
+    expect(matchedLine).toHaveTextContent('> 9: pr_warn("thermal foldback: temp=%d\\n", temp);');
+    expect(matchedLine).toHaveClass("bg-[var(--accent-soft)]", "font-semibold");
+    expect(sourceExcerpt.querySelectorAll(".font-semibold")).toHaveLength(1);
+    expect(sourceExcerpt).toHaveTextContent("<img src=x onerror=alert(1)>");
+    expect(sourceExcerpt.querySelector("img")).toBeNull();
+    expect(screen.getByText("结果已达上限，仅显示部分匹配。")).toBeVisible();
+  });
+
+  it("shows no-ready, no-match, loading and safe retry states", async () => {
+    const { repository } = setup();
+    await screen.findByRole("combobox", { name: "选择就绪快照" });
+    repository.locateSourceStatement.mockRejectedValueOnce(new Error("private storage path"));
+    fireEvent.change(screen.getByRole("textbox", { name: "日志行" }), { target: { value: "missing statement" } });
+    await userEvent.click(screen.getByRole("button", { name: "定位语句" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("定位失败");
+    expect(screen.queryByText("private storage path")).not.toBeInTheDocument();
+    repository.locateSourceStatement.mockResolvedValueOnce({ items: [], truncated: false });
+    await userEvent.click(screen.getByRole("button", { name: "定位语句" }));
+    expect(await screen.findByText("未找到匹配语句")).toBeVisible();
+  });
+
+  it("offers no matcher until a ready snapshot exists", async () => {
+    setup({ items: [{ ...snapshot, status: "failed" }] });
+    expect(await screen.findByText("暂无就绪快照")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "定位语句" })).not.toBeInTheDocument();
   });
 });

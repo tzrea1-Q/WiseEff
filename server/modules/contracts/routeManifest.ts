@@ -760,6 +760,8 @@ export const routeManifest = [
   { id: "logs.uploadSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
   { id: "logs.defaultSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default", module: "logs", stability: "mvp" },
   { id: "logs.archiveSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive", module: "logs", stability: "mvp" },
+  { id: "logs.locateSourceStatement", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", module: "logs", stability: "mvp" },
+  { id: "logs.sourceEvidence", method: "GET", path: "/api/v1/logs/:logId/evidence/:evidenceId/source", module: "logs", stability: "mvp" },
   { id: "logs.createSkill", method: "POST", path: "/api/v1/log-skills", module: "logs", stability: "mvp" },
   { id: "logs.listSkillTemplates", method: "GET", path: "/api/v1/log-skill-templates", module: "logs", stability: "mvp" },
   { id: "logs.getSkillSample", method: "GET", path: "/api/v1/log-skills/:skillId/sample", module: "logs", stability: "mvp" },

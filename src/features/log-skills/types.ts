@@ -17,6 +17,8 @@ export interface SkillAuthoringRepository {
 }
 export type ParsePreview = z.infer<typeof parsePreviewResponseSchema>;
 export type SourceSnapshot = z.infer<typeof logSourceSnapshotDtoSchema>;
+export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSourceExcerptDtoSchema>;
+export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
 export interface SkillWorkspaceRepository {
   parsePreview?(id: string, input: { parsing: unknown; sampleText: string; fileName?: string }): Promise<ParsePreview>;
@@ -31,4 +33,5 @@ export interface SkillWorkspaceRepository {
   uploadSourceSnapshot(id: string, input: { versionLabel: string; file: File }): Promise<SourceSnapshot>;
   setDefaultSourceSnapshot(id: string, snapshotId: string): Promise<AnalysisSkill>;
   archiveSourceSnapshot(id: string, snapshotId: string): Promise<SourceSnapshot>;
+  locateSourceStatement(id: string, snapshotId: string, line: string): Promise<SourceStatementMatches>;
 }

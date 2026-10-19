@@ -1,3 +1,4 @@
+import type { SourceStatementMatches } from "../sourceStatementRepository";
 import { LogAnalysisProviderError, type LogAnalysisChatMessage, type LogAnalysisChatModel } from "./llmAnalyzer";
 
 /**
@@ -178,7 +179,8 @@ function withUsage(payload: unknown, messages: LogAnalysisChatMessage[]) {
 /**
  * Loop-protocol deterministic stub: investigates like the real kernel would —
  * pull the prefilter findings, read the neighborhood of the strongest signal,
- * then converge on a grounded conclusion citing only lines it has actually read.
+ * optionally locate its top cited line in a ready source snapshot, then converge
+ * on a grounded conclusion citing only tool results it has actually read.
  */
 export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel {
   return {
@@ -267,6 +269,22 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         ? `${baseConclusion} Regarding the question "${analysisQuestion}": the cited lines are the directly relevant evidence.`
         : baseConclusion;
 
+      const sourceToolOffered = messages.some((message) => message.role === "system"
+        && /^- locate_log_statement:/m.test(message.content));
+      const sourceToolAttempted = messages.some((message) => {
+        if (message.role !== "assistant") return false;
+        try { return JSON.parse(message.content).tool === "locate_log_statement"; }
+        catch { return false; }
+      });
+      const topLine = lineRangeResult?.lines?.find((line) => line.lineNumber === citedLines[0]
+        && (filePath === undefined || line.file === filePath));
+      if (sourceToolOffered && !sourceToolAttempted && !mustConverge && topLine) {
+        return withUsage({ action: "tool", tool: "locate_log_statement", args: {
+          ...(filePath ? { file: filePath, anchorLine: citedLines[0] } : { line: topLine.content }), limit: 1
+        } }, messages);
+      }
+      const source = parseToolResult<SourceStatementMatches>(messages, "locate_log_statement")?.items?.[0];
+
       return withUsage(
         {
           action: "final",
@@ -281,6 +299,7 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
             {
               filePath,
               lineNumbers: citedLines,
+              ...(source ? { sourceLocation: { snapshotId: source.snapshotId, path: source.path, line: source.line } } : {}),
               inference: matched
                 ? `Deterministic loop analysis matched the ${matched.ruleHit} pattern on the lines read in this run.`
                 : "Deterministic loop analysis found no anomaly pattern; the cited lines summarize the reviewed window.",

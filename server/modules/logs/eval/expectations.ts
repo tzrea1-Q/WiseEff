@@ -1,6 +1,8 @@
 import type { AnalyzeLogOutput, LogAnalysisDegradedReason, LogAnalysisSource } from "../analyzer";
 import type { LogAnalysisChatMessage } from "../analyzer/llmAnalyzer";
 
+type SourceLocation = { snapshotId: string; path: string; line: number };
+
 export type LogEvalRunResult = {
   output: AnalyzeLogOutput;
   /** Line numbers of the parsed (non-empty) raw lines — the grounding universe. */
@@ -11,6 +13,8 @@ export type LogEvalRunResult = {
   modelCallCount?: number;
   /** System prompt captured from the same kernel/input with no skill procedure. */
   platformProtocol?: string;
+  /** Source locations actually returned by the bound source tool in this run. */
+  returnedSourceLocations?: SourceLocation[];
 };
 
 export type LogEvalExpectation =
@@ -18,6 +22,7 @@ export type LogEvalExpectation =
   | { type: "expectsDegradedReason"; reason: LogAnalysisDegradedReason }
   | { type: "expectsNoDegradation" }
   | { type: "expectsGroundedEvidence" }
+  | { type: "expectsSourceLocations"; locations: SourceLocation[] }
   | { type: "expectsEvidenceNotCitingLines"; lineNumbers: number[] }
   | { type: "expectsPromptVersionRecorded"; promptVersion: string }
   | { type: "expectsPromptContains"; substrings: string[] }
@@ -70,9 +75,18 @@ export function evaluateLogEvalExpectation(
       }
       const parsed = new Set(result.parsedLineNumbers);
       const invalid = result.output.evidence.flatMap((item) => item.lineNumbers.filter((lineNumber) => !parsed.has(lineNumber)));
+      const unseenSource = result.output.evidence.some((item) => item.sourceLocation &&
+        !result.returnedSourceLocations?.some((location) => location.snapshotId === item.sourceLocation?.snapshotId &&
+          location.path === item.sourceLocation.path && location.line === item.sourceLocation.line));
+      if (unseenSource) return { pass: false, message: "Evidence cites a source location not returned by a tool" };
       return invalid.length === 0
         ? { pass: true }
         : { pass: false, message: `Evidence cites nonexistent lines: ${invalid.join(", ")}` };
+    }
+    case "expectsSourceLocations": {
+      const actual = result.output.evidence.flatMap((item) => item.sourceLocation ? [item.sourceLocation] : []);
+      const pass = JSON.stringify(actual) === JSON.stringify(expectation.locations);
+      return pass ? { pass: true } : { pass: false, message: `Unexpected source locations: ${JSON.stringify(actual)}` };
     }
     case "expectsEvidenceNotCitingLines": {
       const banned = new Set(expectation.lineNumbers);

@@ -29,6 +29,28 @@ function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnaly
 }
 
 describe("executeLogAnalysisTool dispatch", () => {
+  it("offers source location only for ready snapshots, resolves log anchors and caps returned citations", async () => {
+    let observed = "";
+    const context = buildContext({ filePath: "charging.log", sourceSnapshot: { id: "snapshot", status: "ready" },
+      locateLogStatement: async (line) => {
+        observed = line;
+        return { items: Array.from({ length: 20 }, (_, index) => ({ snapshotId: "snapshot", path: "thermal.c", line: index + 1,
+          startLine: 1, versionLabel: "v1", excerpt: "界".repeat(2000), confidence: 0.9 })), truncated: false };
+      } });
+    expect(availableLogAnalysisTools(context)).toContain("locate_log_statement");
+    const result = await executeLogAnalysisTool("locate_log_statement", { file: "charging.log", anchorLine: 3 }, context);
+    expect(observed).toContain("thermal foldback");
+    expect(result).toMatchObject({ ok: true, result: { truncated: true } });
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(16 * 1024);
+    expect(await executeLogAnalysisTool("locate_log_statement", { file: "missing.log", anchorLine: 3 }, context)).toMatchObject({ ok: false });
+    expect(await executeLogAnalysisTool("locate_log_statement", { line: "x".repeat(4001) }, context)).toMatchObject({ ok: false });
+    for (const status of ["queued", "indexing", "failed", "archived"] as const) {
+      context.sourceSnapshot = { id: "snapshot", status };
+      expect(availableLogAnalysisTools(context)).not.toContain("locate_log_statement");
+      expect(await executeLogAnalysisTool("locate_log_statement", { line: "thermal foldback" }, context)).toMatchObject({ ok: false });
+    }
+  });
+
   it("always exposes signal tools, filters signals, pages templates and caps serialized output", async () => {
     const context = buildContext({ filePath: "charging.log" });
     expect(availableLogAnalysisTools(context)).toEqual(expect.arrayContaining(["get_signals", "get_line_templates", "get_timeline"]));

@@ -4,6 +4,7 @@ import type { Queryable } from "../../../../shared/database/client";
 import { listLogDomainKnowledgeLinkEntryIds } from "../../domainsRepository";
 import type { RelatedParameterRunSnapshot } from "../../relatedParameter";
 import type { LogAnalysisToolContext, RelatedParameterContext } from "./toolContext";
+import { locateLogStatements } from "../../sourceStatementRepository";
 
 /**
  * Production worker tool bindings. The related parameter is read only from the
@@ -15,8 +16,9 @@ export function createWorkerLogAnalysisToolBackends(input: {
   logDomainId?: string;
   relatedParameterId?: string;
   relatedParameterSnapshot?: RelatedParameterRunSnapshot;
+  sourceSnapshot?: import("../../analyzer").AnalyzeLogInput["sourceSnapshot"];
   embeddingClient?: KnowledgeEmbeddingClient;
-}): Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext"> {
+}): Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext" | "locateLogStatement"> {
   const snapshot = input.relatedParameterSnapshot;
   if (input.relatedParameterId && !snapshot) {
     throw new Error("Canonical related-parameter run snapshot is unavailable.");
@@ -48,6 +50,11 @@ export function createWorkerLogAnalysisToolBackends(input: {
     : undefined;
 
   return {
+    ...(input.sourceSnapshot?.status === "ready" ? {
+      locateLogStatement: (line: string, limit: number) => locateLogStatements(input.db, {
+        organizationId: input.organizationId, snapshotId: input.sourceSnapshot!.id, line, limit
+      })
+    } : {}),
     searchDomainKnowledge: async (query: string) => {
       const linkedEntryIds = input.logDomainId
         ? await listLogDomainKnowledgeLinkEntryIds(input.db, {

@@ -10,6 +10,8 @@ import type {
 } from "@/domain/logs/types";
 
 export type LogEvidenceDto = {
+  sourceLocation?: LogEvidence["sourceLocation"];
+  sourceVersionLabel?: string;
   decodedFields?: LogEvidence["decodedFields"];
   filePath?: string | null;
   id: string;

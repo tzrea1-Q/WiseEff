@@ -4,6 +4,8 @@ export type LogArchiveState = "active" | "archived";
 export type LogFeedbackRating = "helpful" | "not_helpful";
 
 export type LogEvidenceDto = {
+  sourceLocation?: { snapshotId: string; path: string; line: number };
+  sourceVersionLabel?: string;
   decodedFields?: import("./parsing/spec").DecodedEvent[];
   filePath?: string | null;
   id: string;

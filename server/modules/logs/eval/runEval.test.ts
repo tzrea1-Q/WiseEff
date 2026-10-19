@@ -23,6 +23,13 @@ describe("log analysis behavior eval harness", () => {
       "loop-get-timeline-only-evidence-grounded",
       "loop-timeline-unseen-existing-line-rejected"
     ]);
+    expect(report.scenarios.filter((scenario) => scenario.category === "source-grounding").map((scenario) => scenario.name)).toEqual([
+      "loop-source-location-returned-by-tool-grounded",
+      "loop-unseen-source-location-with-grounded-log-rejected",
+      "loop-source-wrong-snapshot-rejected",
+      "loop-source-wrong-path-rejected",
+      "loop-source-context-line-not-cited-rejected"
+    ]);
     expect(report.scenarios.filter((scenario) => scenario.category.startsWith("procedure-")).map((scenario) => scenario.name)).toEqual([
       "procedure-benign-single-shot-order",
       "procedure-fabricated-single-shot-evidence-rejected",
@@ -50,6 +57,18 @@ describe("log analysis behavior eval harness", () => {
       });
       expect(result.pass).toBe(prompt === validPrompt);
     }
+  });
+
+  it("flags an unseen source location even when the log citation exists", () => {
+    const sourceLocation = { snapshotId: "source", path: "src/thermal.c", line: 4 };
+    const result = { ...META_HALLUCINATED_AGENT_RESULT,
+      output: { ...META_HALLUCINATED_AGENT_RESULT.output,
+        evidence: [{ stageId: "rootcause" as const, lineNumbers: [1], sourceLocation, inference: "Thermal protection.", suggestedAction: "Inspect cooling." }] },
+      parsedLineNumbers: [1] };
+    expect(evaluateLogEvalExpectation({ type: "expectsGroundedEvidence" }, result).pass).toBe(false);
+    expect(evaluateLogEvalExpectation({ type: "expectsGroundedEvidence" }, {
+      ...result, returnedSourceLocations: [sourceLocation]
+    }).pass).toBe(true);
   });
 
   it("meta checks flag known-bad results, including loop-specific bad behaviors", () => {

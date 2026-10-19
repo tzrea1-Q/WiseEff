@@ -1034,6 +1034,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.uploadSourceSnapshot": { summary: "Upload a version-labelled source archive", tags: ["logs"], requestBody: "LogSourceSnapshotUploadRequest", responseBody: "LogSourceSnapshotResponse", successStatus: 201 },
   "logs.defaultSourceSnapshot": { summary: "Set the skill draft default source snapshot", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.archiveSourceSnapshot": { summary: "Archive a source snapshot", tags: ["logs"], responseBody: "LogSourceSnapshotResponse" },
+  "logs.locateSourceStatement": { summary: "Locate log statements in a ready source snapshot (logs:admin-domains)", tags: ["logs"], requestBody: "LogSourceLocateRequest", responseBody: "LogSourceLocateResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" } },
+  "logs.sourceEvidence": { summary: "Read the bounded source excerpt cited by record evidence (logs:view)", tags: ["logs"], responseBody: "LogSourceEvidenceResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
   "logs.getSkill": { summary: "Get analysis skill", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.parsePreview": { summary: "Preview unsaved parsing rules", tags: ["logs"], requestBody: "LogParsePreviewRequest", responseBody: "LogParsePreviewResponse" },
   "logs.saveSkillDraft": { summary: "Save skill draft", tags: ["logs"], requestBody: "LogSkillDraftRequest", responseBody: "LogSkillRevisionResponse", additionalResponses: { "409": "ErrorResponse" } },

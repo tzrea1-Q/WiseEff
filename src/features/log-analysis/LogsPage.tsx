@@ -1,5 +1,7 @@
 import { SelectControl } from "@/components/common/SelectControl";
 import { DecodedFields } from "./DecodedFields";
+import { SourceEvidence } from "./SourceEvidence";
+import { Button } from "@/components/ui/button";
 import { SignalsTab } from "./SignalsTab";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
@@ -519,6 +521,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
                   onSearchQueryChange={setSearchQuery}
                 />
                 <EvidenceChainPanel
+                  loadSourceExcerpt={logRepository?.getSourceEvidence ? (evidenceId) => logRepository.getSourceEvidence!(activeLog.id, evidenceId) : undefined}
                   rawFilePath={rawFilePath}
                   evidence={activeLog.evidence}
                   focusedEvidenceId={focusedEvidenceId}
@@ -1337,6 +1340,7 @@ function RawLogViewer({
 }
 
 function EvidenceChainPanel({
+  loadSourceExcerpt,
   evidence,
   rawFilePath,
   rawLines,
@@ -1345,6 +1349,7 @@ function EvidenceChainPanel({
   onHoverEvidence,
   onClickEvidence
 }: {
+  loadSourceExcerpt?: (evidenceId: string) => Promise<import("@/features/log-skills/types").SourceExcerpt>;
   evidence: LogEvidence[];
   rawFilePath: string;
   rawLines: string[];
@@ -1363,6 +1368,7 @@ function EvidenceChainPanel({
 
           return (
             <EvidenceCard
+              loadSourceExcerpt={loadSourceExcerpt ? () => loadSourceExcerpt(item.id) : undefined}
               evidence={item}
               focused={focused || relatedToHoveredLine}
               index={index}
@@ -1379,6 +1385,7 @@ function EvidenceChainPanel({
 }
 
 function EvidenceCard({
+  loadSourceExcerpt,
   evidence,
   index,
   rawLines,
@@ -1386,6 +1393,7 @@ function EvidenceCard({
   onHover,
   onClick
 }: {
+  loadSourceExcerpt?: () => Promise<import("@/features/log-skills/types").SourceExcerpt>;
   evidence: LogEvidence;
   index: number;
   rawLines: string[];
@@ -1394,27 +1402,25 @@ function EvidenceCard({
   onClick: () => void;
 }) {
   const title = `证据 ${String(index + 1).padStart(2, "0")}`;
+  const hasSource = !!evidence.sourceLocation;
 
   return (
     <div
       aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`}
-      aria-pressed={focused}
+      aria-pressed={hasSource ? undefined : focused}
       className={classNames("evidence-card", focused && "evidence-card--focused", `evidence-card--${evidence.stageId}`)}
       id={`evidence-card-${evidence.id}`}
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onClick();
-        }
+      role={hasSource ? "group" : "button"}
+      tabIndex={hasSource ? undefined : 0}
+      onClick={hasSource ? undefined : onClick}
+      onKeyDown={hasSource ? undefined : (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); }
       }}
       onMouseEnter={() => onHover(evidence.id)}
       onMouseLeave={() => onHover(null)}
     >
       <header>
-        <span>{title}</span>
+        {hasSource ? <Button variant="link" size="sm" aria-pressed={focused} aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`} onClick={onClick}>{title}</Button> : <span>{title}</span>}
         <strong>{STAGE_LABELS[evidence.stageId]}</strong>
       </header>
       <div className="evidence-card__body">
@@ -1424,6 +1430,7 @@ function EvidenceCard({
         </div>)}
         <p>{evidence.inference}</p>
         {evidence.ruleHit ? <small>命中规则：{evidence.ruleHit}</small> : null}
+        <SourceEvidence key={`${evidence.id}:${evidence.sourceLocation?.snapshotId ?? ""}`} evidence={evidence} loadExcerpt={loadSourceExcerpt} />
       </div>
       <footer>
         <small>建议处置</small>

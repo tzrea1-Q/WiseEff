@@ -95,6 +95,8 @@ export type LogFile = {
   lossy: boolean; status: "analyzed" | "skipped"; skipReason: string | null;
 };
 export type LogEvidence = {
+  sourceLocation?: { snapshotId: string; path: string; line: number };
+  sourceVersionLabel?: string;
   decodedFields?: import("zod").z.infer<typeof import("@wiseeff/dto-schemas").decodedEventSchema>[];
   filePath?: string | null;
   id: string;

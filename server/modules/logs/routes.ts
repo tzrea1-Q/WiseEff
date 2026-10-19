@@ -36,7 +36,7 @@ import { deleteLogSkillSample, getLogSkillSample, replaceLogSkillSample } from "
 import { logSkillSpecSchema } from "./skillSpec";
 import { previewLogSkillParsing } from "./skillsService";
 import { parsePreviewRequestSchema } from "./parsing/spec";
-import { archiveSourceSnapshot, listSourceSnapshots, setDefaultSourceSnapshot, uploadSourceSnapshot } from "./sourceSnapshots";
+import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
 import { sourceSnapshotUploadSchema } from "./schemas";
 import {
   createLogBodySchema,
@@ -123,6 +123,15 @@ export function registerLogRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  router.post("/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/locate", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const body = parseWithSchema(z.object({ line: z.string().trim().min(1).max(4000) }).strict(), request.body);
+    return { status: 200, body: await trySourceStatement(requireDb(options.db), auth, request.params.skillId, request.params.snapshotId, body.line) };
+  });
+  router.get("/api/v1/logs/:logId/evidence/:evidenceId/source", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: { item: await getSourceEvidence(requireDb(options.db), auth, request.params.logId, request.params.evidenceId) } };
+  });
   router.get("/api/v1/log-skills/:skillId/source-snapshots", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     return { status: 200, body: await listSourceSnapshots(requireDb(options.db), auth, request.params.skillId) };
