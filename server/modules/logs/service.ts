@@ -314,7 +314,7 @@ export async function uploadLogFile(
   };
   const originalUploads = failureReason ? [] : await Promise.all(uploads.map(async (upload) => ({
     fileName: upload.fileName, sizeBytes: upload.bytes.length,
-    objectKey: (originalObjects.get(upload.fileName) ?? await objectStore.put({ organizationId: auth.organization.id,
+    objectKey: (originalObjects.get(upload.fileName) ?? await objectStore.put({ organizationId: organizationId(auth),
       fileName: `original-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: upload.bytes })).storageKey
   })));
 
