@@ -12,7 +12,10 @@ import { createMemoryObjectStore } from "../../testing/objectStore";
 import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import { createDefaultKnowledgeTextExtractor } from "../knowledge/extraction";
 import { createKnowledgeEntry, publishKnowledgeEntry } from "../knowledge/service";
-import { createLogSkill, discardLogSkillDraft, publishLogSkill, saveLogSkillDraft } from "./skillsService";
+import { createLogSkill, discardLogSkillDraft, getLogSkill, publishLogSkill, saveLogSkillDraft } from "./skillsService";
+import { provisionChargingSkill } from "./provisionChargingSkill";
+import { updateLogDomainRow } from "./domainsRepository";
+import { importSkillPackageArchive } from "./skillPackageArchive";
 import { registerLogRoutes } from "./routes";
 import { createAnalysisCase, readAnalysisCases } from "./analysisCases";
 import { exportLogSkillPackage, importLogSkillPackage } from "./skillPackages";
@@ -72,6 +75,66 @@ async function harness() {
 }
 
 describe.skipIf(!available)("skill packages over PostgreSQL", () => {
+  it("round-trips seeded charging identity attributes and every portable revision section across organizations", async () => {
+    const h = await harness();
+    try {
+      await provisionChargingSkill(h.db, h.auth.organization.id);
+      const seeded = await getLogSkill(h.db, h.auth, `seed-charging:${h.auth.organization.id}`);
+      expect(seeded.description).toBe("Charging analysis with the original charging signal rules.");
+      expect(seeded.currentRevision.spec).not.toHaveProperty("description");
+      const original = await importLogSkillPackage(h.db, h.store, h.other,
+        await exportLogSkillPackage(h.db, h.store, h.auth, seeded.id), "draft", h.otherInvocation, h.context);
+      expect(original.description).toBe(seeded.description);
+      expect(original.currentRevision.spec).toEqual({ ...seeded.currentRevision.spec,
+        description: seeded.description, procedure: "", parseTests: [], knowledgeEntryIds: [] });
+
+      // Legacy row-only settings must survive, without filling in deployment defaults.
+      const rowProfile = { severityMap: { error: ["ERROR"], info: ["INFO"] } };
+      await updateLogDomainRow(h.db, { organizationId: h.auth.organization.id, domainId: seeded.id,
+        modelOverride: "legacy-model", formatProfile: rowProfile });
+      const rowOnly = await importLogSkillPackage(h.db, h.store, h.other,
+        await exportLogSkillPackage(h.db, h.store, h.auth, seeded.id), "draft", h.otherInvocation, h.context, undefined, "Legacy charging");
+      expect(rowOnly).toMatchObject({ description: seeded.description, modelOverride: "legacy-model", formatProfile: rowProfile });
+      expect(rowOnly.currentRevision.spec).toEqual({ ...original.currentRevision.spec, modelOverride: "legacy-model", formatProfile: rowProfile });
+      expect(rowOnly.currentRevision.spec).not.toHaveProperty("stepBudget");
+      expect(rowOnly.currentRevision.spec).not.toHaveProperty("tokenBudget");
+
+      const draftProfile = { severityMap: { error: ["FAULT"], info: ["INFO"] } };
+      const draft = await saveLogSkillDraft(h.db, h.auth, seeded.id, { ...seeded.currentRevision.spec,
+        description: "", modelOverride: "draft-model", formatProfile: draftProfile,
+        procedure: spec.procedure, parsing: spec.parsing,
+        signalRules: { ...seeded.currentRevision.spec.signalRules!, rules: [...seeded.currentRevision.spec.signalRules!.rules, ...spec.signalRules!.rules] },
+        parseTests: spec.parseTests, stepBudget: 4, tokenBudget: 6000, knowledgeEntryIds: [h.entry.id]
+      }, null, seeded.currentRevision.id, h.invocation, h.context);
+      const sourceCase = (await readAnalysisCases(h.db, h.auth.organization.id, h.skill.id))[0];
+      await createAnalysisCase(h.db, h.store, h.auth, seeded.id, { name: sourceCase.name, expectations: sourceCase.expectations,
+        files: [{ fileName: "charger.log", bytes: Buffer.from(content) }] }, h.invocation, h.context);
+      const bytes = await exportLogSkillPackage(h.db, h.store, h.auth, seeded.id, "draft");
+      const archived = await importSkillPackageArchive(bytes);
+      expect(archived.spec.description).toBe(""); // An explicit empty description overrides the row.
+      expect(archived.spec.modelOverride).toBe("draft-model");
+      expect(archived.spec.formatProfile).toEqual(draftProfile);
+      const imported = await importLogSkillPackage(h.db, h.store, h.other, bytes, "draft", h.otherInvocation, h.context, undefined, "Complete charging");
+      const knowledgeIds = imported.currentRevision.spec.knowledgeEntryIds!;
+      expect(knowledgeIds).toHaveLength(1);
+      expect(knowledgeIds[0]).not.toBe(h.entry.id);
+      expect(imported.currentRevision.spec).toEqual({ ...draft.spec, knowledgeEntryIds: knowledgeIds });
+      expect(imported).toMatchObject({ description: draft.spec.description, modelOverride: draft.spec.modelOverride,
+        formatProfile: draft.spec.formatProfile, webhook: { enabled: false, secretConfigured: false } });
+      expect(imported.id).not.toBe(seeded.id);
+      expect(imported.currentRevision.id).not.toBe(draft.id);
+      expect((await h.db.query(`select e.status, r.title, r.tags, r.content_markdown from knowledge_entries e
+        join knowledge_revisions r on r.id=e.head_revision_id and r.organization_id=e.organization_id
+        where e.organization_id=$1 and e.id=$2`, [h.other.organization.id, knowledgeIds[0]])).rows)
+        .toEqual([{ status: "draft", title: h.entry.title, tags: h.entry.tags, content_markdown: h.entry.contentMarkdown }]);
+      const roundTrip = await importSkillPackageArchive(await exportLogSkillPackage(h.db, h.store, h.other, imported.id, "draft"));
+      expect(roundTrip.cases).toEqual(archived.cases);
+      expect(roundTrip.knowledge.map(({ path: _path, source: _source, ...entry }) => entry))
+        .toEqual(archived.knowledge.map(({ path: _path, source: _source, ...entry }) => entry));
+      expect(roundTrip.spec).not.toHaveProperty("defaultSourceSnapshotId");
+    } finally { await h.close(); }
+  }, 120_000);
+
   it("round-trips decoded rule evidence through real worker runs across organizations and links draft knowledge", async () => {
     const h = await harness();
     try {

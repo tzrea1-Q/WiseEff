@@ -60,7 +60,11 @@ export async function exportLogSkillPackage(db: Database, store: ObjectStore, au
     }
     const cases = (await readAnalysisCases(tx, auth.organization.id, skillId)).length
       ? await readBoundedZipArchive(await exportSkillAnalysisCases(tx, store, auth, skillId)) : new Map<string, Buffer>();
-    try { return await exportSkillPackageArchive(skill.name, skill.skillKey, selected.spec, knowledge, cases); }
+    // Legacy/seeded skills may keep portable identity attributes only on the row.
+    const spec = { ...selected.spec, description: selected.spec.description ?? skill.description,
+      modelOverride: selected.spec.modelOverride ?? skill.modelOverride,
+      formatProfile: selected.spec.formatProfile ?? skill.formatProfile };
+    try { return await exportSkillPackageArchive(skill.name, skill.skillKey, spec, knowledge, cases); }
     catch (error) { return archiveError(error); }
   });
 }
