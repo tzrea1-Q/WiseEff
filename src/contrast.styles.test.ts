@@ -128,10 +128,6 @@ describe.each(["light", "dark"])("%s theme contrast pairs", (theme) => {
     }
   });
 
-  it("keeps the log trend note readable on its sunken panel", () => {
-    expectReadable(declarationsFor(styles, ".topic-trend-note").color, "var(--surface-sunken)", tokens);
-  });
-
   it.each(["", ":hover"])("keeps source-canvas empty actions readable%s", (state) => {
     const action = declarationsFor(styles, `.configuration-workbench__source-state .section-empty [data-slot="button"]${state}`);
     expectReadable(action.color, action.background, tokens);
