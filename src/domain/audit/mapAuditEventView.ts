@@ -3,6 +3,7 @@ import { formatAuditRelativeTime } from "./formatAuditTime";
 import type { AuditActorType, AuditEventDto, AuditEventView } from "./types";
 
 function actorLabelFromDto(dto: AuditEventDto) {
+  if (dto.actorType === "integration") return `集成凭据 ${typeof dto.metadata.credentialId === "string" ? dto.metadata.credentialId : ""}`.trim();
   if (dto.actorType === "system") {
     return "系统";
   }

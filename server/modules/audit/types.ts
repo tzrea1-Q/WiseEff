@@ -4,7 +4,7 @@ export type AuditCorrelationContext = {
   requestId?: string;
 };
 
-export type AuditActorType = "user" | "agent" | "system";
+export type AuditActorType = "user" | "agent" | "system" | "integration";
 
 export type CreateAuditEventInput = {
   id: string;

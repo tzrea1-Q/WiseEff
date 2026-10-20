@@ -258,6 +258,23 @@ describe("createHttpLogAnalysisRepository", () => {
     expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty("Content-Type");
     expect(result.log.files).toEqual(inventory); expect(result.log.evidence[0].filePath).toBe("a.log");
   });
+  it("administers integration credentials through validated responses without retaining a secret in list items", async () => {
+    const item = { id: "credential/a", organizationId: "org-1", name: "Factory", skillId: null, skillName: null, status: "active", createdBy: "user-1", createdAt: "2026-10-19T12:00:00.000Z", rotatedAt: null, revokedAt: null, lastUsedAt: null };
+    const fetchMock = createFetchMock({ items: [item] });
+    const repository = createRepository(fetchMock);
+    await expect(repository.listIntegrationCredentials!()).resolves.toEqual([item]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/api/v1/log-integration-credentials");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ item, token: "wie_credential/a_new-secret" }, 201));
+    await expect(repository.issueIntegrationCredential!({ name: item.name, skillId: null })).resolves.toMatchObject({ item, token: "wie_credential/a_new-secret" });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ name: item.name, skillId: null });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ item, token: "wie_credential/a_rotated" }));
+    await repository.rotateIntegrationCredential!(item.id);
+    expect(fetchMock.mock.calls[2][0]).toContain("/log-integration-credentials/credential%2Fa/rotate");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...item, status: "revoked" } }));
+    await expect(repository.revokeIntegrationCredential!(item.id)).resolves.toMatchObject({ status: "revoked" });
+    expect(fetchMock.mock.calls[3][0]).toContain("/log-integration-credentials/credential%2Fa/revoke");
+  });
+
   it("reads skill publication summaries and preserves the run revision pin", async () => {
     const skill = { id: "skill-1", skillKey: "device-diagnostics", name: "设备诊断", status: "active", createdAt: "2026-10-18", updatedAt: "2026-10-18",
       currentRevision: { id: "skill-v2", number: 2, publishedAt: "2026-10-18" }, hasDraft: true, hasSourceSnapshots: true,

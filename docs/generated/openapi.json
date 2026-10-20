@@ -10752,6 +10752,142 @@
         }
       }
     },
+    "/api/v1/log-integration-credentials": {
+      "get": {
+        "operationId": "logs.listIntegrationCredentials",
+        "summary": "List organization integration credentials (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogIntegrationCredentialListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "logs.issueIntegrationCredential",
+        "summary": "Issue integration credential; secret returned once (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueLogIntegrationCredentialRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogIntegrationCredentialSecretResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-integration-credentials/{credentialId}/rotate": {
+      "post": {
+        "operationId": "logs.rotateIntegrationCredential",
+        "summary": "Rotate integration credential immediately; secret returned once (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "credentialId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogIntegrationCredentialSecretResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-integration-credentials/{credentialId}/revoke": {
+      "post": {
+        "operationId": "logs.revokeIntegrationCredential",
+        "summary": "Revoke integration credential (logs:admin-domains)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "credentialId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogIntegrationCredentialResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/logs": {
       "post": {
         "operationId": "logs.upload",
@@ -31302,6 +31438,284 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "RegisterConfigurationInstancesRequest"
       },
+      "LogIntegrationCredentialListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "skillId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "skillName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "revoked"
+                  ]
+                },
+                "createdBy": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "rotatedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "revokedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "lastUsedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "organizationId",
+                "name",
+                "skillId",
+                "skillName",
+                "status",
+                "createdBy",
+                "createdAt",
+                "rotatedAt",
+                "revokedAt",
+                "lastUsedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogIntegrationCredentialListResponse"
+      },
+      "IssueLogIntegrationCredentialRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "skillId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "IssueLogIntegrationCredentialRequest"
+      },
+      "LogIntegrationCredentialSecretResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "skillId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "skillName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "revoked"
+                ]
+              },
+              "createdBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "rotatedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revokedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lastUsedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "name",
+              "skillId",
+              "skillName",
+              "status",
+              "createdBy",
+              "createdAt",
+              "rotatedAt",
+              "revokedAt",
+              "lastUsedAt"
+            ],
+            "additionalProperties": false
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "token"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogIntegrationCredentialSecretResponse"
+      },
+      "LogIntegrationCredentialResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "skillId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "skillName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "revoked"
+                ]
+              },
+              "createdBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "rotatedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revokedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lastUsedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "name",
+              "skillId",
+              "skillName",
+              "status",
+              "createdBy",
+              "createdAt",
+              "rotatedAt",
+              "revokedAt",
+              "lastUsedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogIntegrationCredentialResponse"
+      },
       "LogFileUploadRequest": {
         "type": "object",
         "properties": {
@@ -31415,6 +31829,12 @@
           "log": {
             "type": "object",
             "properties": {
+              "createdByCredentialId": {
+                "type": "string"
+              },
+              "createdByCredentialName": {
+                "type": "string"
+              },
               "knowledgeRevisions": {
                 "type": "array",
                 "items": {
@@ -32249,6 +32669,12 @@
           "item": {
             "type": "object",
             "properties": {
+              "createdByCredentialId": {
+                "type": "string"
+              },
+              "createdByCredentialName": {
+                "type": "string"
+              },
               "knowledgeRevisions": {
                 "type": "array",
                 "items": {
@@ -32951,6 +33377,12 @@
             "items": {
               "type": "object",
               "properties": {
+                "createdByCredentialId": {
+                  "type": "string"
+                },
+                "createdByCredentialName": {
+                  "type": "string"
+                },
                 "knowledgeRevisions": {
                   "type": "array",
                   "items": {
@@ -38288,6 +38720,12 @@
           "log": {
             "type": "object",
             "properties": {
+              "createdByCredentialId": {
+                "type": "string"
+              },
+              "createdByCredentialName": {
+                "type": "string"
+              },
               "knowledgeRevisions": {
                 "type": "array",
                 "items": {

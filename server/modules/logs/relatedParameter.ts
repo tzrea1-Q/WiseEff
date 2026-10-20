@@ -82,7 +82,7 @@ export async function resolveAuthorizedRelatedParameter(
 
   const first = await findParameter();
   if (!first) {
-    const deleted = input.invocation.initiator !== "system" && await hasDeletedCurrentValue(pool, {
+    const deleted = (input.invocation.initiator === "user" || input.invocation.initiator === "agent") && await hasDeletedCurrentValue(pool, {
       organizationId: input.invocation.principal.organization.id, projectId: input.projectId, bindingId: input.bindingId
     });
     throw new ApiError(deleted ? "CONFLICT" : "NOT_FOUND", deleted

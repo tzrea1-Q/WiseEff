@@ -98,6 +98,7 @@ const queryValue = (query: RouteRequest["query"], name: string): string | undefi
 };
 
 const callerOrganizationId = (invocation: TrustedInvocationContext): string | null => {
+  if (invocation.initiator === "integration") return null;
   if (invocation.initiator === "system") {
     return null;
   }
@@ -105,6 +106,7 @@ const callerOrganizationId = (invocation: TrustedInvocationContext): string | nu
 };
 
 const callerCanLookup = (invocation: TrustedInvocationContext): boolean => {
+  if (invocation.initiator === "integration") return false;
   if (invocation.initiator === "system") {
     return true;
   }

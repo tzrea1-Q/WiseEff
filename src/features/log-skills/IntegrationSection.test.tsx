@@ -44,7 +44,7 @@ describe("skill integration", () => {
       await user.click(screen.getByText(label, { selector: "summary" }));
       await user.click(screen.getByRole("button", { name: `复制${label}命令` }));
       expect(copy).toHaveBeenLastCalledWith(examples[kind].curl);
-      expect(examples[kind].curl).toContain('Bearer $WISEEFF_TOKEN');
+      expect(examples[kind].curl).toContain('Bearer <集成凭据>');
       expect(examples[kind].curl).not.toMatch(/^\+/m);
       expect(examples[kind].curl).toContain(skill.skillKey);
     }

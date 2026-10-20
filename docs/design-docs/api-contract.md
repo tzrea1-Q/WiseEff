@@ -38,6 +38,21 @@ Rules:
 
 M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authenticated `organization_id`. A new log association requires `relatedParameterPin: { kind: "canonical-pin", projectId, bindingId, definitionId?, definitionRevisionId? }`; the server authorizes that exact project Binding and freezes its canonical Value, DefinitionRevision, and source pin for each analysis run. Rerun resolves the current Binding again; prior run snapshots and reports remain historical. `relatedParameterId` alone is not accepted for new uploads, and legacy stored links without a verified project scope cannot be treated as current. Unassociated log uploads and debugging APIs do not accept a top-level `projectId` field.
 
+## Log integration credentials (#1248)
+
+ADR-0048 extends ADR-0038 with an organization-scoped integration principal. `Authorization: Bearer wie_<credentialId>_<secret>` routes only prefixed tokens to that resolver; other user tokens retain existing resolution. An integration credential is never an `AuthContext` and has no roles or permissions.
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-integration-credentials` | Requires user `logs:admin-domains`; `{ items }` lists organization credentials without secrets or hashes. |
+| `POST` | `/api/v1/log-integration-credentials` | Same permission; `{ name, skillId?: string \| null }` issues a credential and returns `201 { item, token }`. |
+| `POST` | `/api/v1/log-integration-credentials/:credentialId/rotate` | Same permission; `{}` returns `{ item, token }`; old secret immediately fails. |
+| `POST` | `/api/v1/log-integration-credentials/:credentialId/revoke` | Same permission; `{}` returns `{ item }`; revoked credential fails on next request. |
+
+DTO fields: `id`, `organizationId`, `name`, nullable `skillId`, nullable `skillName`, `status: active \| revoked`, nullable `createdBy`, `createdAt`, and nullable `rotatedAt`, `revokedAt`, `lastUsedAt`. Issue/rotation plaintext appears once and is never stored, logged or audited. Lifecycle success audit and mutation share one transaction. Archiving a skill revokes its bound credentials.
+
+The route boundary allows credentials only for `POST /api/v1/log-files`, `POST /api/v1/logs`, and reads of their own record, report and files. Every other route rejects them before handler/domain access. Bound credentials require their skill selector; missing or conflicting selection returns `403`. Revoked/unknown credentials return `401`; other creators' and foreign-organization records return `404`/`403`. Existing upload size, rate and analysis limits apply. Last-use writes occur at most once a minute. Records expose nullable `createdByCredentialId` / `createdByCredentialName`, preserve a null uploading user and remain visible to organization users with `logs:view`. Upload audits use `actor_type = integration` and the credential id; human-required policies reject this initiator.
+
 ## Generic signals
 
 `GET /api/v1/logs/:logId` adds optional `signalSummary` for the current analysis run. Older records may omit it. Its shape is `{ signals, templates, truncatedSignals, truncatedTemplates }`. Each signal has `kind`, `severity: "Critical" | "Warning" | "Info"`, `source: "generic" | "skill"`, `title`, `count`, and bounded `anchors: [{ file, line, content }]`; line numbers are one-based within that file. Crash signals additionally expose optional `signature` (for example, `Oops` or `Kernel panic`), with separate counts and anchors per file/signature while keeping `kind: "crash"`. Each template has `template`, `count`, `first` and `last` anchors with the same shape. Truncation flags distinguish a capped summary from a complete inventory. Signals are analysis aids, not independently verified root causes.

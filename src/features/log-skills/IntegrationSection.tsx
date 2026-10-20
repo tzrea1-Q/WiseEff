@@ -8,8 +8,9 @@ import type { LogDomain } from "@/domain/logs/types";
 import type { SectionProps } from "./SkillWorkspace";
 import { SkillWebhookEditor } from "./SkillWebhookEditor";
 import { buildSkillUploadExamples } from "./integrationExamples";
+import { IntegrationCredentials } from "./IntegrationCredentials";
 
-export function IntegrationSection({ skill, spec, setSpec, disabled, repository, apiMode, dirty, onSkillUpdated, onBusyChange, fieldErrors }: SectionProps) {
+export function IntegrationSection({ skill, spec, setSpec, disabled, repository, apiMode, canEdit, dirty, onSkillUpdated, onBusyChange, fieldErrors }: SectionProps) {
   const id = useId();
   const [domain, setDomain] = useState<LogDomain | null>(null);
   const [loading, setLoading] = useState(apiMode);
@@ -65,13 +66,14 @@ export function IntegrationSection({ skill, spec, setSpec, disabled, repository,
       </div> : null}
       {dirty ? <p>请先保存草稿，再修改技能标识。</p> : null}
       <div><label htmlFor={`${id}-endpoint`}>上传地址</label><div className="skill-integration-actions"><Input id={`${id}-endpoint`} readOnly value={examples.endpoint} /><Button variant="outline" onClick={() => void copy(examples.endpoint, "上传地址")}>复制上传地址</Button></div></div>
-      <p>先将访问令牌设为 WISEEFF_TOKEN；示例仅包含令牌占位符和示例日志。</p>
+      <p>将集成凭据填入 Authorization: Bearer &lt;集成凭据&gt;；示例仅包含占位符和示例日志。</p>
       {([['json', '单文件 JSON / Base64'], ['multipart', '多文件表单']] as const).map(([kind, label]) => <details key={kind}><summary>{label}</summary>
         <pre className="skill-curl-example"><code>{examples[kind].curl}</code></pre>
         <Button variant="outline" onClick={() => void copy(examples[kind].curl, label)}>复制{label}命令</Button>
       </details>)}
       {copyStatus ? <p role="status">{copyStatus}</p> : null}
     </section>
+    <IntegrationCredentials skill={skill} repository={repository} apiMode={apiMode} canEdit={canEdit} disabled={disabled} onBusyChange={onBusyChange} />
     <section aria-label="结果回调"><h3>结果回调</h3>
       {loading ? <SectionSkeleton label="正在加载回调配置" /> : loadError ? <SectionError message="无法加载回调配置" onRetry={() => setReload((value) => value + 1)} />
         : domain && webhookRepository ? <SkillWebhookEditor key={domain.id} domain={domain} logActions={webhookRepository} disabled={disabled}
