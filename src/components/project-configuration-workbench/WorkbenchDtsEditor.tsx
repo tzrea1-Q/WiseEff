@@ -327,11 +327,12 @@ export const WorkbenchDtsEditor = forwardRef<WorkbenchDtsEditorHandle, Workbench
     if (searchWasOpen) openSearchPanel(editor);
   }, [props.readOnly, props.ariaLabel, props.sessionKey, props.resetKey, props.sessions]);
 
+  const focusLine = props.focusSpan ? null : props.focusLine;
   useLayoutEffect(() => {
     const editor = view.current;
     const session = active.current;
-    const span = callbacks.current.focusSpan;
-    const line = span?.startLine ?? callbacks.current.focusLine;
+    const span = props.focusSpan;
+    const line = span?.startLine ?? focusLine;
     if (!editor || !session) return;
     if (!line || line < 1 || line > session.base.lines) { editor.dispatch({ effects: focusedRange.of(null) }); return; }
     const baseFrom = linePosition(session.base, line, span?.startColumn);
@@ -341,15 +342,16 @@ export const WorkbenchDtsEditor = forwardRef<WorkbenchDtsEditorHandle, Workbench
     const to = session.changes.mapPos(baseTo, -1, MapMode.TrackBefore);
     if (from === null || to === null || to < from) { editor.dispatch({ effects: focusedRange.of(null) }); return; }
     revealRange(from, to);
-  }, [props.focusSpan?.startLine, props.focusSpan?.endLine, props.focusSpan?.startColumn, props.focusSpan?.endColumn, props.focusLine, props.sessionKey, props.resetKey, props.sessions, revealRange]);
+  }, [props.focusSpan, focusLine, props.sessionKey, props.resetKey, props.sessions, revealRange]);
 
   useLayoutEffect(() => {
     const editor = view.current;
     if (!editor || props.findQuery === undefined) return;
     const query = new SearchQuery({ search: props.findQuery, literal: true, caseSensitive: true });
     if (getSearchQuery(editor.state).eq(query)) return;
+    // Navigation search lists results first. A selected result or explicit next
+    // command owns scrolling, so updating highlights must not move the source.
     editor.dispatch({ effects: setSearchQuery.of(query) });
-    if (props.findQuery) findNext(editor);
   }, [props.findQuery, props.sessionKey, props.resetKey, props.sessions]);
 
   useLayoutEffect(() => {

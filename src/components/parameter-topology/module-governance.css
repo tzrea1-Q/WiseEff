@@ -205,6 +205,10 @@
 
 .parameter-module-mapping-panel .module-attribution-tree__head-main > div { flex-basis: auto; }
 .parameter-module-mapping-panel .module-attribution-tree__search { display: grid; gap: var(--space-1); color: var(--text-muted); }
+.parameter-module-mapping-panel .module-attribution-tree__list {
+  width: max-content;
+  min-width: 100%;
+}
 .parameter-module-mapping-panel .module-attribution-tree__row {
   gap: 0 var(--space-1);
   padding: var(--space-1);
@@ -278,10 +282,11 @@
   gap: var(--space-1);
 }
 .parameter-module-mapping-panel .module-attribution-tree.is-compact .module-attribution-tree__item .module-attribution-tree__label {
-  flex: 1;
+  flex: 1 0 auto;
   font: 600 var(--text-sm) / 1.35 var(--font-sans);
   color: var(--text);
-  min-width: 0;
+  min-width: calc(2 * var(--space-16));
+  max-width: none;
 }
 .parameter-module-mapping-panel .module-attribution-tree.is-compact .module-attribution-tree__meta {
   grid-column: 1;
