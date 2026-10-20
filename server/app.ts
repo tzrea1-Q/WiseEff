@@ -395,6 +395,10 @@ export function resolveRouteBodyLimit({ method, path, contentType }: { method: s
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+files\/+preview\/*$/.test(path)) {
     return LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES;
   }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+import\/*$/.test(path)) {
+    if (contentType !== undefined && contentType !== "multipart/form-data") throw new ApiError("VALIDATION_FAILED", "Skill imports require multipart/form-data.");
+    return analysisCaseArchiveLimits.maxCompressedBytes + 64 * 1024;
+  }
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+(?:parse|extractor|format)-preview\/*$/.test(path)) {
     return LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
   }

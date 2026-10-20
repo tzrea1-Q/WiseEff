@@ -78,16 +78,16 @@ function jsonContent(schemaName: string) {
   };
 }
 
-function binaryContent() {
+function binaryContent(mediaType = "application/octet-stream") {
   return {
-    "application/octet-stream": {
+    [mediaType]: {
       schema: { type: "string" as const, format: "binary" as const }
     }
   };
 }
 
-function responseContent(schema: { responseBody: string; responseMedia?: "json" | "binary" }) {
-  return schema.responseMedia === "binary" ? binaryContent() : jsonContent(schema.responseBody);
+function responseContent(schema: { responseBody: string; responseMedia?: "json" | "binary" | "zip" }) {
+  return schema.responseMedia === "zip" ? binaryContent("application/zip") : schema.responseMedia === "binary" ? binaryContent() : jsonContent(schema.responseBody);
 }
 
 function buildSchemaPlaceholders() {
@@ -124,7 +124,7 @@ function buildSchemaPlaceholders() {
     if (schema.requestBody) {
       schemas[schema.requestBody] = placeholder(schema.requestBody);
     }
-    schemas[schema.responseBody] = placeholder(schema.responseBody, schema.responseMedia === "binary");
+    schemas[schema.responseBody] = placeholder(schema.responseBody, schema.responseMedia === "binary" || schema.responseMedia === "zip");
     for (const responseBody of Object.values(schema.additionalSuccessResponses ?? {})) {
       schemas[responseBody] = placeholder(responseBody);
     }
@@ -150,6 +150,13 @@ function buildSchemaPlaceholders() {
   schemas.LogAnalysisCaseMultipartImport = {
     type: "object", "x-wiseeff-schema": "LogAnalysisCaseMultipartImport", required: ["file"], properties: {
       file: { type: "string", format: "binary", description: "One bounded ZIP in eval-cases/logs layout." }
+    }
+  };
+  schemas.LogSkillPackageMultipartImport = {
+    type: "object", "x-wiseeff-schema": "LogSkillPackageMultipartImport", required: ["file"], properties: {
+      file: { type: "string", format: "binary", description: "One bounded skill ZIP; source snapshots are uploaded separately." },
+      name: { type: "string", maxLength: 120, description: "Optional trimmed skill name override; blank uses the package name." },
+      status: { type: "string", enum: ["draft", "published"], default: "draft" }
     }
   };
   return schemas;
@@ -200,10 +207,11 @@ export function buildOpenApiDocument(): OpenApiDocument {
             requestBody: {
               required: true,
               content: {
-                ...(["logs.uploadSourceSnapshot", "logs.importAnalysisCases"].includes(route.id) ? {} : jsonContent(schema.requestBody)),
+                ...(["logs.uploadSourceSnapshot", "logs.importAnalysisCases", "logs.importSkillPackage"].includes(route.id) ? {} : jsonContent(schema.requestBody)),
                 ...(route.id === "logs.uploadFile" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogBundleMultipartUpload" } } } : {}),
                 ...(route.id === "logs.uploadSourceSnapshot" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogSourceSnapshotMultipartUpload" } } } : {}),
-                ...(route.id === "logs.importAnalysisCases" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogAnalysisCaseMultipartImport" } } } : {})
+                ...(route.id === "logs.importAnalysisCases" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogAnalysisCaseMultipartImport" } } } : {}),
+                ...(route.id === "logs.importSkillPackage" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogSkillPackageMultipartImport" } } } : {})
               }
             }
           }

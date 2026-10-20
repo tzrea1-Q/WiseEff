@@ -20,7 +20,7 @@ const analysisCase: AnalysisCase = { id: "case", name: "Case", expectations: { d
 const completeCaseRun: AnalysisCaseRun = { id: "case-run", skillRevisionId: "draft", publishedRevisionId: "current", status: "complete", progress: 100,
   results: [{ caseId: "case", name: "Case", draft: { score: 100, passed: true, traceReference: "trace", report: { confidence: 0.9, conclusion: "fault", impact: "fault",
     severity: "Warning", evidence: [], suggestedActions: ["inspect"], reportContext: { lineCount: 1, entryCount: 1 } } }, published: null, delta: 10 }], error: null, createdAt: "2026-10-19" };
-function setup(options: { section?: string; tab?: string; draft?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean; procedure?: string;
+function setup(options: { section?: string; tab?: string; draft?: boolean; draftOnly?: boolean; apiMode?: boolean; canEdit?: boolean; legacyDescription?: boolean; procedure?: string;
   spec?: Partial<SkillSpec>; runParseTests?: NonNullable<SkillWorkspaceRepository["runSkillParseTests"]>; knowledgeRepository?: KnowledgeRepository } = {}) {
   const skill = structuredClone(mockSkillWorkspace("skill-charging")!);
   const old: SkillRevision = { ...skill.currentRevision, id: "old", number: 1, status: "superseded", spec: { schemaVersion: "skill/v1", description: "旧描述" } };
@@ -29,7 +29,9 @@ function setup(options: { section?: string; tab?: string; draft?: boolean; apiMo
   if (options.procedure !== undefined) skill.currentRevision.spec.procedure = options.procedure;
   if (options.legacyDescription) delete skill.currentRevision.spec.description;
   if (options.draft) skill.draft = { ...skill.currentRevision, id: "draft", number: 3, status: "draft", spec: { ...skill.currentRevision.spec, description: "草稿描述" } };
+  if (options.draftOnly) { skill.currentRevision = { ...skill.currentRevision, status: "draft", publishedAt: null }; skill.draft = skill.currentRevision; }
   const repository = {
+    exportSkillPackage: vi.fn(async () => new Blob(["zip"])),
     getSkillSample: vi.fn(async () => mockSkillSample),
     getSkillSampleText: vi.fn(async () => null),
     replaceSkillSample: vi.fn(async (_id: string, _file: File) => undefined),
@@ -100,6 +102,57 @@ describe("skill workspace", () => {
     await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ files: [{ glob: "charger/**", role: "充电" }] }), null, "current"));
   });
 
+  it("uses the latest first-draft revision token for consecutive saves and publishing", async () => {
+    const { skill, repository, onPublished } = setup({ draftOnly: true });
+    await screen.findByRole("heading", { name: "概览" });
+    let saveCount = 0;
+    let expectedHeadId = skill.currentRevision.id;
+    repository.saveSkillDraft.mockImplementation(async (_id, spec, baseDraftId, basePublishedId) => {
+      if (baseDraftId !== expectedHeadId || basePublishedId !== expectedHeadId) throw conflictError();
+      const draft: SkillRevision = { ...skill.currentRevision, id: `saved-${++saveCount}`, number: skill.currentRevision.number + saveCount, spec };
+      expectedHeadId = draft.id;
+      return draft;
+    });
+    const description = screen.getByRole("textbox", { name: "描述" });
+    for (const [index, text] of ["first edit", "second edit"].entries()) {
+      fireEvent.change(description, { target: { value: text } });
+      await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled());
+      const token = index === 0 ? "current" : "saved-1";
+      expect(repository.saveSkillDraft).toHaveBeenNthCalledWith(index + 1, "skill-charging", expect.objectContaining({ description: text }), token, token);
+    }
+    fireEvent.change(description, { target: { value: "publish edit" } });
+    await userEvent.click(screen.getByRole("button", { name: /^发布$/ }));
+    const dialog = screen.getByRole("dialog", { name: "发布技能" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /^发布$/ }));
+    await waitFor(() => expect(onPublished).toHaveBeenCalled());
+    expect(repository.saveSkillDraft).toHaveBeenNthCalledWith(3, "skill-charging", expect.objectContaining({ description: "publish edit" }), "saved-2", "saved-2");
+    expect(repository.publishSkill).toHaveBeenCalledWith("skill-charging", "saved-3");
+  });
+  it("shows a first imported draft as unpublished and retains it when discarding local changes", async () => {
+    const { repository } = setup({ draftOnly: true });
+    await screen.findByRole("heading", { name: "概览" });
+    expect(screen.getAllByText("尚未发布")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "放弃草稿" })).toBeDisabled();
+    await userEvent.type(screen.getByRole("textbox", { name: "描述" }), " local");
+    await userEvent.click(screen.getByRole("button", { name: "放弃草稿" }));
+    await userEvent.click(screen.getByRole("button", { name: "确认" }));
+    expect(repository.discardSkillDraft).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "放弃草稿" })).toBeDisabled();
+  });
+  it("opens package export from versions with the published revision selected", async () => {
+    setup({ section: "versions", draft: true });
+    const exportButton = await screen.findByRole("button", { name: "导出技能包" });
+    expect(exportButton).toHaveAttribute("data-variant", "outline");
+    expect(exportButton).toHaveAttribute("data-size", "default");
+    const header = exportButton.closest("header")!;
+    expect(header).toHaveClass("flex", "items-center", "justify-between");
+    expect(within(header).getByRole("heading", { name: "版本" })).toBeInTheDocument();
+    await userEvent.click(exportButton);
+    const dialog = screen.getByRole("dialog", { name: "导出技能包" });
+    expect(within(dialog).getByRole("combobox", { name: "导出版本" })).toHaveTextContent("当前发布版本（默认）");
+    expect(within(dialog).getByText(/源码快照需单独上传/)).toBeInTheDocument();
+  });
   it.each(["parse", "cases"])("drops the test tab from other section URLs and restores the remembered tab (%s)", async (tab) => {
     const { onNavigate } = setup({ section: "tests", tab });
     expect(await screen.findByRole("tab", { name: tab === "cases" ? /分析用例/ : /解析测试/ })).toHaveAttribute("aria-selected", "true");

@@ -33,6 +33,7 @@ import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
+import { ImportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
 import { FormatProfileForm } from "@/features/log-skills/FormatProfileForm";
 import { parseFormatProfileCode } from "@/features/log-skills/formatProfileFields";
 import { SectionSkeleton } from "@/components/common/SectionState";
@@ -337,6 +338,7 @@ function LogDomainGovernanceSection({
   const domainsLoading = Boolean(logActions) && domains === null;
   const [formOpen, setFormOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileValid, setProfileValid] = useState(true);
@@ -445,7 +447,7 @@ function LogDomainGovernanceSection({
       ),
       sortAccessor: (domain) => domain.name
     },
-    { key: "currentRevision", header: "当前版本", render: (skill) => skill.currentRevision ? `v${skill.currentRevision.number}` : "—", sortAccessor: (skill) => skill.currentRevision?.number ?? 0 },
+    { key: "currentRevision", header: "当前版本", render: (skill) => skill.currentRevision ? skill.currentRevision.publishedAt ? `v${skill.currentRevision.number}` : "未发布" : "—", sortAccessor: (skill) => skill.currentRevision?.number ?? 0 },
     { key: "helpfulRate7d", header: "近 7 天有用率", render: (skill) => skill.helpfulRate7d == null ? "—" : formatPercent(skill.helpfulRate7d), sortAccessor: (skill) => skill.helpfulRate7d ?? -1 },
     {
       key: "description",
@@ -528,7 +530,8 @@ function LogDomainGovernanceSection({
         <>
           <AdminListPage label="分析技能治理"
             headerContent="分析技能"
-            headerActions={<Button size="sm" onClick={openCreateForm} disabled={pending || domainsLoading}>新建技能</Button>}
+            headerActions={<><Button size="sm" variant="outline" onClick={() => setImportOpen(true)} disabled={!apiMode || !skillRepository?.importSkillPackage || pending || domainsLoading}>导入技能包</Button>
+              <Button size="sm" onClick={openCreateForm} disabled={pending || domainsLoading}>新建技能</Button></>}
             filterBar={<p className="text-sm text-muted-foreground">注册分析技能（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
             table={{ "aria-label": "分析技能列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50,
               emptyState: domainsLoading ? <SectionSkeleton label="正在加载分析技能" /> : <div className="section-empty justify-items-center text-center">
@@ -550,6 +553,8 @@ function LogDomainGovernanceSection({
 
           {createOpen ? <CreateSkillDialog repository={skillRepository} apiMode={apiMode} skills={domains ?? []}
             onDismiss={() => setCreateOpen(false)} onNavigate={onNavigate} /> : null}
+          {importOpen && skillRepository ? <ImportSkillPackageDialog repository={skillRepository} onDismiss={() => setImportOpen(false)} onNavigate={onNavigate}
+            onImported={() => { void refreshDomains(); }} /> : null}
 
           {formOpen ? (
             <form
