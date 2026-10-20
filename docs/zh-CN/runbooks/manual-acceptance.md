@@ -23,7 +23,7 @@
 
 ## 当前流程与测试设计
 
-风险用例及源码到测试的对应关系由[测试策略与设计](../design-docs/testing-strategy.md)维护，本手册负责常规人工流程。2026-09-06 源码基线中的人员管理入口为 `/organization/members`，`/user-permissions` 是旧别名。导航遵循 `VISIBLE_WORKFLOWS`，当前展示参数管理、调试及平台公共入口；日志和知识库保留授权深链接。使用当前工作台控件和测试数据身份，不假定旧表格或弹窗布局仍适用。常规 A–H 操作清单见[完整人工流程](../../runbooks/manual-acceptance.md#browser-workflow-acceptance)，本轮新增的全部 20 个风险设计用例均有中文版本。
+风险用例及源码到测试的对应关系由[测试策略与设计](../design-docs/testing-strategy.md)维护，本手册负责常规人工流程。2026-09-06 源码基线中的人员管理入口为 `/organization/members`，`/user-permissions` 是旧别名。导航遵循 `VISIBLE_WORKFLOWS`，当前展示参数管理、调试、日志分析及平台公共入口。日志分析分组仅含「智能分析」和「日志后台」，各入口与对应路由使用相同权限检查；无日志访问权限的用户看不到这两个入口。首页展示三种场景，日志分析入口可用。知识库仍不出现在发现面，保留授权深链接。使用当前工作台控件和测试数据身份，不假定旧表格或弹窗布局仍适用。常规 A–H 操作清单见[完整人工流程](../../runbooks/manual-acceptance.md#browser-workflow-acceptance)，本轮新增的全部 20 个风险设计用例均有中文版本。
 
 ## 补充验收流程
 

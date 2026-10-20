@@ -8,10 +8,10 @@ describe("PlatformFlowSection", () => {
   it("renders the section heading and the allowlisted tab buttons", () => {
     render(<PlatformFlowSection />);
 
-    expect(screen.getByRole("heading", { name: "一条可审阅工作流，两种场景接入" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "一条可审阅工作流，三种场景接入" })).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["参数管理", "调试平台"]);
-    expect(screen.queryByRole("tab", { name: "日志分析" })).not.toBeInTheDocument();
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["参数管理", "调试平台", "日志分析"]);
+    expect(screen.getByRole("tab", { name: "日志分析" })).toBeInTheDocument();
   });
 
   it("selects the parameter-management tab by default and shows the generic parameter catalog preview", () => {
@@ -56,8 +56,10 @@ describe("PlatformFlowSection", () => {
     expect(container).toHaveTextContent("从参数变更或日志证据直接进入对应调试场景");
     expect(container).not.toHaveTextContent(/Aurora|Nebula|Atlas|ChargeLab_X01|charging_thermal_trace|battery_pack_temp|关键温度/);
 
-    expect(screen.queryByRole("tab", { name: "日志分析" })).not.toBeInTheDocument();
-    expect(container).not.toHaveTextContent("围绕异常事件和关键证据组织可审阅链路");
+    expect(screen.getByRole("tab", { name: "日志分析" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "日志分析" }));
+    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
+    expect(container).toHaveTextContent("围绕异常事件和关键证据组织可审阅链路");
     expect(container).not.toHaveTextContent(/Aurora|Nebula|Atlas|ChargeLab_X01|charging_thermal_trace|battery_pack_temp|关键温度/);
   });
 
