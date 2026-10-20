@@ -60,7 +60,7 @@ export function ImportSkillPackageDialog({ repository, onDismiss, onNavigate, on
         }).finally(() => setPending(false));
     }}>
       <h2 id={titleId}>导入技能包</h2>
-      <p id={descriptionId}>选择技能 ZIP 包。校验通过后创建技能；包内知识条目始终作为草稿导入并链接到技能。源码快照请在导入后单独上传。</p>
+      <p id={descriptionId} className="skill-package-intro">选择技能 ZIP 包。校验通过后创建技能；包内知识条目始终作为草稿导入并链接到技能。源码快照请在导入后单独上传。</p>
       {created ? <div role="status"><p>技能包校验通过，已导入「{created.name}」。</p>
         <Button asChild variant="link"><a href={`/log-admin/skills/${encodeURIComponent(created.id)}`} onClick={(event) => {
           if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); onDismiss(); }
@@ -93,7 +93,7 @@ export function ExportSkillPackageDialog({ skill, dirty, repository, onDismiss }
   const revisionRef = useRef<HTMLButtonElement>(null);
   return <ModalDialog open describedBy initialFocusRef={revisionRef} onDismiss={pending ? undefined : onDismiss} className="skill-authoring-dialog modal-card--md">
     {({ titleId, descriptionId }) => <div className="skill-package-dialog-content"><h2 id={titleId}>导出技能包</h2>
-      <p id={descriptionId}>导出诊断流程、解析与信号规则、解析测试、关联知识和分析用例。源码快照需单独上传。</p>
+      <p id={descriptionId} className="skill-package-intro">导出诊断流程、解析与信号规则、解析测试、关联知识和分析用例。源码快照需单独上传。</p>
       <div className="grid gap-2"><Label htmlFor="skill-package-revision">导出版本</Label><SelectControl id="skill-package-revision" ref={revisionRef} ariaLabel="导出版本" value={revision} disabled={pending}
         onValueChange={(value) => setRevision(value as "published" | "draft")} options={[{ value: "published", label: "当前发布版本（默认）", disabled: !published }, { value: "draft", label: "已保存草稿", disabled: !skill.draft }]} /></div>
       {dirty ? <p>未保存的更改不会导出；如需包含这些更改，请先保存草稿。</p> : null}

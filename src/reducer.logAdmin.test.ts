@@ -5,6 +5,14 @@ import { createPrototypeState } from "./mockData";
 const createLogAdminState = () => ({ ...createPrototypeState(), activeRoleId: "admin" });
 
 describe("reducer log runtime archive state", () => {
+  it("keeps all six evidence items and admin list metadata from refreshed records", () => {
+    const state = createLogAdminState();
+    const log = { ...state.logs[0], submittedBy: "王管理员", capturedAt: "2026-10-19T12:34:00Z", logDomainName: "充电诊断",
+      evidence: Array.from({ length: 6 }, (_, index) => ({ ...state.logs[0].evidence[0], id: `evidence-${index}` })) };
+    const next = reducer(state, { type: "HYDRATE_LOG_RUNTIME", logs: [log] });
+    expect(next.logs[0]).toMatchObject({ submittedBy: log.submittedBy, capturedAt: log.capturedAt, logDomainName: log.logDomainName, evidence: log.evidence });
+    expect(next.logs[0].evidence).toHaveLength(6);
+  });
   it("derives archivedLogIds from hydrated api logs while preserving ids outside the payload", () => {
     const state = createLogAdminState();
     const existingArchivedId = state.logs[0].id;
