@@ -445,11 +445,58 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
       .toBe(status === 200 ? 1 : 0);
   });
 
-  it.each([["POST", ""], ["POST", "/preg_authority/retire"], ["POST", "/preg_authority/restore"], ["PATCH", "/preg_authority/placement"]] as const)("does not extend dual-role Review authority to %s registration%s", async (method, suffix) => {
-    const result = await request("dual", method, `/api/v2/organizations/${ORG}/subject-registrations${suffix}`, {
-      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `scope:${randomUUID()}`, "If-Match": '"1"' },
-      body: {},
+  it("uses the persisted organization grant for dual-role registration and placement writes", async () => {
+    await pool.query(`insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin)
+      values ('dual-business',$1,'Dual business','dual-business',1,'business','curated')`, [ORG]);
+    const path = `/api/v2/organizations/${ORG}/subject-registrations`;
+    const created = await request("dual", "POST", path, {
+      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `dual-register:${randomUUID()}` },
+      body: { subjectId: "csub_charger", placement: { mode: "use-default" },
+        newDestination: { parentModuleId: "dual-business", name: "Dual charger" }, reason: "dual-role registration" }
     });
-    expect(result.status).toBe(403);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const registrationPath = `${path}/${created.body.item.id}`;
+    const detail = await request("dual", "GET", registrationPath);
+    expect(detail.status).toBe(200);
+    expect(detail.body.item.impact).toEqual({ bindingCount: 0, projectCount: 0 });
+    for (const actor of ["platform", "member", "project", "foreign-role"] as const) {
+      const readOnly = await request(actor, "GET", registrationPath);
+      expect(readOnly.status).toBe(200);
+      expect(readOnly.body.item.impact).toBeUndefined();
+    }
+    expect((await request("other", "GET", registrationPath)).status).toBe(404);
+    const placement = await request("dual", "GET", `${registrationPath}/placement`);
+    expect(placement.status).toBe(200);
+    const update = {
+      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `dual-placement:${randomUUID()}`, "If-Match": placement.headers.get("etag")! },
+      body: { placement: { mode: "use-default" }, destinationModuleId: created.body.item.placement.moduleId }
+    };
+    const moved = await request("dual", "PATCH", `${registrationPath}/placement`, update);
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    expect((await request("dual", "PATCH", `${registrationPath}/placement`, update)).body.item).toEqual(moved.body.item);
+    const retired = await request("dual", "POST", `${registrationPath}/retire`, {
+      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `dual-retire:${randomUUID()}`, "If-Match": created.headers.get("etag")! },
+      body: { reason: "dual-role retirement" }
+    });
+    expect(retired.status, JSON.stringify(retired.body)).toBe(200);
+    const restored = await request("dual", "POST", `${registrationPath}/restore`, {
+      headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `dual-restore:${randomUUID()}`, "If-Match": retired.headers.get("etag")! },
+      body: { reason: "dual-role restoration" }
+    });
+    expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+    expect(restored.body.item.id).toBe(created.body.item.id);
+    expect(restored.body.item.status).toBe("active");
+    expect((await pool.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_charger'", [ORG])).rows[0]?.count).toBe(1);
+  });
+
+  it.each(["platform", "member", "other", "project", "foreign-role"] as const)("refuses registration and placement writes without a home-organization grant: %s", async (actor) => {
+    const before = (await pool.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations")).rows;
+    for (const [method, suffix] of [["POST", ""], ["POST", "/preg_authority/retire"], ["POST", "/preg_authority/restore"], ["PATCH", "/preg_authority/placement"]] as const) {
+      const result = await request(actor, method, `/api/v2/organizations/${ORG}/subject-registrations${suffix}`, {
+        headers: { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": `scope:${randomUUID()}`, "If-Match": '"1"' }, body: {}
+      });
+      expect(result.status).toBe(403);
+    }
+    expect((await pool.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations")).rows).toEqual(before);
   });
 });
