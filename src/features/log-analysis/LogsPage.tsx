@@ -456,7 +456,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     let cancelled = false;
     void logActions.listLogDomains().then((domains) => {
       if (!cancelled) {
-        setUploadLogDomains(domains);
+        setUploadLogDomains(domains.filter((domain) => domain.currentRevision?.publishedAt !== null));
       }
     });
     return () => {

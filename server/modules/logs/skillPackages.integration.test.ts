@@ -6,6 +6,7 @@ import { createPostgresDatabase } from "../../shared/database/client";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { resolveRouteBodyLimit } from "../../app";
+import { requestJson } from "../../test/testClient";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
@@ -214,6 +215,36 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
       expect(await h.counts()).toEqual(before);
       const reimported = await importLogSkillPackage(h.db, h.store, h.auth, h.bytes, "draft", h.invocation, h.context, undefined, `  ${h.skill.name}（导入）  `);
       expect(reimported).toMatchObject({ name: `${h.skill.name}（导入）`, draft: { status: "draft" } });
+    } finally { await h.close(); }
+  }, 120_000);
+
+  it("rejects initial drafts through every upload selector until publication while retaining admin visibility", async () => {
+    const h = await harness();
+    try {
+      const imported = await importLogSkillPackage(h.db, h.store, h.other, h.bytes, undefined, h.otherInvocation, h.context);
+      const router = createRouter();
+      registerLogRoutes(router, { db: h.db, objectStore: h.store, getCurrentAuthContext: () => h.other });
+      const request = <T,>(url: string, method = "GET", body?: unknown) => requestJson<T>(createHttpServer(router), url,
+        { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const list = await request<{ items: { id: string; currentRevision: { publishedAt: string | null } }[] }>("/api/v1/log-skills");
+      expect(list.body.items).toEqual(expect.arrayContaining([expect.objectContaining({
+        id: imported.id, currentRevision: expect.objectContaining({ publishedAt: null })
+      })]));
+      const uploadBody = { fileName: "charger.log", contentType: "text/plain", contentBase64: Buffer.from(content).toString("base64") };
+      const generic = await request<{ fileObject: { id: string } }>("/api/v1/log-files", "POST", uploadBody);
+      expect(generic.status).toBe(201);
+      for (const selection of [{ skillId: imported.id }, { logDomainId: imported.id }, { skillKey: imported.skillKey }]) {
+        for (const [path, body] of [["/api/v1/log-files", uploadBody],
+          ["/api/v1/logs", { fileObjectId: generic.body.fileObject.id, fileName: "charger.log" }]] as const) {
+          const result = await request(path, "POST", { ...body, ...selection });
+          expect(result.status).toBe(409);
+          expect(result.body).toMatchObject({ error: { code: "CONFLICT", message: "Analysis skill has no published revision." } });
+        }
+      }
+      await publishLogSkill(h.db, h.other, imported.id, imported.draft!.id, h.otherInvocation, h.context);
+      const published = await request<{ items: { id: string; currentRevision: { publishedAt: string | null } }[] }>("/api/v1/log-skills");
+      expect(published.body.items.find((item) => item.id === imported.id)?.currentRevision.publishedAt).toEqual(expect.any(String));
+      expect((await request("/api/v1/log-files", "POST", { ...uploadBody, skillId: imported.id })).status).toBe(201);
     } finally { await h.close(); }
   }, 120_000);
 

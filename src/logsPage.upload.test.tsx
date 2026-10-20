@@ -186,6 +186,32 @@ describe("LogsPage api upload wiring", () => {
     expect(screen.getByRole("tab", { name: "报告" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("omits initial drafts from analysis choices and offers them after publication", async () => {
+    const skill = {
+      id: "draft-skill", name: "待发布技能", status: "active" as const,
+      createdAt: "2026-10-19T00:00:00.000Z", updatedAt: "2026-10-19T00:00:00.000Z",
+      currentRevision: { id: "revision-1", number: 1, publishedAt: null }
+    };
+    const published = { ...skill, id: "published-skill", name: "已发布技能",
+      currentRevision: { ...skill.currentRevision, publishedAt: "2026-10-19T00:00:00.000Z" } };
+    const listLogSkills = vi.fn().mockResolvedValueOnce([skill, published])
+      .mockResolvedValueOnce([{ ...skill, currentRevision: published.currentRevision }, published]);
+    const repository = renderApiLogs(createLogRepository({ listLogSkills }));
+    await waitForApiRuntime(repository);
+
+    openUploadDialog();
+    await waitFor(() => expect(listLogSkills).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByLabelText(/分析技能/));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["通用分析", "已发布技能"]);
+    await userEvent.click(screen.getByRole("option", { name: "通用分析" }));
+    await userEvent.click(screen.getByRole("button", { name: "关闭上传日志" }));
+
+    openUploadDialog();
+    await waitFor(() => expect(listLogSkills).toHaveBeenCalledTimes(2));
+    await selectControlOption(screen.getByLabelText(/分析技能/), skill.id);
+    expect(screen.getByLabelText(/分析技能/)).toHaveTextContent(skill.name);
+  });
+
   it.each(["", "firmware-v7"])("offers ready source versions and uploads selection %j", async (sourceVersion) => {
     const chargingDomain = {
       id: "domain-charging",
