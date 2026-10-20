@@ -26,7 +26,7 @@ export async function searchSource(db: Database, input: SourceSearchParams & { o
   const literal = input.mode === "literal";
   if (input.query.trim().length < 3 || input.query.length > 200 || !input.pathGlob || input.pathGlob.length > 1024
     || literal && (!/[\p{L}\p{N}]{3}/u.test(input.query) || /[\r\n]/.test(input.query))) {
-    throw new Error("Queries require at least three characters; literal queries need three consecutive letters or numbers and no newlines.");
+    throw new Error("搜索内容至少需要三个字符；按原文搜索时，需包含连续三个字母或数字，且不能换行。");
   }
   const limit = Math.min(MAX_SOURCE_SEARCH_RESULTS, Math.max(1, Math.floor(input.limit)));
   const needle = literal ? `%${input.query.replace(/[\\%_]/g, "\\$&")}%` : input.query;
@@ -101,7 +101,7 @@ export async function searchSource(db: Database, input: SourceSearchParams & { o
     (select too_broad from admission) as "queryTooBroad" from limited_hits h`,
       [input.organizationId, input.snapshotId, input.query, pathGlobRegex(input.pathGlob), literal, needle, limit + 1,
         !prefix, `${prefix.replace(/[\\%_]/g, "\\$&")}%`])).rows[0];
-      if (result.queryTooBroad) throw new Error("Source query is too common without a literal path prefix. Narrow pathGlob (for example drivers/power/**) or use a more specific query.");
+      if (result.queryTooBroad) throw new Error("搜索词过于常见，且未指定固定路径前缀。请缩小 pathGlob（例如 drivers/power/**）或使用更具体的搜索词。");
       await tx.query("select set_config('statement_timeout', $1, true)", [previous.timeout]);
       return { items: result.items.slice(0, limit).map(({ excerptTruncated: _excerptTruncated, ...item }) => item),
         truncated: result.candidatesTruncated || result.items.length > limit || result.items.some((row) => row.excerptTruncated) };

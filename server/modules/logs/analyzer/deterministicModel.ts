@@ -15,32 +15,32 @@ type RuleHitSummary = { ruleHit: string; lineNumbers: number[]; filePath?: strin
 const conclusionByRuleHit: Array<{ ruleHit: string; conclusion: string; impact: string; severity: "Critical" | "Warning" | "Info" }> = [
   {
     ruleHit: "thermal-foldback",
-    conclusion: "Charging behavior is consistent with thermal foldback protection reducing charge output.",
-    impact: "Charging throughput stays reduced until pack temperature returns to the safe operating range.",
+    conclusion: "充电表现符合过热保护降额特征，充电输出已降低。",
+    impact: "电池温度恢复到安全范围前，充电速度仍会降低。",
     severity: "Warning"
   },
   {
     ruleHit: "device-offline",
-    conclusion: "The device went offline or became unavailable during the captured window.",
-    impact: "Device availability blocks reads, writes, and continued charging diagnostics.",
+    conclusion: "日志记录期间，设备离线或不可用。",
+    impact: "设备不可用会阻碍读写操作及后续充电诊断。",
     severity: "Critical"
   },
   {
     ruleHit: "communication-timeout",
-    conclusion: "Controller communication showed timeout and retry behavior.",
-    impact: "Intermittent communication may delay diagnostics or hide the underlying device state.",
+    conclusion: "控制器通信出现超时或重试。",
+    impact: "通信不稳定可能延迟诊断，或导致无法获取设备的实际状态。",
     severity: "Warning"
   },
   {
     ruleHit: "charge-current-reduction",
-    conclusion: "Charge current was reduced below the requested level without a confirmed root cause.",
-    impact: "Charging speed is degraded relative to the requested profile.",
+    conclusion: "实际充电电流低于请求值，具体原因尚未确认。",
+    impact: "充电速度低于请求的水平。",
     severity: "Warning"
   },
   {
     ruleHit: "error-code",
-    conclusion: "The log contains explicit machine-readable error codes that need follow-up.",
-    impact: "Unresolved error codes may indicate a fault that recurs under load.",
+    conclusion: "日志包含需要进一步排查的明确错误码。",
+    impact: "尚未排查的错误码可能提示设备在负载下会重复发生故障。",
     severity: "Warning"
   }
 ];
@@ -100,27 +100,27 @@ export function createDeterministicLogAnalysisModel(): LogAnalysisChatModel {
         return { content: JSON.stringify({}) };
       }
 
-      const baseConclusion = matched?.conclusion ?? "No known anomaly pattern was detected; the log looks nominal.";
-      const conclusion = analysisQuestion ? `${baseConclusion} Regarding the question "${analysisQuestion}": the cited lines are the directly relevant evidence.` : baseConclusion;
+      const baseConclusion = matched?.conclusion ?? "未发现已知异常模式，当前日志未显示明显异常。";
+      const conclusion = analysisQuestion ? `${baseConclusion} 针对问题“${analysisQuestion}”，引用的日志提供了相关线索。` : baseConclusion;
 
       const payload = {
         conclusion,
-        impact: matched?.impact ?? "No immediate operational impact was identified from the cited lines.",
+        impact: matched?.impact ?? "引用的日志尚未显示直接的运行影响。",
         severity: matched?.severity ?? "Info",
         confidence: matched ? 0.82 : 0.45,
         suggestedActions: matched
-          ? ["Review the cited lines with the owning team.", "Correlate the finding with recent parameter changes."]
-          : ["Collect more context from the device and adjacent logs before escalating."],
+          ? ["与负责团队一起核对引用的日志。", "结合近期参数变更核对分析结果。"]
+          : ["进一步处理前，请收集设备状态及相邻时段的日志。"],
         evidence: [
           {
             filePath,
             lineNumbers: citedLines,
             inference: matched
-              ? `Deterministic analysis matched the ${matched.ruleHit} pattern on the cited lines.`
-              : "Deterministic analysis found no anomaly pattern; the cited lines summarize the log window.",
+              ? `引用的日志匹配到 ${matched.ruleHit} 模式：${matched.conclusion}`
+              : "未发现已知异常模式，引用的日志展示了该时段的运行情况。",
             suggestedAction: matched
-              ? "Confirm the pattern against device telemetry before acting."
-              : "No action required unless symptoms persist."
+              ? "处理前，请结合设备运行数据核实分析结果。"
+              : "若异常现象未持续出现，可暂时观察。"
           }
         ]
       };
@@ -246,17 +246,17 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         return withUsage(
           {
             action: "final",
-            conclusion: "Evidence was insufficient for a confident root cause within the budget.",
-            impact: "No confirmed operational impact could be established from the lines reviewed.",
+            conclusion: "当前分析范围内证据不足，尚无法确认根因。",
+            impact: "已检查的日志尚无法确认实际运行影响。",
             severity: "Info",
             confidence: 0.3,
-            suggestedActions: ["Collect more context from the device and adjacent logs before escalating."],
+            suggestedActions: ["进一步处理前，请收集设备状态及相邻时段的日志。"],
             evidence: [
               {
                 filePath,
                 lineNumbers: fallbackLines,
-                inference: "The reviewed window did not confirm a known anomaly pattern.",
-                suggestedAction: "Re-run the analysis with a longer log capture if symptoms persist."
+                inference: "已检查的日志时段尚未确认存在已知异常模式。",
+                suggestedAction: "若异常持续，请收集更长时段的日志后重新分析。"
               }
             ]
           },
@@ -264,9 +264,9 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         );
       }
 
-      const baseConclusion = matched?.conclusion ?? "No known anomaly pattern was detected; the log looks nominal.";
+      const baseConclusion = matched?.conclusion ?? "未发现已知异常模式，当前日志未显示明显异常。";
       const conclusion = analysisQuestion
-        ? `${baseConclusion} Regarding the question "${analysisQuestion}": the cited lines are the directly relevant evidence.`
+        ? `${baseConclusion} 针对问题“${analysisQuestion}”，引用的日志提供了相关线索。`
         : baseConclusion;
 
       const sourceToolOffered = messages.some((message) => message.role === "system"
@@ -289,23 +289,23 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         {
           action: "final",
           conclusion,
-          impact: matched?.impact ?? "No immediate operational impact was identified from the cited lines.",
+          impact: matched?.impact ?? "引用的日志尚未显示直接的运行影响。",
           severity: matched?.severity ?? "Info",
           confidence: matched ? 0.82 : 0.45,
           suggestedActions: matched
-            ? ["Review the cited lines with the owning team.", "Correlate the finding with recent parameter changes."]
-            : ["Collect more context from the device and adjacent logs before escalating."],
+            ? ["与负责团队一起核对引用的日志。", "结合近期参数变更核对分析结果。"]
+            : ["进一步处理前，请收集设备状态及相邻时段的日志。"],
           evidence: [
             {
               filePath,
               lineNumbers: citedLines,
               ...(source ? { sourceLocation: { snapshotId: source.snapshotId, path: source.path, line: source.line } } : {}),
               inference: matched
-                ? `Deterministic loop analysis matched the ${matched.ruleHit} pattern on the lines read in this run.`
-                : "Deterministic loop analysis found no anomaly pattern; the cited lines summarize the reviewed window.",
+                ? `本次已读取的日志匹配到 ${matched.ruleHit} 模式：${matched.conclusion}`
+                : "未发现已知异常模式，引用的日志展示了已检查时段的运行情况。",
               suggestedAction: matched
-                ? "Confirm the pattern against device telemetry before acting."
-                : "No action required unless symptoms persist."
+                ? "处理前，请结合设备运行数据核实分析结果。"
+                : "若异常现象未持续出现，可暂时观察。"
             }
           ]
         },

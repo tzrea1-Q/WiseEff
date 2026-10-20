@@ -77,7 +77,7 @@ describe("parsing/v1 registers interface", () => {
   it("preserves the raw selector in decoded-event errors for reports and tools", () => {
     const event = decode(bq(), ["addr=0x0B val=0x2c"]).events[0];
     expect(event.fields.addr).toEqual({ raw: "0x0B", value: 11 });
-    expect(event.errors).toEqual([{ field: "val", code: "unmatched_register", message: "No register case for addr=0x0B (map charger)" }]);
+    expect(event.errors).toEqual([{ field: "val", code: "unmatched_register", message: "未找到与 addr=0x0B 对应的寄存器映射分支（映射 charger）" }]);
     const serialized = JSON.stringify(decodedEventSchema.parse(event));
     expect(serialized).toContain("addr=0x0B");
     expect(serialized).not.toContain("addr=11");
@@ -106,7 +106,7 @@ describe("parsing/v1 registers interface", () => {
       ["registerMaps", "charger", "cases", "0x0C"],
       ["registerMaps", "charger", "default"], ["registerMaps", "charger", "selectBy"], ["extractors", 0, "fields", "addr", "decode", "register"]
     ]));
-    if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["registerMaps", "charger", "cases", "0x0C"], message: "Duplicate normalized map case" }));
+    if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["registerMaps", "charger", "cases", "0x0C"], message: "映射分支的数值重复" }));
   });
   it("accepts only numeric extractor decode and the closed register construct", () => {
     const spec = direct(register);

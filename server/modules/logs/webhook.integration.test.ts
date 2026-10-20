@@ -393,7 +393,7 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
       runId: "run-int-2",
       fileName: "charging.log",
       status: "failed",
-      conclusion: "Job exhausted 4 attempts.",
+      conclusion: "日志分析已尝试 4 次，仍未完成。",
       occurredAt: new Date().toISOString()
     });
 

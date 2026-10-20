@@ -73,13 +73,13 @@ function unpackedByteBudget(compressedBytes: number): number {
 }
 
 function archiveHelp(): string {
-  return `Supported archives: single-file .gz and single-entry .zip containing ${supportedLogExtensions.join("/")} text logs.`;
+  return `支持仅含一个文本日志的 .gz 或 .zip 压缩包，日志格式为 ${supportedLogExtensions.join("/")}。`;
 }
 
 function sizeLimitReason(): string {
   return (
-    `Unpacked log exceeds the allowed size (max ${Math.floor(LOG_ARCHIVE_MAX_UNPACKED_BYTES / (1024 * 1024))}MB, ` +
-    `at most ${LOG_ARCHIVE_MAX_COMPRESSION_RATIO}x the compressed size).`
+    `解压后的日志超过大小上限（最多 ${Math.floor(LOG_ARCHIVE_MAX_UNPACKED_BYTES / (1024 * 1024))} MB，` +
+    `且不超过压缩文件大小的 ${LOG_ARCHIVE_MAX_COMPRESSION_RATIO} 倍）。`
   );
 }
 
@@ -91,7 +91,7 @@ function unpackGzip(fileName: string, bytes: Buffer): UnpackLogArchiveResult {
   if (!isSupportedTextLogFileName(effectiveLogFileName(fileName))) {
     return {
       ok: false,
-      reason: `Unsupported .gz log name "${fileName}": the inner file must keep a supported text extension (for example app.log.gz). ${archiveHelp()}`
+      reason: `无法识别 .gz 文件“${fileName}”内的日志格式，文件名需保留文本扩展名（例如 app.log.gz）。 ${archiveHelp()}`
     };
   }
 
@@ -101,7 +101,7 @@ function unpackGzip(fileName: string, bytes: Buffer): UnpackLogArchiveResult {
     if (isOutputLengthError(error)) {
       return { ok: false, reason: sizeLimitReason() };
     }
-    return { ok: false, reason: `Failed to decompress .gz archive: not a valid gzip stream. ${archiveHelp()}` };
+    return { ok: false, reason: `无法解压 .gz 文件，压缩内容无效。 ${archiveHelp()}` };
   }
 }
 
@@ -129,20 +129,20 @@ function readZipEntries(bytes: Buffer): { entries: ZipEntry[] } | { error: strin
     }
   }
   if (eocdOffset < 0) {
-    return { error: "missing end-of-central-directory record" };
+    return { error: "缺少压缩目录信息" };
   }
 
   const totalEntries = bytes.readUInt16LE(eocdOffset + 10);
   const centralDirectoryOffset = bytes.readUInt32LE(eocdOffset + 16);
   if (centralDirectoryOffset >= bytes.length) {
-    return { error: "central directory offset is out of bounds" };
+    return { error: "压缩目录位置无效" };
   }
 
   const entries: ZipEntry[] = [];
   let cursor = centralDirectoryOffset;
   for (let index = 0; index < totalEntries; index += 1) {
     if (cursor + 46 > bytes.length || bytes.readUInt32LE(cursor) !== zipCentralDirectorySignature) {
-      return { error: "central directory is truncated or corrupt" };
+      return { error: "压缩目录不完整或已损坏" };
     }
     const flags = bytes.readUInt16LE(cursor + 8);
     const method = bytes.readUInt16LE(cursor + 10);
@@ -179,7 +179,7 @@ function readZipEntryData(bytes: Buffer, entry: ZipEntry): Buffer | null {
 function unpackZip(bytes: Buffer): UnpackLogArchiveResult {
   const parsed = readZipEntries(bytes);
   if ("error" in parsed) {
-    return { ok: false, reason: `Failed to read .zip archive: ${parsed.error}. ${archiveHelp()}` };
+    return { ok: false, reason: `无法读取 .zip 压缩包：${parsed.error}。 ${archiveHelp()}` };
   }
 
   // Directory placeholders (trailing "/") don't count against the single-entry rule.
@@ -187,24 +187,24 @@ function unpackZip(bytes: Buffer): UnpackLogArchiveResult {
   if (fileEntries.length !== 1) {
     return {
       ok: false,
-      reason: `Unsupported .zip archive: expected exactly one log file entry, found ${fileEntries.length}. ${archiveHelp()}`
+      reason: `此 .zip 压缩包需仅含一个日志文件，实际含 ${fileEntries.length} 个。 ${archiveHelp()}`
     };
   }
 
   const entry = fileEntries[0];
   if ((entry.flags & 0x1) !== 0) {
-    return { ok: false, reason: `Unsupported .zip archive: encrypted entries are not supported. ${archiveHelp()}` };
+    return { ok: false, reason: `不支持加密的 .zip 压缩包。 ${archiveHelp()}` };
   }
   if (!isSupportedTextLogFileName(entry.name)) {
     return {
       ok: false,
-      reason: `Unsupported .zip entry "${entry.name}": the entry must keep a supported text extension. ${archiveHelp()}`
+      reason: `压缩包内的文件“${entry.name}”需保留支持的文本扩展名。 ${archiveHelp()}`
     };
   }
 
   const data = readZipEntryData(bytes, entry);
   if (!data) {
-    return { ok: false, reason: `Failed to read .zip archive: local entry data is truncated or corrupt. ${archiveHelp()}` };
+    return { ok: false, reason: `无法读取 .zip 压缩包，文件内容不完整或已损坏。 ${archiveHelp()}` };
   }
 
   const budget = unpackedByteBudget(bytes.byteLength);
@@ -221,12 +221,12 @@ function unpackZip(bytes: Buffer): UnpackLogArchiveResult {
       if (isOutputLengthError(error)) {
         return { ok: false, reason: sizeLimitReason() };
       }
-      return { ok: false, reason: `Failed to decompress .zip entry "${entry.name}": corrupt deflate stream. ${archiveHelp()}` };
+      return { ok: false, reason: `无法解压文件“${entry.name}”，压缩内容已损坏。 ${archiveHelp()}` };
     }
   }
   return {
     ok: false,
-    reason: `Unsupported .zip compression method ${entry.method} for entry "${entry.name}" (only stored and deflate are supported). ${archiveHelp()}`
+    reason: `文件“${entry.name}”使用了不支持的压缩方式 ${entry.method}（仅支持不压缩存储和 deflate）。 ${archiveHelp()}`
   };
 }
 

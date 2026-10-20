@@ -1,3 +1,4 @@
+import { logValidationMessage } from "./validationMessages";
 import JSZip from "jszip";
 import { stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
@@ -17,20 +18,6 @@ export class SkillPackageArchiveError extends AnalysisCaseArchiveError {
   }
 }
 
-function chineseIssue(issue: z.ZodIssue): string {
-  if (/[\u3400-\u9fff]/.test(issue.message)) return issue.message;
-  if (issue.message.includes("Unknown scalar extracted or decoded field")) return "未知的解码字段路径";
-  if (/unknown register/i.test(issue.message)) return "未知的寄存器引用";
-  if (/unknown frame/i.test(issue.message)) return "未知的帧引用";
-  if (/duplicate/i.test(issue.message)) return "不允许重复定义";
-  if (issue.code === "invalid_type") return issue.received === "undefined" ? "缺少必需字段" : "字段类型无效";
-  if (issue.code === "invalid_literal") return `必须为 ${String(issue.expected)}`;
-  if (issue.code === "too_big") return `超出上限（${issue.maximum}）`;
-  if (issue.code === "too_small") return `未达到最小值（${issue.minimum}）`;
-  if (issue.code === "invalid_enum_value") return "值不在允许的选项中";
-  if (issue.code === "invalid_string") return "字段格式无效";
-  return "配置无效，请检查字段值和引用";
-}
 
 /** Existing case archives retain their diagnostics; package responses localize them. */
 export function skillPackageIssue(problem: string): SkillPackageIssue {
@@ -93,7 +80,7 @@ function parse<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown, p
 function schemaIssues(issues: z.ZodIssue[], file: string): SkillPackageIssue[] {
   return issues.flatMap((issue) => issue.code === "unrecognized_keys"
     ? issue.keys.map((key) => ({ path: `${file} › ${fieldPath([...issue.path, key])}`, message: "不支持的字段" }))
-    : [{ path: `${file}${issue.path.length ? ` › ${fieldPath(issue.path)}` : ""}`, message: chineseIssue(issue) }]);
+    : [{ path: `${file}${issue.path.length ? ` › ${fieldPath(issue.path)}` : ""}`, message: logValidationMessage(issue) }]);
 }
 
 /** Nothing beyond this boundary can reach a database or an object store. */

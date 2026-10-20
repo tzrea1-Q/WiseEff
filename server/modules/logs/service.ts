@@ -124,7 +124,7 @@ function uploadInvocation(auth: LogPrincipal): TrustedInvocationContext {
 }
 
 function unsupportedReason() {
-  return `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")} (archives: ${supportedLogArchiveExtensions.join(", ")}).`;
+  return `不支持此日志格式。请重新上传 ${supportedLogExtensions.join(" ")} 文本日志，或一个 .zip .tar .tar.gz .tgz .gz 压缩包。`;
 }
 
 type ResolvedLogRelatedParameter = {
@@ -140,7 +140,7 @@ async function resolveLogRelatedParameter(
 ): Promise<ResolvedLogRelatedParameter | undefined> {
   if ("kind" in auth) {
     if (input.relatedParameterId || input.relatedParameterPin) {
-      throw new ApiError("FORBIDDEN", "Integration credentials cannot select related parameters.");
+      throw new ApiError("FORBIDDEN", "集成凭据不能选择关联参数。");
     }
     return undefined;
   }
@@ -148,17 +148,17 @@ async function resolveLogRelatedParameter(
     if (input.relatedParameterId) {
       throw new ApiError(
         "CONFLICT",
-        "Related parameters must be selected by an authorized, project-scoped canonical Binding."
+        "请在有权限的项目中选择关联参数。"
       );
     }
     return undefined;
   }
   if (input.relatedParameterId && input.relatedParameterId !== input.relatedParameterPin.bindingId) {
-    throw new ApiError("VALIDATION_FAILED", "relatedParameterId must match relatedParameterPin.bindingId.");
+    throw new ApiError("VALIDATION_FAILED", "关联参数选择不一致：relatedParameterId 须与 relatedParameterPin.bindingId 一致。");
   }
   const pool = getRootPostgresPool(db);
   if (!pool) {
-    throw new ApiError("INTERNAL_ERROR", "A root PostgreSQL pool is required to resolve a related parameter pin.");
+    throw new ApiError("INTERNAL_ERROR", "解析关联参数绑定需要根 PostgreSQL 连接池。");
   }
   const parameter = await resolveAuthorizedRelatedParameter(pool, {
     invocation: createUserInvocation(auth),
@@ -197,7 +197,7 @@ async function requireBindableLogDomainId(db: Queryable, auth: LogPrincipal, log
     domainId: logDomainId
   });
   if (!domain) {
-    throw new ApiError("VALIDATION_FAILED", "Log domain is unknown or not active in this organization.", {
+    throw new ApiError("VALIDATION_FAILED", "所选分析技能不存在或已停用。", {
       logDomainId
     });
   }
@@ -209,25 +209,25 @@ async function resolveUploadSkillId(db: Queryable, auth: LogPrincipal, input: {
   skillId?: string; logDomainId?: string; skillKey?: string; skillSelection?: "generic";
 }) {
   if ("kind" in auth && auth.skillId && input.skillSelection === "generic") {
-    throw new ApiError("FORBIDDEN", "Credential skill binding does not match the selected skill.");
+    throw new ApiError("FORBIDDEN", "此凭据无权使用所选分析技能。");
   }
   if (input.skillId && input.logDomainId && input.skillId !== input.logDomainId) {
-    if ("kind" in auth && auth.skillId) throw new ApiError("FORBIDDEN", "Credential skill binding does not match the selected skill.");
-    throw new ApiError("VALIDATION_FAILED", "skillId and logDomainId must identify the same analysis skill.");
+    if ("kind" in auth && auth.skillId) throw new ApiError("FORBIDDEN", "此凭据无权使用所选分析技能。");
+    throw new ApiError("VALIDATION_FAILED", "所选分析技能不一致：skillId 与 logDomainId 须指向同一技能。");
   }
   const id = input.skillId ?? input.logDomainId;
   if ("kind" in auth && auth.skillId && id && id !== auth.skillId) {
-    throw new ApiError("FORBIDDEN", "Credential skill binding does not match the selected skill.");
+    throw new ApiError("FORBIDDEN", "此凭据无权使用所选分析技能。");
   }
   if (input.skillKey !== undefined) {
     const skill = await findLogDomainBySkillKey(db, { organizationId: organizationId(auth), skillKey: input.skillKey });
     if ("kind" in auth && auth.skillId && (!skill || skill.id !== auth.skillId)) {
-      throw new ApiError("FORBIDDEN", "Credential skill binding does not match the selected skill.");
+      throw new ApiError("FORBIDDEN", "此凭据无权使用所选分析技能。");
     }
     if (!skill || skill.status !== "active") {
-      throw new ApiError("VALIDATION_FAILED", "skillKey is unknown or not active in this organization.", { fieldErrors: { skillKey: "Unknown or inactive analysis skill." } });
+      throw new ApiError("VALIDATION_FAILED", "所选分析技能不存在或已停用。", { fieldErrors: { skillKey: "分析技能不存在或已停用。" } });
     }
-    if (id && id !== skill.id) throw new ApiError("VALIDATION_FAILED", "skillKey and skillId/logDomainId must identify the same analysis skill.");
+    if (id && id !== skill.id) throw new ApiError("VALIDATION_FAILED", "所选分析技能不一致：skillKey 与 skillId/logDomainId 须指向同一技能。");
     return "kind" in auth && input.skillSelection === "generic" ? undefined : skill.id;
   }
   if ("kind" in auth && input.skillSelection === "generic") return undefined;
@@ -348,7 +348,7 @@ export async function uploadLogFile(
         createdByCredentialId: creatingCredentialId(auth),
         failureReason, analysisQuestion: input.analysisQuestion, ...selection,
         relatedParameterId: relatedParameter?.relatedParameterId, relatedParameterProjectId: relatedParameter?.relatedParameterProjectId });
-      if (!log) throw new ApiError("INTERNAL_ERROR", "Log record was not created.");
+      if (!log) throw new ApiError("INTERNAL_ERROR", "未能创建分析记录。");
       await insertLogFiles(tx, organizationId(auth), log.id, storedFiles);
       await createLogAudit(asAuditTx(tx), uploadInvocation(auth), {
         kind: "log-upload-failed", action: "upload-failed", logId: log.id, severity: "Low",
@@ -414,15 +414,15 @@ export async function createLogFromFile(db: Database, auth: LogPrincipal, input:
     fileObjectId: input.fileObjectId
   });
   if (!fileObject) {
-    throw new ApiError("NOT_FOUND", "File object was not found.", { fileObjectId: input.fileObjectId });
+    throw new ApiError("NOT_FOUND", "上传文件不存在。", { fileObjectId: input.fileObjectId });
   }
   if ("kind" in auth ? fileObject.createdByCredentialId !== auth.credentialId : fileObject.uploadedByUserId !== auth.user.id) {
-    throw new ApiError("FORBIDDEN", "File object ownership is required.", {
+    throw new ApiError("FORBIDDEN", "无权访问此上传文件。", {
       fileObjectId: input.fileObjectId
     });
   }
   if (input.fileName !== fileObject.fileName) {
-    throw new ApiError("VALIDATION_FAILED", "File name does not match the stored file object.", {
+    throw new ApiError("VALIDATION_FAILED", "文件名与已上传文件不一致。", {
       fileObjectId: input.fileObjectId,
       fileName: input.fileName
     });
@@ -450,7 +450,7 @@ export async function createLogFromFile(db: Database, auth: LogPrincipal, input:
         relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
         ...await selectUploadLogSkill(tx, auth, { ...input, logDomainId }, [])
       });
-      if (!log) throw new ApiError("NOT_FOUND", "Log record was not created.");
+      if (!log) throw new ApiError("NOT_FOUND", "未能创建分析记录。");
       await createLogAudit(
         asAuditTx(tx),
         uploadInvocation(auth),
@@ -539,7 +539,7 @@ export async function getLogRecord(db: Queryable, auth: LogPrincipal, logId: str
   if (!("kind" in auth)) requireLogView(auth);
   const log = await getLogDetail(db, auth, logId);
   if (!log) {
-    throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
+    throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId });
   }
   return log;
 }
@@ -548,16 +548,16 @@ export async function getLogLineRange(db: Queryable, objectStore: ObjectStore, a
   logId: string, input: { file: string; startLine: number; endLine: number }): Promise<LogLineRangeDto> {
   await getLogRecord(db, auth, logId);
   const parsed = logLineRangeQuerySchema.safeParse(input);
-  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Request an inclusive range of at most 400 lines.");
+  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "每次最多查看 400 行日志（含起止行）。");
   const inventory = await loadLogFiles(db, organizationId(auth), logId);
   const storedFile = inventory.find((item) => item.path === input.file)
     ?? (!inventory.length ? await loadLegacyLogFile(db, organizationId(auth), logId, input.file) : undefined);
   if (!storedFile || storedFile.status !== "analyzed" || !storedFile.objectKey) {
-    throw new ApiError("NOT_FOUND", "Log file was not found.", { logId, file: input.file });
+    throw new ApiError("NOT_FOUND", "日志文件不存在。", { logId, file: input.file });
   }
   const file = await ensureStoredLogIndex(db, objectStore, organizationId(auth), logId, storedFile);
   if (input.startLine > Math.max(1, file.lineCount)) {
-    throw new ApiError("VALIDATION_FAILED", "Start line is outside the log file.");
+    throw new ApiError("VALIDATION_FAILED", "起始行超出日志范围。");
   }
   const endLine = Math.min(input.endLine, file.lineCount);
   const lines = endLine < input.startLine ? [] : await readStoredLogRange(objectStore, file, input.startLine, endLine);
@@ -575,7 +575,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
 
   const existing = await getLogDetail(db, auth, input.logId);
   if (!existing) {
-    throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
+    throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId: input.logId });
   }
   const relatedParameter = existing.relatedParameterId && existing.relatedParameterProjectId
     ? await resolveLogRelatedParameter(db, auth, {
@@ -592,15 +592,15 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     await tx.query(`select id from log_records where organization_id = $1 and id = $2 for update`, [auth.organization.id, input.logId]);
     const current = await getLogDetail(tx, auth, input.logId);
     if (!current) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
+      throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId: input.logId });
     }
     const logDomainId = await requireBindableLogDomainId(tx, auth, input.logDomainId);
 
     if (input.revisionPolicy === "pinned" && logDomainId && logDomainId !== current.logDomainId) {
-      throw new ApiError("VALIDATION_FAILED", "A pinned rerun cannot change its analysis skill.");
+      throw new ApiError("VALIDATION_FAILED", "按原版本重新分析时不能更换技能。");
     }
     if (input.revisionPolicy === "pinned" && current.logDomainId && !current.skillRevision) {
-      throw new ApiError("CONFLICT", "This record has no previous skill revision to replay.");
+      throw new ApiError("CONFLICT", "此记录没有可用于重新分析的技能版本。");
     }
     const skillRevisionId = input.revisionPolicy === "pinned" ? current.skillRevision?.id ?? null
       : await currentSkillRevisionId(tx, auth.organization.id, logDomainId ?? current.logDomainId);
@@ -617,7 +617,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     });
     const log = await getLogDetail(tx, auth, input.logId);
     if (!log) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
+      throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId: input.logId });
     }
     await createLogAudit(
       asAuditTx(tx),
@@ -655,11 +655,11 @@ export async function archiveLogRecord(db: Database, auth: AuthContext, logId: s
   return db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, logId);
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
+      throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId });
     }
     const log = await archiveLog(tx, auth, logId);
     if (!log) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
+      throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId });
     }
     await createLogAudit(
       asAuditTx(tx),
@@ -681,11 +681,11 @@ export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId:
   return db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, logId);
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
+      throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId });
     }
     const log = await unarchiveLog(tx, auth, logId);
     if (!log) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
+      throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId });
     }
     await createLogAudit(
       asAuditTx(tx),
@@ -721,7 +721,7 @@ export async function submitLogFeedback(db: Database, auth: AuthContext, input: 
   return db.transaction(async (tx) => {
     const log = await getLogDetail(tx, auth, input.logId);
     if (!log) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
+      throw new ApiError("NOT_FOUND", "分析记录不存在。", { logId: input.logId });
     }
     await appendFeedback(tx, auth, {
       id: randomUUID(),

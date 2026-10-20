@@ -1,3 +1,4 @@
+import { logValidationIssues } from "./validationMessages";
 import { randomUUID } from "node:crypto";
 import { runInNewContext } from "node:vm";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -40,7 +41,7 @@ export async function previewLogSkillFormat(db: Queryable, auth: AuthContext, sk
 async function requirePreviewSkill(db: Queryable, auth: AuthContext, skillId: string) {
   requireOrganization(auth);
   requireLogAdminDomains(auth);
-  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "未找到分析技能。");
 }
 
 export function listLogSkillTemplates(auth: AuthContext) {
@@ -50,7 +51,7 @@ export function listLogSkillTemplates(auth: AuthContext) {
 }
 
 function requireOrganization(auth: AuthContext) {
-  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "Log organization access is required.");
+  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
 
 function skillAudit(skillId: string, kind: string, metadata: Record<string, unknown> = {}): AuditSpec {
@@ -61,14 +62,14 @@ function skillAudit(skillId: string, kind: string, metadata: Record<string, unkn
 /** Budget caps apply to saved and published specs; parse tests validate structure only. */
 function parseSpec(value: unknown, caps?: LogSkillBudgetCaps): LogSkillSpec {
   const result = logSkillSpecSchema.safeParse(value);
-  if (!result.success) throw new ApiError("VALIDATION_FAILED", "Invalid analysis skill spec.", { issues: result.error.issues });
+  if (!result.success) throw new ApiError("VALIDATION_FAILED", "分析技能配置无效。", { issues: logValidationIssues(result.error.issues) });
   if (caps) validateLogSkillBudgets(result.data, caps);
   return result.data;
 }
 
 export async function readSkill(db: Queryable, organizationId: string, skillId: string, budgetCaps = defaultLogSkillBudgetCaps) {
   const identity = await getLogDomainById(db, { organizationId, domainId: skillId });
-  if (!identity) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!identity) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   const revisions = await listSkillRevisions(db, organizationId, skillId);
   return { ...identity, budgetCaps, currentRevision: (revisions.find((r) => r.status === "published") ?? revisions.find((r) => r.status === "draft"))!,
     draft: revisions.find((r) => r.status === "draft") ?? null };
@@ -120,7 +121,7 @@ export async function listLogSkillSourceVersions(db: Queryable, auth: AuthContex
   if (auth.permissions.includes("logs:view")) requireLogView(auth);
   else requireLogUpload(auth);
   if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) {
-    throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+    throw new ApiError("NOT_FOUND", "未找到分析技能。");
   }
   const result = await db.query<{ version_label: string }>(`select version_label from log_source_snapshots
     where organization_id = $1 and skill_id = $2 and status = 'ready' order by version_label`, [auth.organization.id, skillId]);
@@ -135,7 +136,7 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
   requireOrganization(auth);
   requireLogAdminDomains(auth);
   const name = input.name.trim();
-  if (!name) throw new ApiError("VALIDATION_FAILED", "Analysis skill name must not be blank.");
+  if (!name) throw new ApiError("VALIDATION_FAILED", "分析技能名称不能为空。");
   return withAuditedWrite(db, invocation, context, async (tx) => {
     const start = input.startingPoint;
     let source: LogSkillSpec;
@@ -153,7 +154,7 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
     const spec = parseSpec({ ...source, ...(input.description !== undefined ? { description: input.description } : {}) }, caps);
     await validateSkillKnowledge(tx, auth, spec, source);
     if (await findLogDomainByName(tx, { organizationId: auth.organization.id, name })) {
-      throw new ApiError("CONFLICT", "An analysis skill with this name already exists.");
+      throw new ApiError("CONFLICT", "已存在同名分析技能。");
     }
     const skill = await insertLogDomain(tx, { id: randomUUID(), organizationId: auth.organization.id, name,
       description: spec.description, formatProfile: spec.formatProfile });
@@ -176,11 +177,11 @@ export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId
     await validateSkillKnowledge(tx, auth, spec, baseSpec);
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, spec, spec.defaultSourceSnapshotId === baseSpec?.defaultSourceSnapshotId);
     if ((revisions.find((r) => r.status === "published") ?? revisions.find((r) => r.status === "draft"))?.id !== basePublishedRevisionId) {
-      throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill publication has changed.");
+      throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能发布状态已更新，请刷新后重试。");
     }
     const draft = revisions.find((r) => r.status === "draft");
     if ((draft?.id ?? null) !== baseDraftRevisionId) {
-      throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill draft has changed.");
+      throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能草稿已更新，请刷新后重试。");
     }
     // A new draft id on every save makes stale publish requests detectable.
     await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);
@@ -213,7 +214,7 @@ export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, s
   input: { parsing?: unknown; sampleText: string; fileName?: string }) {
   await requirePreviewSkill(db, auth, skillId);
   const lines = input.sampleText === "" ? [] : input.sampleText.split(/\r\n|\n|\r/);
-  if (Buffer.byteLength(input.sampleText, "utf8") > 1024 * 1024) throw new ApiError("VALIDATION_FAILED", "Sample exceeds 1 MiB.");
+  if (Buffer.byteLength(input.sampleText, "utf8") > 1024 * 1024) throw new ApiError("VALIDATION_FAILED", "样例不能超过 1 MiB。");
   const started = performance.now();
   let result: ReturnType<typeof parsingSpecSchema.safeParse>;
   try {
@@ -221,10 +222,10 @@ export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, s
     result = runInNewContext("validate()", { validate: () => parsingSpecSchema.safeParse(input.parsing) }, { timeout: PARSE_PREVIEW_MAX_MS });
   } catch (error) {
     if (!(error && typeof error === "object" && "code" in error && error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT")) throw error;
-    return { valid: false, issues: [{ path: [], message: "Parsing validation exceeded the 100 ms preview budget" }], events: [],
+    return { valid: false, issues: [{ path: [], message: "解析配置校验超过 100 毫秒预览上限，请简化配置后重试" }], events: [],
       counts: { total: 0, byExtractor: {}, errors: { time_cap: 1 } }, unmatchedLineCount: lines.length, truncated: true, reason: "time_cap" as const };
   }
-  if (!result.success) return { valid: false, issues: result.error.issues.map(({ path, message }) => ({ path, message })),
+  if (!result.success) return { valid: false, issues: logValidationIssues(result.error.issues).map(({ path, message }) => ({ path, message })),
     events: [], counts: { total: 0, byExtractor: {}, errors: {} }, unmatchedLineCount: lines.length, truncated: false };
   const decoded = await decodeLogFilesCooperatively(result.data, [{ file: input.fileName ?? "sample.log", lines: lines.slice(0, PARSE_PREVIEW_MAX_LINES) }],
     { maxMs: Math.max(0, PARSE_PREVIEW_MAX_MS - (performance.now() - started)), maxEvents: MAX_DECODE_EVENTS, hardTimeout: true });
@@ -237,14 +238,14 @@ export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, s
 export async function runLogSkillParseTests(db: Queryable, auth: AuthContext, skillId: string, spec: unknown) {
   requireOrganization(auth);
   requireLogAdminDomains(auth);
-  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   const started = performance.now();
   let parsed: LogSkillSpec;
   try {
     parsed = runInNewContext("validate()", { validate: () => parseSpec(spec) }, { timeout: PARSE_TEST_MAX_MS });
   } catch (error) {
     if (!(error && typeof error === "object" && "code" in error && error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT")) throw error;
-    throw new ApiError("VALIDATION_FAILED", "Skill validation exceeded the 1000 ms parse test budget.");
+    throw new ApiError("VALIDATION_FAILED", "技能配置校验超过 1000 毫秒用例运行上限，请简化配置后重试。");
   }
   return runParseTests(parsed, { maxMs: Math.max(0, PARSE_TEST_MAX_MS - (performance.now() - started)) });
 }
@@ -262,8 +263,8 @@ export async function discardLogSkillDraft(db: Database, auth: AuthContext, skil
     await lockSkill(tx, auth.organization.id, skillId);
     const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
     const draft = revisions.find((r) => r.status === "draft");
-    if (!revisions.some((r) => r.status === "published")) throw new ApiError("CONFLICT", "Publish the initial draft before discarding later changes.");
-    if (draft && draft.id !== draftRevisionId) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill draft has changed.");
+    if (!revisions.some((r) => r.status === "published")) throw new ApiError("CONFLICT", "请先发布初始草稿，再放弃后续修改。");
+    if (draft && draft.id !== draftRevisionId) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能草稿已更新，请刷新后重试。");
     await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft' and id = $3`, [auth.organization.id, skillId, draftRevisionId]);
     return { result: undefined, audit: skillAudit(skillId, "log-skill-draft-discard") };
   });
@@ -277,11 +278,11 @@ export async function restoreLogSkillRevision(db: Database, auth: AuthContext, s
     await lockSkill(tx, auth.organization.id, skillId);
     const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
     const source = revisions.find((r) => r.id === revisionId && r.status !== "draft");
-    if (!source) throw new ApiError("NOT_FOUND", "Skill revision was not found.");
+    if (!source) throw new ApiError("NOT_FOUND", "未找到技能版本。");
     parseSpec(source.spec, caps);
     await validateSkillKnowledge(tx, auth, source.spec, source.spec);
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, source.spec, true);
-    if (revisions.some((r) => r.status === "draft")) throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the draft first.");
+    if (revisions.some((r) => r.status === "draft")) throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "请先发布或放弃草稿。");
     const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec: source.spec, userId: auth.user.id });
     await publishSkillRevision(tx, auth.organization.id, skillId, id, auth.user.id);
     return { result: await readSkill(tx, auth.organization.id, skillId, caps),

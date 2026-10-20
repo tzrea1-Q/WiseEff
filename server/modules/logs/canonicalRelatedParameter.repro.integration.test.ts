@@ -283,8 +283,8 @@ describe("project-scoped canonical related-parameter analysis", () => {
     const { recentChanges: firstHistory, ...oldSnapshot } = firstRunSnapshot;
     expect(firstHistory).toBeDefined();
     expect(requireRelatedParameterRunSnapshot(oldSnapshot, snapshotScope)).toEqual(oldSnapshot);
-    expect(() => requireRelatedParameterRunSnapshot({ ...oldSnapshot, recentChanges: [{}] }, snapshotScope)).toThrow(/invalid/);
-    expect(() => requireRelatedParameterRunSnapshot({ ...oldSnapshot, recentChanges: Array(11).fill(firstHistory?.[0]) }, snapshotScope)).toThrow(/invalid/);
+    expect(() => requireRelatedParameterRunSnapshot({ ...oldSnapshot, recentChanges: [{}] }, snapshotScope)).toThrow("关联参数的分析快照不可用");
+    expect(() => requireRelatedParameterRunSnapshot({ ...oldSnapshot, recentChanges: Array(11).fill(firstHistory?.[0]) }, snapshotScope)).toThrow("关联参数的分析快照不可用");
     await expect(
       workerPool.query("update log_analysis_runs set related_parameter_snapshot = '{}'::jsonb where id = $1", [frozenRun.runId])
     ).rejects.toThrow(/immutable/);
@@ -552,7 +552,7 @@ describe("project-scoped canonical related-parameter analysis", () => {
     expect(legacyRerun.status).toBe(404);
     expect(legacyRerun.body.error).toMatchObject({
       code: "NOT_FOUND",
-      message: "Log record was not found."
+      message: "分析记录不存在。"
     });
     expect(legacyRerun.bodyText).not.toContain(fixture.currentValueId);
     expect(legacyRerun.bodyText).not.toContain(fixture.bindingId);

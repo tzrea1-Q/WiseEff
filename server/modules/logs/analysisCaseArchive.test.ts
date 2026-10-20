@@ -141,24 +141,24 @@ describe("analysis case archive", () => {
       "generic/bad/log.txt": "ERROR crash\n"
     });
     await expect(importAnalysisCaseArchive(source)).rejects.toThrow("generic/bad/case.yaml:keyEvidenceLines.0: generic/bad/log.txt:2");
-    await expect(importAnalysisCaseArchive(source)).rejects.toThrow("generic/bad/case.yaml:keyEvidence.0.file: missing fixture missing.log");
-    await expect(importAnalysisCaseArchive(await zip({ "generic/bad/case.yaml": "summary: [unclosed" }))).rejects.toThrow("generic/bad/case.yaml: invalid YAML");
-    await expect(importAnalysisCaseArchive(await zip({ "generic/bad/case.yaml": stringifyYaml(annotation) }))).rejects.toThrow("generic/bad/log.txt: missing fixture");
+    await expect(importAnalysisCaseArchive(source)).rejects.toThrow("generic/bad/case.yaml:keyEvidence.0.file: 日志文件不存在：missing.log");
+    await expect(importAnalysisCaseArchive(await zip({ "generic/bad/case.yaml": "summary: [unclosed" }))).rejects.toThrow("generic/bad/case.yaml: YAML 语法无效");
+    await expect(importAnalysisCaseArchive(await zip({ "generic/bad/case.yaml": stringifyYaml(annotation) }))).rejects.toThrow("generic/bad/log.txt: 日志文件不存在");
     const { realLog: _realLog, ...missingField } = annotation;
     await expect(importAnalysisCaseArchive(await zip({ "generic/bad/case.yaml": stringifyYaml(missingField), "generic/bad/log.txt": "ERROR crash" })))
-      .rejects.toThrow("generic/bad/case.yaml:realLog: required golden-case field");
+      .rejects.toThrow("generic/bad/case.yaml:realLog: 缺少必需的用例字段");
   });
 
   it("rejects traversal, links, compressed bombs and too many cases before storage", async () => {
-    await expect(importAnalysisCaseArchive(await zip({ "../escape.log": "secret" }))).rejects.toThrow("../escape.log: unsafe archive path");
+    await expect(importAnalysisCaseArchive(await zip({ "../escape.log": "secret" }))).rejects.toThrow("../escape.log: 归档路径不安全");
     const link = new JSZip().file("generic/link/log.txt", "outside", { unixPermissions: 0o120777, createFolders: false });
     await expect(importAnalysisCaseArchive(await link.generateAsync({ type: "nodebuffer", platform: "UNIX" }))).rejects.toBeInstanceOf(AnalysisCaseArchiveError);
     const bomb = await zip({ "generic/bomb/log.txt": "A".repeat(2 * 1024 * 1024) }, "DEFLATE");
     await expect(importAnalysisCaseArchive(bomb)).rejects.toBeInstanceOf(AnalysisCaseArchiveError);
     const valid = await zip({ "generic/valid/case.yaml": stringifyYaml(annotation), "generic/valid/log.txt": "ERROR crash" });
-    await expect(importAnalysisCaseArchive(valid, { ...analysisCaseArchiveLimits, maxCases: 0 })).rejects.toThrow("case count exceeds 0");
-    await expect(importAnalysisCaseArchive(valid, { ...analysisCaseArchiveLimits, maxCaseBytes: 1 })).rejects.toThrow("generic/valid: case bundle size");
-    await expect(importAnalysisCaseArchive(valid, { ...analysisCaseArchiveLimits, maxCompressedBytes: 1 })).rejects.toThrow("compressed size limit");
+    await expect(importAnalysisCaseArchive(valid, { ...analysisCaseArchiveLimits, maxCases: 0 })).rejects.toThrow("用例数量超过 0 个上限");
+    await expect(importAnalysisCaseArchive(valid, { ...analysisCaseArchiveLimits, maxCaseBytes: 1 })).rejects.toThrow("generic/valid: 用例日志包");
+    await expect(importAnalysisCaseArchive(valid, { ...analysisCaseArchiveLimits, maxCompressedBytes: 1 })).rejects.toThrow("压缩包大小超过上限");
   });
 
   it("exports newly authored annotations in the golden vocabulary and rejects invalid evidence patterns", async () => {
@@ -196,7 +196,7 @@ describe("analysis case archive", () => {
     expect(item.files.find((file) => file.path === "fixtures/device.log")?.bytes.equals(original)).toBe(true);
     expect(item.files.reduce((size, file) => size + file.bytes.length, 0)).toBeGreaterThan(analysisCaseArchiveLimits.maxCaseBytes);
     await expect(importAnalysisCaseArchive(archive, { ...analysisCaseArchiveLimits, maxCaseBytes: original.length - 1 }))
-      .rejects.toThrow("generic/large-original: case bundle size exceeds");
+      .rejects.toThrow("generic/large-original: 用例日志包超过");
   });
 
   it("sizes the archive envelope for the full bounded corpus, including eval projections", async () => {
@@ -209,7 +209,7 @@ describe("analysis case archive", () => {
     const archive = await exportAnalysisCaseArchive(cases, limits);
     expect(archive.length).toBeGreaterThan(50_000);
     expect(await importAnalysisCaseArchive(archive, limits)).toHaveLength(cases.length);
-    await expect(importAnalysisCaseArchive(archive, { ...limits, maxMetadataBytes: 1 })).rejects.toThrow("case.yaml: annotation size exceeds");
+    await expect(importAnalysisCaseArchive(archive, { ...limits, maxMetadataBytes: 1 })).rejects.toThrow("case.yaml: 用例说明超过");
   });
 
   it("remaps edited file-aware expectations when the canonical log.txt already exists", async () => {
@@ -228,11 +228,11 @@ describe("analysis case archive", () => {
   it("rejects ungrounded evidence patterns and missing numeric eval projections on import", async () => {
     const files = { "generic/pattern/case.yaml": stringifyYaml({ ...annotation, keyEvidence: [{ file: "log.txt", pattern: "not present" }] }),
       "generic/pattern/log.txt": "INFO boot\nERROR crash\n" };
-    await expect(importAnalysisCaseArchive(await zip(files))).rejects.toThrow("generic/pattern/case.yaml:keyEvidence.0.pattern: pattern matches no non-blank original log line");
+    await expect(importAnalysisCaseArchive(await zip(files))).rejects.toThrow("generic/pattern/case.yaml:keyEvidence.0.pattern: 表达式未匹配到非空的原始日志行");
     await expect(importAnalysisCaseArchive(await zip({ ...files, "generic/pattern/case.yaml": stringifyYaml({ ...annotation,
       keyEvidenceLines: [], keyEvidence: [{ file: "log.txt", pattern: "crash" }] }) }))).rejects.toThrow("generic/pattern/case.yaml:keyEvidenceLines");
     await expect(importAnalysisCaseArchive(await zip({ "generic/pattern/case.yaml": stringifyYaml({ ...annotation, bundleFiles: ["device.log"] }),
-      "generic/pattern/device.log": "ERROR crash" }))).rejects.toThrow("generic/pattern/log.txt: missing canonical eval projection");
+      "generic/pattern/device.log": "ERROR crash" }))).rejects.toThrow("generic/pattern/log.txt: 缺少评估所需的标准日志文件");
     const source = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("ERROR crash\r\n", "utf16le")]);
     const [imported] = await importAnalysisCaseArchive(await zip({
       "generic/utf16/case.yaml": stringifyYaml({ ...annotation, bundleFiles: ["fixtures/device.log"], keyEvidence: [{ file: "device.log", pattern: "crash" }] }),

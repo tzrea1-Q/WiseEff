@@ -14,18 +14,18 @@ const generic = { severityMap: { error: ["(?i)\\b(error|fatal|critical)\\b"], wa
 export const logSkillTemplates: Array<{ id: string; label: string; description: string; spec: LogSkillSpec }> = [
   { id: "generic-text", label: "通用文本日志", description: "按常见严重程度识别文本日志。",
     spec: { schemaVersion: "skill/v1", procedure, formatProfile: generic, signalRules: signals([]) } },
-  { id: "linux-dmesg", label: "Linux 内核 dmesg", description: "识别内核时间戳、严重程度与常见崩溃信号。",
+  { id: "linux-dmesg", label: "Linux 内核日志", description: "识别内核时间戳、严重程度与常见崩溃信号。",
     spec: { schemaVersion: "skill/v1", procedure, formatProfile: { timestampPattern: "^\\[\\s*(\\d+\\.\\d+)\\]",
       severityMap: { error: ["<[0-3]>", "(?i)\\b(panic|Oops|BUG|segfault)\\b"], warn: ["<4>", "(?i)\\bwatchdog\\b"], info: ["<[5-7]>"] } },
     signalRules: signals([["panic", "\\bpanic\\b", "内核发生 panic"], ["oops", "\\bOops\\b", "内核发生 Oops"],
       ["bug", "\\bBUG\\b", "内核触发 BUG"], ["watchdog", "\\bwatchdog\\b", "看门狗触发"], ["segfault", "\\bsegfault\\b", "进程发生段错误"]]) } },
-  { id: "android-logcat", label: "Android logcat", description: "识别线程时间格式与应用、系统崩溃信号。",
+  { id: "android-logcat", label: "Android 系统日志", description: "识别线程时间格式与应用、系统崩溃信号。",
     spec: { schemaVersion: "skill/v1", procedure, formatProfile: { timestampPattern: "^(\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d+)",
       severityMap: { error: ["^\\d{2}-\\d{2}\\s+\\S+\\s+\\d+\\s+\\d+\\s+[EF]\\s"],
         warn: ["^\\d{2}-\\d{2}\\s+\\S+\\s+\\d+\\s+\\d+\\s+W\\s"], info: ["^\\d{2}-\\d{2}\\s+\\S+\\s+\\d+\\s+\\d+\\s+I\\s"] } },
     signalRules: signals([["fatal-exception", "FATAL EXCEPTION", "应用发生未处理异常"], ["anr", "\\bANR\\b", "应用无响应"],
       ["native-crash", "Fatal signal|native crash|tombstone", "原生进程崩溃"]]) } },
-  { id: "json-lines", label: "JSON Lines", description: "按行读取 JSON 文本，识别 level 错误字段。",
+  { id: "json-lines", label: "逐行 JSON 日志", description: "按行读取结构化文本，识别错误级别字段。",
     spec: { schemaVersion: "skill/v1", procedure, formatProfile: generic,
       signalRules: signals([["json-error", '"level"\\s*:\\s*"(error|fatal|critical)"', "日志记录了错误级别事件"]]) } }
 ];

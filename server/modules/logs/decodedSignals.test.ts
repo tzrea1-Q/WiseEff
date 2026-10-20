@@ -74,7 +74,7 @@ describe("decoded signal paths", () => {
     expect(matches(withSignalFields(entry, broken))).toBe(false);
     expect(compileSignalCondition(field(meaning, "thermal_shutdown"))(withSignalFields(entry, broken))).toBe(true);
     const bounded = compileSignalCondition(field("pd.pdo.fields.pdos.fields.*.fields.voltage.value", 9000), undefined, createSignalEvaluationBudget(Infinity, 5));
-    expect(() => bounded(withSignalFields(entry, events))).toThrow(/evaluation_cap/);
+    expect(() => bounded(withSignalFields(entry, events))).toThrow(expect.objectContaining({ reason: "evaluation_cap" }));
   });
   it("ignores failed nested checksums without suppressing valid fields with the same name", () => {
     const nested = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", frames: {

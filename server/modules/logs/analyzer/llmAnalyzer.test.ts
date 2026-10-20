@@ -237,6 +237,7 @@ describe("createLlmLogAnalyzer", () => {
 
     await expect(analyzer.analyze({ parsed: parseFixture() })).rejects.toMatchObject({
       name: "LogAnalysisProviderError",
+      message: "日志分析服务调用失败：connect ECONNREFUSED",
       modelLabel: "test-model"
     });
     expect(calls).toEqual([expect.objectContaining({ outcome: "provider_error" })]);
@@ -378,7 +379,7 @@ describe("createDeterministicLogAnalysisModel", () => {
 
     expect(output.analysisSource).toBe("agent");
     expect(output.model).toBe("deterministic");
-    expect(output.conclusion).toMatch(/thermal foldback/i);
+    expect(output.conclusion).toMatch(/过热保护降额/);
     expect(output.conclusion).toContain("Why did fast charging fold back?");
     expect(output.evidence.length).toBeGreaterThan(0);
   });

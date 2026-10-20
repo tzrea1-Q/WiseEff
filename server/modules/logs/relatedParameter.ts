@@ -73,7 +73,7 @@ export async function resolveAuthorizedRelatedParameter(
       });
     } catch (error) {
       if (error instanceof ApiError && error.code === "CONFLICT") {
-        throw new ApiError(error.code, error.message, { ...error.details, reason: "related-parameter-unavailable" });
+        throw new ApiError(error.code, `关联参数暂不可用：${error.message}`, { ...error.details, reason: "related-parameter-unavailable" });
       }
       throw error;
     }
@@ -86,8 +86,8 @@ export async function resolveAuthorizedRelatedParameter(
       organizationId: input.invocation.principal.organization.id, projectId: input.projectId, bindingId: input.bindingId
     });
     throw new ApiError(deleted ? "CONFLICT" : "NOT_FOUND", deleted
-      ? "Related parameter current value was deleted."
-      : "Related parameter Binding was not found in the authorized project.", {
+      ? "关联参数的当前值已删除。"
+      : "在有权访问的项目中未找到关联参数。", {
       projectId: input.projectId,
       bindingId: input.bindingId,
       reason: "related-parameter-unavailable"
@@ -106,12 +106,12 @@ export async function resolveAuthorizedRelatedParameter(
     if (!event.newCurrentValueId || !event.newDefinitionRevisionId) continue;
     const identity = await readOwnedProjectValueIdentity(pool, { ...scope, projectValueId: event.newCurrentValueId });
     if (!identity) {
-      throw new ApiError("CONFLICT", "Related parameter history is unavailable.", { reason: "related-parameter-unavailable" });
+      throw new ApiError("CONFLICT", "关联参数的历史记录不可用。", { reason: "related-parameter-unavailable" });
     }
     if (identity.value.source.sourceRef === IDENTITY_PLACEHOLDER_SOURCE) continue;
     const historicalSourcePin = await loadOwnedProjectValueSourcePin(pool, { ...scope, projectValueId: event.newCurrentValueId });
     if (!historicalSourcePin) {
-      throw new ApiError("CONFLICT", "Related parameter history source pin is unavailable.", { reason: "related-parameter-unavailable" });
+      throw new ApiError("CONFLICT", "关联参数历史版本的来源信息不可用。", { reason: "related-parameter-unavailable" });
     }
     recentChanges.push({
       valueId: identity.value.id,
@@ -136,7 +136,7 @@ export async function resolveAuthorizedRelatedParameter(
   // do not claim a caller-owned transaction spans those adapter transactions.
   if (!second || !firstSourcePin || !sourcePin || !history ||
     !sameJson(first.pin, second.pin) || !sameJson(first.revision, second.revision) || !sameJson(firstSourcePin, sourcePin)) {
-    throw new ApiError("CONFLICT", "Related parameter changed while its run snapshot was being prepared.", {
+    throw new ApiError("CONFLICT", "关联参数已更新，请刷新后重新分析。", {
       projectId: input.projectId,
       bindingId: input.bindingId,
       reason: "related-parameter-unavailable"
@@ -146,7 +146,7 @@ export async function resolveAuthorizedRelatedParameter(
     (input.definitionId !== undefined && input.definitionId !== second.pin.definitionId) ||
     (input.definitionRevisionId !== undefined && input.definitionRevisionId !== second.pin.definitionRevisionId)
   ) {
-    throw new ApiError("CONFLICT", "Related parameter selection no longer matches the current Binding pin.", {
+    throw new ApiError("CONFLICT", "所选关联参数与当前版本不一致，请重新选择。", {
       projectId: input.projectId,
       bindingId: input.bindingId
     });
@@ -159,7 +159,7 @@ export async function resolveAuthorizedRelatedParameter(
     sourcePin.configRevisionId !== second.pin.source.configRevisionId ||
     sourcePin.valueState !== "present"
   ) {
-    throw new ApiError("CONFLICT", "Related parameter source pin is unavailable at the current value.", {
+    throw new ApiError("CONFLICT", "关联参数当前值的来源信息不可用。", {
       projectId: input.projectId,
       bindingId: input.bindingId,
       currentValueId: second.pin.currentValueId,
@@ -192,7 +192,7 @@ export function requireRelatedParameterRunSnapshot(
   expected: { organizationId: string; projectId: string; bindingId: string }
 ): RelatedParameterRunSnapshot {
   if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.pin) || !isRecord(value.revision) || !isRecord(value.sourcePin)) {
-    throw new Error("Canonical related-parameter run snapshot is unavailable or invalid.");
+    throw new Error("关联参数的分析快照不可用，请重新选择参数后重试。");
   }
   const { pin, revision, sourcePin } = value;
   const release = pin.catalogRelease;
@@ -241,7 +241,7 @@ export function requireRelatedParameterRunSnapshot(
       })
     ))
   ) {
-    throw new Error("Canonical related-parameter run snapshot is unavailable or invalid.");
+    throw new Error("关联参数的分析快照不可用，请重新选择参数后重试。");
   }
   return value as unknown as RelatedParameterRunSnapshot;
 }

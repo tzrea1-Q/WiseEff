@@ -11,12 +11,12 @@ import { compileFileGlob, MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_
 
 const boundedSkillFilesSchema = z.array(z.object({
   glob: z.string().min(1).max(MAX_FILE_GLOB_LENGTH),
-  role: z.string().max(MAX_FILE_ROLE_LENGTH).trim().regex(/^[^\x00-\x1f\x7f]*$/, "Role must be a short single-line label").optional()
+  role: z.string().max(MAX_FILE_ROLE_LENGTH).trim().regex(/^[^\x00-\x1f\x7f]*$/, "文件用途须为简短的单行文字").optional()
 }).strict()).max(MAX_SKILL_FILE_GLOBS);
 // Validate the entire batch before entering the shared bounded compiler.
 export const skillFilesSchema = z.preprocess((value, ctx) => {
   if (Array.isArray(value) && value.length > MAX_SKILL_FILE_GLOBS) {
-    ctx.addIssue({ code: "custom", message: `At most ${MAX_SKILL_FILE_GLOBS} file globs are allowed`, fatal: true });
+    ctx.addIssue({ code: "custom", message: `最多允许 ${MAX_SKILL_FILE_GLOBS} 条文件匹配规则`, fatal: true });
     return z.NEVER;
   }
   return value;
@@ -43,7 +43,7 @@ export const logSkillSpecSchema = z.preprocess((value, ctx) => {
 }, withLogPatternBudget(z.object({
   schemaVersion: z.literal("skill/v1"),
   files: skillFilesSchema.optional(),
-  knowledgeEntryIds: z.array(z.string().uuid()).max(200).refine((ids) => new Set(ids).size === ids.length, "Knowledge links must be unique").optional(),
+  knowledgeEntryIds: z.array(z.string().uuid()).max(200).refine((ids) => new Set(ids).size === ids.length, "关联知识不能重复").optional(),
   parsing: parsingSpecSchema.optional(),
   parseTests: parseTestsSchema.optional(),
   description: z.string().trim().max(2000).optional(),
@@ -67,11 +67,11 @@ export const logSkillSpecSchema = z.preprocess((value, ctx) => {
     const path = ["signalRules", "rules", ruleIndex, "anyOf", conditionIndex, ...(input.type === "window" ? ["condition"] : [])];
     const field = listSignalFields(spec.parsing, condition.field).fields[0];
     const issue = (key: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, key], message });
-    if (!field) { issue("field", "Unknown scalar extracted or decoded field"); return; }
-    if (condition.operator === "range" && field.type !== "number") issue("operator", "Ranges require a numeric field");
+    if (!field) { issue("field", "所选解析字段不存在或不是单个值"); return; }
+    if (condition.operator === "range" && field.type !== "number") issue("operator", "范围比较需要数值字段");
     const expected = field.type;
-    if (condition.operator === "equals" && typeof condition.value !== expected) issue("value", `Expected a ${expected} comparison value`);
-    if (condition.operator === "in" && condition.values?.some((value) => typeof value !== expected)) issue("values", `Expected ${expected} set members`);
+    if (condition.operator === "equals" && typeof condition.value !== expected) issue("value", `比较值的类型须为 ${expected}`);
+    if (condition.operator === "in" && condition.values?.some((value) => typeof value !== expected)) issue("values", `集合成员的类型须为 ${expected}`);
   }));
 }), "skill"));
 

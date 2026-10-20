@@ -34,7 +34,7 @@ function audit(skillId: string, kind: string) {
     targetType: "log-skill", targetId: skillId, metadata: {} };
 }
 function requireSampleWrite(auth: AuthContext) {
-  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "Log organization access is required.");
+  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
   requireLogAdminDomains(auth);
 }
 /** Full immutable sample contents for dry runs; API previews truncate only at the response boundary. */

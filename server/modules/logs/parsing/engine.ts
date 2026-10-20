@@ -18,20 +18,20 @@ export type DecodeResult = { events: DecodedEvent[]; counts: DecodeCounts; unmat
 export type DecodeInputFile = DecodeLogFile | { file: string; lineCount: number };
 export type DecodeStep = DecodeResult & { readLine?: { fileIndex: number; lineNumber: number } };
 const jsonBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
-const eventSizeError = { code: "event_size", message: `Decoded event exceeds ${MAX_DECODE_EVENT_BYTES} serialized bytes; fields were trimmed` };
+const eventSizeError = { code: "event_size", message: `单条解码结果超过 ${MAX_DECODE_EVENT_BYTES} 字节上限，已缩减字段` };
 const eventSizeReserve = jsonBytes({ errors: [eventSizeError] }) - 1;
 
 function timestamp(raw: string, { names, pattern }: ReturnType<typeof timestampFormat>): string {
   const match = pattern.exec(raw);
-  if (!match) throw new Error("Timestamp does not match format");
+  if (!match) throw new Error("时间戳与指定格式不符");
   const parts = Object.fromEntries(names.map((name, i) => [name, match[i + 1]]));
   const year = Number(parts.Y ?? 1970), month = Number(parts.m ?? 1), day = Number(parts.d ?? 1);
   const hour = Number(parts.H ?? 0), minute = Number(parts.M ?? 0), second = Number(parts.S ?? 0);
   const date = new Date(0); date.setUTCFullYear(year, month - 1, day); date.setUTCHours(hour, minute, second, Number((parts.f ?? "").padEnd(3, "0").slice(0, 3)));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59) throw new Error("Invalid calendar timestamp");
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59) throw new Error("日期或时间无效");
   if (parts.z && parts.z !== "Z") {
     const zone = parts.z.replace(":", ""), hours = Number(zone.slice(1, 3)), minutes = Number(zone.slice(3));
-    if (hours > 23 || minutes > 59) throw new Error("Invalid timezone offset");
+    if (hours > 23 || minutes > 59) throw new Error("时区偏移无效");
     date.setTime(date.getTime() - (zone[0] === "+" ? 1 : -1) * (hours * 60 + minutes) * 60_000);
   }
   return date.toISOString();
@@ -48,30 +48,30 @@ function decode(raw: string, spec: FieldSpec, timeFormat?: ReturnType<typeof tim
     case "int": case "uint": case "hex": {
       const integer = integerValue(raw, spec.type === "hex");
       value = exactInteger(integer);
-      if (typeof value === "string" && !spec.decode || spec.type !== "int" && integer < 0n) throw new Error("Integer outside safe range");
+      if (typeof value === "string" && !spec.decode || spec.type !== "int" && integer < 0n) throw new Error("整数超出可安全表示的范围");
       break;
     }
     case "float":
-      if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw) || !Number.isFinite(Number(raw))) throw new Error("Invalid float");
+      if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw) || !Number.isFinite(Number(raw))) throw new Error("数值格式无效");
       value = Number(raw); break;
     case "bool":
-      if (!/^(true|false|1|0|yes|no|on|off)$/i.test(raw)) throw new Error("Invalid boolean");
+      if (!/^(true|false|1|0|yes|no|on|off)$/i.test(raw)) throw new Error("布尔值格式无效");
       value = /^(true|1|yes|on)$/i.test(raw); break;
     case "enum":
-      if (!Object.hasOwn(spec.values, raw)) throw new Error("Unknown enum value");
+      if (!Object.hasOwn(spec.values, raw)) throw new Error("枚举值不在允许的选项中");
       value = spec.values[raw]; break;
     case "timestamp": value = timestamp(raw, timeFormat!); break;
     case "bytes": case "hexbytes": case "base64bytes": {
       const hex = spec.type !== "base64bytes";
       const encoded = hex ? raw.replace(/\s/g, "") : raw;
-      if (!(hex ? /^(?:[\da-f]{2})*$/i : /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).test(encoded)) throw new Error("Invalid byte encoding");
+      if (!(hex ? /^(?:[\da-f]{2})*$/i : /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).test(encoded)) throw new Error("字节编码无效");
       const length = hex ? encoded.length / 2 : encoded.length / 4 * 3 - (encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0);
       if (length > MAX_DECODE_FIELD_BYTES) {
-        if ("decode" in spec && spec.decode && "frame" in spec.decode) throw new RegisterDecodeError("frame_length", "Frame length exceeds 4096 bytes");
+        if ("decode" in spec && spec.decode && "frame" in spec.decode) throw new RegisterDecodeError("frame_length", "数据帧长度不能超过 4096 字节");
         throw new Error("byte_cap");
       }
       const bytes = Buffer.from(encoded, hex ? "hex" : "base64");
-      if (!hex && bytes.toString("base64") !== raw) throw new Error("Noncanonical base64");
+      if (!hex && bytes.toString("base64") !== raw) throw new Error("Base64 编码格式不规范");
       value = { hex: bytes.toString("hex"), length }; break;
     }
   }
@@ -162,12 +162,12 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeInputFile[]
           if (!fitsRun(1, bytes)) return false;
           fields[name] = value; fieldCount++; eventBytes += bytes; return true;
         };
-        if (errorCode) error(errorCode, `Multiline assembly exceeded ${errorCode === "max_lines" ? "maxLines" : "the pattern input limit"}`);
+        if (errorCode) error(errorCode, errorCode === "max_lines" ? "合并后的日志行数超过 maxLines 上限" : "合并后的日志文本超过匹配长度上限");
         if (match) for (const [name, field] of Object.entries(extractor.fields)) {
           yield result;
           const raw = match.groups?.[name];
-          try { if (raw == null) throw new Error("Group did not participate"); retainField(event.fields, name, decode(raw, field, timeFormats.get(name))); }
-          catch (cause) { const message = cause instanceof Error ? cause.message : String(cause); error(cause instanceof RegisterDecodeError ? cause.code : message === "byte_cap" ? "byte_cap" : "invalid_field", message === "byte_cap" ? `Decoded bytes exceed ${MAX_DECODE_FIELD_BYTES} bytes` : message, name); }
+          try { if (raw == null) throw new Error("未匹配到该字段的内容"); retainField(event.fields, name, decode(raw, field, timeFormats.get(name))); }
+          catch (cause) { const message = cause instanceof Error ? cause.message : String(cause); error(cause instanceof RegisterDecodeError ? cause.code : message === "byte_cap" ? "byte_cap" : "invalid_field", message === "byte_cap" ? `解码内容超过 ${MAX_DECODE_FIELD_BYTES} 字节上限` : message, name); }
           if (result.truncated) return;
         }
         const frameBudget = { elements: 0 };
@@ -185,7 +185,7 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeInputFile[]
               const next = { ...step.value.value, raw: match.groups![name] };
               const count = (fields: Record<string, DecodedValue>): number => Object.values(fields).reduce<number>((sum, value) => sum + 1 + (value && typeof value === "object" && "fields" in value && value.fields ? count(value.fields) : 0), 0);
               const children = count(next.fields ?? {}), bytes = jsonBytes(next) - jsonBytes(parent);
-              if (fieldCount + children > MAX_DECODE_EVENT_FIELDS) throw new RegisterDecodeError("field_cap", `Decoded event exceeds ${MAX_DECODE_EVENT_FIELDS} fields`);
+              if (fieldCount + children > MAX_DECODE_EVENT_FIELDS) throw new RegisterDecodeError("field_cap", `单条解码结果超过 ${MAX_DECODE_EVENT_FIELDS} 个字段上限`);
               if (eventBytes + bytes + eventSizeReserve > MAX_DECODE_EVENT_BYTES) trimmed = true;
               else if (fitsRun(children, bytes)) { event.fields[name] = next; fieldCount += children; eventBytes += bytes; }
               for (const item of step.value.errors) error(item.code, item.message, `${name}.${item.field}`);
@@ -201,7 +201,7 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeInputFile[]
               registerId = mapCases.get(id)?.get(registerCaseKey(String(selected))) ?? map.default;
               if (!registerId) {
                 const rawSelector = selector && typeof selector === "object" && "raw" in selector ? selector.raw : match.groups?.[map.selectBy] ?? String(selected);
-                throw new RegisterDecodeError("unmatched_register", `No register case for ${map.selectBy}=${rawSelector} (map ${id})`);
+                throw new RegisterDecodeError("unmatched_register", `未找到与 ${map.selectBy}=${rawSelector} 对应的寄存器映射分支（映射 ${id}）`);
               }
             }
             const register = spec.registers![registerId];
@@ -213,7 +213,7 @@ export function* decodeLogFilesSteps(spec: ParsingSpec, files: DecodeInputFile[]
             parent.fields = children; eventBytes += bytes;
             for (const child of decodeRegister(integerValue(raw, field.type === "hex"), register)) {
               yield result;
-              if (fieldCount >= MAX_DECODE_EVENT_FIELDS) throw new RegisterDecodeError("field_cap", `Decoded event exceeds ${MAX_DECODE_EVENT_FIELDS} fields`);
+              if (fieldCount >= MAX_DECODE_EVENT_FIELDS) throw new RegisterDecodeError("field_cap", `单条解码结果超过 ${MAX_DECODE_EVENT_FIELDS} 个字段上限`);
               if (!retainField(children, child.name, child.value)) break;
             }
           } catch (cause) {

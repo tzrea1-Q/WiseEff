@@ -11,10 +11,10 @@ function file(path: string, content: string) {
 }
 
 describe("generic log signals", () => {
-  it.each([["kernel panic", "Kernel panic"], ["Oops", "Oops"], ["BUG: invalid address", "BUG:"], ["watchdog", "watchdog"],
-    ["ANR", "ANR"], ["FATAL EXCEPTION", "FATAL EXCEPTION"], ["segfault", "segfault"], ["assert", "assert"], ["assertion failed", "assert"]])("anchors crash signature %s without a skill", (signature, name) => {
+  it.each([["kernel panic", "Kernel panic", "内核崩溃"], ["Oops", "Oops", "内核异常"], ["BUG: invalid address", "BUG:", "内核错误"], ["watchdog", "watchdog", "看门狗异常"],
+    ["ANR", "ANR", "应用无响应"], ["FATAL EXCEPTION", "FATAL EXCEPTION", "致命异常"], ["segfault", "segfault", "内存访问异常"], ["assert", "assert", "断言失败"], ["assertion failed", "assert", "断言失败"]])("anchors crash signature %s without a skill", (signature, name, title) => {
     expect(extractLogSignals([file("a.log", `INFO start\n${signature}`)]).signals).toContainEqual({
-      kind: "crash", source: "generic", severity: "Critical", title: `Crash signature: ${name}`, signature: name, count: 1,
+      kind: "crash", source: "generic", severity: "Critical", title: `检测到${title}（${name}）`, signature: name, count: 1,
       anchors: [{ file: "a.log", line: 2, content: signature }]
     });
   });

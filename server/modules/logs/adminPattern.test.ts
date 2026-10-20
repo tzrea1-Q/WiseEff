@@ -40,7 +40,7 @@ describe("compileLogPattern", () => {
 
   it("also enforces the engine's actual program size", () => {
     const size = vi.spyOn(RE2JS.prototype, "programSize").mockReturnValue(MAX_LOG_PATTERN_PROGRAM_SIZE + 1);
-    try { expect(() => compileLogPattern("a")).toThrow(`Pattern program exceeds ${MAX_LOG_PATTERN_PROGRAM_SIZE}`); }
+    try { expect(() => compileLogPattern("a")).toThrow(`匹配表达式的复杂度超过 ${MAX_LOG_PATTERN_PROGRAM_SIZE}`); }
     finally { size.mockRestore(); }
   });
 
@@ -56,7 +56,7 @@ describe("compileLogPattern", () => {
     try {
       const cache = createLogPatternCache();
       for (const pattern of patterns.slice(0, 16)) cache.compile(pattern);
-      expect(() => cache.compile(patterns[16])).toThrow(`Total pattern program exceeds ${MAX_LOG_PATTERN_TOTAL_SIZE}`);
+      expect(() => cache.compile(patterns[16])).toThrow(`所有匹配规则的复杂度合计超过 ${MAX_LOG_PATTERN_TOTAL_SIZE}`);
       expect(compile).toHaveBeenCalledTimes(16);
     } finally { compile.mockRestore(); }
   });
@@ -95,7 +95,7 @@ describe("compileLogPattern", () => {
         try { cache.compile(`${source}${accepted}`); }
         catch (error) {
           expect(error).toBeInstanceOf(LogPatternError);
-          expect(String(error)).toContain(`Total pattern program exceeds ${MAX_LOG_PATTERN_TOTAL_SIZE}`);
+          expect(String(error)).toContain(`所有匹配规则的复杂度合计超过 ${MAX_LOG_PATTERN_TOTAL_SIZE}`);
           break;
         }
       }
@@ -156,7 +156,7 @@ describe("compileLogPattern", () => {
   it("caps pattern length before compilation", () => {
     expect(() => compileLogPattern("a".repeat(MAX_LOG_PATTERN_LENGTH))).not.toThrow();
     expect(() => compileLogPattern("a".repeat(MAX_LOG_PATTERN_LENGTH + 1))).toThrow(
-      `Pattern exceeds ${MAX_LOG_PATTERN_LENGTH}`
+      `匹配表达式超过 ${MAX_LOG_PATTERN_LENGTH}`
     );
   });
 

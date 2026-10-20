@@ -34,47 +34,47 @@ export function preflightSignalRules(value: unknown, ctx: z.RefinementCtx, prefi
     ctx.addIssue({ code: "custom", path: [...prefix, ...path], message, fatal: true });
     return z.NEVER;
   };
-  if (value.rules.length > MAX_SIGNAL_RULES) return issue(["rules"], `At most ${MAX_SIGNAL_RULES} signal rules`);
+  if (value.rules.length > MAX_SIGNAL_RULES) return issue(["rules"], `最多允许 ${MAX_SIGNAL_RULES} 条信号规则`);
   let conditions = 0, patternChars = 0, windows = 0;
   for (const [index, rule] of value.rules.entries()) {
     if (!rule || typeof rule !== "object") continue;
     if (Array.isArray(rule.analysis?.suggestedActions) && rule.analysis.suggestedActions.length > MAX_SIGNAL_ACTIONS)
-      return issue(["rules", index, "analysis", "suggestedActions"], `At most ${MAX_SIGNAL_ACTIONS} suggested actions`);
+      return issue(["rules", index, "analysis", "suggestedActions"], `最多允许 ${MAX_SIGNAL_ACTIONS} 条建议操作`);
     if (!Array.isArray(rule.anyOf)) continue;
     if (rule.anyOf.length > MAX_SIGNAL_CONDITIONS_PER_RULE)
-      return issue(["rules", index, "anyOf"], `At most ${MAX_SIGNAL_CONDITIONS_PER_RULE} conditions per rule`);
+      return issue(["rules", index, "anyOf"], `每条规则最多允许 ${MAX_SIGNAL_CONDITIONS_PER_RULE} 个条件`);
     conditions += rule.anyOf.length;
-    if (conditions > MAX_SIGNAL_CONDITIONS) return issue(["rules", index, "anyOf"], `At most ${MAX_SIGNAL_CONDITIONS} signal conditions in total`);
+    if (conditions > MAX_SIGNAL_CONDITIONS) return issue(["rules", index, "anyOf"], `信号条件合计不能超过 ${MAX_SIGNAL_CONDITIONS} 个`);
     for (const [conditionIndex, input] of rule.anyOf.entries()) {
       if (!input || typeof input !== "object") continue;
       const path = ["rules", index, "anyOf", conditionIndex];
       if (input.type === "window") {
         if (++windows > SIGNAL_RULE_LIMITS.windows)
-          return issue(path, `At most ${SIGNAL_RULE_LIMITS.windows} window conditions are allowed per skill`);
+          return issue(path, `每个技能最多允许 ${SIGNAL_RULE_LIMITS.windows} 个时间窗口条件`);
         path.push("condition");
       }
       const condition = input.type === "window" ? input.condition : input;
       if (!condition || typeof condition !== "object") continue;
       if (condition.type === "field" && Array.isArray(condition.values) && condition.values.length > 256)
-        return issue([...path, "values"], "At most 256 set members");
+        return issue([...path, "values"], "集合最多允许 256 个成员");
       if (typeof condition.pattern === "string") {
         if (condition.pattern.length > MAX_LOG_PATTERN_LENGTH)
-          return issue([...path, "pattern"], `LogPatternError: Pattern exceeds ${MAX_LOG_PATTERN_LENGTH} UTF-16 code units.`);
+          return issue([...path, "pattern"], `匹配表达式超过 ${MAX_LOG_PATTERN_LENGTH} 个 UTF-16 代码单元上限。`);
         patternChars += condition.pattern.length;
         if (patternChars > MAX_SIGNAL_TOTAL_PATTERN_CHARS)
-          return issue([...path, "pattern"], `Signal patterns exceed ${MAX_SIGNAL_TOTAL_PATTERN_CHARS} UTF-16 code units in total`);
+          return issue([...path, "pattern"], `信号匹配表达式合计超过 ${MAX_SIGNAL_TOTAL_PATTERN_CHARS} 个 UTF-16 代码单元上限`);
       }
       if (typeof condition.flags === "string" && condition.flags.length > 3)
-        return issue([...path, "flags"], "LogPatternError: At most three regular expression flags (i/m/s)");
+        return issue([...path, "flags"], "正则表达式最多允许三个标记（i/m/s）");
       if (typeof condition.token === "string" && condition.token.length > MAX_SIGNAL_TOKEN_NAME_CHARS)
-        return issue([...path, "token"], `Token names must not exceed ${MAX_SIGNAL_TOKEN_NAME_CHARS} characters`);
+        return issue([...path, "token"], `字段名称不能超过 ${MAX_SIGNAL_TOKEN_NAME_CHARS} 个字符`);
       for (const side of ["leftTokens", "rightTokens"] as const) {
         if (!Array.isArray(condition[side])) continue;
         if (condition[side].length > MAX_SIGNAL_TOKEN_NAMES)
-          return issue([...path, side], `At most ${MAX_SIGNAL_TOKEN_NAMES} token names`);
+          return issue([...path, side], `最多允许 ${MAX_SIGNAL_TOKEN_NAMES} 个字段名称`);
         for (const [tokenIndex, token] of condition[side].entries()) {
           if (typeof token === "string" && token.length > MAX_SIGNAL_TOKEN_NAME_CHARS)
-            return issue([...path, side, tokenIndex], `Token names must not exceed ${MAX_SIGNAL_TOKEN_NAME_CHARS} characters`);
+            return issue([...path, side, tokenIndex], `字段名称不能超过 ${MAX_SIGNAL_TOKEN_NAME_CHARS} 个字符`);
         }
       }
     }
@@ -83,7 +83,7 @@ export function preflightSignalRules(value: unknown, ctx: z.RefinementCtx, prefi
     const defaults = (value as Record<string, unknown>)[name];
     if (defaults && typeof defaults === "object" && "suggestedActions" in defaults && Array.isArray(defaults.suggestedActions)
       && defaults.suggestedActions.length > MAX_SIGNAL_ACTIONS)
-      return issue([name, "suggestedActions"], `At most ${MAX_SIGNAL_ACTIONS} suggested actions`);
+      return issue([name, "suggestedActions"], `最多允许 ${MAX_SIGNAL_ACTIONS} 条建议操作`);
   }
   return value;
 }
@@ -120,12 +120,12 @@ const fieldConditionSchema = z.object({
   values: z.array(scalarSchema).max(256).optional()
 }).strict().superRefine((condition, ctx) => {
   const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
-  if (condition.operator === "equals" && condition.value === undefined) issue("value", "A comparison value is required");
-  if (condition.operator === "in" && !condition.values?.length) issue("values", "At least one set member is required");
+  if (condition.operator === "equals" && condition.value === undefined) issue("value", "请填写比较值");
+  if (condition.operator === "in" && !condition.values?.length) issue("values", "请至少填写一个集合成员");
   if (condition.operator === "range") {
-    if (condition.min === undefined) issue("min", "A numeric lower bound is required");
-    if (condition.max === undefined) issue("max", "A numeric upper bound is required");
-    if (condition.min !== undefined && condition.max !== undefined && condition.min > condition.max) issue("max", "Upper bound must be at least the lower bound");
+    if (condition.min === undefined) issue("min", "请填写数值下限");
+    if (condition.max === undefined) issue("max", "请填写数值上限");
+    if (condition.min !== undefined && condition.max !== undefined && condition.min > condition.max) issue("max", "上限不能小于下限");
   }
 });
 const textOrFieldSchema = z.unknown().transform((input, ctx) => {
@@ -158,7 +158,7 @@ const conditionSchemas = [
 export const signalConditionSchema = z.unknown().transform((input, ctx) => {
   const type = input && typeof input === "object" && "type" in input ? input.type : undefined;
   const index = ["text", "field", "window", "numericComparison", "severityToken"].indexOf(String(type));
-  if (index < 0) { ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["type"], message: "Unknown signal condition type" }); return z.NEVER; }
+  if (index < 0) { ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["type"], message: "信号条件类型无效" }); return z.NEVER; }
   const result = conditionSchemas[index].safeParse(input);
   if (result.success) return result.data;
   for (const issue of result.error.issues) ctx.addIssue(issue);
@@ -208,11 +208,11 @@ export const signalRuleSetSchema = z.preprocess(preflightSignalRules, withLogPat
   ruleSet.rules.forEach((rule, index) => {
     rule.anyOf.forEach((condition, conditionIndex) => {
       if (condition.type === "window" && ++windows > SIGNAL_RULE_LIMITS.windows) ctx.addIssue({
-        code: z.ZodIssueCode.custom, path: ["rules", index, "anyOf", conditionIndex], message: `At most ${SIGNAL_RULE_LIMITS.windows} window conditions are allowed per skill`
+        code: z.ZodIssueCode.custom, path: ["rules", index, "anyOf", conditionIndex], message: `每个技能最多允许 ${SIGNAL_RULE_LIMITS.windows} 个时间窗口条件`
       });
     });
     if (ids.has(rule.id)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["rules", index, "id"], message: "Duplicate rule id" });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["rules", index, "id"], message: "规则标识重复" });
     }
     ids.add(rule.id);
   });

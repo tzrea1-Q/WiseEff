@@ -176,7 +176,7 @@ describe.skipIf(!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)("in
         fileObjectId: own.body.fileObject.id, fileName: "device.log"
       }]] as const) {
         expect(await request("POST", path, { ...body, ...selection }, bound.token)).toMatchObject({
-          status: 403, body: { error: { code: "FORBIDDEN", message: "Credential skill binding does not match the selected skill." } }
+          status: 403, body: { error: { code: "FORBIDDEN", message: "此凭据无权使用所选分析技能。" } }
         });
       }
     }

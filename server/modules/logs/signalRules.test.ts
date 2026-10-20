@@ -82,7 +82,7 @@ describe("signal conditions", () => {
     const evidence = collectRuleEvidence([
       entry({ lineNumber: 1, message: "current reduced" }),
       entry({ lineNumber: 2, tokens: { requested_ma: "5", current_ma: "3" } }),
-      entry({ lineNumber: 3, message: "thermal current reduced" })
+      entry({ lineNumber: 3, message: "thermal foldback current reduced" })
     ]);
     expect(evidence.map((item) => [item.ruleHit, item.lineNumbers])).toEqual([
       ["thermal-foldback", [3]], ["charge-current-reduction", [1, 2, 3]]
@@ -189,7 +189,7 @@ describe("signal rule schema", () => {
   it("shares deadline/evaluation exhaustion across initial and subsequent prefilter passes", async () => {
     let now = 0;
     const budget = createPrefilterBudget(createSignalEvaluationBudget(5, 100, () => now));
-    const stream = () => (async function* () { yield entry({ message: "thermal" }); now = 5; yield entry({ message: "thermal" }); })();
+    const stream = () => (async function* () { yield entry({ message: "thermal foldback" }); now = 5; yield entry({ message: "thermal foldback" }); })();
     expect(await prefilterLogStream(stream(), defaultChargingRuleSet, budget)).toMatchObject({ truncated: true, evidence: [{ lineNumbers: [1] }] });
     expect(await prefilterLogStream(stream(), defaultChargingRuleSet, budget)).toMatchObject({ truncated: true, evidence: [] });
     expect(await prefilterLogStream(stream(), { ...defaultChargingRuleSet, rules: [] }, budget)).toMatchObject({ truncated: true, severityCounts: { error: 0, warn: 0, info: 0 } });
@@ -209,7 +209,7 @@ describe("signal rule schema", () => {
     expect(result.success).toBe(false);
     if (result.success) throw new Error("Expected invalid pattern/flags");
     expect(result.error.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: ["rules", 0, "anyOf", 0, field], message: expect.stringMatching(/LogPatternError/) })
+      expect.objectContaining({ path: ["rules", 0, "anyOf", 0, field], message: expect.stringMatching(/正则表达式|模式/) })
     ]));
   });
 
@@ -274,26 +274,26 @@ describe("data-driven analysis", () => {
   });
 
   it.each([
-    ["thermal offline timeout current reduced", "error", "Charging behavior is consistent with thermal foldback protection.", "Critical", 0.85],
-    ["offline timeout", "warn", "The log indicates the device went offline or became unavailable.", "Warning", 0.72],
-    ["offline", "warn", "The log indicates the device went offline or became unavailable.", "Info", 0.64],
-    ["thermal timeout", "warn", "Charging behavior is consistent with thermal foldback protection.", "Warning", 0.72],
-    ["thermal", "warn", "Charging behavior is consistent with thermal foldback protection.", "Warning", 0.64]
+    ["thermal foldback offline timeout current reduced", "error", "充电表现符合过热保护降额特征。", "Critical", 0.85],
+    ["offline timeout", "warn", "日志显示设备离线或不可用。", "Warning", 0.72],
+    ["offline", "warn", "日志显示设备离线或不可用。", "Info", 0.64],
+    ["thermal foldback timeout", "warn", "充电表现符合过热保护降额特征。", "Warning", 0.72],
+    ["thermal foldback", "warn", "充电表现符合过热保护降额特征。", "Warning", 0.64]
   ] as const)("preserves charging priorities for %s (%s)", async (message, severity, conclusion, expectedSeverity, confidence) => {
     expect(await analyze([entry({ message, severity })])).toMatchObject({ conclusion, severity: expectedSeverity, confidence });
   });
 
   it("preserves all-hit evidence, impact and action order exactly", async () => {
-    const report = await analyze([entry({ severity: "error", message: "thermal offline timeout current reduced", tokens: { code: "E_X" } })]);
+    const report = await analyze([entry({ severity: "error", message: "thermal foldback offline timeout current reduced", tokens: { code: "E_X" } })]);
     expect(report.evidence.map((item) => item.ruleHit)).toEqual(defaultChargingRuleSet.rules.map((rule) => rule.id));
-    expect(report.impact).toBe("Device availability may block reads, writes, or continued charging diagnostics.");
+    expect(report.impact).toBe("设备不可用可能阻碍读写操作或后续充电诊断。");
     expect(report.suggestedActions).toEqual([
-      "Inspect pack temperature, cooling path, and BMS thermal thresholds before resuming fast charge.",
-      "Compare requested and delivered current around the event window.",
-      "Check network latency, controller availability, and retry counts.",
-      "Verify device power, link status, and reconnect behavior.",
-      "Correlate the error code with firmware diagnostics and recent parameter changes.",
-      "Review ambient conditions and recent charge current requests for thermal stress."
+      "恢复快充前，请检查电池温度、散热路径及电池管理系统的温度保护阈值。",
+      "对比异常发生前后请求的充电电流与实际电流。",
+      "检查网络延迟、控制器连接状态和重试次数。",
+      "检查设备供电、连接状态及能否重新连接。",
+      "根据错误码核对固件诊断结果和近期参数变更。",
+      "检查环境温度和近期请求的充电电流，确认是否存在过热风险。"
     ]);
   });
 

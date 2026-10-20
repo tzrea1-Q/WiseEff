@@ -1,3 +1,4 @@
+import { logValidationIssues } from "./validationMessages";
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { posix } from "node:path";
@@ -43,32 +44,32 @@ type Outcome = z.infer<typeof logAnalysisCaseRunSchema>["results"][number]["draf
 type Result = { caseId: string; name: string; draft: Outcome; published: Outcome | null; delta: number | null };
 function requireAdmin(auth: AuthContext) {
   requireLogAdminDomains(auth);
-  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "Log organization access is required.");
+  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
 function audit(skillId: string, kind: string, metadata: Record<string, unknown> = {}) {
   return { app: "log-analysis", kind, action: kind, severity: "Medium" as const, projectId: null, targetType: "log-skill", targetId: skillId, metadata };
 }
 function parseExpectations(value: unknown) {
   const parsed = logAnalysisCaseExpectationsSchema.safeParse(value);
-  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Invalid analysis case expectations.", { issues: parsed.error.issues });
+  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "分析用例的预期结果配置无效。", { issues: logValidationIssues(parsed.error.issues) });
   const result = parsed.data;
   if (result.formatProfile !== undefined) {
     const profile = validateLogFormatProfile(result.formatProfile);
-    if (!profile.ok) throw new ApiError("VALIDATION_FAILED", "expectations.formatProfile: invalid log format profile.", {
+    if (!profile.ok) throw new ApiError("VALIDATION_FAILED", "用例的日志格式配置无效。", {
       issues: profile.issues.map((message) => ({ path: ["expectations", "formatProfile"], message }))
     });
   }
-  if (Buffer.byteLength(stringifyYaml(result)) > 1024 * 1024) throw new ApiError("VALIDATION_FAILED", "expectations: serialized YAML exceeds the 1 MiB metadata limit.", {
-    issues: [{ path: ["expectations"], message: "Serialized expectations must fit within 1 MiB." }]
+  if (Buffer.byteLength(stringifyYaml(result)) > 1024 * 1024) throw new ApiError("VALIDATION_FAILED", "用例预期结果的 YAML 内容超过 1 MiB 上限。", {
+    issues: [{ path: ["expectations"], message: "用例预期结果不能超过 1 MiB。" }]
   });
-  if (result.realLog && result.deIdentified !== true) throw new ApiError("VALIDATION_FAILED", "expectations.deIdentified must be true for real logs.");
+  if (result.realLog && result.deIdentified !== true) throw new ApiError("VALIDATION_FAILED", "真实日志须先完成脱敏并标记为已脱敏。");
   if (!result.expectRefusal && (!result.rootCausePoints.length || !result.expectedActions.length || !(result.keyEvidenceLines.length || result.keyEvidence?.length))) {
-    throw new ApiError("VALIDATION_FAILED", "Non-refusal cases require rootCausePoints, keyEvidenceLines or keyEvidence, and expectedActions.");
+    throw new ApiError("VALIDATION_FAILED", "需要给出分析结果的用例须填写根因要点、关键证据和预期操作。");
   }
   for (const [index, anchor] of (result.keyEvidence ?? []).entries()) {
-    if (!anchor.line && !anchor.pattern) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}] requires line or pattern.`);
-    if (anchor.pattern) try { compileLogPattern(anchor.pattern); } catch { throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}].pattern: invalid or oversized pattern.`, {
-      issues: [{ path: ["expectations", "keyEvidence", index, "pattern"], message: "Invalid or oversized pattern." }]
+    if (!anchor.line && !anchor.pattern) throw new ApiError("VALIDATION_FAILED", `第 ${index + 1} 条关键证据须填写行号或匹配表达式。`);
+    if (anchor.pattern) try { compileLogPattern(anchor.pattern); } catch { throw new ApiError("VALIDATION_FAILED", `第 ${index + 1} 条关键证据的匹配表达式无效或过长。`, {
+      issues: [{ path: ["expectations", "keyEvidence", index, "pattern"], message: "匹配表达式无效或过长。" }]
     }); }
   }
   return result;
@@ -90,36 +91,36 @@ function validateAnchors(expectations: Expectations, files: BundleFile[]) {
   };
   for (const [index, anchor] of (expectations.keyEvidence ?? []).entries()) {
     const file = files.find((item) => item.path === anchor.file) ?? files.find((item) => `fixtures/${item.path}` === anchor.file);
-    if (!file || file.status !== "analyzed" || anchor.line && anchor.line > file.lineCount) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}]: file or line does not exist.`, {
-      issues: [{ path: ["expectations", "keyEvidence", index, !file || file.status !== "analyzed" ? "file" : "line"], message: "File or line does not exist." }]
+    if (!file || file.status !== "analyzed" || anchor.line && anchor.line > file.lineCount) throw new ApiError("VALIDATION_FAILED", `第 ${index + 1} 条关键证据的文件或行号不存在。`, {
+      issues: [{ path: ["expectations", "keyEvidence", index, !file || file.status !== "analyzed" ? "file" : "line"], message: "文件或行号不存在。" }]
     });
     const lines = readLines(file);
-    if (anchor.line && !lines[anchor.line - 1]?.trim()) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}].line: selected line is blank or missing.`, {
-      issues: [{ path: ["expectations", "keyEvidence", index, "line"], message: "Selected line is blank or missing." }]
+    if (anchor.line && !lines[anchor.line - 1]?.trim()) throw new ApiError("VALIDATION_FAILED", `第 ${index + 1} 条关键证据的日志行为空或不存在。`, {
+      issues: [{ path: ["expectations", "keyEvidence", index, "line"], message: "所选日志行为空或不存在。" }]
     });
     if (anchor.pattern) {
       const pattern = compileLogPattern(anchor.pattern);
       const matched = anchor.line ? pattern.test(lines[anchor.line - 1]) : lines.some((line) => line.trim() && pattern.test(line));
-      if (!matched) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidence[${index}].pattern: pattern does not match the selected nonempty input line.`,
-        { issues: [{ path: ["expectations", "keyEvidence", index, "pattern"], message: "Pattern must match a nonempty line in the selected file." }] });
+      if (!matched) throw new ApiError("VALIDATION_FAILED", `第 ${index + 1} 条关键证据的表达式未匹配到所选日志行。`,
+        { issues: [{ path: ["expectations", "keyEvidence", index, "pattern"], message: "表达式须匹配到所选文件中的非空日志行。" }] });
     }
   }
   const first = files.find((file) => file.status === "analyzed");
   if (!expectations.keyEvidence?.length) for (const [index, line] of expectations.keyEvidenceLines.entries()) {
-    if (!first || line > first.lineCount || !readLines(first)[line - 1]?.trim()) throw new ApiError("VALIDATION_FAILED", `expectations.keyEvidenceLines[${index}]: line is blank or missing.`);
+    if (!first || line > first.lineCount || !readLines(first)[line - 1]?.trim()) throw new ApiError("VALIDATION_FAILED", `第 ${index + 1} 条关键证据的日志行为空或不存在。`);
   }
 }
 function validateNormalizedBytes(files: BundleFile[]) {
   let total = 0;
   for (const file of files) if (file.status === "analyzed") {
     total += bundleFileUtf8Bytes(file).length;
-    if (total > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "Normalized case logs are limited to 10 MiB.");
+    if (total > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "用例解析后的日志不能超过 10 MiB。");
   }
 }
 export async function listAnalysisCases(db: Database, auth: AuthContext, skillId: string) {
   requireAdmin(auth);
   const revisions = await listSkillRevisions(db, auth.organization.id, skillId);
-  if (!revisions.length) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!revisions.length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   await recoverInterruptedDryRuns(db, auth.organization.id);
   const items = await readAnalysisCases(db, auth.organization.id, skillId);
   const row = (await db.query<z.infer<typeof logAnalysisCaseRunSchema> & { caseFingerprint: string }>(`select id, skill_revision_id as "skillRevisionId", published_revision_id as "publishedRevisionId", case_fingerprint as "caseFingerprint", status, progress, results, error, created_at as "createdAt"
@@ -140,7 +141,7 @@ export async function listAnalysisCases(db: Database, auth: AuthContext, skillId
 export async function getAnalysisCasePrefill(db: Database, auth: AuthContext, logId: string) {
   requireAdmin(auth);
   const report = await getLogRecord(db, auth, logId);
-  if (report.status !== "complete" || !report.logDomainId) throw new ApiError("CONFLICT", "Only completed reports bound to a skill can be saved as cases.");
+  if (report.status !== "complete" || !report.logDomainId) throw new ApiError("CONFLICT", "只有使用分析技能生成的已完成报告才能保存为用例。");
   const originalUploads = (await db.query<{ fileName: string; sizeBytes: number }>(`select file_name as "fileName", size_bytes::float8 as "sizeBytes"
     from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [auth.organization.id, logId])).rows;
   const expectRefusal = report.analysisSource === "agent" && !report.degradedReason && report.confidence <= 0.5
@@ -158,15 +159,15 @@ export async function getAnalysisCasePrefill(db: Database, auth: AuthContext, lo
 }
 async function sourceUploads(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, logId: string) {
   const prefill = await getAnalysisCasePrefill(db, auth, logId);
-  if (prefill.skillId !== skillId) throw new ApiError("VALIDATION_FAILED", "Report belongs to a different skill.");
+  if (prefill.skillId !== skillId) throw new ApiError("VALIDATION_FAILED", "此报告使用了其他分析技能。");
   const rows = (await db.query<Upload>(`select file_name as "fileName", object_key as "objectKey", size_bytes::float8 as "sizeBytes" from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [auth.organization.id, logId])).rows;
-  if (!rows.length) throw new ApiError("CONFLICT", "Original upload bytes are unavailable for this historical report. Upload the original bundle to create a case.");
-  if (rows.reduce((sum, row) => sum + row.sizeBytes, 0) > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "Case bundles are limited to 10 MiB.");
+  if (!rows.length) throw new ApiError("CONFLICT", "此历史报告的原始文件不可用，请上传原始日志包以创建用例。");
+  if (rows.reduce((sum, row) => sum + row.sizeBytes, 0) > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "用例日志包不能超过 10 MiB。");
   return Promise.all(rows.map(async (row) => ({ fileName: row.fileName, bytes: await boundedGet(store, row.objectKey) })));
 }
 async function boundedGet(store: ObjectStore, key: string) {
   const bytes = store.getBounded ? await store.getBounded(key, ANALYSIS_CASE_MAX_BYTES) : await store.get(key);
-  if (bytes.length > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "Case bundles are limited to 10 MiB.");
+  if (bytes.length > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "用例日志包不能超过 10 MiB。");
   return bytes;
 }
 async function readCaseUploads(store: ObjectStore, item: StoredAnalysisCase) {
@@ -182,14 +183,14 @@ export async function createAnalysisCase(db: Database, store: ObjectStore, auth:
   requireAdmin(auth);
   const name = z.string().trim().min(1).max(200).parse(input.name);
   const expectations = parseExpectations(input.expectations);
-  if (expectations.bundleFiles !== undefined) throw new ApiError("VALIDATION_FAILED", "bundleFiles is reserved for imported case archives.");
+  if (expectations.bundleFiles !== undefined) throw new ApiError("VALIDATION_FAILED", "原始文件列表仅可通过导入用例压缩包设置。");
   // Reject invisible skills before reading object storage.
-  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   const files = input.sourceRecordId ? await sourceUploads(db, store, auth, skillId, input.sourceRecordId) : input.files;
-  if (!files?.length) throw new ApiError("VALIDATION_FAILED", "A log bundle is required.");
+  if (!files?.length) throw new ApiError("VALIDATION_FAILED", "请上传日志文件或日志包。");
   const intake = intakeLogBundle(files, limits);
   if (!intake.ok) throw new ApiError("VALIDATION_FAILED", intake.reason);
-  if (!intake.files.some((f) => f.status === "analyzed")) throw new ApiError("VALIDATION_FAILED", "The bundle has no analyzable files.");
+  if (!intake.files.some((f) => f.status === "analyzed")) throw new ApiError("VALIDATION_FAILED", "日志包中没有可分析的文件。");
   validateNormalizedBytes(intake.files);
   validateAnchors(expectations, intake.files);
   const uploads: Upload[] = [];
@@ -198,7 +199,7 @@ export async function createAnalysisCase(db: Database, store: ObjectStore, auth:
   try {
     return await db.transaction((transaction) => withAuditedWrite(transaction, invocation, context, async (tx) => {
       await lockSkill(tx, auth.organization.id, skillId);
-      if ((await readAnalysisCases(tx, auth.organization.id, skillId)).length >= ANALYSIS_CASE_MAX) throw new ApiError("CONFLICT", "A skill can contain at most 20 analysis cases.");
+      if ((await readAnalysisCases(tx, auth.organization.id, skillId)).length >= ANALYSIS_CASE_MAX) throw new ApiError("CONFLICT", "每个技能最多保存 20 个分析用例。");
       for (const file of files) uploads.push({ fileName: posix.normalize(file.fileName.replaceAll("\\", "/")), sizeBytes: file.bytes.length,
         objectKey: (await store.put({ organizationId: auth.organization.id, fileName: `case-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: file.bytes })).storageKey });
       await tx.query(`insert into log_skill_analysis_cases (id, organization_id, skill_id, name, expectations, uploads, files, archive_path, source_yaml)
@@ -219,14 +220,14 @@ export async function updateAnalysisCase(db: Database, store: ObjectStore, auth:
   return withAuditedWrite(db, invocation, context, async (tx) => {
     await lockSkill(tx, auth.organization.id, skillId);
     const existing = (await readAnalysisCases(tx, auth.organization.id, skillId)).find((item) => item.id === caseId);
-    if (!existing) throw new ApiError("NOT_FOUND", "Analysis case was not found.");
-    if (JSON.stringify(expectations.bundleFiles) !== JSON.stringify(existing.expectations.bundleFiles)) throw new ApiError("VALIDATION_FAILED", "Original bundle file selection cannot be edited.");
+    if (!existing) throw new ApiError("NOT_FOUND", "未找到分析用例。");
+    if (JSON.stringify(expectations.bundleFiles) !== JSON.stringify(existing.expectations.bundleFiles)) throw new ApiError("VALIDATION_FAILED", "不能修改用例的原始文件列表。");
     const intake = intakeLogBundle(await readCaseUploads(store, existing), limits);
-    if (!intake.ok) throw new ApiError("VALIDATION_FAILED", "Stored analysis case bundle could not be read.");
+    if (!intake.ok) throw new ApiError("VALIDATION_FAILED", "无法读取已保存的用例日志包。");
     validateAnchors(expectations, intake.files);
     const result = await tx.query(`update log_skill_analysis_cases set name = $4, expectations = $5::jsonb, source_yaml = null, archive_path = $6, updated_at = clock_timestamp()
       where organization_id = $1 and skill_id = $2 and id = $3 returning id`, [auth.organization.id, skillId, caseId, name, JSON.stringify(expectations), expectations.domain === existing.expectations.domain ? existing.archivePath : null]);
-    if (!result.rows.length) throw new ApiError("NOT_FOUND", "Analysis case was not found.");
+    if (!result.rows.length) throw new ApiError("NOT_FOUND", "未找到分析用例。");
     return { result: logAnalysisCaseSchema.parse((await readAnalysisCases(tx, auth.organization.id, skillId)).find((item) => item.id === caseId)), audit: audit(skillId, "log-analysis-case-update", { caseId }) };
   });
 }
@@ -237,7 +238,7 @@ export async function deleteAnalysisCase(db: Database, auth: AuthContext, skillI
     await lockSkill(tx, auth.organization.id, skillId);
     // ponytail: retain original objects for admitted runs; add reference-aware GC if storage retention is needed.
     const result = await tx.query("delete from log_skill_analysis_cases where organization_id = $1 and skill_id = $2 and id = $3 returning id", [auth.organization.id, skillId, caseId]);
-    if (!result.rows.length) throw new ApiError("NOT_FOUND", "Analysis case was not found.");
+    if (!result.rows.length) throw new ApiError("NOT_FOUND", "未找到分析用例。");
     return { result: { ok: true }, audit: audit(skillId, "log-analysis-case-delete", { caseId }) };
   });
 }
@@ -245,10 +246,10 @@ export async function deleteAnalysisCase(db: Database, auth: AuthContext, skillI
 export async function importSkillAnalysisCases(db: Database, store: ObjectStore, auth: AuthContext, skillId: string, bytes: Buffer, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Import analysis cases");
   requireAdmin(auth);
-  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   let archived: ArchivedAnalysisCase[];
   try { archived = await importAnalysisCaseArchive(bytes); }
-  catch (error) { throw new ApiError("VALIDATION_FAILED", "Invalid case archive.", { problems: error instanceof AnalysisCaseArchiveError ? error.problems : [error instanceof Error ? error.message : "archive.zip: invalid archive"] }); }
+  catch (error) { throw new ApiError("VALIDATION_FAILED", "用例压缩包无效。", { problems: error instanceof AnalysisCaseArchiveError ? error.problems : [`压缩包无效：${error instanceof Error ? error.message : String(error)}`] }); }
   return importArchivedSkillAnalysisCases(db, store, auth, skillId, archived, invocation, context);
 }
 
@@ -263,7 +264,7 @@ export async function importArchivedSkillAnalysisCases(db: Database, store: Obje
     const inputs = selected.map((path) => ({ fileName: path.replace(/^fixtures\//, ""), bytes: item.files.find((file) => file.path === path)!.bytes }));
     const intake = intakeLogBundle(inputs, limits);
     if (!intake.ok) throw new ApiError("VALIDATION_FAILED", `${item.archivePath}: ${intake.reason}`);
-    if (!intake.files.some((file) => file.status === "analyzed")) throw new ApiError("VALIDATION_FAILED", `${item.archivePath}: no analyzable files`);
+    if (!intake.files.some((file) => file.status === "analyzed")) throw new ApiError("VALIDATION_FAILED", `${item.archivePath}: 没有可分析的日志文件`);
     validateNormalizedBytes(intake.files);
     prepared.push({ ...item, id: randomUUID(), fixtureFiles: item.files, files: intake.files.map(({ bytes: _bytes, sha256: _sha256, ...file }) => file) });
   }
@@ -272,9 +273,9 @@ export async function importArchivedSkillAnalysisCases(db: Database, store: Obje
   return await db.transaction((transaction) => withAuditedWrite(transaction, invocation, context, async (tx) => {
     await lockSkill(tx, auth.organization.id, skillId);
     const existing = await readAnalysisCases(tx, auth.organization.id, skillId);
-    if (existing.length + prepared.length > ANALYSIS_CASE_MAX) throw new ApiError("CONFLICT", "A skill can contain at most 20 analysis cases.");
+    if (existing.length + prepared.length > ANALYSIS_CASE_MAX) throw new ApiError("CONFLICT", "每个技能最多保存 20 个分析用例。");
     const duplicate = prepared.find((entry) => existing.some((item) => item.archivePath === entry.archivePath));
-    if (duplicate) throw new ApiError("CONFLICT", "An imported case already exists.", { problems: [`${duplicate.archivePath}/case.yaml: case archive path already exists`] });
+    if (duplicate) throw new ApiError("CONFLICT", "导入的用例已存在。", { problems: [`${duplicate.archivePath}/case.yaml: 用例目录已存在`] });
     for (const item of prepared) {
       const uploads: Upload[] = [];
       for (const file of item.fixtureFiles) {
@@ -295,7 +296,7 @@ export async function importArchivedSkillAnalysisCases(db: Database, store: Obje
 }
 export async function exportSkillAnalysisCases(db: Database, store: ObjectStore, auth: AuthContext, skillId: string) {
   requireAdmin(auth);
-  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!(await listSkillRevisions(db, auth.organization.id, skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   const cases = await readAnalysisCases(db, auth.organization.id, skillId);
   const archived = await Promise.all(cases.map(async (item): Promise<ArchivedAnalysisCase> => {
     const preservePaths = Boolean(item.sourceYaml || item.expectations.bundleFiles);
@@ -315,14 +316,14 @@ export async function getAnalysisCaseRun(db: Database, auth: AuthContext, skillI
   await recoverInterruptedDryRuns(db, auth.organization.id);
   const row = (await db.query<z.infer<typeof logAnalysisCaseRunSchema>>(`select id, skill_revision_id as "skillRevisionId", published_revision_id as "publishedRevisionId", status, progress, results, error, created_at as "createdAt"
     from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, runId])).rows[0];
-  if (!row) throw new ApiError("NOT_FOUND", "Analysis case run was not found.");
+  if (!row) throw new ApiError("NOT_FOUND", "未找到用例运行记录。");
   return { run: logAnalysisCaseRunSchema.parse({ ...row, createdAt: new Date(row.createdAt).toISOString() }) };
 }
 export async function getAnalysisCaseTrace(db: Database, auth: AuthContext, skillId: string, runId: string, caseId: string, revision: "draft" | "published") {
   await getAnalysisCaseRun(db, auth, skillId, runId);
   const row = (await db.query<{ results: Result[] }>("select results from log_skill_analysis_case_runs where organization_id = $1 and skill_id = $2 and id = $3", [auth.organization.id, skillId, runId])).rows[0];
   const outcome = row.results.find((result) => result.caseId === caseId)?.[revision];
-  if (!outcome) throw new ApiError("NOT_FOUND", "Case trace was not found.");
+  if (!outcome) throw new ApiError("NOT_FOUND", "未找到用例分析过程。");
   return { steps: outcome.steps.map((step) => logTraceStepSchema.parse(step)) };
 }
 
@@ -338,11 +339,11 @@ export async function startAnalysisCaseRun(db: Database, store: ObjectStore, ana
       await assertDryRunCapacity(tx, auth.organization.id);
       const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
       const draft = revisions.find((r) => r.status === "draft"), published = revisions.find((r) => r.status === "published");
-      if (!draft) throw new ApiError("CONFLICT", "Save a draft before running analysis cases.");
+      if (!draft) throw new ApiError("CONFLICT", "请先保存草稿，再运行分析用例。");
       const all = await readAnalysisCases(tx, auth.organization.id, skillId);
       const cases = caseIds ? all.filter((item) => caseIds.includes(item.id)) : all;
-      if (!cases.length || caseIds && cases.length !== new Set(caseIds).size) throw new ApiError("VALIDATION_FAILED", "Select existing cases from this skill.");
-      if (cases.length > ANALYSIS_CASE_MAX) throw new ApiError("VALIDATION_FAILED", "At most 20 cases can run at once.");
+      if (!cases.length || caseIds && cases.length !== new Set(caseIds).size) throw new ApiError("VALIDATION_FAILED", "请选择此技能中已有的用例。");
+      if (cases.length > ANALYSIS_CASE_MAX) throw new ApiError("VALIDATION_FAILED", "每次最多运行 20 个用例。");
       const id = randomUUID();
       await tx.query(`insert into log_skill_analysis_case_runs (id, organization_id, skill_id, skill_revision_id, published_revision_id, case_fingerprint, status, deadline_at, owner_pid, owner_key)
         values ($1,$2,$3,$4,$5,$6,'processing',now()+$7*interval '1 millisecond',$8,$9)`, [id, auth.organization.id, skillId, draft.id, published?.id ?? null, fingerprint(all), ANALYSIS_CASE_RUN_TIMEOUT_MS, owner.pid, owner.key]);
@@ -400,7 +401,7 @@ async function executeCaseRun(db: Database, store: ObjectStore, analyzer: LogAna
     });
   } catch {
     await withAuditedWrite(db, invocation, context, async (tx) => {
-      await tx.query(`update log_skill_analysis_case_runs set status = 'failed', error = $3 where organization_id = $1 and id = $2 and status = 'processing'`, [organizationId, admitted.id, controller.signal.aborted ? LOG_DRY_RUN_INTERRUPTED : "Analysis case run failed."]);
+      await tx.query(`update log_skill_analysis_case_runs set status = 'failed', error = $3 where organization_id = $1 and id = $2 and status = 'processing'`, [organizationId, admitted.id, controller.signal.aborted ? LOG_DRY_RUN_INTERRUPTED : "分析用例运行失败，请稍后重试。"]);
       return { result: null, audit: audit(skillId, "log-analysis-case-run-failed", { runId: admitted.id }) };
     }).catch(() => undefined);
   } finally {

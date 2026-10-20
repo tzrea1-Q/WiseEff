@@ -45,7 +45,7 @@ function withSampleContents(store: ObjectStore, contents: Map<string, Buffer>): 
 }
 function requireAdmin(auth: AuthContext) {
   requireLogAdminDomains(auth);
-  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "Log organization access is required.");
+  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
 export async function getLogTrace(db: Database, auth: AuthContext, logId: string) {
   requireAdmin(auth);
@@ -59,7 +59,7 @@ export async function getSkillDryRun(db: Database, auth: AuthContext, skillId: s
   await recoverInterruptedDryRuns(db, auth.organization.id);
   const row = (await db.query<DryRun>(`select id, skill_revision_id as "skillRevisionId", status, progress, report, error, created_at as "createdAt"
     from log_skill_dry_runs where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, id])).rows[0];
-  if (!row) throw new ApiError("NOT_FOUND", "Dry run was not found.");
+  if (!row) throw new ApiError("NOT_FOUND", "试运行记录不存在。");
   const run = logSkillDryRunSchema.parse({ ...row, createdAt: new Date(row.createdAt).toISOString() });
   return { run, steps: await readLogTraceSteps(db, auth.organization.id, { dryRunId: id }) };
 }
@@ -67,16 +67,16 @@ export async function getSkillDryRunLines(db: Database, store: ObjectStore, auth
   input: { file: string; startLine: number; endLine: number }) {
   requireAdmin(auth);
   const range = logLineRangeQuerySchema.safeParse(input);
-  if (!range.success) throw new ApiError("VALIDATION_FAILED", "Request an inclusive range of at most 400 lines.");
+  if (!range.success) throw new ApiError("VALIDATION_FAILED", "每次最多查看 400 行日志（含起止行）。");
   const row = (await db.query<{ sample_file_name: string; sample_object_key: string }>(`select sample_file_name, sample_object_key from log_skill_dry_runs
     where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, id])).rows[0];
-  if (!row) throw new ApiError("NOT_FOUND", "Dry run sample was not found.");
+  if (!row) throw new ApiError("NOT_FOUND", "试运行样本不存在。");
   const bundle = await readStoredSkillSampleBundle(store, row.sample_file_name, row.sample_object_key);
   const file = bundle?.find((file) => file.path === input.file && file.status === "analyzed");
-  if (bundle ? !file : row.sample_file_name !== input.file) throw new ApiError("NOT_FOUND", "Dry run sample was not found.");
+  if (bundle ? !file : row.sample_file_name !== input.file) throw new ApiError("NOT_FOUND", "试运行样本不存在。");
   const source = file ? withSampleContents(store, new Map([[row.sample_object_key, Buffer.from(file.content!)]])) : store;
   const lineCount = (await buildLogLineIndex(source, row.sample_object_key)).readUInt32LE(4);
-  if (input.startLine > Math.max(1, lineCount)) throw new ApiError("VALIDATION_FAILED", "Start line is outside the sample.");
+  if (input.startLine > Math.max(1, lineCount)) throw new ApiError("VALIDATION_FAILED", "起始行超出样本范围。");
   const endLine = Math.min(lineCount, input.endLine);
   return { file: input.file, startLine: input.startLine, endLine, totalLines: lineCount,
     lines: endLine < input.startLine ? [] : await readStoredLogRange(source, {
@@ -99,12 +99,12 @@ export async function startSkillDryRun(db: Database, store: ObjectStore, analyze
       await recoverInterruptedDryRuns(tx);
       await assertDryRunCapacity(tx, auth.organization.id);
       const draft = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((revision) => revision.status === "draft");
-      if (!draft) throw new ApiError("CONFLICT", "Save a draft before starting a dry run.");
+      if (!draft) throw new ApiError("CONFLICT", "请先保存草稿，再开始试运行。");
       const sample = (await tx.query<{ object_key: string; file_name: string; size_bytes: string; line_count: number; name: string; description: string | null }>(
         `select sample.object_key, sample.file_name, sample.size_bytes, sample.line_count, skill.name, skill.description from log_skill_samples sample
           join log_domains skill on skill.id = sample.skill_id and skill.organization_id = sample.organization_id
           where sample.organization_id = $1 and sample.skill_id = $2`, [auth.organization.id, skillId])).rows[0];
-      if (!sample) throw new ApiError("CONFLICT", "Upload a sample before starting a dry run.");
+      if (!sample) throw new ApiError("CONFLICT", "请先上传样本，再开始试运行。");
       const id = randomUUID();
       await tx.query(`insert into log_skill_dry_runs (id, organization_id, skill_id, skill_revision_id, status, deadline_at, sample_file_name, sample_object_key, owner_pid, owner_key)
         values ($1, $2, $3, $4, 'processing', now() + $5 * interval '1 millisecond', $6, $7, $8, $9)`, [id, auth.organization.id, skillId, draft.id, timeoutMs, sample.file_name, sample.object_key, owner.pid, owner.key]);
@@ -251,7 +251,7 @@ async function executeDryRun(db: Database, store: ObjectStore, analyzer: LogAnal
     // Provider exceptions can contain payloads. Persist only this fixed failure category.
     await db.query(`update log_skill_dry_runs set status = 'failed', error = $3
       where organization_id = $1 and id = $2 and status = 'processing'`,
-    [organizationId, admitted.id, controller.signal.aborted ? LOG_DRY_RUN_INTERRUPTED : "Dry run failed."]).catch(() => undefined);
+    [organizationId, admitted.id, controller.signal.aborted ? LOG_DRY_RUN_INTERRUPTED : "试运行失败，请稍后重试。"]).catch(() => undefined);
   } finally {
     clearTimeout(timer!); owner.signal.removeEventListener("abort", onOwnerLost);
     // A timeout is a UI result, not proof that an uncooperative backend released its memory.

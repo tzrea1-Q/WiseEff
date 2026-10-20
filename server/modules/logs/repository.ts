@@ -278,15 +278,15 @@ function toFileObjectDto(row: LogFileObjectRow): LogFileObjectDto {
 }
 
 function defaultConclusion(status: LogRecordStatus, failureReason: string | null) {
-  if (status === "failed") return failureReason ?? "Log analysis failed before a report was generated.";
-  if (status === "complete") return "Log analysis completed.";
-  return "Log analysis is queued or processing.";
+  if (status === "failed") return failureReason ?? "日志分析失败，未生成报告。";
+  if (status === "complete") return "日志分析已完成。";
+  return "日志正在排队或分析中。";
 }
 
 function defaultImpact(status: LogRecordStatus) {
-  if (status === "failed") return "No operational impact was inferred because analysis did not complete.";
-  if (status === "complete") return "Review the generated evidence and suggested actions.";
-  return "Analysis results will be available after processing completes.";
+  if (status === "failed") return "分析未完成，暂时无法判断影响。";
+  if (status === "complete") return "请查看分析证据与建议操作。";
+  return "处理完成后即可查看分析结果。";
 }
 
 function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], readableKnowledgeIds = new Set<string>()): LogRecordDto {
@@ -1141,7 +1141,7 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         stageStatus: "complete",
         stage: "report",
         progress: 100,
-        message: "Report generation complete."
+        message: "分析报告已生成。"
       });
 
       const completedJob = await completeJob(tx, {

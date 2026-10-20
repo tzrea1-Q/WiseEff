@@ -22,7 +22,7 @@ describe("pinned skill runtime budgets", () => {
       const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 8000 }, {
         telemetry: { recordLlmCall: (call) => { calls.push(call); } }
       }).analyze({ parsed, analysisQuestion: "Why did fast charging fold back?", logDomain, procedure });
-      expect(output).toMatchObject({ analysisSource: "agent", conclusion: expect.stringMatching(/thermal|foldback/i) });
+      expect(output).toMatchObject({ analysisSource: "agent", conclusion: expect.stringMatching(/过热|降额/) });
       expect(output.degradedReason).toBe(procedure ? "token-budget-exhausted" : undefined);
       expect(calls.map((call) => call.outcome)).toEqual(Array.from({ length: expectedCalls }, () => "ok"));
     }

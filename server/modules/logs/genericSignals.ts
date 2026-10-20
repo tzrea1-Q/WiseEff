@@ -47,6 +47,8 @@ const error = compileLogPattern("\\b(ERROR|ERR|FATAL)\\b", "i");
 const kernelTimestamp = compileLogPattern("^\\s*(?:<[0-9]+>)?\\[\\s*([0-9]+(?:\\.[0-9]+)?)\\]");
 const signatureNames: Record<string, string> = { "kernel panic": "Kernel panic", oops: "Oops", "bug:": "BUG:",
   watchdog: "watchdog", anr: "ANR", "fatal exception": "FATAL EXCEPTION", segfault: "segfault", assert: "assert", assertion: "assert" };
+const signatureTitles: Record<string, string> = { "Kernel panic": "内核崩溃", Oops: "内核异常", "BUG:": "内核错误",
+  watchdog: "看门狗异常", ANR: "应用无响应", "FATAL EXCEPTION": "致命异常", segfault: "内存访问异常", assert: "断言失败" };
 const templateToken = compileLogPattern("([A-Za-z_][A-Za-z0-9_]*(?:_id|Id)|id)=([^\\s]+)|([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(0[xX][0-9a-fA-F]+|\\b[0-9a-fA-F]{12,}\\b)|((?:[A-Za-z]:\\\\|/)[^\\s]+)|([0-9]+/[0-9]+)|[+-]?[0-9]+(?:\\.[0-9]+)?");
 
 /** RE2 tokenization consumes each input once; placeholders are never rescanned. */
@@ -119,9 +121,9 @@ function* extractLogSignalSteps(
       const crashMatch = crash.exec(content);
       if (crashMatch) {
         const signature = signatureNames[crashMatch[0].toLowerCase()];
-        generic("crash", "Critical", `Crash signature: ${signature}`, [anchor], 1, signature);
+        generic("crash", "Critical", `检测到${signatureTitles[signature]}（${signature}）`, [anchor], 1, signature);
       }
-      if (boot.test(content)) generic("restart", "Warning", "Boot marker or timestamp reset");
+      if (boot.test(content)) generic("restart", "Warning", "检测到启动记录或时间戳重置");
       const wallTime = entry?.timestamp ? Date.parse(entry.timestamp.slice(0, LOG_SIGNAL_LIMITS.lineChars)) : NaN;
       const bootTime = kernelTimestamp.exec(content);
       const clock = bootTime ? "boot" : "wall";
@@ -129,21 +131,21 @@ function* extractLogSignalSteps(
       if (Number.isFinite(time)) {
         if (previous && previous.clock !== clock) errors.length = 0;
         if (previous?.clock === clock && time < previous.time) {
-          generic("restart", "Warning", "Boot marker or timestamp reset", [previous.anchor, anchor]);
+          generic("restart", "Warning", "检测到启动记录或时间戳重置", [previous.anchor, anchor]);
           errors.length = 0;
         } else if (previous?.clock === clock && time - previous.time >= LOG_SIGNAL_LIMITS.gapMs) {
-          generic("timestamp-gap", "Warning", "Timestamp gap of at least 60 seconds", [previous.anchor, anchor]);
+          generic("timestamp-gap", "Warning", "相邻日志时间间隔至少为 60 秒", [previous.anchor, anchor]);
         }
         previous = { time, clock, anchor };
       }
       if (entry?.severity === "error" || error.test(content)) {
-        if (firstError) { generic("first-error", "Warning", "First error in file"); firstError = false; }
+        if (firstError) { generic("first-error", "Warning", "文件中的首条错误"); firstError = false; }
         if (Number.isFinite(time)) {
           while (errors.length && time - errors[0].time > LOG_SIGNAL_LIMITS.burstWindowMs) errors.shift();
           errors.push({ time, anchor });
           if (errors.length > LOG_SIGNAL_LIMITS.burstErrors) errors.shift();
           if (errors.length === LOG_SIGNAL_LIMITS.burstErrors) {
-            generic("error-burst", "Warning", "At least 5 errors within 10 seconds", errors.map((item) => item.anchor),
+            generic("error-burst", "Warning", "10 秒内至少出现 5 条错误", errors.map((item) => item.anchor),
               errors.filter((item) => item.anchor.line > lastBurstError).length);
             lastBurstError = anchor.line;
           }

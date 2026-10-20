@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-20T04:13:55.853Z",
+  "generatedAt": "2026-10-20T04:36:47.623Z",
   "promptVersion": "2026-10-19.procedure.signals.source.1",
   "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.3",
   "total": 49,
@@ -93,7 +93,6 @@
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
-            2,
             3,
             4
           ],
@@ -107,7 +106,7 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "conclusion": "充电表现符合过热保护降额特征。",
         "traceStepCount": 3,
         "traceKinds": [
           "model-turn",
@@ -210,7 +209,6 @@
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
-            2,
             3,
             4
           ],
@@ -224,7 +222,7 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "conclusion": "充电表现符合过热保护降额特征。",
         "traceStepCount": 3,
         "traceKinds": [
           "model-turn",
@@ -319,7 +317,6 @@
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
-            2,
             3,
             4
           ],
@@ -333,7 +330,7 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "conclusion": "充电表现符合过热保护降额特征。",
         "traceStepCount": 3,
         "traceKinds": [
           "model-turn",
@@ -376,7 +373,6 @@
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
-            2,
             3,
             4
           ],
@@ -390,7 +386,7 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "conclusion": "充电表现符合过热保护降额特征。",
         "traceStepCount": 3,
         "traceKinds": [
           "model-turn",
@@ -2459,7 +2455,6 @@
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
-            2,
             3,
             4
           ],
@@ -2473,7 +2468,7 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "conclusion": "充电表现符合过热保护降额特征。",
         "traceStepCount": 8,
         "traceKinds": [
           "model-turn",
@@ -2686,7 +2681,6 @@
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
-            2,
             3,
             4
           ],
@@ -2700,7 +2694,7 @@
             4
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection.",
+        "conclusion": "充电表现符合过热保护降额特征。",
         "traceStepCount": 5,
         "traceKinds": [
           "model-turn",
@@ -2851,7 +2845,7 @@
             2
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection reducing charge output."
+        "conclusion": "充电表现符合过热保护降额特征，充电输出已降低。"
       }
     },
     {
@@ -2877,7 +2871,7 @@
             2
           ]
         ],
-        "conclusion": "Charging behavior is consistent with thermal foldback protection reducing charge output."
+        "conclusion": "充电表现符合过热保护降额特征，充电输出已降低。"
       }
     }
   ],

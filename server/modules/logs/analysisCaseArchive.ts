@@ -1,3 +1,4 @@
+import { logValidationIssues } from "./validationMessages";
 import { posix } from "node:path";
 import { crc32 } from "node:zlib";
 import JSZip from "jszip";
@@ -92,10 +93,10 @@ export function parseArchiveYaml(value: string): unknown {
 
 export const analysisCaseAnnotationSchema = logAnalysisCaseExpectationsSchema.superRefine((annotation, context) => {
   const golden = goldenCaseYamlSchema.safeParse(annotation);
-  if (!golden.success) for (const issue of golden.error.issues) context.addIssue(issue);
+  if (!golden.success) for (const issue of logValidationIssues(golden.error.issues)) context.addIssue(issue);
   for (const [index, evidence] of (annotation.keyEvidence ?? []).entries()) {
     if (evidence.line === undefined && evidence.pattern === undefined) {
-      context.addIssue({ code: "custom", path: ["keyEvidence", index], message: "expected a line anchor or pattern" });
+      context.addIssue({ code: "custom", path: ["keyEvidence", index], message: "请填写日志行号或匹配表达式" });
     }
     if (evidence.pattern !== undefined) {
       try { compileLogPattern(evidence.pattern); }
@@ -112,28 +113,28 @@ function safePath(path: string): boolean {
 }
 
 function checkedZipPath(bytes: Buffer): string {
-  if (bytes.length > 1025) throw new AnalysisCaseArchiveError(["archive.zip: entry path exceeds 1024 bytes"]);
+  if (bytes.length > 1025) throw new AnalysisCaseArchiveError(["archive.zip: 归档路径超过 1024 字节上限"]);
   let name: string;
   try { name = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new AnalysisCaseArchiveError(["archive.zip: entry path is not valid UTF-8"]); }
-  if (!safePath(name.replace(/\/$/, ""))) throw new AnalysisCaseArchiveError([`${name}: unsafe archive path`]);
+  catch { throw new AnalysisCaseArchiveError(["archive.zip: 归档路径须采用 UTF-8 编码"]); }
+  if (!safePath(name.replace(/\/$/, ""))) throw new AnalysisCaseArchiveError([`${name}: 归档路径不安全`]);
   return name;
 }
 
 function checkZipPathExtras(extra: Buffer, rawName: Buffer, name: string): void {
   let fields = 0;
   for (let at = 0; at < extra.length;) {
-    if (++fields > 32) throw new AnalysisCaseArchiveError([`${name}: more than 32 ZIP extra fields`]);
-    if (at + 4 > extra.length) throw new AnalysisCaseArchiveError([`${name}: invalid ZIP extra fields`]);
+    if (++fields > 32) throw new AnalysisCaseArchiveError([`${name}: ZIP 扩展字段超过 32 个上限`]);
+    if (at + 4 > extra.length) throw new AnalysisCaseArchiveError([`${name}: ZIP 扩展字段无效`]);
     const id = extra.readUInt16LE(at), size = extra.readUInt16LE(at + 2), end = at + 4 + size;
-    if (end > extra.length) throw new AnalysisCaseArchiveError([`${name}: invalid ZIP extra fields`]);
-    if (id === 0x0001) throw new AnalysisCaseArchiveError([`${name}: ZIP64 is unsupported`]);
+    if (end > extra.length) throw new AnalysisCaseArchiveError([`${name}: ZIP 扩展字段无效`]);
+    if (id === 0x0001) throw new AnalysisCaseArchiveError([`${name}: 不支持 ZIP64 格式`]);
     if (id === 0x7075) {
-      if (size < 5 || size > 1030) throw new AnalysisCaseArchiveError([`${name}: invalid or oversized Unicode ZIP path`]);
+      if (size < 5 || size > 1030) throw new AnalysisCaseArchiveError([`${name}: ZIP 的 Unicode 路径无效或过长`]);
       if (extra[at + 4] === 1 && extra.readUInt32LE(at + 5) === crc32(rawName)) {
         // JSZip can override the raw name with this field, while bundle intake uses the raw name.
         const unicodeName = checkedZipPath(extra.subarray(at + 9, end));
-        if (unicodeName !== name) throw new AnalysisCaseArchiveError([`${name}: Unicode ZIP path must match the raw entry path`]);
+        if (unicodeName !== name) throw new AnalysisCaseArchiveError([`${name}: ZIP 的 Unicode 路径须与原始路径一致`]);
       }
     }
     at = end;
@@ -147,52 +148,52 @@ function preflightZipDirectory(bytes: Buffer, limits: typeof analysisCaseArchive
   for (let at = bytes.length - 22; at >= Math.max(0, bytes.length - 65557); at--) {
     if (bytes.readUInt32LE(at) === 0x06054b50 && at + 22 + bytes.readUInt16LE(at + 20) === bytes.length) { end = at; break; }
   }
-  if (end < 0) throw new AnalysisCaseArchiveError(["archive.zip: missing ZIP end-of-central-directory record"]);
+  if (end < 0) throw new AnalysisCaseArchiveError(["archive.zip: ZIP 缺少目录结束记录"]);
   // JSZip selects the last signature even inside a comment; both readers must use this EOCD.
-  if (bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) !== end) throw new AnalysisCaseArchiveError(["archive.zip: ambiguous ZIP end-of-central-directory record"]);
+  if (bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) !== end) throw new AnalysisCaseArchiveError(["archive.zip: ZIP 包含多个目录结束记录，无法确定内容"]);
   const count = bytes.readUInt16LE(end + 10), size = bytes.readUInt32LE(end + 12), start = bytes.readUInt32LE(end + 16);
-  if (count === 0xffff || size === 0xffffffff || start === 0xffffffff) throw new AnalysisCaseArchiveError(["archive.zip: ZIP64 is unsupported"]);
+  if (count === 0xffff || size === 0xffffffff || start === 0xffffffff) throw new AnalysisCaseArchiveError(["archive.zip: 不支持 ZIP64 格式"]);
   if (bytes.readUInt16LE(end + 4) || bytes.readUInt16LE(end + 6) || bytes.readUInt16LE(end + 8) !== count || start + size !== end) {
-    throw new AnalysisCaseArchiveError(["archive.zip: invalid ZIP central directory"]);
+    throw new AnalysisCaseArchiveError(["archive.zip: ZIP 文件目录无效"]);
   }
   const maxEntries = 2 * limits.maxFiles;
-  if (count > maxEntries) throw new AnalysisCaseArchiveError([`archive.zip: entry count exceeds ${maxEntries} including directories`]);
+  if (count > maxEntries) throw new AnalysisCaseArchiveError([`archive.zip: 条目数量（含目录）超过 ${maxEntries} 个上限`]);
   let entries = 0, files = 0, totalBytes = 0, at = start;
   const paths = new Set<string>();
   // Count actual records too: an attacker can underreport the EOCD entry count.
   while (at < end) {
-    if (++entries > maxEntries) throw new AnalysisCaseArchiveError([`archive.zip: entry count exceeds ${maxEntries} including directories`]);
-    if (at + 46 > end || bytes.readUInt32LE(at) !== 0x02014b50) throw new AnalysisCaseArchiveError(["archive.zip: invalid ZIP central directory"]);
+    if (++entries > maxEntries) throw new AnalysisCaseArchiveError([`archive.zip: 条目数量（含目录）超过 ${maxEntries} 个上限`]);
+    if (at + 46 > end || bytes.readUInt32LE(at) !== 0x02014b50) throw new AnalysisCaseArchiveError(["archive.zip: ZIP 文件目录无效"]);
     const nameLength = bytes.readUInt16LE(at + 28), extraLength = bytes.readUInt16LE(at + 30);
     const next = at + 46 + nameLength + extraLength + bytes.readUInt16LE(at + 32);
-    if (next > end) throw new AnalysisCaseArchiveError(["archive.zip: invalid ZIP central directory"]);
+    if (next > end) throw new AnalysisCaseArchiveError(["archive.zip: ZIP 文件目录无效"]);
     const rawName = bytes.subarray(at + 46, at + 46 + nameLength), name = checkedZipPath(rawName);
     const path = name.replace(/\/$/, "");
-    if (paths.has(path)) throw new AnalysisCaseArchiveError([`${path}: duplicate archive path`]);
+    if (paths.has(path)) throw new AnalysisCaseArchiveError([`${path}: 归档路径重复`]);
     paths.add(path);
     const compressed = bytes.readUInt32LE(at + 20), unpacked = bytes.readUInt32LE(at + 24), local = bytes.readUInt32LE(at + 42);
-    if (compressed === 0xffffffff || unpacked === 0xffffffff || local === 0xffffffff) throw new AnalysisCaseArchiveError([`${name}: ZIP64 is unsupported`]);
-    if (unpacked > limits.maxFileBytes) throw new AnalysisCaseArchiveError([`${name}: declared file size exceeds ${limits.maxFileBytes}`]);
+    if (compressed === 0xffffffff || unpacked === 0xffffffff || local === 0xffffffff) throw new AnalysisCaseArchiveError([`${name}: 不支持 ZIP64 格式`]);
+    if (unpacked > limits.maxFileBytes) throw new AnalysisCaseArchiveError([`${name}: 声明的文件大小超过 ${limits.maxFileBytes} 字节上限`]);
     totalBytes += unpacked;
-    if (totalBytes > limits.maxUnpackedBytes) throw new AnalysisCaseArchiveError([`${name}: declared unpacked size exceeds ${limits.maxUnpackedBytes}`]);
+    if (totalBytes > limits.maxUnpackedBytes) throw new AnalysisCaseArchiveError([`${name}: 声明的解压大小超过 ${limits.maxUnpackedBytes} 字节上限`]);
     const flags = bytes.readUInt16LE(at + 8), method = bytes.readUInt16LE(at + 10);
-    if (flags & 0x41) throw new AnalysisCaseArchiveError([`${name}: encrypted ZIP entries are unsupported`]);
-    if (method !== 0 && method !== 8) throw new AnalysisCaseArchiveError([`${name}: unsupported ZIP compression`]);
-    if (local + 30 > start || bytes.readUInt32LE(local) !== 0x04034b50) throw new AnalysisCaseArchiveError([`${name}: invalid ZIP local header`]);
+    if (flags & 0x41) throw new AnalysisCaseArchiveError([`${name}: 不支持加密的 ZIP 条目`]);
+    if (method !== 0 && method !== 8) throw new AnalysisCaseArchiveError([`${name}: 不支持此 ZIP 压缩方式`]);
+    if (local + 30 > start || bytes.readUInt32LE(local) !== 0x04034b50) throw new AnalysisCaseArchiveError([`${name}: ZIP 文件头无效`]);
     const localNameLength = bytes.readUInt16LE(local + 26), localExtraLength = bytes.readUInt16LE(local + 28);
     const data = local + 30 + localNameLength + localExtraLength;
     if (localNameLength !== nameLength || data + compressed > start || bytes.readUInt16LE(local + 6) !== flags
       || bytes.readUInt16LE(local + 8) !== method || !bytes.subarray(local + 30, local + 30 + localNameLength).equals(rawName)) {
-      throw new AnalysisCaseArchiveError([`${name}: local ZIP entry does not match its central directory`]);
+      throw new AnalysisCaseArchiveError([`${name}: ZIP 条目与文件目录不一致`]);
     }
     checkZipPathExtras(bytes.subarray(at + 46 + nameLength, at + 46 + nameLength + extraLength), rawName, name);
     checkZipPathExtras(bytes.subarray(local + 30 + localNameLength, data), rawName, name);
     const directory = nameLength > 0 && bytes[at + 46 + nameLength - 1] === 0x2f
       || (bytes.readUInt32LE(at + 38) >>> 16 & 0xf000) === 0x4000;
-    if (!directory && ++files > limits.maxFiles) throw new AnalysisCaseArchiveError([`archive.zip: file count exceeds ${limits.maxFiles}`]);
+    if (!directory && ++files > limits.maxFiles) throw new AnalysisCaseArchiveError([`archive.zip: 文件数量超过 ${limits.maxFiles} 个上限`]);
     at = next;
   }
-  if (entries !== count) throw new AnalysisCaseArchiveError(["archive.zip: central directory entry count does not match EOCD"]);
+  if (entries !== count) throw new AnalysisCaseArchiveError(["archive.zip: ZIP 目录条目数量与结束记录不一致"]);
 }
 
 /** Validate the complete archive before callers persist any cases or fixture bytes. */
@@ -200,16 +201,16 @@ export async function readBoundedZipArchive(
   bytes: Buffer,
   limits = analysisCaseArchiveLimits
 ): Promise<Map<string, Buffer>> {
-  if (bytes.length > limits.maxCompressedBytes) throw new AnalysisCaseArchiveError(["archive.zip: compressed size limit exceeded"]);
-  if (bytes.length < 4 || bytes.readUInt32LE(0) !== 0x04034b50) throw new AnalysisCaseArchiveError(["archive.zip: expected a ZIP archive"]);
+  if (bytes.length > limits.maxCompressedBytes) throw new AnalysisCaseArchiveError(["archive.zip: 压缩包大小超过上限"]);
+  if (bytes.length < 4 || bytes.readUInt32LE(0) !== 0x04034b50) throw new AnalysisCaseArchiveError(["archive.zip: 请提供 ZIP 压缩包"]);
   preflightZipDirectory(bytes, limits);
   // JSZip exposes original names before its traversal normalization, without inflating entries.
   let zip: JSZip;
   try { zip = await JSZip.loadAsync(bytes); }
-  catch { throw new AnalysisCaseArchiveError(["archive.zip: invalid ZIP archive"]); }
+  catch { throw new AnalysisCaseArchiveError(["archive.zip: ZIP 压缩包无效"]); }
   for (const entry of Object.values(zip.files)) {
     const name = (entry as JSZip.JSZipObject & { unsafeOriginalName?: string }).unsafeOriginalName ?? entry.name;
-    if (!safePath(name.replace(/\/$/, ""))) throw new AnalysisCaseArchiveError([`${name}: unsafe archive path`]);
+    if (!safePath(name.replace(/\/$/, ""))) throw new AnalysisCaseArchiveError([`${name}: 归档路径不安全`]);
   }
   const unpacked = intakeLogBundle({ fileName: "archive.zip", bytes }, limits, {
     preserveNestedArchives: true, retainOriginalBytes: true
@@ -232,57 +233,57 @@ export function parseAnalysisCaseFiles(entries: Map<string, Buffer>, limits = an
     // Guides and baseline metadata may accompany the repository's real corpus.
     if (parts.length === 1 && ["README.md", "README.zh-CN.md", "baseline.json"].includes(file.path)) continue;
     if (parts.length < 3 || !/^[a-z0-9][a-z0-9-]*$/.test(parts[0]) || !/^[a-z0-9][a-z0-9-]*$/.test(parts[1])) {
-      problems.push(`${file.path}: expected <domain>/<case-id>/<fixture> or case.yaml`); continue;
+      problems.push(`${file.path}: 文件须按“技能目录/用例目录/日志文件或 case.yaml”组织`); continue;
     }
     const key = parts.slice(0, 2).join("/");
     const group = groups.get(key) ?? new Map<string, Buffer>();
     group.set(parts.slice(2).join("/"), file.bytes!);
     groups.set(key, group);
   }
-  if (groups.size > limits.maxCases) problems.push(`archive.zip: case count exceeds ${limits.maxCases}`);
-  if (groups.size === 0) problems.push("archive.zip: no analysis cases found");
+  if (groups.size > limits.maxCases) problems.push(`archive.zip: 用例数量超过 ${limits.maxCases} 个上限`);
+  if (groups.size === 0) problems.push("archive.zip: 未找到分析用例");
   const cases: ArchivedAnalysisCase[] = [];
   for (const [archivePath, files] of groups) {
     const yamlPath = `${archivePath}/case.yaml`;
     const sourceYaml = files.get("case.yaml");
-    if (!sourceYaml) { problems.push(`${yamlPath}: missing annotation`); continue; }
-    if (sourceYaml.length > limits.maxMetadataBytes) { problems.push(`${yamlPath}: annotation size exceeds ${limits.maxMetadataBytes}`); continue; }
+    if (!sourceYaml) { problems.push(`${yamlPath}: 缺少用例说明文件`); continue; }
+    if (sourceYaml.length > limits.maxMetadataBytes) { problems.push(`${yamlPath}: 用例说明超过 ${limits.maxMetadataBytes} 字节上限`); continue; }
     let yaml: unknown;
     try { yaml = parseArchiveYaml(new TextDecoder("utf-8", { fatal: true }).decode(sourceYaml)); }
-    catch (error) { problems.push(`${yamlPath}: invalid YAML (${String(error)})`); continue; }
+    catch (error) { problems.push(`${yamlPath}: YAML 语法无效（${String(error)}）`); continue; }
     const source = yaml && typeof yaml === "object" && !Array.isArray(yaml) ? yaml as Record<string, unknown> : {};
     const missing = ["domain", "summary", "realLog", "rootCauseCategory"].filter((field) => !Object.hasOwn(source, field));
-    if (missing.length) { problems.push(...missing.map((field) => `${yamlPath}:${field}: required golden-case field`)); continue; }
+    if (missing.length) { problems.push(...missing.map((field) => `${yamlPath}:${field}: 缺少必需的用例字段`)); continue; }
     const parsed = analysisCaseAnnotationSchema.safeParse(yaml);
     if (!parsed.success) {
-      problems.push(...parsed.error.issues.map((issue) => `${yamlPath}:${issue.path.join(".") || "(root)"}: ${issue.message}`));
+      problems.push(...logValidationIssues(parsed.error.issues).map((issue) => `${yamlPath}:${issue.path.join(".") || "(root)"}: ${issue.message}`));
       continue;
     }
     const annotation = parsed.data;
-    if (annotation.domain !== archivePath.split("/")[0]) problems.push(`${yamlPath}:domain: must match parent directory`);
+    if (annotation.domain !== archivePath.split("/")[0]) problems.push(`${yamlPath}:domain: 须与上级目录一致`);
     if (annotation.formatProfile !== undefined) {
       const profile = validateLogFormatProfile(annotation.formatProfile);
       if (!profile.ok) problems.push(`${yamlPath}:formatProfile: ${profile.issues.join("; ")}`);
     }
     const bundleFiles = annotation.bundleFiles ?? ["log.txt"];
     if (bundleFiles.reduce((size, name) => size + (files.get(name)?.length ?? 0), 0) > limits.maxCaseBytes) {
-      problems.push(`${archivePath}: case bundle size exceeds ${limits.maxCaseBytes}`); continue;
+      problems.push(`${archivePath}: 用例日志包超过 ${limits.maxCaseBytes} 字节上限`); continue;
     }
     if ([...files].reduce((size, [name, bytes]) => size + (name !== "case.yaml" && !bundleFiles.includes(name) ? bytes.length : 0), 0) > limits.maxCaseBytes) {
-      problems.push(`${archivePath}: additional eval fixtures exceed ${limits.maxCaseBytes}`); continue;
+      problems.push(`${archivePath}: 额外评估日志超过 ${limits.maxCaseBytes} 字节上限`); continue;
     }
-    if (files.size > 102) problems.push(`${archivePath}: case exceeds 100 original fixtures`);
-    if (new Set(bundleFiles).size !== bundleFiles.length) problems.push(`${yamlPath}:bundleFiles: duplicate fixture path`);
+    if (files.size > 102) problems.push(`${archivePath}: 单个用例最多包含 100 个原始日志文件`);
+    if (new Set(bundleFiles).size !== bundleFiles.length) problems.push(`${yamlPath}:bundleFiles: 日志文件路径重复`);
     for (const fixture of bundleFiles) {
-      if (!safePath(fixture) || fixture === "case.yaml") problems.push(`${yamlPath}:bundleFiles: unsafe fixture path ${fixture}`);
-      else if (!files.has(fixture)) problems.push(`${archivePath}/${fixture}: missing fixture`);
+      if (!safePath(fixture) || fixture === "case.yaml") problems.push(`${yamlPath}:bundleFiles: 日志文件路径不安全：${fixture}`);
+      else if (!files.has(fixture)) problems.push(`${archivePath}/${fixture}: 日志文件不存在`);
     }
     const log = files.get("log.txt");
-    if (!log) problems.push(`${archivePath}/log.txt: missing canonical eval projection`);
+    if (!log) problems.push(`${archivePath}/log.txt: 缺少评估所需的标准日志文件`);
     else {
       const lines = log.toString("utf8").split(/\r\n|\n|\r/);
       annotation.keyEvidenceLines.forEach((line, index) => {
-        if (!lines[line - 1]?.trim()) problems.push(`${yamlPath}:keyEvidenceLines.${index}: ${archivePath}/log.txt:${line} is missing or blank`);
+        if (!lines[line - 1]?.trim()) problems.push(`${yamlPath}:keyEvidenceLines.${index}: ${archivePath}/log.txt:${line} 不存在或为空`);
       });
     }
     const originals = bundleFiles.every((name) => safePath(name) && files.has(name))
@@ -292,24 +293,24 @@ export function parseAnalysisCaseFiles(entries: Map<string, Buffer>, limits = an
     if (originals && !originals.ok) problems.push(`${yamlPath}:bundleFiles: ${originals.reason}`);
     if (originals?.ok) {
       const analyzed = originals.files.filter((file) => file.status === "analyzed");
-      if (!analyzed.length) problems.push(`${yamlPath}:bundleFiles: no analyzable files`);
+      if (!analyzed.length) problems.push(`${yamlPath}:bundleFiles: 没有可分析的日志文件`);
       if (analyzed.reduce((size, file) => size + bundleFileUtf8Bytes(file).length, 0) > limits.maxCaseBytes) {
-        problems.push(`${yamlPath}:bundleFiles: normalized case logs exceed ${limits.maxCaseBytes}`);
+        problems.push(`${yamlPath}:bundleFiles: 用例解析后的日志超过 ${limits.maxCaseBytes} 字节上限`);
       }
     }
     for (const [index, evidence] of (annotation.keyEvidence ?? []).entries()) {
       const original = originals?.ok ? originals.files.find((file) => file.path === evidence.file || `fixtures/${file.path}` === evidence.file) : undefined;
       const evidenceBytes = original?.status === "analyzed" ? bundleFileUtf8Bytes(original) : undefined;
-      if (!safePath(evidence.file) || !evidenceBytes) problems.push(`${yamlPath}:keyEvidence.${index}.file: missing fixture ${evidence.file}`);
+      if (!safePath(evidence.file) || !evidenceBytes) problems.push(`${yamlPath}:keyEvidence.${index}.file: 日志文件不存在：${evidence.file}`);
       else {
         const lines = evidenceBytes.toString("utf8").split(/\r\n|\n|\r/);
         if (evidence.line !== undefined && !lines[evidence.line - 1]?.trim()) {
-          problems.push(`${yamlPath}:keyEvidence.${index}.line: ${archivePath}/${evidence.file}:${evidence.line} is missing or blank`);
+          problems.push(`${yamlPath}:keyEvidence.${index}.line: ${archivePath}/${evidence.file}:${evidence.line} 不存在或为空`);
         }
         if (evidence.pattern) {
           const pattern = compileLogPattern(evidence.pattern);
           if (!lines.some((line, at) => line.trim() && (evidence.line === undefined || evidence.line === at + 1) && pattern.test(line))) {
-            problems.push(`${yamlPath}:keyEvidence.${index}.pattern: pattern matches no non-blank original log line`);
+            problems.push(`${yamlPath}:keyEvidence.${index}.pattern: 表达式未匹配到非空的原始日志行`);
           }
         }
       }
@@ -330,7 +331,7 @@ export async function exportAnalysisCaseArchive(cases: ArchivedAnalysisCase[], l
     if (!item.sourceYaml && annotation.bundleFiles) {
       const originals = annotation.bundleFiles.map((name) => {
         const file = files.find((file) => file.path === name);
-        if (!file) throw new AnalysisCaseArchiveError([`${item.archivePath}/${name}: missing fixture`]);
+        if (!file) throw new AnalysisCaseArchiveError([`${item.archivePath}/${name}: 日志文件不存在`]);
         return { fileName: name.replace(/^fixtures\//, ""), bytes: file.bytes };
       });
       const bundle = intakeLogBundle(originals, { maxCompressedBytes: limits.maxCaseBytes,
@@ -357,7 +358,7 @@ export async function exportAnalysisCaseArchive(cases: ArchivedAnalysisCase[], l
     }
     for (const file of [{ path: "case.yaml", bytes: item.sourceYaml ?? Buffer.from(stringifyYaml(annotation)) }, ...files]) {
       const path = `${item.archivePath}/${file.path}`;
-      if (!safePath(path) || paths.has(path)) throw new AnalysisCaseArchiveError([`${path}: unsafe or duplicate archive path`]);
+      if (!safePath(path) || paths.has(path)) throw new AnalysisCaseArchiveError([`${path}: 归档路径不安全或重复`]);
       paths.add(path);
       zip.file(path, file.bytes, { createFolders: false });
     }

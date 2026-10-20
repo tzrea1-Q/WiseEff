@@ -74,10 +74,10 @@ export function recommendLogSkills(
         })
       }));
       const format = [
-        ...(spec.formatProfile?.timestampPattern ? [{ detail: "format timestamp", source: spec.formatProfile.timestampPattern,
+        ...(spec.formatProfile?.timestampPattern ? [{ detail: "日志时间格式与技能配置一致", source: spec.formatProfile.timestampPattern,
           reasonSource: "format-timestamp" as const, ref: spec.formatProfile.timestampPattern }] : []),
         ...(["error", "warn", "info"] as const).flatMap((severity) =>
-          (spec.formatProfile?.severityMap?.[severity] ?? []).map((source) => ({ detail: `format severity ${severity}`, source,
+          (spec.formatProfile?.severityMap?.[severity] ?? []).map((source) => ({ detail: `日志严重程度 ${severity} 与技能配置一致`, source,
             reasonSource: "format-severity" as const, ref: severity })))
       ].map((feature) => ({ ...feature, pattern: compile(feature.source, "pattern") }));
       let score = 0, formatScore = 0;
@@ -95,29 +95,29 @@ export function recommendLogSkills(
         const rule = fileRules.find(({ pattern }) => test(pattern, file.path));
         if (fileRules.length && !rule) continue;
         if (rule) add(4 + (rule.role?.trim() ? 2 : 0), "file", file.path,
-          `skill glob ${rule.glob}${rule.role?.trim() ? ` (${rule.role.trim()})` : ""}`, "skill-glob", rule.glob, rule.role?.trim());
+          `文件匹配技能路径规则 ${rule.glob}${rule.role?.trim() ? `（${rule.role.trim()}）` : ""}`, "skill-glob", rule.glob, rule.role?.trim());
         let extractorFileScored = false;
         const matchedExtractors = new Set<string>();
         for (const extractor of extractors) {
           const glob = extractor.files?.find(({ pattern }) => test(pattern, file.path));
           if (extractor.files && !glob) continue;
           if (glob && !extractorFileScored) {
-            add(4, "file", file.path, `extractor glob ${glob.glob}`, "extractor-glob", glob.glob);
+            add(4, "file", file.path, `文件匹配字段解析路径规则 ${glob.glob}`, "extractor-glob", glob.glob);
             extractorFileScored = true;
           }
           if (!matchedExtractors.has(extractor.source) && file.head.some((line) => test(extractor.pattern, line))) {
             matchedExtractors.add(extractor.source);
-            add(8, "pattern", file.path, `extractor ${extractor.id}: ${extractor.source}`, "extractor", extractor.id);
+            add(8, "pattern", file.path, `日志内容匹配字段解析规则 ${extractor.id}：${extractor.source}`, "extractor", extractor.id);
           }
         }
         for (const signal of signals) {
           const match = signal.patterns.find(({ pattern }) => file.head.some((line) => test(pattern, line)));
-          if (match) add(4, "pattern", file.path, `signal ${signal.id}: ${match.source}`, "signal", signal.ref);
+          if (match) add(4, "pattern", file.path, `日志内容匹配技能信号规则 ${signal.id}：${match.source}`, "signal", signal.ref);
         }
         for (const feature of format) {
           if (formatScore >= 2) break;
           if (file.head.some((line) => test(feature.pattern, line))) {
-            add(1, "pattern", file.path, `${feature.detail}: ${feature.source}`, feature.reasonSource, feature.ref);
+            add(1, "pattern", file.path, `${feature.detail}：${feature.source}`, feature.reasonSource, feature.ref);
             formatScore++;
           }
         }

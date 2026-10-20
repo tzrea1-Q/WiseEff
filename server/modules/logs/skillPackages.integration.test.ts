@@ -81,7 +81,7 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
     try {
       await provisionChargingSkill(h.db, h.auth.organization.id);
       const seeded = await getLogSkill(h.db, h.auth, `seed-charging:${h.auth.organization.id}`);
-      expect(seeded.description).toBe("Charging analysis with the original charging signal rules.");
+      expect(seeded.description).toBe("根据充电异常规则分析日志。");
       expect(seeded.currentRevision.spec).not.toHaveProperty("description");
       const original = await importLogSkillPackage(h.db, h.store, h.other,
         await exportLogSkillPackage(h.db, h.store, h.auth, seeded.id), "draft", h.otherInvocation, h.context);
@@ -238,7 +238,7 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
           ["/api/v1/logs", { fileObjectId: generic.body.fileObject.id, fileName: "charger.log" }]] as const) {
           const result = await request(path, "POST", { ...body, ...selection });
           expect(result.status).toBe(409);
-          expect(result.body).toMatchObject({ error: { code: "CONFLICT", message: "Analysis skill has no published revision." } });
+          expect(result.body).toMatchObject({ error: { code: "CONFLICT", message: "此分析技能尚未发布。" } });
         }
       }
       await publishLogSkill(h.db, h.other, imported.id, imported.draft!.id, h.otherInvocation, h.context);

@@ -36,7 +36,7 @@ export async function processNextSourceIndexJob(options: SourceIndexWorkerOption
     await fn(tx);
   });
   try {
-    if (!objectStore.getStream) throw new Error("Object store streaming reads are required for source indexing.");
+    if (!objectStore.getStream) throw new Error("源码索引需要支持流式读取的对象存储。");
     await withClaim(async (tx) => {
       await tx.query("delete from log_source_files where snapshot_id = $1 and organization_id = $2", [snapshot.id, snapshot.organization_id]);
       await tx.query(`update log_source_snapshots set files_processed = 0, files_total = 0, file_count = 0,

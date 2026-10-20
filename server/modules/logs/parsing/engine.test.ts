@@ -83,7 +83,7 @@ describe("parsing/v1 engine interface", () => {
     const parsed = parsingSpecSchema.safeParse(spec);
     expect(parsed.success).toBe(false);
     if (!parsed.success) expect(parsed.error.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: ["extractors", 0, "fields", "other"], message: expect.stringContaining("value") }),
+      expect.objectContaining({ path: ["extractors", 0, "fields", "other"], message: expect.stringContaining("other") }),
       expect.objectContaining({ path: ["extractors", 0, "fields", "value"], message: expect.stringContaining("value") })
     ]));
     for (const pattern of ["(?P<value>a)\\1", "(?P<value>a)(b)"]) expect(parsingSpecSchema.safeParse({ ...spec, extractors: [{ ...spec.extractors[0], pattern }] }).success).toBe(false);

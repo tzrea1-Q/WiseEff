@@ -42,7 +42,7 @@ describe.skipIf(!available)("bundle upload and analysis over PostgreSQL", () => 
         contentType: "application/gzip", bytes: gzipSync(content), skillSelection: "generic", analysisQuestion: "Why did fast charging fold back?" });
       expect(await processLogAnalysisJobById({ db, objectStore, analyzer, jobId: uploaded.job!.id })).toEqual({ status: "processed" });
       expect(await getLogRecord(db, auth(organizationId), uploaded.log.id)).toMatchObject({ status: "complete",
-        skillRevision: null, analysisSource: "agent", conclusion: expect.stringMatching(/thermal|foldback/i) });
+        skillRevision: null, analysisSource: "agent", conclusion: expect.stringMatching(/过热|降额/) });
       expect(calls).toEqual(["ok", "ok", "ok"]);
     } finally { await db.close(); await ephemeral.drop(); }
   });

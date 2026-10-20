@@ -1,3 +1,4 @@
+import { logValidationIssues } from "./validationMessages";
 import { compileSkillFiles, MAX_SKILL_FILE_GLOBS } from "../../../src/domain/logs/fileApplicability";
 import { runInNewContext } from "node:vm";
 import type { Database } from "../../shared/database/client";
@@ -13,14 +14,14 @@ export const FILE_PREVIEW_LIMITS = { maxMs: 100, paths: 2000 } as const;
 
 export function previewSkillFiles(files: unknown, paths: readonly string[], options: { maxMs?: number } = {}) {
   const reject = (path: (string | number)[], message: string) => ({ valid: false, issues: [{ path, message }], files: [] });
-  if (Array.isArray(files) && files.length > MAX_SKILL_FILE_GLOBS) return reject(["files"], `At most ${MAX_SKILL_FILE_GLOBS} file globs are allowed`);
-  if (paths.length > FILE_PREVIEW_LIMITS.paths) return reject(["sample", "files"], "Sample file count exceeds the preview limit");
+  if (Array.isArray(files) && files.length > MAX_SKILL_FILE_GLOBS) return reject(["files"], `最多允许 ${MAX_SKILL_FILE_GLOBS} 条文件匹配规则`);
+  if (paths.length > FILE_PREVIEW_LIMITS.paths) return reject(["sample", "files"], "样例文件数量超过预览上限");
   const maxMs = Math.max(0, Math.min(options.maxMs ?? FILE_PREVIEW_LIMITS.maxMs, FILE_PREVIEW_LIMITS.maxMs));
-  const timedOut = () => reject(["files"], "File applicability preview exceeded its execution deadline");
+  const timedOut = () => reject(["files"], "文件匹配预览超时，请简化规则后重试");
   if (maxMs === 0) return timedOut();
   const preview = () => {
     const parsed = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", files });
-    if (!parsed.success) return { valid: false, issues: parsed.error.issues.map(({ path, message }) => ({ path, message })), files: [] };
+    if (!parsed.success) return { valid: false, issues: logValidationIssues(parsed.error.issues).map(({ path, message }) => ({ path, message })), files: [] };
     const matchFile = compileSkillFiles(parsed.data.files);
     return { valid: true, issues: [], files: paths.map((path) => ({ path, ...matchFile(path) })) };
   };

@@ -83,8 +83,8 @@ function logRecord(overrides: Partial<LogRecordDto> = {}): LogRecordDto & { file
     archiveState: "active" as const,
     stage: "parse" as const,
     confidence: 0,
-    conclusion: "Log analysis is queued or processing.",
-    impact: "Analysis results will be available after processing completes.",
+    conclusion: "日志正在排队或分析中。",
+    impact: "处理完成后即可查看分析结果。",
     evidence: [],
     suggestedActions: [],
     severity: "Info" as const,
@@ -322,7 +322,7 @@ describe("log routes", () => {
     expect(response.status).toBe(403);
     expect(response.body.error).toMatchObject({
       code: "FORBIDDEN",
-      message: "Log organization access is required."
+      message: "无权访问此组织的日志。"
     });
     expect(service.getLogRecord).not.toHaveBeenCalled();
   });
@@ -475,7 +475,7 @@ describe("log routes", () => {
 
   it("forbidden archive returns FORBIDDEN", async () => {
     const db = makeDb();
-    vi.mocked(service.archiveLogRecord).mockRejectedValue(new ApiError("FORBIDDEN", "Forbidden.", { permission: "logs:archive" }));
+    vi.mocked(service.archiveLogRecord).mockRejectedValue(new ApiError("FORBIDDEN", "无权执行此操作。", { permission: "logs:archive" }));
 
     const response = await requestJson<{ error: { code: string } }>(
       makeServer({ db, objectStore: makeObjectStore() }),

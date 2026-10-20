@@ -1,3 +1,4 @@
+import { logValidationIssues } from "./validationMessages";
 import { z } from "zod";
 
 import { compileLogPattern, createLogPatternCache, type LogPatternCache } from "./adminPattern";
@@ -37,7 +38,7 @@ export const logFormatProfileSchema = z
       })
       .strict()
       .refine((value) => value.mode !== "start-pattern" || Boolean(value.startPattern), {
-        message: "multiline.startPattern is required when multiline.mode is 'start-pattern'."
+        message: "按起始行合并多行日志时，请填写起始行匹配规则。"
       })
       .optional(),
     severityMap: z
@@ -76,7 +77,7 @@ function collectRegexIssues(profile: LogFormatProfile, cache: LogPatternCache) {
     try {
       compileLogPattern(pattern, "", undefined, cache);
     } catch (error) {
-      issues.push({ path, message: `is not a valid regular expression: ${error instanceof Error ? error.message : String(error)}` });
+      issues.push({ path, message: `正则表达式无效： ${error instanceof Error ? error.message : String(error)}` });
     }
   };
 
@@ -94,14 +95,14 @@ function collectRegexIssues(profile: LogFormatProfile, cache: LogPatternCache) {
 /** Validates a format profile JSON value: schema shape first, then regex compilability. */
 export function validateLogFormatProfile(value: unknown, cache = createLogPatternCache()): ValidateLogFormatProfileResult {
   const budgetIssues = logPatternBudgetIssues(value, "format");
-  if (budgetIssues.some((issue) => issue.message.startsWith("Total pattern"))) return {
-    ok: false, details: budgetIssues, issues: budgetIssues.map(({ path, message }) => `${issuePath(path)} is not a valid regular expression: ${message}`)
+  if (budgetIssues.some((issue) => issue.message.startsWith("所有匹配规则"))) return {
+    ok: false, details: budgetIssues, issues: budgetIssues.map(({ path, message }) => `${issuePath(path)} 正则表达式无效： ${message}`)
   };
   const parsed = logFormatProfileSchema.safeParse(value);
   if (!parsed.success) {
     return {
       ok: false,
-      issues: parsed.error.issues.map((issue) => `${issue.path.join(".") || "profile"}: ${issue.message}`)
+      issues: logValidationIssues(parsed.error.issues).map((issue) => `${issue.path.join(".") || "profile"}: ${issue.message}`)
     };
   }
 
