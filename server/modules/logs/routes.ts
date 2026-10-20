@@ -1,3 +1,4 @@
+import { logValidationIssues } from "./validationMessages";
 import type { MultipartBody } from "../../shared/http/server";
 import { MAX_LOG_JSON_UPLOAD_BYTES } from "./bundleIntake";
 import { z } from "zod";
@@ -83,7 +84,7 @@ const paramsWithDomainIdSchema = z.object({
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for log routes.");
+    throw new ApiError("INTERNAL_ERROR", "日志接口需要数据库适配器。");
   }
 
   return db;
@@ -91,7 +92,7 @@ function requireDb(db: Database | undefined) {
 
 function requireObjectStore(objectStore: ObjectStore | undefined) {
   if (!objectStore) {
-    throw new ApiError("INTERNAL_ERROR", "Object store is required for log file uploads.");
+    throw new ApiError("INTERNAL_ERROR", "日志文件上传需要对象存储服务。");
   }
 
   return objectStore;
@@ -99,21 +100,21 @@ function requireObjectStore(objectStore: ObjectStore | undefined) {
 
 function requireLocalOrganization(auth: AuthContext) {
   if (auth.user.organizationId !== auth.organization.id) {
-    throw new ApiError("FORBIDDEN", "Log organization access is required.", { organizationId: auth.organization.id });
+    throw new ApiError("FORBIDDEN", "无权访问此组织的日志。", { organizationId: auth.organization.id });
   }
 }
 
-function parseWithSchema<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown, message = "Invalid log route input.") {
+function parseWithSchema<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown, message = "提交的日志信息无效，请检查后重试。") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: logValidationIssues(parsed.error.issues) });
   }
 
   return parsed.data;
 }
 
 async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext, request: RouteRequest) {
-  if (isIntegrationAuthorization(request.headers.authorization)) throw new ApiError("UNAUTHENTICATED", "A user credential is required.");
+  if (isIntegrationAuthorization(request.headers.authorization)) throw new ApiError("UNAUTHENTICATED", "请使用用户账号登录后操作。");
   return getCurrentAuthContext(request);
 }
 
@@ -126,7 +127,7 @@ export type LogWebhookRouteContext = {
 
 function requireWebhookDeliverer(webhooks: LogWebhookRouteContext | undefined) {
   if (!webhooks?.deliverer) {
-    throw new ApiError("INTERNAL_ERROR", "Webhook deliverer is required for test deliveries.");
+    throw new ApiError("INTERNAL_ERROR", "结果通知测试需要通知发送服务。");
   }
 
   return webhooks.deliverer;
@@ -175,7 +176,7 @@ export function registerLogRoutes(
   router.post("/api/v1/log-skills/:skillId/analysis-case-runs", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     requireLocalOrganization(auth); requireLogAdminDomains(auth);
-    if (!options.analyzer) throw new ApiError("INTERNAL_ERROR", "Configured log analyzer is required for case runs.");
+    if (!options.analyzer) throw new ApiError("INTERNAL_ERROR", "运行分析用例需要已配置的日志分析器。");
     const body = parseWithSchema(z.object({ caseIds: z.array(z.string().min(1)).min(1).max(20).optional() }).strict(), request.body ?? {});
     return { status: 202, body: await startAnalysisCaseRun(requireDb(options.db), requireObjectStore(options.objectStore), options.analyzer, auth, request.params.skillId, body.caseIds, createUserInvocation(auth), { requestId: request.requestId }) };
   });
@@ -192,7 +193,7 @@ export function registerLogRoutes(
     const auth = await getAuth(options.getCurrentAuthContext, request);
     requireLocalOrganization(auth); requireLogAdminDomains(auth);
     const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
-    if (!multipart || multipart.files.length !== 1) throw new ApiError("VALIDATION_FAILED", "One case ZIP archive is required.");
+    if (!multipart || multipart.files.length !== 1) throw new ApiError("VALIDATION_FAILED", "请选择一个用例 ZIP 压缩包。");
     return { status: 201, body: await importSkillAnalysisCases(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId, multipart.files[0].bytes, createUserInvocation(auth), { requestId: request.requestId }) };
   });
   router.get("/api/v1/log-skills/:skillId/analysis-cases/export", async (request) => {
@@ -207,7 +208,7 @@ export function registerLogRoutes(
   });
   const getLogPrincipal = async (request: RouteRequest): Promise<AuthContext | IntegrationPrincipal> => {
     if (isIntegrationAuthorization(request.headers.authorization)) {
-      if (!options.getIntegrationPrincipal) throw new ApiError("UNAUTHENTICATED", "Integration credential resolver is required.");
+      if (!options.getIntegrationPrincipal) throw new ApiError("UNAUTHENTICATED", "尚未配置集成凭据解析服务。");
       return options.getIntegrationPrincipal(request);
     }
     return getAuth(options.getCurrentAuthContext, request);
@@ -242,7 +243,7 @@ export function registerLogRoutes(
     // Authorization happens before reporting analyzer availability.
     requireLocalOrganization(auth);
     requireLogAdminDomains(auth);
-    if (!options.analyzer) throw new ApiError("INTERNAL_ERROR", "Configured log analyzer is required for dry runs.");
+    if (!options.analyzer) throw new ApiError("INTERNAL_ERROR", "试运行需要已配置的日志分析器。");
     return { status: 202, body: await startSkillDryRun(requireDb(options.db), requireObjectStore(options.objectStore), options.analyzer, auth, request.params.skillId) };
   });
   router.get("/api/v1/log-skills/:skillId/dry-runs/:runId", async (request) => {
@@ -272,7 +273,7 @@ export function registerLogRoutes(
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
     const files = multipart?.files.filter((file) => file.fieldName === "file");
-    if (!multipart || files?.length !== 1) throw new ApiError("VALIDATION_FAILED", "One multipart source archive is required.");
+    if (!multipart || files?.length !== 1) throw new ApiError("VALIDATION_FAILED", "请选择一个源码压缩包。");
     const body = parseWithSchema(sourceSnapshotUploadSchema, {
       versionLabel: multipart.fields.versionLabel, fileName: files[0].fileName
     });
@@ -304,7 +305,7 @@ export function registerLogRoutes(
     if (multipart && !files?.length) throw new ApiError("VALIDATION_FAILED", "请选择至少一个日志文件");
     if (!multipart && typeof (request.body as { contentBase64?: unknown })?.contentBase64 === "string"
       && (request.body as { contentBase64: string }).contentBase64.length > 4 * Math.ceil(MAX_LOG_JSON_UPLOAD_BYTES / 3)) {
-      throw new ApiError("PAYLOAD_TOO_LARGE", "JSON log uploads are limited to 32 MiB; use multipart/form-data for larger bundles.");
+      throw new ApiError("PAYLOAD_TOO_LARGE", "当前上传方式最多支持 32 MiB，请使用文件上传方式提交更大的日志包。");
     }
     let fields: Record<string, unknown> = multipart?.fields ?? {};
     if (multipart?.fields.relatedParameterPin) {
@@ -520,7 +521,7 @@ export function registerLogRoutes(
   router.post("/api/v1/log-skills/:skillId/parse-tests", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId } = parseWithSchema(skillParams, request.params);
-    const body = parseWithSchema(z.object({ spec: z.unknown().refine((value) => value !== undefined, "Skill spec is required") }).strict(), request.body);
+    const body = parseWithSchema(z.object({ spec: z.unknown().refine((value) => value !== undefined, "请提供技能配置") }).strict(), request.body);
     return { status: 200, body: await runLogSkillParseTests(requireDb(options.db), auth, skillId, body.spec) };
   });
   router.post("/api/v1/log-skills/:skillId/signals-preview", async (request) => {
@@ -579,7 +580,7 @@ export function registerLogRoutes(
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const { skillId, revisionId } = parseWithSchema(skillParams.extend({ revisionId: z.string().min(1) }), request.params);
     const item = (await readLogSkillRevisions(requireDb(options.db), auth, skillId)).find((r) => r.id === revisionId);
-    if (!item) throw new ApiError("NOT_FOUND", "Skill revision was not found.");
+    if (!item) throw new ApiError("NOT_FOUND", "未找到技能版本。");
     return { status: 200, body: { item } };
   });
 

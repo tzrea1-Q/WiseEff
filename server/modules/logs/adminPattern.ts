@@ -29,7 +29,7 @@ export type LogPatternCache = {
 /** Bound both instruction expansion and compilation work before entering RE2. */
 export function logPatternProgramCost(pattern: string): number {
   if (pattern.length > MAX_LOG_PATTERN_LENGTH) {
-    throw new LogPatternError(`Pattern exceeds ${MAX_LOG_PATTERN_LENGTH} UTF-16 code units.`);
+    throw new LogPatternError(`匹配表达式超过 ${MAX_LOG_PATTERN_LENGTH} 个 UTF-16 代码单元上限。`);
   }
   const frames = [{ size: 0, atom: 0 }];
   const add = (size: number) => {
@@ -37,7 +37,7 @@ export function logPatternProgramCost(pattern: string): number {
     frame.size += size;
     frame.atom = size;
     if (frame.size + 3 > MAX_LOG_PATTERN_PROGRAM_SIZE) {
-      throw new LogPatternError(`Pattern program exceeds ${MAX_LOG_PATTERN_PROGRAM_SIZE} instructions.`);
+      throw new LogPatternError(`匹配表达式的复杂度超过 ${MAX_LOG_PATTERN_PROGRAM_SIZE} 条指令上限。`);
     }
   };
   for (let i = 0; i < pattern.length; i++) {
@@ -102,7 +102,7 @@ export function logPatternProgramCost(pattern: string): number {
       const minimum = Number(repetition[1]);
       const maximum = repetition[2] === undefined ? minimum : repetition[2] === "" ? minimum + 1 : Number(repetition[2]);
       if (minimum > MAX_LOG_PATTERN_REPEAT_BOUND || (repetition[2] !== "" && maximum > MAX_LOG_PATTERN_REPEAT_BOUND)) {
-        throw new LogPatternError(`Pattern counted repetition must not exceed ${MAX_LOG_PATTERN_REPEAT_BOUND}.`);
+        throw new LogPatternError(`匹配表达式的重复次数不能超过 ${MAX_LOG_PATTERN_REPEAT_BOUND}。`);
       }
       const frame = frames[frames.length - 1];
       const repeated = frame.atom * maximum + (repetition[2] === "" ? 2 : Math.max(0, maximum - minimum));
@@ -114,7 +114,7 @@ export function logPatternProgramCost(pattern: string): number {
   // Invalid/unclosed groups remain RE2's responsibility, but still have a bound.
   // Even `{0}` must pay for parsing its atom before RE2 simplifies it away.
   const size = Math.max(pattern.length + 3, frames.reduce((total, frame) => total + frame.size, 3));
-  if (size > MAX_LOG_PATTERN_PROGRAM_SIZE) throw new LogPatternError(`Pattern program exceeds ${MAX_LOG_PATTERN_PROGRAM_SIZE} instructions.`);
+  if (size > MAX_LOG_PATTERN_PROGRAM_SIZE) throw new LogPatternError(`匹配表达式的复杂度超过 ${MAX_LOG_PATTERN_PROGRAM_SIZE} 条指令上限。`);
   return size;
 }
 
@@ -130,13 +130,13 @@ export function createLogPatternCache(): LogPatternCache {
       if (!compiled) {
         const estimatedSize = logPatternProgramCost(pattern);
         if (totalSize + estimatedSize > MAX_LOG_PATTERN_TOTAL_SIZE) {
-          throw new LogPatternError(`Total pattern program exceeds ${MAX_LOG_PATTERN_TOTAL_SIZE} instructions.`);
+          throw new LogPatternError(`所有匹配规则的复杂度合计超过 ${MAX_LOG_PATTERN_TOTAL_SIZE} 条指令上限。`);
         }
         try { compiled = RE2JS.compile(pattern, engineFlags); }
-        catch (error) { throw new LogPatternError(error instanceof Error ? error.message : String(error)); }
+        catch (error) { throw new LogPatternError(`正则表达式语法无效：${error instanceof Error ? error.message : String(error)}`); }
         const size = Math.max(estimatedSize, compiled.programSize());
-        if (size > MAX_LOG_PATTERN_PROGRAM_SIZE) throw new LogPatternError(`Pattern program exceeds ${MAX_LOG_PATTERN_PROGRAM_SIZE} instructions.`);
-        if (totalSize + size > MAX_LOG_PATTERN_TOTAL_SIZE) throw new LogPatternError(`Total pattern program exceeds ${MAX_LOG_PATTERN_TOTAL_SIZE} instructions.`);
+        if (size > MAX_LOG_PATTERN_PROGRAM_SIZE) throw new LogPatternError(`匹配表达式的复杂度超过 ${MAX_LOG_PATTERN_PROGRAM_SIZE} 条指令上限。`);
+        if (totalSize + size > MAX_LOG_PATTERN_TOTAL_SIZE) throw new LogPatternError(`所有匹配规则的复杂度合计超过 ${MAX_LOG_PATTERN_TOTAL_SIZE} 条指令上限。`);
         totalSize += size;
         programs.set(key, compiled);
       }
@@ -165,7 +165,7 @@ function logPatternFlags(flags: string): number {
   const seen = new Set<string>();
   for (const flag of flags) {
     if (!Object.hasOwn(supportedFlags, flag) || seen.has(flag)) {
-      throw new LogPatternError(`Unsupported or duplicate regular expression flag: ${flag}`);
+      throw new LogPatternError(`正则表达式标记不受支持或重复：${flag}`);
     }
     seen.add(flag);
     engineFlags |= supportedFlags[flag];

@@ -78,7 +78,7 @@ function parseFormatProfileOrThrow(value: unknown): LogFormatProfile | undefined
   }
   const result = validateLogFormatProfile(value);
   if (!result.ok) {
-    throw new ApiError("VALIDATION_FAILED", "Log domain format profile is invalid.", { issues: result.issues });
+    throw new ApiError("VALIDATION_FAILED", "日志格式配置无效。", { issues: result.issues });
   }
   return result.profile;
 }
@@ -86,7 +86,7 @@ function parseFormatProfileOrThrow(value: unknown): LogFormatProfile | undefined
 function trimmedName(name: string) {
   const value = name.trim();
   if (value.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "Log domain name must not be blank.");
+    throw new ApiError("VALIDATION_FAILED", "技能名称不能为空。");
   }
   return value;
 }
@@ -113,7 +113,7 @@ export async function createLogDomainRecord(
   return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
     const existing = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
     if (existing) {
-      throw new ApiError("CONFLICT", "A log domain with this name already exists in the organization.", {
+      throw new ApiError("CONFLICT", "组织内已存在同名技能。", {
         name
       });
     }
@@ -149,7 +149,7 @@ export async function updateLogDomainRecord(
   requireLogAdminDomains(auth);
   const name = input.name !== undefined ? trimmedName(input.name) : undefined;
   if (input.skillKey !== undefined && !skillKeySchema.safeParse(input.skillKey).success) {
-    throw new ApiError("VALIDATION_FAILED", "Analysis skill key is invalid.", { fieldErrors: { skillKey: "Use 2–63 lowercase letters, digits or hyphens, starting with a letter or digit." } });
+    throw new ApiError("VALIDATION_FAILED", "技能标识格式无效。", { fieldErrors: { skillKey: "请输入 2–63 位小写字母、数字或连字符，并以字母或数字开头。" } });
   }
   const formatProfile =
     input.formatProfile === undefined ? undefined : input.formatProfile === null ? null : parseFormatProfileOrThrow(input.formatProfile);
@@ -158,26 +158,26 @@ export async function updateLogDomainRecord(
     await lockSkill(tx, auth.organization.id, input.domainId);
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
     }
     if (input.skillKey !== undefined && input.skillKey !== existing.skillKey) {
       // Serialize key allocation and edits in this organization, including the
       // database creation trigger, before checking the unique constraint.
       await tx.query("select pg_advisory_xact_lock(hashtextextended('log-skill-key:' || $1, 0))", [auth.organization.id]);
       const conflicting = await findLogDomainBySkillKey(tx, { organizationId: auth.organization.id, skillKey: input.skillKey });
-      if (conflicting) throw new ApiError("VALIDATION_FAILED", "Analysis skill key is already used in this organization.", {
-        fieldErrors: { skillKey: "This skill key is already used in this organization." }
+      if (conflicting) throw new ApiError("VALIDATION_FAILED", "组织内已存在相同的技能标识。", {
+        fieldErrors: { skillKey: "组织内已存在相同的技能标识。" }
       });
     }
     const revisioned = input.formatProfile !== undefined || input.modelOverride !== undefined || input.description !== undefined;
     const revisions = revisioned ? await listSkillRevisions(tx, auth.organization.id, input.domainId) : [];
     if (revisions.some((revision) => revision.status === "draft")) {
-      throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the skill draft first.");
+      throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "请先发布或放弃技能草稿。");
     }
     if (name && name !== existing.name) {
       const conflicting = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
       if (conflicting && conflicting.id !== input.domainId) {
-        throw new ApiError("CONFLICT", "A log domain with this name already exists in the organization.", {
+        throw new ApiError("CONFLICT", "组织内已存在同名技能。", {
           name
         });
       }
@@ -194,7 +194,7 @@ export async function updateLogDomainRecord(
       modelOverride: input.modelOverride === undefined ? undefined : input.modelOverride?.trim() || null
     });
     if (!domain) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
     }
 
     if (revisioned) {
@@ -247,7 +247,7 @@ export async function archiveLogDomainRecord(
   return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
+      throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId });
     }
 
     const domain = await updateLogDomainRow(tx, {
@@ -256,7 +256,7 @@ export async function archiveLogDomainRecord(
       status: "archived"
     });
     if (!domain) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
+      throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId });
     }
 
     return {
@@ -279,7 +279,7 @@ export async function listLogDomainKnowledgeLinkRecords(
   requireLogAdminDomains(auth);
   const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId });
   if (!domain) {
-    throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
+    throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId });
   }
   return { items: await listLogDomainKnowledgeLinks(db, auth, domainId) };
 }
@@ -304,20 +304,20 @@ export async function setLogDomainKnowledgeLinkRecords(
     await lockSkill(tx, auth.organization.id, input.domainId);
     const revisions = await listSkillRevisions(tx, auth.organization.id, input.domainId);
     if (revisions.some((revision) => revision.status === "draft")) {
-      throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the skill draft before editing legacy knowledge links.");
+      throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "请先发布或放弃技能草稿，再修改关联知识。");
     }
     const domain = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!domain) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
     }
 
     for (const entryId of knowledgeEntryIds) {
       const entry = await getKnowledgeEntryById(tx, auth, entryId);
       if (!entry || (entry.status !== "published" && !canReadEntry(auth, entry))) {
-        throw new ApiError("NOT_FOUND", "Knowledge entry was not found.", { knowledgeEntryId: entryId });
+        throw new ApiError("NOT_FOUND", "未找到知识条目。", { knowledgeEntryId: entryId });
       }
       if (entry.status !== "published") {
-        throw new ApiError("VALIDATION_FAILED", "Only published knowledge entries can be linked to a log domain.", {
+        throw new ApiError("VALIDATION_FAILED", "只能关联已发布的知识条目。", {
           knowledgeEntryId: entryId,
           status: entry.status
         });
@@ -396,18 +396,18 @@ export async function setLogDomainWebhookRecord(
     }
   }
   if (input.enabled && !url) {
-    throw new ApiError("VALIDATION_FAILED", "An enabled webhook needs a URL.", { reason: "webhook-url-required" });
+    throw new ApiError("VALIDATION_FAILED", "启用结果通知前，请填写接收地址。", { reason: "webhook-url-required" });
   }
 
   return withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
     }
 
     const secretAfterUpdate = input.secret === undefined ? existing.webhook.secretConfigured : Boolean(input.secret);
     if (input.enabled && !secretAfterUpdate) {
-      throw new ApiError("VALIDATION_FAILED", "An enabled webhook needs a signing secret.", {
+      throw new ApiError("VALIDATION_FAILED", "启用结果通知前，请设置签名密钥。", {
         reason: "webhook-secret-required"
       });
     }
@@ -420,7 +420,7 @@ export async function setLogDomainWebhookRecord(
       secret: input.secret
     });
     if (!domain) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
     }
 
     return {
@@ -448,7 +448,7 @@ export async function listLogDomainWebhookDeliveryRecords(
   requireLogAdminDomains(auth);
   const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId: input.domainId });
   if (!domain) {
-    throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+    throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId: input.domainId });
   }
   return {
     items: await listRecentLogWebhookDeliveries(db, {
@@ -473,7 +473,7 @@ export async function sendLogDomainWebhookTestDelivery(
   requireLogAdminDomains(auth);
   const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId });
   if (!domain) {
-    throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
+    throw new ApiError("NOT_FOUND", "未找到分析技能。", { domainId });
   }
 
   const outcome = await deliverer.sendTestDelivery({ organizationId: auth.organization.id, domainId });

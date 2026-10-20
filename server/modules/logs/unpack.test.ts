@@ -88,14 +88,14 @@ describe("unpackLogArchive", () => {
   it("rejects a .gz whose inner name has no supported text extension", () => {
     for (const fileName of ["dump.bin.gz", "archive.gz"]) {
       const result = unpackLogArchive({ fileName, bytes: gzipSync(Buffer.from(logText)) });
-      expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("inner file must keep a supported text extension") });
+      expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("文件名需保留文本扩展名") });
     }
   });
 
   it("rejects corrupt gzip streams with a readable reason", () => {
     const result = unpackLogArchive({ fileName: "charging.log.gz", bytes: Buffer.from("definitely-not-gzip") });
 
-    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("not a valid gzip stream") });
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("压缩内容无效") });
   });
 
   it("stops a gzip bomb at the compression-ratio budget instead of inflating it", () => {
@@ -106,7 +106,7 @@ describe("unpackLogArchive", () => {
 
     const result = unpackLogArchive({ fileName: "bomb.log.gz", bytes: bomb });
 
-    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("exceeds the allowed size") });
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("超过大小上限") });
   });
 
   it("unpacks a single-entry deflated .zip", () => {
@@ -147,7 +147,7 @@ describe("unpackLogArchive", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("expected exactly one log file entry, found 2")
+      reason: expect.stringContaining("需仅含一个日志文件，实际含 2 个")
     });
   });
 
@@ -157,7 +157,7 @@ describe("unpackLogArchive", () => {
       bytes: buildZip([{ name: "secret.log", data: Buffer.from(logText), flags: 0x1 }])
     });
 
-    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("encrypted entries are not supported") });
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("不支持加密") });
   });
 
   it("rejects zip entries without a supported text extension", () => {
@@ -168,14 +168,14 @@ describe("unpackLogArchive", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('entry "dump.bin"')
+      reason: expect.stringContaining('文件“dump.bin”')
     });
   });
 
   it("rejects bytes that are not a zip archive", () => {
     const result = unpackLogArchive({ fileName: "broken.zip", bytes: Buffer.from("not a zip at all") });
 
-    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("missing end-of-central-directory") });
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("缺少压缩目录信息") });
   });
 
   it("stops a zip bomb at the compression-ratio budget", () => {
@@ -184,7 +184,7 @@ describe("unpackLogArchive", () => {
 
     const result = unpackLogArchive({ fileName: "bomb.zip", bytes: bomb });
 
-    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("exceeds the allowed size") });
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("超过大小上限") });
   });
 
   it("caps every unpack at the absolute 100MB bound", () => {

@@ -55,9 +55,9 @@ describe.skipIf(!available)("indexed source search and range reads over PostgreS
           console.info(`source search ${mode}: counter confirms ${MAX_SOURCE_SEARCH_CANDIDATES} scored / 4096 chunks`);
         }
       });
-      await expect(searchSource(db, { ...base, mode: "literal", pathGlob: "**" })).rejects.toThrow(/too common.*path prefix/);
+      await expect(searchSource(db, { ...base, mode: "literal", pathGlob: "**" })).rejects.toThrow("搜索词过于常见，且未指定固定路径前缀。请缩小 pathGlob（例如 drivers/power/**）或使用更具体的搜索词。");
       for (const mode of ["literal", "full_text"] as const)
-        await expect(searchSource(db, { ...base, mode, query: "ab" })).rejects.toThrow(/at least three characters/);
+        await expect(searchSource(db, { ...base, mode, query: "ab" })).rejects.toThrow(/至少需要三个字符/);
       await db.transaction(async (tx) => {
         await tx.query("set local statement_timeout = '5s'");
         await searchSource(tx, { ...base, mode: "literal" });

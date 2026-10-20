@@ -229,7 +229,7 @@ describe.skipIf(!available)("analysis skill revisions over PostgreSQL", () => {
       const revisionsBeforeLegacyPatch = (await request<{ items: LogSkillRevisionDto[] }>(`${base}/revisions`)).body.items;
       for (const change of [{ formatProfile: { timestampPattern: "^legacy" } }, { modelOverride: "legacy-model" }, { description: "旧接口描述" }]) {
         expect(await request(`/api/v1/log-domains/${skill.id}`, "PATCH", change)).toMatchObject({
-          status: 409, body: { error: { code: "LOG_SKILL_DRAFT_EXISTS", message: "Publish or discard the skill draft first." } }
+          status: 409, body: { error: { code: "LOG_SKILL_DRAFT_EXISTS", message: "请先发布或放弃技能草稿。" } }
         });
         expect((await request<{ item: Skill }>(base)).body.item).toEqual(beforeLegacyPatch);
       }

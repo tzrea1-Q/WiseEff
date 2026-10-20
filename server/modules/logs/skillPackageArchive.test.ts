@@ -48,7 +48,7 @@ describe("skill package format", () => {
     });
     zip.file("cases/generic/broken/case.yaml", "summary: [unclosed", { createFolders: false });
     await expect(importSkillPackageArchive(await zip.generateAsync({ type: "nodebuffer" }))).rejects.toMatchObject({
-      issues: [{ path: "cases/generic/broken/case.yaml", message: "YAML 语法无效" }]
+      issues: [{ path: "cases/generic/broken/case.yaml", message: expect.stringContaining("YAML 语法无效") }]
     });
   });
 
@@ -70,7 +70,7 @@ describe("skill package format", () => {
     const bytes = await zip.generateAsync({ type: "nodebuffer" });
     const started = performance.now();
     await expect(importSkillPackageArchive(bytes)).rejects.toMatchObject({ issues: expect.arrayContaining([
-      { path: file, message: "YAML 文档行数超过 20000 行上限" }
+      { path: file, message: expect.stringContaining("YAML 文档行数超过 20000 行上限") }
     ]) });
     expect(performance.now() - started).toBeLessThan(500);
   });
@@ -102,8 +102,8 @@ describe("skill package format", () => {
     await expect(importSkillPackageArchive(await zip.generateAsync({ type: "nodebuffer" }))).rejects.toMatchObject({
       issues: expect.arrayContaining([
         { path: "SKILL.md", message: "缺少必需文件" },
-        { path: "signals.yaml › rules[0]", message: "字段类型无效" },
-        { path: "tests.yaml › [0].name", message: "缺少必需字段" },
+        { path: "signals.yaml › rules[0]", message: "字段类型无效（预期 object，实际 string）" },
+        { path: "tests.yaml › [0].name", message: "缺少必需字段（预期 string，实际 undefined）" },
         { path: "knowledge/entry.md", message: "缺少 YAML 前置信息（frontmatter）" }
       ])
     });

@@ -264,7 +264,7 @@ describe("createLogWebhookDeliverer", () => {
     configuredWebhook("https://rebinding.example.com/hook");
     const transport = vi
       .fn<WebhookTransport>()
-      .mockResolvedValue({ ok: false, error: "Webhook host resolves to a blocked address range." });
+      .mockResolvedValue({ ok: false, error: "结果通知地址解析到了受限制的网络地址。" });
     const deliverer = createLogWebhookDeliverer({ db, env: defaultEnv, transport });
 
     const outcome = await deliverer.deliverAnalysisResult(resultInput());
@@ -297,7 +297,7 @@ describe("createLogWebhookDeliverer", () => {
     const outcome = await deliverer.sendTestDelivery({ organizationId: "org-chargelab", domainId: "domain-1" });
 
     expect(outcome.status).toBe("skipped");
-    expect(outcome.error).toContain("not fully configured");
+    expect(outcome.error).toContain("配置不完整");
   });
 
   it("keeps the observed admin test result when attempt-history persistence fails", async () => {
@@ -386,7 +386,7 @@ describe("nodeWebhookTransport", () => {
 
     expect(result.ok).toBe(false);
     expect(result.httpStatus).toBe(302);
-    expect(result.error).toContain("Redirects are not followed");
+    expect(result.error).toContain("重定向");
   });
 
   it("blocks hostnames that resolve to loopback through the validating lookup", async () => {
@@ -401,7 +401,7 @@ describe("nodeWebhookTransport", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("blocked address range");
+    expect(result.error).toContain("受限制的网络地址");
     expect(received).toHaveLength(0);
   });
 });

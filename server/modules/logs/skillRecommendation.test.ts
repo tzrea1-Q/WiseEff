@@ -23,8 +23,8 @@ describe("published log skill recommendation scorer", () => {
     expect(result.recommendedSkillId).toBe("role");
     expect(result.recommendations.map(({ skillId, score }) => [skillId, score])).toEqual([["role", 12], ["extractor", 8], ["name", 8]]);
     expect(result.recommendations[0].reasons).toEqual([
-      { kind: "file", file: "kernel.log", detail: "skill glob **/*.log (kernel)", source: "skill-glob", ref: "**/*.log", role: "kernel" },
-      { kind: "file", file: "system.log", detail: "skill glob **/*.log (kernel)", source: "skill-glob", ref: "**/*.log", role: "kernel" }
+      { kind: "file", file: "kernel.log", detail: "文件匹配技能路径规则 **/*.log（kernel）", source: "skill-glob", ref: "**/*.log", role: "kernel" },
+      { kind: "file", file: "system.log", detail: "文件匹配技能路径规则 **/*.log（kernel）", source: "skill-glob", ref: "**/*.log", role: "kernel" }
     ]);
   });
 
@@ -86,14 +86,14 @@ describe("published log skill recommendation scorer", () => {
       formatProfile: { timestampPattern: "^2026", severityMap: { error: ["ERROR"] } }
     })], [file("kernel.log", ["2026 ERROR CHARGE"])], fixedClock);
     expect(result.recommendations[0].reasons).toEqual([
-      { kind: "file", file: "kernel.log", detail: "skill glob kernel.log (充电)", source: "skill-glob", ref: "kernel.log", role: "充电" },
-      { kind: "file", file: "kernel.log", detail: "extractor glob kernel.*", source: "extractor-glob", ref: "kernel.*" },
-      { kind: "pattern", file: "kernel.log", detail: "extractor charge: CHARGE", source: "extractor", ref: "charge" },
+      { kind: "file", file: "kernel.log", detail: "文件匹配技能路径规则 kernel.log（充电）", source: "skill-glob", ref: "kernel.log", role: "充电" },
+      { kind: "file", file: "kernel.log", detail: "文件匹配字段解析路径规则 kernel.*", source: "extractor-glob", ref: "kernel.*" },
+      { kind: "pattern", file: "kernel.log", detail: "日志内容匹配字段解析规则 charge：CHARGE", source: "extractor", ref: "charge" },
       ...[...signalRules.rules].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0).map((rule) => ({
-        kind: "pattern", file: "kernel.log", detail: `signal ${rule.id}: CHARGE`, source: "signal", ref: rule.name || rule.id
+        kind: "pattern", file: "kernel.log", detail: `日志内容匹配技能信号规则 ${rule.id}：CHARGE`, source: "signal", ref: rule.name || rule.id
       })),
-      { kind: "pattern", file: "kernel.log", detail: "format timestamp: ^2026", source: "format-timestamp", ref: "^2026" },
-      { kind: "pattern", file: "kernel.log", detail: "format severity error: ERROR", source: "format-severity", ref: "error" }
+      { kind: "pattern", file: "kernel.log", detail: "日志时间格式与技能配置一致：^2026", source: "format-timestamp", ref: "^2026" },
+      { kind: "pattern", file: "kernel.log", detail: "日志严重程度 error 与技能配置一致：ERROR", source: "format-severity", ref: "error" }
     ]);
   });
 
@@ -120,8 +120,9 @@ describe("published log skill recommendation scorer", () => {
     const skills = [candidate("charging", { signalRules: seededChargingRuleSet })];
     const result = recommendLogSkills(skills, [file("charging.log", head)]);
     expect(result).toMatchObject({ recommendedSkillId: "charging", recommendations: [{ score: 8 }] });
-    expect(result.recommendations[0].reasons.map(({ detail }) => detail)).toEqual([
-      "signal charge-current-reduction: current reduced", "signal thermal-foldback: thermal"
+    expect(result.recommendations[0].reasons.map(({ source, ref, detail }) => ({ source, ref, detail }))).toEqual([
+      { source: "signal", ref: "充电限流", detail: "日志内容匹配技能信号规则 charge-current-reduction：current reduced" },
+      { source: "signal", ref: "热降额", detail: `日志内容匹配技能信号规则 thermal-foldback：${seededChargingRuleSet.rules[0].anyOf[0].type === "text" ? seededChargingRuleSet.rules[0].anyOf[0].pattern : ""}` }
     ]);
     expect(recommendLogSkills(skills, [file("unrelated.log", ["INFO web request completed", "ERROR invalid password"])], fixedClock).recommendedSkillId).toBeUndefined();
   });

@@ -28,7 +28,7 @@ describe("streaming analyzer parity beyond the preview", () => {
     const streamed = await analyzer.analyze({ parsed: preview, files: [{ ...file, parsed: preview, reader, prefilter }],
       signalRules: defaultChargingRuleSet, signalSummary, stats: { lineCount: full.rawLines.length, entryCount: full.entries.length } });
     expect(streamed).toEqual(await analyzer.analyze({ parsed: full, files: [{ ...file, parsed: full }], signalRules: defaultChargingRuleSet, signalSummary }));
-    expect(streamed).toMatchObject({ confidence, conclusion: "Charging behavior is consistent with thermal foldback protection." });
+    expect(streamed).toMatchObject({ confidence, conclusion: "充电表现符合过热保护降额特征。" });
   });
 
   it("includes real EOF anomalies in model excerpts and error-dependent fallback conclusions", async () => {

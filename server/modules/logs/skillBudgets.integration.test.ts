@@ -34,13 +34,13 @@ describe.skipIf(!available)("skill budgets over PostgreSQL", () => {
         spec: { schemaVersion: "skill/v1", stepBudget, tokenBudget }, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id
       });
       expect(await save(5, 5001)).toMatchObject({ status: 400, body: { error: { code: "VALIDATION_FAILED", details: { issues: [
-        { path: ["stepBudget"], message: "Must not exceed platform cap (4)." },
-        { path: ["tokenBudget"], message: "Must not exceed platform cap (5000)." }
+        { path: ["stepBudget"], message: "不能超过平台上限（4）。" },
+        { path: ["tokenBudget"], message: "不能超过平台上限（5000）。" }
       ] } } } });
       expect((await request<{ item: Skill }>(base)).body.item.draft).toBeNull();
       for (const tokenBudget of [1, 4095]) {
         expect(await save(3, tokenBudget)).toMatchObject({ status: 400, body: { error: { details: { issues: [
-          { path: ["tokenBudget"], message: "Must be at least 4096." }
+          { path: ["tokenBudget"], message: "不能小于 4096。" }
         ] } } } });
       }
       expect(await save(0, 4096)).toMatchObject({ status: 400, body: { error: { details: { issues: [
@@ -67,7 +67,7 @@ describe.skipIf(!available)("skill budgets over PostgreSQL", () => {
         spec: { schemaVersion: "skill/v1", stepBudget: 1, tokenBudget }, baseDraftRevisionId: null, basePublishedRevisionId: lowerCapSkill.currentRevision.id
       });
       expect(await saveLower(2999)).toMatchObject({ status: 400, body: { error: { details: { issues: [
-        { path: ["tokenBudget"], message: "Must be at least 3000." }
+        { path: ["tokenBudget"], message: "不能小于 3000。" }
       ] } } } });
       expect((await saveLower(3000)).status).toBe(200);
     } finally { await db.close(); await ephemeral.drop(); }

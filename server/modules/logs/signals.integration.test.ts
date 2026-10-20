@@ -39,11 +39,17 @@ const available = await isTestDatabaseAvailable();
 const authFor = (organizationId = "signals-org") => makeTestAuthContext({ organizationId, userId: `${organizationId}-admin`,
   roles: [{ roleId: "admin", projectId: null }], permissions: ["logs:view", "logs:upload", "logs:analyze"] });
 
-it("keeps the frozen migration rule literal equal to the runtime charging seed", async () => {
-  const migration = await readFile(new URL("../../migrations/0196_seed_charging_skill.sql", import.meta.url), "utf8");
+it("keeps the latest migration seed equal to runtime and its eligibility literal equal to frozen 0196", async () => {
+  const historical = await readFile(new URL("../../migrations/0196_seed_charging_skill.sql", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../../migrations/0208_localize_seed_charging_skill.sql", import.meta.url), "utf8");
+  const original = historical.match(/\$rules\$([\s\S]*?)\$rules\$/);
+  const guard = migration.match(/\$original_rules\$([\s\S]*?)\$original_rules\$/);
   const literal = migration.match(/\$rules\$([\s\S]*?)\$rules\$/);
-  if (!literal) throw new Error("Charging migration rule literal is missing");
-  expect(JSON.parse(literal[1])).toEqual(seededChargingRuleSet);
+  if (!original || !guard || !literal) throw new Error("Charging migration rule literal is missing");
+  expect(JSON.parse(guard[1])).toEqual(JSON.parse(original[1]));
+  const latest = logSkillSpecSchema.parse({ schemaVersion: "skill/v1", signalRules: JSON.parse(literal[1]) }).signalRules!;
+  expect(latest).toEqual(seededChargingRuleSet);
+  expect(latest.rules[0].anyOf).not.toContainEqual({ type: "text", pattern: "battery_temp", flags: "i" });
 });
 
 describe.skipIf(!available)("generic signals through upload, worker and HTTP report", () => {
@@ -101,7 +107,7 @@ describe.skipIf(!available)("generic signals through upload, worker and HTTP rep
     } finally { await db.close(); await ephemeral.drop(); }
   }, 120_000);
 
-  it("seeds independent charging publications idempotently and preserves pre-migration rule evidence on every eval case", async () => {
+  it("upgrades independent charging publications idempotently and matches runtime evidence on every eval case", async () => {
     const ephemeral = await createEphemeralTestDatabase("chargingseed");
     const db = createPostgresDatabase(ephemeral.url);
     try {
@@ -114,14 +120,16 @@ describe.skipIf(!available)("generic signals through upload, worker and HTTP rep
       const replaySeed = async () => {
         await db.query("delete from schema_migrations where name = '0196_seed_charging_skill.sql'");
         await applyTestMigrations(db, migrationsDir, { through: "0196_seed_charging_skill.sql" });
+        await db.query("delete from schema_migrations where name = '0208_localize_seed_charging_skill.sql'");
+        await applyTestMigrations(db, migrationsDir, { through: "0208_localize_seed_charging_skill.sql" });
       };
       await replaySeed();
-      const before = await db.query("select * from log_skill_revisions where id like 'seed-charging-revision:%' order by id");
+      const before = await db.query("select * from log_skill_revisions where skill_id like 'seed-charging:%' order by id");
       await replaySeed();
-      expect((await db.query("select * from log_skill_revisions where id like 'seed-charging-revision:%' order by id")).rows).toEqual(before.rows);
+      expect((await db.query("select * from log_skill_revisions where skill_id like 'seed-charging:%' order by id")).rows).toEqual(before.rows);
       const seeds = await db.query<{ organization_id: string; spec: unknown; name: string }>(`select s.organization_id, s.spec, d.name
         from log_skill_revisions s join log_domains d on (d.id, d.organization_id) = (s.skill_id, s.organization_id)
-        where s.id in ('seed-charging-revision:signals-org', 'seed-charging-revision:signals-other') order by s.organization_id`);
+        where s.id in ('seed-charging-revision-0208:signals-org', 'seed-charging-revision-0208:signals-other') order by s.organization_id`);
       expect(seeds.rows.map((row) => [row.organization_id, row.name])).toEqual([["signals-org", "充电 (2)"], ["signals-other", "充电"]]);
       expect((await db.query("select spec from log_skill_revisions where id=$1", [existing.currentRevision.id])).rows).toEqual([{ spec: existing.currentRevision.spec }]);
       const rules = logSkillSpecSchema.parse(seeds.rows[0].spec).signalRules!;
@@ -142,11 +150,15 @@ describe.skipIf(!available)("generic signals through upload, worker and HTTP rep
         expect(await createRuleBasedLogAnalyzer(rules).analyze(analysisInput), testCase.id)
           .toEqual(await createRuleBasedLogAnalyzer().analyze(analysisInput));
       }
-      expect((await db.query("select * from audit_events order by id")).rows).toEqual(auditBefore.rows);
+      expect((await db.query("select * from audit_events where id <> all($1::text[]) order by id",
+        [["seed-charging-audit-0208:signals-org", "seed-charging-audit-0208:signals-other"]])).rows).toEqual(auditBefore.rows);
+      expect((await db.query("select organization_id from audit_events where id = any($1::text[]) order by organization_id",
+        [["seed-charging-audit-0208:signals-org", "seed-charging-audit-0208:signals-other"]])).rows)
+        .toEqual([{ organization_id: "signals-org" }, { organization_id: "signals-other" }]);
       expect((await db.query(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
         where n.nspname = 'public' and p.proname = 'provision_charging_skill'`)).rows).toEqual([]);
       await expect(db.query(`insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)
-        values ('foreign-charging-revision', 'signals-other', 'seed-charging:signals-org', 2, 'draft', '{"schemaVersion":"skill/v1"}', 'hash')`))
+        values ('foreign-charging-revision', 'signals-other', 'seed-charging:signals-org', 3, 'draft', '{"schemaVersion":"skill/v1"}', 'hash')`))
         .rejects.toMatchObject({ code: "23503" });
       await expect(db.query("update log_skill_revisions set spec = '{}' where id = 'seed-charging-revision:signals-org'"))
         .rejects.toThrow(/immutable/);
@@ -292,8 +304,8 @@ describe.skipIf(!available)("generic signals through upload, worker and HTTP rep
         expect(response.status).toBe(200);
         const report = logRecordDtoSchema.parse(response.body.item);
         expect(report).toMatchObject({ status: "complete", confidence, skillRevision: skillId ? { id: published.currentRevision.id } : null });
-        expect(report.conclusion).toMatch(/thermal foldback/i);
-        expect(report.evidence).toEqual(expect.arrayContaining([expect.objectContaining({ filePath: "charging-foldback.log", lineNumbers: expect.arrayContaining([4]), inference: expect.stringMatching(/thermal/i) })]));
+        expect(report.conclusion).toMatch(/过热保护降额/);
+        expect(report.evidence).toEqual(expect.arrayContaining([expect.objectContaining({ filePath: "charging-foldback.log", lineNumbers: expect.arrayContaining([4]), inference: expect.stringMatching(/过热/) })]));
         expect(report.signalSummary?.signals).toEqual(expect.arrayContaining([
           expect.objectContaining({ kind: "first-error", source: "generic", anchors: [expect.objectContaining({ file: "charging-foldback.log", line: 4 })] })
         ]));

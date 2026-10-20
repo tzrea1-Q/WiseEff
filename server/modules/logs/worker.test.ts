@@ -850,22 +850,22 @@ describe("log worker", () => {
 
     expect(fixture.job).toMatchObject({
       status: "failed",
-      error_message: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log."
+      error_message: "文件包含二进制内容或过多空字节，请上传 UTF-8 文本日志。"
     });
     expect(fixture.run).toMatchObject({ status: "failed", current_stage: "parse" });
     expect(fixture.log).toMatchObject({
       status: "failed",
-      failure_reason: "Job exhausted 4 attempts."
+      failure_reason: "日志分析已尝试 4 次，仍未完成。文件包含二进制内容或过多空字节，请上传 UTF-8 文本日志。"
     });
     expect(fixture.stages.at(-1)).toMatchObject({
       stage: "parse",
       status: "failed",
       progress: 10,
-      message: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log."
+      message: "文件包含二进制内容或过多空字节，请上传 UTF-8 文本日志。"
     });
   });
 
-  it("schedules a retry on a transient failure before attempts are exhausted", async () => {
+  it.each(["object store timeout", "模型失败：secret=private-payload"])("retains transient failure diagnostics before retrying: %s", async (failure) => {
     const { db, fixture } = createFakeWorkerDb();
     const metrics = createLogJobMetricsSpy();
 
@@ -876,7 +876,7 @@ describe("log worker", () => {
           throw new Error("put is not used by the worker");
         },
         async get() {
-          throw new Error("object store timeout");
+          throw new Error(failure);
         }
       },
       workerId: "worker-a",
@@ -886,7 +886,7 @@ describe("log worker", () => {
     expect(result).toBe("processed");
     expect(fixture.job).toMatchObject({
       status: "queued",
-      error_message: "object store timeout",
+      error_message: failure,
       current_stage: "parse",
       lease_owner: null,
       lease_expires_at: null,
@@ -923,7 +923,7 @@ describe("log worker", () => {
     expect(result).toBe("processed");
     expect(fixture.job).toMatchObject({
       status: "failed",
-      error_message: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log.",
+      error_message: "文件包含二进制内容或过多空字节，请上传 UTF-8 文本日志。",
       current_stage: "parse",
       lease_owner: null,
       lease_expires_at: null,
@@ -932,7 +932,7 @@ describe("log worker", () => {
     expect(fixture.run).toMatchObject({ status: "failed", current_stage: "parse" });
     expect(fixture.log).toMatchObject({
       status: "failed",
-      failure_reason: "Job exhausted 4 attempts."
+      failure_reason: "日志分析已尝试 4 次，仍未完成。文件包含二进制内容或过多空字节，请上传 UTF-8 文本日志。"
     });
     expect(metrics.recordLogAnalysisJobResult).toHaveBeenCalledWith({
       status: "dead_lettered",
@@ -1015,7 +1015,7 @@ describe("log worker", () => {
       payload: expect.objectContaining({
         eventId: "log-result:run-1", event: "log-analysis.failed",
         logDomainId: "domain-1", recordId: "log-1", runId: "run-1",
-        status: "failed", conclusionSummary: "Job exhausted 4 attempts."
+        status: "failed", conclusionSummary: "日志分析已尝试 4 次，仍未完成。文件包含二进制内容或过多空字节，请上传 UTF-8 文本日志。"
       })
     }]);
     expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledOnce();
@@ -1024,7 +1024,7 @@ describe("log worker", () => {
         logDomainId: "domain-1",
         logId: "log-1",
         status: "failed",
-        conclusion: "Job exhausted 4 attempts."
+        conclusion: "日志分析已尝试 4 次，仍未完成。文件包含二进制内容或过多空字节，请上传 UTF-8 文本日志。"
       })
     );
   });
@@ -1075,7 +1075,7 @@ describe("log worker", () => {
     expect(result).toBe("processed");
     expect(fixture.run.status).toBe("failed");
     expect(fixture.job.status).toBe("failed");
-    expect(fixture.job.error_message).toBe("Log analysis job is stale because its run is no longer current.");
+    expect(fixture.job.error_message).toBe("已有更新的分析，本次分析已停止。");
     expect(fixture.job.lease_owner).toBeNull();
     expect(fixture.job.lease_expires_at).toBeNull();
     expect(fixture.log.current_run_id).toBe("run-2");
@@ -1084,7 +1084,7 @@ describe("log worker", () => {
         stage: "parse",
         status: "failed",
         progress: 0,
-        message: "Log analysis job is stale because its run is no longer current."
+        message: "已有更新的分析，本次分析已停止。"
       }
     ]);
     expect(metrics.recordLogAnalysisJobResult).toHaveBeenCalledWith({

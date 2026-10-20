@@ -151,9 +151,9 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
     .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
     .toBe("complete");
   await historyItem(page, supportedFileName).click();
-  await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i);
+  await expect(page.locator("#log-conclusion-title")).toContainText(/过热|降额/);
 
-  const evidenceCard = page.locator(".evidence-card").filter({ hasText: /thermal|foldback/i }).first();
+  const evidenceCard = page.locator(".evidence-card").filter({ hasText: /过热|降额/ }).first();
   await evidenceCard.locator(".evidence-card__body > p").click();
   await expect
     .poll(async () =>
@@ -198,7 +198,7 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
       const log = await latestLogByFile(page, unsupportedFileName);
       return `${log.status}:${log.failureReason ?? ""}`;
     }, { timeout: 30_000 })
-    .toMatch(/^failed:.*unsupported/i);
+    .toMatch(/^failed:.*不支持此日志格式/);
   const unsupportedHistoryItem = historyItem(page, unsupportedFileName);
   await expect(unsupportedHistoryItem).toBeVisible();
 });

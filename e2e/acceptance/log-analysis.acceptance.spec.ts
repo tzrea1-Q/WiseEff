@@ -570,7 +570,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     // the POST response, long before the analysis report writes confidence.
     const completedLog = await latestLogByFile(page, supportedFileName);
     await historyItem(page, supportedFileName).click();
-    await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i);
+    await expect(page.locator("#log-conclusion-title")).toContainText(/过热|降额/);
     await expect(page.locator(".logs-conclusion-head")).toContainText("已完成");
     await expect(page.getByRole("tablist", { name: "日志辅助信息" }).getByRole("tab"))
       .toHaveText(["报告", "信号", "文件", "分析轨迹"]);
@@ -585,8 +585,8 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await expect(confidenceBar.locator("strong")).toHaveText(`${confidencePercent}%`);
     await expect(confidenceBar.locator('[role="progressbar"]')).toHaveAttribute("aria-valuenow", String(confidencePercent));
 
-    const evidenceCard = page.locator(".evidence-card").filter({ hasText: /thermal|foldback/i }).first();
-    await expect(evidenceCard).toContainText(/thermal|foldback/i);
+    const evidenceCard = page.locator(".evidence-card").filter({ hasText: /过热|降额/ }).first();
+    await expect(evidenceCard).toContainText(/过热|降额/);
     await evidenceCard.locator(".evidence-card__body > p").click();
     await expect
       .poll(async () =>
@@ -675,21 +675,21 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
         const log = await latestLogByFile(page, unsupportedFileName);
         return `${log.status}:${log.failureReason ?? ""}`;
       }, { timeout: 30_000 })
-      .toMatch(/^failed:.*unsupported/i);
+      .toMatch(/^failed:.*不支持此日志格式/);
     const unsupportedHistoryItem = historyItem(page, unsupportedFileName);
     await expect(unsupportedHistoryItem).toBeVisible();
 
-    // P2 localization contract: the failure card renders the fixed Chinese title
-    // plus the presentError mapping of the English backend failureReason exactly
-    // once — no raw English backend prose reaches the workbench.
+    // The failure card displays the Chinese backend reason and all supported inputs.
     await unsupportedHistoryItem.click();
     const failureAlert = page.getByRole("alert").filter({ hasText: "日志处理失败" });
     await expect(failureAlert).toBeVisible();
-    await expect(failureAlert).toContainText("暂不支持该日志格式");
+    await expect(failureAlert).toContainText("不支持此日志格式");
     await expect(failureAlert).not.toContainText("Unsupported log format");
     await expect(failureAlert.getByRole("button", { name: "重新上传" })).toBeVisible();
     await expect(failureAlert).toContainText("在 日志解析 阶段失败");
-    await expect(failureAlert).toContainText(".log / .txt / .csv / .json");
+    for (const extension of [".log", ".txt", ".csv", ".json", ".zip", ".tar", ".tar.gz", ".tgz", ".gz"]) {
+      await expect(failureAlert).toContainText(extension);
+    }
     await expect(failureAlert.getByText(unsupportedFileName, { exact: true })).toBeVisible();
     await expect(unsupportedHistoryItem).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("list", { name: "分析流程" })).toHaveCount(0);
@@ -789,7 +789,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await page.goto("/logs");
     await expect(historyItem(page, supportedFileName)).toBeVisible();
     await historyItem(page, supportedFileName).click();
-    await expect(page.locator("#log-conclusion-title")).toContainText(/正在分析…|thermal|foldback/i, { timeout: 30_000 });
+    await expect(page.locator("#log-conclusion-title")).toContainText(/正在分析…|过热|降额/, { timeout: 30_000 });
 
     await expect
       .poll(async () => {
@@ -1259,7 +1259,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .poll(async () => (await latestLogByFile(page, archiveFileName)).status, { timeout: 70_000 })
       .toBe("complete");
     await historyItem(page, archiveFileName).click();
-    await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i, { timeout: 30_000 });
+    await expect(page.locator("#log-conclusion-title")).toContainText(/过热|降额/, { timeout: 30_000 });
 
     const archiveLogsResponse = await page.request.get(apiRoute("/api/v1/logs"), { headers: smokeHeaders() });
     expect(archiveLogsResponse.ok()).toBe(true);

@@ -20,7 +20,7 @@ import { createLogSkillBodySchema } from "./schemas";
 
 function requireAdmin(auth: AuthContext) {
   requireLogAdminDomains(auth);
-  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "Log organization access is required.");
+  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
 function archiveError(error: unknown): never {
   if (error instanceof AnalysisCaseArchiveError) {
@@ -39,9 +39,9 @@ export async function exportLogSkillPackage(db: Database, store: ObjectStore, au
   return db.transaction(async (tx) => {
     await tx.query("set transaction isolation level repeatable read");
     const skill = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: skillId });
-    if (!skill) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+    if (!skill) throw new ApiError("NOT_FOUND", "未找到分析技能。");
     const selected = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((item) => item.status === revision);
-    if (!selected) throw new ApiError("NOT_FOUND", "The requested skill revision was not found.");
+    if (!selected) throw new ApiError("NOT_FOUND", "未找到所选技能版本。");
     const ids = selected.spec.knowledgeEntryIds ?? [];
     const entries = (await tx.query<{ id: string; title: string; tags: string[]; status: "draft" | "published" | "archived";
       createdByUserId: string | null; sourceType: "human" | "agent"; revisionId: string; revisionNumber: number; body: string | null }>(
@@ -53,8 +53,8 @@ export async function exportLogSkillPackage(db: Database, store: ObjectStore, au
     const knowledge: PackagedKnowledge[] = [];
     for (const id of ids) {
       const entry = entries.find((item) => item.id === id);
-      if (!entry || !canReadEntry(auth, entry)) throw new ApiError("NOT_FOUND", "Linked knowledge entry was not found or is not readable.");
-      if (entry.body === null) throw new ApiError("CONFLICT", "Linked knowledge text is not available for export.");
+      if (!entry || !canReadEntry(auth, entry)) throw new ApiError("NOT_FOUND", "关联的知识条目不存在或无权读取。");
+      if (entry.body === null) throw new ApiError("CONFLICT", "关联的知识正文暂不可导出。");
       knowledge.push({ path: `knowledge/${entry.id}.md`, title: entry.title, tags: entry.tags, body: entry.body,
         source: { type: entry.sourceType, entryId: entry.id, revisionId: entry.revisionId, revisionNumber: entry.revisionNumber } });
     }
@@ -73,8 +73,8 @@ export async function importLogSkillPackage(db: Database, store: ObjectStore, au
   status: "draft" | "published" = "draft", invocation: TrustedInvocationContext, context: AuditedWriteContext, caps: LogSkillBudgetCaps = defaultLogSkillBudgetCaps, name?: string) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Import skill package");
   requireAdmin(auth);
-  if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "Skill package import must be initiated by a human.");
-  if (status !== "draft" && status !== "published") throw new ApiError("VALIDATION_FAILED", "Invalid import status.");
+  if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "技能包导入必须由用户发起。");
+  if (status !== "draft" && status !== "published") throw new ApiError("VALIDATION_FAILED", "导入状态无效。");
   const pkg = await importSkillPackageArchive(bytes).catch(archiveError);
   const parsedName = createLogSkillBodySchema.shape.name.safeParse(name?.trim() || pkg.name);
   if (!parsedName.success) throw new ApiError("VALIDATION_FAILED", "技能名称无效。", {
@@ -87,7 +87,7 @@ export async function importLogSkillPackage(db: Database, store: ObjectStore, au
     if (error instanceof ApiError) {
       const issues = ((error.details?.issues ?? []) as Array<{ path: string[]; message: string }>).map((issue) => ({
         path: `SKILL.md › ${issue.path.join(".")}`,
-        message: issue.message.replace(/^Must be at least (.+)\.$/, "不能小于 $1。").replace(/^Must not exceed platform cap \((.+)\)\.$/, "不能超过平台上限（$1）。")
+        message: issue.message
       }));
       throw new ApiError("VALIDATION_FAILED", "技能包预算校验失败。", {
         issues, problems: issues.map((issue) => `${issue.path.replace(" › ", ": ")}: ${issue.message}`), packageName: pkg.name

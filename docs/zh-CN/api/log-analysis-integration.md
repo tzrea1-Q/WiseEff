@@ -176,7 +176,7 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
 }
 ```
 
-读取器使用每文件的 UTF-8 文本对象和行偏移索引；UTF-16 上传也会在接收时转换后按此方式读取。CRLF 计为一个换行，末行没有换行符时也可定位。每行最多返回 64 KiB 行首内容；更长的行以 `… [line truncated at 64 KiB]` 结尾。展示或复制截断行时，应保留此标记。
+读取器使用每文件的 UTF-8 文本对象和行偏移索引；UTF-16 上传也会在接收时转换后按此方式读取。CRLF 计为一个换行，末行没有换行符时也可定位。每行最多返回 64 KiB 行首内容；更长的行以 `… [单行日志超过 64 KB，已截断]` 结尾。展示或复制截断行时，应保留此标记。
 
 记录原有的原始日志面板继续作为预览：每文件最多保留前 400 行，整次运行共用 128 KiB 文本预算。在 `/logs` 点击证据的 `file:line` 标签或信号、模板锚点，会打开共用的文件抽屉，滚动到引用行并高亮，提供加载上方、下方上下文和逐行复制操作。超出预览的位置应通过行窗口端点读取，不能将 `rawLines` 当作完整文件。
 
@@ -205,7 +205,7 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
   "degradedReason": null,
   "severity": "Warning",
   "confidence": 0.82,
-  "conclusionSummary": "Charging behavior is consistent with thermal foldback protection…",
+  "conclusionSummary": "充电表现符合过热保护降额特征。",
   "occurredAt": "2026-08-13T02:00:00.000Z",
   "productPath": "/logs?id=report-run-..."
 }

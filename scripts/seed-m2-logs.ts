@@ -136,7 +136,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         organizationId,
         completedFileObjectId,
         "charging-foldback.log",
-        "Why did fast charging fold back?",
+        "快充为什么触发降额？",
         null,
         seedUserId,
         "2026-05-25T10:03:29.500Z"
@@ -181,10 +181,10 @@ export async function seedM2Logs(db: Database): Promise<void> {
     );
 
     for (const [stage, progress, message] of [
-      ["parse", 25, "Parsed 5 log lines."],
-      ["pattern", 50, "Detected thermal warning and current derate pattern."],
-      ["rootcause", 80, "Correlated warnings with BMS thermal foldback error."],
-      ["report", 100, "Generated charging foldback report."]
+      ["parse", 25, "已解析 5 行日志。"],
+      ["pattern", 50, "检测到过热警告和电流降额。"],
+      ["rootcause", 80, "已将警告与电池管理系统的过热保护错误关联。"],
+      ["report", 100, "已生成充电降额分析报告。"]
     ] as const) {
       await tx.query(
         `
@@ -248,12 +248,12 @@ export async function seedM2Logs(db: Database): Promise<void> {
         organizationId,
         completedLogId,
         completedRunId,
-        "Fast charge current was reduced by thermal foldback protection.",
-        "Charging remains stable, but the pack exceeded the fast-charge thermal threshold.",
+        "过热保护降低了快充电流。",
+        "充电保持稳定，但电池温度已超过快充温度阈值。",
         JSON.stringify([
-          "Inspect pack cooling airflow before the next fast-charge validation.",
-          "Review battery temperature threshold calibration.",
-          "Compare requested and actual charge current during thermal ramps."
+          "下次快充验证前，检查电池散热气流。",
+          "检查电池温度阈值的标定。",
+          "对比升温期间的请求充电电流和实际电流。"
         ]),
         JSON.stringify(rawLines)
       ]
@@ -286,8 +286,8 @@ export async function seedM2Logs(db: Database): Promise<void> {
         completedLogId,
         completedRunId,
         [2, 3, 4],
-        "Battery temperature crossed threshold, requested current was derated, and BMS emitted E_THERMAL_FOLDBACK.",
-        "Validate thermal limits and cooling before increasing charge current.",
+        "电池温度超过阈值，充电电流已降额，电池管理系统报告过热保护错误。",
+        "提高充电电流前，确认温度限制和散热正常。",
         "thermal_foldback"
       ]
     );
@@ -352,7 +352,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         organizationId,
         failedFileObjectId,
         "unsupported.bin",
-        "Unsupported log format: .bin files are not accepted in M2.",
+        "不支持此日志格式。请重新上传 .log .txt .csv .json 文本日志，或一个 .zip .tar .tar.gz .tgz .gz 压缩包。",
         seedUserId,
         "2026-05-25T10:04:00.000Z"
       ]

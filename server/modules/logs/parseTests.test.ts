@@ -118,7 +118,7 @@ describe("parse test runner", () => {
     const spec = bq();
     spec.parseTests!.push({ ...spec.parseTests![0], id: "second" });
     expect(await runParseTests(spec, { maxMs: 0 })).toMatchObject({ total: 2, passed: 0, failed: 2, truncated: true,
-      results: [expect.objectContaining({ error: "Parse test deadline exceeded" }), expect.objectContaining({ error: "Parse test deadline exceeded" })] });
+      results: [expect.objectContaining({ error: "解析用例运行超时" }), expect.objectContaining({ error: "解析用例运行超时" })] });
     const parse = logSkillSpecSchema.parse.bind(logSkillSpecSchema);
     vi.spyOn(logSkillSpecSchema, "parse").mockImplementationOnce((value) => {
       const until = performance.now() + 300;
@@ -159,6 +159,6 @@ describe("parse test runner", () => {
     const started = performance.now();
     const run = await runParseTests(spec, { maxMs: 100 });
     expect(performance.now() - started).toBeLessThan(300);
-    expect(run).toMatchObject({ passed: 0, failed: 1, truncated: true, results: [{ signals: [], error: expect.stringMatching(/time_cap|deadline/) }] });
+    expect(run).toMatchObject({ passed: 0, failed: 1, truncated: true, results: [{ signals: [], error: expect.stringMatching(/time_cap|运行超时/) }] });
   });
 });

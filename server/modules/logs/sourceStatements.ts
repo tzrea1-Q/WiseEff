@@ -14,9 +14,9 @@ export function createSourceStatementBudget(options: { maxMatches?: number; maxC
 }
 export function compileSourceStatementPattern(pattern: string, maxInputLength = MATCH_WINDOW) {
   const compiled = compileLogPattern(pattern, "", maxInputLength);
-  if (compiled.groupCount > MAX_STATEMENT_CAPTURE_GROUPS) throw new Error(`Statement patterns support at most ${MAX_STATEMENT_CAPTURE_GROUPS} capture groups.`);
+  if (compiled.groupCount > MAX_STATEMENT_CAPTURE_GROUPS) throw new Error(`日志语句匹配规则最多支持 ${MAX_STATEMENT_CAPTURE_GROUPS} 个捕获组。`);
   if (compiled.test("") || [...compiled.matchAll("a \n", false)].some((match) => !match[0].length)) {
-    throw new Error("Statement patterns must not match empty text.");
+    throw new Error("日志语句匹配规则不能匹配空文本。");
   }
   return compiled;
 }

@@ -229,8 +229,8 @@ async function processClaimedLogAnalysisJob(
     failedSnapshot = snapshot;
     if (!snapshot) {
       const staleReason = jobSnapshot
-        ? "Log analysis job is stale because its run is no longer current."
-        : "Unable to load log analysis job target.";
+        ? "已有更新的分析，本次分析已停止。"
+        : "无法读取待分析的日志。";
 
       const failed = await db.transaction(async (tx) => {
         const failedJob = await failJob(tx, {
@@ -270,7 +270,7 @@ async function processClaimedLogAnalysisJob(
     let relatedParameterSnapshot: AnalyzeLogInput["relatedParameterSnapshot"];
     if (snapshot.relatedParameterId) {
       if (!snapshot.relatedParameterProjectId) {
-        throw new Error("Legacy related-parameter association has no authoritative project scope.");
+        throw new Error("关联参数缺少项目信息，请重新选择参数。");
       }
       relatedParameterSnapshot = requireRelatedParameterRunSnapshot(snapshot.relatedParameterSnapshot, {
         organizationId: snapshot.organizationId,
@@ -278,7 +278,7 @@ async function processClaimedLogAnalysisJob(
         bindingId: snapshot.relatedParameterId
       });
     } else if (snapshot.relatedParameterProjectId || snapshot.relatedParameterSnapshot != null) {
-      throw new Error("Log run has an unexpected related-parameter snapshot.");
+      throw new Error("关联参数信息不一致，请重新选择参数。");
     }
     await markProgress(options, {
       organizationId: snapshot.organizationId,
@@ -287,13 +287,13 @@ async function processClaimedLogAnalysisJob(
       stage: "parse",
       status: "processing",
       progress: 10,
-      message: "Reading and parsing the uploaded log.",
+      message: "正在读取并解析上传的日志。",
       leaseOwner
     });
     currentProgress = 10;
 
     currentFailureReason = "object_store_error";
-    if (snapshot.logDomain && !snapshot.skillRevisionId) throw new Error("Analysis skill run has no pinned revision.");
+    if (snapshot.logDomain && !snapshot.skillRevisionId) throw new Error("分析技能版本缺失，请重新发起分析。");
     const formatProfile = readStoredLogFormatProfile(snapshot.logDomain?.formatProfile ?? undefined);
     const inventory = await lease.run(() => loadLogFiles(db, snapshot.organizationId, snapshot.logId));
     const hadInventory = inventory.length > 0;
@@ -472,7 +472,7 @@ async function processClaimedLogAnalysisJob(
       stage: "parse",
       status: "complete",
       progress: 30,
-      message: "Log parsing complete.",
+      message: "日志解析完成。",
       leaseOwner
     });
     currentProgress = 30;
@@ -485,7 +485,7 @@ async function processClaimedLogAnalysisJob(
       stage: "pattern",
       status: "processing",
       progress: 40,
-      message: "Finding known operational patterns.",
+      message: "正在查找已知异常。",
       leaseOwner
     });
     currentProgress = 40;
@@ -497,7 +497,7 @@ async function processClaimedLogAnalysisJob(
       stage: "pattern",
       status: "complete",
       progress: 55,
-      message: "Pattern analysis complete.",
+      message: "异常识别完成。",
       leaseOwner
     });
     currentProgress = 55;
@@ -510,7 +510,7 @@ async function processClaimedLogAnalysisJob(
       stage: "rootcause",
       status: "processing",
       progress: 65,
-      message: "Linking evidence to likely root causes.",
+      message: "正在根据证据分析可能原因。",
       leaseOwner
     });
     currentProgress = 65;
@@ -566,7 +566,7 @@ async function processClaimedLogAnalysisJob(
             stage: "rootcause",
             status: "processing",
             progress,
-            message: `Analysis step ${boundedStep}/${maxSteps}.`,
+            message: `正在分析，第 ${boundedStep}/${maxSteps} 步。`,
             leaseOwner
           });
           currentProgress = progress;
@@ -591,7 +591,7 @@ async function processClaimedLogAnalysisJob(
       stage: "rootcause",
       status: "complete",
       progress: 80,
-      message: "Root cause evidence prepared.",
+      message: "原因分析与证据已整理。",
       leaseOwner
     });
     currentProgress = 80;
@@ -604,7 +604,7 @@ async function processClaimedLogAnalysisJob(
       stage: "report",
       status: "processing",
       progress: 90,
-      message: "Writing report and evidence.",
+      message: "正在生成报告并保存证据。",
       leaseOwner
     });
     currentProgress = 90;
@@ -697,6 +697,7 @@ async function processClaimedLogAnalysisJob(
       return { status: "retry", reason: decision.reason, nextRunAt: decision.nextRunAt };
     }
 
+    const failureReason = `日志分析已尝试 ${maxAttempts} 次，仍未完成。${message}`;
     const deadLettered = await db.transaction(async (tx) => {
       const deadLettered = await markJobDeadLettered(tx, {
         organizationId: job.organizationId,
@@ -722,7 +723,7 @@ async function processClaimedLogAnalysisJob(
         logId: failureLogId,
         runId: job.runId,
         currentStage,
-        error: decision.reason
+        error: failureReason
       });
       return true;
     });
@@ -734,7 +735,7 @@ async function processClaimedLogAnalysisJob(
         runId: snapshot.runId,
         fileName: snapshot.fileName,
         recipientUserId: snapshot.submittedByUserId,
-        failureReason: decision.reason
+        failureReason
       });
     }
     if (snapshot?.logDomain && webhooks) {
@@ -745,7 +746,7 @@ async function processClaimedLogAnalysisJob(
         runId: snapshot.runId,
         fileName: snapshot.fileName,
         status: "failed",
-        conclusion: decision.reason,
+        conclusion: failureReason,
         occurredAt: endedAt.toISOString()
       });
     }

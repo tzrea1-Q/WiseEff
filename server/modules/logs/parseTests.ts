@@ -63,7 +63,7 @@ export async function runParseTests(value: LogSkillSpec, options: { maxMs?: numb
   const evaluation = createSignalEvaluationBudget(deadline, undefined, now);
   const remaining = () => Math.max(0, deadline - now());
   const bounded = <T>(callback: () => T) => {
-    if (remaining() <= 0) throw new Error("Parse test deadline exceeded");
+    if (remaining() <= 0) throw new Error("解析用例运行超时");
     return runInNewContext("run()", { run: callback }, { timeout: Math.max(1, Math.ceil(remaining())) }) as T;
   };
   const results: ParseTestResult[] = [];
@@ -71,7 +71,7 @@ export async function runParseTests(value: LogSkillSpec, options: { maxMs?: numb
   try { spec = bounded(() => logSkillSpecSchema.parse(value)); }
   catch (error) {
     // Invalid specs are rejected by the service; the runner still fails closed for direct callers.
-    if (!timedOut(error) && !(error instanceof Error && error.message.includes("deadline"))) throw error;
+    if (!timedOut(error) && !(error instanceof Error && error.message.includes("运行超时"))) throw error;
     spec = value;
   }
   let bytes = 0, fields = 0, eventCount = 0, truncated = false;
@@ -79,8 +79,8 @@ export async function runParseTests(value: LogSkillSpec, options: { maxMs?: numb
   for (const test of spec.parseTests ?? []) {
     const result: ParseTestResult = { id: test.id, name: test.name, passed: false, diffs: [], missingSignals: [], unexpectedSignals: [], events: [], signals: [] };
     try {
-      if (!remaining()) throw new Error("Parse test deadline exceeded");
-      if (bytes >= MAX_DECODE_OUTPUT_BYTES || fields >= MAX_DECODE_OUTPUT_FIELDS || eventCount >= MAX_DECODE_EVENTS) throw new Error("Parse test output cap exceeded");
+      if (!remaining()) throw new Error("解析用例运行超时");
+      if (bytes >= MAX_DECODE_OUTPUT_BYTES || fields >= MAX_DECODE_OUTPUT_FIELDS || eventCount >= MAX_DECODE_EVENTS) throw new Error("解析用例输出超过上限");
       const file = test.fileName ?? "sample.log";
       assignFile ??= bounded(() => compileSkillFiles(spec.files));
       const applicability = bounded(() => assignFile!(file));
@@ -88,24 +88,24 @@ export async function runParseTests(value: LogSkillSpec, options: { maxMs?: numb
       if (applicability.skillMatched && spec.parsing) {
         const decoded = await decodeLogFilesCooperatively(spec.parsing, [{ file, lines: test.lines }],
           { maxMs: remaining(), maxEvents: MAX_DECODE_EVENTS - eventCount, hardTimeout: true });
-        if (decoded.truncated || Object.keys(decoded.counts.errors).length) result.error = decoded.reason ?? Object.keys(decoded.counts.errors).join(", ");
+        if (decoded.truncated || Object.keys(decoded.counts.errors).length) result.error = `解析用例未完成：${decoded.reason ?? Object.keys(decoded.counts.errors).join(", ")}`;
         for (const event of decoded.events) {
           const size = Buffer.byteLength(JSON.stringify(event)), count = outputFields(event.fields);
-          if (bytes + size > MAX_DECODE_OUTPUT_BYTES || fields + count > MAX_DECODE_OUTPUT_FIELDS) { result.error = "Parse test output cap exceeded"; break; }
+          if (bytes + size > MAX_DECODE_OUTPUT_BYTES || fields + count > MAX_DECODE_OUTPUT_FIELDS) { result.error = "解析用例输出超过上限"; break; }
           result.events.push(event); bytes += size; fields += count; eventCount++;
         }
       }
       const entries = [];
       for await (const entry of parseLogLines((async function* () {
         for (const [index, content] of test.lines.entries()) {
-          if (!remaining()) throw new Error("Parse test deadline exceeded");
+          if (!remaining()) throw new Error("解析用例运行超时");
           yield { lineNumber: index + 1, content };
         }
       })(), applicability.skillMatched ? spec.formatProfile : undefined)) entries.push(entry);
       const signals = await extractLogSignalsCooperatively([{ path: file, ...applicability, parsed: { ok: true, rawLines: test.lines, entries } }],
         applicability.skillMatched ? spec.signalRules ?? genericSignalRuleSet : genericSignalRuleSet,
         { maxMs: remaining(), hardTimeout: true, evaluation, eventsByLine: indexDecodedEvents(result.events) });
-      if (signals.truncated || signals.truncatedSignals) result.error = signals.reason ?? "Parse test signal cap exceeded";
+      if (signals.truncated || signals.truncatedSignals) result.error = signals.reason ? `解析用例未完成：${signals.reason}` : "解析用例的信号数量超过上限";
       const signalNames = signals.signals.map((signal) => ({ id: signal.kind.startsWith("skill:") ? signal.kind.slice(6) : signal.kind, title: signal.title }));
       result.signals = [...new Set(signalNames.map((signal) => signal.id))];
       bounded(() => {
@@ -117,10 +117,10 @@ export async function runParseTests(value: LogSkillSpec, options: { maxMs?: numb
         for (const name of result.missingSignals) result.diffs.push({ path: `signals.${name}`, expected: true, actual: false });
         for (const name of result.unexpectedSignals) result.diffs.push({ path: `signals.${name}`, expected: false, actual: true });
       });
-      if (!remaining()) throw new Error("Parse test deadline exceeded");
+      if (!remaining()) throw new Error("解析用例运行超时");
       result.passed = !result.error && !result.diffs.length && !result.missingSignals.length && !result.unexpectedSignals.length;
     } catch (error) {
-      if (timedOut(error)) result.error = "Parse test deadline exceeded";
+      if (timedOut(error)) result.error = "解析用例运行超时";
       else if (error instanceof Error) result.error = error.message;
       else throw error;
     }

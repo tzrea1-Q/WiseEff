@@ -7,13 +7,13 @@ const endian = z.enum(["big", "little"]);
 const integerLength = z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(8)]);
 const length = z.union([z.number().int().min(0).max(4096), path]);
 const reference = z.union([z.object({ frame: id }).strict(), z.object({ register: id }).strict()]);
-const cases = z.record(z.string().min(1).max(100), reference).refine((v) => Object.keys(v).length <= 256, "At most 256 cases");
+const cases = z.record(z.string().min(1).max(100), reference).refine((v) => Object.keys(v).length <= 256, "最多允许 256 个分支");
 const name = z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/).max(100);
 export const frameFieldSchema = z.discriminatedUnion("type", [
   z.object({ name, type: z.literal("uint"), length: integerLength, endian: endian.optional(), register: id.optional(),
-    scale: z.number().finite().optional(), offset: z.number().finite().optional(), unit: z.string().max(100).optional(), enum: z.record(z.string().max(100), z.string().max(128)).refine((v) => Object.keys(v).length <= 64, "At most 64 enum values").optional() }).strict(),
+    scale: z.number().finite().optional(), offset: z.number().finite().optional(), unit: z.string().max(100).optional(), enum: z.record(z.string().max(100), z.string().max(128)).refine((v) => Object.keys(v).length <= 64, "最多允许 64 个枚举值").optional() }).strict(),
   z.object({ name, type: z.literal("int"), length: integerLength, endian: endian.optional(), register: id.optional(),
-    scale: z.number().finite().optional(), offset: z.number().finite().optional(), unit: z.string().max(100).optional(), enum: z.record(z.string().max(100), z.string().max(128)).refine((v) => Object.keys(v).length <= 64, "At most 64 enum values").optional() }).strict(),
+    scale: z.number().finite().optional(), offset: z.number().finite().optional(), unit: z.string().max(100).optional(), enum: z.record(z.string().max(100), z.string().max(128)).refine((v) => Object.keys(v).length <= 64, "最多允许 64 个枚举值").optional() }).strict(),
   z.object({ name, type: z.literal("bytes"), length }).strict(),
   z.object({ name, type: z.literal("register"), register: id, length: integerLength, endian: endian.optional() }).strict(),
   z.object({ name, type: z.literal("frame"), frame: id, length: length.optional() }).strict(),
@@ -83,42 +83,42 @@ export function validateFrames(spec: ParsingSpec, ctx: z.RefinementCtx) {
     const ranges: [number, number][] = [];
     frame.fields.forEach((field, index) => {
       const base = ["frames", id, "fields", index];
-      if ("register" in field && field.register && registers[field.register] && "length" in field && typeof field.length === "number" && field.length !== registers[field.register].width / 8) add([...base, "length"], "Length must match referenced register width");
-      if (field.type === "repeat" && typeof field.count === "number" && field.count * (field.multiplier ?? 1) > 256) add([...base, "count"], "Repeat count exceeds 256 after multiplier");
-      if (names.has(field.name)) add([...base, "name"], "Duplicate field name");
+      if ("register" in field && field.register && registers[field.register] && "length" in field && typeof field.length === "number" && field.length !== registers[field.register].width / 8) add([...base, "length"], "长度须与引用的寄存器宽度一致");
+      if (field.type === "repeat" && typeof field.count === "number" && field.count * (field.multiplier ?? 1) > 256) add([...base, "count"], "乘以倍数后的重复次数不能超过 256");
+      if (names.has(field.name)) add([...base, "name"], "字段名称重复");
       names.add(field.name);
       for (const [ref, location] of refs(field)) {
-        if ("frame" in ref ? !Object.hasOwn(frames, ref.frame) : !Object.hasOwn(registers, ref.register)) add([...base, ...location], "Unknown decoder reference");
+        if ("frame" in ref ? !Object.hasOwn(frames, ref.frame) : !Object.hasOwn(registers, ref.register)) add([...base, ...location], "引用的解码规则不存在");
         if ("frame" in ref) {
           const depth = height(ref.frame);
-          if (!Number.isFinite(depth)) add([...base, ...location], "Cyclic frame reference");
-          else if (depth + 1 > 8) add([...base, ...location], "Decode nesting depth exceeds 8");
+          if (!Number.isFinite(depth)) add([...base, ...location], "数据帧之间存在循环引用");
+          else if (depth + 1 > 8) add([...base, ...location], "解码嵌套不能超过 8 层");
         }
       }
       if ("cases" in field) {
         const keys = new Set<string>();
-        for (const key of Object.keys(field.cases)) { const normalized = registerCaseKey(key); if (keys.has(normalized)) add([...base, "cases", key], "Duplicate normalized map case"); keys.add(normalized); }
+        for (const key of Object.keys(field.cases)) { const normalized = registerCaseKey(key); if (keys.has(normalized)) add([...base, "cases", key], "映射分支的数值重复"); keys.add(normalized); }
       }
       for (const key of ["count", "on", "length"] as const) {
         const value = key in field ? field[key as keyof typeof field] : undefined;
         if (typeof value !== "string") continue;
         const [root, ...rest] = value.split(".");
         const local = frame.fields.findIndex((f) => f.name === root);
-        if (local >= index || local >= 0 && !hasPath(frame.fields[local], rest)) add([...base, key], "Reference must point to an earlier decoded field");
+        if (local >= index || local >= 0 && !hasPath(frame.fields[local], rest)) add([...base, key], "引用须指向已解码的前置字段");
         // External extractor references are checked below for every root using this frame.
       }
       if (field.type === "checksum") {
         const [start, end] = field.range;
-        if (start >= end || offset !== undefined && start < offset + field.length && end > offset || ranges.some(([s, e]) => start < e && end > s)) add([...base, "range"], "Invalid or overlapping checksum range");
+        if (start >= end || offset !== undefined && start < offset + field.length && end > offset || ranges.some(([s, e]) => start < e && end > s)) add([...base, "range"], "校验范围无效或重叠");
         ranges.push(field.range);
         const expectedLength = field.algorithm === "crc32" ? 4 : field.algorithm.startsWith("crc16") ? 2 : 1;
-        if (field.length !== expectedLength) add([...base, "length"], `Checksum requires ${expectedLength} stored bytes`);
+        if (field.length !== expectedLength) add([...base, "length"], `校验值须占用 ${expectedLength} 字节`);
       }
       offset = offset !== undefined && "length" in field && typeof field.length === "number" ? offset + field.length : undefined;
-      if (offset !== undefined && offset > 4096) add([...base, "length"], "Frame length exceeds 4096 bytes");
+      if (offset !== undefined && offset > 4096) add([...base, "length"], "数据帧长度不能超过 4096 字节");
     });
     if (offset !== undefined) frame.fields.forEach((field, index) => {
-      if (field.type === "checksum" && field.range[1] > offset!) add(["frames", id, "fields", index, "range"], "Checksum covered range exceeds frame length");
+      if (field.type === "checksum" && field.range[1] > offset!) add(["frames", id, "fields", index, "range"], "校验范围超出数据帧长度");
     });
   }
   // A frame may depend on scalar/register captures from its extractor, but never on a later frame capture.
@@ -141,13 +141,13 @@ export function validateFrames(spec: ParsingSpec, ctx: z.RefinementCtx) {
             else if ("register" in external.decode) valid = rest.length === 0 || rest.length === 1 && !!registers[external.decode.register]?.fields.some((f) => f.name === rest[0]);
             else valid = !rest.length;
           } else if (rest.length) valid = false;
-          if (!valid) add(["frames", id, "fields", index, key], `Unknown or forward decoded field in extractor ${ei}`);
+          if (!valid) add(["frames", id, "fields", index, key], `字段解析规则 ${ei} 引用了不存在或尚未解码的字段`);
         }
         for (const [ref] of refs(field)) if ("frame" in ref) check(ref.frame, seen, captureIndex);
       });
     }
     entries.forEach(([name, field], i) => { if ("decode" in field && field.decode && "frame" in field.decode) {
-      if (height(field.decode.frame) > 8) add(["extractors", ei, "fields", name, "decode", "frame"], "Decode nesting depth exceeds 8 or contains a cycle");
+      if (height(field.decode.frame) > 8) add(["extractors", ei, "fields", name, "decode", "frame"], "解码嵌套超过 8 层或存在循环引用");
       check(field.decode.frame, new Set(), i);
     } });
   });

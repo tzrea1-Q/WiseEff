@@ -180,7 +180,7 @@ Older records may lack source badges, and the confidence percentage alone cannot
 3. Select a raw line number with evidence to jump back to its first corresponding card. Lines without evidence do not have this jump action.
 4. Use raw-log search and previous/next match buttons to inspect other occurrences in the preview. If a column filter hides a cited line, clear that filter before locating it. The raw panel remains available as a bounded preview: at most the first 400 lines per file, sharing a 128 KiB text budget across the run. Use the drawer for citations beyond that preview; each displayed window contains at most 400 lines.
 
-Very long lines in the drawer are limited to 64 KiB and end with `… [line truncated at 64 KiB]`; copying such a line copies its displayed prefix and marker.
+Very long lines in the drawer are limited to 64 KiB and end with a localized truncation marker; copying such a line copies its displayed prefix and marker.
 
 After completion, choose "Export report" to download a Markdown summary or "Copy link" to copy the selected record's link. Recipients still need access to the record within its Organization.
 

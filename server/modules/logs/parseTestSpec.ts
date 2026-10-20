@@ -29,11 +29,11 @@ export const parseTestSchema = z.object({
 export const parseTestsSchema = z.array(parseTestSchema).max(MAX_PARSE_TESTS).superRefine((tests, ctx) => {
   const ids = new Set<string>();
   for (const [index, test] of tests.entries()) {
-    if (ids.has(test.id)) ctx.addIssue({ code: "custom", path: [index, "id"], message: "Duplicate parse test id" });
+    if (ids.has(test.id)) ctx.addIssue({ code: "custom", path: [index, "id"], message: "解析用例标识重复" });
     ids.add(test.id);
   }
-  if (tests.reduce((sum, test) => sum + test.lines.length, 0) > MAX_PARSE_TEST_RUN_LINES) ctx.addIssue({ code: "custom", message: "Parse tests exceed 5000 total lines" });
-  if (tests.reduce((sum, test) => sum + test.lines.reduce((chars, line) => chars + line.length, 0), 0) > MAX_PARSE_TEST_CHARS) ctx.addIssue({ code: "custom", message: "Parse tests exceed 1 MiB of sample characters" });
+  if (tests.reduce((sum, test) => sum + test.lines.length, 0) > MAX_PARSE_TEST_RUN_LINES) ctx.addIssue({ code: "custom", message: "解析用例合计不能超过 5000 行" });
+  if (tests.reduce((sum, test) => sum + test.lines.reduce((chars, line) => chars + line.length, 0), 0) > MAX_PARSE_TEST_CHARS) ctx.addIssue({ code: "custom", message: "解析用例的样例字符合计不能超过 1 MiB" });
 });
 export const parseTestResultSchema = z.object({
   id: z.string(), name: z.string(), passed: z.boolean(),

@@ -13,14 +13,14 @@ export const sourceSnapshotUploadSchema = z.object({
 import { logRecordStatuses } from "./status";
 
 const nonEmptyString = z.string().min(1);
-export const skillKeySchema = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/, "Use 2–63 lowercase letters, digits or hyphens, starting with a letter or digit.");
+export const skillKeySchema = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/, "请输入 2–63 位小写字母、数字或连字符，并以字母或数字开头。");
 function validBase64(value: string) {
   if (value.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
   // Check canonical padding bits without decoding/re-encoding the whole upload.
   try { return Buffer.from(value.slice(-4), "base64").toString("base64") === value.slice(-4); }
   catch { return false; }
 }
-const base64String = nonEmptyString.refine(validBase64, { message: "Expected valid base64 content." });
+const base64String = nonEmptyString.refine(validBase64, { message: "文件内容编码无效，请重新选择文件上传。" });
 const booleanQuerySchema = z.union([z.boolean(), z.enum(["true", "false"])]).transform((value) => value === true || value === "true");
 
 // Array .max() still parses every element. Stop at the first structural violation
@@ -28,30 +28,30 @@ const booleanQuerySchema = z.union([z.boolean(), z.enum(["true", "false"])]).tra
 export const logSkillRecommendationRequestSchema = z.unknown().superRefine((input, context) => {
   const reject = (path: (string | number)[], message: string) =>
     context.addIssue({ code: z.ZodIssueCode.custom, path, message, fatal: true });
-  if (!input || typeof input !== "object" || Array.isArray(input)) return reject([], "Expected a recommendation request object.");
+  if (!input || typeof input !== "object" || Array.isArray(input)) return reject([], "技能推荐请求格式无效。");
   const request = input as Record<string, unknown>;
   if (!Array.isArray(request.files) || request.files.length > recommendationLimits.files)
-    return reject(["files"], `Expected at most ${recommendationLimits.files} files.`);
-  for (const key in request) if (key !== "files") return reject([], "Unexpected recommendation request field.");
+    return reject(["files"], `最多支持 ${recommendationLimits.files} 个文件。`);
+  for (const key in request) if (key !== "files") return reject([], "技能推荐请求包含不支持的字段。");
   for (let index = 0; index < request.files.length; index++) {
     const file: unknown = request.files[index], path = ["files", index];
-    if (!file || typeof file !== "object" || Array.isArray(file)) return reject(path, "Expected a file object.");
+    if (!file || typeof file !== "object" || Array.isArray(file)) return reject(path, "文件信息格式无效。");
     const entry = file as Record<string, unknown>;
     if (typeof entry.path !== "string" || !entry.path.length || entry.path.length > recommendationLimits.pathChars || /[\x00-\x1f\x7f]/.test(entry.path))
-      return reject([...path, "path"], `Expected a path of 1–${recommendationLimits.pathChars} characters without control characters.`);
+      return reject([...path, "path"], `文件路径须为 1–${recommendationLimits.pathChars} 个字符，且不能包含控制字符。`);
     if (!Array.isArray(entry.head) || entry.head.length > recommendationLimits.headLines)
-      return reject([...path, "head"], `Expected at most ${recommendationLimits.headLines} head lines.`);
-    for (const key in entry) if (key !== "path" && key !== "head") return reject(path, "Unexpected file field.");
+      return reject([...path, "head"], `最多提供 ${recommendationLimits.headLines} 行文件开头内容。`);
+    for (const key in entry) if (key !== "path" && key !== "head") return reject(path, "文件信息包含不支持的字段。");
     for (let line = 0; line < entry.head.length; line++) {
       const text: unknown = entry.head[line];
       if (typeof text !== "string" || text.length > recommendationLimits.lineBytes || Buffer.byteLength(text, "utf8") > recommendationLimits.lineBytes)
-        return reject([...path, "head", line], `Head lines must be strings of at most ${recommendationLimits.lineBytes} bytes UTF-8.`);
+        return reject([...path, "head", line], `文件开头每行须为文本，且 UTF-8 编码不能超过 ${recommendationLimits.lineBytes} 字节。`);
     }
   }
 }).pipe(z.object({
   files: z.array(z.object({
-    path: z.string().min(1).max(recommendationLimits.pathChars).refine((path) => !/[\x00-\x1f\x7f]/.test(path), "Invalid file path"),
-    head: z.array(z.string().max(recommendationLimits.lineBytes).refine((line) => Buffer.byteLength(line, "utf8") <= recommendationLimits.lineBytes, `Head lines must be at most ${recommendationLimits.lineBytes} bytes UTF-8`))
+    path: z.string().min(1).max(recommendationLimits.pathChars).refine((path) => !/[\x00-\x1f\x7f]/.test(path), "文件路径无效"),
+    head: z.array(z.string().max(recommendationLimits.lineBytes).refine((line) => Buffer.byteLength(line, "utf8") <= recommendationLimits.lineBytes, `文件开头每行的 UTF-8 编码不能超过 ${recommendationLimits.lineBytes} 字节`))
       .max(recommendationLimits.headLines)
   }).strict()).max(recommendationLimits.files)
 }).strict());
@@ -73,14 +73,14 @@ function rejectMismatchedRelatedParameterPin(
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["relatedParameterPin", "bindingId"],
-      message: "relatedParameterPin.bindingId must match relatedParameterId."
+      message: "关联参数的绑定信息不一致。"
     });
   }
   if (value.relatedParameterId && !value.relatedParameterPin) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["relatedParameterPin"],
-      message: "relatedParameterId requires an explicitly project-scoped canonical relatedParameterPin."
+      message: "请选择明确归属项目的关联参数。"
     });
   }
 }
@@ -134,7 +134,7 @@ export const logLineRangeQuerySchema = z.object({
   startLine: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   endLine: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER)
 }).refine(({ startLine, endLine }) => endLine >= startLine && endLine - startLine < 400, {
-  message: "Request an inclusive range of at most 400 lines."
+  message: "每次最多读取 400 行，结束行不能早于起始行。"
 });
 
 export const logFeedbackBodySchema = z.object({
@@ -182,7 +182,7 @@ export const replaceLogSkillSampleBodySchema = z.object({
         inclusive: true, message: "样例日志不能超过 2 MiB。" });
       return;
     }
-    if (!value || !validBase64(value)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Expected valid base64 content." });
+    if (!value || !validBase64(value)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "文件内容编码无效，请重新选择文件上传。" });
   })
 }).strict();
 

@@ -163,7 +163,7 @@ describe("parsing/v1 frame engine interface", () => {
     expect(parsingSpecSchema.parse(parse(stringify(spec)))).toEqual(spec);
   });
 
-  it("reports unknown frame/register references and forward count, on and length references at exact paths", () => {
+  it("reports 数据帧不存在/register references and forward count, on and length references at exact paths", () => {
     const candidate = { schemaVersion: "parsing/v1", frames: { main: { fields: [
       { name: "repeat", type: "repeat", frame: "missing", count: "later" },
       { name: "switch", type: "switch", on: "later", cases: { "1": { register: "missing" } }, length: 1 },
@@ -227,7 +227,7 @@ describe("parsing/v1 frame engine interface", () => {
     const spec: ParsingSpec = runInNewContext("validate()", { validate: () => parsingSpecSchema.parse(candidate) }, { timeout: 1000 });
     const result: ReturnType<typeof decodeLogFiles> = runInNewContext("decode()", { decode: () => decode(spec, "") }, { timeout: 1000 });
     expect(result).toMatchObject({ counts: { total: 1, errors: { frame_elements: 1 } }, events: [{ errors: [{
-      code: "frame_elements", message: "Frame total element count exceeds 1024 per event"
+      code: "frame_elements", message: "单条数据帧的元素数量超过 1024 个上限"
     }] }] });
     const cyclic = { ...candidate, frames: { ...candidate.frames, F7: { fields: [{ name: "loop", type: "frame", frame: "F0" }] } } };
     const invalid: ReturnType<typeof parsingSpecSchema.safeParse> = runInNewContext("validate()", { validate: () => parsingSpecSchema.safeParse(cyclic) }, { timeout: 1000 });

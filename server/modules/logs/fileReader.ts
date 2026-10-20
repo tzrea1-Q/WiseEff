@@ -91,7 +91,7 @@ async function* scanLines(store: ObjectStore, key: string, startByte: number, st
     if (take < bytes.length) truncated = true;
   };
   const finish = () => {
-    const content = Buffer.concat(parts, size).toString("utf8") + (truncated ? "… [line truncated at 64 KiB]" : "");
+    const content = Buffer.concat(parts, size).toString("utf8") + (truncated ? "… [单行日志超过 64 KB，已截断]" : "");
     parts = []; size = 0; truncated = false;
     return { lineNumber: lineNumber++, content };
   };

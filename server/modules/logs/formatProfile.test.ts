@@ -23,7 +23,7 @@ describe("validateLogFormatProfile", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.issues.join(" ")).toMatch(/unrecognized/i);
+    expect(result.issues.join(" ")).toMatch(/不支持的字段/);
   });
 
   it("requires startPattern for start-pattern multiline mode", () => {
@@ -31,7 +31,7 @@ describe("validateLogFormatProfile", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.issues.join(" ")).toMatch(/startPattern/);
+    expect(result.issues.join(" ")).toMatch(/起始行匹配规则/);
   });
 
   it("rejects uncompilable regular expressions", () => {
@@ -55,7 +55,7 @@ describe("validateLogFormatProfile", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.issues.map((issue) => issue.split(" is not a valid regular expression:")[0])).toEqual([
+    expect(result.issues.map((issue) => issue.split(" 正则表达式无效：")[0])).toEqual([
       "timestampPattern", "multiline.startPattern", "severityMap.error[1]", "severityMap.error[2]"
     ]);
     expect(readStoredLogFormatProfile({ timestampPattern: "(?=time)" })).toBeUndefined();

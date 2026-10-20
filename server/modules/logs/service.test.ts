@@ -209,7 +209,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
         contentType: "text/plain",
         bytes: Buffer.from("line one")
       })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", { permission: "logs:upload" }));
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "无权执行此操作。", { permission: "logs:upload" }));
     expect(objectStore.entries.size).toBe(0);
   });
 
@@ -417,7 +417,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     expect(result.fileObject).toMatchObject({ fileName: "pack-controller.bin" });
     expect(result.fileObject.storageKey).toMatch(/^inline\//);
     expect(result.log.status).toBe("failed");
-    expect(result.log.failureReason).toBe("Unsupported log format. Supported extensions: .log, .txt, .csv, .json (archives: .gz, .zip).");
+    expect(result.log.failureReason).toBe("不支持此日志格式。请重新上传 .log .txt .csv .json 文本日志，或一个 .zip .tar .tar.gz .tgz .gz 压缩包。");
     expect(result.log.files).toMatchObject([{ path: "pack-controller.bin", status: "skipped", skipReason: "二进制文件" }]);
     expect(result.job).toBeNull();
 
@@ -593,7 +593,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
         fileName: "caller-name.log"
       })
     ).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "File name does not match the stored file object.")
+      { code: "VALIDATION_FAILED", status: 400, details: { fileObjectId: "file-canonical", fileName: "caller-name.log" } }
     );
 
     const records = await db.query<{ count: string }>(
@@ -620,7 +620,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
         fileObjectId: "file-foreign",
         fileName: "pack-controller.log"
       })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "File object ownership is required."));
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403, details: { fileObjectId: "file-foreign" } });
 
     const written = await db.query<{ logs: string; jobs: string; audits: string }>(
       `select
@@ -646,7 +646,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     await completeRun(db, { organizationId: "org-1", logId, runId });
 
     await expect(archiveLogRecord(db, makeAuth(), logId)).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Forbidden.", { permission: "logs:archive" })
+      new ApiError("FORBIDDEN", "无权执行此操作。", { permission: "logs:archive" })
     );
 
     const archived = await archiveLogRecord(db, adminAuth(), logId);
@@ -681,7 +681,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
         rating: "helpful",
         note: "Matched the incident."
       })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", { permission: "logs:feedback" }));
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "无权执行此操作。", { permission: "logs:feedback" }));
 
     await submitLogFeedback(
       db,
@@ -713,7 +713,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
 
     await expect(
       listLogFeedbackInsights(db, makeAuth({ permissions: ["logs:feedback"] }), {})
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", { permission: "logs:view" }));
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "无权执行此操作。", { permission: "logs:view" }));
 
     const insights = await listLogFeedbackInsights(db, makeAuth(), { timeWindow: "7d" });
     expect(insights.items).toEqual([
@@ -729,7 +729,7 @@ describe.skipIf(!databaseAvailable)("log service", () => {
 
     await expect(
       rerunLogAnalysis(db, makeAuth({ permissions: ["logs:view"] }), { logId })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", { permission: "logs:analyze" }));
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "无权执行此操作。", { permission: "logs:analyze" }));
 
     const result = await rerunLogAnalysis(db, adminAuth(), { logId, analysisQuestion: "Try again" });
 

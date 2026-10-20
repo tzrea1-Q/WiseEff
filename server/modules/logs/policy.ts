@@ -7,10 +7,10 @@ function hasPermission(auth: AuthContext, permission: BackendPermission) {
 
 function requirePermission(auth: AuthContext, permission: BackendPermission, options: { requireActive?: boolean } = {}) {
   if (options.requireActive && !auth.user.isActive) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", { permission });
+    throw new ApiError("FORBIDDEN", "无权执行此操作。", { permission });
   }
   if (!hasPermission(auth, permission)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", { permission });
+    throw new ApiError("FORBIDDEN", "无权执行此操作。", { permission });
   }
 }
 

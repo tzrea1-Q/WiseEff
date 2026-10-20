@@ -7,10 +7,10 @@ import { createLogPatternCache } from "./adminPattern";
 /** Uses the runtime parser unchanged, with multiline disabled only for the per-line annotations. */
 export function previewLogFormat(value: { sampleText: string; formatProfile?: unknown }) {
   const input = formatPreviewRequestSchema.parse(value);
-  if (Buffer.byteLength(input.sampleText, "utf8") > MAX_EXTRACTOR_PREVIEW_BYTES) throw new Error("Format sample exceeds 1 MiB UTF-8");
+  if (Buffer.byteLength(input.sampleText, "utf8") > MAX_EXTRACTOR_PREVIEW_BYTES) throw new Error("格式样例的 UTF-8 编码不能超过 1 MiB");
   const rawLines = input.sampleText.split(/\r\n|\n|\r/);
   if (rawLines.at(-1) === "") rawLines.pop();
-  if (rawLines.length > MAX_EXTRACTOR_PREVIEW_LINES || rawLines.some((text) => text.length > MAX_PARSING_LINE_CHARS)) throw new Error("Format preview allows at most 500 lines of 6144 UTF-16 code units each");
+  if (rawLines.length > MAX_EXTRACTOR_PREVIEW_LINES || rawLines.some((text) => text.length > MAX_PARSING_LINE_CHARS)) throw new Error("格式预览最多支持 500 行，每行最多 6144 个 UTF-16 代码单元");
   const patternCache = createLogPatternCache();
   const validated = validateLogFormatProfile(input.formatProfile, patternCache);
   if (!validated.ok) throw new Error(validated.issues.join("; "));

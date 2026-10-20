@@ -1,3 +1,4 @@
+import { logValidationIssues } from "./validationMessages";
 import { createContext, runInNewContext, Script } from "node:vm";
 import { setImmediate } from "node:timers/promises";
 import type { Database } from "../../shared/database/client";
@@ -27,13 +28,13 @@ export async function previewSignalRules(input: { signalRules?: unknown; parsing
   const hits: Hit[] = [], issues: Issue[] = [];
   let valid = false;
   const capped = (reason: "time_cap" | "line_cap" | "hit_cap" | "event_cap" | "evaluation_cap") => ({ valid,
-    issues: valid ? issues : [{ path: ["signalRules"], message: "Signal validation exceeded the preview budget" }], hits, truncated: true, reason });
+    issues: valid ? issues : [{ path: ["signalRules"], message: "信号规则校验超时，请简化规则后重试" }], hits, truncated: true, reason });
   if (maxMs <= 0) return capped("time_cap");
   try {
     const validated: ReturnType<typeof logSkillSpecSchema.safeParse> = runInNewContext("validate()", { validate: () => logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", ...input }) }, { timeout: Math.max(1, Math.ceil(deadline - now())) });
-    if (!validated.success) return { valid: false, issues: validated.error.issues.map(({ path, message }: Issue) => ({ path, message })), hits, truncated: false };
+    if (!validated.success) return { valid: false, issues: logValidationIssues(validated.error.issues).map(({ path, message }: Issue) => ({ path, message })), hits, truncated: false };
     const spec = validated.data;
-    if (!spec.signalRules) return { valid: false, issues: [{ path: ["signalRules"], message: "Signal rules are required" }], hits, truncated: false };
+    if (!spec.signalRules) return { valid: false, issues: [{ path: ["signalRules"], message: "请提供信号规则" }], hits, truncated: false };
     valid = true;
     const applies: boolean = runInNewContext("match()", { match: () => matchSkillFile(spec.files, sample.fileName).skillMatched },
       { timeout: Math.max(1, Math.ceil(deadline - now())) });
@@ -83,6 +84,6 @@ export async function previewLogSkillSignals(db: Database, store: ObjectStore, a
   input: { signalRules?: unknown; parsing?: unknown; formatProfile?: unknown; files?: unknown }) {
   requireLogAdminDomains(auth);
   const sample = await getLogSkillSample(db, store, auth, skillId);
-  if (!sample) throw new ApiError("VALIDATION_FAILED", "Attach a skill sample before previewing signals.");
+  if (!sample) throw new ApiError("VALIDATION_FAILED", "请先上传技能样例，再预览信号。");
   return previewSignalRules(input, { ...sample, fileName: sample.contentFilePath ?? sample.fileName });
 }

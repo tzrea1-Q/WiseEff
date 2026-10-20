@@ -176,7 +176,7 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
 }
 ```
 
-The reader uses the file's UTF-8 text object and line-offset index, including for UTF-16 uploads converted during intake. CRLF counts as one line break, and the final line remains addressable without a trailing newline. Each returned line is bounded to a 64 KiB prefix; longer lines end with `… [line truncated at 64 KiB]`. Consumers should preserve this marker when displaying or copying a truncated line.
+The reader uses the file's UTF-8 text object and line-offset index, including for UTF-16 uploads converted during intake. CRLF counts as one line break, and the final line remains addressable without a trailing newline. Each returned line is bounded to a 64 KiB prefix; longer lines end with a localized truncation marker. Consumers should preserve this marker when displaying or copying a truncated line.
 
 The record's existing raw-log panel remains a preview: at most the first 400 lines per file, with a shared 128 KiB text budget per run. In `/logs`, clicking an evidence `file:line` chip or a signal/template anchor opens the shared file drawer, scrolls to and highlights its citation, and offers context loading above and below plus line copying. Use the line-window endpoint for locations beyond the preview rather than treating `rawLines` as the complete file.
 
@@ -203,7 +203,7 @@ Before the first push, an administrator configures a skill's webhook in its work
   "degradedReason": null,
   "severity": "Warning",
   "confidence": 0.82,
-  "conclusionSummary": "Charging behavior is consistent with thermal foldback protection…",
+  "conclusionSummary": "<localized analysis conclusion>",
   "occurredAt": "2026-08-13T02:00:00.000Z",
   "productPath": "/logs?id=report-run-..."
 }

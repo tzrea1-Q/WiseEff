@@ -170,7 +170,7 @@ export function validateWebhookUrl(rawUrl: string, options: WebhookSsrfOptions =
   try {
     url = new URL(rawUrl);
   } catch {
-    return { ok: false, reason: "webhook-url-invalid", message: "Webhook URL is not a valid absolute URL." };
+    return { ok: false, reason: "webhook-url-invalid", message: "结果通知地址无效，请填写完整地址。" };
   }
 
   const host = stripBrackets(url.hostname);
@@ -182,20 +182,20 @@ export function validateWebhookUrl(rawUrl: string, options: WebhookSsrfOptions =
       return {
         ok: false,
         reason: "webhook-url-scheme",
-        message: "Webhook URL must use https: (plain http is only allowed for 127.0.0.1 when LOG_WEBHOOK_ALLOW_INSECURE_LOCAL=true)."
+        message: "结果通知地址须使用 HTTPS；仅在 LOG_WEBHOOK_ALLOW_INSECURE_LOCAL=true 时，127.0.0.1 可使用 HTTP。"
       };
     }
   }
 
   if (url.username !== "" || url.password !== "") {
-    return { ok: false, reason: "webhook-url-credentials", message: "Webhook URL must not embed credentials." };
+    return { ok: false, reason: "webhook-url-credentials", message: "结果通知地址不能包含账号或密码。" };
   }
 
   if (hostFamily !== 0 && isBlockedWebhookAddress(host, options)) {
     return {
       ok: false,
       reason: "webhook-url-private-address",
-      message: "Webhook URL points at a private, loopback, link-local, or metadata address range."
+      message: "结果通知地址不能指向内网、本机、链路本地或云元数据地址。"
     };
   }
 

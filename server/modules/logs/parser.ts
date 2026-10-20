@@ -4,7 +4,7 @@ import { compileLogPattern, createLogPatternCache, type LogPattern, type LogPatt
 import type { LogFormatProfile } from "./formatProfile";
 import { supportedLogExtensions } from "./status";
 import type { DecodedEvent } from "./parsing/spec";
-import { isSupportedStoredLogFileName, supportedLogArchiveExtensions } from "./unpack";
+import { isSupportedStoredLogFileName } from "./unpack";
 
 export type ParsedLogSeverity = "error" | "warn" | "info";
 
@@ -42,7 +42,7 @@ export function parseLogText(input: ParseLogTextInput, options: ParseLogTextOpti
   if (!isSupportedStoredLogFileName(input.fileName)) {
     return {
       ok: false,
-      reason: `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")} (archives: ${supportedLogArchiveExtensions.join(", ")}).`
+      reason: `不支持此日志格式。请重新上传 ${supportedLogExtensions.join(" ")} 文本日志，或一个 .zip .tar .tar.gz .tgz .gz 压缩包。`
     };
   }
 
@@ -111,7 +111,7 @@ export async function* parseLogLines(lines: AsyncIterable<{ lineNumber: number; 
       if (previous.message.length < 64 * 1024) {
         const retained = trimmed.slice(0, Math.max(0, 64 * 1024 - previous.message.length - 1));
         previous.message += `\n${retained}`;
-        if (retained.length < trimmed.length) previous.message += "… [multiline entry truncated at 64 KiB]";
+        if (retained.length < trimmed.length) previous.message += "… [多行日志超过 64 KB，已截断]";
         Object.assign(previous.tokens, parseTokens(retained));
       }
       continue;
@@ -211,14 +211,14 @@ function decodeUtf8Bytes(bytes: Buffer): { ok: true; text: string } | { ok: fals
   if (bytes.length > 0) {
     const nullBytes = bytes.reduce((count, byte) => count + (byte === 0x00 ? 1 : 0), 0);
     if (nullBytes / bytes.length > 0.05) {
-      return { ok: false, reason: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log." };
+      return { ok: false, reason: "文件包含二进制内容或过多空字节，请上传 UTF-8 文本日志。" };
     }
   }
 
   try {
     return { ok: true, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
   } catch {
-    return { ok: false, reason: "Unable to decode log content as valid UTF-8 text." };
+    return { ok: false, reason: "无法按 UTF-8 读取日志，请检查文件编码。" };
   }
 }
 

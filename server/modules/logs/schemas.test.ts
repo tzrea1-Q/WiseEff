@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { logValidationIssues } from "./validationMessages";
+import { logSkillSpecSchema } from "./skillSpec";
+import { defaultChargingRuleSet } from "./chargingSignalRules";
 
 import {
   createLogBodySchema,
@@ -10,6 +13,25 @@ import {
 } from "./schemas";
 
 describe("log schemas", () => {
+  it("localizes default validation diagnostics without changing authored skill text or machine fields", () => {
+    const invalid = createLogBodySchema.safeParse({ fileName: "device.log" });
+    expect(invalid.success).toBe(false);
+    if (!invalid.success) expect(logValidationIssues(invalid.error.issues)).toEqual([
+      expect.objectContaining({ code: "invalid_type", path: ["fileObjectId"], message: "缺少必需字段（预期 string，实际 undefined）" })
+    ]);
+    const literal = logSkillSpecSchema.safeParse({ schemaVersion: "unsupported" });
+    expect(literal.success).toBe(false);
+    if (!literal.success) expect(logValidationIssues(literal.error.issues)).toContainEqual(
+      expect.objectContaining({ code: "invalid_literal", message: "必须为 skill/v1" })
+    );
+    expect(logValidationIssues([{ code: "custom", path: ["pattern"], message: "syntax offset=17" }])[0].message)
+      .toBe("配置无效：syntax offset=17");
+    const authored = "Administrator-authored text remains unchanged.";
+    const skill = logSkillSpecSchema.parse({ schemaVersion: "skill/v1", procedure: authored,
+      signalRules: { ...defaultChargingRuleSet, noHit: { ...defaultChargingRuleSet.noHit, conclusion: authored } } });
+    expect(skill.procedure).toBe(authored);
+    expect(skill.signalRules?.noHit.conclusion).toBe(authored);
+  });
   it("trims source version labels and rejects empty or oversized labels on both upload APIs", () => {
     for (const [schema, input] of [
       [createLogFileBodySchema, { fileName: "device.log", contentType: "text/plain", contentBase64: "YQ==" }],

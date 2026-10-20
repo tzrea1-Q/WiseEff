@@ -73,7 +73,7 @@ function createValidatingLookup(ssrf: WebhookSsrfOptions) {
       const resolved = Array.isArray(addresses) ? addresses : [addresses];
       const blocked = resolved.find((entry) => isBlockedWebhookAddress(entry.address, ssrf));
       if (blocked || resolved.length === 0) {
-        const rejection = Object.assign(new Error(`Webhook host resolves to a blocked address range.`), {
+        const rejection = Object.assign(new Error(`结果通知地址解析到了受限制的网络地址。`), {
           code: "WISEEFF_WEBHOOK_SSRF_BLOCKED"
         });
         done(rejection, undefined as never);
@@ -114,20 +114,20 @@ export const nodeWebhookTransport: WebhookTransport = ({ url, rawBody, headers, 
         resolve({
           ok: false,
           httpStatus: status,
-          error: status >= 300 && status < 400 ? "Redirects are not followed." : `Receiver responded with HTTP ${status}.`
+          error: status >= 300 && status < 400 ? "结果通知地址发生重定向，请填写最终接收地址。" : `接收服务返回 HTTP 状态 ${status}。`
         });
       }
     );
     request.setTimeout(timeoutMs, () => {
-      request.destroy(new Error(`Webhook delivery timed out after ${timeoutMs}ms.`));
+      request.destroy(new Error(`结果通知发送超时（${timeoutMs} 毫秒）。`));
     });
-    const deadline = setTimeout(() => request.destroy(new Error("Webhook delivery deadline exceeded.")), timeoutMs);
+    const deadline = setTimeout(() => request.destroy(new Error("结果通知发送超时。")), timeoutMs);
     request.on("close", () => clearTimeout(deadline));
     request.on("error", (error) => {
       const code = (error as NodeJS.ErrnoException & { code?: string }).code;
       resolve({
         ok: false,
-        error: code === "WISEEFF_WEBHOOK_SSRF_BLOCKED" ? "Webhook host resolves to a blocked address range." : error.message
+        error: code === "WISEEFF_WEBHOOK_SSRF_BLOCKED" ? "结果通知地址解析到了受限制的网络地址。" : `结果通知连接失败：${error.message}`
       });
     });
     request.end(rawBody);
@@ -184,7 +184,7 @@ export function createLogWebhookDeliverer({
     if (!config?.enabled || !config.url?.trim() || !config.secret?.trim()) {
       if (input.kind === "test") metrics?.recordLogAnalysisWebhookDelivery({ domain: input.logDomainId, outcome: "skipped" });
       return { status: "skipped", attempts: 0, error: input.kind === "test"
-        ? "Webhook is not fully configured (URL, secret, and enabled are all required)." : undefined };
+        ? "结果通知配置不完整，请填写接收地址、签名密钥并启用通知。" : undefined };
     }
     const startedAtMs = now().getTime();
     const validation = validateWebhookUrl(config.url, ssrf);
@@ -209,10 +209,10 @@ export function createLogWebhookDeliverer({
         });
       } catch (error) {
         signingFailed = error instanceof LogWebhookSecretDecryptionError;
-        result = { ok: false, error: error instanceof LogWebhookSecretDecryptionError ? error.message : "Webhook signing or transport failed." };
+        result = { ok: false, error: error instanceof LogWebhookSecretDecryptionError ? `结果通知签名密钥不可用：${error.message}` : "结果通知签名或发送失败，请检查配置后重试。" };
       }
     }
-    const blocked = !validation.ok || result.error === "Webhook host resolves to a blocked address range.";
+    const blocked = !validation.ok || result.error === "结果通知地址解析到了受限制的网络地址。";
     const status = result.ok ? "delivered" : blocked || signingFailed || input.attempt >= input.maxAttempts ? "failed" : "retrying";
     const recording = insertLogWebhookDelivery(queryable, {
       id: newId(), organizationId: input.organizationId, logDomainId: input.logDomainId,
@@ -282,7 +282,7 @@ export function createLogWebhookDeliverer({
       return sendAttempt(db, {
         organizationId: input.organizationId, logDomainId: input.domainId, kind: "test",
         payload: { event: "log-analysis.test", logDomainId: input.domainId,
-          occurredAt: now().toISOString(), message: "WiseEff log-analysis webhook test delivery." },
+          occurredAt: now().toISOString(), message: "WiseEff 日志分析结果通知测试。" },
         attempt: 1, maxAttempts: 1
       });
     },

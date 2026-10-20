@@ -102,8 +102,8 @@ describe("shared log pattern budgets", () => {
     try {
       const patterns = Array.from({ length: 96 }, (_, index) => `${index}[${"\\p{L}".repeat(800)}]`);
       const profile = { severityMap: { error: patterns.slice(0, 32), warn: patterns.slice(32, 64), info: patterns.slice(64) } };
-      expect(validateLogFormatProfile(profile)).toMatchObject({ ok: false, issues: [expect.stringMatching(/Total pattern/)] });
-      expect(() => previewLogFormat({ sampleText: "a", formatProfile: profile })).toThrow(/Total pattern/);
+      expect(validateLogFormatProfile(profile)).toMatchObject({ ok: false, issues: [expect.stringMatching(/所有匹配规则/)] });
+      expect(() => previewLogFormat({ sampleText: "a", formatProfile: profile })).toThrow(/所有匹配规则/);
       expect(logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", formatProfile: profile }).success).toBe(false);
       expect(compile).not.toHaveBeenCalled();
     } finally { compile.mockRestore(); }

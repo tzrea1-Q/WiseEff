@@ -35,10 +35,14 @@ describe.each(["single-shot", "loop"] as const)("deterministic %s skill findings
 
   it("keeps pinned thermal findings as the conclusion when the same file also has a generic crash", async () => {
     const input = inputFor([{ path: "charging.log", content: `${genericLog}\n${chargingLog}` }]);
+    input.analysisQuestion = "Why did charging slow down?";
     expect(input.signalSummary?.signals.some((signal) => signal.kind === "crash")).toBe(true);
     const report = await analyzer().analyze(input);
     expect(report).toMatchObject({ analysisSource: "agent", confidence: 0.82, severity: "Warning" });
-    expect(report.conclusion).toMatch(/thermal foldback/i);
+    expect(report.conclusion).toMatch(/过热保护降额/);
+    expect(report.conclusion).toContain("针对问题“Why did charging slow down?”");
+    expect(report.conclusion).not.toContain("Regarding the question");
+    expect(report.evidence[0].inference).toContain("thermal-foldback");
     expect(report.evidence.every((item) => item.filePath === "charging.log")).toBe(true);
     expect(report.evidence.flatMap((item) => item.lineNumbers)).toContain(7);
   });
@@ -48,7 +52,7 @@ describe.each(["single-shot", "loop"] as const)("deterministic %s skill findings
     const input = inputFor(genericFirst ? [generic, charging] : [charging, generic]);
     const report = await analyzer().analyze(input);
     expect(report).toMatchObject({ analysisSource: "agent", confidence: 0.82, severity: "Warning" });
-    expect(report.conclusion).toMatch(/thermal foldback/i);
+    expect(report.conclusion).toMatch(/过热保护降额/);
     expect(report.evidence.every((item) => item.filePath === "charging.log")).toBe(true);
     expect(report.evidence.flatMap((item) => item.lineNumbers)).toContain(3);
   });
@@ -58,7 +62,7 @@ describe.each(["single-shot", "loop"] as const)("deterministic %s skill findings
       { path: "charging.log", content: chargingLog }]);
     const report = await analyzer().analyze(input);
     expect(report).toMatchObject({ analysisSource: "agent", confidence: 0.82 });
-    expect(report.conclusion).toMatch(/thermal foldback/i);
+    expect(report.conclusion).toMatch(/过热保护降额/);
     expect(report.evidence.every((item) => item.filePath === "charging.log")).toBe(true);
   });
 });
@@ -70,7 +74,7 @@ it("does not ground a single-shot skill hit using another file's identical line 
     "Log excerpt (only these lines may be cited):", '"generic.log":L3: INFO ordinary activity', '"charging.log":L1: INFO session start'
   ].join("\n") }]);
   const report = JSON.parse(response.content);
-  expect(report.conclusion).not.toMatch(/thermal foldback/i);
+  expect(report.conclusion).not.toMatch(/过热保护降额/);
   expect(report.evidence).toMatchObject([{ filePath: "generic.log", lineNumbers: [3] }]);
 });
 

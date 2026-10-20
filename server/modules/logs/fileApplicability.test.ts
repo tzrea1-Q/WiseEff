@@ -72,7 +72,7 @@ describe("client, server preview and worker file assignment", () => {
     });
     try {
       expect(previewSkillFiles([{ glob: "**" }], ["a.log"], { maxMs: 10 }))
-        .toMatchObject({ valid: false, issues: [{ path: ["files"], message: expect.stringContaining("deadline") }], files: [] });
+        .toMatchObject({ valid: false, issues: [{ path: ["files"], message: expect.stringContaining("预览超时") }], files: [] });
       expect(compile).toHaveBeenCalled();
     } finally { compile.mockRestore(); }
   });
@@ -92,7 +92,7 @@ describe("client, server preview and worker file assignment", () => {
         formatProfile: { severityMap: { error: Array(5).fill(`(?:${"a".repeat(100)}){100}`) } } });
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.issues[0]).toMatchObject({
-        path: ["formatProfile", "severityMap", "error", 3], message: expect.stringContaining("Total pattern")
+        path: ["formatProfile", "severityMap", "error", 3], message: expect.stringContaining("所有匹配规则")
       });
       expect(compile).not.toHaveBeenCalled();
     } finally { compile.mockRestore(); }

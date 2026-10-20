@@ -27,7 +27,7 @@ import type { LogAnalysisAdapter } from "./analyzer";
 const available = await isTestDatabaseAvailable();
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const expectations = { domain: "generic", summary: "Thermal foldback", realLog: false, rootCauseCategory: "thermal-protection",
-  rootCausePoints: ["thermal foldback protection"], keyEvidenceLines: [1], expectedActions: ["Review cited lines"], expectRefusal: false };
+  rootCausePoints: ["过热保护降额"], keyEvidenceLines: [1], expectedActions: ["与负责团队一起核对引用的日志"], expectRefusal: false };
 async function harness() {
   const ephemeral = await createEphemeralTestDatabase("analysiscases");
   const db = createPostgresDatabase(ephemeral.url), store = createMemoryObjectStore();
@@ -81,11 +81,11 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
         files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal") }] }, createUserInvocation(h.other), h.context)).rejects.toThrow("invocation principal does not match");
       expect([...h.store.entries.keys()]).toEqual(keysBeforeMismatch);
       const invalidPattern = { ...expectations, keyEvidenceLines: [], keyEvidence: [{ file: "thermal.log", pattern: "MISSING_PATTERN" }] };
-      await expect(createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: "Invalid pattern", expectations: invalidPattern, files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal\n") }] }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("expectations.keyEvidence[0].pattern") });
+      await expect(createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: "Invalid pattern", expectations: invalidPattern, files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal\n") }] }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("第 1 条关键证据的表达式") });
       await expect(createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: "Invalid profile", expectations: { ...expectations, formatProfile: { timestampPattern: "[" } },
-        files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal\n") }] }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("expectations.formatProfile") });
+        files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal\n") }] }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("日志格式配置无效") });
       await expect(createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: "Oversized metadata", expectations: { ...expectations, rootCausePoints: Array<string>(100).fill("温".repeat(4000)) },
-        files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal\n") }] }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("1 MiB metadata limit") });
+        files: [{ fileName: "thermal.log", bytes: Buffer.from("ERROR thermal\n") }] }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("1 MiB 上限") });
       for (const invalid of [
         { ...expectations, keyEvidence: [{ file: "thermal.log", line: 2 }] },
         { ...expectations, keyEvidenceLines: [2] },
@@ -130,7 +130,7 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       expect((await listAnalysisCases(h.db, h.auth, h.skill.id)).current).toBe(false);
       await expect(updateAnalysisCase(h.db, h.store, h.auth, h.skill.id, created.body.item.id, { name: "Invalid", expectations: { ...expectations, keyEvidence: [{ file: "missing.log", line: 1 }] } }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
       await expect(updateAnalysisCase(h.db, h.store, h.auth, h.skill.id, created.body.item.id, { name: "Invalid", expectations: { ...expectations, keyEvidence: [{ file: "thermal.log", line: 999 }] } }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
-      await expect(updateAnalysisCase(h.db, h.store, h.auth, h.skill.id, created.body.item.id, { name: "Invalid", expectations: invalidPattern }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("expectations.keyEvidence[0].pattern") });
+      await expect(updateAnalysisCase(h.db, h.store, h.auth, h.skill.id, created.body.item.id, { name: "Invalid", expectations: invalidPattern }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("第 1 条关键证据的表达式") });
       for (const invalid of [
         { ...expectations, keyEvidence: [{ file: "thermal.log", line: 2 }] },
         { ...expectations, keyEvidenceLines: [2] },

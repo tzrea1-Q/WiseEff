@@ -442,6 +442,15 @@ describe("createAgentLoopLogAnalyzer", () => {
     await expect(adapter.analyze(buildInput())).rejects.toBeInstanceOf(LogAnalysisProviderError);
   });
 
+  it("retains provider diagnostic details when wrapping an untyped failure", async () => {
+    const { adapter } = analyzer([{ error: new Error("HTTP 503 Service Unavailable: request=req-17") }]);
+    await expect(adapter.analyze(buildInput())).rejects.toMatchObject({
+      name: "LogAnalysisProviderError",
+      message: "日志分析服务调用失败：HTTP 503 Service Unavailable: request=req-17",
+      modelLabel: "loop-test"
+    });
+  });
+
   it("records llm telemetry with token usage per call", async () => {
     const llmCalls: Array<{ outcome: string; inputTokens?: number; outputTokens?: number }> = [];
     const { adapter } = analyzer(
@@ -476,7 +485,7 @@ describe("createAgentLoopLogAnalyzer", () => {
 
     expect(output.analysisSource).toBe("agent");
     expect(output.degradedReason).toBeUndefined();
-    expect(output.conclusion.toLowerCase()).toContain("thermal foldback");
+    expect(output.conclusion).toContain("过热保护降额");
     expect(output.conclusion).toContain("Why did fast charging fold back?");
     expect(output.evidence.length).toBeGreaterThan(0);
     const parsedLines = new Set(buildInput().parsed.entries.map((entry) => entry.lineNumber));

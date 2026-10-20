@@ -9,8 +9,8 @@ export function validateLogSkillBudgets(spec: LogSkillSpec, caps: LogSkillBudget
     const value = spec[field];
     const minimum = field === "tokenBudget" ? Math.min(4096, caps.tokenBudget) : 1;
     if (value === undefined) return [];
-    if (value < minimum) return [{ path: [field], message: `Must be at least ${minimum}.` }];
-    return value > caps[field] ? [{ path: [field], message: `Must not exceed platform cap (${caps[field]}).` }] : [];
+    if (value < minimum) return [{ path: [field], message: `不能小于 ${minimum}。` }];
+    return value > caps[field] ? [{ path: [field], message: `不能超过平台上限（${caps[field]}）。` }] : [];
   });
-  if (issues.length) throw new ApiError("VALIDATION_FAILED", "Invalid analysis skill budgets.", { issues });
+  if (issues.length) throw new ApiError("VALIDATION_FAILED", "技能分析用量限制无效。", { issues });
 }

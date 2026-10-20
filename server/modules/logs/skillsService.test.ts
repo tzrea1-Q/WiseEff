@@ -61,7 +61,7 @@ describe("parsing preview service bounds", () => {
     const started = performance.now();
     await expect(runLogSkillParseTests(db, auth, "skill", { schemaVersion: "skill/v1", signalRules: { ...defaultChargingRuleSet, rules } }))
       .rejects.toMatchObject({ status: 400, code: "VALIDATION_FAILED", details: { issues: [expect.objectContaining({
-        path: ["signalRules", "rules", 61, "anyOf", 0, "pattern"], message: expect.stringContaining("Total pattern program budget exceeds 65536 instructions")
+        path: ["signalRules", "rules", 61, "anyOf", 0, "pattern"], message: expect.stringContaining("所有匹配规则的复杂度合计超过 65536 条指令上限")
       })] } });
     expect(performance.now() - started).toBeLessThan(1000);
     expect(compile).not.toHaveBeenCalled();
@@ -76,7 +76,7 @@ describe("parsing preview service bounds", () => {
     });
     const started = performance.now();
     await expect(runLogSkillParseTests(db, auth, "skill", { schemaVersion: "skill/v1" })).rejects.toMatchObject({
-      status: 400, code: "VALIDATION_FAILED", message: expect.stringContaining("1000 ms")
+      status: 400, code: "VALIDATION_FAILED", message: expect.stringContaining("1000 毫秒")
     });
     expect(performance.now() - started).toBeLessThan(1300);
   });

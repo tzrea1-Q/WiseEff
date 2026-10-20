@@ -4,7 +4,7 @@ import { compileParsingPattern, fieldSpecSchema, MAX_PARSING_LINE_CHARS, MAX_PAR
 
 export const MAX_EXTRACTOR_PREVIEW_LINES = 500;
 export const MAX_EXTRACTOR_PREVIEW_BYTES = 1024 * 1024;
-const line = z.string().max(MAX_PARSING_LINE_CHARS).refine((value) => !/[\r\n]/.test(value), "Expected a single sample line");
+const line = z.string().max(MAX_PARSING_LINE_CHARS).refine((value) => !/[\r\n]/.test(value), "请提供单行样例");
 export const extractorSegmentSchema = z.object({
   start: z.number().int().nonnegative(), end: z.number().int().positive(),
   name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).max(100),
@@ -40,7 +40,7 @@ function literalPattern(text: string, generalizeNumbers: boolean, timestamp = fa
 export function generateExtractorPattern(value: ExtractorPatternInput) {
   const input = extractorPreviewRequestSchema.parse(value);
   if (Buffer.byteLength(input.line, "utf8") + input.sampleLines.reduce((bytes, text) => bytes + Buffer.byteLength(text, "utf8"), 0) > MAX_EXTRACTOR_PREVIEW_BYTES) {
-    throw new Error("Extractor sample exceeds 1 MiB UTF-8");
+    throw new Error("字段解析样例的 UTF-8 编码不能超过 1 MiB");
   }
   const segments = [...input.segments].sort((a, b) => a.start - b.start);
   const cache = createLogPatternCache();
@@ -56,26 +56,26 @@ export function generateExtractorPattern(value: ExtractorPatternInput) {
   let cursor = timestampEnd, generated = "^";
   if (timestampEnd) generated += `(?:${literalPattern(input.line.slice(0, timestampEnd), true, true)})?`;
   for (const segment of segments) {
-    if (segment.start < cursor || segment.end <= segment.start || segment.end > input.line.length) throw new Error("Selected segments must be nonempty, disjoint ranges within the sample line");
-    if (names.has(segment.name)) throw new Error(`Duplicate field name: ${segment.name}`);
+    if (segment.start < cursor || segment.end <= segment.start || segment.end > input.line.length) throw new Error("所选字段须位于样例行内，不能为空或相互重叠");
+    if (names.has(segment.name)) throw new Error(`字段名称重复: ${segment.name}`);
     names.add(segment.name);
     generated += literalPattern(input.line.slice(cursor, segment.start), generalizeNumbers);
     const selected = input.line.slice(segment.start, segment.end);
     const patterns = { int: "[+-]?\\d+", uint: "\\d+", hex: "(?:0x)?[0-9A-Fa-f]+", float: "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?", string: /\s/.test(selected) ? "[^\\r\\n]+?" : "\\S+", quoted: '[^"]*' };
     const quoted = segment.type === "quoted";
     const includesQuotes = quoted && selected.startsWith('"') && selected.endsWith('"') && selected.length >= 2;
-    if (quoted && !includesQuotes && !(input.line[segment.start - 1] === '"' && input.line[segment.end] === '"')) throw new Error("Quoted segments must include double quotes or select their contents");
+    if (quoted && !includesQuotes && !(input.line[segment.start - 1] === '"' && input.line[segment.end] === '"')) throw new Error("引号字段须选中完整双引号或其中的内容");
     generated += `${includesQuotes ? '"' : ""}(?P<${segment.name}>${patterns[segment.type]})${includesQuotes ? '"' : ""}`;
     cursor = segment.end;
   }
   generated += literalPattern(input.line.slice(cursor), generalizeNumbers) + "$";
-  if (!input.pattern && !segments.length) throw new Error("Select at least one field");
+  if (!input.pattern && !segments.length) throw new Error("请至少选择一个字段");
   const pattern = input.pattern ?? generated;
   const compiled = compileParsingPattern(pattern, "", MAX_PARSING_LINE_CHARS, cache);
-  if (compiled.groupCount !== compiled.groupNames.length) throw new Error("Every capture group must be named");
-  if (compiled.groupNames.length > 32) throw new Error("At most 32 captured fields");
-  if (compiled.groupNames.some((name) => !/^[A-Za-z_][A-Za-z0-9_]{0,99}$/.test(name))) throw new Error("Capture names must be field identifiers of at most 100 characters");
-  if (!input.pattern && !compiled.test(input.line)) throw new Error("Selected values do not match their field types");
+  if (compiled.groupCount !== compiled.groupNames.length) throw new Error("每个捕获组都须命名");
+  if (compiled.groupNames.length > 32) throw new Error("最多允许 32 个捕获字段");
+  if (compiled.groupNames.some((name) => !/^[A-Za-z_][A-Za-z0-9_]{0,99}$/.test(name))) throw new Error("捕获组名称须为有效字段标识，且不能超过 100 个字符");
+  if (!input.pattern && !compiled.test(input.line)) throw new Error("所选内容与字段类型不符");
   const fields = Object.fromEntries(compiled.groupNames.map((name) => {
     const type = segments.find((segment) => segment.name === name)?.type ?? "string";
     return [name, { type: type === "quoted" ? "string" as const : type }];

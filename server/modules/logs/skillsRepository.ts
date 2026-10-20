@@ -35,7 +35,7 @@ export async function listSkillRevisions(db: Queryable, organizationId: string, 
 /** Serializes draft edits and publication against each other and shared run pins. */
 export async function lockSkill(db: Queryable, organizationId: string, skillId: string) {
   const result = await db.query(`select id from log_domains where organization_id = $1 and id = $2 for update`, [organizationId, skillId]);
-  if (!result.rows.length) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!result.rows.length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
 }
 
 export async function insertSkillRevision(db: Queryable, input: {
@@ -55,7 +55,7 @@ export async function insertSkillRevision(db: Queryable, input: {
 export async function publishSkillRevision(db: Queryable, organizationId: string, skillId: string, draftId: string, userId: string) {
   const draft = await db.query(`select id from log_skill_revisions
     where organization_id = $1 and skill_id = $2 and id = $3 and status = 'draft'`, [organizationId, skillId, draftId]);
-  if (!draft.rows.length) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill draft is missing or stale.");
+  if (!draft.rows.length) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能草稿不存在或已更新，请刷新后重试。");
   await db.query(`update log_skill_revisions set status = 'superseded'
     where organization_id = $1 and skill_id = $2 and status = 'published'`, [organizationId, skillId]);
   await db.query(`update log_skill_revisions set status = 'published', published_at = now(), published_by_user_id = $4
@@ -70,9 +70,9 @@ export async function publishSkillRevision(db: Queryable, organizationId: string
 export async function currentSkillRevisionId(db: Queryable, organizationId: string, skillId?: string): Promise<string | null> {
   if (!skillId) return null;
   const skill = await db.query(`select id from log_domains where organization_id = $1 and id = $2 for share`, [organizationId, skillId]);
-  if (!skill.rows.length) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  if (!skill.rows.length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
   const result = await db.query<{ id: string }>(`select id from log_skill_revisions
     where organization_id = $1 and skill_id = $2 and status = 'published'`, [organizationId, skillId]);
-  if (!result.rows[0]) throw new ApiError("CONFLICT", "Analysis skill has no published revision.");
+  if (!result.rows[0]) throw new ApiError("CONFLICT", "此分析技能尚未发布。");
   return result.rows[0].id;
 }

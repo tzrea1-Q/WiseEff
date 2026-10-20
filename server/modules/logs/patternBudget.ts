@@ -64,11 +64,11 @@ export function logPatternBudgetIssues(value: unknown, kind: BudgetKind) {
   // Reject the whole applicability batch before translating or compiling any pattern.
   const files = kind === "skill" ? object(value).files : undefined;
   if (Array.isArray(files)) {
-    if (files.length > MAX_SKILL_FILE_GLOBS) return [{ path: ["files"], message: `At most ${MAX_SKILL_FILE_GLOBS} file globs are allowed` }];
+    if (files.length > MAX_SKILL_FILE_GLOBS) return [{ path: ["files"], message: `最多允许 ${MAX_SKILL_FILE_GLOBS} 条文件匹配规则` }];
     for (const [index, file] of files.entries()) {
       for (const [key, limit] of [["glob", MAX_FILE_GLOB_LENGTH], ["role", MAX_FILE_ROLE_LENGTH]] as const) {
         const field = object(file)[key];
-        if (typeof field === "string" && field.length > limit) return [{ path: ["files", index, key], message: `String must contain at most ${limit} character(s)` }];
+        if (typeof field === "string" && field.length > limit) return [{ path: ["files", index, key], message: `最多允许 ${limit} 个字符` }];
       }
     }
   }
@@ -76,7 +76,7 @@ export function logPatternBudgetIssues(value: unknown, kind: BudgetKind) {
   for (const { source, path, skillFileGlob } of patterns(value, kind)) {
     try {
       total += logPatternProgramCost(skillFileGlob ? skillFileGlobPattern(source) : source);
-      if (total > MAX_LOG_PATTERN_TOTAL_SIZE) throw new Error(`Total pattern program budget exceeds ${MAX_LOG_PATTERN_TOTAL_SIZE} instructions`);
+      if (total > MAX_LOG_PATTERN_TOTAL_SIZE) throw new Error(`所有匹配规则的复杂度合计超过 ${MAX_LOG_PATTERN_TOTAL_SIZE} 条指令上限`);
     } catch (error) {
       return [{ path, message: error instanceof Error ? error.message : String(error) }];
     }

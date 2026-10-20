@@ -11,8 +11,8 @@ const fail = (code: string, message: string): never => { throw new RegisterDecod
 
 export function frameBytes(raw: string): Buffer {
   const hex = raw.replace(/\s/g, "").replace(/^0x/i, "");
-  if (!/^(?:[\da-f]{2})*$/i.test(hex)) return fail("frame_encoding", "Frame must contain complete hexadecimal bytes");
-  if (hex.length / 2 > MAX_FRAME_BYTES) return fail("frame_length", "Frame length exceeds 4096 bytes");
+  if (!/^(?:[\da-f]{2})*$/i.test(hex)) return fail("frame_encoding", "数据帧须由完整的十六进制字节组成");
+  if (hex.length / 2 > MAX_FRAME_BYTES) return fail("frame_length", "数据帧长度不能超过 4096 字节");
   return Buffer.from(hex, "hex");
 }
 
@@ -43,24 +43,24 @@ function lookup(path: string, local: Record<string, DecodedValue>, ctx: Context)
   const [first, ...parts] = path.split(".");
   let value: DecodedValue | undefined = Object.hasOwn(local, first) ? local[first] : ctx.external[first];
   for (const part of parts) value = value && typeof value === "object" && "fields" in value ? value.fields?.[part] : undefined;
-  if (value === undefined) return fail("frame_reference", `Missing earlier decoded field ${path}`);
+  if (value === undefined) return fail("frame_reference", `前置解码字段 ${path} 不存在`);
   return scalar(value);
 }
 function size(value: number | string, local: Record<string, DecodedValue>, ctx: Context, code: string, limit: number): number {
   const n = typeof value === "number" ? value : lookup(value, local, ctx);
   const numeric = typeof n === "string" && /^\d+$/.test(n) ? Number(n) : n;
-  if (typeof numeric !== "number" || !Number.isSafeInteger(numeric) || numeric < 0 || numeric > limit) return fail(code, `${code === "repeat_count" ? "Repeat count" : "Frame length"} must be an integer from 0 to ${limit}`);
+  if (typeof numeric !== "number" || !Number.isSafeInteger(numeric) || numeric < 0 || numeric > limit) return fail(code, `${code === "repeat_count" ? "重复次数" : "数据帧长度"}须为 0 到 ${limit} 之间的整数`);
   return numeric;
 }
-function charge(ctx: Context) { if (++ctx.elements > MAX_FRAME_ELEMENTS) fail("frame_elements", `Frame total element count exceeds ${MAX_FRAME_ELEMENTS} per event`); }
+function charge(ctx: Context) { if (++ctx.elements > MAX_FRAME_ELEMENTS) fail("frame_elements", `单条数据帧的元素数量超过 ${MAX_FRAME_ELEMENTS} 个上限`); }
 function node(bytes: Buffer, offset: number, value: Node["value"] = { hex: bytes.toString("hex"), length: bytes.length }): Node {
   return { raw: bytes.toString("hex"), value, byteOffset: offset, byteLength: bytes.length };
 }
 
 function* register(bytes: Buffer, id: string, endian: "big" | "little", offset: number, depth: number, ctx: Context): Generator<void, Node> {
-  if (depth > 8) return fail("frame_depth", "Decode nesting depth exceeds 8 (frames and registers)");
-  const spec = ctx.spec.registers?.[id]; if (!spec) return fail("frame_reference", `Unknown register ${id}`);
-  if (bytes.length !== spec.width / 8) return fail("frame_range", `Register ${id} requires ${spec.width / 8} bytes`);
+  if (depth > 8) return fail("frame_depth", "数据帧和寄存器的解码嵌套不能超过 8 层");
+  const spec = ctx.spec.registers?.[id]; if (!spec) return fail("frame_reference", `寄存器不存在 ${id}`);
+  if (bytes.length !== spec.width / 8) return fail("frame_range", `寄存器 ${id} 需要 ${spec.width / 8} 字节`);
   const value = integer(bytes, endian), result = node(bytes, offset, exactInteger(value)); result.fields = Object.create(null);
   for (const child of decodeRegister(value, spec)) { yield; charge(ctx); result.fields![child.name] = child.value; }
   return result;
@@ -69,14 +69,14 @@ function* register(bytes: Buffer, id: string, endian: "big" | "little", offset: 
 function* reference(bytes: Buffer, ref: FrameReference, endian: "big" | "little", offset: number, depth: number, ctx: Context): Generator<void, { value: Node; consumed: number }> {
   if ("frame" in ref) return yield* frame(bytes, ref.frame, offset, depth, ctx);
   const length = (ctx.spec.registers?.[ref.register]?.width ?? 0) / 8;
-  if (bytes.length < length) return fail("frame_range", `Not enough bytes for register ${ref.register}`);
+  if (bytes.length < length) return fail("frame_range", `寄存器 ${ref.register} 的数据字节不足`);
   return { value: yield* register(bytes.subarray(0, length), ref.register, endian, offset, depth, ctx), consumed: length };
 }
 
 function* frame(bytes: Buffer, id: string, base: number, depth: number, ctx: Context): Generator<void, { value: Node; consumed: number }> {
-  if (depth > 8) return fail("frame_depth", "Decode nesting depth exceeds 8 (frames and registers)");
-  if (bytes.length > MAX_FRAME_BYTES) return fail("frame_length", "Frame length exceeds 4096 bytes");
-  const spec = ctx.spec.frames?.[id]; if (!spec) return fail("frame_reference", `Unknown frame ${id}`);
+  if (depth > 8) return fail("frame_depth", "数据帧和寄存器的解码嵌套不能超过 8 层");
+  if (bytes.length > MAX_FRAME_BYTES) return fail("frame_length", "数据帧长度不能超过 4096 字节");
+  const spec = ctx.spec.frames?.[id]; if (!spec) return fail("frame_reference", `数据帧 ${id} 不存在`);
   const fields: Record<string, DecodedValue> = Object.create(null);
   let cursor = 0;
   for (const field of spec.fields) {
@@ -84,6 +84,7 @@ function* frame(bytes: Buffer, id: string, base: number, depth: number, ctx: Con
     const start = cursor, endian = "endian" in field ? field.endian ?? spec.endian ?? "big" : spec.endian ?? "big";
     const explicitLength = "length" in field && field.length !== undefined;
     const length = explicitLength ? size(field.length!, fields, ctx, "frame_length", MAX_FRAME_BYTES) : bytes.length - cursor;
+    // The frame editor parses this diagnostic to render the detailed Chinese warning.
     if (cursor + length > bytes.length) return fail("frame_range", `Field ${field.name} requires ${length} bytes at offset ${cursor}; only ${bytes.length - cursor} remain`);
     const slice = bytes.subarray(cursor, cursor + length);
     let value: Node;
@@ -107,20 +108,20 @@ function* frame(bytes: Buffer, id: string, base: number, depth: number, ctx: Con
       case "register": value = yield* register(slice, field.register, endian, base + start, depth + 1, ctx); cursor += length; break;
       case "frame": {
         const nested = yield* frame(slice, field.frame, base + start, depth + 1, ctx); value = nested.value;
-        if (explicitLength && nested.consumed !== length) return fail("frame_range", `Frame field ${field.name} did not consume its declared length`);
+        if (explicitLength && nested.consumed !== length) return fail("frame_range", `数据帧字段 ${field.name} 的实际长度与声明不符`);
         cursor += nested.consumed; break;
       }
       case "switch": {
         const selected = registerCaseKey(String(lookup(field.on, fields, ctx)));
         const ref = Object.entries(field.cases).find(([key]) => registerCaseKey(key) === selected)?.[1] ?? field.default;
-        if (!ref) return fail("unmatched_switch", `No switch case for ${field.on}=${selected}`);
+        if (!ref) return fail("unmatched_switch", `未找到与 ${field.on}=${selected} 对应的分支`);
         const nested = yield* reference(slice, ref, endian, base + start, depth + 1, ctx); value = nested.value;
-        if (explicitLength && nested.consumed !== length) return fail("frame_range", `Switch ${field.name} did not consume its declared length`);
+        if (explicitLength && nested.consumed !== length) return fail("frame_range", `分支 ${field.name} 的实际长度与声明不符`);
         cursor += nested.consumed; break;
       }
       case "repeat": {
         const count = size(field.count, fields, ctx, "repeat_count", 256) * (field.multiplier ?? 1);
-        if (count > 256) return fail("repeat_count", "Repeat count exceeds 256 after multiplier");
+        if (count > 256) return fail("repeat_count", "乘以倍数后的重复次数不能超过 256");
         const children: Record<string, DecodedValue> = Object.create(null);
         for (let i = 0; i < count; i++) {
           yield; charge(ctx);
@@ -134,17 +135,17 @@ function* frame(bytes: Buffer, id: string, base: number, depth: number, ctx: Con
         let items = 0;
         while (cursor < end) {
           yield; charge(ctx);
-          if (++items > 256) return fail("tlv_items", "TLV item count exceeds 256");
+          if (++items > 256) return fail("tlv_items", "TLV 条目数量不能超过 256");
           const itemStart = cursor;
-          if (cursor + field.tagSize + field.lengthSize > end) return fail("frame_range", `Truncated TLV header at offset ${cursor}`);
+          if (cursor + field.tagSize + field.lengthSize > end) return fail("frame_range", `偏移 ${cursor} 处的 TLV 头不完整`);
           const tag = integer(bytes.subarray(cursor, cursor + field.tagSize), endian); cursor += field.tagSize;
           const payloadLength = Number(integer(bytes.subarray(cursor, cursor + field.lengthSize), endian)); cursor += field.lengthSize;
-          if (cursor + payloadLength > end) return fail("frame_range", `TLV payload exceeds field ${field.name} at offset ${cursor}`);
+          if (cursor + payloadLength > end) return fail("frame_range", `偏移 ${cursor} 处的 TLV 内容超出字段 ${field.name} 的范围`);
           const payload = bytes.subarray(cursor, cursor + payloadLength), ref = Object.entries(field.cases).find(([key]) => registerCaseKey(key) === tag.toString())?.[1];
           let decoded = node(payload, base + cursor);
           if (ref) {
             const nested = yield* reference(payload, ref, endian, base + cursor, depth + 1, ctx);
-            if (nested.consumed !== payloadLength) return fail("frame_range", `TLV tag ${tag} did not consume its declared length`);
+            if (nested.consumed !== payloadLength) return fail("frame_range", `TLV 标签 ${tag} 的实际长度与声明不符`);
             decoded = nested.value;
           }
           const item = node(bytes.subarray(itemStart, cursor + payloadLength), base + itemStart);
@@ -156,16 +157,16 @@ function* frame(bytes: Buffer, id: string, base: number, depth: number, ctx: Con
       }
       case "checksum": {
         const [from, to] = field.range;
-        if (from >= to || to > bytes.length || from < cursor + length && to > cursor) return fail("frame_range", `Invalid or overlapping checksum range for ${field.name}`);
+        if (from >= to || to > bytes.length || from < cursor + length && to > cursor) return fail("frame_range", `校验范围无效或重叠 for ${field.name}`);
         const expected = checksum(bytes.subarray(from, to), field.algorithm), actual = Number(integer(slice, endian));
         value = node(slice, base + start, actual); value.checksum = { expected, actual, ok: expected === actual };
-        if (!value.checksum.ok) ctx.errors.push({ code: "checksum_mismatch", field: field.name, message: `${field.algorithm} checksum mismatch: expected ${expected}, actual ${actual}` });
+        if (!value.checksum.ok) ctx.errors.push({ code: "checksum_mismatch", field: field.name, message: `${field.algorithm} 校验结果不一致：预期 ${expected}，实际 ${actual}` });
         cursor += length; break;
       }
     }
     fields[field.name] = value;
   }
-  for (const field of spec.fields) if (field.type === "checksum" && field.range[1] > cursor) return fail("frame_range", `Checksum ${field.name} covered range exceeds frame length ${cursor}`);
+  for (const field of spec.fields) if (field.type === "checksum" && field.range[1] > cursor) return fail("frame_range", `校验字段 ${field.name} 的范围超出数据帧长度 ${cursor}`);
   const value = node(bytes.subarray(0, cursor), base); value.fields = fields;
   return { value, consumed: cursor };
 }

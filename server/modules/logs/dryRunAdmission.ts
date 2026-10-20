@@ -56,7 +56,7 @@ export async function recoverInterruptedDryRuns(db: Database, organizationId?: s
 /** Keep one checked-out connection for each bounded run; never use an idle pooled PID as liveness. */
 export async function acquireDryRunOwner(db: Database) {
   const pool = getRootPostgresPool(db);
-  if (!pool) throw new ApiError("INTERNAL_ERROR", "Dry runs require a root PostgreSQL database.");
+  if (!pool) throw new ApiError("INTERNAL_ERROR", "试运行需要根 PostgreSQL 数据库连接。");
   const client = await pool.connect();
   const controller = new AbortController();
   let broken = false, closed = false;

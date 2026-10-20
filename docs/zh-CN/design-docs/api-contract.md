@@ -465,7 +465,7 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 | `GET` | `/api/v1/logs/feedback-insights` | P3：反馈质量聚合（`logs:view`；可选 `timeWindow=today\|7d\|30d`） |
 | `GET` | `/api/v1/log-domains` | 业务域列表（`logs:view`；`includeArchived=true` 含已归档） |
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`；画像中的模式使用线性时间引擎上的 RE2 语法，不支持环视与反向引用，长度 ≤ 4,096 字符，超过 65,536 字符的行不参与匹配，不支持的模式返回 `400` 并给出字段路径） |
-| `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态/模型覆盖（`formatProfile: null` 清空画像；`modelOverride: null` 清空回全局 `LOG_ANALYSIS_MODEL`）。传入描述、格式画像或模型覆盖会立即发布新版本；技能锁内若已有工作区草稿，返回 `409 LOG_SKILL_DRAFT_EXISTS`（`Publish or discard the skill draft first.`）。仅修改名称/状态、归档和 Webhook 更新仍可用。 |
+| `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态/模型覆盖（`formatProfile: null` 清空画像；`modelOverride: null` 清空回全局 `LOG_ANALYSIS_MODEL`）。传入描述、格式画像或模型覆盖会立即发布新版本；技能锁内若已有工作区草稿，返回 `409 LOG_SKILL_DRAFT_EXISTS`（`请先发布或放弃技能草稿。`）。仅修改名称/状态、归档和 Webhook 更新仍可用。 |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | 归档业务域；既有日志记录保留绑定 |
 | `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | 列出当前已发布技能版本的知识条目链接及各条目当前状态（`logs:admin-domains`） |
 | `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | 立即发布新技能版本以整组替换链接集合（`{ knowledgeEntryIds: uuid[] }`），保留旧接口即时生效的行为。存在工作区草稿时返回 `409 LOG_SKILL_DRAFT_EXISTS`，须先发布或丢弃草稿。只接受本组织**已发布**知识条目（草稿/已归档 `400`，未知或跨组织条目 `404`）；写 `log-domain-knowledge-links-update` 审计。旧运行保留其钉住的链接范围。 |

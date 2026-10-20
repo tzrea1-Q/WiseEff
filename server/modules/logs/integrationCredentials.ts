@@ -30,7 +30,7 @@ async function readCredential(db: Queryable, organizationId: string, id: string)
     c.status,c.created_by,c.created_at,c.rotated_at,c.revoked_at,c.last_used_at
     from log_integration_credentials c left join log_domains s on s.id=c.skill_id and s.organization_id=c.organization_id
     where c.organization_id=$1 and c.id=$2`, [organizationId, id])).rows[0];
-  if (!row) throw new ApiError("NOT_FOUND", "Integration credential was not found.");
+  if (!row) throw new ApiError("NOT_FOUND", "未找到集成凭据。");
   return dto(row);
 }
 
@@ -62,7 +62,7 @@ export async function issueIntegrationCredential(db: Database, auth: AuthContext
       // Same row lock as archive/key edits: issuance cannot race a skill archive.
       await lockSkill(tx, auth.organization.id, input.skillId);
       const row = (await tx.query<{ status: string }>("select status from log_domains where organization_id=$1 and id=$2", [auth.organization.id, input.skillId])).rows[0];
-      if (!row || row.status !== "active") throw new ApiError("NOT_FOUND", "Active analysis skill was not found.");
+      if (!row || row.status !== "active") throw new ApiError("NOT_FOUND", "未找到可用的分析技能。");
     }
     await tx.query(`insert into log_integration_credentials (id,organization_id,name,skill_id,secret_hash,created_by)
       values ($1,$2,$3,$4,$5,$6)`, [id, auth.organization.id, input.name, input.skillId ?? null, hashIntegrationSecret(secret), auth.user.id]);
@@ -79,7 +79,7 @@ export async function rotateIntegrationCredential(db: Database, auth: AuthContex
   return withAuditedWrite(db, invocation, context, async (tx) => {
     const updated = await tx.query(`update log_integration_credentials set secret_hash=$3,rotated_at=clock_timestamp()
       where organization_id=$1 and id=$2 and status='active' returning id`, [auth.organization.id, id, hashIntegrationSecret(secret)]);
-    if (!updated.rows.length) throw new ApiError("NOT_FOUND", "Active integration credential was not found.");
+    if (!updated.rows.length) throw new ApiError("NOT_FOUND", "未找到有效的集成凭据。");
     const item = await readCredential(tx, auth.organization.id, id);
     return { result: { item, token: `wie_${id}_${secret}` }, audit: credentialAudit(item, "rotate") };
   });

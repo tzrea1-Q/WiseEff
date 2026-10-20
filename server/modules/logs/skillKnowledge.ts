@@ -23,10 +23,10 @@ export async function validateSkillKnowledge(db: Queryable, auth: AuthContext, s
     [auth.organization.id, ids]);
   for (const id of ids) {
     const entry = entries.rows.find((row) => row.id === id);
-    if (!entry) throw new ApiError("NOT_FOUND", "Knowledge entry was not found.");
+    if (!entry) throw new ApiError("NOT_FOUND", "未找到知识条目。");
     if (previous?.knowledgeEntryIds?.includes(id) || entry.status === "published") continue;
     if (entry.status !== "draft" || entry.created_by_user_id !== auth.user.id || !auth.permissions.includes("knowledge:edit")) {
-      throw new ApiError("FORBIDDEN", "Link a published knowledge entry, or upload a draft with knowledge edit permission.");
+      throw new ApiError("FORBIDDEN", "请选择已发布的知识条目；具有知识编辑权限的用户也可上传草稿。");
     }
   }
 }

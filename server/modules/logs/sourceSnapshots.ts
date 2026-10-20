@@ -26,18 +26,18 @@ const snapshotSelect = `select id, skill_id as "skillId", version_label as "vers
   from log_source_snapshots`;
 
 function requireOrganization(auth: AuthContext) {
-  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "Log organization access is required.");
+  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
 }
 async function requireSkill(db: Queryable, auth: AuthContext, skillId: string) {
   requireOrganization(auth);
   if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) {
-    throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+    throw new ApiError("NOT_FOUND", "分析技能不存在。");
   }
 }
 async function getSnapshot(db: Queryable, organizationId: string, skillId: string, id: string) {
   const row = (await db.query<SourceSnapshotDto>(`${snapshotSelect}
     where organization_id = $1 and skill_id = $2 and id = $3`, [organizationId, skillId, id])).rows[0];
-  if (!row) throw new ApiError("NOT_FOUND", "Source snapshot was not found.");
+  if (!row) throw new ApiError("NOT_FOUND", "源码快照不存在。");
   return { ...row, createdAt: new Date(row.createdAt).toISOString() };
 }
 function audit(id: string, kind: string, skillId: string) {
@@ -57,7 +57,7 @@ export async function listSourceSnapshots(db: Queryable, auth: AuthContext, skil
 export async function validateDefaultSourceSnapshot(db: Queryable, organizationId: string, skillId: string, spec: LogSkillSpec, allowArchived = false) {
   if (!spec.defaultSourceSnapshotId) return;
   const snapshot = await getSnapshot(db, organizationId, skillId, spec.defaultSourceSnapshotId);
-  if (snapshot.status === "archived" && !allowArchived) throw new ApiError("CONFLICT", "Archived source snapshots cannot be set as default.");
+  if (snapshot.status === "archived" && !allowArchived) throw new ApiError("CONFLICT", "已归档的源码快照不能设为默认。");
 }
 
 export async function uploadSourceSnapshot(db: Database, objectStore: ObjectStore, auth: AuthContext, skillId: string,
@@ -66,12 +66,12 @@ export async function uploadSourceSnapshot(db: Database, objectStore: ObjectStor
   requireLogAdminDomains(auth);
   await requireSkill(db, auth, skillId);
   const versionLabel = input.versionLabel.trim();
-  if (!versionLabel || versionLabel.length > 200) throw new ApiError("VALIDATION_FAILED", "A version label of at most 200 characters is required.");
+  if (!versionLabel || versionLabel.length > 200) throw new ApiError("VALIDATION_FAILED", "请填写版本名称，最多 200 个字符。");
   if (!/\.(?:tar\.gz|tgz|zip)$/i.test(input.fileName) || /[/\\]|\.\./.test(input.fileName)) {
-    throw new ApiError("VALIDATION_FAILED", "A .tar.gz, .tgz or .zip source archive is required.");
+    throw new ApiError("VALIDATION_FAILED", "请上传 .tar.gz、.tgz 或 .zip 源码压缩包。");
   }
   if (!input.bytes.length || input.bytes.length > getSourceSnapshotLimits().maxCompressedBytes) {
-    throw new ApiError("PAYLOAD_TOO_LARGE", "Source archive exceeds the compressed upload limit.");
+    throw new ApiError("PAYLOAD_TOO_LARGE", "源码压缩包超过上传大小上限。");
   }
   let storedKey: string | undefined;
   let rollbackConfirmed = false;
@@ -80,7 +80,7 @@ export async function uploadSourceSnapshot(db: Database, objectStore: ObjectStor
       await lockSkill(tx, auth.organization.id, skillId);
       if ((await tx.query(`select id from log_source_snapshots where organization_id = $1 and skill_id = $2
         and version_label = $3 and status <> 'archived'`, [auth.organization.id, skillId, versionLabel])).rows.length) {
-        throw new ApiError("CONFLICT", "This source version label already exists for the skill.");
+        throw new ApiError("CONFLICT", "此技能已存在同名源码版本。");
       }
       const id = randomUUID();
       const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
@@ -106,8 +106,8 @@ export async function trySourceStatement(db: Queryable, auth: AuthContext, skill
   requireLogAdminDomains(auth);
   await requireSkill(db, auth, skillId);
   const snapshot = await getSnapshot(db, auth.organization.id, skillId, snapshotId);
-  if (snapshot.status !== "ready") throw new ApiError("CONFLICT", "Source snapshot must be ready.");
-  if (!line.trim() || line.length > 4000) throw new ApiError("VALIDATION_FAILED", "A log line of at most 4000 characters is required.");
+  if (snapshot.status !== "ready") throw new ApiError("CONFLICT", "请等待源码快照处理完成。");
+  if (!line.trim() || line.length > 4000) throw new ApiError("VALIDATION_FAILED", "请输入一行日志，最多 4000 个字符。");
   return locateLogStatements(db, { organizationId: auth.organization.id, snapshotId, line });
 }
 
@@ -116,9 +116,9 @@ export async function getSourceEvidence(db: Queryable, auth: AuthContext, logId:
   requireOrganization(auth);
   const record = await getLogRecord(db, auth, logId);
   const evidence = record.evidence.find((item) => item.id === evidenceId);
-  if (!evidence?.sourceLocation) throw new ApiError("NOT_FOUND", "Cited source evidence was not found.");
+  if (!evidence?.sourceLocation) throw new ApiError("NOT_FOUND", "引用的源码证据不存在。");
   const excerpt = await readSourceExcerpt(db, { organizationId: auth.organization.id, ...evidence.sourceLocation });
-  if (!excerpt) throw new ApiError("NOT_FOUND", "Cited source excerpt was not found.");
+  if (!excerpt) throw new ApiError("NOT_FOUND", "引用的源码片段不存在。");
   return excerpt;
 }
 
@@ -146,7 +146,7 @@ export async function setDefaultSourceSnapshot(db: Database, auth: AuthContext, 
     await lockSkill(tx, auth.organization.id, skillId);
     const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
     const base = revisions.find((r) => r.status === "draft") ?? revisions.find((r) => r.status === "published");
-    if (!base) throw new ApiError("CONFLICT", "Analysis skill has no published revision.");
+    if (!base) throw new ApiError("CONFLICT", "分析技能尚未发布版本。");
     const spec = { ...base.spec, defaultSourceSnapshotId: id };
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, spec);
     await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);

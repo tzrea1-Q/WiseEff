@@ -159,7 +159,7 @@ export const navigationItems: PageConfig[] = [
     group: "日志分析",
     icon: ChartNoAxesCombined,
     title: "日志分析看板",
-    subtitle: "日志分析应用态势、处理质量、失败分布和吞吐表现"
+    subtitle: "日志分析的处理量、失败与质量"
   },
   {
     key: "logs",
@@ -168,7 +168,7 @@ export const navigationItems: PageConfig[] = [
     group: "日志分析",
     icon: FileText,
     title: "日志智能分析",
-    subtitle: "上传充电与热管理日志、跟踪 AI 分析进度并阅读证据链"
+    subtitle: "上传日志，查看分析结论与证据"
   },
   {
     key: "log-admin",
@@ -177,7 +177,7 @@ export const navigationItems: PageConfig[] = [
     group: "日志分析",
     icon: Activity,
     title: "日志分析管理后台",
-    subtitle: "日志分析应用指标、记录和后台权限配置"
+    subtitle: "分析记录、技能与分析质量"
   },
   {
     key: "knowledge",
