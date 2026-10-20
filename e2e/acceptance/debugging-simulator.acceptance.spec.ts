@@ -549,7 +549,9 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     await expect(alternateReadbackRow.locator(".node-row-error").filter({ hasText: /readback mismatch|回读不一致/i })).toHaveCount(0);
     const alternateReadbackSheet = await openParameterSheet(page, "Readback mismatch probe");
     await expect(alternateReadbackSheet).toContainText("写入已执行");
-    await expect(alternateReadbackSheet).toContainText("回读值：1");
+    await expect(alternateReadbackSheet).toContainText("已回读 · 返回值见当前值");
+    await expect(alternateReadbackSheet.locator(".debug-detail-row")
+      .filter({ has: page.getByText("当前值", { exact: true }) }).locator("strong")).toHaveText("1");
     await closeParameterSheet(page);
 
     const complexJsonRow = parameterRow(page, "Config JSON overlay");
