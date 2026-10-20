@@ -150,11 +150,7 @@ describe.skipIf(!available)("generic signals through upload, worker and HTTP rep
         expect(await createRuleBasedLogAnalyzer(rules).analyze(analysisInput), testCase.id)
           .toEqual(await createRuleBasedLogAnalyzer().analyze(analysisInput));
       }
-      expect((await db.query("select * from audit_events where id <> all($1::text[]) order by id",
-        [["seed-charging-audit-0208:signals-org", "seed-charging-audit-0208:signals-other"]])).rows).toEqual(auditBefore.rows);
-      expect((await db.query("select organization_id from audit_events where id = any($1::text[]) order by organization_id",
-        [["seed-charging-audit-0208:signals-org", "seed-charging-audit-0208:signals-other"]])).rows)
-        .toEqual([{ organization_id: "signals-org" }, { organization_id: "signals-other" }]);
+      expect((await db.query("select * from audit_events order by id")).rows).toEqual(auditBefore.rows);
       expect((await db.query(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
         where n.nspname = 'public' and p.proname = 'provision_charging_skill'`)).rows).toEqual([]);
       await expect(db.query(`insert into log_skill_revisions (id, organization_id, skill_id, revision_number, status, spec, content_hash)

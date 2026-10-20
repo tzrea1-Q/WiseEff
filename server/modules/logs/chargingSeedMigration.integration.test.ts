@@ -51,7 +51,7 @@ describe.skipIf(!available)("charging seed localization migration", () => {
     } finally { await db.close(); await ephemeral.drop(); }
   }, 120_000);
 
-  it("preserves publication history and known 0197 metadata, with tenant-owned audit and idempotent replay", async () => {
+  it("preserves publication history and known 0197 metadata without audit writes, with idempotent replay", async () => {
     const ephemeral = await createEphemeralTestDatabase("charginglocalize");
     const db = createPostgresDatabase(ephemeral.url);
     try {
@@ -70,6 +70,7 @@ describe.skipIf(!available)("charging seed localization migration", () => {
             1, 'published', $1::jsonb, encode(sha256(convert_to(($1::jsonb)::text, 'UTF8')), 'hex'), now())`, [spec]);
       });
       const before = (await db.query<Record<string, unknown>>("select * from log_skill_revisions where organization_id like 'localize-%' order by id")).rows;
+      const audits = (await db.query("select * from audit_events order by id")).rows;
       await db.transaction(async (tx) => {
         await tx.query("delete from schema_migrations where name = '0208_localize_seed_charging_skill.sql'");
         await applyTestMigrations(tx, migrationsDir, { through: "0208_localize_seed_charging_skill.sql" });
@@ -86,22 +87,14 @@ describe.skipIf(!available)("charging seed localization migration", () => {
         .toEqual(Array.from({ length: 3 }, () => ({ description: "根据充电异常规则分析日志。" })));
       expect((await db.query("select * from log_skill_revisions where organization_id like 'localize-%' and status = 'superseded' order by id")).rows)
         .toEqual(before.map((row) => ({ ...row, status: "superseded" })));
-      const audits = (await db.query<{ organization_id: string }>("select * from audit_events where organization_id like 'localize-%' and id like 'seed-charging-audit-0208:%' order by id")).rows;
-      expect(audits).toHaveLength(3);
-      for (const audit of audits) expect(audit).toMatchObject({
-        organization_id: audit.organization_id, actor_type: "system", actor_user_id: null,
-        target_id: `seed-charging:${audit.organization_id}`, kind: "log-skill-publish",
-        metadata: { initiator: "system", systemKind: "service", systemName: "0208-localize-seed-charging-skill",
-          revisionId: `seed-charging-revision-0208:${audit.organization_id}`,
-          previousRevisionId: `seed-charging-revision:${audit.organization_id}` }
-      });
+      expect((await db.query("select * from audit_events order by id")).rows).toEqual(audits);
       const after = (await db.query("select * from log_skill_revisions where organization_id like 'localize-%' order by id")).rows;
       await db.transaction(async (tx) => {
         await tx.query("delete from schema_migrations where name = '0208_localize_seed_charging_skill.sql'");
         await applyTestMigrations(tx, migrationsDir, { through: "0208_localize_seed_charging_skill.sql" });
       });
       expect((await db.query("select * from log_skill_revisions where organization_id like 'localize-%' order by id")).rows).toEqual(after);
-      expect((await db.query("select * from audit_events where organization_id like 'localize-%' and id like 'seed-charging-audit-0208:%' order by id")).rows).toEqual(audits);
+      expect((await db.query("select * from audit_events order by id")).rows).toEqual(audits);
       await expect(db.query(`insert into log_skill_revisions
         (id, organization_id, skill_id, revision_number, status, spec, content_hash)
         values ('cross-tenant', 'localize-b', 'seed-charging:localize-a', 3, 'draft', '{"schemaVersion":"skill/v1"}', 'fixture')`))

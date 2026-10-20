@@ -535,14 +535,6 @@ begin
         encode(sha256(convert_to(localized_spec::text, 'UTF8')), 'hex'), now());
     update log_domains set description = '根据充电异常规则分析日志。', updated_at = now()
       where id = skill.id and organization_id = skill.organization_id;
-    insert into audit_events
-      (id, organization_id, actor_user_id, actor_type, app, kind, action, severity,
-       target_type, target_id, metadata, trace_id)
-      values ('seed-charging-audit-0208:' || skill.organization_id, skill.organization_id,
-        null, 'system', 'log-analysis', 'log-skill-publish', 'log-skill-publish', 'Medium',
-        'log-skill', skill.id, jsonb_build_object('initiator', 'system', 'systemKind', 'service',
-          'systemName', '0208-localize-seed-charging-skill', 'revisionId', revision_id,
-          'previousRevisionId', skill.original_revision_id), '0208-localize-seed-charging-skill');
   end loop;
 end
 $localize$;
