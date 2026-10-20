@@ -473,7 +473,8 @@ export function ParametersTable({
                   {isStashed ? <span className="stash-badge">已暂存</span> : null}
                 </td>
                 <td data-label="模块">
-                  <span className={`module-badge module-tone-${getModuleToneIndex(row.module)}`}>{row.module}</span>
+                  <span className={`module-badge module-tone-${row.module === "unset" ? 2 : getModuleToneIndex(row.module)}`}
+                    title={row.module === "unset" ? "未分配模块，请重新归类" : undefined}>{row.module === "unset" ? "unset（未分配）" : row.module}</span>
                 </td>
                 <td data-label="来源">
                   <span className="parameter-source-text">{formatParameterSource(row)}</span>

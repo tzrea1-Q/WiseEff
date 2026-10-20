@@ -38,6 +38,13 @@ export const CANONICAL_SOURCE_LOCK_RELATIONS = [
 const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "parameter_catalog.is_replaced_current_binding(text)",
   "parameter_catalog.resolve_current_binding_by_source_occurrence(text, text, text)",
+  "parameter_catalog.preview_parameter_definition_purge(text)",
+  "parameter_catalog.lock_parameter_definition_purge(text)",
+  "parameter_catalog.purge_parameter_definition(text, jsonb, text, text)",
+  "parameter_catalog.read_parameter_definition_erasure(text)",
+  "parameter_catalog.finish_parameter_definition_erasure_object(text, text)",
+  "parameter_catalog.lock_parameter_plane_archive()",
+  "parameter_catalog.definition_erasure_object_is_referenced(text, text)",
 ] as const;
 
 export type PublicationRuntimeLoginMode = "official" | "lab";

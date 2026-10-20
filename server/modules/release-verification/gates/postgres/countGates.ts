@@ -10,6 +10,7 @@ import {
   quoteIdent,
 } from "./relations";
 import type { GateQuery } from "./session";
+import { readDefinitionErasureCapabilities } from "./privilegeGates";
 
 type CountRow = {
   violation_count: string | number;
@@ -635,9 +636,9 @@ export const runV13 = async (query: GateQuery): Promise<GateResult> => {
     `,
     [publicLegacy],
   );
-  const definers = await query<{ proname: string }>(
+  const definers = await query<{ proname: string; identity: string }>(
     `
-    select procedure.proname
+    select procedure.proname, procedure.oid::regprocedure::text as identity
     from pg_catalog.pg_proc procedure
     join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
     where procedure.prosecdef
@@ -651,11 +652,14 @@ export const runV13 = async (query: GateQuery): Promise<GateResult> => {
     order by procedure.proname
     `,
   );
+  const erasure = await readDefinitionErasureCapabilities(query);
+  const unexpectedDefiners = definers.rows.filter(row => !erasure.approved.has(row.identity));
   const grantRows = grants.rows;
-  const violationCount = grantRows.length + definers.rows.length;
+  const violationCount = grantRows.length + unexpectedDefiners.length + erasure.violationCount;
   return countedResult("PCAT-DB-V13", "PCAT-VRF-V13-LEGACY-WRITER-REACHABLE", violationCount, {
-    definerCount: definers.rows.length,
-    definers: definers.rows.map((row) => row.proname),
+    definerCount: unexpectedDefiners.length,
+    definers: unexpectedDefiners.map((row) => row.proname),
+    erasureCapabilityViolations: erasure.violationCount,
     grantCount: grantRows.length,
     grants: grantRows,
   });

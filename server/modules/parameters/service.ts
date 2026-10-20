@@ -62,6 +62,8 @@ import {
 } from "../parameter-kernel/sensitiveNode";
 import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { captureModuleRecognitionCatalog, hasModuleRecognitionUpdate, lockOrganizationModuleRecognition,
+  updateModuleRecognitionSettings } from "../parameter-modules/recognitionSettings";
 import type { InitializationSuggestionDto } from "./types";
 import {
   bindParameterSource,
@@ -77,6 +79,7 @@ import {
   getParameterModuleByName,
   listParameterModules,
   moveParameterModule,
+  lockParameterModuleTree,
   updateParameterModule,
   type ListParametersQuery as RepositoryListParametersQuery
 } from "./repository";
@@ -2349,28 +2352,17 @@ export async function updateParameterModuleForAuth(
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
-  if (current.kind === "driver-group" || current.kind === "node-type") {
-    throw legacyStructuralWriteRetirementError();
-  }
 
   const nextName = body.name?.trim() ?? current.name;
   if (!nextName) {
     throw new ApiError("VALIDATION_FAILED", "Module name is required.");
   }
 
-  const nextKind = body.kind ?? current.kind;
   if (body.kind !== undefined && body.kind !== current.kind) {
     throw legacyStructuralWriteRetirementError();
   }
-
-  if (body.importance !== undefined && nextKind !== "business") {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      "Importance can only be set on business-category modules.",
-      { moduleId, kind: nextKind }
-    );
-  }
-
+  const recognitionChanged = hasModuleRecognitionUpdate(body);
+  const recognitionCatalog = recognitionChanged ? await captureModuleRecognitionCatalog(db) : null;
   if (nextName !== current.name) {
     const conflict = await getParameterModuleByName(db, {
       organizationId,
@@ -2386,6 +2378,11 @@ export async function updateParameterModuleForAuth(
   }
 
   return db.transaction(async (tx) => {
+    if (recognitionChanged) await lockOrganizationModuleRecognition(tx, organizationId);
+    const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true });
+    if (!lockedCurrent) {
+      throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
+    }
     const module = await updateParameterModule(tx, {
       organizationId,
       moduleId,
@@ -2394,11 +2391,15 @@ export async function updateParameterModuleForAuth(
       scope: body.scope?.trim(),
       sortOrder: body.sortOrder,
       importance: body.importance,
-      kind: body.kind
+      kind: body.kind,
+      promoteToCurated: recognitionChanged,
     });
     if (!module) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }
+    const recognition = recognitionChanged ? await updateModuleRecognitionSettings(tx, {
+      organizationId, moduleId, kind: lockedCurrent.kind, body, catalog: recognitionCatalog,
+    }) : null;
 
     await createParameterModuleAudit(
       asAuditTx(tx),
@@ -2408,14 +2409,15 @@ export async function updateParameterModuleForAuth(
         action: "update",
         module,
         metadata: {
-          previousName: current.name,
-          previousKind: current.kind
+          previousName: lockedCurrent.name,
+          previousKind: lockedCurrent.kind,
+          ...(recognition ? { recognition } : {}),
         }
       },
       context
     );
 
-    return module;
+    return recognition ? { ...module, ...recognition } : module;
   }).catch((error: unknown) => {
     if (error instanceof pg.DatabaseError
       && error.code === "23505"
@@ -2442,9 +2444,6 @@ export async function moveParameterModuleForAuth(
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
-  if (current.kind === "driver-group" || current.kind === "node-type") {
-    throw legacyStructuralWriteRetirementError();
-  }
 
   const parentId = body.parentId;
   if (parentId) {
@@ -2469,6 +2468,12 @@ export async function moveParameterModuleForAuth(
 
   try {
     return await db.transaction(async (tx) => {
+      await lockParameterModuleTree(tx, organizationId);
+      const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true });
+      if (!lockedCurrent) {
+        throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
+      }
+      if (parentId === lockedCurrent.parentId) return lockedCurrent;
       const module = await moveParameterModule(tx, {
         organizationId,
         moduleId,
@@ -2485,7 +2490,7 @@ export async function moveParameterModuleForAuth(
           kind: "parameter-module-admin-move",
           action: "move",
           module,
-          metadata: { previousParentId: current.parentId }
+          metadata: { previousParentId: lockedCurrent.parentId }
         },
         context
       );
@@ -2516,31 +2521,11 @@ export async function deleteParameterModuleForAuth(
 ): Promise<void> {
   requireParameterAdmin(auth);
   const organizationId = auth.organization.id;
-  const current = await getParameterModuleById(db, { organizationId, moduleId });
-  if (!current) {
-    throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
-  }
-  if (current.kind === "driver-group" || current.kind === "node-type") {
-    throw legacyStructuralWriteRetirementError();
-  }
-
-  const childCount = await countParameterModuleChildren(db, { organizationId, moduleId });
-  if (childCount > 0) {
-    throw new ApiError("CONFLICT", "Cannot delete a parameter module that still has child modules.", {
-      moduleId,
-      childCount
-    });
-  }
-
-  const parameterCount = await countParametersForModule(db, { organizationId, moduleId });
-  if (parameterCount > 0) {
-    throw new ApiError("CONFLICT", "Cannot delete a parameter module referenced by parameters.", {
-      moduleId,
-      parameterCount
-    });
-  }
-
   await db.transaction(async (tx) => {
+    const current = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true });
+    if (!current) {
+      throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
+    }
     const deleted = await deleteParameterModule(tx, { organizationId, moduleId });
     if (!deleted) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });

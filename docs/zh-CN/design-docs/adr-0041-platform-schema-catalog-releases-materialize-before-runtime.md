@@ -17,6 +17,8 @@
 
 完整后继、唯一同步器、失败即关闭的编译与 digest 合同、历史重放、禁止 overlay、流量后禁止仅指针回滚，以及精确的应用批准 `readApprovedRuntimePin` / P13 比较，均保持不变。数据发布现在与这些应用事实组合使用；旧报告不能批准后来的 Catalog 后继。`new-empty` 不得被说成 P13 已退休。
 
+2026-10-20 删除修正：[平台参数定义彻底删除](../exec-plans/active/2026-10-20-parameter-definition-erasure.md) 为不可变定义、修订保留和历史制品摘要增加明确维护例外。只有全局 `platform-admin` 可在影响预览确认及审计下跨组织执行。保留的 release 重建时移除该定义，旧 pin 失效；原审批哈希保留为历史证据，受影响授权撤销。原始配置文件继续保留。此操作不属于普通发布，不能授权设备写入，也不能恢复已删身份。
+
 ## 背景
 
 已批准的目标只有一个结构真相来源：Platform schema catalog。组织可以注册和放置正式 Driver、NodeType 主体，但不能编写、复制、覆盖或私有重定义 schema。运行时 observation 只是证据，不能创建 definition。

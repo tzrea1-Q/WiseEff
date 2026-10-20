@@ -12,6 +12,7 @@ import type {
   PinnedCatalogSnapshot,
 } from "../../catalog-kernel/interface";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
+import { resolveCatalogReleasePin } from "../../catalog-kernel/runtime/pinnedSnapshot";
 import {
   CatalogSnapshotCache,
   createCatalogSnapshotCache,
@@ -51,6 +52,15 @@ export class DigestKeyedCatalogRuntimeCache {
   putPinned(digest: string, snapshot: PinnedCatalogSnapshot): void {
     this.pinned.set(digest, snapshot);
   }
+
+  discardReplacedRelease(pin: CatalogReleasePin): void {
+    for (const [digest, snapshot] of this.current) {
+      if (snapshot.release.id === pin.id && digest !== pin.digest) this.current.delete(digest);
+    }
+    for (const [digest, snapshot] of this.pinned) {
+      if (snapshot.pin.id === pin.id && digest !== pin.digest) this.pinned.delete(digest);
+    }
+  }
 }
 
 export const captureCurrentCatalogPin = async (
@@ -84,6 +94,7 @@ export const createPinCapturingCatalogRuntime = (
       return mismatch(expected, null);
     }
     const actual = pointer.current;
+    cache.discardReplacedRelease(actual);
     if (actual.id !== expected.id || actual.digest !== expected.digest) {
       return mismatch(expected, actual);
     }
@@ -98,6 +109,17 @@ export const createPinCapturingCatalogRuntime = (
     return loaded;
   },
   async loadPinnedCatalog(pin) {
+    // A privileged erasure replaces a release's bytes and digest while retaining
+    // its identity. A cached historical snapshot must not bypass the new pin.
+    const actual = await resolveCatalogReleasePin(pool, pin.id);
+    if (!actual.ok) return actual;
+    cache.discardReplacedRelease(actual.value);
+    if (actual.value.digest !== pin.digest) {
+      return {
+        ok: false,
+        error: { kind: "digest-conflict", releaseId: pin.id, expected: pin.digest, actual: actual.value.digest },
+      };
+    }
     const hit = cache.getPinned(pin.digest);
     if (hit && hit.pin.id === pin.id && hit.pin.digest === pin.digest) {
       return { ok: true, value: hit };

@@ -1,4 +1,5 @@
 import pg from "pg";
+import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import {
   loadPublishedCatalog,
@@ -47,6 +48,7 @@ export async function loadOrganizationNavigationScope(
 
   const registration = await loadOrganizationRegisteredSubjectSelection(pool, authScope);
   if (!registration.ok) return { status: "unavailable", reason: "registration-unavailable" };
+  snapshot = await loadOrganizationCatalogSnapshot(db, authScope.organizationId, snapshot);
   const selection = registration.value;
   const registered = new Set<string>(selection.kind === "only" ? selection.ids : []);
   const matches = new Map<string, boolean>();

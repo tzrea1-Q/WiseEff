@@ -116,6 +116,11 @@ afterEach(() => {
 });
 
 describe("ParametersTable", () => {
+  it("highlights parameters whose module was cleared without dropping the row", () => {
+    setup({ rows: [{ ...rows[0]!, module: "unset" }] });
+    expect(screen.getByText("unset（未分配）")).toHaveClass("module-tone-2");
+    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+  });
   it("shows all rows by default with the visible count", () => {
     setup();
 

@@ -1,4 +1,7 @@
 import type {
+  CatalogDefinitionDeletionPreviewResponse,
+  CatalogDeleteDefinitionRequest,
+  CatalogDefinitionDeletedResponse,
   CatalogContinueReplacementRequest,
   CatalogBindingExportResponse,
   CatalogBindingChangeHistoryListResponse,
@@ -92,6 +95,8 @@ export interface ParameterCatalogRepository {
   ): Promise<CatalogDefinitionListResponse>;
   listDefinitions(query?: CatalogListQuery): Promise<CatalogDefinitionListResponse>;
   getDefinition(definitionId: string, query?: CatalogListQuery): Promise<CatalogDefinitionResponse>;
+  previewDefinitionDeletion?(definitionId: string): Promise<CatalogDefinitionDeletionPreviewResponse>;
+  deleteDefinition?(definitionId: string, body: CatalogDeleteDefinitionRequest): Promise<CatalogDefinitionDeletedResponse>;
   listDefinitionRevisions(
     definitionId: string,
     query?: CatalogListQuery

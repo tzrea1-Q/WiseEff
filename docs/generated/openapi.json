@@ -7845,6 +7845,63 @@
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
+      },
+      "delete": {
+        "operationId": "catalog.deleteDefinition",
+        "summary": "Permanently delete a definition and all associated platform data; retain original source files",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "definitionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogDeleteDefinitionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDefinitionDeletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
       }
     },
     "/api/v2/catalog/definitions/{definitionId}/revisions": {
@@ -10705,6 +10762,55 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/definitions/{definitionId}/deletion-preview": {
+      "get": {
+        "operationId": "catalog.previewDefinitionDeletion",
+        "summary": "Preview the platform-wide permanent deletion of a parameter definition",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "definitionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDefinitionDeletionPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
@@ -19619,6 +19725,162 @@
           }
         }
       },
+      "CatalogDefinitionDeletionPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "definition": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "propertyKey": {
+                    "type": "string"
+                  },
+                  "subjectName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "propertyKey",
+                  "subjectName"
+                ],
+                "additionalProperties": false
+              },
+              "catalogRelease": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "digest"
+                ],
+                "additionalProperties": false
+              },
+              "affected": {
+                "type": "object",
+                "properties": {
+                  "organizations": {
+                    "type": "number"
+                  },
+                  "projects": {
+                    "type": "number"
+                  },
+                  "bindings": {
+                    "type": "number"
+                  },
+                  "values": {
+                    "type": "number"
+                  },
+                  "revisions": {
+                    "type": "number"
+                  },
+                  "relatedRecords": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "organizations",
+                  "projects",
+                  "bindings",
+                  "values",
+                  "revisions",
+                  "relatedRecords"
+                ],
+                "additionalProperties": false
+              },
+              "originalFilesRetained": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "previewToken": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "definition",
+              "catalogRelease",
+              "affected",
+              "originalFilesRetained",
+              "previewToken"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogDefinitionDeletionPreviewResponse"
+      },
+      "CatalogDeleteDefinitionRequest": {
+        "type": "object",
+        "properties": {
+          "previewToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "previewToken"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogDeleteDefinitionRequest"
+      },
+      "CatalogDefinitionDeletedResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "definitionId": {
+                "type": "string"
+              },
+              "deleted": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "counts": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "originalFilesRetained": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            },
+            "required": [
+              "definitionId",
+              "deleted",
+              "counts",
+              "originalFilesRetained"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogDefinitionDeletedResponse"
+      },
       "LocalAuthPublicConfigResponse": {
         "type": "object",
         "x-wiseeff-schema": "LocalAuthPublicConfigResponse"
@@ -20303,6 +20565,44 @@
                         "high",
                         "medium",
                         "low"
+                      ]
+                    },
+                    "compatibles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "driverNature": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "physical-device",
+                        "logical-service"
+                      ]
+                    },
+                    "instanceCardinality": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "multiple",
+                        "singleton-per-project"
+                      ]
+                    },
+                    "nodeTypeName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "recognitionSubjectId": {
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "parameterCount": {
@@ -64027,6 +64327,43 @@
                 ],
                 "additionalProperties": false
               },
+              "maintenanceRewrites": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "definition-erasure"
+                      ]
+                    },
+                    "erasedAt": {
+                      "type": "string"
+                    },
+                    "previousArtifactDigest": {
+                      "type": "string"
+                    },
+                    "currentArtifactDigest": {
+                      "type": "string"
+                    },
+                    "originalApprovalRetained": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "erasedAt",
+                    "previousArtifactDigest",
+                    "currentArtifactDigest",
+                    "originalApprovalRetained"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "createdAt": {
                 "type": "string"
               },
@@ -64227,6 +64564,43 @@
                     "reason"
                   ],
                   "additionalProperties": false
+                },
+                "maintenanceRewrites": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "definition-erasure"
+                        ]
+                      },
+                      "erasedAt": {
+                        "type": "string"
+                      },
+                      "previousArtifactDigest": {
+                        "type": "string"
+                      },
+                      "currentArtifactDigest": {
+                        "type": "string"
+                      },
+                      "originalApprovalRetained": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "erasedAt",
+                      "previousArtifactDigest",
+                      "currentArtifactDigest",
+                      "originalApprovalRetained"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
                 "createdAt": {
                   "type": "string"

@@ -294,8 +294,8 @@
   font-size: var(--text-xs);
 }
 .parameter-module-mapping-panel .module-attribution-tree.is-compact .module-attribution-tree__actions {
-  grid-column: 2;
-  grid-row: 2;
+  grid-column: 1 / -1;
+  grid-row: 3;
   justify-content: end;
 }
 .parameter-module-mapping-panel .module-attribution-tree.is-compact .module-attribution-tree__kind { font-size: var(--text-xs); }

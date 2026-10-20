@@ -7,6 +7,7 @@ import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
 import type { AuthContext } from "./modules/auth/types";
+import { createLocalArchiveObjectStore, type ArchiveObjectStore } from "./modules/catalog-cutover/archive";
 import { allowsIntegrationPrincipal, isIntegrationAuthorization, resolveIntegrationCredential } from "./modules/auth/integrationCredentialResolver";
 import { createOidcVerifier } from "./modules/auth/oidcVerifier";
 import { createTokenVerifier, type TokenVerifier } from "./modules/auth/tokenVerifier";
@@ -103,6 +104,8 @@ export type WiseEffServerOptions = {
   /** Optional server-owned DTS refusal writer when the supplied DB is not the pool root. */
   dtsReloadRefusalAuditSink?: TrustedRefusalAuditSink;
   objectStore?: ObjectStore;
+  catalogArchiveStore?: ArchiveObjectStore;
+  catalogArchiveKey?: Buffer;
   objectStoreHealth?: ObjectStoreHealthCheck;
   logAnalysisQueue?: LogAnalysisQueue;
   logAnalyzer?: import("./modules/logs/analyzer").LogAnalysisAdapter;
@@ -290,6 +293,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   registerParameterCatalogApi(router, {
     db: options.db,
     objectStore: options.objectStore,
+    catalogArchiveStore: options.catalogArchiveStore,
+    catalogArchiveKey: options.catalogArchiveKey,
     resolveAuth: authResolver,
     catalogPublication: {
       env: process.env,
@@ -591,6 +596,8 @@ export function createWiseEffServerFromEnv(
   options: {
     db?: Database;
     objectStore?: ObjectStore;
+    catalogArchiveStore?: ArchiveObjectStore;
+    catalogArchiveKey?: Buffer;
     objectStoreHealth?: ObjectStoreHealthCheck;
     logAnalysisQueue?: LogAnalysisQueue;
     logAnalyzer?: import("./modules/logs/analyzer").LogAnalysisAdapter;
@@ -611,6 +618,10 @@ export function createWiseEffServerFromEnv(
       : undefined;
   return createWiseEffServer({
     ...options,
+    catalogArchiveStore: options.catalogArchiveStore ?? (options.env.WISEEFF_CATALOG_ARCHIVE_ROOT
+      ? createLocalArchiveObjectStore(options.env.WISEEFF_CATALOG_ARCHIVE_ROOT) : undefined),
+    catalogArchiveKey: options.catalogArchiveKey ?? (options.env.WISEEFF_CATALOG_ARCHIVE_KEY_HEX
+      ? Buffer.from(options.env.WISEEFF_CATALOG_ARCHIVE_KEY_HEX, "hex") : undefined),
     auth: { mode: options.env.AUTH_MODE, verifier }
   });
 }

@@ -204,6 +204,19 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("keeps definitions visible and highlights unset module attribution", async () => {
+    const repository = createMockParameterCatalogRepository({ scenario: "ready" });
+    const registration = { ...registeredSubject.registration, placement: { id: "retained-placement", displayName: "unset", parentPlacementId: null } };
+    const retained = { ...registeredSubject, registration };
+    renderCatalog({ repository: { ...repository,
+      listSubjects: vi.fn().mockResolvedValue({ items: [retained], hasMore: false, nextCursor: null }),
+      listDefinitions: vi.fn().mockResolvedValue({ items: [{ ...activeDefinition, registration }], hasMore: false, nextCursor: null })
+    } });
+    const badge = await screen.findByText("unset（未分配）");
+    expect(badge).toHaveAttribute("data-tone", "warning");
+    expect(screen.getByText("unset（未分配模块）")).toBeVisible();
+    expect(screen.getByText(activeDefinition.propertyKey)).toBeVisible();
+  });
   const historicalSubject = { ...retiredSubject, id: "csub_historical", canonicalName: "retired,driver", registration: { status: "unregistered" as const } };
   const historicalDefinition = {
     ...activeDefinition, id: "pdef_historical", propertyKey: "historical-key",

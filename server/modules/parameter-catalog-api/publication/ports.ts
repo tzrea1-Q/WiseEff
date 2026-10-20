@@ -125,9 +125,18 @@ const jobView = async (input: {
   readonly db: Database;
   readonly pool: CatalogPointerPool | undefined;
   readonly job: PublicationJobRecord;
+  readonly artifactId: string;
   readonly authorOrganizationId: string;
 }): Promise<PublicationJobView> => {
   const receipt = await withPublicationCoordinator(input.db, (tx) => getReceiptByJobId(tx, input.job.id));
+  const rewrites = await input.db.query<{ erased_at: Date | string; old_digest: string; new_digest: string }>(
+    `select erasure.erased_at, artifact->>'oldDigest' as old_digest, artifact->>'newDigest' as new_digest
+       from parameter_catalog.definition_erasures erasure
+       cross join lateral jsonb_array_elements(erasure.catalog_rewrite->'artifacts') artifact
+      where artifact->>'id'=$1 and artifact->>'oldDigest' is distinct from artifact->>'newDigest'
+      order by erasure.erased_at, erasure.definition_id`,
+    [input.artifactId],
+  );
   const pointer = input.pool ? await readCurrentCatalogPointer(input.pool) : { kind: "absent" as const };
   const matched =
     receipt.ok &&
@@ -153,6 +162,13 @@ const jobView = async (input: {
     currentness,
     failure: matched ? null : jobFailure(input.job),
     authorOrganizationId: input.authorOrganizationId,
+    ...(rewrites.rows.length > 0 ? { maintenanceRewrites: rewrites.rows.map(rewrite => ({
+      kind: "definition-erasure" as const,
+      erasedAt: new Date(rewrite.erased_at).toISOString(),
+      previousArtifactDigest: rewrite.old_digest,
+      currentArtifactDigest: rewrite.new_digest,
+      originalApprovalRetained: true as const,
+    })) } : {}),
   };
 };
 
@@ -302,6 +318,7 @@ export function bindCatalogPublicationCommands(input: {
           db,
           pool,
           job: enqueued.value.job,
+          artifactId: loaded.value.artifactId,
           authorOrganizationId: view.authorOrganizationId,
         }),
       };
@@ -377,6 +394,7 @@ export function bindCatalogPublicationCommands(input: {
             db,
             pool,
             job,
+            artifactId: candidate.value.artifactId,
             authorOrganizationId,
           }),
         );
@@ -408,6 +426,7 @@ export function bindCatalogPublicationCommands(input: {
           db,
           pool,
           job: loaded.value,
+          artifactId: candidate.value.artifactId,
           authorOrganizationId,
         }),
       };

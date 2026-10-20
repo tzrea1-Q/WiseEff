@@ -540,12 +540,12 @@ function mapDefinitionReplacementFailure(
 }
 
 function placementFromResult(
-  result: { placementId: string; moduleId?: string },
+  result: { placementId: string; moduleId?: string | null },
 ): RegistrationRecord["placement"] {
   return {
     id: result.placementId,
-    moduleId: result.moduleId,
-    displayName: result.moduleId ?? result.placementId,
+    ...(result.moduleId ? { moduleId: result.moduleId } : {}),
+    displayName: result.moduleId ?? "未设置模块 (unset)",
     parentPlacementId: null,
   };
 }

@@ -18,6 +18,7 @@ import { createPostgresGateAdapters, loadPackagedMigrationInventory } from "./in
 import { DEFAULT_MIGRATIONS_DIR } from "./inventory";
 import { catalogRelation, quoteIdent } from "./relations";
 import { runP01, runP02 } from "./privilegeGates";
+import { runV13 } from "./countGates";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -182,6 +183,35 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
     const attempt = expectOk(await service.runVerification(plan.digest));
     expect(attempt.results.find((result) => result.gateId === "PCAT-DB-P01")?.status).toBe("passed");
     expect(attempt.results.find((result) => result.gateId === "PCAT-DB-P02")?.status).toBe("passed");
+  }, 60_000);
+
+  it("rejects erasure capability owner, signature, security mode, search path, or grant drift", async () => {
+    const identity = "parameter_catalog.purge_parameter_definition(text,jsonb,text,text)";
+    for (const drift of [
+      `grant execute on function ${identity} to public`,
+      `revoke execute on function ${identity} from parameter_governance_writer_role`,
+      `alter function ${identity} owner to catalog_publication_coordinator_role`,
+      `alter function ${identity} security invoker`,
+      `alter function ${identity} set search_path=public`,
+      "grant select on parameter_catalog.definition_purge_rows to parameter_governance_writer_role",
+      "grant select(transaction_id) on parameter_catalog.definition_purge_rows to parameter_governance_writer_role",
+      "grant execute on function parameter_catalog.definition_purge_allows_change(text,text,jsonb,text) to public",
+      `create function parameter_catalog.purge_parameter_definition(boolean) returns void language sql security definer
+        as $$ delete from public.parameter_specs where false $$;
+        alter function parameter_catalog.purge_parameter_definition(boolean) owner to catalog_migration_owner;
+        revoke all on function parameter_catalog.purge_parameter_definition(boolean) from public;
+        grant execute on function parameter_catalog.purge_parameter_definition(boolean) to parameter_governance_writer_role`,
+    ]) {
+      await db.query("savepoint erasure_capability_drift");
+      try {
+        await db.query(drift);
+        expect((await runP02(db)).status, drift).toBe("failed");
+        expect((await runV13(db.query.bind(db))).status, drift).toBe("failed");
+      } finally {
+        await db.query("rollback to savepoint erasure_capability_drift");
+        await db.query("release savepoint erasure_capability_drift");
+      }
+    }
   }, 60_000);
 
   it("rejects reviewed tombstone definer body or grant drift", async () => {

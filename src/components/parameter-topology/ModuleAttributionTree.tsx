@@ -8,7 +8,8 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { presentError } from "@/infrastructure/http/presentError";
 import type {
   DriverNature,
-  InstanceCardinality
+  InstanceCardinality,
+  UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
   ModuleImportance,
@@ -66,13 +67,7 @@ export type ModuleAttributionTreeProps = {
   onSearchChange?: (query: string) => void;
   onUpdateModule: (
     moduleId: string,
-    patch: {
-      name?: string;
-      description?: string;
-      scope?: string;
-      importance?: ModuleImportance;
-      sortOrder?: number;
-    }
+    patch: UpdateParameterModuleInput
   ) => void | Promise<void>;
   onMove: (moduleId: string, parentId: string | null) => void | Promise<void>;
   onDelete: (moduleId: string) => void | Promise<void>;
@@ -277,7 +272,6 @@ function ModuleAttributionTreeRow({
             modules={modules}
             busy={busy}
             canAdmin={canAdmin}
-            canonicalModeEnabled
             tabIndex={focusedModuleId === module.id ? 0 : -1}
             onView={canViewUnclassifiedRoot(module) ? () => onView(module.id) : undefined}
             onEdit={() => onEdit(module.id)}
@@ -544,12 +538,7 @@ export function ModuleAttributionTree({
     setDialogMutationError(null);
     void (async () => {
       try {
-        await onUpdateModule(moduleId, {
-          name: patch.name,
-          description: patch.description,
-          scope: patch.scope,
-          ...(patch.importance !== undefined ? { importance: patch.importance } : {}),
-        });
+        await onUpdateModule(moduleId, patch);
         setEditingModuleId(null);
         setDialogMutationError(null);
       } catch (error) {
@@ -581,7 +570,7 @@ export function ModuleAttributionTree({
     if (busy || dialogMutationBusy) return;
     const module = modulesById.get(moduleId);
     if (!module) return;
-    const updates = sortOrderSwapUpdates(module, direction, modules, true);
+    const updates = sortOrderSwapUpdates(module, direction, modules);
     if (!updates) return;
     for (const patch of updates) {
       await onUpdateModule(patch.id, { sortOrder: patch.sortOrder });
@@ -589,14 +578,6 @@ export function ModuleAttributionTree({
   };
 
   const deletingModule = deleteModuleId ? (modulesById.get(deleteModuleId) ?? null) : null;
-  const deletingChildCount = deletingModule
-    ? modules.filter((module) => module.parentId === deletingModule.id).length
-    : 0;
-  const deletingCompatibleCount = deletingModule
-    ? mappingsForModule(mappings, deletingModule.id).filter(
-        (mapping) => mapping.matchKind === "compatible"
-      ).length
-    : 0;
 
   const handleConfirmDelete = () => {
     if (!deleteModuleId) return;
@@ -762,35 +743,18 @@ export function ModuleAttributionTree({
 
       <ConfirmDialog
         open={deletingModule !== null}
-        title={
-          deletingModule?.kind === "driver-group"
-            ? `解散驱动组「${deletingModule.name}」`
-            : `删除模块「${deletingModule?.name ?? ""}」`
-        }
+        title={`删除模块「${deletingModule?.name ?? ""}」`}
         description={
           deletingModule ? (
             <div>
-              {deletingModule.kind === "driver-group" ? (
-                <>
-                  <p>
-                    解散后不可恢复：该驱动组的 {deletingCompatibleCount} 条 compatible 匹配规则将一并移除，
-                    组内 {deletingModule.parameterCount} 个参数及其子模块（{deletingChildCount} 个）
-                    的绑定将退回「未分类」，需要重新归类或重建匹配规则。
-                  </p>
-                </>
-              ) : (
-                <p>
-                  删除后不可恢复。当前子模块 {deletingChildCount} 个、关联参数 {deletingModule.parameterCount} 个；
-                  仍有子模块或参数引用时服务端会拒绝删除。
-                </p>
-              )}
+              <p>删除后不可恢复。关联的 {deletingModule.parameterCount} 个参数会保留，模块归属变为 unset（未分配），可在参数管理中查看并重新归类。仅允许删除没有子模块的模块。</p>
             </div>
           ) : null
         }
-        confirmLabel={deletingModule?.kind === "driver-group" ? "确认解散" : "确认删除"}
+        confirmLabel="确认删除"
         tone="danger"
         pending={dialogMutationBusy}
-        pendingLabel={deletingModule?.kind === "driver-group" ? "解散中…" : "删除中…"}
+        pendingLabel="删除中…"
         error={dialogMutationError ?? ""}
         onCancel={() => {
           if (dialogMutationBusy) return;

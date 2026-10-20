@@ -6,6 +6,7 @@ import { parseStoredEvidence } from "../parameter-governance/review/query";
 import type { ReviewQueueItem } from "../parameter-governance/review/types";
 import { reviewEvidenceSourceIsOwned } from "../parameter-governance/resolveReviewItem/unitOfWork";
 import type { ReviewItemDetails } from "./governance/types";
+import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
 
 const token = (value: unknown): value is string => typeof value === "string" && value.length > 0
   && value.trim() === value && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
@@ -20,6 +21,7 @@ export async function readReviewItemDetails(
   input: { organizationId: string; pin: CatalogReleasePin; items: readonly ReviewQueueItem[] },
   catalog: CatalogSnapshot,
 ): Promise<ReadonlyMap<string, ReviewItemDetails>> {
+  catalog = await loadOrganizationCatalogSnapshot(client, input.organizationId, catalog);
   const evidenceIds = [...new Set(input.items.flatMap((item) => item.evidenceRefs.map((ref) => ref.id)))];
   const evidence = evidenceIds.length ? (await client.query<EvidenceRow>(
     `select id, observation_id as "observationId", evidence
@@ -107,12 +109,12 @@ export async function readReviewItemDetails(
     const registrations = allOwned && candidates.size ? (await client.query<{
       id: string; subjectId: string; placementDisplayName: string;
     }>(
-      `select registration.id, registration.subject_id as "subjectId", module.name as "placementDisplayName"
+      `select registration.id, registration.subject_id as "subjectId", coalesce(module.name, '未设置模块 (unset)') as "placementDisplayName"
        from parameter_catalog.organization_subject_registrations registration
        join parameter_catalog.subject_placements placement
          on placement.id = registration.current_placement_id and placement.registration_id = registration.id
          and placement.organization_id = registration.organization_id
-       join public.parameter_modules module on module.id = placement.module_id
+       left join public.parameter_modules module on module.id = placement.module_id
          and module.organization_id = placement.organization_id
        where registration.organization_id = $1 and registration.subject_id = any($2::text[]) and registration.status = 'retired'`,
       [input.organizationId, [...candidates.keys()]],

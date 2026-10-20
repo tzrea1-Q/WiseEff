@@ -5,7 +5,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
-import { toBusinessFlatNodes } from "./moduleAttributionTreeUtils";
+import { toAttributionFlatNodes } from "./moduleAttributionTreeUtils";
 
 export type ModuleMoveDialogProps = {
   module: ParameterModule;
@@ -29,6 +29,7 @@ export function ModuleMoveDialog({
   onCancel
 }: ModuleMoveDialogProps) {
   const targetLabelId = useId();
+  const targetLabel = module.kind === "node-type" ? "目标上级模块" : "目标业务分类";
   const [parentId, setParentId] = useState(module.parentId ?? "");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const changed = parentId !== (module.parentId ?? "");
@@ -39,11 +40,13 @@ export function ModuleMoveDialog({
   };
 
   const businessTargets = useMemo(() => {
-    const flat = toBusinessFlatNodes(modules);
+    const flat = toAttributionFlatNodes(modules);
     const selfPath = flat.find((item) => item.id === module.id)?.path ?? `/${module.id}`;
     const blocked = `${selfPath}/`;
-    return flat.filter((item) => item.id !== module.id && !item.path.startsWith(blocked));
-  }, [module.id, modules]);
+    const allowed = new Set(modules.filter((candidate) => candidate.kind === "business" ||
+      (module.kind === "node-type" && (candidate.kind === "driver-group" || candidate.kind === "node-type"))).map((candidate) => candidate.id));
+    return flat.filter((item) => allowed.has(item.id) && item.id !== module.id && !item.path.startsWith(blocked));
+  }, [module.id, module.kind, modules]);
 
   useEffect(() => {
     setParentId(module.parentId ?? "");
@@ -63,7 +66,7 @@ export function ModuleMoveDialog({
             <div className="param-admin-editor-dialog-head-text">
               <span className="eyebrow">模块归属</span>
               <h2 id={titleId}>移动「{module.name}」</h2>
-              <p>选择新的父级业务分类；选「根级」则放到组织树顶层。</p>
+              <p>选择新的上级模块；选「根级」则放到组织树顶层。</p>
             </div>
             <button
               type="button"
@@ -79,12 +82,12 @@ export function ModuleMoveDialog({
           <div className="param-admin-module-edit-body module-move-dialog__body">
             <div className="module-move-dialog__field">
               <span className="module-move-dialog__label" id={targetLabelId}>
-                目标业务分类
+                {targetLabel}
               </span>
               <ModuleTreeSelect
                 mode="single"
                 includeRootOption
-                label="目标业务分类"
+                label={targetLabel}
                 labelledBy={targetLabelId}
                 nodes={businessTargets}
                 value={parentId}

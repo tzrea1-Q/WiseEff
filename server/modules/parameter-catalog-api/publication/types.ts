@@ -76,6 +76,13 @@ export type PublicationJobView = {
   readonly currentness: "active" | "active-superseded" | null;
   readonly failure: { readonly class: string; readonly reason: string } | null;
   readonly authorOrganizationId: string;
+  readonly maintenanceRewrites?: readonly {
+    readonly kind: "definition-erasure";
+    readonly erasedAt: string;
+    readonly previousArtifactDigest: string;
+    readonly currentArtifactDigest: string;
+    readonly originalApprovalRetained: true;
+  }[];
 };
 
 export type PreviewPublicationCommand = {

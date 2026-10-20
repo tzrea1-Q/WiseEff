@@ -50,7 +50,9 @@ function makeDb(rows = [
   { subject_id: "csub_battery", status: "active" },
   { subject_id: "csub_sensor", status: "retired" },
 ]) {
-  return { query: vi.fn().mockResolvedValue({ rows, rowCount: rows.length }) } satisfies Queryable;
+  return { query: vi.fn().mockImplementation(async (sql: string) => sql.includes("to_regclass")
+    ? { rows: [{ available: true }], rowCount: 1 } : sql.includes("module_recognition_rules")
+      ? { rows: [], rowCount: 0 } : { rows, rowCount: rows.length }) } satisfies Queryable;
 }
 
 describe("organization DTS navigation scope", () => {
@@ -82,8 +84,11 @@ describe("organization DTS navigation scope", () => {
       "soc", "soc/bus@1", "soc/bus@1/charger@0", "soc/bus@1/charger@1", "soc/power", "soc/power/battery",
     ]);
     expect(resolve.mock.calls.length).toBeLessThan(12);
-    expect(db.query).toHaveBeenCalledOnce();
+    expect(db.query).toHaveBeenCalledTimes(3);
     expect(db.query.mock.calls[0]?.[1]).toEqual(["org-a"]);
+    expect(db.query.mock.calls[1]?.[0]).toContain("module_recognition_rules");
+    expect(db.query.mock.calls[2]?.[0]).toContain("module_recognition_rules");
+    expect(db.query.mock.calls[2]?.[1]).toEqual(["org-a"]);
     expect(loadPublishedCatalog).toHaveBeenCalledOnce();
   });
 

@@ -54,7 +54,7 @@ async function failedUpdate(error: unknown, parentId: string | null) {
   } catch (caught) {
     rejected = caught;
     // Rejection is observable only after rollback; no commit or success audit INSERT.
-    expect(statements).toEqual(["select", "select", "begin", "select", "update", "rollback"]);
+    expect(statements).toEqual(["select", "select", "begin", "select", "select", "update", "rollback"]);
   }
   return rejected;
 }
@@ -95,6 +95,7 @@ async function failedMove(error: unknown, parentId: string | null) {
       const sql = text.trim();
       statements.push(sql.split(/\s+/, 1)[0]);
       if (sql === "begin" || sql === "rollback") return { rows: [], rowCount: null };
+      if (sql.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 1 };
       if (sql.startsWith("update parameter_modules")) {
         expect(values).toEqual([
           "org-1", "module-1", parentId,
@@ -128,8 +129,8 @@ async function failedMove(error: unknown, parentId: string | null) {
     rejected = caught;
     // Rejection is observable only after rollback; no commit or success audit INSERT.
     expect(statements).toEqual(parentId
-      ? ["select", "select", "select", "begin", "select", "select", "select", "update", "rollback"]
-      : ["select", "select", "begin", "select", "select", "update", "rollback"]);
+      ? ["select", "select", "select", "begin", "select", "select", "select", "select", "select", "select", "update", "rollback"]
+      : ["select", "select", "begin", "select", "select", "select", "select", "select", "update", "rollback"]);
   }
   return rejected;
 }

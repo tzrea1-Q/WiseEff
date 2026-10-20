@@ -68,7 +68,7 @@ describe("canonical module page request boundary", () => {
     expect(screen.getByRole("button", { name: "查看模块：电源" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "查看模块：电池" })).toHaveAttribute("aria-pressed", "false");
   });
-  it.each(["driver-group", "node-type"] as const)("keeps historical %s name/details read-only with a canonical handoff", async (moduleKind) => {
+  it.each(["driver-group", "node-type"] as const)("allows direct %s edits alongside a canonical handoff", async (moduleKind) => {
     const registry = {
       modules: [{
         id: "mod_driver", name: "Historical driver", parentId: null, sortOrder: 0,
@@ -116,16 +116,15 @@ describe("canonical module page request boundary", () => {
       .toHaveAttribute("aria-busy", "false"));
     expect(screen.queryByRole("tree", { name: "模块归属树" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "模块" }));
-    fireEvent.click(await screen.findByRole("button", { name: "查看模块 Historical driver" }));
+    fireEvent.click(await screen.findByRole("button", { name: "修改模块 Historical driver" }));
     const dialog = screen.getByRole("dialog", { name: "Historical driver" });
     if (moduleKind === "driver-group") {
-      expect(within(dialog).getByLabelText("驱动性质")).toHaveAttribute("readonly");
-      expect(within(dialog).getByLabelText("实例基数")).toHaveAttribute("readonly");
-      expect(within(dialog).getByText("vendor,device")).toBeInTheDocument();
+      expect(within(dialog).getByLabelText("驱动性质")).toBeEnabled();
+      expect(within(dialog).getByLabelText("实例基数")).toBeEnabled();
+      expect(within(dialog).getByLabelText("compatible 匹配规则")).toHaveValue("vendor,device");
     }
     for (const label of ["模块名称", "模块展示描述", "适用范围"]) {
-      expect(within(dialog).getByLabelText(label)).toHaveAttribute("readonly");
-      fireEvent.change(within(dialog).getByLabelText(label), { target: { value: "Forbidden legacy edit" } });
+      expect(within(dialog).getByLabelText(label)).not.toHaveAttribute("readonly");
     }
     expect(within(dialog).queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "管理规范主体与归属" })).toBeInTheDocument();

@@ -20,6 +20,7 @@ import type {
   ParameterModuleRow
 } from "./types";
 import { rollupSubtreeAttributionCounts } from "./subtreeCounts";
+import { loadModuleRecognitionSettings } from "./recognitionSettings";
 
 function moduleFromRow(
   row: ParameterModuleRow,
@@ -59,6 +60,7 @@ function resolveEffectiveImportance(
 ): ModuleImportance {
   const seen = new Set<string>();
   let current = byId.get(moduleId);
+  if (current?.importance_override) return current.importance ?? "medium";
   while (current && !seen.has(current.id)) {
     seen.add(current.id);
     if (current.kind === "business") {
@@ -74,7 +76,7 @@ function resolveEffectiveImportance(
  * Registration and Binding ownership remain SQL-owned facts; Definition
  * lifecycle/current-revision semantics stay inside CatalogRuntime.
  */
-export type RegistryCatalogSnapshot = Pick<CatalogSnapshot, "listDefinitions">;
+export type RegistryCatalogSnapshot = Pick<CatalogSnapshot, "listDefinitions"> & Partial<CatalogSnapshot>;
 
 function definitionFactsFromCatalog(
   catalog: RegistryCatalogSnapshot | null,
@@ -127,8 +129,9 @@ export async function readRegistry(
   db: Queryable,
   organizationId: string,
   catalog: RegistryCatalogSnapshot | null,
+  options: { includeAdminSettings?: boolean } = {},
 ): Promise<ParameterModuleRegistryDto> {
-  const modules = await db.query<ParameterModuleRow>(
+  const modules = options.includeAdminSettings === false ? await db.query<ParameterModuleRow>(
     `select
        pm.id,
        pm.name,
@@ -137,6 +140,25 @@ export async function readRegistry(
        coalesce(pm.description, '') as description,
        coalesce(pm.scope, '') as scope,
        coalesce(pm.importance, 'medium') as importance,
+       coalesce(pm.kind, 'business') as kind,
+       coalesce(pm.origin, 'curated') as origin,
+       pm.source_key,
+       pm.attribution_subject_id,
+       pm.path
+       from parameter_modules pm
+      where pm.organization_id = $1
+      order by pm.sort_order asc, pm.path asc, pm.name asc`,
+    [organizationId]
+  ) : await db.query<ParameterModuleRow>(
+    `select
+       pm.id,
+       pm.name,
+       pm.parent_id,
+       pm.sort_order,
+       coalesce(pm.description, '') as description,
+       coalesce(pm.scope, '') as scope,
+       coalesce(pm.importance, 'medium') as importance,
+       pm.importance_override,
        coalesce(pm.kind, 'business') as kind,
        coalesce(pm.origin, 'curated') as origin,
        pm.source_key,
@@ -168,16 +190,18 @@ export async function readRegistry(
       order by priority desc, match_value asc`,
     [organizationId]
   );
+  const recognition = options.includeAdminSettings === false ? new Map()
+    : await loadModuleRecognitionSettings(db, organizationId, catalog);
   return {
     modules: modules.rows.map((row) =>
-      moduleFromRow(
+      ({ ...moduleFromRow(
         {
           ...row,
           parameter_count: subtreeCounts.get(row.id)?.parameterCount ?? 0,
           definition_count: subtreeCounts.get(row.id)?.definitionCount ?? 0
         },
         resolveEffectiveImportance(row.id, byId),
-      ),
+      ), ...recognition.get(row.id) }),
     ),
     mappings: mappings.rows.map(mappingFromRow)
   };

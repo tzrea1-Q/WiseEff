@@ -150,7 +150,7 @@ function parseMultipartBody(bytes: Buffer, boundary: string): MultipartBody {
 }
 
 async function readBody(request: IncomingMessage, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES): Promise<unknown> {
-  if (request.method === "GET" || request.method === "DELETE") {
+  if (request.method === "GET") {
     return undefined;
   }
 

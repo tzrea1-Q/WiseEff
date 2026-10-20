@@ -525,7 +525,8 @@ describe("legacy parameter plane archive", () => {
         reason: "parameter-relation-archive-too-large",
       },
     });
-    expect(session.query).toHaveBeenCalledOnce();
+    expect(session.query).toHaveBeenCalledTimes(2);
+    expect(session.query).toHaveBeenNthCalledWith(1, "select parameter_catalog.lock_parameter_plane_archive()");
   });
 
   it("uses bounded reads when an object is larger than its declared size", async () => {
@@ -841,6 +842,7 @@ describe("legacy parameter plane archive", () => {
       { relation: "parameter_catalog.project_parameter_source_occurrences", trigger_name: "project_parameter_source_occurrences_immutable", function_name: "parameter_catalog.protect_source_occurrence_identity" },
       { relation: "parameter_catalog.project_parameter_values", trigger_name: "project_parameter_values_immutable", function_name: "parameter_catalog.reject_immutable_catalog_change" },
       { relation: "parameter_catalog.project_parameter_values", trigger_name: "project_value_current_binding_ck", function_name: "parameter_catalog.assert_value_target_binding_is_current" },
+      { relation: "parameter_catalog.project_value_source_pins", trigger_name: "project_value_source_pin_erased_provenance_guard", function_name: "parameter_catalog.protect_erased_source_pin_provenance" },
       { relation: "parameter_catalog.project_value_source_pins", trigger_name: "project_value_source_pin_first_pin_fence", function_name: "parameter_catalog.fence_first_source_pin" },
       { relation: "parameter_catalog.project_value_source_pins", trigger_name: "project_value_source_pin_owner_fk", function_name: "parameter_catalog.assert_project_value_source_pin_owner" },
       { relation: "parameter_catalog.project_value_source_pins", trigger_name: "project_value_source_pins_immutable", function_name: "parameter_catalog.reject_immutable_project_value_source_pin" },

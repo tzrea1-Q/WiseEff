@@ -40,6 +40,7 @@ export async function listSemanticParameters(
 ): Promise<SemanticParameterRow[]> {
   const values: unknown[] = [query.organizationId];
   const where = ["b.organization_id = $1"];
+  const moduleExpression = "case when b.module_id is null then 'unset' else split_part(ps.specification_key, '/', 1) end";
 
   if (query.projectId) {
     values.push(query.projectId);
@@ -47,7 +48,7 @@ export async function listSemanticParameters(
   }
   if (query.module) {
     values.push(query.module);
-    where.push(`split_part(ps.specification_key, '/', 1) = $${values.length}`);
+    where.push(`${moduleExpression} = $${values.length}`);
   }
   if (query.moduleId) {
     where.push(
@@ -72,7 +73,7 @@ export async function listSemanticParameters(
       coalesce(psv.description, '') as explanation,
       'DTS' as config_format,
       coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
-      split_part(ps.specification_key, '/', 1) as module,
+      ${moduleExpression} as module,
       b.module_id as parameter_module_id,
       (
         select string_agg(pm_seg.name, '/' order by pm_seg.depth)

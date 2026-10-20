@@ -30,6 +30,8 @@ const rawEnvSchema = z.object({
   OBJECT_STORAGE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
   OBJECT_STORAGE_REGION: z.string().optional(),
+  WISEEFF_CATALOG_ARCHIVE_ROOT: z.string().trim().min(1).optional(),
+  WISEEFF_CATALOG_ARCHIVE_KEY_HEX: z.string().regex(/^[0-9a-fA-F]{64}$/).optional(),
   DEBUG_DEVICE_GATEWAY_MODE: z.enum(["simulator", "hdc", "adb", "multi"]).default("multi"),
   HDC_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   ADB_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
@@ -134,6 +136,10 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   const env = rawEnvSchema.parse(raw);
   if (env.LOG_WEBHOOK_SECRET_ENCRYPTION_KEY) resolveLogWebhookSecretKey(raw);
   const xiaozeLlmConfig = resolveXiaozeLlmConfig(raw);
+
+  if (Boolean(env.WISEEFF_CATALOG_ARCHIVE_ROOT) !== Boolean(env.WISEEFF_CATALOG_ARCHIVE_KEY_HEX)) {
+    throw new Error("WISEEFF_CATALOG_ARCHIVE_ROOT and WISEEFF_CATALOG_ARCHIVE_KEY_HEX must be configured together");
+  }
 
   if (env.NODE_ENV === "production" && !env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required in production");

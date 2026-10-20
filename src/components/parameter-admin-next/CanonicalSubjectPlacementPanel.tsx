@@ -650,7 +650,7 @@ export function CanonicalSubjectPlacementPanel({
                         {subject.definitionCounts.active} 个有效定义{subject.definitionCounts.deprecated > 0 ? ` · ${subject.definitionCounts.deprecated} 个已废弃定义` : ""}
                       </span>
                       <span className="canonical-subject-meta">
-                        {placement
+                        {placement && !placement.moduleId ? <span className="parameter-catalog__badge" data-tone="warning">unset（未分配模块）</span> : placement
                           ? `归属：${moduleLabels.get(placement.moduleId ?? "") ?? placement.displayName}`
                           : "未登记"}
                       </span>

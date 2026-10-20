@@ -7,8 +7,8 @@ import {
 
 const registry: ParameterModuleRegistry = {
   modules: [
-    { id: "charge", name: "充电策略", parentId: null, sortOrder: 0, importance: "high", kind: "business", origin: "curated", sourceKey: null, effectiveImportance: "high", parameterCount: 0, definitionCount: 0 },
-    { id: "safety", name: "电池安全", parentId: null, sortOrder: 1, importance: "medium", kind: "business", origin: "curated", sourceKey: null, effectiveImportance: "medium", parameterCount: 0, definitionCount: 0 }
+    { id: "charge", name: "充电策略", description: "", scope: "", parentId: null, sortOrder: 0, importance: "high", kind: "business", origin: "curated", sourceKey: null, effectiveImportance: "high", parameterCount: 0, definitionCount: 0 },
+    { id: "safety", name: "电池安全", description: "", scope: "", parentId: null, sortOrder: 1, importance: "medium", kind: "business", origin: "curated", sourceKey: null, effectiveImportance: "medium", parameterCount: 0, definitionCount: 0 }
   ],
   mappings: [
     { id: "map-compat-sc8562", moduleId: "charge", matchKind: "compatible", matchValue: "vendor,sc8562", priority: 0 },
@@ -17,6 +17,15 @@ const registry: ParameterModuleRegistry = {
 };
 
 describe("describeModuleAssignment (phase 2 browse source of truth)", () => {
+  it("uses effective importance consistently with the governance editor", () => {
+    expect(describeModuleAssignment("safety", { driverModule: null, compatible: null, nodeType: null }, {
+      ...registry, modules: [{ ...registry.modules[1]!, effectiveImportance: "high" }]
+    }).importance).toBe("high");
+  });
+  it("keeps cleared attribution unset even when a driver mapping matches", () => {
+    expect(describeModuleAssignment("", { driverModule: "sc8562", compatible: "vendor,sc8562", nodeType: "sc8562" }, registry))
+      .toMatchObject({ moduleId: "", moduleName: "unset", mapped: false });
+  });
   it("looks up the persisted moduleId directly and reports mapped when a mapping targets it", () => {
     const assignment = describeModuleAssignment(
       "charge",

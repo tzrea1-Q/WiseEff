@@ -13,10 +13,9 @@ describe("createMockParameterModuleRegistryRepository", () => {
     const history = createMockParameterModuleRegistryRepository({
       modules: [{ ...before.modules[0]!, id: "historical-driver", kind: "driver-group" }]
     });
-    await expect(history.updateModule("historical-driver", { name: "Changed identity" }))
-      .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
-    await expect(history.deleteModule("historical-driver"))
-      .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
+    const edited = await history.updateModule("historical-driver", { name: "Custom display name" });
+    expect(edited.modules[0]).toMatchObject({ id: "historical-driver", kind: "driver-group", name: "Custom display name" });
+    expect((await history.deleteModule("historical-driver")).modules).toEqual([]);
   });
   it("seeds business taxonomy without identity teaching fixtures", async () => {
     const repo = createMockParameterModuleRegistryRepository();

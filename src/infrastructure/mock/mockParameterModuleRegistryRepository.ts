@@ -131,33 +131,35 @@ export function createMockParameterModuleRegistryRepository(
       if (!target) {
         throw mockApiError("NOT_FOUND", `Module not found: ${moduleId}`, { moduleId });
       }
-      if (target.kind !== "business" || (input.kind && input.kind !== "business")) {
-        throw mockApiError("LEGACY_SURFACE_RETIRED", "Historical module identity is read-only.");
+      if (input.kind && input.kind !== target.kind) {
+        throw mockApiError("LEGACY_SURFACE_RETIRED", "Module identity kind cannot be changed.");
       }
+      if (target.kind === "unclassified" && target.parentId === null) throw mockApiError("CONFLICT", "The unclassified root is read-only.");
+      target.origin = "curated";
       if (input.name !== undefined) {
         target.name = input.name;
-        if (target.origin === "auto") target.origin = "curated";
       }
       if (input.description !== undefined) target.description = input.description;
       if (input.scope !== undefined) target.scope = input.scope;
+      if (input.compatibles !== undefined) target.compatibles = [...input.compatibles];
+      if (input.driverNature !== undefined) target.driverNature = input.driverNature;
+      if (input.instanceCardinality !== undefined) target.instanceCardinality = input.instanceCardinality;
+      if (input.nodeTypeName !== undefined) target.nodeTypeName = input.nodeTypeName;
       if (input.parentId !== undefined) {
         target.parentId = input.parentId;
-        if (target.origin === "auto") target.origin = "curated";
       }
       if (input.sortOrder !== undefined) target.sortOrder = input.sortOrder;
       if (input.importance !== undefined) {
         target.importance = input.importance;
         target.effectiveImportance = input.importance;
-        if (target.origin === "auto") target.origin = "curated";
       }
       return cloneRegistry(store);
     },
 
     async deleteModule(moduleId: string) {
       const target = store.modules.find((module) => module.id === moduleId);
-      if (target && target.kind !== "business") {
-        throw mockApiError("LEGACY_SURFACE_RETIRED", "Historical module identity is read-only.");
-      }
+      if (target?.kind === "unclassified" && target.parentId === null) throw mockApiError("CONFLICT", "The unclassified root is read-only.");
+      if (store.modules.some((module) => module.parentId === moduleId)) throw mockApiError("CONFLICT", "Remove child modules first.");
       store.modules = store.modules.filter((module) => module.id !== moduleId);
       store.mappings = store.mappings.filter((mapping) => mapping.moduleId !== moduleId);
       return cloneRegistry(store);

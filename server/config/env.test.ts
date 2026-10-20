@@ -17,6 +17,13 @@ const productionOidcEnv = {
 } as const;
 
 describe("loadServerEnv", () => {
+  it("loads an explicitly configured Catalog archive root and matching encryption key", () => {
+    const archive = { WISEEFF_CATALOG_ARCHIVE_ROOT: " /private/catalog-archives ", WISEEFF_CATALOG_ARCHIVE_KEY_HEX: "ab".repeat(32) };
+    expect(loadServerEnv(archive)).toMatchObject({ ...archive, WISEEFF_CATALOG_ARCHIVE_ROOT: "/private/catalog-archives" });
+    expect(() => loadServerEnv({ WISEEFF_CATALOG_ARCHIVE_ROOT: archive.WISEEFF_CATALOG_ARCHIVE_ROOT })).toThrow("configured together");
+    expect(() => loadServerEnv({ WISEEFF_CATALOG_ARCHIVE_KEY_HEX: archive.WISEEFF_CATALOG_ARCHIVE_KEY_HEX })).toThrow("configured together");
+    expect(() => loadServerEnv({ ...archive, WISEEFF_CATALOG_ARCHIVE_KEY_HEX: "invalid" })).toThrow();
+  });
   it("exposes only the normalized Xiaoze LLM resolver result to runtime consumers", () => {
     const env = loadServerEnv({
       XIAOZE_LLM_API_BASE_URL: " https://agent.example.com/v1 ",

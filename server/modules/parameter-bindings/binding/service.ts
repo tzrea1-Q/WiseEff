@@ -1,5 +1,6 @@
 import pg from "pg";
 import type { Queryable } from "../../../shared/database/client";
+import { loadOrganizationRecognitionRules, lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionSettings";
 
 import {
   CatalogSubjectId,
@@ -275,6 +276,8 @@ export const writeCanonicalBinding = async (
 
   try {
     return await withBindingUnitOfWork(session, async (client) => {
+      // The same organization fence protects recognition edits and source admission.
+      await lockOrganizationModuleRecognition(client as unknown as Queryable, command.organizationId);
       const projectOwned = await loadProjectOwner(
         client,
         command.projectId,
@@ -291,6 +294,20 @@ export const writeCanonicalBinding = async (
 
       const agreed = agreeBindingIdentity(command, registration);
       if (!agreed.ok) return agreed;
+
+      const rules = await loadOrganizationRecognitionRules(client as unknown as Queryable, command.organizationId);
+      const singleton = rules.some((rule) => rule.canonical_subject_id === agreed.value.subjectId
+        && rule.instance_cardinality === "singleton-per-project");
+      const singletonConflict = singleton ? await client.query(
+        `select 1 from parameter_catalog.current_project_parameter_bindings binding
+             where binding.organization_id=$1 and binding.project_id=$3 and binding.subject_id=$2
+               and binding.logical_node_id is distinct from $4
+         limit 1`,
+        [command.organizationId, agreed.value.subjectId, command.projectId, command.logicalNodeId],
+      ) : null;
+      if (singletonConflict?.rows.length) {
+        return fail({ kind: "agreement-conflict", reason: "singleton-cardinality" });
+      }
 
       if (command.sourceOccurrenceId) {
         const source = await client.query(

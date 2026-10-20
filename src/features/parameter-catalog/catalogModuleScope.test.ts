@@ -14,7 +14,7 @@ const subject = (input: {
   id: string;
   canonicalName: string;
   type?: "driver" | "node-type";
-  placement?: { id: string; moduleId: string; displayName: string; parentPlacementId: string | null };
+  placement?: { id: string; moduleId?: string; displayName: string; parentPlacementId: string | null };
   registration?: "active" | "unregistered";
 }): SubjectItem =>
   ({
@@ -39,6 +39,14 @@ const subject = (input: {
 const describeSubject = (item: SubjectItem) => `${item.type} · ${item.registration.status}`;
 
 describe("catalog module navigator tree", () => {
+  it("keeps registered subjects with cleared module attribution in an unset group", () => {
+    const cleared = subject({ id: "unset-subject", canonicalName: "retained-driver",
+      placement: { id: "retained-placement", displayName: "unset", parentPlacementId: null } });
+    const tree = buildCatalogModuleTree([cleared], describeSubject);
+    expect(tree).toMatchObject([{ id: "group:unset", displayName: "unset（未分配模块）", subjectCount: 1,
+      children: [{ id: "subject:unset-subject", subjectId: "unset-subject" }] }]);
+    expect(subjectIdsForModule([cleared], "retained-placement").size).toBe(0);
+  });
   it("renders one tree: module branches with their registered subjects as leaves", () => {
     const nodes = buildCatalogModuleTree(
       [

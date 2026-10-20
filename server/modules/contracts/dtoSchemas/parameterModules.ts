@@ -24,6 +24,11 @@ export const parameterModuleDtoSchema = z.object({
   sourceKey: z.string().nullable(),
   attributionSubjectId: z.string().nullable().optional(),
   effectiveImportance: parameterModuleImportanceSchema,
+  compatibles: z.array(z.string()).optional(),
+  driverNature: z.enum(["physical-device", "logical-service"]).nullable().optional(),
+  instanceCardinality: z.enum(["multiple", "singleton-per-project"]).nullable().optional(),
+  nodeTypeName: z.string().nullable().optional(),
+  recognitionSubjectId: z.string().nullable().optional(),
   /** Subtree bindings (measured occurrences). */
   parameterCount: z.number().int().nonnegative(),
   /** Distinct specs in the same subtree (definition count). */

@@ -41,9 +41,29 @@ export const S2_SCH_0181_FINGERPRINT =
 export const S2_SCH_0182_FINGERPRINT =
   "2ab9046e3ceb66ab9f91b1d7eb96e5d929f9b25f8b3fda0bb0c190fcac761fd5";
 
-/** Current 0201 whole-source review stage; unpublished 0190–0192 source migrations were renumbered on integration. */
-export const S2_SCH_LIVE_FINGERPRINT =
+/** Historical 0201 whole-source review stage; unpublished 0190–0192 source migrations were renumbered on integration. */
+export const S2_SCH_0201_FINGERPRINT =
   "abb616c58e3dfd3d7b7b95f73f5d9ae1f1c9aadbf47ee31f3513c1e2914a5682";
+
+/**
+ * Historical 0218 stage, measured with the unchanged six-category query on fresh
+ * PostgreSQL. Compared with 0201: two erasure tables, 18 added attribute entries
+ * (12 table columns and six index attributes), one nullable placement column,
+ * five added and ten changed constraints, three indexes, three triggers, and
+ * 20 added / 33 changed functions. These cover detached module placements,
+ * audited erasure capabilities, source-pin provenance, archive fences/retry,
+ * and the narrowly scoped immutable guards; no historical pin is replaced.
+ */
+export const S2_SCH_0218_FINGERPRINT =
+  "b5aeee9485d4ae62070556f269ff7623e1ab9934ceb1df707a75f1bddf30487e";
+
+/**
+ * Current 0219 private-capability stage: 32 trigger functions add the nested
+ * migration-owner guard before the private erasure predicate. No other entry
+ * in the six-category inventory changes from the retained 0218 pin.
+ */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "2bd66075a223cd87daf165f4ba353258edd9a845c8027bf1de140b25ae19fad6";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

@@ -1,5 +1,12 @@
 export { handleCatalogGovernance, matchCatalogGovernanceRoute } from "./handlers";
 export {
+  listModuleRecognitionPlacements,
+  readModuleRecognitionSubjectDefaults,
+  hasMultipleCurrentModuleSubjectInstances,
+  type ModuleRecognitionPlacementFact,
+  type ModuleRecognitionSubjectDefault,
+} from "../../parameter-governance/queries/moduleRecognition";
+export {
   countCurrentBindingsForModule,
   countSubjectPlacementsForModules,
   listModuleRegistryFacts,

@@ -12,7 +12,7 @@ import type {
   CatalogPublicationJobResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
-import { canExecutePublicationAction } from "./publicationState";
+import { canExecutePublicationAction, publicationStatusCopy } from "./publicationState";
 import { createGovernanceIdempotencyKey, createGovernanceSubmitGate } from "./governanceState";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 
@@ -321,6 +321,9 @@ function impactSummary(
 }
 
 function jobStatusText(job: CatalogPublicationJobResponse["item"]): string {
+  if (job.maintenanceRewrites?.length) {
+    return publicationStatusCopy(job).message;
+  }
   if (job.effective && job.currentness) {
     return job.currentness === "active"
       ? "已生效：当前目录已包含该修订。"

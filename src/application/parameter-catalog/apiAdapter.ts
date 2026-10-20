@@ -19,6 +19,8 @@ export function createApiParameterCatalogRepository(
     listSubjectDefinitions: (subjectId, query) => client.listSubjectDefinitions(subjectId, query),
     listDefinitions: (query) => client.listDefinitions(query),
     getDefinition: (definitionId, query) => client.getDefinition(definitionId, query),
+    previewDefinitionDeletion: (definitionId) => client.previewDefinitionDeletion(definitionId),
+    deleteDefinition: (definitionId, body) => client.deleteDefinition(definitionId, body),
     listDefinitionRevisions: (definitionId, query) =>
       client.listDefinitionRevisions(definitionId, query),
     getDefinitionRevision: (definitionId, revisionId, query) =>

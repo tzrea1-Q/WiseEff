@@ -17,6 +17,8 @@ Accepted for [Choose platform schema publication and synchronization semantics](
 
 Retained without change: complete successor, unique synchronizer, fail-closed compilation and digest contract, historical replay, no overlay, no pointer-only rollback after traffic, and the exact application-approval `readApprovedRuntimePin` / P13 comparison. Data publication is now combined with those application facts; an old report does not approve a later Catalog successor. `new-empty` must not be described as P13 retirement.
 
+2026-10-20 erasure amendment: [platform parameter-definition erasure](../exec-plans/active/2026-10-20-parameter-definition-erasure.md) is an explicit maintenance exception to immutable definition/revision retention and historical artifact digests. Only a global `platform-admin` can execute the preview-bound, audited erasure across organizations. Retained releases are rebuilt without the erased definition; old pins fail, original approval hashes remain historical evidence and affected approvals are revoked. Original configuration files remain. Erasure is distinct from ordinary publication and cannot authorize device writes or restore an erased identity.
+
 ## Context
 
 The approved destination has one Platform schema catalog as the sole structural truth source. Organizations register and place formal Driver and NodeType subjects but do not author, copy, override, or privately redefine their schemas. Runtime observations are evidence and cannot create a definition.

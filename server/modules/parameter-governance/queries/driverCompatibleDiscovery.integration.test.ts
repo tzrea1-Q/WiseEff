@@ -37,6 +37,7 @@ describe("#897 C1 authenticated current DTS discovery", () => {
   let directory: string;
   let storage: ReturnType<typeof createLocalObjectStore>;
   let releaseId: string;
+  let driverModuleId: string;
   let first: Awaited<ReturnType<typeof createSource>>;
   let second: Awaited<ReturnType<typeof createSource>>;
   let hidden: Awaited<ReturnType<typeof createSource>>;
@@ -95,8 +96,10 @@ describe("#897 C1 authenticated current DTS discovery", () => {
     for (const projectId of [PROJECT,OTHER_PROJECT]) await db.query(
       "insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$3,'initialized')",
       [projectId,ORG,projectId]);
-    releaseId = (await installDriverSourceFixture(db,admin,{ subjectId:"csub_acme_power",compatible:"acme,power",
-      businessName:"C1 business",driverName:"C1 driver",idempotencyKey:"c1-driver",reason:"C1 read" })).release.id;
+    const driver = await installDriverSourceFixture(db,admin,{ subjectId:"csub_acme_power",compatible:"acme,power",
+      businessName:"C1 business",driverName:"C1 driver",idempotencyKey:"c1-driver",reason:"C1 read" });
+    releaseId = driver.release.id;
+    driverModuleId = driver.driverModuleId;
     first = await createSource("first");
     second = await createSource("second");
     hidden = await createSource("hidden",OTHER_PROJECT);
@@ -325,5 +328,34 @@ describe("#897 C1 authenticated current DTS discovery", () => {
       observationId:nodeTypeSource.observationId});
     expect(discovery.status === "ready" && discovery.items[0]?.compatibles[0]?.candidate)
       .toMatchObject({kind:"review-required",reason:"unknown"});
+  });
+
+  it("uses organization replacements for real current-source matching while retaining historical observations", async () => {
+    await db.query(`insert into public.module_recognition_rules
+      (organization_id,module_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+      values ($1,$2,'csub_acme_power',array['local,power'],'physical-device','multiple')`, [ORG,driverModuleId]);
+    const source = await createSource("organization-alias",PROJECT,'"local,power", "acme,power"');
+    const result = await listDriverCompatibleDiscovery({db,objectStore:storage,auth:viewer,observationId:source.observationId});
+    expect(result).toMatchObject({status:"ready",items:[{compatibles:[
+      {compatible:"local,power",candidate:{kind:"recognized",subjectId:"csub_acme_power"}},
+      {compatible:"acme,power",candidate:{kind:"review-required",reason:"unknown"}},
+    ]}]});
+    const pool = getRootPostgresPool(db)!;
+    const pin = await captureCurrentCatalogPin(pool);
+    if (!pin) throw new Error("Current Catalog missing");
+    const loaded = await createCatalogKernel(pool).loadCurrentCatalog(pin);
+    if (!loaded.ok) throw new Error("Current Catalog unavailable");
+    const {loadOrganizationCatalogSnapshot} = await import("../../parameter-modules/recognitionSettings");
+    const foreignSnapshot = await loadOrganizationCatalogSnapshot(db,foreign.organization.id,loaded.value);
+    expect(foreignSnapshot.resolveSubject({driverCompatibles:[DriverCompatible("acme,power")],nodeTypeFallback:{kind:"absent"}}))
+      .toMatchObject({status:"matched",subject:{id:"csub_acme_power"}});
+    expect(foreignSnapshot.resolveSubject({driverCompatibles:[DriverCompatible("local,power")],nodeTypeFallback:{kind:"absent"}}))
+      .toMatchObject({status:"unknown"});
+    expect((await db.query(`select catalog_release_id,matcher_revision from parameter_catalog.parameter_observations where id=$1`,
+      [source.observationId])).rows).toEqual([{catalog_release_id:releaseId,matcher_revision:"matcher-d897"}]);
+    const deleted = await createSource("deleted-compatible",PROJECT,'"local,power"; /delete-property/ compatible');
+    const {listModuleRecognitionInstances} = await import("../../parameter-modules/recognitionInstances");
+    expect(await listModuleRecognitionInstances(db,ORG,{compatibles:["local,power"],nodeTypeName:null,
+      projectId:PROJECT,configRevisionId:deleted.revision.id})).toEqual([]);
   });
 });

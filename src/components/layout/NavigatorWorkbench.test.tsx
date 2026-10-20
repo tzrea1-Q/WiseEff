@@ -19,6 +19,48 @@ const slots = {
 describe("NavigatorWorkbench", () => {
   beforeEach(() => localStorage.clear());
 
+  it("resizes by keyboard, remembers the width and preserves it across collapse", () => {
+    const view = render(<NavigatorWorkbench {...slots} resizableNavigator />);
+    const separator = screen.getByRole("separator", { name: "调整模块导航宽度" });
+    fireEvent.keyDown(separator, { key: "ArrowRight" });
+    expect(separator).toHaveAttribute("aria-valuenow", "296");
+    expect(localStorage.getItem("wiseeff.navigator-workbench.width:parameters")).toBe("296");
+    fireEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "296");
+    view.unmount();
+    render(<NavigatorWorkbench {...slots} resizableNavigator />);
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "296");
+    fireEvent.keyDown(screen.getByRole("separator"), { key: "Home" });
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "288");
+  });
+
+  it("drags within its bounds and persists only the finished gesture", () => {
+    render(<NavigatorWorkbench {...slots} resizableNavigator />);
+    const separator = screen.getByRole("separator");
+    const navigation = screen.getByRole("region", { name: "模块导航" });
+    vi.spyOn(navigation, "getBoundingClientRect").mockReturnValue({ ...navigation.getBoundingClientRect(), width: 288 });
+    fireEvent.pointerDown(separator, { pointerId: 1, button: 0, clientX: 100 });
+    fireEvent.pointerMove(separator, { pointerId: 1, clientX: 180 });
+    expect(separator).toHaveAttribute("aria-valuenow", "368");
+    expect(localStorage.getItem("wiseeff.navigator-workbench.width:parameters")).toBeNull();
+    fireEvent.pointerUp(separator, { pointerId: 1 });
+    expect(localStorage.getItem("wiseeff.navigator-workbench.width:parameters")).toBe("368");
+    fireEvent.keyDown(separator, { key: "End" });
+    expect(separator.getAttribute("aria-valuenow")).toBe(separator.getAttribute("aria-valuemax"));
+    fireEvent.keyDown(separator, { key: "ArrowRight" });
+    expect(separator.getAttribute("aria-valuenow")).toBe(separator.getAttribute("aria-valuemax"));
+  });
+
+  it("keeps resizing opt-in and ignores invalid stored widths", () => {
+    localStorage.setItem("wiseeff.navigator-workbench.width:parameters", "NaN");
+    const view = render(<NavigatorWorkbench {...slots} />);
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+    view.rerender(<NavigatorWorkbench {...slots} resizableNavigator />);
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "288");
+  });
+
   it("hides its inspector without unmounting it", () => {
     const view = render(<NavigatorWorkbench {...slots} />);
     const inspector = screen.getByRole("region", { name: "参数检查器" });

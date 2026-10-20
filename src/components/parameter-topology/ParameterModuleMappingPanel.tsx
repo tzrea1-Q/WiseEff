@@ -274,6 +274,7 @@ export function ParameterModuleMappingPanel({
         setError(null);
         try {
           setRegistry(await client.updateModule(moduleId, patch));
+          setCanonicalDiscoveryRefresh((value) => value + 1);
         } catch (updateError) {
           setError(presentError(updateError, "更新模块失败，请稍后重试。"));
           throw updateError;
@@ -286,6 +287,7 @@ export function ParameterModuleMappingPanel({
         setError(null);
         try {
           setRegistry(await client.updateModule(moduleId, { parentId }));
+          setCanonicalDiscoveryRefresh((value) => value + 1);
         } catch (moveError) {
           setError(presentError(moveError, "移动模块失败，请稍后重试。"));
           throw moveError;
@@ -298,6 +300,8 @@ export function ParameterModuleMappingPanel({
         setError(null);
         try {
           setRegistry(await client.deleteModule(moduleId));
+          setCanonicalDiscoveryRefresh((value) => value + 1);
+          if (selectedModuleId === moduleId) selectModule(null);
           await refreshDriverRegistry();
         } catch (deleteError) {
           setError(presentError(deleteError, "删除模块失败，请稍后重试。"));
@@ -365,7 +369,7 @@ export function ParameterModuleMappingPanel({
 
   return <section className="parameter-module-mapping-panel" aria-label={PARAMETER_ADMIN_UI.moduleMapping}>
     {activeSubView !== "tree" ? <div className="navigator-workbench__toolbar" role="group" aria-label="工作台操作"><div className="navigator-workbench__controls">{tabs}</div>{refresh}</div> : null}
-    {activeSubView === "tree" ? <NavigatorWorkbench pageKey="module-governance" navigatorLabel="模块导航" taskLabel={activeTab.label}
+    {activeSubView === "tree" ? <NavigatorWorkbench pageKey="module-governance" navigatorLabel="模块导航" taskLabel={activeTab.label} resizableNavigator
       panelId={activeTab.panelId} tabId={activeTab.id} toolbar={tabs} primaryAction={<>
         {refresh}
         {canManageTaxonomy ? <Button type="button" size="sm" disabled={busy || !registryLoaded}

@@ -88,8 +88,12 @@ export const updateParameterModuleBodySchema = z
     scope: z.string().optional(),
     sortOrder: z.number().int().optional(),
     importance: moduleImportanceSchema.optional(),
-    /** Manual reclassify — node-type units are ingest-only on create. */
-    kind: z.enum(["business", "node-type"]).optional()
+    /** Existing identity kind may be echoed; changing it requires subject governance. */
+    kind: z.enum(["business", "driver-group", "node-type"]).optional(),
+    compatibles: z.array(z.string().min(1)).max(128).optional(),
+    driverNature: z.enum(["physical-device", "logical-service"]).optional(),
+    instanceCardinality: z.enum(["multiple", "singleton-per-project"]).optional(),
+    nodeTypeName: nonBlankString.optional()
   })
   .refine((body) => Object.values(body).some((value) => value !== undefined), {
     message: "At least one field is required."

@@ -6,6 +6,7 @@ import type { AuthContext } from "../auth/types";
 import { getAuthContext } from "../auth/repository";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { createCatalogKernel, PropertyKey, type CatalogSnapshot } from "../catalog-kernel/interface";
+import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
 import { resolveDtsConfigSet } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles,
@@ -134,7 +135,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   if (!["ready", "active"].includes(candidate.status) || !candidate.storageKey || !candidate.checksum
     || candidate.sizeBytes === undefined || !storage.getBounded) conflict("Whole-source candidate is incomplete.");
   if (options.lock) {
-    const current = await lockSourceCatalogGovernance(tx);
+    const current = await lockSourceCatalogGovernance(tx, auth.organization.id);
     if (snapshot ? current?.id !== snapshot.release.id || current.digest !== snapshot.release.digest : current) {
       conflict("The published Catalog advanced while preparing this source revision.");
     }
@@ -143,6 +144,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     await tx.query("select id from public.project_parameter_files where config_set_id=$1 and organization_id=$2 and project_id=$3 order by id for update nowait",
       [context.configSetId, auth.organization.id, input.projectId]);
   }
+  if (snapshot) snapshot = await loadOrganizationCatalogSnapshot(tx, auth.organization.id, snapshot);
   const revision = (await tx.query<{ id: string; entry_file: string; include_search_paths: string[]; overlay_order: string[] }>(
     `select id,entry_file,include_search_paths,overlay_order from public.dts_config_revisions
      where config_set_id=$1 and organization_id=$2 and project_id=$3
@@ -240,6 +242,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   }
   const cohort: SourceRevisionCohort[] = [];
   const targets: SourceRevisionTarget[] = [];
+  const matchingSnapshots = new Map<string, CatalogSnapshot>(snapshot ? [[snapshot.release.id, snapshot]] : []);
   for (const entry of await loadSourceBindingCohortReadOnly(tx, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: context.configSetId })) {
     const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: auth.organization.id, projectId: input.projectId,
       bindingId: entry.bindingId, projectValueId: entry.oldValueId });
@@ -259,7 +262,12 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     const node = logical ? resolved.effective.nodesByLocator.get(logical.nodeLocator) : undefined;
     const property = node?.properties.get(pin.locator.propertyName);
     const originMember = rows.find((row) => row.sourceName === property?.sourceChain.at(-1)?.fileName);
-    const resolvedSubject = node ? resolveObservedSubject(pinnedSnapshot, {
+    let matchingSnapshot = matchingSnapshots.get(pinnedSnapshot.release.id);
+    if (!matchingSnapshot) {
+      matchingSnapshot = await loadOrganizationCatalogSnapshot(tx, auth.organization.id, pinnedSnapshot);
+      matchingSnapshots.set(pinnedSnapshot.release.id, matchingSnapshot);
+    }
+    const resolvedSubject = node ? resolveObservedSubject(matchingSnapshot, {
       compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name
     }) : null;
     const source = node && !node.deleted && property && !property.deleted && originMember?.fileId === pin.fileId

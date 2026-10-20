@@ -12,6 +12,8 @@
 
 2026-09-12 来源修正：[ADR-0043](../../adr/0043-catalog-authoring-and-online-publication.md) 取代“Catalog Release 必须作为经仓库评审的应用制品来编写”这一排他解读。本 ADR 中的唯一同步器、完整后继、不可变 revision、Proposal 接受不物化、稳定身份、以及禁止组织 overlay 仍然有效。关系图中 `PUBLICATION_INTENT` → `CATALOG_RELEASE` 的兑现路径是冻结 Candidate、绑定授权与同步器，而不再只允许 Git 仓库引用。历史 `repositoryReference` 仍是一种合法来源种类。
 
+2026-10-20 删除修正：用户确认的[平台参数定义彻底删除](../exec-plans/active/2026-10-20-parameter-definition-erasure.md) 为定义与修订保留增加全局 `platform-admin` 专用维护例外。同事务删除指定定义及全部组织的关联记录，保留原始文件，以旧、新哈希审计保留的 Catalog 制品重建，撤销受影响的发布授权并保留原审批哈希，只留下不含已删内容的删除凭据。禁止重新安装已删身份。其他已弃用定义若以被删定义为替代项，则移除替代关系并改为 retired，继续保持不可用。普通编写、发布、租户隔离与设备写入审批规则继续有效。
+
 ## 背景
 
 当前目录把一份属性契约分散在 `parameter_specs`、`parameter_spec_versions`、归属主体、Schema 根/属性、组织 overlay、放置、评审、Binding，以及重复的 lifecycle/current 字段中。因此，组织 override、未匹配 DTS occurrence、提案或历史行都可能看起来像第二份当前定义。

@@ -43,7 +43,7 @@ export function candidateToModuleTreeRow(
     moduleId,
     moduleName: registryModule?.name ?? moduleName,
     modulePath: [registryModule?.name ?? moduleName],
-    importance: registryModule?.importance ?? "medium",
+    importance: registryModule?.effectiveImportance ?? "medium",
     moduleSortOrder: registryModule?.sortOrder ?? Number.MAX_SAFE_INTEGER,
     moduleMapped: Boolean(registryModule),
     unitAddress: null,

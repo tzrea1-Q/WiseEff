@@ -7,7 +7,7 @@ import {
   parameterCatalogClientMethodByRouteId
 } from "@wiseeff/dto-schemas";
 import { WiseEffApiError } from "./apiClient";
-import { createApiParameterCatalogGovernanceRepository } from "../../application/parameter-catalog/apiAdapter";
+import { createApiParameterCatalogGovernanceRepository, createApiParameterCatalogRepository } from "../../application/parameter-catalog/apiAdapter";
 import {
   catalogFailureClientBehavior,
   catalogFailureReason,
@@ -20,6 +20,40 @@ function jsonResponse(body: unknown, status = 200, headers: Record<string, strin
     headers: { "Content-Type": "application/json", ...headers }
   });
 }
+
+describe("platform definition deletion client", () => {
+  const preview = { item: {
+    definition: { id: "pdef/a", propertyKey: "gpio-limit", subjectName: "GPIO" },
+    catalogRelease: { id: "crel_current", digest: "sha256:catalog" },
+    affected: { organizations: 2, projects: 3, bindings: 4, values: 6, revisions: 2, relatedRecords: 9 },
+    originalFilesRetained: true, previewToken: "deletion-preview-token"
+  } };
+  const deleted = { item: { definitionId: "pdef/a", deleted: true,
+    counts: { definitions: 1, revisions: 2, values: 6 }, originalFilesRetained: true } };
+
+  it("forwards the preview token through the API adapter without publication prerequisites", async () => {
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => jsonResponse(init?.method === "DELETE" ? deleted : preview));
+    const repository = createApiParameterCatalogRepository(createParameterCatalogClient({ fetchImpl, authorization: "Bearer admin" }));
+    expect(await repository.previewDefinitionDeletion!("pdef/a")).toEqual(preview);
+    expect(await repository.deleteDefinition!("pdef/a", { previewToken: preview.item.previewToken })).toEqual(deleted);
+    expect(fetchImpl.mock.calls[0]).toEqual(["/api/v2/catalog/definitions/pdef%2Fa/deletion-preview", expect.objectContaining({ method: "GET" })]);
+    expect(fetchImpl.mock.calls[1]).toEqual(["/api/v2/catalog/definitions/pdef%2Fa", expect.objectContaining({
+      method: "DELETE", body: JSON.stringify({ previewToken: preview.item.previewToken }),
+      headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: "Bearer admin" }
+    })]);
+  });
+
+  it("rejects malformed impact counts and empty confirmation tokens", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ item: { ...preview.item,
+      affected: { ...preview.item.affected, projects: -1 } } }));
+    const client = createParameterCatalogClient({ fetchImpl });
+    await expect(client.previewDefinitionDeletion("pdef/a")).rejects.toMatchObject({
+      code: "INTERNAL_ERROR", details: { reason: "contract-drift", schemaName: "CatalogDefinitionDeletionPreviewResponse" }
+    });
+    expect(() => client.deleteDefinition("pdef/a", { previewToken: "" })).toThrow();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("protected project Binding client", () => {
   // Observed public JSON row shape, plus a synthetic DTS value codec variant; no database acceptance.

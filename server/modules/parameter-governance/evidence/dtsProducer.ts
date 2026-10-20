@@ -5,6 +5,7 @@ import { ApiError } from "../../../shared/http/errors";
 import { getRootPostgresPool } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
 import { createCatalogKernel, DriverCompatible } from "../../catalog-kernel/interface";
+import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionSettings";
 import { PARAMETER_GOVERNANCE_WRITER_ROLE, quoteIdent } from "../../catalog-kernel/security/catalogRoleManifest";
 import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../../catalog-publication/runtime";
@@ -33,6 +34,7 @@ export async function produceDtsReviewEvidenceInTransaction(
   tx: Database, root: Database, objectStore: ObjectStore, auth: AuthContext, configRevisionId: string,
 ): Promise<void> {
   if (!canAdminParameters(auth)) throw new Error("DTS evidence producer requires parameter administration");
+  await lockOrganizationModuleRecognition(tx, auth.organization.id);
   const revision = (await tx.query<{ projectId: string; configSetId: string }>(
     `select project_id as "projectId",config_set_id as "configSetId" from dts_config_revisions
      where id=$1 and organization_id=$2`,[configRevisionId,auth.organization.id],
@@ -47,6 +49,7 @@ export async function produceDtsReviewEvidenceInTransaction(
   if (!pin) throw new Error("Current Catalog release is unavailable for DTS evidence production");
   const loaded = await createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool)).loadCurrentCatalog(pin);
   if (!loaded.ok) throw new Error(`Current Catalog snapshot unavailable: ${loaded.error.kind}`);
+  const snapshot = await loadOrganizationCatalogSnapshot(tx, auth.organization.id, loaded.value);
 
   const continuityByCandidate = new Map<string, Array<{
     previous: LogicalNodeSnapshot; continuity: ContinuityAmbiguous;
@@ -147,9 +150,9 @@ export async function produceDtsReviewEvidenceInTransaction(
       throw new Error("DTS compatible source has invalid complete selectors");
     }
     const matches = new Map([...new Set(compatibles)].map((compatible) => [compatible,
-      loaded.value.resolveSubject({driverCompatibles:[DriverCompatible(compatible)],
+      snapshot.resolveSubject({driverCompatibles:[DriverCompatible(compatible)],
         nodeTypeFallback:{kind:"absent"}})]));
-    const completeMatch = loaded.value.resolveSubject({driverCompatibles:compatibles.map(DriverCompatible),
+    const completeMatch = snapshot.resolveSubject({driverCompatibles:compatibles.map(DriverCompatible),
       nodeTypeFallback:{kind:"absent"}});
     const statuses = [...matches.values()].map((match) => match.status === "matched" && match.subject.kind !== "driver"
       ? "unknown" : match.status);

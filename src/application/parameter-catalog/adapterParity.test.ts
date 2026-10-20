@@ -205,6 +205,25 @@ function methodNames(value: object): string[] {
 }
 
 describe("catalog API and mock adapter parity", () => {
+  it("removes the mock definition and history after a token-bound platform deletion", async () => {
+    const { catalog } = createMockCatalogPorts();
+    const preview = await catalog.previewDefinitionDeletion!(activeDefinition.id);
+    await expect(catalog.deleteDefinition!(activeDefinition.id, { previewToken: "old-token" })).rejects.toMatchObject({
+      details: { reason: "revision-conflict" }
+    });
+    await catalog.deleteDefinition!(activeDefinition.id, { previewToken: preview.item.previewToken });
+    expect((await catalog.listDefinitions()).items).toEqual([]);
+    await expect(catalog.getDefinition(activeDefinition.id)).rejects.toMatchObject({ details: { reason: "definition-not-found" } });
+    await expect(catalog.listDefinitionRevisions(activeDefinition.id)).rejects.toMatchObject({ details: { reason: "definition-not-found" } });
+    await expect(catalog.listDefinitionTimeline(activeDefinition.id)).rejects.toMatchObject({ details: { reason: "definition-not-found" } });
+  });
+
+  it("does not grant mock platform deletion to an organization administrator", async () => {
+    const { catalog } = createMockCatalogPorts({ getSession: () => ({ personId: "org-admin", organizationId: CATALOG_ORGANIZATION_ID,
+      actorKind: "org-admin", isActive: true }) });
+    await expect(catalog.previewDefinitionDeletion!(activeDefinition.id)).rejects.toMatchObject({ details: { reason: "forbidden" } });
+    await expect(catalog.deleteDefinition!(activeDefinition.id, { previewToken: "token" })).rejects.toMatchObject({ details: { reason: "forbidden" } });
+  });
   it("preserves unavailable policy usage in both list and detail reads", async () => {
     const api = createApiCatalogPorts(createParameterCatalogClient({ baseUrl: "", fetchImpl: createScenarioFetch("ready") }));
     const mock = createMockCatalogPorts({ scenario: "ready" });
@@ -543,7 +562,7 @@ describe("catalog API and mock adapter parity", () => {
     const document = await mock.catalog.getCatalog();
     const state = deriveCatalogDomainState({
       inFlight: true,
-      previousReleaseId: document.item.catalogReleaseId,
+      previousReleaseId: document.item?.catalogReleaseId,
       document
     });
     expect(state).toMatchObject({ kind: "loading", stale: true, writesEnabled: false });
@@ -692,7 +711,7 @@ describe("catalog API and mock adapter parity", () => {
       mock.catalog.getCatalog({ catalogReleaseId: "crel_historical" })
     ).rejects.toMatchObject({ details: { reason: "release-drift" } });
     const current = await mock.catalog.getCatalog({ catalogReleaseId: CATALOG_RELEASE_ID });
-    expect(current.item.catalogReleaseId).toBe(CATALOG_RELEASE_ID);
+    expect(current.item?.catalogReleaseId).toBe(CATALOG_RELEASE_ID);
   });
 
   it("hides unknown legacy, out-of-scope org, and never returns Acme fixtures", async () => {
