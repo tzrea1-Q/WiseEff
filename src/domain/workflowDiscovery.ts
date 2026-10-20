@@ -6,7 +6,7 @@ export const NAV_GROUPS = ["平台总览", "参数管理", "调试平台", "日�
 
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
-export const VISIBLE_WORKFLOWS: readonly WorkflowId[] = ["parameter-management", "debugging"];
+export const VISIBLE_WORKFLOWS: readonly WorkflowId[] = ["parameter-management", "debugging", "log-analysis"];
 
 const NAV_GROUP_TO_WORKFLOW: Record<NavGroup, WorkflowId | null> = {
   平台总览: null,

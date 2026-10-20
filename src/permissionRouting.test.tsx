@@ -23,6 +23,17 @@ afterEach(() => {
 });
 
 describe("permission-aware routing", () => {
+  it.each(["guest", "hardware-user", "admin"])("matches log sidebar entries to route permissions for %s", (roleId) => {
+    window.history.replaceState(null, "", "/parameter-home");
+    render(<App initialAppState={{ ...initialState, activeRoleId: roleId }} />);
+
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    for (const [pageKey, label] of [["logs", "智能分析"], ["log-admin", "日志后台"]] as const) {
+      expect(within(sidebar).queryByRole("button", { name: label }) !== null).toBe(canAccessPage(roleId, pageKey));
+    }
+    expect(sidebar.textContent?.includes("日志分析")).toBe(canAccessPage(roleId, "logs"));
+  });
+
   it("hides admin and operational navigation for Guest", () => {
     window.history.replaceState(null, "", "/parameter-home");
 

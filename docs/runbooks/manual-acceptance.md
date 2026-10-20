@@ -372,7 +372,7 @@ Open:
 Checklist:
 
 - [ ] Homepage loads without blank areas or visible runtime errors.
-- [ ] Side navigation follows `VISIBLE_WORKFLOWS` (currently parameter management and debugging, plus platform utilities); log and knowledge routes remain accessible by authorized deep links.
+- [ ] Side navigation follows `VISIBLE_WORKFLOWS` (currently parameter management, debugging, and log analysis, plus platform utilities). The log analysis group contains exactly Intelligent analysis and Log administration, gated by their route permissions; users without log access see neither item. The homepage offers three scenes with an active log analysis entry. Knowledge remains hidden from discovery and accessible by authorized deep links.
 - [ ] Project selector and role context are visible where expected.
 - [ ] Navigation to `/parameters`, `/parameter-review`, `/parameter-admin`, `/logs`, `/log-admin`, `/debugging`, `/node-debugging`, `/debugging-admin`, and `/organization/members` works.
 - [ ] Pages that the current role cannot access show a controlled no-entry state rather than a crash.

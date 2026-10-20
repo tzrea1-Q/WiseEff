@@ -52,6 +52,10 @@ async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) 
   );
 
   if (route === "/") {
+    const home = page.getByRole("main", { name: "雷泽首页" });
+    await expect(home.getByRole("heading", { name: "一条可审阅工作流，三种场景接入" })).toBeVisible();
+    await expect(home.getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
+    await expect(home.getByRole("tab", { name: "日志分析" })).toBeVisible();
     await expect(page.locator("footer.linear-footer")).toHaveCount(1);
     await expect(page.locator("footer.app-footer")).toHaveCount(0);
     await expect(page.locator("footer.linear-footer .app-footer")).toContainText("版本 v");
@@ -138,6 +142,12 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
       async ({ page }, testInfo) => {
         await signInBrowserAsRole(page, "admin", route);
         await expectUsableShell(page, testInfo, route);
+        if (route !== "/") {
+          const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
+          const logGroup = sidebar.locator(".nav-group").filter({ has: page.locator(".nav-group-label", { hasText: /^日志分析$/ }) });
+          await expect(logGroup.getByRole("button")).toHaveText(["智能分析", "日志后台"]);
+          await expect(sidebar.getByRole("button", { name: "知识库", exact: true })).toHaveCount(0);
+        }
 
         await recordOperationEvidence({
           operationId: "SHELL-DIAG-001",
@@ -167,10 +177,22 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
     );
   }
 
+  test("offers intelligent analysis without log administration to hardware users", async ({ page }) => {
+    await signInBrowserAsRole(page, "hardware-user", "/parameter-home");
+    const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
+    await expect(sidebar.getByRole("button", { name: "智能分析", exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("button", { name: "日志后台", exact: true })).toHaveCount(0);
+    await sidebar.getByRole("button", { name: "智能分析", exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === "/logs");
+  });
+
   test("keeps the compact footer around a permission-denied result", async ({ page }, testInfo) => {
     await signInBrowserAsRole(page, "guest", "/log-admin");
 
     await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
+    const sidebar = page.getByRole("complementary", { name: "主导航侧边栏" });
+    await expect(sidebar.getByRole("button", { name: "智能分析", exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole("button", { name: "日志后台", exact: true })).toHaveCount(0);
     await expectUsableShell(page, testInfo, "/log-admin");
     await recordOperationEvidence({
       operationId: "SHELL-FOOTER-001",
