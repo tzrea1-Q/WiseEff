@@ -36,6 +36,7 @@ export const logSignalSummarySchema = z.object({ signals: z.array(logSignalSchem
   reason: z.enum(["time_cap", "line_cap", "extraction_error"]).optional() });
 
 export const logFileDtoSchema = z.object({
+  role: z.string().nullable().optional(), skillMatched: z.boolean().nullable().optional(),
   path: z.string(), sizeBytes: z.number(), lineCount: z.number(), encoding: z.enum(["utf-8", "utf-16le", "utf-16be"]),
   lossy: z.boolean(), status: z.enum(["analyzed", "skipped"]), skipReason: z.string().nullable()
 });
@@ -184,7 +185,14 @@ export const logSkillSampleMetadataSchema = z.object({
   sha256: z.string(), encoding: z.enum(["utf-8", "utf-16le", "utf-16be"]), lineCount: z.number().int().nonnegative(),
   uploadedByUserId: z.string().nullable(), createdAt: z.string(), updatedAt: z.string()
 }).strict();
-export const logSkillSampleDtoSchema = logSkillSampleMetadataSchema.extend({ content: z.string(), truncated: z.boolean() });
+export const logSkillSampleFileSchema = z.object({
+  path: z.string(), sizeBytes: z.number().int().nonnegative(), lineCount: z.number().int().nonnegative(),
+  status: z.enum(["analyzed", "skipped"]), skipReason: z.string().nullable(),
+  encoding: z.enum(["utf-8", "utf-16le", "utf-16be"]), lossy: z.boolean(), content: z.string().optional(), truncated: z.boolean().optional()
+}).strict();
+export const logSkillSampleDtoSchema = logSkillSampleMetadataSchema.extend({
+  content: z.string(), contentFilePath: z.string().optional(), truncated: z.boolean(), files: z.array(logSkillSampleFileSchema).optional()
+});
 export const logSkillSampleResponseSchema = itemEnvelopeSchema(logSkillSampleDtoSchema.nullable());
 export const logSkillSampleReplaceResponseSchema = itemEnvelopeSchema(logSkillSampleMetadataSchema);
 

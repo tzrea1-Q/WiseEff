@@ -99,9 +99,10 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
   return {
     async analyze(input) {
       input = withLogTrace(input);
-      const activeRules = input.signalRules ?? ruleSet;
+      const activeRules = input.files && !input.files.some((file) => (file.parsed || file.reader) && file.skillMatched !== false)
+        ? genericSignalRuleSet : input.signalRules ?? ruleSet;
       const evidence = input.files
-        ? input.files.flatMap((file) => (file.prefilter?.evidence ?? (file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules) : [])).map((item) => ({ ...item, filePath: file.path })))
+        ? input.files.flatMap((file) => (file.skillMatched === false ? [] : file.prefilter?.evidence ?? (file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules) : [])).map((item) => ({ ...item, filePath: file.path })))
         : collectRuleEvidence(input.parsed.entries, activeRules).map((item) => ({ ...item, filePath: input.filePath }));
       const ruleHits = new Set(evidence.map((item) => item.ruleHit));
       const hasErrorEvidence = input.files ? input.files.some((file) => file.prefilter?.hasErrorEvidence

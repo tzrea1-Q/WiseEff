@@ -85,13 +85,14 @@ export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository
   const add = async () => {
     addingRef.current = true; setAdding(true); onBusyChange(true); setError("");
     const line = sample && selectedLine ? sample.content.split(/\r?\n/)[selectedLine - 1] : "";
+    const fileName = sample?.contentFilePath ?? sample?.fileName;
     try {
       if ((line?.length ?? 0) > 6144) { setError("所选样例行超过 6144 字符，请选择较短的一行。"); return; }
-      const preview = line && spec.parsing && repository?.parsePreview ? await repository.parsePreview(skillId, { parsing: spec.parsing, sampleText: line, fileName: sample?.fileName })
+      const preview = line && spec.parsing && repository?.parsePreview ? await repository.parsePreview(skillId, { parsing: spec.parsing, sampleText: line, fileName })
         .catch(() => { if (active.current) setError("解析预览暂时不可用，已使用样例行新增测试；请补充期望。"); return null; }) : null;
       if (!active.current) return;
       if (preview && (!preview.valid || preview.truncated)) { setError("当前解析预览未完成，已使用样例行新增测试；请补充期望。"); }
-      const next = parseTestCaseSchema.parse({ id: crypto.randomUUID(), name: `解析测试 ${tests.length + 1}`, lines: [line ?? ""], ...(sample ? { fileName: sample.fileName } : {}),
+      const next = parseTestCaseSchema.parse({ id: crypto.randomUUID(), name: `解析测试 ${tests.length + 1}`, lines: [line ?? ""], ...(sample ? { fileName } : {}),
         expect: { fields: preview?.valid ? fieldExpectations(preview.events[0]?.fields ?? {}) : {} } });
       const checked = parseTestsSchema.safeParse([...tests, next]);
       if (!checked.success) { setError("测试超出数量、行数或字符上限，请删减样例或期望后重试。"); return; }
@@ -123,6 +124,7 @@ export function ParseTestsSection({ skillId, spec, setSpec, disabled, repository
       <Expectations test={test} onChange={update} disabled={disabled} onValidityChange={onValidityChange} />
       <Button variant="outline" disabled={disabled} onClick={() => { setSpec({ ...spec, parseTests: tests.filter((item) => item.id !== test.id) }); setSelectedId(null); }}>删除测试</Button>
       {outcome ? <section aria-label="测试结果"><h3>{outcome.passed ? "通过" : "失败"}</h3>
+        {outcome.applicability?.skillMatched === false ? <p>未匹配适用文件 · 仅通用分析</p> : null}
         {outcome.error ? <p role="alert">{outcome.error}</p> : null}
         {outcome.diffs.length ? <DataTable fluid tableClassName="table-fixed" ariaLabel="解析测试差异" rows={outcome.diffs.map((diff, index) => ({ ...diff, index }))} rowKey={(diff) => String(diff.index)} columns={[
           { key: "path", header: "字段路径", render: (diff) => <code>{diff.path}</code> },

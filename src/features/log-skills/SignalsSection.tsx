@@ -76,7 +76,7 @@ export function SignalsSection({ skillId, spec, onChange, disabled, sample, repo
     if (!validation.success || !sample || !signalRules || !repository?.signalPreview) return;
     const timer = window.setTimeout(() => {
       setPending(true);
-      void repository.signalPreview!(skillId, { signalRules, ...(spec.parsing ? { parsing: spec.parsing } : {}), ...(spec.formatProfile ? { formatProfile: spec.formatProfile } : {}) })
+      void repository.signalPreview!(skillId, { signalRules, ...(spec.files ? { files: spec.files } : {}), ...(spec.parsing ? { parsing: spec.parsing } : {}), ...(spec.formatProfile ? { formatProfile: spec.formatProfile } : {}) })
         .then((result) => { if (active) setPreview(result); })
         .catch(() => { if (active) setError("预览失败，请修改规则或样例后重试。"); })
         .finally(() => { if (active) setPending(false); });

@@ -13,6 +13,16 @@ const failed: ParseTestRun = { total: 1, passed: 0, failed: 1, truncated: false,
   diffs: [{ path: "val.fields.CHRG_FAULT.meaning", expected: "normal", actual: "input fault" }], missingSignals: ["fault"], unexpectedSignals: ["warning"], events: [], signals: ["warning"] }] };
 
 describe("parse test workspace", () => {
+  it("explains missing fields when the test file does not match skill applicability", () => {
+    const props = { skillId: "skill", spec: { schemaVersion: "skill/v1" as const, parseTests: [test] }, setSpec: vi.fn(), disabled: false,
+      sample: null, selectedLine: null, onRun: vi.fn(), onBusyChange: vi.fn(), onValidityChange: vi.fn() };
+    const result = { ...failed, results: [{ ...failed.results[0], applicability: { skillMatched: false, role: null } }] };
+    const { rerender } = render(<ParseTestsSection {...props} result={result} />);
+    expect(within(screen.getByRole("region", { name: "测试结果" })).getByText("未匹配适用文件 · 仅通用分析")).toBeVisible();
+    rerender(<ParseTestsSection {...props} result={{ ...result,
+      results: [{ ...result.results[0], applicability: { skillMatched: true, role: "充电" } }] }} />);
+    expect(screen.queryByText("未匹配适用文件 · 仅通用分析")).not.toBeInTheDocument();
+  });
   it("shows the run status next to the single section action and uses text badges for every state", () => {
     const props = { skillId: "skill", spec: { schemaVersion: "skill/v1" as const, parseTests: [test] }, setSpec: vi.fn(), disabled: false,
       repository: { runSkillParseTests: vi.fn(async () => failed) }, sample: null, selectedLine: null, onRun: vi.fn(), onBusyChange: vi.fn(), onValidityChange: vi.fn() };
@@ -47,12 +57,12 @@ describe("parse test workspace", () => {
       const [spec, setSpec] = useState<SkillSpec>({ schemaVersion: "skill/v1", parsing: { schemaVersion: "parsing/v1", extractors: [] } });
       current = spec;
       return <ParseTestsSection skillId="skill-charging" spec={spec} setSpec={setSpec} disabled={false} repository={repository}
-        sample={mockSkillSample} selectedLine={2} result={null} onRun={vi.fn()} onBusyChange={vi.fn()} onValidityChange={vi.fn()} />;
+        sample={{ ...mockSkillSample, fileName: "sample.zip", contentFilePath: "charging.log" }} selectedLine={2} result={null} onRun={vi.fn()} onBusyChange={vi.fn()} onValidityChange={vi.fn()} />;
     }
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "新增测试" }));
     await screen.findByRole("textbox", { name: "测试名称" });
-    expect(repository.parsePreview).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ sampleText: "ERROR charging timeout code=E_TIMEOUT" }));
+    expect(repository.parsePreview).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ sampleText: "ERROR charging timeout code=E_TIMEOUT", fileName: "charging.log" }));
     expect(current!.parseTests?.[0]).toMatchObject({ lines: ["ERROR charging timeout code=E_TIMEOUT"], fileName: "charging.log",
       expect: { fields: { "val.value": 32, "val.fields.CHRG_FAULT.value": 2, "val.fields.CHRG_FAULT.meaning": "input fault" } } });
     expect(Object.keys(current!.parseTests![0].expect.fields!)).not.toContain("val.raw");

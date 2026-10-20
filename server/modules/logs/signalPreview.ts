@@ -12,6 +12,7 @@ import { parseLogText } from "./parser";
 import { decodeLogFilesCooperatively, indexDecodedEvents } from "./parsing/workerDecoding";
 import { LOG_SIGNAL_LIMITS } from "./genericSignals";
 import { createLogPatternCache, MAX_LOG_PATTERN_INPUT_LENGTH } from "./adminPattern";
+import { matchSkillFile } from "../../../src/domain/logs/fileApplicability";
 export { signalPreviewRequestSchema, signalPreviewResponseSchema } from "./signalRules";
 
 export const SIGNAL_PREVIEW_LIMITS = { maxMs: 100, lines: 5000, hits: 500 } as const;
@@ -19,7 +20,7 @@ type Issue = { path: (string | number)[]; message: string };
 type Hit = { ruleId: string; lineNumber: number; excerpt: string };
 
 /** The same compiled predicates as worker prefiltering; the watchdog also bounds compilation. */
-export async function previewSignalRules(input: { signalRules?: unknown; parsing?: unknown; formatProfile?: unknown },
+export async function previewSignalRules(input: { signalRules?: unknown; parsing?: unknown; formatProfile?: unknown; files?: unknown },
   sample: { content: string; fileName: string; truncated?: boolean }, options: { maxMs?: number; maxEvaluations?: number; now?: () => number } = {}) {
   const now = options.now ?? (() => performance.now()), maxMs = Math.min(SIGNAL_PREVIEW_LIMITS.maxMs, options.maxMs ?? SIGNAL_PREVIEW_LIMITS.maxMs);
   const deadline = now() + maxMs;
@@ -34,6 +35,9 @@ export async function previewSignalRules(input: { signalRules?: unknown; parsing
     const spec = validated.data;
     if (!spec.signalRules) return { valid: false, issues: [{ path: ["signalRules"], message: "Signal rules are required" }], hits, truncated: false };
     valid = true;
+    const applies: boolean = runInNewContext("match()", { match: () => matchSkillFile(spec.files, sample.fileName).skillMatched },
+      { timeout: Math.max(1, Math.ceil(deadline - now())) });
+    if (!applies) return { valid: true, issues, hits, truncated: false };
     const allLines = sample.content.split(/\r\n|\n|\r/), lines = allLines.slice(0, SIGNAL_PREVIEW_LIMITS.lines);
     const decoded = spec.parsing ? await decodeLogFilesCooperatively(spec.parsing, [{ file: sample.fileName, lines }],
       { maxMs: Math.max(0, deadline - now()), hardTimeout: true }) : undefined;
@@ -76,9 +80,9 @@ export async function previewSignalRules(input: { signalRules?: unknown; parsing
 }
 
 export async function previewLogSkillSignals(db: Database, store: ObjectStore, auth: AuthContext, skillId: string,
-  input: { signalRules?: unknown; parsing?: unknown; formatProfile?: unknown }) {
+  input: { signalRules?: unknown; parsing?: unknown; formatProfile?: unknown; files?: unknown }) {
   requireLogAdminDomains(auth);
   const sample = await getLogSkillSample(db, store, auth, skillId);
   if (!sample) throw new ApiError("VALIDATION_FAILED", "Attach a skill sample before previewing signals.");
-  return previewSignalRules(input, sample);
+  return previewSignalRules(input, { ...sample, fileName: sample.contentFilePath ?? sample.fileName });
 }

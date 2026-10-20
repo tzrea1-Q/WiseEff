@@ -18,10 +18,33 @@ function bq(): LogSkillSpec {
       expect: { fields: { val: 32, "val.fields.CHRG_FAULT.meaning": "thermal_shutdown" }, signals: ["charger-fault"], exactSignals: true } }] });
 }
 describe("parse test runner", () => {
+  it.each([
+    ["charger/charger.log", true, true],
+    ["kernel/dmesg.log", false, false],
+    [undefined, false, false],
+    ["charger/config.txt", true, false]
+  ] as const)("applies skill and extractor file globs to %s", async (fileName, skillMatched, extracted) => {
+    const spec = bq(), test = spec.parseTests![0];
+    spec.files = [{ glob: "charger/**", role: "充电" }];
+    spec.parsing!.extractors[0].files = ["charger/*.log"];
+    // Only matching files use the skill's custom severity mapping.
+    spec.formatProfile = { severityMap: { error: ["NOTICE"] } };
+    test.fileName = fileName;
+    test.lines = ["NOTICE addr=0x0C val=0x20", "watchdog reset"];
+    test.expect.signals = ["charger-fault", "first-error", "crash"];
+    const run = parseTestRunSchema.parse(await runParseTests(spec));
+    expect(run.truncated).toBe(false);
+    expect(run.results[0]).toMatchObject({ passed: extracted, applicability: { skillMatched, role: skillMatched ? "充电" : null },
+      signals: skillMatched ? ["first-error", "charger-fault", "crash"] : ["crash"],
+      missingSignals: skillMatched ? [] : ["charger-fault", "first-error"] });
+    expect(run.results[0].events).toEqual(extracted ? decodeLogFiles(spec.parsing!, [{ file: fileName!, lines: test.lines }]).events : []);
+    if (!extracted) expect(run.results[0].diffs).toContainEqual({ path: "val", expected: 32, actual: null, missing: true });
+  });
   it("uses exactly the worker engine output and signal rules for the BQ25890 sample", async () => {
     const spec = bq();
     const run = await runParseTests(spec);
-    expect(parseTestRunSchema.parse(run)).toMatchObject({ total: 1, passed: 1, failed: 0, truncated: false });
+    expect(parseTestRunSchema.parse(run)).toMatchObject({ total: 1, passed: 1, failed: 0, truncated: false,
+      results: [{ applicability: { skillMatched: true, role: null } }] });
     expect(run.results[0].events).toEqual(decodeLogFiles(spec.parsing!, [{ file: "charger.log", lines: spec.parseTests![0].lines }]).events);
     spec.parseTests![0].expect.fields!["val.fields.CHRG_FAULT.meaning"] = "normal";
     expect((await runParseTests(spec)).results[0]).toMatchObject({ passed: false, diffs: [{ path: "val.fields.CHRG_FAULT.meaning", expected: "normal", actual: "thermal_shutdown" }] });

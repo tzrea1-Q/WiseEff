@@ -1,7 +1,7 @@
 import type { ZodTypeAny } from "zod";
 import { z } from "zod";
 import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema } from "../../logs/schemas";
-import { logSkillSpecSchema, parseTestRequestSchema } from "../../logs/skillSpec";
+import { logSkillSpecSchema, parseTestRequestSchema, skillFilePreviewRequestSchema, skillFilePreviewResponseSchema } from "../../logs/skillSpec";
 import { issueLogIntegrationCredentialBodySchema } from "../../logs/schemas";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
@@ -86,6 +86,8 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogParsePreviewResponse: parsePreviewResponseSchema,
   LogSignalPreviewRequest: signalPreviewRequestSchema,
   LogSignalPreviewResponse: signalPreviewResponseSchema,
+  LogSkillFilePreviewRequest: skillFilePreviewRequestSchema,
+  LogSkillFilePreviewResponse: skillFilePreviewResponseSchema,
   LogExtractorPreviewRequest: extractorPreviewRequestSchema,
   LogExtractorPreviewResponse: extractorPreviewResponseSchema,
   LogFormatPreviewRequest: formatPreviewRequestSchema,
@@ -220,6 +222,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.parsePreview",
   "logs.parseTests",
   "logs.signalPreview",
+  "logs.filesPreview",
   "logs.extractorPreview", "logs.formatPreview",
   "logs.getTrace", "logs.startDryRun", "logs.getDryRun", "logs.getDryRunLines",
   "logs.listAnalysisCases", "logs.createAnalysisCase", "logs.updateAnalysisCase", "logs.deleteAnalysisCase",

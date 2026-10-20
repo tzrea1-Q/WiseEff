@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { Readable } from "node:stream";
+import { compileSkillFiles } from "../../../src/domain/logs/fileApplicability";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
@@ -9,7 +11,7 @@ import { getLogRecord } from "./service";
 import { listSkillRevisions, lockSkill } from "./skillsRepository";
 import { readStoredLogFormatProfile } from "./formatProfile";
 import { parseLogText } from "./parser";
-import { extractLogSignalsCooperatively } from "./genericSignals";
+import { extractLogSignalsCooperatively, logSignalLimits } from "./genericSignals";
 import { decodeLogFilesCooperatively, indexDecodedEvents, logDecodeLimits } from "./parsing/workerDecoding";
 import { analyzeWithDegradation } from "./worker";
 import { logJobLimits } from "./jobLease";
@@ -18,8 +20,9 @@ import { buildLogLineIndex, createLogFileReader, readStoredLogRange } from "./fi
 import { createPrefilterBudget, prefilterLogStream } from "./prefilter";
 import { acquireDryRunOwner, assertDryRunCapacity, activeDryRunWork, LOG_DRY_RUN_ADMISSION_LOCK, LOG_DRY_RUN_INTERRUPTED, recoverInterruptedDryRuns } from "./dryRunAdmission";
 import type { StoredLogFile } from "./filesRepository";
-import type { Readable } from "node:stream";
 import type { ObjectStore } from "./objectStore";
+import { readStoredSkillSampleBundle } from "./skillSamplesService";
+import { createSignalEvaluationBudget, withSignalFields } from "./signalRules";
 import { readLogTraceSteps } from "./traceRepository";
 import type { LogSkillSpec } from "./skillSpec";
 import type { z } from "zod";
@@ -29,6 +32,17 @@ export const LOG_DRY_RUN_TIMEOUT_MS = 120_000;
 // Keep counting non-cancellable tool/provider work even after its deadline or DB connection is lost.
 const activeWork = activeDryRunWork;
 type DryRun = z.infer<typeof logSkillDryRunSchema>;
+function withSampleContents(store: ObjectStore, contents: Map<string, Buffer>): ObjectStore {
+  return { ...store,
+    get: async (key) => contents.get(key) ?? store.get(key),
+    getStream: async (key, range) => {
+      const bytes = contents.get(key);
+      if (bytes) return Readable.from([bytes.subarray(range?.start ?? 0, range?.end === undefined ? undefined : range.end + 1)]);
+      return store.getStream ? store.getStream(key, range)
+        : Readable.from([(await store.get(key)).subarray(range?.start ?? 0, range?.end === undefined ? undefined : range.end + 1)]);
+    }
+  };
+}
 function requireAdmin(auth: AuthContext) {
   requireLogAdminDomains(auth);
   if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "Log organization access is required.");
@@ -56,13 +70,17 @@ export async function getSkillDryRunLines(db: Database, store: ObjectStore, auth
   if (!range.success) throw new ApiError("VALIDATION_FAILED", "Request an inclusive range of at most 400 lines.");
   const row = (await db.query<{ sample_file_name: string; sample_object_key: string }>(`select sample_file_name, sample_object_key from log_skill_dry_runs
     where organization_id = $1 and skill_id = $2 and id = $3`, [auth.organization.id, skillId, id])).rows[0];
-  if (!row || row.sample_file_name !== input.file) throw new ApiError("NOT_FOUND", "Dry run sample was not found.");
-  const lineCount = (await buildLogLineIndex(store, row.sample_object_key)).readUInt32LE(4);
+  if (!row) throw new ApiError("NOT_FOUND", "Dry run sample was not found.");
+  const bundle = await readStoredSkillSampleBundle(store, row.sample_file_name, row.sample_object_key);
+  const file = bundle?.find((file) => file.path === input.file && file.status === "analyzed");
+  if (bundle ? !file : row.sample_file_name !== input.file) throw new ApiError("NOT_FOUND", "Dry run sample was not found.");
+  const source = file ? withSampleContents(store, new Map([[row.sample_object_key, Buffer.from(file.content!)]])) : store;
+  const lineCount = (await buildLogLineIndex(source, row.sample_object_key)).readUInt32LE(4);
   if (input.startLine > Math.max(1, lineCount)) throw new ApiError("VALIDATION_FAILED", "Start line is outside the sample.");
   const endLine = Math.min(lineCount, input.endLine);
   return { file: input.file, startLine: input.startLine, endLine, totalLines: lineCount,
-    lines: endLine < input.startLine ? [] : await readStoredLogRange(store, {
-      path: row.sample_file_name, objectKey: row.sample_object_key, sizeBytes: 0, lineCount,
+    lines: endLine < input.startLine ? [] : await readStoredLogRange(source, {
+      path: input.file, objectKey: row.sample_object_key, sizeBytes: 0, lineCount,
       encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null
     }, input.startLine, endLine) };
 }
@@ -112,14 +130,16 @@ async function executeDryRun(db: Database, store: ObjectStore, analyzer: LogAnal
   owner.signal.addEventListener("abort", onOwnerLost, { once: true });
   if (owner.signal.aborted) controller.abort();
   const streams = new Set<Readable>();
+  const contents = new Map<string, Buffer>();
+  const sampleStore = withSampleContents(store, contents);
   controller.signal.addEventListener("abort", () => { for (const stream of streams) stream.destroy(new Error(LOG_DRY_RUN_INTERRUPTED)); }, { once: true });
-  const sourceStore: ObjectStore = { ...store, ...(store.getStream ? { getStream: async (key: string, range?: { start: number; end?: number }) => {
+  const sourceStore: ObjectStore = { ...sampleStore, getStream: async (key: string, range?: { start: number; end?: number }) => {
     controller.signal.throwIfAborted();
-    const stream = await store.getStream!(key, range);
+    const stream = await sampleStore.getStream!(key, range);
     streams.add(stream); stream.once("close", () => streams.delete(stream));
     if (controller.signal.aborted) { stream.destroy(); controller.signal.throwIfAborted(); }
     return stream;
-  } } : {}) };
+  } };
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -130,34 +150,74 @@ async function executeDryRun(db: Database, store: ObjectStore, analyzer: LogAnal
     controller.signal.throwIfAborted();
     const preprocessingDeadline = performance.now() + Math.min(logJobLimits().preprocessingMs, timeoutMs);
     const signalRules = admitted.spec.signalRules ?? genericSignalRuleSet;
-    const stored: StoredLogFile = { path: admitted.sample.file_name, objectKey: admitted.sample.object_key,
-      sizeBytes: Number(admitted.sample.size_bytes), lineCount: admitted.sample.line_count,
-      encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null };
-    const profile = readStoredLogFormatProfile(admitted.spec.formatProfile);
-    const reader = createLogFileReader(sourceStore, stored, profile);
-    const prefilter = await prefilterLogStream(reader.entries({ deadline: preprocessingDeadline }), signalRules, createPrefilterBudget());
-    const preview: string[] = [];
-    let previewBudget = 128 * 1024;
-    for await (const line of reader.lines({ deadline: preprocessingDeadline })) {
-      const cost = Buffer.byteLength(line.content);
-      if (preview.length >= 400 || cost > previewBudget) break;
-      preview.push(line.content); previewBudget -= cost;
+    const matchFile = compileSkillFiles(admitted.spec.files);
+    const bundle = await readStoredSkillSampleBundle(sourceStore, admitted.sample.file_name, admitted.sample.object_key);
+    controller.signal.throwIfAborted();
+    const inventory = bundle ?? [{ path: admitted.sample.file_name, sizeBytes: Number(admitted.sample.size_bytes),
+      lineCount: admitted.sample.line_count, encoding: "utf-8" as const, lossy: false, status: "analyzed" as const, skipReason: null, content: undefined }];
+    const files: NonNullable<AnalyzeLogInput["files"]> = [];
+    const prefilterBudget = createPrefilterBudget(createSignalEvaluationBudget(preprocessingDeadline));
+    for (const [index, sample] of inventory.entries()) {
+      const { content, ...metadata } = sample;
+      const assignment = matchFile(sample.path);
+      const stored: StoredLogFile = { ...metadata, ...assignment,
+        objectKey: bundle ? `${admitted.id}/${index}` : admitted.sample.object_key };
+      if (sample.status === "skipped") { files.push(stored); continue; }
+      if (content !== undefined) contents.set(stored.objectKey!, Buffer.from(content));
+      const profile = assignment.skillMatched ? readStoredLogFormatProfile(admitted.spec.formatProfile) : undefined;
+      const reader = createLogFileReader(sourceStore, stored, profile);
+      const prefilter = await prefilterLogStream(reader.entries({ deadline: preprocessingDeadline }),
+        assignment.skillMatched ? signalRules : genericSignalRuleSet, prefilterBudget);
+      const preview: string[] = [];
+      let previewBudget = 128 * 1024;
+      if (!files.some((file) => file.parsed)) for await (const line of reader.lines({ deadline: preprocessingDeadline })) {
+        const cost = Buffer.byteLength(line.content);
+        if (preview.length >= 400 || cost > previewBudget) break;
+        preview.push(line.content); previewBudget -= cost;
+      }
+      const parsed = parseLogText({ fileName: "sample.log", content: preview.join("\n") }, { profile });
+      if (!parsed.ok) throw new Error("parse");
+      parsed.rawLines = preview;
+      files.push({ ...stored, lineCount: reader.lineCount, parsed, reader, prefilter });
     }
-    const parsed = parseLogText({ fileName: "sample.log", content: preview.join("\n") }, { profile });
-    if (!parsed.ok) throw new Error("parse");
-    parsed.rawLines = preview;
-    const file = { ...stored, parsed, reader, prefilter };
-    const signalSummary = await extractLogSignalsCooperatively([file], signalRules, { maxMs: Math.max(0, preprocessingDeadline - performance.now()) });
+    const analyzed = files.filter((file) => file.parsed);
+    if (!analyzed.length) throw new Error("Sample has no analyzable files.");
+    const first = analyzed[0], parsed = first.parsed!;
     const decoding = admitted.spec.parsing?.extractors.length ? { spec: admitted.spec.parsing,
-      ...await decodeLogFilesCooperatively(admitted.spec.parsing, [{ file: file.path, reader }],
+      ...await decodeLogFilesCooperatively(admitted.spec.parsing, analyzed.filter((file) => file.skillMatched !== false)
+        .map((file) => ({ file: file.path, reader: file.reader! })),
         { maxMs: Math.min(logDecodeLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now())) }) } : undefined;
+    const events = indexDecodedEvents(decoding?.events ?? []);
+    if (signalRules.rules.some((rule) => rule.anyOf.some((condition) => condition.type === "field" || condition.type === "window" && condition.condition.type === "field"))) {
+      const refinementBudget = createPrefilterBudget(prefilterBudget.evaluation);
+      for (const file of analyzed.filter((file) => file.skillMatched !== false)) {
+        const enrich = (entry: Parameters<typeof withSignalFields>[0]) => withSignalFields(entry, events.get(JSON.stringify([file.path, entry.lineNumber])));
+        file.parsed!.entries = file.parsed!.entries.map(enrich);
+        const previous = file.prefilter!;
+        const refined = await prefilterLogStream((async function* () {
+          for await (const entry of file.reader!.entries({ deadline: preprocessingDeadline })) yield enrich(entry);
+        })(), signalRules, refinementBudget);
+        const evidence = signalRules.rules.flatMap((rule) => {
+          const before = previous.evidence.find((item) => item.ruleHit === rule.id), after = refined.evidence.find((item) => item.ruleHit === rule.id);
+          const item = after ?? before;
+          return item ? [{ ...item, lineNumbers: [...new Set([...(before?.lineNumbers ?? []), ...(after?.lineNumbers ?? [])])].sort((a, b) => a - b).slice(0, 2000) }] : [];
+        });
+        file.prefilter = { ...previous, evidence, ruleHits: evidence.map((item) => item.ruleHit!),
+          anomalyLineNumbers: [...new Set([...previous.anomalyLineNumbers, ...refined.anomalyLineNumbers])].sort((a, b) => a - b).slice(0, 2000),
+          hasErrorEvidence: previous.hasErrorEvidence || refined.hasErrorEvidence, truncated: previous.truncated || refined.truncated };
+      }
+    }
+    const signalSummary = await extractLogSignalsCooperatively(files, signalRules,
+      { eventsByLine: events, evaluation: prefilterBudget.evaluation,
+        maxMs: Math.min(logSignalLimits().maxMs, Math.max(0, preprocessingDeadline - performance.now())) });
     const sourceSnapshot = admitted.spec.defaultSourceSnapshotId
       ? (await db.query<NonNullable<AnalyzeLogInput["sourceSnapshot"]>>(`select id, status from log_source_snapshots where organization_id = $1 and skill_id = $2 and id = $3`,
         [organizationId, skillId, admitted.spec.defaultSourceSnapshotId])).rows[0] : undefined;
     const report = await analyzeWithDegradation({ analyzer, job: { attemptCount: 1 }, maxAttempts: 1,
       retryBaseDelayMs: 0, now: () => new Date(), analyzeInput: {
-        signal: controller.signal, organizationId, logDomainId: skillId, parsed, files: [file], filePath: file.path,
-        stats: { lineCount: reader.lineCount, entryCount: Object.values(prefilter.severityCounts).reduce((sum, count) => sum + count, 0) },
+        signal: controller.signal, organizationId, logDomainId: skillId, parsed, files, filePath: first.path,
+        stats: { lineCount: analyzed.reduce((sum, file) => sum + file.lineCount, 0),
+          entryCount: analyzed.reduce((sum, file) => sum + Object.values(file.prefilter!.severityCounts).reduce((a, b) => a + b, 0), 0) },
         procedure: admitted.spec.procedure, signalRules, signalSummary, decoding, sourceSnapshot,
         logDomain: { name: admitted.sample.name, description: admitted.spec.description ?? admitted.sample.description ?? undefined,
           modelOverride: admitted.spec.modelOverride },
@@ -175,10 +235,9 @@ async function executeDryRun(db: Database, store: ObjectStore, analyzer: LogAnal
         }
       } });
     if (sourceSnapshot && sourceSnapshot.status !== "ready") report.conclusion += "\n\n源码快照尚未就绪，本次分析未使用源码";
-    const events = indexDecodedEvents(decoding?.events ?? []);
     for (const evidence of report.evidence) {
-      evidence.filePath ??= file.path;
-      const fields = evidence.lineNumbers.flatMap((line) => events.get(JSON.stringify([evidence.filePath ?? file.path, line])) ?? []);
+      evidence.filePath ??= first.path;
+      const fields = evidence.lineNumbers.flatMap((line) => events.get(JSON.stringify([evidence.filePath ?? first.path, line])) ?? []);
       if (fields.length) evidence.decodedFields = fields;
     }
     return logDryRunReportSchema.parse(report);

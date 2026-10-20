@@ -14,6 +14,18 @@ const parsing = { schemaVersion: "parsing/v1" as const, extractors: [{ id: "sens
 const sample = (content: string) => ({ fileName: "sample.log", content });
 
 describe("signal rule authoring and bounded preview", () => {
+  it("applies file globs before evaluating text, field and window rules", async () => {
+    for (const condition of [{ type: "text", pattern: "temp" },
+      { type: "field", field: "sensor.temp", operator: "equals", value: 80 },
+      { type: "window", condition: { type: "text", pattern: "temp" }, count: 1, seconds: 10 }] satisfies SignalCondition[]) {
+      const input = { files: [{ glob: "charger/**", role: "充电" }], parsing, signalRules: rules(condition) };
+      const content = "2026-01-01T00:00:00Z temp=80";
+      expect(await previewSignalRules(input, { fileName: "misc/notes.txt", content }, { now: () => 0 }))
+        .toMatchObject({ valid: true, truncated: false, hits: [] });
+      expect(await previewSignalRules(input, { fileName: "charger/charger.log", content }, { now: () => 0 }))
+        .toMatchObject({ valid: true, truncated: false, hits: [{ lineNumber: 1 }] });
+    }
+  });
   it("round-trips text, typed field and window rules without changing legacy metadata", () => {
     for (const condition of [{ type: "text", pattern: "thermal", flags: "i" },
       { type: "field", field: "sensor.temp", operator: "equals", value: 80 },

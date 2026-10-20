@@ -1,7 +1,8 @@
 import { request, type IncomingMessage, type Server } from "node:http";
 import { json } from "node:stream/consumers";
 import { describe, expect, it, vi } from "vitest";
-import { createWiseEffServer, LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit, LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } from "./app";
+import { createWiseEffServer, LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit, LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } from "./app";
+import { MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_FILE_GLOBS } from "../src/domain/logs/fileApplicability";
 import { createRouter } from "./shared/http/router";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { requestJson } from "./test/testClient";
@@ -170,6 +171,35 @@ describe("skill authoring preview transport body limit", () => {
         status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE", details: { maxBytes: LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES } } }
       });
     }
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("skill file preview transport body limit", () => {
+  const previewPath = "/api/v1/log-skills/skill-1/files/preview";
+
+  it("bounds preview POSTs and slash aliases without changing other routes", () => {
+    for (const path of [previewPath, `${previewPath}/`, "//api//v1//log-skills//skill-1//files//preview//"])
+      expect(resolveRouteBodyLimit({ method: "POST", path })).toBe(LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES);
+    for (const input of [{ method: "GET", path: previewPath }, { method: "PUT", path: previewPath },
+      { method: "POST", path: `${previewPath}/extra` }, { method: "POST", path: "/api/v1/log-skills/files/preview" }])
+      expect(resolveRouteBodyLimit(input)).toBe(DEFAULT_MAX_REQUEST_BODY_BYTES);
+  });
+
+  it("admits the maximum escaped configuration and rejects oversize before JSON parsing or authentication", async () => {
+    const router = createRouter();
+    const handler = vi.fn(async () => ({ status: 200, body: { ok: true } }));
+    router.post(previewPath, handler);
+    const server = createHttpServer(router, { maxBodyBytes: resolveRouteBodyLimit });
+    const valid = JSON.stringify({ files: Array.from({ length: MAX_SKILL_FILE_GLOBS }, () => ({
+      glob: "a".repeat(MAX_FILE_GLOB_LENGTH), role: "充".repeat(MAX_FILE_ROLE_LENGTH)
+    })) }).replace(/[a充]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    expect(Buffer.byteLength(valid)).toBeLessThan(LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES);
+    expect((await requestJson(server, previewPath, { method: "POST", body: valid })).status).toBe(200);
+    handler.mockClear();
+    expect(await requestDeclaredOversize(server, previewPath, "POST", LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES + 1))
+      .toMatchObject({ status: 413, body: { error: { code: "PAYLOAD_TOO_LARGE", details: { maxBytes: LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES } } } });
+    expect((await requestJson(server, previewPath, { method: "POST", body: "{".repeat(LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES + 1) })).status).toBe(413);
     expect(handler).not.toHaveBeenCalled();
   });
 });

@@ -176,6 +176,7 @@ export type CreateLogRecordWithRunAndJobInput = {
 };
 
 export type LogWorkerRunSnapshot = {
+  files?: LogSkillSpec["files"];
   knowledgeEntryIds: string[];
   sourceSnapshotSelection: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;
@@ -235,6 +236,7 @@ export type PersistLogAnalysisReportInput = {
 };
 
 type CompleteLogAnalysisJobWithReportInput = PersistLogAnalysisReportInput & {
+  files?: AnalyzeLogInput["files"];
   signal?: AbortSignal;
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   jobId: string;
@@ -377,6 +379,7 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     skillRevisionId: row.skill_revision_id,
     procedure: row.skill_revision_spec?.procedure,
     signalRules: row.skill_revision_spec?.signalRules,
+    files: row.skill_revision_spec?.files,
     parsing: row.skill_revision_spec?.parsing,
     organizationId: row.organization_id,
     runId: row.run_id,
@@ -1169,6 +1172,12 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         `,
         [input.organizationId, input.logId, input.runId]
       );
+      if (input.files) await tx.query(`update log_files lf set role = assigned.role, skill_matched = assigned.skill_matched
+        from jsonb_to_recordset($4::jsonb) as assigned(path text, role text, skill_matched boolean)
+        where lf.organization_id=$1 and lf.record_id=$2 and lf.path=assigned.path
+          and exists (select 1 from log_records r where r.organization_id=$1 and r.id=$2 and r.current_run_id=$3)`,
+      [input.organizationId, input.logId, input.runId, jsonb(input.files.map((file) =>
+        ({ path: file.path, role: file.role ?? null, skill_matched: file.skillMatched ?? null })))]);
       await enqueueTerminalLogWebhook(tx, input);
       input.signal?.throwIfAborted();
     });
@@ -1438,6 +1447,8 @@ export async function createRerunWithJob(
     `,
     [input.organizationId, input.logId, input.runId, input.analysisQuestion ?? null, input.logDomainId ?? null]
   );
+  await db.query("update log_files set role=null, skill_matched=null where organization_id=$1 and record_id=$2",
+    [input.organizationId, input.logId]);
 
   return job;
 }

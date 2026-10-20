@@ -258,9 +258,9 @@ export function createHttpLogAnalysisRepository(
     },
     async getSkillSampleText(id) {
       try {
-        const result = await apiClient.get<{ item: { content?: string; fileName?: string } | null }>(`/api/v1/log-skills/${encodeURIComponent(id)}/sample`);
+        const result = await apiClient.get<{ item: { content?: string; fileName?: string; contentFilePath?: string } | null }>(`/api/v1/log-skills/${encodeURIComponent(id)}/sample`);
         const text = result.item?.content;
-        return typeof text === "string" ? { text, fileName: result.item?.fileName } : null;
+        return typeof text === "string" ? { text, fileName: result.item?.contentFilePath ?? result.item?.fileName } : null;
       } catch (error) {
         if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") return null;
         throw error;

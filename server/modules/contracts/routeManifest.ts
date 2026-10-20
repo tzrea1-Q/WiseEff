@@ -791,6 +791,7 @@ export const routeManifest = [
   { id: "logs.parsePreview", method: "POST", path: "/api/v1/log-skills/:skillId/parse-preview", module: "logs", stability: "mvp" },
   { id: "logs.parseTests", method: "POST", path: "/api/v1/log-skills/:skillId/parse-tests", module: "logs", stability: "mvp" },
   { id: "logs.signalPreview", method: "POST", path: "/api/v1/log-skills/:skillId/signals-preview", module: "logs", stability: "mvp" },
+  { id: "logs.filesPreview", method: "POST", path: "/api/v1/log-skills/:skillId/files/preview", module: "logs", stability: "mvp" },
   { id: "logs.extractorPreview", method: "POST", path: "/api/v1/log-skills/:skillId/extractor-preview", module: "logs", stability: "mvp" },
   { id: "logs.formatPreview", method: "POST", path: "/api/v1/log-skills/:skillId/format-preview", module: "logs", stability: "mvp" },
   { id: "logs.saveSkillDraft", method: "PUT", path: "/api/v1/log-skills/:skillId/draft", module: "logs", stability: "mvp" },

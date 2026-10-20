@@ -1572,11 +1572,11 @@ function LogFilesTable({ log }: { log: LogRecord }) {
   if (!log.files?.length) return <EmptyState text="该历史记录暂无文件清单。" />;
   return <section className="analysis-card overflow-auto" aria-label="日志文件清单">
     <table className="w-full text-left text-sm">
-      <thead><tr>{["路径", "大小", "行数", "编码", "状态"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
+      <thead><tr>{["路径", "角色", "大小", "行数", "编码", "状态"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
       <tbody>{log.files.map((file) => <tr key={file.path} className="border-t border-border">
-        <td className="p-3 break-all">{file.path}</td><td className="p-3">{formatBytes(file.sizeBytes)}</td>
+        <td className="p-3 break-all">{file.path}</td><td className="p-3">{file.role ?? "—"}</td><td className="p-3">{formatBytes(file.sizeBytes)}</td>
         <td className="p-3">{file.lineCount}</td><td className="p-3">{file.encoding.toUpperCase()}{file.lossy ? " · 有损解码" : ""}</td>
-        <td className="p-3">{file.status === "analyzed" ? "已分析" : `已跳过 · ${file.skipReason}`}</td>
+        <td className="p-3">{file.status === "analyzed" ? "已分析" : `已跳过 · ${file.skipReason}`}{file.skillMatched === false ? " · 仅通用分析" : ""}</td>
       </tr>)}</tbody>
     </table>
   </section>;

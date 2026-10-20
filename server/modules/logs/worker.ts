@@ -1,4 +1,5 @@
 import { loadLegacyLogFile, loadLogFiles } from "./filesRepository";
+import { compileSkillFiles } from "../../../src/domain/logs/fileApplicability";
 import { createLogFileReader, ensureStoredLogIndex } from "./fileReader";
 import { createPrefilterBudget, prefilterLogStream } from "./prefilter";
 import { createHash } from "node:crypto";
@@ -306,11 +307,13 @@ async function processClaimedLogAnalysisJob(
     }
     if (!inventory.length) inventory.push({ path: snapshot.fileName, objectKey: snapshot.storageKey,
       sizeBytes: 0, lineCount: 0, status: "analyzed", encoding: "utf-8", lossy: false, skipReason: null });
+    const assignFile = compileSkillFiles(snapshot.files);
+    for (const file of inventory) Object.assign(file, assignFile(file.path));
     // One allowance includes the initial prefilter, decoding, and signal extraction.
     const preprocessingDeadline = performance.now() + Math.min(preprocessingMs, lease.remainingMs());
     const prefilterBudget = createPrefilterBudget(createSignalEvaluationBudget(preprocessingDeadline));
     const prepare = (file: typeof inventory[number]) => {
-      const reader = createLogFileReader(objectStore, file, formatProfile,
+      const reader = createLogFileReader(objectStore, file, file.skillMatched === false ? undefined : formatProfile,
         () => lease.run(() => ensureStoredLogIndex(db, objectStore, snapshot.organizationId, snapshot.logId, file)));
       const entries = reader.entries({ deadline: preprocessingDeadline });
       const first = entries.next();
@@ -333,15 +336,17 @@ async function processClaimedLogAnalysisJob(
     let readPreview = false;
     try { for (const [fileIndex, file] of inventory.entries()) {
       const { objectKey: _objectKey, lineIndexKey: _indexKey, ...entry } = file;
+      const fileRules = file.skillMatched === false ? genericSignalRuleSet : signalRules;
+      const fileProfile = file.skillMatched === false ? undefined : formatProfile;
       if (file.status === "skipped") { files.push(entry); continue; }
       if (!objectStore.getStream) {
         // Compatibility for small offline adapters; production local/S3 stores always stream.
         const content = await objectStore.get(file.objectKey!);
         currentFailureReason = "parse_error";
         const legacy = parseLogText({ fileName: hadInventory ? "decoded.log" : snapshot.fileName,
-          content }, { profile: formatProfile });
+          content }, { profile: fileProfile });
         if (!legacy.ok) throw new Error(legacy.reason);
-        const prefilter = await prefilterLogStream((async function* () { yield* legacy.entries; })(), signalRules, prefilterBudget);
+        const prefilter = await prefilterLogStream((async function* () { yield* legacy.entries; })(), fileRules, prefilterBudget);
         files.push({ ...entry, lineCount: legacy.rawLines.length, parsed: legacy, prefilter });
         continue;
       }
@@ -351,7 +356,7 @@ async function processClaimedLogAnalysisJob(
         const initial = await first;
         if (!initial.done) yield initial.value;
         yield* entries;
-      })(), signalRules, prefilterBudget);
+      })(), fileRules, prefilterBudget);
       pending.delete(fileIndex);
       const preview: string[] = [];
       if (!readPreview) {
@@ -364,7 +369,7 @@ async function processClaimedLogAnalysisJob(
         }
       }
       prefetch();
-      const parsedFile = parseLogText({ fileName: "decoded.log", content: preview.join("\n") }, { profile: formatProfile });
+      const parsedFile = parseLogText({ fileName: "decoded.log", content: preview.join("\n") }, { profile: fileProfile });
       if (!parsedFile.ok) throw new Error(parsedFile.reason);
       parsedFile.rawLines = preview;
       files.push({ ...entry, lineCount: reader.lineCount, reader, prefilter, parsed: parsedFile });
@@ -391,7 +396,7 @@ async function processClaimedLogAnalysisJob(
       let failureCode = "decode_error";
       try {
         decoding = { spec: parsing, ...await lease.run(() => decodeLogFilesCooperatively(parsing,
-          analyzed.map((file) => file.reader ? { file: file.path, reader: file.reader } : { file: file.path, lines: file.parsed!.rawLines }), { maxMs })) };
+          analyzed.filter((file) => file.skillMatched !== false).map((file) => file.reader ? { file: file.path, reader: file.reader } : { file: file.path, lines: file.parsed!.rawLines }), { maxMs })) };
         decodedArtifact.counts = decoding.counts;
         failureCode = "artifact_error";
         const bytes = await lease.run(() => gzipDecodedEvents(decoding!.events));
@@ -421,6 +426,7 @@ async function processClaimedLogAnalysisJob(
     if (usesFields) {
       const budget = createPrefilterBudget(prefilterBudget.evaluation);
       for (const file of analyzed) {
+        if (file.skillMatched === false) continue;
         const enrich = (entry: Parameters<typeof withSignalFields>[0]) => withSignalFields(entry, eventsByLine.get(JSON.stringify([file.path, entry.lineNumber])));
         file.parsed!.entries = file.parsed!.entries.map(enrich);
         {
@@ -612,6 +618,7 @@ async function processClaimedLogAnalysisJob(
       leaseOwner,
       sourceSnapshot: snapshot.sourceSnapshot,
       sourceSnapshotSelection: snapshot.sourceSnapshotSelection,
+      files,
       report: {
         knowledgeRevisions: [...knowledgeRevisions.values()],
         signalSummary,

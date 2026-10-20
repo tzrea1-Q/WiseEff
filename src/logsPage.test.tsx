@@ -148,7 +148,8 @@ describe("LogsPage · Header", () => {
 
   it("renders the file inventory tab with analyzed, skipped and lossy files", async () => {
     const log = { ...initialState.logs[0], files: [
-      { path: "device/a.log", sizeBytes: 1024, lineCount: 12, encoding: "utf-8" as const, lossy: true, status: "analyzed" as const, skipReason: null },
+      { path: "device/a.log", sizeBytes: 1024, lineCount: 12, encoding: "utf-8" as const, lossy: true, status: "analyzed" as const, skipReason: null, role: "主日志", skillMatched: true },
+      { path: "misc/notes.txt", sizeBytes: 16, lineCount: 1, encoding: "utf-8" as const, lossy: false, status: "analyzed" as const, skipReason: null, role: null, skillMatched: false },
       { path: "image.bin", sizeBytes: 256, lineCount: 0, encoding: "utf-8" as const, lossy: false, status: "skipped" as const, skipReason: "二进制文件" }
     ] };
     render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
@@ -157,6 +158,9 @@ describe("LogsPage · Header", () => {
     expect(inventory).toHaveTextContent("device/a.log"); expect(inventory).toHaveTextContent("1.0 KiB");
     expect(inventory).toHaveTextContent("12"); expect(inventory).toHaveTextContent("有损解码");
     expect(inventory).toHaveTextContent("已分析"); expect(inventory).toHaveTextContent("已跳过 · 二进制文件");
+    expect(within(inventory).getByRole("columnheader", { name: "角色" })).toBeInTheDocument();
+    expect(within(inventory).getByText("主日志")).toBeInTheDocument();
+    expect(within(inventory).getByText("misc/notes.txt").closest("tr")).toHaveTextContent("仅通用分析");
   });
   it("shows file:line evidence without borrowing text from a different file", () => {
     const log = { ...initialState.logs[0], evidence: [{ ...initialState.logs[0].evidence[0], filePath: "device/b.log", lineNumbers: [2] }] };
