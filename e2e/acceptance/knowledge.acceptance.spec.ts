@@ -7,6 +7,7 @@ import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrow
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { openLogReportAction } from "./helpers/logAnalysis";
 import { loadCanonicalBindingPins } from "../../server/modules/parameter-bindings/drafts";
 import { insertReloadRunTarget } from "../../server/modules/dts-reload/repository";
 
@@ -914,12 +915,10 @@ test.describe("Knowledge base browser acceptance", () => {
     await signInBrowserAsUser(page, editorUserId, editorEmail, editorName, "/logs");
     const history = page.getByRole("complementary", { name: "历史日志记录" });
     await history.getByRole("button", { name: new RegExp(seeded.fileName.slice(0, 40)) }).click();
-    await page.getByRole("tab", { name: "相关", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "报告", exact: true })).toHaveAttribute("aria-selected", "true");
 
     // Distil the conclusion into a knowledge draft and hand off to /knowledge.
-    const distilButton = page.getByRole("button", { name: "沉淀为知识" });
-    await expect(distilButton).toBeEnabled();
-    await distilButton.click();
+    await openLogReportAction(page, "沉淀为知识");
     await page.waitForURL(/\/knowledge\?entryId=/);
     const entryId = new URL(page.url()).searchParams.get("entryId")!;
     expect(entryId).toBeTruthy();
@@ -1150,15 +1149,16 @@ test.describe("Knowledge base browser acceptance", () => {
     expect(apiIds).not.toContain(archived.id);
     expect(["fts_only", "semantic_fts"]).toContain(apiBody.retrieval.mode);
 
-    // Browser: the completed analysis shows the related-knowledge section with
-    // the honest retrieval caption; draft and archived titles never render.
+    // Browser: related knowledge stays in the report without retrieval-mode
+    // chrome; the API retains mode evidence, and unpublished titles never render.
     await signInBrowserAsUser(page, editorUserId, editorEmail, editorName, "/logs");
     const history = page.getByRole("complementary", { name: "历史日志记录" });
     await history.getByRole("button", { name: new RegExp(seeded.fileName.slice(0, 40)) }).click();
 
     const section = page.getByRole("region", { name: "相关知识" });
     await expect(section).toBeVisible();
-    await expect(section.getByText(/检索模式:/)).toBeVisible();
+    await expect(page.getByRole("tab", { name: "报告", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(section.getByText(/检索模式[:：]/)).toHaveCount(0);
     const entryLink = section.getByRole("button", { name: relatedTitle });
     await expect(entryLink).toBeVisible();
     await expect(section.getByText(draftTitle)).toHaveCount(0);

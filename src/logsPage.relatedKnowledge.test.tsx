@@ -49,7 +49,7 @@ function renderStandaloneLogsPage(options: {
 }
 
 describe("LogsPage · 相关知识", () => {
-  it.each(["history", "deep-link"])("Complete 日志从 %s 展示相关已发布知识与检索模式说明,深链进入 /knowledge 条目详情", async (source) => {
+  it.each(["history", "deep-link"])("Complete 日志从 %s 在报告中展示相关已发布知识,深链进入条目详情", async (source) => {
     const log = initialState.logs.find((record) => record.fileName.includes("usb_pd_negotiation"))!;
     renderLogsPage(source === "deep-link" ? `/logs?logId=${log.id}` : "/logs");
     if (source === "history") selectCompleteLog();
@@ -58,13 +58,12 @@ describe("LogsPage · 相关知识", () => {
     const section = await screen.findByRole("region", { name: "相关知识" });
     expect(section).toBeVisible();
     const entryLink = await within(section).findByRole("button", { name: /PD 快充协议兼容性排查手册/ });
-    expect(within(section).getByText(/仅全文检索/)).toBeInTheDocument();
+    expect(within(section).queryByText(/检索模式|仅全文检索/)).not.toBeInTheDocument();
     // Draft and archived fixtures never appear (published-only invariant).
     expect(within(section).queryByText(/小泽沉淀/)).not.toBeInTheDocument();
     expect(within(section).queryByText(/已归档/)).not.toBeInTheDocument();
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "相关", exact: true }), { key: "Enter" });
-    expect(screen.getByRole("tab", { name: "相关", selected: true })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "相关" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "相关知识" })).toBeVisible();
 
     fireEvent.click(entryLink);
@@ -102,6 +101,8 @@ describe("LogsPage · 相关知识", () => {
 
     const section = await screen.findByRole("region", { name: "相关知识" });
     expect(await within(section).findByText("暂无相关知识")).toBeInTheDocument();
+    expect(within(section).queryByText(/检索模式|仅全文检索/)).not.toBeInTheDocument();
+    expect(within(section).getByText("暂无相关知识").tagName).toBe("P");
   });
 
   it("加载失败时展示错误态与重试入口", async () => {

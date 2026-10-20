@@ -22,7 +22,7 @@ describe("skill sample pane", () => {
     expect(pane.children).toHaveLength(2);
     expect(pane.children[1]).toHaveTextContent("two");
   });
-  it.each([[0, "0 B"], [13005, "12.7 KiB"], [2097152, "2.0 MiB"]])("formats %s bytes with the shared binary units", async (sizeBytes, size) => {
+  it.each([[0, "0 B"], [13005, "12.7 KB"], [2097152, "2.0 MB"]])("formats %s bytes with the shared binary units", async (sizeBytes, size) => {
     render(<SkillSamplePane skillId="skill-charging" apiMode canEdit repository={{
       getSkillSample: vi.fn().mockResolvedValue({ ...mockSkillSample, sizeBytes, lineCount: 400 })
     }} />);

@@ -47,7 +47,7 @@ const error = compileLogPattern("\\b(ERROR|ERR|FATAL)\\b", "i");
 const kernelTimestamp = compileLogPattern("^\\s*(?:<[0-9]+>)?\\[\\s*([0-9]+(?:\\.[0-9]+)?)\\]");
 const signatureNames: Record<string, string> = { "kernel panic": "Kernel panic", oops: "Oops", "bug:": "BUG:",
   watchdog: "watchdog", anr: "ANR", "fatal exception": "FATAL EXCEPTION", segfault: "segfault", assert: "assert", assertion: "assert" };
-const templateToken = compileLogPattern("([A-Za-z_][A-Za-z0-9_]*(?:_id|Id)|id)=([^\\s]+)|([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(0[xX][0-9a-fA-F]+|\\b[0-9a-fA-F]{12,}\\b)|((?:[A-Za-z]:\\\\|/)[^\\s]+)|[+-]?[0-9]+(?:\\.[0-9]+)?");
+const templateToken = compileLogPattern("([A-Za-z_][A-Za-z0-9_]*(?:_id|Id)|id)=([^\\s]+)|([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(0[xX][0-9a-fA-F]+|\\b[0-9a-fA-F]{12,}\\b)|((?:[A-Za-z]:\\\\|/)[^\\s]+)|([0-9]+/[0-9]+)|[+-]?[0-9]+(?:\\.[0-9]+)?");
 
 /** RE2 tokenization consumes each input once; placeholders are never rescanned. */
 export function normalizeLogTemplate(message: string): string {
@@ -55,7 +55,7 @@ export function normalizeLogTemplate(message: string): string {
   const input = message.slice(0, LOG_SIGNAL_LIMITS.lineChars);
   let previous = 0;
   for (const match of templateToken.matchAll(input)) {
-    parts.push(input.slice(previous, match.index), match[1] ? `${match[1]}=<id>` : match[3] ? "<id>" : match[4] ? "<hex>" : match[5] ? "<path>" : "<n>");
+    parts.push(input.slice(previous, match.index), match[1] ? `${match[1]}=<id>` : match[3] ? "<id>" : match[4] ? "<hex>" : match[5] ? "<path>" : match[6] ? "<n>/<n>" : "<n>");
     previous = match.index + match[0].length;
   }
   parts.push(input.slice(previous));

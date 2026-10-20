@@ -228,16 +228,15 @@ describe("upload skill recommendation", () => {
     expect(repository.uploadLog).toHaveBeenCalled();
   });
 
-  it("shows the recorded routing decision and its reasons in report metadata", async () => {
-    const record = { ...initialState.logs[0], skillSelection: { mode: "recommended" as const,
+  it("shows the recorded skill and routing decision in the report header", async () => {
+    const record = { ...initialState.logs[0], status: "Complete" as const, stage: "report" as const, skillSelection: { mode: "recommended" as const,
       reasons: recommendation.recommendations[0].reasons } };
     const repository = renderApiLogs(createLogRepository({ listLogs: vi.fn().mockResolvedValue([record]),
       getLog: vi.fn().mockResolvedValue(record) }));
     await waitForApiRuntime(repository);
-    fireEvent.keyDown(screen.getByRole("tab", { name: "元数据" }), { key: "Enter" });
-    expect(screen.getByText("技能选择")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "元数据" })).not.toBeInTheDocument();
+    expect(screen.getByText("技能：充电诊断 v1")).toBeInTheDocument();
     expect(screen.getByText("自动推荐")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "技能选择理由" })).toHaveTextContent("kernel.log适用文件规则 **/kernel.log（充电）");
     expect(screen.queryByText("skill glob **/kernel.log (充电)")).not.toBeInTheDocument();
   });
 
@@ -282,12 +281,12 @@ describe("upload skill recommendation", () => {
   });
 
   it("renders historical reason records without showing raw implementation details", async () => {
-    const record = { ...initialState.logs[0], skillSelection: { mode: "recommended" as const,
+    const record = { ...initialState.logs[0], status: "Complete" as const, stage: "report" as const, skillSelection: { mode: "recommended" as const,
       reasons: [{ kind: "pattern" as const, file: "old.log", detail: "signal internal-id: raw pattern" }] } };
     const repository = renderApiLogs(createLogRepository({ listLogs: vi.fn().mockResolvedValue([record]), getLog: vi.fn().mockResolvedValue(record) }));
     await waitForApiRuntime(repository);
-    fireEvent.keyDown(screen.getByRole("tab", { name: "元数据" }), { key: "Enter" });
-    expect(screen.getByText("日志特征匹配")).toBeInTheDocument();
+    expect(screen.getByText("技能：充电诊断 v1")).toBeInTheDocument();
+    expect(screen.getByText("自动推荐")).toBeInTheDocument();
     expect(screen.queryByText("signal internal-id: raw pattern")).not.toBeInTheDocument();
   });
 
@@ -361,8 +360,8 @@ describe("LogsPage api upload wiring", () => {
     await waitForApiRuntime(repository);
     vi.useFakeTimers();
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "元数据" }), { key: "Enter" });
-    expect(screen.getByRole("tab", { name: "元数据" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(screen.getByRole("tab", { name: "信号" }), { key: "Enter" });
+    expect(screen.getByRole("tab", { name: "信号" })).toHaveAttribute("aria-selected", "true");
     openUploadDialog();
     chooseFile(file);
     setQuestion("why");
@@ -923,15 +922,22 @@ describe("LogsPage · 上传日志对话框", () => {
 });
 
 describe("LogsPage api feedback wiring", () => {
+  function renderFeedbackReport(submitFeedback: LogAnalysisRepository["submitFeedback"]) {
+    const log = { ...initialState.logs[0], status: "Complete" as const, stage: "report" as const };
+    return renderApiLogs(createLogRepository({ submitFeedback,
+      getLog: vi.fn().mockResolvedValue(log), listLogs: vi.fn().mockResolvedValue([log]) }));
+  }
+
   it("submits real feedback through logActions and closes only after success", async () => {
-    const submitFeedback = vi.fn().mockResolvedValue(undefined);
-    const repository = renderApiLogs(createLogRepository({ submitFeedback }));
+    const pending = deferred<void>();
+    const submitFeedback = vi.fn().mockReturnValue(pending.promise);
+    const repository = renderFeedbackReport(submitFeedback);
     await waitForApiRuntime(repository);
 
-    fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
-    const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
-    await selectControlOption(within(dialog).getByLabelText("置信度反馈"), "low");
-    fireEvent.change(within(dialog).getByLabelText("可能存在的问题"), {
+    fireEvent.click(screen.getByRole("button", { name: "没帮助" }));
+    const dialog = screen.getByRole("dialog", { name: "没帮助" });
+    expect(within(dialog).getByPlaceholderText("例如：根因判断错误、证据不足")).not.toBeRequired();
+    fireEvent.change(within(dialog).getByLabelText("补充说明（可选）"), {
       target: { value: "证据链缺少温控阈值来源" }
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
@@ -943,21 +949,23 @@ describe("LogsPage api feedback wiring", () => {
         note: "证据链缺少温控阈值来源"
       });
     });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "提交中…" })).toBeDisabled();
+    await act(async () => pending.resolve());
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "反馈分析质量" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "没帮助" })).not.toBeInTheDocument();
     });
-    expect(document.body).toHaveTextContent(/已提交 RPT-9092 的分析反馈/);
+    expect(toastWithText("已提交分析反馈")).toBeTruthy();
+    expect(screen.getByText("已反馈：没帮助")).toBeInTheDocument();
   });
 
-  it("maps a high confidence rating to helpful", async () => {
+  it("submits helpful immediately without opening a dialog", async () => {
     const submitFeedback = vi.fn().mockResolvedValue(undefined);
-    const repository = renderApiLogs(createLogRepository({ submitFeedback }));
+    const repository = renderFeedbackReport(submitFeedback);
     await waitForApiRuntime(repository);
 
-    fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
-    const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
-    await selectControlOption(within(dialog).getByLabelText("置信度反馈"), "high");
-    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+    fireEvent.click(screen.getByRole("button", { name: "有帮助" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(submitFeedback).toHaveBeenCalledWith({
@@ -965,19 +973,34 @@ describe("LogsPage api feedback wiring", () => {
         rating: "helpful"
       });
     });
+    expect(await screen.findByText("已反馈：有帮助")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "有帮助" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("allows changing helpful to not helpful with no optional note", async () => {
+    const submitFeedback = vi.fn().mockResolvedValue(undefined);
+    const repository = renderFeedbackReport(submitFeedback);
+    await waitForApiRuntime(repository);
+    fireEvent.click(screen.getByRole("button", { name: "有帮助" }));
+    await screen.findByText("已反馈：有帮助");
+    fireEvent.click(screen.getByRole("button", { name: "没帮助" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "没帮助" })).getByRole("button", { name: "提交反馈" }));
+    await waitFor(() => expect(submitFeedback).toHaveBeenLastCalledWith({ logId: "log-active", rating: "not_helpful" }));
+    expect(await screen.findByText("已反馈：没帮助")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "没帮助" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps the feedback dialog open with an inline error when submission fails", async () => {
     const submitFeedback = vi.fn().mockRejectedValue(new Error("feedback api down"));
-    const repository = renderApiLogs(createLogRepository({ submitFeedback }));
+    const repository = renderFeedbackReport(submitFeedback);
     await waitForApiRuntime(repository);
 
-    fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
-    const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
+    fireEvent.click(screen.getByRole("button", { name: "没帮助" }));
+    const dialog = screen.getByRole("dialog", { name: "没帮助" });
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 
     await waitFor(() => expect(submitFeedback).toHaveBeenCalled());
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(logRuntimeFailureNotification);
-    expect(screen.getByRole("dialog", { name: "反馈分析质量" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "没帮助" })).toBeInTheDocument();
   });
 });

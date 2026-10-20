@@ -44,3 +44,10 @@ it("keeps historical evidence without a source location unchanged", () => {
   render(<SourceEvidence evidence={{ ...evidence, sourceLocation: undefined }} />);
   expect(screen.queryByRole("region", { name: "源码证据" })).not.toBeInTheDocument();
 });
+
+it("wraps the source citation without exposing its internal snapshot identifier", () => {
+  render(<SourceEvidence evidence={{ ...evidence, sourceVersionLabel: undefined }} />);
+  expect(screen.getByText("源码：drivers/thermal.c:9 · 已固定版本")).toHaveClass("break-all");
+  expect(screen.getByLabelText("源码证据")).toHaveClass("min-w-0");
+  expect(screen.queryByText(/snapshot-1/)).not.toBeInTheDocument();
+});

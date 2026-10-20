@@ -1,4 +1,3 @@
-import { selectControlOption } from "@/test/selectControlOption";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useReducer, useState } from "react";
 import userEvent from "@testing-library/user-event";
@@ -20,6 +19,7 @@ import { createApiClient } from "@/infrastructure/http/apiClient";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createTestAppPorts, createTestLogAnalysisRepository, renderApp } from "@/test/harness";
 import { reducer } from "@/application/state/appState";
+import { selectControlOption } from "@/test/selectControlOption";
 
 const userState = { ...initialState, activeRoleId: "user" };
 
@@ -43,9 +43,48 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   window.history.replaceState(null, "", "/");
+  localStorage.clear();
 });
 
 describe("LogsPage · Header", () => {
+  it("历史记录按上传时间倒序，搜索与状态筛选仅过滤列表", async () => {
+    const logs = [
+      { ...initialState.logs[0], id: "old", fileName: "旧记录.log", capturedAt: "2026-10-17T10:00:00Z", status: "Complete" as const },
+      { ...initialState.logs[0], id: "new", fileName: "新记录.log", capturedAt: "2026-10-19T10:00:00Z", status: "Processing" as const },
+      { ...initialState.logs[0], id: "failed", fileName: "失败.log", capturedAt: "2026-10-18T10:00:00Z", status: "Failed" as const }
+    ];
+    render(<LogsPage search="" state={{ ...userState, logs }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    const items = history.querySelectorAll(".history-item");
+    expect([...items].map((item) => item.querySelector("strong")?.textContent)).toEqual(["新记录.log", "失败.log", "旧记录.log"]);
+    expect(items[0]).not.toHaveTextContent("%");
+    expect(items[0].querySelector("time")?.textContent).toMatch(/^2026\/10\/19 \d{2}:\d{2}$/);
+    fireEvent.change(within(history).getByRole("searchbox", { name: "搜索日志记录" }), { target: { value: "记录" } });
+    expect(history.querySelectorAll(".history-item")).toHaveLength(2);
+    await selectControlOption(within(history).getByRole("combobox", { name: "日志状态" }), "Processing");
+    expect(history.querySelectorAll(".history-item")).toHaveLength(1);
+    expect(within(history).getByRole("button", { name: /新记录/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: logs[0].conclusion })).toBeInTheDocument();
+    fireEvent.change(within(history).getByRole("searchbox", { name: "搜索日志记录" }), { target: { value: "不存在" } });
+    expect(within(history).getByText("没有匹配的日志记录")).toBeInTheDocument();
+  });
+
+  it.each([true, false])("技能版本及选择方式在页头显示，管理员链接权限为 %s", (admin) => {
+    const log = { ...initialState.logs[1], logDomainId: "skill-1", logDomainName: "设备诊断", skillRevision: { id: "revision", number: 3 },
+      skillSelection: { mode: "recommended" as const, reasons: [] }, capturedAt: "2026-10-19T10:00:00Z", fileSizeMB: 0,
+      files: [{ path: "device.log", sizeBytes: 20 * 1024, lineCount: 1, encoding: "utf-8" as const, lossy: false, status: "analyzed" as const, skipReason: null }] };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined}
+      sessionPermissions={admin ? ["logs:admin-domains"] : ["logs:view"]} />);
+    const header = screen.getByRole("region", { name: log.conclusion });
+    expect(header).toHaveTextContent("技能：设备诊断 v3");
+    expect(header).toHaveTextContent("自动推荐");
+    expect(header).toHaveTextContent("1 个文件 / 20.0 KB");
+    expect(header).toHaveTextContent(/2026\/10\/19 \d{2}:\d{2}/);
+    if (admin) expect(within(header).getByRole("link", { name: "技能：设备诊断 v3" })).toHaveAttribute("href", "/log-admin/skills/skill-1");
+    else expect(within(header).queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByRole("tablist").textContent).toBe(admin ? "报告信号文件分析轨迹" : "报告信号文件");
+  });
+
   it("resumes a hydrated processing report without an upload and stops refreshing after completion", async () => {
     vi.useFakeTimers();
     const processing = { ...initialState.logs[0], status: "Processing" as const };
@@ -59,7 +98,7 @@ describe("LogsPage · Header", () => {
       return <LogsPage search="" state={state} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />;
     }
     render(<RestoredLogs />);
-    expect(screen.getByRole("heading", { name: "AI 正在分析..." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "正在分析…" })).toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(screen.getByRole("heading", { name: complete.conclusion })).toBeInTheDocument();
     expect(repository.uploadLog).not.toHaveBeenCalled();
@@ -155,7 +194,7 @@ describe("LogsPage · Header", () => {
     render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
     await userEvent.setup().click(screen.getByRole("tab", { name: "文件" }));
     const inventory = screen.getByRole("region", { name: "日志文件清单" });
-    expect(inventory).toHaveTextContent("device/a.log"); expect(inventory).toHaveTextContent("1.0 KiB");
+    expect(inventory).toHaveTextContent("device/a.log"); expect(inventory).toHaveTextContent("1.0 KB");
     expect(inventory).toHaveTextContent("12"); expect(inventory).toHaveTextContent("有损解码");
     expect(inventory).toHaveTextContent("已分析"); expect(inventory).toHaveTextContent("已跳过 · 二进制文件");
     expect(within(inventory).getByRole("columnheader", { name: "角色" })).toBeInTheDocument();
@@ -163,31 +202,32 @@ describe("LogsPage · Header", () => {
     expect(within(inventory).getByText("misc/notes.txt").closest("tr")).toHaveTextContent("仅通用分析");
   });
   it("shows file:line evidence without borrowing text from a different file", () => {
-    const log = { ...initialState.logs[0], evidence: [{ ...initialState.logs[0].evidence[0], filePath: "device/b.log", lineNumbers: [2] }] };
+    const log = { ...initialState.logs[0], status: "Complete" as const, evidence: [{ ...initialState.logs[0].evidence[0], filePath: "device/b.log", lineNumbers: [2] }] };
     render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
     expect(document.querySelector(".evidence-card__body code")).toHaveTextContent("device/b.log:2");
   });
   it("keeps upload available without presenting an empty installation as a failed analysis", () => {
     render(<LogsPage search="" state={{ ...userState, logs: [] }} dispatch={() => undefined} onNavigate={() => undefined} />);
     const task = screen.getByRole("region", { name: "日志任务区" });
-    expect(within(task).getByText("暂无日志记录，请上传日志。")).toBeInTheDocument();
+    expect(within(task).getByRole("heading", { name: "还没有日志" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(within(task).queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传新日志" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "上传日志" })).toBeEnabled();
   });
 
   it.each(["Complete", "Processing", "Failed"] as const)("keeps %s records in the navigator and their report in the task area", async (status) => {
     const log = initialState.logs.find((record) => record.status === status)!;
     window.history.replaceState(null, "", `/logs?logId=${log.id}`);
     render(<LogsPage search="" state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
-    const navigator = screen.getByRole("region", { name: "模块导航" });
+    const navigator = screen.getByRole("region", { name: "日志记录" });
     const task = screen.getByRole("region", { name: "日志任务区" });
     expect(within(navigator).getByRole("button", { name: new RegExp(log.fileName) })).toHaveAttribute("aria-pressed", "true");
-    expect(within(task).getByRole(status === "Failed" ? "alert" : "heading", { ...(status === "Failed" ? {} : { name: status === "Processing" ? "AI 正在分析..." : log.conclusion }) })).toBeInTheDocument();
+    expect(within(task).getByRole(status === "Failed" ? "alert" : "heading", { ...(status === "Failed" ? {} : { name: status === "Processing" ? "正在分析…" : log.conclusion }) })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传新日志" })).toBeEnabled();
-    await userEvent.click(screen.getByRole("button", { name: "收起模块导航" }));
-    expect(within(task).getByRole(status === "Failed" ? "alert" : "heading", { ...(status === "Failed" ? {} : { name: status === "Processing" ? "AI 正在分析..." : log.conclusion }) })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "收起日志记录" }));
+    expect(within(task).getByRole(status === "Failed" ? "alert" : "heading", { ...(status === "Failed" ? {} : { name: status === "Processing" ? "正在分析…" : log.conclusion }) })).toBeInTheDocument();
     expect(new URLSearchParams(window.location.search).get("logId")).toBe(log.id);
-    await userEvent.click(screen.getByRole("button", { name: "展开模块导航" }));
+    await userEvent.click(screen.getByRole("button", { name: "展开日志记录" }));
   });
 
   it("moves focus between auxiliary tabs before activation without changing the selected log", async () => {
@@ -197,25 +237,18 @@ describe("LogsPage · Header", () => {
     render(<LogsPage search="" state={userState} dispatch={() => undefined} onNavigate={() => undefined} />);
     const tabs = screen.getByRole("tablist", { name: "日志辅助信息" });
     const history = within(tabs).getByRole("tab", { name: "报告" });
-    const metadata = within(tabs).getByRole("tab", { name: "元数据" });
     const files = within(tabs).getByRole("tab", { name: "文件" });
     const signals = within(tabs).getByRole("tab", { name: "信号" });
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["报告", "信号", "文件"]);
     await user.click(history);
-    await user.keyboard("{ArrowRight}");
-    expect(files).toHaveFocus();
-    expect(history).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{ArrowRight}");
     expect(signals).toHaveFocus();
     expect(history).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{ArrowRight}");
-    expect(metadata).toHaveFocus();
-    expect(history).toHaveAttribute("aria-selected", "true");
+    expect(files).toHaveFocus();
     await user.keyboard("{Enter}");
-    const panel = screen.getByRole("tabpanel", { name: "元数据" });
-    expect(metadata).toHaveAttribute("aria-controls", panel.id);
-    expect(within(within(panel).getByRole("region", { name: "日志任务区" })).getByText(log.fileName)).toBeInTheDocument();
-    await user.keyboard("{End}{Enter}");
-    expect(screen.getByRole("tabpanel", { name: "相关" })).toHaveTextContent("没有找到关联日志。");
+    const panel = screen.getByRole("tabpanel", { name: "文件" });
+    expect(files).toHaveAttribute("aria-controls", panel.id);
     expect(new URLSearchParams(window.location.search).get("logId")).toBe(log.id);
   });
 
@@ -237,11 +270,13 @@ describe("LogsPage · Header", () => {
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
 
-    expect(screen.getByText("AI置信度")).toBeInTheDocument();
-    expect(screen.queryByText("置信度")).not.toBeInTheDocument();
+    expect(screen.getByText("置信度")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "分析置信度" })).toHaveAttribute("aria-valuenow", "88");
-    expect(screen.getByRole("button", { name: /生成参数修改请求/ })).toBeEnabled();
-    expect(screen.getByRole("list", { name: "分析流程" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看关联参数" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.getByRole("menuitem", { name: "生成参数修改请求" })).toBeEnabled();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("list", { name: "分析流程" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "原始日志" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "日志分析证据链" })).toBeInTheDocument();
   });
@@ -251,7 +286,9 @@ describe("LogsPage · Header", () => {
 
     render(<App initialAppState={userState} />);
 
-    expect(screen.getByRole("button", { name: /生成参数修改请求/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "更多" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "分析反馈" })).not.toBeInTheDocument();
   });
 
   it("Failed 日志结论卡替换为 ErrorAlert", async () => {
@@ -276,11 +313,11 @@ describe("LogsPage · Header", () => {
     const failedLog = initialState.logs.find((log) => log.status === "Failed")!;
     expect(summary).toHaveTextContent("日志处理失败");
     expect(summary).toHaveTextContent("在 日志解析 阶段失败");
+    expect(summary).not.toHaveTextContent("支持格式：");
     expect(within(summary).getByText(failedLog.fileName)).toBeInTheDocument();
-    expect(summary).toHaveTextContent(`${failedLog.fileSizeMB} MB`);
+    expect(summary).toHaveTextContent(`${failedLog.fileSizeMB.toFixed(1)} MB`);
     expect(summary).toHaveTextContent(failedLog.capturedAt);
     expect(summary).toHaveTextContent(failedLog.submittedBy);
-    expect(summary).toHaveTextContent(".log / .txt / .csv / .json");
     expect(screen.queryByRole("list", { name: "分析流程" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "分析结果" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "原始日志" })).not.toBeInTheDocument();
@@ -294,9 +331,9 @@ describe("LogsPage · Header", () => {
     render(<App initialAppState={userState} />);
 
     expect(document.querySelector(".log-timeline__step--current")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "分析结果" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "原始日志" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "日志分析证据链" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "分析结果" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "原始日志" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "日志分析证据链" })).not.toBeInTheDocument();
   });
 
   it("最新日志失败时保留选择，显示实际失败阶段而不切换到旧报告", () => {
@@ -311,42 +348,42 @@ describe("LogsPage · Header", () => {
     render(<LogsPage search="" state={{ ...userState, logs: [failedLog, completedLog] }} dispatch={() => undefined} onNavigate={() => undefined} />);
 
     const summary = screen.getByRole("alert");
-    expect(summary).toHaveTextContent("在 根因推断 阶段失败");
+    expect(summary).toHaveTextContent("日志处理失败");
     expect(summary).toHaveTextContent("分析未完成，未生成报告，请重试或重新上传。");
-    expect(summary).not.toHaveTextContent(".log / .txt / .csv / .json");
+    expect(summary).toHaveTextContent("在 根因推断 阶段失败");
+    expect(summary).not.toHaveTextContent("支持格式：");
     expect(summary).not.toHaveTextContent("Log analysis failed");
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     expect(within(history).getByRole("button", { name: /analysis\.log/ })).toHaveAttribute("aria-pressed", "true");
     expect(within(history).getByRole("button", { name: /usb_pd_negotiation/ })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("格式失败的原因只提到一种格式时仍列出全部支持格式", () => {
+  it("保留服务端完整格式说明，不追加重复格式列表", () => {
+    const reason = "格式不支持，请上传 .log / .txt / .csv / .json 文本日志或 .zip / .tar / .tar.gz / .tgz / .gz 压缩包。";
     const failedLog = {
       ...initialState.logs.find((log) => log.status === "Failed")!,
-      failureReason: "请导出 .log 文本日志。"
+      failureReason: reason
     };
     render(<LogsPage search="" state={{ ...userState, logs: [failedLog] }} dispatch={() => undefined} onNavigate={() => undefined} />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(".log / .txt / .csv / .json");
+    const alert = screen.getByRole("alert");
+    expect(within(alert).getAllByText(reason)).toHaveLength(1);
+    expect(alert).toHaveTextContent(`在 日志解析 阶段失败 · ${reason}`);
+    expect(alert).not.toHaveTextContent("支持格式：");
   });
 
-  it("报告默认显示，切换元数据后历史导航仍可选择日志", async () => {
+  it("报告默认显示，切换文件后历史导航仍可选择日志", async () => {
     window.history.replaceState(null, "", "/logs");
-
     render(<App initialAppState={userState} />);
-
-    const auxPanel = screen.getByRole("complementary", { name: "历史日志记录" });
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
     expect(screen.getByRole("tab", { name: "报告", selected: true })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("tab", { name: "元数据" }));
-    const metadataPanel = screen.getByRole("tabpanel", { name: "元数据" });
-    const metadata = within(metadataPanel).getByRole("region", { name: "日志任务区" });
-    expect(within(metadata).getByText(/charging_thermal_trace/)).toBeInTheDocument();
-    expect(within(metadataPanel).getByText("ChargeLab_X01")).toBeInTheDocument();
-    await userEvent.click(within(auxPanel).getByRole("button", { name: /usb_pd_negotiation/ }));
-    expect(within(metadata).getByText(/usb_pd_negotiation/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "文件" }));
+    await userEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+    expect(screen.getByRole("tab", { name: "文件", selected: true })).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("logId")).toBe("log-auth");
   });
 
-  it("结论卡展示 [问 Agent 关于此结论] 按钮，并能打开小泽", () => {
+  it("更多菜单中的问 Agent 能打开小泽", async () => {
     window.history.replaceState(null, "", "/logs");
 
     render(
@@ -356,7 +393,9 @@ describe("LogsPage · Header", () => {
       </>
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /问 Agent/ }));
+    fireEvent.click(screen.getByRole("button", { name: /usb_pd_negotiation/ }));
+    await userEvent.click(screen.getByRole("button", { name: "更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "问 Agent" }));
 
     expect(screen.getByTestId("xiaoze-popup-layer")).toBeInTheDocument();
     expect(screen.getByText("小泽")).toBeInTheDocument();
@@ -369,28 +408,26 @@ describe("LogsPage · Header", () => {
 
     render(<App initialAppState={userState} />);
 
-    const conclusionCard = screen.getByRole("region", { name: "AI 正在分析..." });
+    const conclusionCard = screen.getByRole("region", { name: "正在分析…" });
     expect(conclusionCard).not.toHaveTextContent("charging_thermal_trace_20260504.log");
     expect(conclusionCard).not.toHaveTextContent("根因推断");
-    expect(conclusionCard).not.toHaveTextContent("10:24:05");
+    expect(conclusionCard).toHaveTextContent("10:24:05");
     expect(conclusionCard).not.toHaveTextContent("ChargeLab_X01");
   });
 
-  it("每份日志可通过弹窗反馈置信度和可能问题", async () => {
+  it("二元反馈可立即提交有帮助，再改为带可选说明的没帮助", async () => {
     window.history.replaceState(null, "", "/logs");
-
     render(<App initialAppState={userState} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
-
-    const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
-    expect(within(dialog).getByText(/charging_thermal_trace/)).toBeInTheDocument();
-    await selectControlOption(within(dialog).getByLabelText("置信度反馈"), "low");
-    fireEvent.change(within(dialog).getByLabelText("可能存在的问题"), { target: { value: "证据链缺少温控阈值来源" } });
+    fireEvent.click(screen.getByRole("button", { name: /usb_pd_negotiation/ }));
+    fireEvent.click(screen.getByRole("button", { name: "有帮助" }));
+    expect(await screen.findByText("已反馈：有帮助")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "没帮助" }));
+    const dialog = screen.getByRole("dialog", { name: "没帮助" });
+    fireEvent.change(within(dialog).getByLabelText("补充说明（可选）"), { target: { value: "证据链缺少温控阈值来源" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
-
-    expect(screen.queryByRole("dialog", { name: "反馈分析质量" })).not.toBeInTheDocument();
-    expect(screen.getByText(/已记录 RPT-9092 的分析反馈/)).toBeInTheDocument();
+    expect(await screen.findByText("已反馈：没帮助")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("切换日志时 Live Region 播报文件名和状态", () => {
@@ -408,6 +445,15 @@ describe("LogsPage · Header", () => {
 describe("LogsPage · 分析来源与降级标注", () => {
   const completedTemplate = initialState.logs.find((log) => log.status === "Complete")!;
 
+  it("没有使用源码快照时隐藏源码芯片", () => {
+    render(<LogsPage search="" state={{ ...userState, logs: [{ ...completedTemplate,
+      sourceSnapshotSelection: "none", sourceSnapshot: undefined
+    }] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(provenance).not.toHaveTextContent("源码");
+    expect(provenance).toHaveTextContent("AI 分析");
+  });
+
   it("shows the selected source snapshot, requested version and unmatched-label fallback", () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={{ ...userState, logs: [{ ...completedTemplate,
@@ -415,10 +461,9 @@ describe("LogsPage · 分析来源与降级标注", () => {
       sourceSnapshotSelection: "default" as const, requestedSourceVersion: "firmware-unknown"
     }] }} />);
     const provenance = screen.getByTestId("analysis-provenance");
-    expect(provenance).toHaveTextContent("源码：默认快照 v2.4.0 · 请求版本 firmware-unknown");
+    expect(provenance).toHaveTextContent("源码 v2.4.0");
     expect(provenance).not.toHaveTextContent("snapshot-default");
     expect(provenance).not.toHaveTextContent("就绪");
-    expect(within(provenance).getByTitle("snapshot-default")).toHaveTextContent("源码：默认快照 v2.4.0");
     expect(provenance).toHaveTextContent("未找到源码版本 firmware-unknown；已使用默认快照。");
   });
 
@@ -429,9 +474,9 @@ describe("LogsPage · 分析来源与降级标注", () => {
       sourceSnapshotSelection: "matched_version" as const, requestedSourceVersion: "v2.4.0"
     }] }} />);
     const provenance = screen.getByTestId("analysis-provenance");
-    expect(provenance).toHaveTextContent("源码：版本匹配 v2.4.0 · 索引中 · 请求版本 v2.4.0");
+    expect(provenance).toHaveTextContent("源码 v2.4.0");
+    expect(provenance).not.toHaveTextContent("索引中");
     expect(provenance).not.toHaveTextContent("snapshot-indexing");
-    expect(within(provenance).getByTitle("snapshot-indexing")).toBeInTheDocument();
     expect(provenance).not.toHaveTextContent("未找到源码版本");
   });
 
@@ -457,10 +502,10 @@ describe("LogsPage · 分析来源与降级标注", () => {
     render(<App initialAppState={degradedState} />);
 
     const provenance = screen.getByTestId("analysis-provenance");
-    expect(within(provenance).getByRole("status")).toHaveTextContent("降级分析 · 规则回退");
+    expect(provenance).toHaveTextContent("规则回退");
     expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
-    expect(provenance).toHaveTextContent("技能 charging-power · v3");
-    expect(screen.getByText("规则评分")).toBeInTheDocument();
+    expect(provenance).toHaveTextContent("技能：charging-power v3");
+    expect(screen.getByText("置信度")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();
   });
 
@@ -484,11 +529,11 @@ describe("LogsPage · 分析来源与降级标注", () => {
     render(<App initialAppState={agentState} />);
 
     const provenance = screen.getByTestId("analysis-provenance");
-    expect(provenance).toHaveTextContent("Agent 分析");
-    expect(provenance).toHaveTextContent("实际检索的知识修订（1）");
-    expect(provenance).toHaveTextContent("条目 retrieved-entry · 修订 retrieved-revision");
+    expect(provenance).toHaveTextContent("AI 分析");
+    expect(provenance).not.toHaveTextContent("retrieved-entry");
+    expect(provenance).not.toHaveTextContent("retrieved-revision");
     expect(provenance).not.toHaveTextContent("降级分析");
-    expect(screen.getByText("模型自估")).toBeInTheDocument();
+    expect(screen.getByText("置信度")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();
   });
 
@@ -505,8 +550,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
 
     render(<App initialAppState={legacyState} />);
 
-    expect(screen.queryByTestId("analysis-provenance")).not.toBeInTheDocument();
-    expect(screen.getByText("AI置信度")).toBeInTheDocument();
+    expect(screen.getByTestId("analysis-provenance")).toHaveTextContent("通用分析");
+    expect(screen.getByText("置信度")).toBeInTheDocument();
     expect(screen.queryByText("模型自估")).not.toBeInTheDocument();
     expect(screen.queryByText("规则评分")).not.toBeInTheDocument();
   });
@@ -531,9 +576,9 @@ describe("LogsPage · 分析来源与降级标注", () => {
     render(<App initialAppState={earlyConvergedState} />);
 
     const provenance = screen.getByTestId("analysis-provenance");
-    expect(within(provenance).getByRole("status")).toHaveTextContent("降级分析 · 提前收敛");
+    expect(provenance).toHaveTextContent("提前收敛");
     expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
     expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
-    expect(screen.getByText("模型自估")).toBeInTheDocument();
+    expect(screen.getByText("置信度")).toBeInTheDocument();
   });
 });

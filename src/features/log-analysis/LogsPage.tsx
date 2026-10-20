@@ -24,26 +24,20 @@ import type { ParameterRepository, ProjectSummary } from "@/application/ports/Pa
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { LogDomain, LogSkillRecommendationReason } from "@/domain/logs/types";
-import { isSupportedLogUploadFileName, mockLogUploadAccept, supportedTextLogExtensions } from "@/domain/logs/uploadExtensions";
+import { isSupportedLogUploadFileName, mockLogUploadAccept } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { formatBytes } from "@/domain/format/formatBytes";
+import { formatLogDateTime } from "@/domain/format/formatDateTime";
+import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { classifyAnalysisDegradation } from "@/domain/logs/analysisProvenance";
-import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
-  BookPlus,
-  Bot,
   Check,
-  Copy,
-  Download,
   FileText,
   ListChecks,
-  MessageSquareText,
-  RotateCcw,
-  Sparkles,
   Upload,
   X
 } from "lucide-react";
@@ -79,7 +73,7 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-type LogsAuxTab = "report" | "files" | "signals" | "trace" | "metadata" | "related";
+type LogsAuxTab = "report" | "files" | "signals" | "trace";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 
 function createEmptyLogRecord(): LogRecord {
@@ -130,6 +124,13 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [feedbackRatings, setFeedbackRatings] = useState<Record<string, "helpful" | "not_helpful">>({});
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("all");
+  const historyLogs = useMemo(() => [...state.logs].sort((a, b) =>
+    new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime()).filter((log) =>
+    log.fileName.toLocaleLowerCase().includes(historySearch.trim().toLocaleLowerCase())
+    && (historyStatus === "all" || log.status === historyStatus)), [state.logs, historySearch, historyStatus]);
   const [selectedAuxTab, setAuxTab] = useState<LogsAuxTab>("report");
   const auxTab = selectedAuxTab === "trace" && !canViewTrace ? "report" : selectedAuxTab;
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
@@ -285,7 +286,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [auxTab, focusedSignalLine]);
 
   useEffect(() => {
-    setLiveMessage(hasActiveLog ? `已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${formatPercent(activeLog.confidence)}` : "暂无日志记录，请上传日志。");
+    setLiveMessage(hasActiveLog ? `已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}${activeLog.status === "Complete" ? `，置信度 ${formatPercent(activeLog.confidence)}` : ""}` : "暂无日志记录，请上传日志。");
   }, [activeLog.confidence, activeLog.fileName, activeLog.id, activeLog.status, hasActiveLog]);
 
   useEffect(() => {
@@ -372,7 +373,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       `- 状态：${logStatusLabels[activeLog.status]}`,
       `- 严重度：${SEVERITY_LABELS[activeLog.severity]}`,
       `- 置信度：${formatPercent(activeLog.confidence)}`,
-      `- 采集时间：${activeLog.capturedAt}`,
+      `- 上传时间：${formatLogDateTime(activeLog.capturedAt)}`,
       "",
       "## 结论",
       activeLog.conclusion,
@@ -447,6 +448,21 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [activeLog.id, dispatch, distilPending, hasActiveLog, knowledgeRepository, onNavigate]);
 
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
+  const submitFeedback = async (log: LogRecord, rating: "helpful" | "not_helpful", note?: string) => {
+    if (feedbackPending) return;
+    setFeedbackPending(true);
+    setFeedbackError(null);
+    try {
+      await logActions?.submitFeedback({ logId: log.id, rating, ...(note ? { note } : {}) });
+      setFeedbackRatings((current) => ({ ...current, [log.id]: rating }));
+      setFeedbackLogId(null);
+      dispatch({ type: "ADD_NOTIFICATION", message: "已提交分析反馈" });
+    } catch (error) {
+      setFeedbackError(presentError(error, "反馈提交失败，请重试。"));
+    } finally {
+      setFeedbackPending(false);
+    }
+  };
   const openUploadDialog = useCallback(() => setUploadDialogOpen(true), []);
 
   useEffect(() => {
@@ -502,45 +518,44 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       <div role="status" aria-live="polite" aria-label="日志切换状态" className="sr-only" data-testid="log-live-region">
         {liveMessage}
       </div>
-      <LogsPageHeader onNavigate={onNavigate} />
-      <NavigatorWorkbench
+      <LogsPageHeader />
+      {hasActiveLog ? <NavigatorWorkbench
         pageKey="logs"
-        navigatorLabel="模块导航"
+        navigatorLabel="日志记录"
         taskLabel="日志任务区"
-        taskState={!hasActiveLog ? { kind: "empty", message: "暂无日志记录，请上传日志。" } : undefined}
-        panelId={`logs-aux-${auxTab}`}
-        tabId={`logs-aux-tab-${auxTab}`}
-        toolbar={<ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
+        panelId={hasActiveLog ? `logs-aux-${auxTab}` : undefined}
+        tabId={hasActiveLog ? `logs-aux-tab-${auxTab}` : undefined}
+        toolbar={hasActiveLog ? <ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
           onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
-          items={([["report", "报告"], ["files", "文件"], ["signals", "信号"], ["trace", "分析轨迹"], ["metadata", "元数据"], ["related", "相关"]] as const)
+          items={([["report", "报告"], ["signals", "信号"], ["files", "文件"], ["trace", "分析轨迹"]] as const)
             .filter(([value]) => value !== "trace" || canViewTrace)
-            .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} />}
-        primaryAction={<button className="button primary" type="button" onClick={openUploadDialog}>
+            .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} /> : undefined}
+        primaryAction={hasActiveLog ? <Button onClick={openUploadDialog}>
           <Upload size={16} />上传新日志
-        </button>}
+        </Button> : undefined}
         navigator={<aside className="logs-aux-panel" aria-label="历史日志记录">
+          {state.logs.length ? <div className="logs-history-filters">
+            <SearchField value={historySearch} onValueChange={setHistorySearch} ariaLabel="搜索日志记录" placeholder="搜索文件名" />
+            <SelectControl ariaLabel="日志状态" value={historyStatus} onValueChange={setHistoryStatus}
+              options={[{ value: "all", label: "全部" }, { value: "Complete", label: "已完成" }, { value: "Processing", label: "处理中" }, { value: "Failed", label: "失败" }]} />
+          </div> : null}
           <div className="history-panel">
-            {state.logs.length ? state.logs.map((log) => (
+            {historyLogs.map((log) => (
               <button aria-pressed={log.id === activeLog.id} className={log.id === activeLog.id ? "history-item active" : "history-item"}
                 key={log.id} type="button" onClick={() => setSelectedLogId(log.id)}>
                 <strong title={log.fileName}>{log.fileName}</strong>
-                <span className="logs-history-status">{logStatusLabels[log.status]} · {formatPercent(log.confidence)}</span>
+                <span className="logs-history-status"><span className="analysis-provenance__badge">{logStatusLabels[log.status]}</span></span>
+                <time>{formatLogDateTime(log.capturedAt)}</time>
               </button>
-            )) : <EmptyState text="暂无日志记录，请上传日志。" />}
+            ))}
+            {state.logs.length > 0 && !historyLogs.length ? <p>没有匹配的日志记录</p> : null}
           </div>
         </aside>}
       >
-      {auxTab === "trace" ? (canViewTrace ? <LogTraceTab key={`${activeLog.id}:${activeLog.updatedAtIso}`} logId={activeLog.id} analysis={activeLog} repository={logRepository}
-        onOpenLine={(file, line) => setViewer({ file, lines: [line] })} /> : null)
-        : auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length}
-        allFilesAvailable={Boolean(logRepository?.getLogLines)}
-        onAnchor={(anchor) => {
-          if (logRepository?.getLogLines) { setViewer({ file: anchor.file, lines: [anchor.line] }); return; }
-          setSearchQuery(""); setFocusedSignalLine(anchor.line); setAuxTab("report");
-        }} />
-        : auxTab === "files" ? <LogFilesTable log={activeLog} /> : auxTab !== "metadata" ? <div className="logs-v2-main">
-        {auxTab === "report" || activeLog.status === "Complete" ? <LogConclusionCard
+      {hasActiveLog ? <LogConclusionCard
           log={activeLog}
+          canViewSkill={canViewTrace}
+          onNavigate={onNavigate}
           onAskAgent={onAskAgent}
           onCopyLink={onCopyLink}
           onDistil={canDistil ? onDistil : undefined}
@@ -553,23 +568,39 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           } : undefined}
           casePending={casePending}
           onExport={onExport}
-          onFeedback={() => setFeedbackLogId(activeLog.id)}
+          feedbackRating={feedbackRatings[activeLog.id]}
+          feedbackPending={feedbackPending}
+          feedbackError={selectedFeedbackLog ? null : feedbackError}
+          onFeedback={(rating) => { setFeedbackError(null); if (rating === "helpful") void submitFeedback(activeLog, rating); else setFeedbackLogId(activeLog.id); }}
           onPrimary={onPrimary}
-          relatedParameterLocated={Boolean(logActions && activeLog.relatedParameterId && activeLog.relatedParameterProjectId)}
+          relatedParameterLocated={Boolean(activeLog.relatedParameterId && (activeLog.relatedParameterProjectId || !logActions))}
           relatedParameterUnlocated={relatedParameterUnlocated}
           onRetry={activeLog.status === "Failed" ? openUploadDialog : handleRetryLog}
         /> : null}
-        {auxTab === "report" ? (activeLog.status !== "Failed" || !hasActiveLog ? (
+      {!hasActiveLog ? <div className="logs-empty-state"><h2>还没有日志</h2><p>支持文本日志或压缩包</p>
+        <Button onClick={openUploadDialog}>上传日志</Button></div> : auxTab === "trace" ? (canViewTrace ? <LogTraceTab key={`${activeLog.id}:${activeLog.updatedAtIso}`} logId={activeLog.id} analysis={activeLog} repository={logRepository}
+        onOpenLine={(file, line, lines) => setViewer({ file, lines: lines ?? [line] })} /> : null)
+        : auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length} fileCount={activeLog.files?.length || 1}
+        allFilesAvailable={Boolean(logRepository?.getLogLines)}
+        onAnchor={(anchor) => {
+          if (logRepository?.getLogLines) { setViewer({ file: anchor.file, lines: [anchor.line] }); return; }
+          setSearchQuery(""); setFocusedSignalLine(anchor.line); setAuxTab("report");
+        }} />
+        : auxTab === "files" ? <LogFilesTable log={activeLog} /> : <div className="logs-v2-main">
+
+        {activeLog.status !== "Failed" ? (
           <>
-            <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
+            {activeLog.status === "Processing" ? <LogStageTimeline stage={activeLog.stage} status={activeLog.status} /> : null}
+            {activeLog.status === "Complete" ? <>
             <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
-              <PanelHeader title="分析结果" meta={logStatusLabels[activeLog.status]} />
+              <PanelHeader title="分析结果" />
               {(activeLog.files?.filter((file) => file.status === "analyzed").length ?? 0) > 1
                 ? <p className="px-3 text-sm text-muted-foreground">当前原始日志：{rawFilePath}；证据按各自文件与行号定位。</p> : null}
-              {rawFile && activeLog.rawLines.length < rawFile.lineCount
+              {rawFile && activeLog.rawLines.length > 0 && activeLog.rawLines.length < rawFile.lineCount
                 ? <p className="px-3 text-sm text-muted-foreground">原始日志预览：前 {activeLog.rawLines.length} 行，共 {rawFile.lineCount} 行。点击证据或信号查看更多上下文。</p> : null}
               <div className="logs-v2-split">
                 <RawLogViewer
+                  key={activeLog.id}
                   activeMatchIndex={activeMatchIndex}
                   evidenceByLine={evidenceByLine}
                   focusedEvidenceId={focusedEvidenceId}
@@ -598,17 +629,20 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
                 />
               </div>
             </section>
+            </> : null}
           </>
-        ) : null) : <EmptyState text="没有找到关联日志。" />}
+        ) : null}
         {hasActiveLog && activeLog.status === "Complete" && knowledgeRepository && knowledgeCapability?.canView ? (
           <RelatedKnowledgeSection logId={activeLog.id} repository={knowledgeRepository} onNavigate={onNavigate} />
         ) : null}
-      </div> : <LogMetadata log={activeLog} />}
-      </NavigatorWorkbench>
-      {casePrefill ? <AnalysisCaseDialog title="存为测试用例" initial={casePrefill} availableFiles={casePrefill.files}
+      </div>}
+      </NavigatorWorkbench> : <section className="logs-empty-state" aria-label="日志任务区">
+        <h2>还没有日志</h2><p>支持文本日志或压缩包</p><Button onClick={openUploadDialog}>上传日志</Button>
+      </section>}
+      {casePrefill ? <AnalysisCaseDialog title="存为分析用例" initial={casePrefill} availableFiles={casePrefill.files}
         originalUploads={casePrefill.originalUploads} sourceDegradation={casePrefill.sourceDegradation} onClose={() => setCasePrefill(null)} onSave={async (input) => {
         await logRepository!.createAnalysisCase!(casePrefill.skillId, { ...input, sourceRecordId: casePrefill.sourceRecordId });
-        dispatch({ type: "ADD_NOTIFICATION", message: "已保存为分析测试用例" });
+        dispatch({ type: "ADD_NOTIFICATION", message: "已保存为分析用例" });
       }} /> : null}
       {uploadDialogOpen ? (
         <UploadLogDialog
@@ -632,39 +666,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
             setFeedbackLogId(null);
             setFeedbackError(null);
           }}
-          onSubmit={(confidence, issue) => {
-            const feedbackLog = selectedFeedbackLog;
-            if (!logActions) {
-              // Mock mode keeps the local acknowledgement through the global toast layer.
-              dispatch({
-                type: "ADD_NOTIFICATION",
-                message: `已记录 ${feedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
-              });
-              setFeedbackLogId(null);
-              return;
-            }
-            setFeedbackPending(true);
-            setFeedbackError(null);
-            void logActions
-              .submitFeedback({
-                logId: feedbackLog.id,
-                rating: confidence === "high" ? "helpful" : "not_helpful",
-                ...(issue ? { note: issue } : {})
-              })
-              .then(() => {
-                setFeedbackLogId(null);
-                dispatch({
-                  type: "ADD_NOTIFICATION",
-                  message: `已提交 ${feedbackLog.reportId} 的分析反馈`
-                });
-              })
-              .catch((error: unknown) => {
-                setFeedbackError(presentError(error, "反馈提交失败，请重试。"));
-              })
-              .finally(() => {
-                setFeedbackPending(false);
-              });
-          }}
+          onSubmit={(note) => { void submitFeedback(selectedFeedbackLog, "not_helpful", note); }}
         />
       ) : null}
       {/* Reducer notifications render through the global AppToastLayer in both runtime modes. */}
@@ -1005,35 +1007,18 @@ function UploadLogDialog({
   );
 }
 
-function LogsPageHeader({ onNavigate }: { onNavigate: (path: string) => void }) {
-  useTopBarActions(
-    <>
-      <button className="button subtle" type="button" onClick={() => onNavigate("/")}>
-        首页
-      </button>
-    </>,
-    [onNavigate]
-  );
+function LogsPageHeader() {
+  useTopBarActions(null, []);
 
   return null;
-}
-
-function SeverityBadge({ severity, processing }: { severity: LogRecord["severity"]; processing: boolean }) {
-  return (
-    <span className={classNames("severity-badge", `severity-badge--${severity.toLowerCase()}`, processing && "severity-badge--processing")}>
-      {processing ? "分析中" : SEVERITY_LABELS[severity]}
-    </span>
-  );
 }
 
 function ConfidenceBar({
   value,
   status,
-  analysisSource
 }: {
   value: number;
   status: LogRecord["status"];
-  analysisSource: LogRecord["analysisSource"];
 }) {
   const percent = normalizePercentValue(value);
   const tone = status === "Processing" ? "indeterminate" : percent >= 90 ? "high" : percent >= 70 ? "mid" : "low";
@@ -1041,7 +1026,7 @@ function ConfidenceBar({
   return (
     <div className={classNames("confidence-bar", `confidence-bar--${tone}`)}>
       <div>
-        <span>{confidenceCaption(analysisSource, "AI置信度")}</span>
+        <span>置信度</span>
         <strong>{formatPercent(value)}</strong>
       </div>
       <div aria-label="分析置信度" aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} role="progressbar">
@@ -1051,35 +1036,24 @@ function ConfidenceBar({
   );
 }
 
-function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
+function AnalysisProvenanceBadges({ log, canViewSkill, onNavigate }: { log: LogRecord; canViewSkill: boolean; onNavigate: (path: string) => void }) {
   const degraded = classifyAnalysisDegradation(log);
-  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName && !log.knowledgeRevisions?.length && !log.sourceSnapshotSelection) {
-    return null;
-  }
 
   return (
     <div className="analysis-provenance" data-testid="analysis-provenance">
       <div className="analysis-provenance__badges">
-        {degraded ? (
-          <span className="analysis-provenance__badge analysis-provenance__badge--degraded" role="status">
-            <AlertTriangle size={13} />
-            {degraded.label}
-          </span>
-        ) : log.analysisSource === "agent" ? (
-          <span className="analysis-provenance__badge analysis-provenance__badge--agent">
-            <Sparkles size={13} />
-            Agent 分析
-          </span>
-        ) : null}
-        {log.logDomainName ? (
-          <span className="analysis-provenance__badge analysis-provenance__badge--domain">技能 {log.logDomainName}{log.skillRevision ? ` · v${log.skillRevision.number}` : ""}</span>
-        ) : null}
-        {log.sourceSnapshotSelection ? (
-          <span className="analysis-provenance__badge analysis-provenance__badge--domain" title={log.sourceSnapshot?.id}>
-            源码：{log.sourceSnapshotSelection === "matched_version" ? "版本匹配" : log.sourceSnapshotSelection === "default" ? "默认快照" : "无快照"}
-            {log.sourceSnapshot?.versionLabel ? ` ${log.sourceSnapshot.versionLabel}` : ""}
-            {log.sourceSnapshot && log.sourceSnapshot.status !== "ready" ? ` · ${{ queued: "等待索引", indexing: "索引中", failed: "索引失败", archived: "已归档" }[log.sourceSnapshot.status]}` : ""}
-            {log.requestedSourceVersion ? ` · 请求版本 ${log.requestedSourceVersion}` : ""}
+        <span className="analysis-provenance__badge">{log.analysisSource === "rules-fallback" ? "规则回退" : "AI 分析"}</span>
+        {degraded && log.analysisSource !== "rules-fallback" ? <span className="analysis-provenance__badge">提前收敛</span> : null}
+        {log.logDomainName && log.skillSelection?.mode !== "generic" ? <>
+          {canViewSkill && log.logDomainId ? <a className="analysis-provenance__badge" href={`/log-admin/skills/${encodeURIComponent(log.logDomainId)}`}
+            onClick={(event) => { event.preventDefault(); onNavigate(`/log-admin/skills/${encodeURIComponent(log.logDomainId!)}`); }}>
+            技能：{log.logDomainName}{log.skillRevision ? ` v${log.skillRevision.number}` : ""}
+          </a> : <span className="analysis-provenance__badge">技能：{log.logDomainName}{log.skillRevision ? ` v${log.skillRevision.number}` : ""}</span>}
+          {log.skillSelection ? <span className="analysis-provenance__badge">{log.skillSelection.mode === "recommended" ? "自动推荐" : "手动选择"}</span> : null}
+        </> : <span className="analysis-provenance__badge">通用分析</span>}
+        {log.sourceSnapshot && log.sourceSnapshotSelection !== "none" ? (
+          <span className="analysis-provenance__badge analysis-provenance__badge--domain">
+            源码{log.sourceSnapshot.versionLabel ? ` ${log.sourceSnapshot.versionLabel}` : ""}
           </span>
         ) : null}
       </div>
@@ -1089,7 +1063,9 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
       {log.knowledgeRevisions?.length ? <details className="analysis-provenance__reason">
         <summary>实际检索的知识修订（{log.knowledgeRevisions.length}）</summary>
         <ul>{log.knowledgeRevisions.map(({ entryId, revisionId }) => <li key={`${entryId}:${revisionId}`}>
-          {revisionId ? `条目 ${entryId} · 修订 ${revisionId}` : `无权查看的条目 · ${entryId}`}
+          {revisionId ? <a href={`/knowledge?entryId=${encodeURIComponent(entryId)}`} onClick={(event) => {
+            event.preventDefault(); onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`);
+          }}>查看知识条目（已固定修订）</a> : <span>无权查看的条目</span>}
         </li>)}</ul>
       </details> : null}
       {degraded ? (
@@ -1100,98 +1076,73 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
 }
 
 function LogConclusionCard({
-  log,
-  onAskAgent,
-  onPrimary,
-  relatedParameterLocated = false,
-  relatedParameterUnlocated = false,
-  onExport,
-  onCopyLink,
-  onDistil,
-  distilPending = false,
-  onSaveCase,
-  casePending = false,
-  onFeedback,
-  onRetry
+  log, canViewSkill, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false,
+  relatedParameterUnlocated = false, onExport, onCopyLink, onDistil, distilPending = false,
+  onSaveCase, casePending = false, onFeedback, feedbackRating, feedbackPending, feedbackError, onRetry
 }: {
   log: LogRecord;
+  canViewSkill: boolean;
+  onNavigate: (path: string) => void;
   onAskAgent: () => void;
   onPrimary: () => void;
   relatedParameterLocated?: boolean;
   relatedParameterUnlocated?: boolean;
   onExport: () => void;
   onCopyLink: () => void;
-  /** Present only when the user holds knowledge:edit (distil-to-knowledge). */
   onDistil?: () => void;
   distilPending?: boolean;
   onSaveCase?: () => void;
   casePending?: boolean;
-  onFeedback: () => void;
+  onFeedback: (rating: "helpful" | "not_helpful") => void;
+  feedbackRating?: "helpful" | "not_helpful";
+  feedbackPending: boolean;
+  feedbackError: string | null;
   onRetry: () => void;
 }) {
-  if (log.status === "Failed") {
-    return <LogErrorAlert log={log} onRetry={onRetry} />;
-  }
-
-  return (
-    <section className="logs-conclusion-card" aria-labelledby="log-conclusion-title">
-      <div className="logs-conclusion-head">
-        <SeverityBadge severity={log.severity} processing={log.status === "Processing"} />
-        <div>
-          <h2 id="log-conclusion-title" className={log.status === "Processing" ? "logs-analyzing-anim" : undefined}>{log.status === "Processing" ? "AI 正在分析..." : log.conclusion}</h2>
-          <p>{log.status === "Complete" ? log.impact : log.conclusion}</p>
-        </div>
+  if (log.status === "Failed") return <LogErrorAlert log={log} onRetry={onRetry} />;
+  const complete = log.status === "Complete";
+  return <section className="logs-conclusion-card" aria-labelledby="log-conclusion-title">
+    <div className="logs-conclusion-head">
+      <span className="analysis-provenance__badge">{logStatusLabels[log.status]}</span>
+      <div>
+        <h2 id="log-conclusion-title" className={!complete ? "logs-analyzing-anim" : undefined}>{complete ? log.conclusion : "正在分析…"}</h2>
+        {complete ? <p>{log.impact}</p> : null}
       </div>
-      {log.status !== "Processing" ? <AnalysisProvenanceBadges log={log} /> : null}
-      {log.analysisQuestion ? (
-        <div className="logs-analysis-question">
-          <strong>用户问题</strong>
-          <span>{log.analysisQuestion}</span>
-        </div>
-      ) : null}
-      <ConfidenceBar value={log.confidence} status={log.status} analysisSource={log.analysisSource} />
+    </div>
+    <LogHeaderMeta log={log} />
+    {complete ? <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} onNavigate={onNavigate} /> : null}
+    {log.analysisQuestion ? <div className="logs-analysis-question"><strong>用户问题</strong><span>{log.analysisQuestion}</span></div> : null}
+    {complete ? <>
+      <ConfidenceBar value={log.confidence} status={log.status} />
       <div className="logs-conclusion-actions">
-        <button className="button primary" disabled={log.status !== "Complete" || relatedParameterUnlocated} type="button" onClick={onPrimary}>
-          <Sparkles size={16} />
-          {relatedParameterLocated ? "查看关联参数" : "生成参数修改请求"}
-        </button>
-        {relatedParameterUnlocated ? <p role="status">旧参数关联缺少可验证的项目与 Binding 定位，无法作为当前参数发起修改。</p> : null}
-        {onSaveCase ? <Button variant="outline" disabled={casePending} aria-busy={casePending} onClick={onSaveCase}>存为测试用例</Button> : null}
-        <button className="button subtle" disabled={log.status !== "Complete"} type="button" onClick={onExport}>
-          <Download size={16} />
-          导出报告
-        </button>
-        {onDistil ? (
-          <button
-            className="button subtle"
-            disabled={log.status !== "Complete" || distilPending}
-            aria-busy={distilPending || undefined}
-            type="button"
-            onClick={onDistil}
-          >
-            <BookPlus size={16} />
-            沉淀为知识
-          </button>
-        ) : null}
-        <button className="button danger" disabled={log.status !== "Complete"} type="button" onClick={onRetry}>
-          <RotateCcw size={16} />
-          重新分析
-        </button>
-        <button className="button subtle" type="button" onClick={onCopyLink}>
-          <Copy size={16} />
-          复制链接
-        </button>
-        <button className="button subtle" type="button" onClick={onAskAgent}>
-          <Bot size={16} />
-          问 Agent 关于此结论
-        </button>
-        <button className="button subtle" type="button" onClick={onFeedback}>
-          <MessageSquareText size={16} />
-          反馈分析质量
-        </button>
+        {relatedParameterLocated ? <Button onClick={onPrimary}>查看关联参数</Button> : null}
+        <RowActionMenu label="报告操作" triggerLabel="更多" items={[
+          { id: "export", label: "导出报告", onSelect: onExport },
+          { id: "copy", label: "复制链接", onSelect: onCopyLink },
+          { id: "ask", label: "问 Agent", onSelect: onAskAgent },
+          ...(onDistil ? [{ id: "distil", label: "沉淀为知识", disabled: distilPending, onSelect: onDistil }] : []),
+          ...(onSaveCase ? [{ id: "case", label: "存为分析用例", disabled: casePending, onSelect: onSaveCase }] : []),
+          ...(!relatedParameterLocated && !relatedParameterUnlocated ? [{ id: "parameter", label: "生成参数修改请求", onSelect: onPrimary }] : []),
+          { id: "retry", label: "重新分析", onSelect: onRetry }
+        ]} />
+        <div role="group" aria-label="分析反馈" className="logs-conclusion-actions">
+          {feedbackRating ? <span role="status">已反馈：{feedbackRating === "helpful" ? "有帮助" : "没帮助"}</span> : null}
+          <Button variant="outline" size="sm" disabled={feedbackPending} aria-pressed={feedbackRating === "helpful"} onClick={() => onFeedback("helpful")}>有帮助</Button>
+          <Button variant="outline" size="sm" disabled={feedbackPending} aria-pressed={feedbackRating === "not_helpful"} onClick={() => onFeedback("not_helpful")}>没帮助</Button>
+        </div>
       </div>
-    </section>
-  );
+      {feedbackError ? <p role="alert">{feedbackError}</p> : null}
+    </> : null}
+  </section>;
+}
+
+function LogHeaderMeta({ log }: { log: LogRecord }) {
+  const sizeBytes = log.files?.length ? log.files.reduce((sum, file) => sum + file.sizeBytes, 0) : log.fileSizeMB * 1024 ** 2;
+  return <p className="logs-header-meta">
+    {log.createdByCredentialId ? `通过集成凭据 ${log.createdByCredentialName ?? "上传"}` : log.submittedBy}
+    {" · "}{formatLogDateTime(log.capturedAt)}{" · "}
+    {log.files?.length || 1} 个文件 / {formatBytes(sizeBytes)}
+  </p>;
 }
 
 function LogAnalysisFeedbackDialog({
@@ -1205,15 +1156,14 @@ function LogAnalysisFeedbackDialog({
   pending?: boolean;
   error?: string | null;
   onClose: () => void;
-  onSubmit: (confidence: string, issue: string) => void;
+  onSubmit: (issue: string) => void;
 }) {
-  const [confidence, setConfidence] = useState("medium");
   const [issue, setIssue] = useState("");
 
   const submitFeedback = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
-    onSubmit(confidence, issue.trim());
+    onSubmit(issue.trim());
   };
 
   return (
@@ -1223,7 +1173,7 @@ function LogAnalysisFeedbackDialog({
         <div className="upload-dialog__header">
           <div>
             <h2 id={titleId}>
-              <strong>反馈分析质量</strong>
+              <strong>没帮助</strong>
             </h2>
             <p>{log.fileName}</p>
           </div>
@@ -1231,18 +1181,13 @@ function LogAnalysisFeedbackDialog({
             <X size={18} />
           </button>
         </div>
-        <label className="upload-question-field" htmlFor="log-feedback-confidence">
-          <span>置信度反馈</span>
-          <SelectControl id="log-feedback-confidence" ariaLabel="置信度反馈" value={confidence} disabled={pending} onValueChange={setConfidence}
-            options={[{ value: "high", label: "高：判断可信" }, { value: "medium", label: "中：需要复核" }, { value: "low", label: "低：可能误判" }]} />
-        </label>
         <label className="upload-question-field" htmlFor="log-feedback-issue">
-          <span>可能存在的问题</span>
+          <span>补充说明（可选）</span>
           <textarea
             id="log-feedback-issue"
             value={issue}
-            placeholder="例如：证据链不足、根因误判、缺少关键日志片段"
-            rows={4}
+            placeholder="例如：根因判断错误、证据不足"
+            rows={3}
             disabled={pending}
             onChange={(event) => setIssue(event.target.value)}
           />
@@ -1273,29 +1218,16 @@ function LogErrorAlert({ log, onRetry }: { log: LogRecord; onRetry: () => void }
     log.failureReason ?? log.conclusion,
     "日志处理失败，请重试或重新上传。"
   );
-  const supportedFormats = supportedTextLogExtensions.map((extension) => `.${extension}`).join(" / ");
-  return (
-    <section className="log-error-alert" role="alert">
-      <AlertTriangle size={22} />
-      <div>
-        <strong>日志处理失败</strong>
-        <p>在 {STAGE_LABELS[log.stage]} 阶段失败 · <span>{reason}</span>
-          {!isSupportedLogUploadFileName(log.fileName, true) && !reason.includes(supportedFormats)
-            ? ` 支持格式：${supportedFormats}`
-            : null}
-        </p>
-        <dl className="logs-metadata-list">
-          <div><dt>文件名</dt><dd>{log.fileName}</dd></div>
-          <div><dt>文件大小</dt><dd>{log.fileSizeMB} MB</dd></div>
-          <div><dt>上传时间</dt><dd>{log.capturedAt}</dd></div>
-          <div><dt>上传者</dt><dd>{log.createdByCredentialId ? `通过集成凭据 ${log.createdByCredentialName ?? log.createdByCredentialId}` : log.submittedBy}</dd></div>
-        </dl>
-        <button className="button danger" type="button" onClick={onRetry}>
-          重新上传
-        </button>
-      </div>
-    </section>
-  );
+  return <section className="log-error-alert" role="alert">
+    <AlertTriangle size={22} aria-hidden />
+    <div>
+      <strong>日志处理失败</strong>
+      <p>在 {STAGE_LABELS[log.stage]} 阶段失败 · <span>{reason}</span></p>
+      <p>{log.fileName}</p>
+      <LogHeaderMeta log={log} />
+      <Button variant="outline" onClick={onRetry}>重新上传</Button>
+    </div>
+  </section>;
 }
 
 function LogStageTimeline({ stage, status }: { stage: LogStageId; status: LogRecord["status"] }) {
@@ -1362,6 +1294,7 @@ function RawLogViewer({
   const activeMatchLine = matchLines[activeMatchIndex];
   const matchLineSet = useMemo(() => new Set(matchLines), [matchLines]);
   const [rawLogColumnFilters, setRawLogColumnFilters] = useState<HeaderFilterState>({});
+  const [wrapLines, setWrapLines] = useState(false);
   const rawLogRows = useMemo(
     () =>
       rawLines.map((line, index) => ({
@@ -1381,6 +1314,8 @@ function RawLogViewer({
       ),
     [rawLogColumnFilters, rawLogRows]
   );
+  const showTime = visibleRawLogRows.some((row) => row.parsed.time);
+  const showModule = visibleRawLogRows.some((row) => row.parsed.module);
   const toggleRawLogColumnFilter = (key: "time" | "module" | "content", value: string) => {
     setRawLogColumnFilters((current) => ({
       ...current,
@@ -1445,14 +1380,16 @@ function RawLogViewer({
         <output aria-live="polite">
           {searchQuery.trim() === "" ? "" : matchLines.length === 0 ? "无匹配。按 Esc 清空" : `${activeMatchIndex + 1} / ${matchLines.length} 匹配`}
         </output>
+        <Button variant="outline" size="sm" aria-pressed={wrapLines} onClick={() => setWrapLines((value) => !value)}>自动换行</Button>
+        {Object.values(rawLogColumnFilters).some((values) => values.length) ? <Button variant="outline" size="sm" onClick={() => setRawLogColumnFilters({})}>清空筛选</Button> : null}
       </div>
       <div className="rawlog-viewer__body" id="rawlog-content">
-        <table className="rawlog-table" role="grid">
+        <table className={classNames("rawlog-table", wrapLines && "rawlog-table--wrap")} role="grid">
           <thead>
             <tr>
               <th className="rawlog-table__th-num">#</th>
-              <th className="rawlog-table__th-time">{renderRawLogHeader("time", "时间")}</th>
-              <th className="rawlog-table__th-module">{renderRawLogHeader("module", "模块")}</th>
+              {showTime ? <th className="rawlog-table__th-time">{renderRawLogHeader("time", "时间")}</th> : null}
+              {showModule ? <th className="rawlog-table__th-module">{renderRawLogHeader("module", "模块")}</th> : null}
               <th className="rawlog-table__th-content">{renderRawLogHeader("content", "内容")}</th>
             </tr>
           </thead>
@@ -1492,15 +1429,15 @@ function RawLogViewer({
                       {lineNumber}
                     </button>
                   </td>
-                  <td className="rawlog-table__time"><code>{parsed.time}</code></td>
-                  <td className="rawlog-table__module"><code>{parsed.module}</code></td>
+                  {showTime ? <td className="rawlog-table__time"><code>{parsed.time}</code></td> : null}
+                  {showModule ? <td className="rawlog-table__module"><code>{parsed.module}</code></td> : null}
                   <td className="rawlog-table__content"><code>{parsed.content}</code></td>
                 </tr>
               );
             })}
             {visibleRawLogRows.length === 0 ? (
               <tr className="rawlog-line">
-                <td colSpan={4}>当前筛选条件下没有日志行。</td>
+                <td colSpan={2 + Number(showTime) + Number(showModule)}>当前筛选条件下没有日志行。</td>
               </tr>
             ) : null}
           </tbody>
@@ -1543,6 +1480,7 @@ function EvidenceChainPanel({
             <EvidenceCard
               loadSourceExcerpt={loadSourceExcerpt ? () => loadSourceExcerpt(item.id) : undefined}
               evidence={item}
+              rawFilePath={rawFilePath}
               focused={focused || relatedToHoveredLine}
               index={index}
               key={item.id}
@@ -1561,6 +1499,7 @@ function EvidenceChainPanel({
 function EvidenceCard({
   loadSourceExcerpt,
   evidence,
+  rawFilePath,
   index,
   rawLines,
   focused,
@@ -1570,6 +1509,7 @@ function EvidenceCard({
 }: {
   loadSourceExcerpt?: () => Promise<import("@/features/log-skills/types").SourceExcerpt>;
   evidence: LogEvidence;
+  rawFilePath: string;
   index: number;
   rawLines: string[];
   focused: boolean;
@@ -1579,7 +1519,7 @@ function EvidenceCard({
 }) {
   const title = `证据 ${String(index + 1).padStart(2, "0")}`;
   const hasSource = !!evidence.sourceLocation;
-  const isGroup = !!evidence.filePath || hasSource;
+  const isGroup = !!evidence.filePath || hasSource || evidence.lineNumbers.length > 3;
 
   return (
     <div
@@ -1604,37 +1544,23 @@ function EvidenceCard({
         <strong>{STAGE_LABELS[evidence.stageId]}</strong>
       </header>
       <div className="evidence-card__body">
-        {evidence.lineNumbers.map((lineNumber) => <div key={lineNumber}>
+        {evidence.lineNumbers.slice(0, 3).map((lineNumber) => <div key={lineNumber}>
           {evidence.filePath ? <button type="button" className="text-left text-primary underline underline-offset-2"
             onClick={() => onOpenFile(evidence.filePath!, [lineNumber, ...evidence.lineNumbers.filter((line) => line !== lineNumber)])}>
             <code>{evidence.filePath}:{lineNumber}</code>
           </button> : <code>{`#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`}</code>}
           <DecodedFields events={evidence.decodedFields?.filter((event) => event.line === lineNumber)} />
         </div>)}
+        {evidence.lineNumbers.length > 3 ? <Button variant="outline" size="sm" onClick={() => onOpenFile(evidence.filePath ?? rawFilePath, evidence.lineNumbers)}>
+          其余 {evidence.lineNumbers.length - 3} 行
+        </Button> : null}
         <p>{evidence.inference}</p>
-        {evidence.ruleHit ? <small>命中规则：{evidence.ruleHit}</small> : null}
         <SourceEvidence key={`${evidence.id}:${evidence.sourceLocation?.snapshotId ?? ""}`} evidence={evidence} loadExcerpt={loadSourceExcerpt} />
       </div>
-      <footer>
-        <small>建议处置</small>
-        <p>关联处置：{evidence.suggestedAction}</p>
+      <footer className="evidence-card__suggestion">
+        <p>建议：{evidence.suggestedAction}</p>
       </footer>
     </div>
-  );
-}
-
-function LogMetadata({ log }: { log: LogRecord }) {
-  return (
-    <dl className="logs-metadata-list">
-      <div><dt>文件名</dt><dd>{log.fileName}</dd></div>
-      <div><dt>设备</dt><dd>{log.device ?? "未记录"}</dd></div>
-      <div><dt>采集时间</dt><dd>{log.capturedAt}</dd></div>
-      {log.skillSelection ? <div><dt>技能选择</dt><dd>
-        {{ recommended: "自动推荐", explicit: "用户指定", generic: "通用分析" }[log.skillSelection.mode]}
-        {log.skillSelection.reasons.length ? <RecommendationReasons reasons={log.skillSelection.reasons} label="技能选择理由" /> : null}
-      </dd></div> : null}
-      <div><dt>上传来源</dt><dd>{log.createdByCredentialId ? `通过集成凭据 ${log.createdByCredentialName ?? log.createdByCredentialId}` : log.submittedBy}</dd></div>
-    </dl>
   );
 }
 
