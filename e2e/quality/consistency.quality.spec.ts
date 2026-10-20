@@ -374,7 +374,7 @@ const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", 
 {
   const fixtureId = "keeps long DTS string details and unchanged previews bounded (read-only response fixture)";
   if (shouldRegisterConsistencyFixture(qualityLane, fixtureId)) test(fixtureId, async ({ context, page }, testInfo) => {
-    testInfo.annotations.push({ type: "setup", description: "A real project Binding retains its identity and pins while only rawValue/effectiveValue are replaced in a GET response to exercise long DTS strings. Identity, topology and definition reads use the real API. Draft edits remain local; no save, device write or server mutation is performed." });
+    testInfo.annotations.push({ type: "setup", description: "Real project DTS Bindings retain their identity and pins while only rawValue/effectiveValue are replaced in a GET response to exercise long DTS strings; the first replaced Binding the list renders is inspected. Identity, topology and definition reads use the real API. Draft edits remain local; no save, device write or server mutation is performed." });
     const blockedRequests = await installConsistencyReadGuard(context);
     const consoleErrors: string[] = [];
     const readGuardDiagnostics: string[] = [];
@@ -388,14 +388,17 @@ const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", 
     const stringValue = Array.from({ length: 40 }, (_, index) => `line-${index + 1} ${"0123456789abcdef".repeat(24)} ${index === 39 ? "PARAMETER-END-MARKER" : "row-end"}`).join("\n");
     const rawValue = JSON.stringify(stringValue);
     let bindingId = "";
+    let candidateIds: string[] = [];
+    // The list omits some Bindings (e.g. bus nodes) and API order is not stable, so every DTS
+    // candidate gets the long value and the first one the list renders is inspected below.
     await context.route(/\/api\/v2\/projects\/aurora\/parameter-bindings(?:\?.*)?$/, async (route) => {
       const response = await route.fetch();
       expect(response.ok()).toBe(true);
       const body = await response.json() as { items: Array<Record<string, unknown>> };
-      const binding = body.items.find((item) => typeof item.rawValue === "string" && item.rawValue.startsWith("<"));
-      expect(binding, "a real DTS Binding must be available before replacing its value response").toBeDefined();
-      bindingId = binding!.id as string;
-      await route.fulfill({ response, json: { ...body, items: body.items.map((item) => item.id === bindingId
+      candidateIds = body.items.filter((item) => typeof item.rawValue === "string" && item.rawValue.startsWith("<")).map((item) => item.id as string);
+      expect(candidateIds.length, "a real DTS Binding must be available before replacing its value response").toBeGreaterThan(0);
+      const candidates = new Set(candidateIds);
+      await route.fulfill({ response, json: { ...body, items: body.items.map((item) => candidates.has(item.id as string)
         ? { ...item, rawValue, effectiveValue: { kind: "strings", values: [stringValue] } } : item) } });
     });
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -408,7 +411,12 @@ const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", 
     await settleQualityRoute(page, "/parameters", { readOnly: true });
     await settleXiaozePopupClosed(page);
     await settleAppToasts(page);
-    await expect.poll(() => bindingId).not.toBe("");
+    await expect.poll(() => candidateIds.length).toBeGreaterThan(0);
+    await expect(page.locator("[data-binding-id]").first()).toBeVisible();
+    const renderedIds = new Set(await page.locator("[data-binding-id]").evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("data-binding-id"))));
+    bindingId = candidateIds.find((id) => renderedIds.has(id)) ?? "";
+    expect(bindingId, "a replaced DTS Binding must be rendered in the parameter list").not.toBe("");
     await page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /^参数详情 / }).click();
     const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: /· 参数详情$/ }) });
     const target = dialog.getByRole("textbox", { name: "目标值", exact: true });
