@@ -1,0 +1,4 @@
+.log-admin-page .log-admin-skills-table { table-layout: fixed; }
+.log-admin-skills-table th:first-child { width: 30%; }
+.log-admin-skill-name { min-width: 0; }
+.log-admin-skill-name a { display: block; overflow: hidden; text-overflow: ellipsis; }

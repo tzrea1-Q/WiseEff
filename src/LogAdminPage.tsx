@@ -1,5 +1,9 @@
+import "./log-admin.css";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
+import { ExportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
+import type { AnalysisSkill } from "@/features/log-skills/types";
 import { Download, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   LogRecordDrawer,
   PageInsightBar,
@@ -12,30 +16,21 @@ import { TabPanel } from "@/components/ui/tab-panel";
 import { useCollectionTab } from "@/hooks/useCollectionTab";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/common/SearchField";
-import { filterItems } from "@/lib/search";
-import { knowledgeTitleSearchProfile } from "@/lib/search/profiles";
 import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { formatPercent } from "@/domain/format/formatPercent";
-import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
-import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/domain/prototype/types";
+import type { LogRecord, LogStatus, PrototypeState, TimeWindow } from "@/domain/prototype/types";
 import type { LogDomain, LogFeedbackInsight } from "@/domain/logs/types";
-import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
-import { mapLogDomainGovernanceError } from "@/application/logs/logDomainGovernanceError";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
-import type { KnowledgeEntry } from "@/domain/knowledge/types";
-import type { LogDomainKnowledgeLink } from "@/domain/logs/types";
+import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
 import { ImportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
-import { FormatProfileForm } from "@/features/log-skills/FormatProfileForm";
-import { parseFormatProfileCode } from "@/features/log-skills/formatProfileFields";
 import { SectionSkeleton } from "@/components/common/SectionState";
 import type { SkillAuthoringRepository, SkillWorkspaceRepository } from "@/features/log-skills/types";
 
@@ -47,9 +42,9 @@ export type LogAdminPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   logActions?: LogRuntimeActions;
-  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository>;
+  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository & Pick<LogAnalysisRepository, "getLog">>;
   apiMode?: boolean;
-  /** Published-entry catalog for the domain ↔ knowledge link editor (API mode only). */
+  /** Kept for page composition; knowledge editing lives in the workspace. */
   knowledgeRepository?: KnowledgeRepository;
 };
 
@@ -106,246 +101,45 @@ function runtimeAlreadyNotified(error: unknown): boolean {
   return error instanceof Error && (error as { alreadyNotified?: unknown }).alreadyNotified === true;
 }
 
-type LogDomainFormState = {
-  domainId?: string;
-  name: string;
-  description: string;
-  profileText: string;
-};
-
-const emptyLogDomainForm: LogDomainFormState = { name: "", description: "", profileText: "" };
-
-function formatProfileLabel(domain: LogDomain): string {
-  return domain.formatProfile ? "已配置" : "未配置";
-}
-
-function webhookStateLabel(domain: LogDomain): string {
-  if (domain.webhook?.enabled) {
-    return "已启用";
-  }
-  return domain.webhook?.url ? "已配置未启用" : "未配置";
-}
-
 function domainStatusLabel(status: LogDomain["status"]): string {
-  return status === "active" ? "启用" : "已归档";
+  return status === "active" ? "已发布" : "已归档";
 }
 
-function parseProfileText(profileText: string): { ok: true; profile: unknown } | { ok: false; error: string } {
-  const trimmed = profileText.trim();
-  if (trimmed.length === 0) {
-    return { ok: true, profile: undefined };
-  }
-  try {
-    return { ok: true, profile: JSON.parse(trimmed) };
-  } catch (error) {
-    return { ok: false, error: `画像 JSON 无法解析：${error instanceof Error ? error.message : String(error)}` };
-  }
+function skillStatusLabel(skill: LogDomain): string {
+  if (skill.status === "archived") return "已归档";
+  if (skill.hasDraft || !skill.currentRevision?.publishedAt) return "有未发布更改";
+  return `已发布 v${skill.currentRevision.number}`;
 }
 
-function formatProfileText(profile: unknown): string {
-  if (profile === undefined || profile === null) {
-    return "";
-  }
-  return JSON.stringify(profile, null, 2);
-}
-
-
-/**
- * Domain ↔ knowledge link editor (P2): the link set bounds `read_domain_knowledge`
- * retrieval, so only PUBLISHED entries are selectable; entries archived after
- * linking show up as stale and drop out of the saved set (retrieval already
- * ignores them — publishing stays the single trust gate).
- */
-function DomainKnowledgeLinksEditor({
-  domain,
-  logActions,
-  knowledgeRepository,
-  onClose
-}: {
-  domain: LogDomain;
-  logActions: LogRuntimeActions;
-  knowledgeRepository?: KnowledgeRepository;
-  onClose: () => void;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [links, setLinks] = useState<LogDomainKnowledgeLink[]>([]);
-  const [publishedEntries, setPublishedEntries] = useState<KnowledgeEntry[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setSaved(false);
-    void (async () => {
-      const [currentLinks, entries] = await Promise.all([
-        logActions.listLogDomainKnowledgeLinks(domain.id),
-        knowledgeRepository
-          ? knowledgeRepository.list({ status: "published" }).then((response) => response.items).catch(() => [])
-          : Promise.resolve([])
-      ]);
-      if (cancelled) {
-        return;
-      }
-      setLinks(currentLinks);
-      setPublishedEntries(entries);
-      setSelectedIds(new Set(currentLinks.filter((link) => link.entryStatus === "published").map((link) => link.knowledgeEntryId)));
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [domain.id, logActions, knowledgeRepository]);
-
-  const staleLinks = links.filter((link) => link.entryStatus !== "published");
-  const filteredEntries = filterItems(publishedEntries, filter, knowledgeTitleSearchProfile);
-
-  const toggleEntry = (entryId: string) => {
-    setSaved(false);
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (next.has(entryId)) {
-        next.delete(entryId);
-      } else {
-        next.add(entryId);
-      }
-      return next;
-    });
-  };
-
-  const save = async () => {
-    if (saving) {
-      return;
-    }
-    setSaving(true);
-    try {
-      const result = await logActions.setLogDomainKnowledgeLinks({
-        domainId: domain.id,
-        knowledgeEntryIds: [...selectedIds]
-      });
-      if (result) {
-        setLinks(result);
-        setSelectedIds(new Set(result.filter((link) => link.entryStatus === "published").map((link) => link.knowledgeEntryId)));
-        setSaved(true);
-      }
-    } catch {
-      // The runtime already surfaced a notification; keep the editor open for correction.
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div
-      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
-      role="group"
-      aria-label={`分析技能 ${domain.name} 的知识条目关联`}
-      data-testid="domain-knowledge-links-editor"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">关联知识条目 · {domain.name}</h3>
-          <p className="text-xs text-muted-foreground">
-            仅可关联<strong>已发布</strong>的知识条目；分析时 read_domain_knowledge 检索限定在关联集合内，未关联时退化为组织内通用检索。
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={onClose}>
-          关闭
-        </Button>
-      </div>
-
-      {loading ? (
-        <p className="text-xs text-muted-foreground">正在加载知识条目…</p>
-      ) : (
-        <>
-          {staleLinks.length > 0 ? (
-            <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900" role="note">
-              {staleLinks.length} 条已关联条目当前非已发布状态（检索已自动忽略）；保存后这些失效关联将被移除：
-              {staleLinks.map((link) => ` ${link.entryTitle}`).join("、")}
-            </p>
-          ) : null}
-
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor={`domain-knowledge-filter-${domain.id}`}>
-            按标题筛选已发布条目
-            <SearchField
-              id={`domain-knowledge-filter-${domain.id}`}
-              value={filter}
-              onValueChange={setFilter}
-              placeholder="例如：E_THERMAL_FOLDBACK"
-              ariaLabel="按标题筛选已发布条目"
-            />
-          </label>
-
-          {publishedEntries.length === 0 ? (
-            <p className="text-xs text-muted-foreground">组织内暂无已发布的知识条目；请先在 /knowledge 发布领域知识。</p>
-          ) : (
-            <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-md border border-border p-2" aria-label="可关联的已发布知识条目">
-              {filteredEntries.map((entry) => (
-                <li key={entry.id}>
-                  <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-foreground hover:bg-muted/60">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(entry.id)}
-                      onChange={() => toggleEntry(entry.id)}
-                      aria-label={`关联知识条目 ${entry.title}`}
-                    />
-                    <span className="truncate">{entry.title}</span>
-                    {entry.tags.length > 0 ? (
-                      <span className="truncate text-xs text-muted-foreground">{entry.tags.join(" · ")}</span>
-                    ) : null}
-                  </label>
-                </li>
-              ))}
-              {filteredEntries.length === 0 ? (
-                <li className="px-1.5 py-1 text-xs text-muted-foreground">没有匹配筛选条件的已发布条目。</li>
-              ) : null}
-            </ul>
-          )}
-
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground" data-testid="domain-knowledge-links-count">
-              已选 {selectedIds.size} 条
-              {saved ? <span className="ml-2 text-emerald-700" role="status">已保存</span> : null}
-            </p>
-            <Button size="sm" onClick={() => void save()} disabled={saving} aria-busy={saving || undefined}>
-              保存关联
-            </Button>
-          </div>
-        </>
-      )}
-    </div>
-  );
+function adminDateTime(iso: string): string {
+  return formatAbsolute(iso).slice(0, 16).replaceAll("-", "/");
 }
 
 function LogDomainGovernanceSection({
   canGovern,
   logActions,
-  knowledgeRepository,
   onNavigate,
   skillRepository,
-  apiMode
+  apiMode,
+  refreshKey,
+  refreshAction
 }: {
   canGovern: boolean;
   logActions?: LogRuntimeActions;
-  knowledgeRepository?: KnowledgeRepository;
+  refreshKey: number;
+  refreshAction: ReactNode;
   onNavigate: (path: string) => void;
   skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository>;
   apiMode: boolean;
 }) {
   const [domains, setDomains] = useState<LogDomain[] | null>(null);
   const domainsLoading = Boolean(logActions) && domains === null;
-  const [formOpen, setFormOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  const [profileValid, setProfileValid] = useState(true);
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [draftConflict, setDraftConflict] = useState(false);
+  const [exportSkill, setExportSkill] = useState<AnalysisSkill | null>(null);
   const [pending, setPending] = useState(false);
-  const [linksDomain, setLinksDomain] = useState<LogDomain | null>(null);
+  const [exportError, setExportError] = useState("");
+  const [skillStatusFilter, setSkillStatusFilter] = useState<string[]>([]);
 
   const refreshDomains = useCallback(async () => {
     if (!logActions) {
@@ -356,67 +150,20 @@ function LogDomainGovernanceSection({
 
   useEffect(() => {
     void refreshDomains();
-  }, [refreshDomains]);
+  }, [refreshDomains, refreshKey]);
 
   const openCreateForm = () => {
     setCreateOpen(true);
   };
 
-  const openEditForm = (domain: LogDomain) => {
-    setDraftConflict(false);
-    setForm({
-      domainId: domain.id,
-      name: domain.name,
-      description: domain.description ?? "",
-      profileText: formatProfileText(domain.formatProfile)
-    });
-    setProfileError(null);
-    setNameError(null);
-    setFormOpen(true);
-  };
-
-  const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!logActions || !form.domainId || pending || !profileValid) {
-      return;
-    }
-    const parsedProfile = parseProfileText(form.profileText);
-    if (!parsedProfile.ok) {
-      setProfileError(parsedProfile.error);
-      return;
-    }
-    setProfileError(null);
-    setNameError(null);
-    setDraftConflict(false);
+  const openExport = async (domain: LogDomain) => {
+    if (!skillRepository?.getLogSkill || pending) return;
     setPending(true);
+    setExportError("");
     try {
-      const original = domains?.find((domain) => domain.id === form.domainId);
-      const saved = await logActions.updateLogDomain({
-        domainId: form.domainId,
-        name: form.name.trim(),
-        ...(form.description !== (original?.description ?? "") ? { description: form.description.trim() === "" ? null : form.description.trim() } : {}),
-        ...(form.profileText !== formatProfileText(original?.formatProfile) ? { formatProfile: form.profileText.trim() === "" ? null : parsedProfile.profile } : {})
-      });
-      if (saved) {
-        setFormOpen(false);
-        setForm(emptyLogDomainForm);
-        await refreshDomains();
-      }
-    } catch (error) {
-      if (error instanceof WiseEffApiError && error.code === "LOG_SKILL_DRAFT_EXISTS") {
-        setDraftConflict(true);
-        return;
-      }
-      const mapped = mapLogDomainGovernanceError(error);
-      if (mapped?.field === "profile") {
-        setProfileError(mapped.message);
-        return;
-      }
-      if (mapped?.field === "name") {
-        setNameError(mapped.message.replaceAll("业务域", "分析技能"));
-        return;
-      }
-      // Unexpected failures are already toasted by the runtime; keep the form open.
+      setExportSkill(await skillRepository.getLogSkill(domain.id));
+    } catch {
+      setExportError("无法加载技能，请重试。");
     } finally {
       setPending(false);
     }
@@ -440,56 +187,15 @@ function LogDomainGovernanceSection({
       key: "name",
       header: "名称",
       render: (domain) => (
-        <Button asChild variant="link" className={cn("font-medium", domain.status === "archived" && "opacity-60")}>
-          <a href={`/log-admin/skills/${encodeURIComponent(domain.id)}`}
-            onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); } }}>{domain.name}</a>
-        </Button>
+        <div className="log-admin-skill-name">
+          <Button asChild variant="link" className={cn("font-medium", domain.status === "archived" && "opacity-60")}>
+            <a href={`/log-admin/skills/${encodeURIComponent(domain.id)}`}
+              onClick={(event) => { event.stopPropagation(); if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); } }}>{domain.name}</a>
+          </Button>
+          {domain.description ? <span className="block truncate text-xs text-muted-foreground" title={domain.description}>{domain.description}</span> : null}
+        </div>
       ),
       sortAccessor: (domain) => domain.name
-    },
-    { key: "currentRevision", header: "当前版本", render: (skill) => skill.currentRevision ? skill.currentRevision.publishedAt ? `v${skill.currentRevision.number}` : "未发布" : "—", sortAccessor: (skill) => skill.currentRevision?.number ?? 0 },
-    { key: "helpfulRate7d", header: "近 7 天有用率", render: (skill) => skill.helpfulRate7d == null ? "—" : formatPercent(skill.helpfulRate7d), sortAccessor: (skill) => skill.helpfulRate7d ?? -1 },
-    {
-      key: "description",
-      header: "描述",
-      render: (domain) => (
-        <span className={cn("text-xs text-muted-foreground", domain.status === "archived" && "opacity-60")}>
-          {domain.description ?? "-"}
-        </span>
-      ),
-      sortAccessor: (domain) => domain.description ?? ""
-    },
-    {
-      key: "formatProfile",
-      header: "格式画像",
-      render: (domain) => (
-        <span className={cn("text-xs text-muted-foreground", domain.status === "archived" && "opacity-60")}>
-          {formatProfileLabel(domain)}
-        </span>
-      ),
-      sortAccessor: (domain) => formatProfileLabel(domain)
-    },
-    {
-      key: "model",
-      header: "模型",
-      render: (domain) => (
-        <span className={cn("text-xs text-muted-foreground", domain.status === "archived" && "opacity-60")} data-testid={`domain-model-${domain.id}`}>
-          {domain.modelOverride ? <span className="font-mono">{domain.modelOverride}</span> : "全局模型"}
-        </span>
-      ),
-      sortAccessor: (domain) => domain.modelOverride ?? ""
-    },
-    {
-      key: "webhook",
-      header: "结果回调",
-      render: (domain) => (
-        <span
-          className={cn("text-xs text-muted-foreground", domain.status === "archived" && "opacity-60")}
-          data-testid={`domain-webhook-state-${domain.id}`}
-        >
-          {webhookStateLabel(domain)}
-        </span>
-      )
     },
     {
       key: "status",
@@ -497,6 +203,9 @@ function LogDomainGovernanceSection({
       headerFilter: {
         label: "状态",
         values: ["active", "archived"],
+        selectedValues: skillStatusFilter,
+        onToggle: (value) => setSkillStatusFilter((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]),
+        onClear: () => setSkillStatusFilter([]),
         getValue: (domain) => domain.status,
         renderLabel: (status) => domainStatusLabel(status as LogDomain["status"]),
         align: "right"
@@ -509,122 +218,57 @@ function LogDomainGovernanceSection({
             domain.status === "active" ? "bg-emerald-100 text-emerald-900" : "bg-muted text-muted-foreground"
           )}
         >
-          {domainStatusLabel(domain.status)}
+          {skillStatusLabel(domain)}
         </span>
       ),
-      sortAccessor: (domain) => domain.status
-    }
+      sortAccessor: (domain) => skillStatusLabel(domain)
+    },
+    { key: "analyses7d", header: "近 7 天分析", render: (skill) => skill.analyses7d ?? 0, sortAccessor: (skill) => skill.analyses7d ?? 0 },
+    { key: "helpfulRate7d", header: "有帮助率", render: (skill) => skill.helpfulRate7d == null ? "—" : formatPercent(skill.helpfulRate7d), sortAccessor: (skill) => skill.helpfulRate7d ?? -1 },
+    { key: "updatedAt", header: "更新时间", render: (skill) => adminDateTime(skill.updatedAt), sortAccessor: (skill) => skill.updatedAt }
   ];
 
   return (
     <section className="flex flex-col gap-2" aria-label="日志分析技能治理" data-testid="log-domain-governance" aria-busy={domainsLoading}>
       {!canGovern ? (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          分析技能治理需要 Admin 权限（logs:admin-domains）。
+          需要管理员权限才能管理分析技能。
         </p>
       ) : !logActions ? (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          分析技能治理需在 API 模式下使用；mock 模式仅展示静态日志种子。
+          请连接服务后管理分析技能。
         </p>
       ) : (
         <>
           <AdminListPage label="分析技能治理"
-            headerContent="分析技能"
-            headerActions={<><Button size="sm" variant="outline" onClick={() => setImportOpen(true)} disabled={!apiMode || !skillRepository?.importSkillPackage || pending || domainsLoading}>导入技能包</Button>
+            headerContent={false}
+            headerActions={<>{refreshAction}<Button size="sm" variant="outline" onClick={() => setImportOpen(true)} disabled={!apiMode || !skillRepository?.importSkillPackage || pending || domainsLoading}>导入技能包</Button>
               <Button size="sm" onClick={openCreateForm} disabled={pending || domainsLoading}>新建技能</Button></>}
-            filterBar={<p className="text-sm text-muted-foreground">注册分析技能（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。</p>}
-            table={{ "aria-label": "分析技能列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50,
+            filterBar={<p className="text-sm text-muted-foreground">上传日志时会自动推荐匹配的技能；没有匹配时按通用分析处理。</p>}
+            table={{ "aria-label": "分析技能列表", rows: domains ?? [], rowKey: (domain) => domain.id, columns: domainColumns, pageSize: 50, tableClassName: "log-admin-skills-table",
+              onRowClick: (domain) => onNavigate(`/log-admin/skills/${encodeURIComponent(domain.id)}`),
               emptyState: domainsLoading ? <SectionSkeleton label="正在加载分析技能" /> : <div className="section-empty justify-items-center text-center">
-                <strong>还没有分析技能</strong>
-                <p>从模板创建技能，并上传样例日志开始配置。</p>
-                <Button onClick={openCreateForm}>新建第一个分析技能</Button>
+                <strong>{skillStatusFilter.length > 0 ? "未匹配任何技能" : "还没有分析技能"}</strong>
+                {skillStatusFilter.length === 0 ? <p>从模板创建技能，并上传样例日志开始配置。</p> : null}
+                {skillStatusFilter.length > 0 ? <Button variant="outline" onClick={() => setSkillStatusFilter([])}>重置筛选</Button> : <Button variant="outline" onClick={() => onNavigate("/logs")}>前往日志分析</Button>}
               </div> }}
             rowActions={(domain) => ({ label: domain.name,
-              primaryAction: { id: "edit", label: "编辑", disabled: pending, onSelect: () => openEditForm(domain) },
-              items: domain.status === "active" ? [
-                { id: "knowledge", label: "知识条目", disabled: pending, onSelect: () => setLinksDomain((current) => current?.id === domain.id ? null : domain) },
-                { id: "webhook", label: "集成与结果回调", disabled: pending, onSelect: () => onNavigate(`/log-admin/skills/${encodeURIComponent(domain.id)}?section=integration`) },
-                { id: "archive", label: "归档", disabled: pending, destructive: true,
-                  confirmation: { title: `归档「${domain.name}」`, description: "该分析技能将被归档，不再供新日志绑定；已有日志及其分析记录保留。", confirmLabel: "归档" },
-                  onSelect: () => archiveDomain(domain.id) }
-              ] : []
+              items: [
+                { id: "export", label: "导出技能包", disabled: pending || !skillRepository?.getLogSkill || !skillRepository.exportSkillPackage, onSelect: () => openExport(domain) },
+                ...(domain.status === "active" ? [{ id: "archive", label: "归档", disabled: pending, destructive: true as const,
+                  confirmation: { title: `归档「${domain.name}」`, description: "归档后，新日志不再推荐此技能；已有日志及分析记录保留。", confirmLabel: "归档技能" },
+                  onSelect: () => archiveDomain(domain.id) }] : [])
+              ]
             })}
-            emptyState={{ message: "还没有分析技能", actionLabel: "新建第一个分析技能", onAction: openCreateForm }} />
+            emptyState={{ message: "还没有分析技能", actionLabel: "", onAction: () => undefined }} />
 
           {createOpen ? <CreateSkillDialog repository={skillRepository} apiMode={apiMode} skills={domains ?? []}
             onDismiss={() => setCreateOpen(false)} onNavigate={onNavigate} /> : null}
           {importOpen && skillRepository ? <ImportSkillPackageDialog repository={skillRepository} onDismiss={() => setImportOpen(false)} onNavigate={onNavigate}
             onImported={() => { void refreshDomains(); }} /> : null}
 
-          {formOpen ? (
-            <form
-              className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
-              aria-label="编辑分析技能"
-              onSubmit={(event) => void submitForm(event)}
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-name">
-                  名称（组织内唯一）
-                  <input
-                    id="log-domain-name"
-                    required
-                    value={form.name}
-                    aria-invalid={nameError ? true : undefined}
-                    aria-describedby={nameError ? "log-domain-name-error" : undefined}
-                    onChange={(event) => {
-                      setNameError(null);
-                      setForm((current) => ({ ...current, name: event.target.value }));
-                    }}
-                    className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="例如：charging-power"
-                  />
-                  {nameError ? (
-                    <p id="log-domain-name-error" role="alert" className="text-xs text-destructive">
-                      {nameError}
-                    </p>
-                  ) : null}
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-description">
-                  描述（可选）
-                  <input
-                    id="log-domain-description"
-                    value={form.description}
-                    onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                    className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="例如：充电/电源子系统内核日志"
-                  />
-                </label>
-              </div>
-              {form.domainId ? <Button type="button" variant="link" onClick={() => onNavigate(`/log-admin/skills/${encodeURIComponent(form.domainId!)}?section=integration`)}>前往集成配置模型、预算与结果回调</Button>
-                : <p>创建后可在工作区「集成」分区配置模型、预算与结果回调。</p>}
-              <FormatProfileForm skillId={form.domainId ?? ""} profile={parseFormatProfileCode(form.profileText).profile}
-                repository={skillRepository} disabled={pending} onValidityChange={setProfileValid} externalError={profileError} onChange={(profile) => {
-                  setProfileError(null); setForm((current) => ({ ...current, profileText: formatProfileText(profile) }));
-                }} />
-              {draftConflict && form.domainId ? <p role="alert" className="text-sm text-destructive">
-                该技能有未发布草稿，请先在技能工作区发布或放弃草稿。{" "}
-                <a className="underline" href={`/log-admin/skills/${encodeURIComponent(form.domainId)}`}
-                  onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); } }}>打开技能工作区</a>
-              </p> : null}
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setFormOpen(false)}>
-                  取消
-                </Button>
-                <Button type="submit" size="sm" disabled={pending || !profileValid || form.name.trim() === ""} aria-busy={pending || undefined}>
-                  保存修改
-                </Button>
-              </div>
-            </form>
-          ) : null}
-
-          {linksDomain && logActions ? (
-            <DomainKnowledgeLinksEditor
-              domain={linksDomain}
-              logActions={logActions}
-              knowledgeRepository={knowledgeRepository}
-              onClose={() => setLinksDomain(null)}
-            />
-          ) : null}
+          {exportError ? <p role="alert" className="text-sm text-destructive">{exportError}</p> : null}
+          {exportSkill && skillRepository ? <ExportSkillPackageDialog skill={exportSkill} dirty={false} repository={skillRepository} onDismiss={() => setExportSkill(null)} /> : null}
 
         </>
       )}
@@ -633,7 +277,7 @@ function LogDomainGovernanceSection({
 }
 
 const feedbackAnalysisSourceLabels: Record<"agent" | "rules-fallback" | "none", string> = {
-  agent: "Agent 分析",
+  agent: "AI 分析",
   "rules-fallback": "降级 · 规则回退",
   none: "未标注来源"
 };
@@ -651,15 +295,23 @@ function feedbackInsightRowKey(row: LogFeedbackInsight): string {
 function FeedbackQualityInsightsSection({
   timeWindow,
   logActions,
-  refreshKey
+  refreshKey,
+  onRowsChange,
+  headerActions,
+  onTimeWindowChange,
+  onViewRecords
 }: {
   timeWindow: TimeWindow;
   logActions?: LogRuntimeActions;
   refreshKey: number;
+  onRowsChange: (rows: LogFeedbackInsight[]) => void;
+  headerActions: ReactNode;
+  onTimeWindowChange: (value: TimeWindow) => void;
+  onViewRecords: () => void;
 }) {
   const [rows, setRows] = useState<LogFeedbackInsight[]>([]);
   const [loading, setLoading] = useState(false);
-  const [refreshCount, setRefreshCount] = useState(0);
+
 
   useEffect(() => {
     if (!logActions) {
@@ -672,6 +324,7 @@ function FeedbackQualityInsightsSection({
       .then((items) => {
         if (!cancelled) {
           setRows(items);
+          onRowsChange(items);
         }
       })
       .finally(() => {
@@ -682,15 +335,15 @@ function FeedbackQualityInsightsSection({
     return () => {
       cancelled = true;
     };
-  }, [logActions, refreshKey, refreshCount, timeWindow]);
+  }, [logActions, onRowsChange, refreshKey, timeWindow]);
 
   const columns: Column<LogFeedbackInsight>[] = [
     {
       key: "logDomainName",
-      header: "分析技能",
+      header: "技能",
       render: (row) => (
         <span className={cn("text-sm", row.logDomainName ? "font-medium text-foreground" : "text-muted-foreground")}>
-          {row.logDomainName ?? "未分类"}
+          {row.logDomainName ?? "通用分析"}
         </span>
       ),
       sortAccessor: (row) => row.logDomainName ?? ""
@@ -698,22 +351,12 @@ function FeedbackQualityInsightsSection({
     {
       key: "analysisSource",
       header: "分析来源",
-      render: (row) => (
-        <span className="text-xs text-muted-foreground">{feedbackAnalysisSourceLabels[row.analysisSource ?? "none"]}</span>
-      ),
-      sortAccessor: (row) => row.analysisSource ?? "",
-      widthClass: "w-36"
-    },
-    {
-      key: "promptVersion",
-      header: "Prompt 版本",
-      render: (row) => <span className="font-mono text-xs text-muted-foreground">{row.promptVersion ?? "-"}</span>,
-      sortAccessor: (row) => row.promptVersion ?? "",
-      widthClass: "w-44"
+      render: (row) => <span className="text-xs text-muted-foreground">{feedbackAnalysisSourceLabels[row.analysisSource ?? "none"]}</span>,
+      sortAccessor: (row) => row.analysisSource ?? ""
     },
     {
       key: "totalCount",
-      header: "反馈条数",
+      header: "反馈数",
       render: (row) => <span className="font-mono text-xs">{row.totalCount}</span>,
       sortAccessor: (row) => row.totalCount,
       align: "right",
@@ -745,25 +388,25 @@ function FeedbackQualityInsightsSection({
     <section className="flex flex-col gap-2" aria-label="分析质量" data-testid="feedback-quality-insights" aria-busy={loading}>
       {!logActions ? (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          分析质量监控需在 API 模式下使用；mock 模式仅展示静态日志种子。
+          请连接服务后查看分析质量。
         </p>
       ) : (
         <AdminListPage label="分析质量"
-          headerActions={<Button size="sm" disabled={loading} onClick={() => setRefreshCount((count) => count + 1)}>刷新反馈</Button>}
-          filterBar={<p className="text-sm text-muted-foreground">按分析技能 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。</p>}
+          headerContent={false}
+          headerActions={headerActions}
+          filterBar={<TimeWindowSelect value={timeWindow} onChange={onTimeWindowChange} />}
           table={{ "aria-label": "分析质量反馈聚合", rows, rowKey: feedbackInsightRowKey, columns, pageSize: 6 }}
-          emptyState={{ message: loading ? "正在加载反馈数据…" : "暂无反馈", actionLabel: "刷新", onAction: () => setRefreshCount((count) => count + 1) }} />
+          emptyState={{ message: loading ? "正在加载反馈数据…" : "暂无反馈", actionLabel: "查看分析记录", onAction: onViewRecords }} />
       )}
     </section>
   );
 }
 
-export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, knowledgeRepository, skillRepository, apiMode = false }: LogAdminPageProps) {
+export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, skillRepository, apiMode = false }: LogAdminPageProps) {
   const [collection, selectCollection] = useCollectionTab(collectionTabs, new URLSearchParams(window.location.search).has("tab") ? "skills" : "records");
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
-  const [moduleFilter, setModuleFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "updatedAtIso", dir: "desc" });
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
@@ -772,6 +415,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const [syncPending, setSyncPending] = useState(false);
   const [logView, setLogView] = useState<"active" | "archived">("active");
   const [archivedLoaded, setArchivedLoaded] = useState(false);
+  const [skillsRefreshKey, setSkillsRefreshKey] = useState(0);
+  const [qualityRows, setQualityRows] = useState<LogFeedbackInsight[]>([]);
   const [feedbackInsightsRefreshKey, setFeedbackInsightsRefreshKey] = useState(0);
 
   const runPendingAction = async (kind: PendingLogAction, logId: string, action: () => Promise<void>) => {
@@ -826,12 +471,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const metrics = useMemo(() => deriveMetrics(windowLogs, timeWindow, visibleLogs), [timeWindow, visibleLogs, windowLogs]);
   const tableSourceLogs = logView === "archived" ? archivedLogs : windowLogs;
   const filteredRows = useMemo(
-    () => applyTableFilters(tableSourceLogs, { tableQuery, statusFilter, moduleFilter, sortBy }),
-    [moduleFilter, sortBy, statusFilter, tableQuery, tableSourceLogs]
-  );
-  const availableModules = useMemo(
-    () => Array.from(new Set(tableSourceLogs.map((log) => log.source))).sort(),
-    [tableSourceLogs]
+    () => applyTableFilters(tableSourceLogs, { tableQuery, statusFilter, moduleFilter: [], sortBy }),
+    [sortBy, statusFilter, tableQuery, tableSourceLogs]
   );
   const insight = useMemo(() => deriveInsight(windowLogs, visibleLogs), [visibleLogs, windowLogs]);
   const canAct = canPerform(state.activeRoleId, "admin.access");
@@ -855,45 +496,18 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       current.includes(status as LogStatus) ? current.filter((item) => item !== status) : [...current, status as LogStatus]
     );
   };
-  const toggleModuleFilter = (module: string) => {
-    setModuleFilter((current) => (current.includes(module) ? current.filter((item) => item !== module) : [...current, module]));
-  };
-
   const columns: Column<LogRecord>[] = [
     {
-      key: "reportId",
-      header: "报告 ID",
-      render: (record) => <span className="font-mono text-xs text-primary">{record.reportId}</span>,
-      sortAccessor: (record) => record.reportId,
-      widthClass: "w-28"
-    },
-    {
       key: "fileName",
-      header: "文件名",
-      render: (record) => <span className="font-medium text-foreground">{record.fileName}</span>,
+      header: "文件",
+      render: (record) => <Button variant="link" className="font-medium" onClick={() => setSelectedRecordId(record.id)}>{record.fileName}</Button>,
       sortAccessor: (record) => record.fileName
     },
     {
-      key: "source",
-      header: "来源模块",
-      headerFilter: {
-        label: "来源模块",
-        values: availableModules,
-        selectedValues: moduleFilter,
-        getValue: (record) => record.source,
-        onToggle: toggleModuleFilter,
-        onClear: () => setModuleFilter([])
-      },
-      render: (record) => <span className="text-muted-foreground">{record.source}</span>,
-      sortAccessor: (record) => record.source,
-      widthClass: "w-36"
-    },
-    {
-      key: "stage",
-      header: "分析阶段",
-      render: (record) => <span className="text-xs text-muted-foreground">{STAGE_LABELS[record.stage]}</span>,
-      sortAccessor: (record) => record.stage,
-      widthClass: "w-28"
+      key: "logDomainName",
+      header: "技能",
+      render: (record) => record.logDomainName ?? "通用分析",
+      sortAccessor: (record) => record.logDomainName ?? "通用分析"
     },
     {
       key: "status",
@@ -920,20 +534,21 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           <span className="text-muted-foreground">-</span>
         ) : (
           <span className="inline-flex items-center justify-end gap-1 text-xs">
-            <span className="text-muted-foreground">{confidenceCaption(record.analysisSource, "置信度")}</span>
             <span className="font-mono">{formatPercent(record.confidence)}</span>
+            <span className="rounded border border-border px-1 text-muted-foreground">{record.analysisSource === "agent" ? "AI" : "规则"}</span>
           </span>
         ),
       sortAccessor: (record) => record.confidence,
       align: "right",
-      widthClass: "w-36"
-    }
+      widthClass: "w-28"
+    },
+    { key: "submittedBy", header: "上传者", render: (record) => record.submittedBy, sortAccessor: (record) => record.submittedBy },
+    { key: "capturedAt", header: "上传时间", render: (record) => adminDateTime(record.capturedAt), sortAccessor: (record) => record.capturedAt }
   ];
 
   const resetFilters = () => {
     setTableQuery("");
     setStatusFilter([]);
-    setModuleFilter([]);
     setSortBy({ key: "updatedAtIso", dir: "desc" });
   };
 
@@ -971,8 +586,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
     const payload = {
       generatedAt: new Date().toISOString(),
       timeWindow,
-      metrics,
-      rows: filteredRows.map((record) => ({
+      ...(collection === "records" ? { metrics } : {}),
+      rows: collection === "quality" ? qualityRows : filteredRows.map((record) => ({
         reportId: record.reportId,
         fileName: record.fileName,
         source: record.source,
@@ -1003,6 +618,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   };
 
   const handleSync = async () => {
+    if (collection === "skills") { setSkillsRefreshKey((key) => key + 1); return; }
+    if (collection === "quality") { setFeedbackInsightsRefreshKey((key) => key + 1); return; }
     if (!logActions) {
       dispatch({ type: "LOG_ADMIN_SYNC_LOGS" });
       return;
@@ -1025,25 +642,26 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const selectedRecordFeedbackPending = selectedRecord ? pendingActions.has(pendingKey("feedback", selectedRecord.id)) : false;
   const undoArchivePending = undoArchive ? pendingActions.has(pendingKey("unarchive", undoArchive.logId)) : false;
 
-  const hasActiveFilters = tableQuery !== "" || statusFilter.length > 0 || moduleFilter.length > 0;
-  useTopBarActions(
+  const hasActiveFilters = tableQuery !== "" || statusFilter.length > 0;
+  const refreshAction = (
+    <Button variant="outline" size="sm" onClick={handleSync} disabled={syncPending} aria-busy={syncPending || undefined}>
+      <RefreshCw data-icon="inline-start" />
+      刷新
+    </Button>
+  );
+  const reportHeaderActions = (
     <>
-      <TimeWindowSelect value={timeWindow} onChange={setTimeWindow} />
-      <Button variant="outline" size="sm" onClick={handleExport}>
+      {refreshAction}
+      <Button size="sm" onClick={handleExport}>
         <Download data-icon="inline-start" />
         导出报表
       </Button>
-      <Button variant="outline" size="sm" onClick={handleSync} disabled={syncPending} aria-busy={syncPending || undefined}>
-        <RefreshCw data-icon="inline-start" />
-        同步日志
-      </Button>
-    </>,
-    [filteredRows, metrics, syncPending, timeWindow]
+    </>
   );
 
   return (
     <div className="log-admin-page flex flex-col gap-5">
-      {insight && !insightDismissed ? (
+      {collection === "records" && insight && !insightDismissed ? (
         <PageInsightBar
           variant={insight.severity}
           headline={insight.headline}
@@ -1055,7 +673,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           actions={insight.actions.map((action) => ({
             label: action.label,
             onClick: () => handleInsightAction(action.kind),
-            variant: action.kind === "locate-failures" ? ("primary" as const) : ("subtle" as const)
+            variant: "subtle" as const
           }))}
         />
       ) : null}
@@ -1068,32 +686,34 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         ]} />
       <TabPanel id={`log-panel-${collection}`} aria-labelledby={`log-tab-${collection}`}>
         <div hidden={collection !== "skills"}>
-          <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} knowledgeRepository={knowledgeRepository} onNavigate={onNavigate}
-            skillRepository={skillRepository} apiMode={apiMode} />
+          <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} refreshKey={skillsRefreshKey} onNavigate={onNavigate}
+            skillRepository={skillRepository} apiMode={apiMode} refreshAction={refreshAction} />
         </div>
         <div hidden={collection !== "quality"}>
-          <FeedbackQualityInsightsSection timeWindow={timeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} />
+          <FeedbackQualityInsightsSection timeWindow={timeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} onRowsChange={setQualityRows}
+            headerActions={reportHeaderActions} onTimeWindowChange={setTimeWindow} onViewRecords={() => selectCollection("records")} />
         </div>
         {collection === "records" ? (
           <AdminListPage label="日志分析记录"
-            headerActions={<Button size="sm" onClick={() => void handleSync()} disabled={syncPending} aria-busy={syncPending || undefined}>刷新记录</Button>}
+            headerActions={reportHeaderActions}
             headerContent={<ViewSwitch variant="toggle" ariaLabel="日志视图切换" value={logView} onValueChange={(value) => setLogView(value as "active" | "archived")}
               items={[{ value: "active", label: "活跃日志" }, { value: "archived", label: archivedLogs.length > 0 ? `已归档（${archivedLogs.length}）` : "已归档" }]} />}
             filterBar={<>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2">
+                <TimeWindowSelect value={timeWindow} onChange={setTimeWindow} />
                 <SearchField
                   value={tableQuery}
                   onValueChange={setTableQuery}
-                  placeholder="搜索报告号、文件名、来源或结论"
+                  placeholder="搜索文件名、技能或结论"
                   ariaLabel="搜索日志分析记录"
                 />
-                {hasActiveFilters ? (
+                {hasActiveFilters && filteredRows.length > 0 ? (
                   <button
                     type="button"
                     onClick={resetFilters}
                     className="h-7 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
-                    重置
+                    重置筛选
                   </button>
                 ) : null}
                 <span className="ml-auto text-xs text-muted-foreground">
@@ -1103,17 +723,19 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
             </>}
             table={{ "aria-label": "日志分析记录", rows: filteredRows, rowKey: (record) => record.id, columns,
               onRowClick: (record) => setSelectedRecordId(record.id), selectedRowKey: selectedRecordId ?? undefined, pageSize: 8 }}
-            rowActions={(record) => ({ label: record.fileName,
-              primaryAction: { id: "view", label: "查看", onSelect: () => setSelectedRecordId(record.id) },
+            rowActions={logView === "archived" && canAct ? (record) => ({ label: record.fileName,
               items: logView === "archived" && canAct ? [{ id: "restore", label: "恢复", disabled: pendingActions.has(pendingKey("unarchive", record.id)), onSelect: () => unarchiveLog(record.id) }] : []
-            })}
+            }) : undefined}
             emptyState={{ message: hasActiveFilters ? "未匹配任何记录" : logView === "archived" ? "暂无已归档日志" : "当前时间窗口内暂无日志",
-              actionLabel: hasActiveFilters ? "重置筛选" : "刷新", onAction: hasActiveFilters ? resetFilters : () => void handleSync() }} />
+              actionLabel: hasActiveFilters ? "重置筛选" : "前往日志分析", onAction: hasActiveFilters ? resetFilters : () => onNavigate("/logs") }} />
         ) : null}
       </TabPanel>
 
       <LogRecordDrawer
+        key={selectedRecord?.id ?? "closed"}
         record={selectedRecord}
+        loadRecord={skillRepository?.getLog}
+        skillRepository={skillRepository}
         open={!!selectedRecord}
         onClose={() => setSelectedRecordId(null)}
         onNavigateToWorkbench={(id) => {

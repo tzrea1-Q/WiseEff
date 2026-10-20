@@ -14,7 +14,7 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { dismissXiaozeToggleHint, prepareInteractionSurface } from "./helpers/interactionSurface";
 import { openLogUploadDialog } from "./helpers/logAnalysis";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
-import type { AnalysisSkill } from "../../src/features/log-skills/types";
+import type { AnalysisSkill, SkillRevision } from "../../src/features/log-skills/types";
 
 useBrowserDiagnostics(test);
 
@@ -200,19 +200,20 @@ async function domainKnowledgeLinkDbSummary(domainId: string) {
   return withPgClient(async (client) => {
     const result = await client.query<{ knowledge_entry_id: string; entry_title: string }>(
       `
-      select link.knowledge_entry_id::text as knowledge_entry_id, entry.title as entry_title
-      from log_domain_knowledge_links link
-      inner join knowledge_entries entry on entry.id = link.knowledge_entry_id
-      where link.organization_id = $1
-        and link.log_domain_id = $2
+      select entry.id::text as knowledge_entry_id, entry.title as entry_title
+      from log_skill_revisions revision
+      cross join lateral jsonb_array_elements_text(coalesce(revision.spec->'knowledgeEntryIds', '[]'::jsonb)) link(entry_id)
+      inner join knowledge_entries entry on entry.id = link.entry_id::uuid and entry.organization_id = revision.organization_id
+      where revision.organization_id = $1
+        and revision.skill_id = $2 and revision.status = 'published'
       order by entry.title asc
       `,
       [organizationId, domainId]
     );
 
     return {
-      table: "log_domain_knowledge_links",
-      predicate: `organization_id=${organizationId}; log_domain_id=${domainId}`,
+      table: "log_skill_revisions",
+      predicate: `organization_id=${organizationId}; skill_id=${domainId}; status=published`,
       observed:
         result.rows.length > 0
           ? result.rows.map((row) => `${row.entry_title} (${row.knowledge_entry_id})`).join("; ")
@@ -962,30 +963,32 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await prepareInteractionSurface(page);
     const governance = page.getByTestId("log-domain-governance");
     const domainsTable = governance.getByRole("table", { name: "分析技能列表" });
-    await domainsTable
-      .getByRole("row")
-      .filter({ hasText: acceptanceLogDomainName })
-      .getByRole("button", { name: /：更多$/ })
-      .click();
-    await page.getByRole("menuitem", { name: "知识条目" }).click();
-
-    const editor = page.getByTestId("domain-knowledge-links-editor");
-    await expect(editor).toBeVisible();
-    const publishedCheckbox = editor.getByRole("checkbox", { name: `关联知识条目 ${publishedTitle}` });
-    await expect(publishedCheckbox).toBeVisible({ timeout: 10_000 });
-    // Published-only invariant: the draft entry never appears as a selectable link.
-    await expect(editor.getByRole("checkbox", { name: `关联知识条目 ${draftTitle}` })).toHaveCount(0);
-
-    await publishedCheckbox.check();
-    const saveResponsePromise = page.waitForResponse(
-      (response) =>
-        response.request().method() === "PUT" &&
-        response.url().includes(`/api/v1/log-domains/${domain.id}/knowledge-links`)
-    );
-    await editor.getByRole("button", { name: "保存关联" }).click();
+    await domainsTable.getByRole("link", { name: acceptanceLogDomainName, exact: true }).click();
+    await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "知识", exact: true }).click();
+    await page.getByRole("button", { name: "链接已有条目", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "链接已有条目", exact: true });
+    await picker.getByRole("searchbox", { name: "搜索已发布知识" }).fill(acceptanceKnowledgeTitlePrefix);
+    const publishedChoice = picker.getByRole("button", { name: `链接 ${publishedTitle}`, exact: true });
+    await expect(publishedChoice).toBeVisible({ timeout: 10_000 });
+    // Published-only invariant: the draft never appears in the selectable catalog.
+    await expect(picker.getByRole("button", { name: `链接 ${draftTitle}`, exact: true })).toHaveCount(0);
+    await expect(picker.getByRole("table", { name: "可链接知识条目" })).not.toContainText(draftTitle);
+    await publishedChoice.click();
+    await picker.getByRole("button", { name: "完成", exact: true }).click();
+    const saveResponsePromise = page.waitForResponse((response) => response.request().method() === "PUT"
+      && new URL(response.url()).pathname === `/api/v1/log-skills/${domain.id}/draft`);
+    await page.getByRole("group", { name: "未发布更改" }).getByRole("button", { name: "保存草稿", exact: true }).click();
     const saveResponse = await saveResponsePromise;
     expect(saveResponse.ok()).toBe(true);
-    await expect(editor.getByRole("status")).toHaveText(/已保存/);
+    const saved = ((await saveResponse.json()) as { item: SkillRevision }).item;
+    expect(saved.spec.knowledgeEntryIds).toEqual([publishedEntry.id]);
+    await expect(page.getByRole("button", { name: "保存草稿", exact: true })).toBeDisabled();
+    const { response: skillPublishResponse, skill: publishedSkill } = await publishSkillThroughUi(page, domain.id);
+    expect(publishedSkill.currentRevision.spec.knowledgeEntryIds).toEqual([publishedEntry.id]);
+    expect(publishedSkill.currentRevision.id).toBe(saved.id);
+    await page.reload();
+    await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "知识", exact: true }).click();
+    await expect(page.getByRole("table", { name: "已链接知识条目" })).toContainText(publishedTitle);
 
     const linksResponse = await page.request.get(
       apiRoute(`/api/v1/log-domains/${domain.id}/knowledge-links`),
@@ -1002,10 +1005,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await expect
       .poll(async () => {
         const response = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
-        const body = (await response.json()) as { items: Array<{ kind: string; targetId: string | null }> };
-        return body.items.some(
-          (item) => item.kind === "log-domain-knowledge-links-update" && item.targetId === domain.id
-        );
+        const body = (await response.json()) as { items: Array<{ kind: string; targetId: string | null; metadata?: Record<string, unknown> }> };
+        return ["log-skill-draft-save", "log-skill-publish"].every((kind) => body.items.some(
+          (item) => item.kind === kind && item.targetId === domain.id && item.metadata?.draftRevisionId === publishedSkill.currentRevision.id
+        ));
       })
       .toBe(true);
 
@@ -1024,8 +1027,11 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       api: [
         summarizeApiResponse(saveResponse, {
           method: "PUT",
-          path: `/api/v1/log-domains/${domain.id}/knowledge-links`,
-          responseSummary: `linked entries=[${publishedEntry.id}]`
+          path: `/api/v1/log-skills/${domain.id}/draft`,
+          responseSummary: `draft=${saved.id}; linked entries=[${publishedEntry.id}]`
+        }),
+        summarizeApiResponse(skillPublishResponse, {
+          method: "POST", path: `/api/v1/log-skills/${domain.id}/publish`, responseSummary: `published revision=${publishedSkill.currentRevision.id}`
         }),
         summarizeApiResponse(linksResponse, {
           method: "GET",
@@ -1034,8 +1040,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
         })
       ],
       db: [await logDomainDbSummary(acceptanceLogDomainName), await domainKnowledgeLinkDbSummary(domain.id)],
-      audit: [auditSummaryFor(auditBody.items, { kind: "log-domain-knowledge-links-update", targetId: domain.id })],
-      notes: `Domain ${domain.id} was linked to published knowledge entry ${publishedEntry.id} through the /log-admin governance editor; the draft entry stayed unselectable (published-only invariant) and the replace-set save was audited.`
+      audit: [auditSummaryFor(auditBody.items, { kind: "log-skill-draft-save", targetId: domain.id }),
+        auditSummaryFor(auditBody.items, { kind: "log-skill-publish", targetId: domain.id })],
+      notes: `Domain ${domain.id} was linked to published knowledge entry ${publishedEntry.id} through the skill workspace Knowledge section; the knowledge draft stayed unselectable (published-only invariant), and exact draft-save and publish revision audits were verified before a reload confirmed persistence.`
     });
   });
 
@@ -1132,9 +1139,12 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
         helpfulRate: number;
       }>;
     };
-    const insightRow = insightsBody.items.find((item) => item.totalCount >= 2);
+    const insightRow = insightsBody.items.find((item) => item.logDomainName === null && item.totalCount >= 2);
     expect(insightRow).toBeTruthy();
     expect(insightRow!.helpfulCount).toBe(1);
+    expect(insightRow!.totalCount).toBe(2);
+    expect(insightRow!.helpfulRate).toBe(0.5);
+    expect(insightRow!.logDomainName).toBeNull();
 
     await page.goto("/log-admin?tab=quality");
     await prepareInteractionSurface(page);
@@ -1142,7 +1152,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await expect(insightsSection).toBeVisible();
     const insightsTable = insightsSection.getByRole("table", { name: "分析质量反馈聚合" });
     await expect(insightsTable).toContainText("50%（1/2）");
-    await expect(insightsTable).toContainText(/未分类/);
+    const generalRow = insightsTable.getByRole("row").filter({ has: page.getByRole("cell", { name: "通用分析", exact: true }) });
+    await expect(generalRow).toHaveCount(1);
+    await expect(generalRow.getByRole("cell", { name: "2", exact: true })).toBeVisible();
+    await expect(generalRow).toContainText("50%（1/2）");
 
     await recordOperationEvidence({
       operationId: "LOG-FEEDBACK-INSIGHTS-001",
@@ -1174,7 +1187,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await cleanupAcceptanceLogs();
 
     await page.goto("/logs");
-    await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
+    await uploadLogThroughUi(page, supportedFixture, analysisQuestion, "不使用技能（通用分析）");
     await expect
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
       .toBe("complete");
@@ -1184,7 +1197,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await page.locator('input[type="search"]').fill(supportedFileName);
     await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();
 
-    await page.getByRole("button", { name: "导出评测案例草稿" }).click();
+    await expect(page.getByRole("heading", { name: /^证据链（/ })).toBeVisible();
+    await page.getByRole("button", { name: `${supportedFileName}：更多`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "导出分析用例草稿", exact: true }).click();
     const dialog = page.getByTestId("export-eval-case-draft-dialog");
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("eval-cases/logs/uncategorized/");
@@ -1217,7 +1232,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       page,
       testInfo,
       notes:
-        "The drawer's 导出评测案例草稿 action opened the de-identification checklist dialog and downloaded a schema-aligned case.yaml draft (realLog: true, deIdentified: false, rootCauseCategory TODO, prefilled evidence/actions/question) plus log.txt; no repository write or auto-commit happens by design."
+        "The drawer's 更多 → 导出分析用例草稿 action opened the de-identification checklist dialog and downloaded a schema-aligned case.yaml draft (realLog: true, deIdentified: false, rootCauseCategory TODO, prefilled evidence/actions/question) plus log.txt; no repository write or auto-commit happens by design."
     });
   });
 
@@ -1293,13 +1308,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       const governance = page.getByTestId("log-domain-governance");
       await expect(governance).toBeVisible();
       await prepareInteractionSurface(page);
-      await governance
-        .getByRole("table", { name: "分析技能列表" })
-        .getByRole("row")
-        .filter({ hasText: acceptanceWebhookDomainName })
-        .getByRole("button", { name: /：更多$/ })
-        .click();
-      await page.getByRole("menuitem", { name: "结果回调" }).click();
+      await governance.getByRole("table", { name: "分析技能列表" })
+        .getByRole("link", { name: acceptanceWebhookDomainName, exact: true }).click();
+      await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "集成", exact: true }).click();
 
       const editor = page.getByTestId("domain-webhook-editor");
       await expect(editor).toBeVisible();
@@ -1361,13 +1372,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       await page.goto("/log-admin?tab=skills");
       await expect(governance).toBeVisible();
       await prepareInteractionSurface(page);
-      await governance
-        .getByRole("table", { name: "分析技能列表" })
-        .getByRole("row")
-        .filter({ hasText: acceptanceWebhookDomainName })
-        .getByRole("button", { name: /：更多$/ })
-        .click();
-      await page.getByRole("menuitem", { name: "结果回调" }).click();
+      await governance.getByRole("table", { name: "分析技能列表" })
+        .getByRole("link", { name: acceptanceWebhookDomainName, exact: true }).click();
+      await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "集成", exact: true }).click();
       const deliveriesList = page.getByTestId("domain-webhook-deliveries");
       await expect(deliveriesList).toBeVisible();
       await expect(deliveriesList).toContainText("已送达");
@@ -1439,7 +1446,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const createdDomain = domainsBody.items.find((item) => item.name === acceptanceModelDomainName);
     expect(createdDomain).toBeTruthy();
     expect(createdDomain!.modelOverride).toBe(acceptanceModelOverride);
-    await expect(page.getByTestId(`domain-model-${createdDomain!.id}`)).toHaveText(acceptanceModelOverride);
+    await page.getByRole("table", { name: "分析技能列表" }).getByRole("link", { name: acceptanceModelDomainName, exact: true }).click();
+    await page.getByRole("navigation", { name: "技能分区导航" }).getByRole("button", { name: "集成", exact: true }).click();
+    await expect(page.getByLabel("模型覆盖", { exact: true })).toHaveValue(acceptanceModelOverride);
 
     await page.goto("/logs");
     await uploadLogThroughUi(page, supportedFixture, analysisQuestion, acceptanceModelDomainName);

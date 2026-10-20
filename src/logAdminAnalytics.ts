@@ -36,6 +36,12 @@ function sortAccessor(log: LogRecord, key: string): string | number {
       return log.reportId;
     case "fileName":
       return log.fileName;
+    case "logDomainName":
+      return log.logDomainName ?? "通用分析";
+    case "submittedBy":
+      return log.submittedBy;
+    case "capturedAt":
+      return log.capturedAt;
     case "source":
       return log.source;
     case "stage":
@@ -239,7 +245,7 @@ export function deriveInsight(logs: LogRecord[], allLogs: LogRecord[], now: Date
       description: failures.length === 1 ? names : `包括 ${names}${failures.length > 2 ? " 等" : ""}`,
       actions: [
         { label: "定位失败记录", kind: "locate-failures" },
-        { label: "交给 Agent 分析", kind: "send-to-agent" },
+        { label: "交给小泽分析", kind: "send-to-agent" },
         { label: "关闭今日提示", kind: "dismiss" }
       ]
     };
@@ -259,7 +265,7 @@ export function deriveInsight(logs: LogRecord[], allLogs: LogRecord[], now: Date
       headline: `${stuck.length} 份日志分析超过 10 分钟未完成`,
       description: stuck[0].fileName,
       actions: [
-        { label: "交给 Agent 分析", kind: "send-to-agent" },
+        { label: "交给小泽分析", kind: "send-to-agent" },
         { label: "关闭今日提示", kind: "dismiss" }
       ]
     };
@@ -279,7 +285,7 @@ export function deriveInsight(logs: LogRecord[], allLogs: LogRecord[], now: Date
       headline: `今日置信度 ${todayAvg}% 较 7 日均值下降 ${weekAvg - todayAvg} 点`,
       description: "建议对今日低置信度记录抽查",
       actions: [
-        { label: "交给 Agent 分析", kind: "send-to-agent" },
+        { label: "交给小泽分析", kind: "send-to-agent" },
         { label: "关闭今日提示", kind: "dismiss" }
       ]
     };

@@ -71,6 +71,7 @@
 .skill-authoring-dialog form { gap: var(--space-3); }
 .skill-authoring-dialog .skill-package-dialog-content { display: grid; gap: var(--space-3); }
 .skill-package-dialog-content p { margin: 0; }
+.skill-authoring-dialog .skill-package-intro { font: 400 var(--text-sm) / var(--leading-base) var(--font-sans); }
 .skill-package-dialog-content .dialog-actions { margin-top: var(--space-3); }
 .skill-authoring-dialog .skill-package-error, .skill-package-error p { color: var(--danger); font: 400 var(--text-sm) / var(--leading-base) var(--font-sans); }
 .skill-authoring-dialog fieldset { border: 0; padding: 0; margin: 0; }
@@ -80,7 +81,7 @@
 .skill-authoring-dialog .skill-template-choice { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
 .skill-template-choice span { display: grid; gap: var(--space-1); min-width: 0; }
 .skill-template-choice strong { font: 500 var(--text-base) / var(--leading-base) var(--font-sans); }
-.skill-template-choice small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans); }
+.skill-template-choice small { white-space: normal; overflow-wrap: anywhere; font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans); }
 .skill-template-choice small, .skill-sample-pane p { color: var(--text-muted); }
 .skill-template-choice:hover, .skill-template-choice:focus-within { border-color: var(--accent); }
 .skill-template-choice:has(:checked) { background: var(--accent-soft); }

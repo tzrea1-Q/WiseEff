@@ -41,7 +41,7 @@ export function CreateSkillDialog({ repository, apiMode, skills, onDismiss, onNa
     if (!apiMode || pending) return;
     if (!name.trim()) { setError("请输入名称。"); nameRef.current?.focus(); return; }
     if (start === "copy" && !copyId) { setError("请选择要复制的技能。"); return; }
-    if (sample && sample.size > 2 * 1024 * 1024) { setError("样例日志不能超过 2 MiB。"); return; }
+    if (sample && sample.size > 2 * 1024 * 1024) { setError("样例日志不能超过 2 MB。"); return; }
     setPending(true); setError("");
     let id = createdId;
     try {
@@ -75,7 +75,7 @@ export function CreateSkillDialog({ repository, apiMode, skills, onDismiss, onNa
             options={skills.map((skill) => ({ value: skill.id, label: skill.name }))} />{!skills.length ? <small>当前没有可复制的技能。</small> : null}</div> : null}
         </fieldset>}
       <div className="grid gap-2"><Label htmlFor="create-skill-sample">样例日志（可选）</Label><Input id="create-skill-sample" ref={fileRef} type="file" aria-describedby="create-skill-sample-hint" disabled={pending} onChange={(e) => setSample(e.target.files?.[0])} />
-        <small id="create-skill-sample-hint" className="text-muted-foreground">请选择一个文本文件，最大 2 MiB。</small>
+        <small id="create-skill-sample-hint" className="text-muted-foreground">请选择一个文本文件，最大 2 MB。</small>
         {sample ? <div className="flex items-center gap-2 text-sm"><span className="min-w-0 break-all">{sample.name}</span>
           <Button type="button" variant="link" size="sm" disabled={pending} onClick={() => { setSample(undefined); if (fileRef.current) fileRef.current.value = ""; }}>移除已选样例</Button></div> : null}
       </div>

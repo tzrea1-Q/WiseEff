@@ -22,7 +22,12 @@ describe("create skill dialog", () => {
       expect(screen.getByLabelText<HTMLInputElement | HTMLTextAreaElement>(name).labels?.[0]).toHaveAttribute("data-slot", "label");
     expect(screen.getByRole("textbox", { name: "描述（可选）" })).toHaveAttribute("rows", "2");
     const input = screen.getByLabelText("样例日志（可选）");
-    expect(input.nextElementSibling).toHaveTextContent("请选择一个文本文件，最大 2 MiB。");
+    expect(input).toHaveAttribute("type", "file");
+    expect(input.nextElementSibling).toHaveTextContent("请选择一个文本文件，最大 2 MB。");
+    for (const template of mockSkillTemplates) {
+      const choice = screen.getByRole("radio", { name: new RegExp(template.label) }).closest("label")!;
+      expect(within(choice).getByText(template.description, { selector: "small" })).toHaveTextContent(template.description);
+    }
     await userEvent.upload(input, new File(["hello"], "device.log"));
     const name = screen.getByText("device.log");
     await userEvent.click(within(name.parentElement!).getByRole("button", { name: "移除已选样例" }));

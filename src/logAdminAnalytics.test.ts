@@ -178,6 +178,17 @@ describe("applyTableFilters", () => {
     expect(result).toHaveLength(3);
   });
 
+  it("searches skill names and sorts the newly visible skill, uploader and upload time columns", () => {
+    const logs = [
+      mkFullLog({ id: "b", logDomainName: "B充电技能", submittedBy: "B", capturedAt: "2026-10-19T02:00:00Z" }),
+      mkFullLog({ id: "a", logDomainName: "A功耗技能", submittedBy: "A", capturedAt: "2026-10-19T01:00:00Z" })
+    ];
+    const filters = { tableQuery: "", statusFilter: "all" as const, moduleFilter: "all" as const, sortBy: { key: "capturedAt", dir: "asc" as const } };
+    expect(applyTableFilters(logs, { ...filters, tableQuery: "充电技能" }).map((log) => log.id)).toEqual(["b"]);
+    for (const key of ["logDomainName", "submittedBy", "capturedAt"])
+      expect(applyTableFilters(logs, { ...filters, sortBy: { key, dir: "asc" } }).map((log) => log.id)).toEqual(["a", "b"]);
+  });
+
   it("filters by search query on fileName case-insensitively", () => {
     const result = applyTableFilters(rows, {
       tableQuery: "ALPHA",

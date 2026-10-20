@@ -16,6 +16,8 @@ describe("skill package import", () => {
     const repository = { importSkillPackage: vi.fn().mockRejectedValueOnce(new WiseEffApiError("VALIDATION_FAILED", "Invalid package", details, "request")).mockResolvedValueOnce(skill) };
     const onNavigate = vi.fn(), onDismiss = vi.fn(), onImported = vi.fn();
     render(<ImportSkillPackageDialog repository={repository} onNavigate={onNavigate} onDismiss={onDismiss} onImported={onImported} />);
+    expect(screen.getByLabelText("技能包 ZIP")).toHaveAttribute("type", "file");
+    expect(screen.getByText(/^选择技能 ZIP 包/)).toHaveClass("skill-package-intro");
     expect(screen.getByRole("button", { name: "校验并导入" })).toBeDisabled();
     const file = new File(["broken"], "skill.zip", { type: "application/zip" });
     await userEvent.upload(screen.getByLabelText("技能包 ZIP"), file);
