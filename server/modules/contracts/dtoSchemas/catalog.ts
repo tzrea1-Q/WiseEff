@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import { z } from "zod";
-import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema } from "../../logs/schemas";
+import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema, logSkillRecommendationRequestSchema } from "../../logs/schemas";
 import { logSkillSpecSchema, parseTestRequestSchema, skillFilePreviewRequestSchema, skillFilePreviewResponseSchema } from "../../logs/skillSpec";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
@@ -34,6 +34,7 @@ import {
   jobResponseSchema,
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
+  logSkillRecommendationResponseSchema,
   logSkillListResponseSchema, logSkillResponseSchema, logSkillRevisionResponseSchema, logSkillRevisionListResponseSchema,
   logSkillTemplateListResponseSchema, logSkillSampleResponseSchema, logSkillSampleReplaceResponseSchema,
   logSourceSnapshotListResponseSchema, logSourceSnapshotResponseSchema, logSourceVersionListResponseSchema,
@@ -78,6 +79,8 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
  * Xiaoze). Names not listed here stay as `x-wiseeff-schema` placeholders.
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  LogSkillRecommendationRequest: logSkillRecommendationRequestSchema,
+  LogSkillRecommendationResponse: logSkillRecommendationResponseSchema,
   LogParsePreviewRequest: parsePreviewRequestSchema,
   LogParseTestRequest: parseTestRequestSchema,
   LogParseTestRun: parseTestRunSchema,
@@ -211,6 +214,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.feedback",
   "logs.feedbackInsights",
   "logs.listSkills", "logs.createSkill", "logs.getSkill", "logs.saveSkillDraft", "logs.discardSkillDraft", "logs.restoreSkillRevision", "logs.publishSkill", "logs.listSkillRevisions", "logs.getSkillRevision",
+  "logs.recommendSkills",
   "logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample",
   "logs.parsePreview",
   "logs.parseTests",

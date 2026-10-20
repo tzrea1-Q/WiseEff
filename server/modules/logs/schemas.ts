@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LOG_SKILL_RECOMMENDATION_LIMITS as recommendationLimits } from "./skillRecommendation";
 
 export const sourceSnapshotUploadSchema = z.object({
   versionLabel: z.string().trim().min(1).max(200),
@@ -17,6 +18,39 @@ function validBase64(value: string) {
 }
 const base64String = nonEmptyString.refine(validBase64, { message: "Expected valid base64 content." });
 const booleanQuerySchema = z.union([z.boolean(), z.enum(["true", "false"])]).transform((value) => value === true || value === "true");
+
+// Array .max() still parses every element. Stop at the first structural violation
+// before entering element schemas, so invalid requests cannot allocate N issues.
+export const logSkillRecommendationRequestSchema = z.unknown().superRefine((input, context) => {
+  const reject = (path: (string | number)[], message: string) =>
+    context.addIssue({ code: z.ZodIssueCode.custom, path, message, fatal: true });
+  if (!input || typeof input !== "object" || Array.isArray(input)) return reject([], "Expected a recommendation request object.");
+  const request = input as Record<string, unknown>;
+  if (!Array.isArray(request.files) || request.files.length > recommendationLimits.files)
+    return reject(["files"], `Expected at most ${recommendationLimits.files} files.`);
+  for (const key in request) if (key !== "files") return reject([], "Unexpected recommendation request field.");
+  for (let index = 0; index < request.files.length; index++) {
+    const file: unknown = request.files[index], path = ["files", index];
+    if (!file || typeof file !== "object" || Array.isArray(file)) return reject(path, "Expected a file object.");
+    const entry = file as Record<string, unknown>;
+    if (typeof entry.path !== "string" || !entry.path.length || entry.path.length > recommendationLimits.pathChars || /[\x00-\x1f\x7f]/.test(entry.path))
+      return reject([...path, "path"], `Expected a path of 1–${recommendationLimits.pathChars} characters without control characters.`);
+    if (!Array.isArray(entry.head) || entry.head.length > recommendationLimits.headLines)
+      return reject([...path, "head"], `Expected at most ${recommendationLimits.headLines} head lines.`);
+    for (const key in entry) if (key !== "path" && key !== "head") return reject(path, "Unexpected file field.");
+    for (let line = 0; line < entry.head.length; line++) {
+      const text: unknown = entry.head[line];
+      if (typeof text !== "string" || text.length > recommendationLimits.lineBytes || Buffer.byteLength(text, "utf8") > recommendationLimits.lineBytes)
+        return reject([...path, "head", line], `Head lines must be strings of at most ${recommendationLimits.lineBytes} bytes UTF-8.`);
+    }
+  }
+}).pipe(z.object({
+  files: z.array(z.object({
+    path: z.string().min(1).max(recommendationLimits.pathChars).refine((path) => !/[\x00-\x1f\x7f]/.test(path), "Invalid file path"),
+    head: z.array(z.string().max(recommendationLimits.lineBytes).refine((line) => Buffer.byteLength(line, "utf8") <= recommendationLimits.lineBytes, `Head lines must be at most ${recommendationLimits.lineBytes} bytes UTF-8`))
+      .max(recommendationLimits.headLines)
+  }).strict()).max(recommendationLimits.files)
+}).strict());
 
 const relatedParameterPinSchema = z.object({
   kind: z.literal("canonical-pin"),
@@ -57,6 +91,7 @@ export const createLogFileBodySchema = z
     relatedParameterPin: relatedParameterPinSchema.optional(),
     logDomainId: nonEmptyString.optional(),
     sourceVersion: z.string().trim().min(1).max(200).optional(),
+    skillSelection: z.string().max(7).pipe(z.literal("generic")).optional(),
     skillId: nonEmptyString.optional(),
     skillKey: skillKeySchema.optional()
   })
@@ -71,6 +106,7 @@ export const createLogBodySchema = z
     relatedParameterPin: relatedParameterPinSchema.optional(),
     logDomainId: nonEmptyString.optional(),
     sourceVersion: z.string().trim().min(1).max(200).optional(),
+    skillSelection: z.string().max(7).pipe(z.literal("generic")).optional(),
     skillId: nonEmptyString.optional(),
     skillKey: skillKeySchema.optional()
   })

@@ -1,7 +1,7 @@
 import { request, type IncomingMessage, type Server } from "node:http";
 import { json } from "node:stream/consumers";
 import { describe, expect, it, vi } from "vitest";
-import { LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit, LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } from "./app";
+import { LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES, LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES, LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES, resolveRouteBodyLimit, LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES } from "./app";
 import { MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_FILE_GLOBS } from "../src/domain/logs/fileApplicability";
 import { createRouter } from "./shared/http/router";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
@@ -9,6 +9,30 @@ import { requestJson } from "./test/testClient";
 
 const samplePath = "/api/v1/log-skills/skill-1/sample";
 const sampleBodyLimit = Math.ceil(2 * 1024 * 1024 * 4 / 3) + 4 + 64 * 1024;
+
+describe("skill recommendation transport body limit", () => {
+  it("sizes the cap for bounded UTF-8 heads, paths and JSON overhead", () => {
+    expect(LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES).toBe(200 * (64 * (2048 + 3) + 1024 * 4 + 32) + 1024);
+    const maximum = JSON.stringify({ files: Array.from({ length: 200 }, () => ({
+      path: "界".repeat(1024), head: Array(64).fill("界".repeat(682) + "ab")
+    })) });
+    expect(Buffer.byteLength(maximum)).toBeLessThan(LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES);
+  });
+
+  it("caps recommendation aliases before collecting or parsing heads", async () => {
+    const path = "/api/v1/log-skills/recommend";
+    for (const alias of [path, `${path}/`, "/api//v1//log-skills//recommend//"]) {
+      expect(resolveRouteBodyLimit({ method: "POST", path: alias })).toBe(LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES);
+      const router = createRouter(), handler = vi.fn(async () => ({ status: 200, body: {} }));
+      router.post(path, handler);
+      expect(await requestDeclaredOversize(createHttpServer(router, { maxBodyBytes: resolveRouteBodyLimit }), alias, "POST",
+        LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES + 1)).toMatchObject({ status: 413 });
+      expect(handler).not.toHaveBeenCalled();
+    }
+    expect(resolveRouteBodyLimit({ method: "GET", path })).toBe(DEFAULT_MAX_REQUEST_BODY_BYTES);
+    expect(resolveRouteBodyLimit({ method: "POST", path: `${path}/extra` })).toBe(DEFAULT_MAX_REQUEST_BODY_BYTES);
+  });
+});
 
 async function requestDeclaredOversize(server: Server, path: string, method: string, bytes: number) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

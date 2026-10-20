@@ -1061,6 +1061,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "LogFeedbackInsightsResponse"
   },
   "logs.listSkills": { summary: "List analysis skills", tags: ["logs"], responseBody: "LogSkillListResponse" },
+  "logs.recommendSkills": { summary: "Recommend published organization skills from bounded file heads (logs:upload)", tags: ["logs"], requestBody: "LogSkillRecommendationRequest", responseBody: "LogSkillRecommendationResponse", additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "413": "ErrorResponse" } },
   "logs.createSkill": { summary: "Create analysis skill", tags: ["logs"], requestBody: "CreateLogSkillRequest", responseBody: "LogSkillResponse", successStatus: 201 },
   "logs.listSkillTemplates": { summary: "List skill templates", tags: ["logs"], responseBody: "LogSkillTemplateListResponse" },
   "logs.getSkillSample": { summary: "Read skill sample inventory and first 5000 lines per text file", tags: ["logs"], responseBody: "LogSkillSampleResponse" },

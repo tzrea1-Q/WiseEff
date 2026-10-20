@@ -105,15 +105,19 @@ On a completed report bound to a skill, administrators with `logs:admin-domains`
 
 Use Import and Export to move cases as a ZIP in the [`eval-cases/logs` format](../../eval-cases/logs/README.md). The Import button opens a file picker; its result or errors appear in the section's status area. Import validates annotations, fixtures, paths and size limits before saving. Keep the exported directory structure intact; validation errors identify the exact file and field to fix.
 
-## Upload a log and choose its domain
+## Upload a log and choose a skill
 
 1. Open Intelligent analysis (`/logs`) and choose "Upload new log".
-2. Before selecting a file, set the optional "Business domain". A Log domain describes the log format, domain knowledge, and analysis focus. It is a separate concept from an Organization or an intake channel. Choose a registered domain that fits the file, or leave "Uncategorized (general analysis)" selected. If the domain you need is missing, ask an Admin to maintain it in Log administration (`/log-admin`).
+2. Select or drop `.log`, `.txt`, `.csv`, or `.json` text logs. In API mode, select several text files for one analysis record, or one `.gz`, `.zip`, `.tar`, `.tar.gz`, or `.tgz` archive for the server to unpack.
 3. Optionally enter an "Analysis question", such as which events explain a temperature rise. To associate a parameter, select its project and then a current project parameter. Both selections are needed to complete the association.
-4. Select or drop `.log`, `.txt`, `.csv`, or `.json` text logs. In API mode, select several text files for one analysis record, or one `.gz`, `.zip`, `.tar`, `.tar.gz`, or `.tgz` archive for the server to unpack. Review the selected files, remove any unwanted files, then choose "Confirm upload". After the filename check passes, the server still needs to parse the contents; parsing may fail.
+4. Review the skill selection. A subtle loading message appears while WiseEff compares filenames and bounded file heads with your Organization's published skills. A confident match is preselected with a reason, such as “Recommended: Charging · matches kernel.log”; open “View reasons” for the matching files and patterns. You can select another skill or “Do not use a skill (general analysis)”. Your choice takes precedence. Review the files, remove any unwanted files, then choose "Confirm upload". After the filename check passes, the server still needs to parse the contents; parsing may fail.
 5. Follow the new record in "History". Select another history item to inspect its status and report.
 
-The selected files share the current domain and analysis question. The server's configured bundle limits apply; see [environment variables](../developer/environment-variables.md). An unsupported file can still be submitted with "Upload anyway", but this does not make its format supported.
+The selected files share the skill and analysis question. Browser previews inspect up to 200 files and the first 64 lines per file, ignoring lines over 2 KiB. Supported archives are inspected locally where browser capabilities allow; otherwise recommendations use available names only. Recommendation errors or timeouts leave the selection unchanged and never block upload. Without an explicit choice, the server scores the stored bundle again; a tie or low score uses general analysis. Choosing “Do not use a skill” explicitly keeps general analysis. The report metadata records whether selection was recommended, explicit or generic, with matching reasons when available.
+
+The recommended skill appears once in the selector. The recommendation summary includes its reason count; View reasons shows up to five localized explanations prefixed by file names, followed by the remaining count when there are more. The same compact list appears in report metadata. A manual skill choice made before the recommendation arrives is preserved.
+
+The server's configured bundle limits apply; see [environment variables](../developer/environment-variables.md). An unsupported file can still be submitted with "Upload anyway", but this does not make its format supported.
 
 ## Follow the analysis stages
 

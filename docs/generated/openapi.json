@@ -11898,6 +11898,49 @@
         }
       }
     },
+    "/api/v1/log-skills/recommend": {
+      "post": {
+        "operationId": "logs.recommendSkills",
+        "summary": "Recommend published organization skills from bounded file heads (logs:upload)",
+        "tags": [
+          "logs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogSkillRecommendationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogSkillRecommendationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "413": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skills/{skillId}/source-versions": {
       "get": {
         "operationId": "logs.listSourceVersions",
@@ -31252,6 +31295,12 @@
           "sourceVersion": {
             "type": "string"
           },
+          "skillSelection": {
+            "type": "string",
+            "enum": [
+              "generic"
+            ]
+          },
           "skillId": {
             "type": "string"
           },
@@ -31312,6 +31361,68 @@
           "log": {
             "type": "object",
             "properties": {
+              "skillSelection": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "recommended",
+                      "explicit",
+                      "generic"
+                    ]
+                  },
+                  "reasons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "pattern"
+                          ]
+                        },
+                        "file": {
+                          "type": "string"
+                        },
+                        "detail": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "skill-glob",
+                            "extractor-glob",
+                            "extractor",
+                            "signal",
+                            "format-timestamp",
+                            "format-severity"
+                          ]
+                        },
+                        "ref": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "file",
+                        "detail"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "mode",
+                  "reasons"
+                ],
+                "additionalProperties": false
+              },
               "knowledgeRevisions": {
                 "type": "array",
                 "items": {
@@ -32126,6 +32237,12 @@
           "sourceVersion": {
             "type": "string"
           },
+          "skillSelection": {
+            "type": "string",
+            "enum": [
+              "generic"
+            ]
+          },
           "skillId": {
             "type": "string"
           },
@@ -32146,6 +32263,68 @@
           "item": {
             "type": "object",
             "properties": {
+              "skillSelection": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "recommended",
+                      "explicit",
+                      "generic"
+                    ]
+                  },
+                  "reasons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "pattern"
+                          ]
+                        },
+                        "file": {
+                          "type": "string"
+                        },
+                        "detail": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "skill-glob",
+                            "extractor-glob",
+                            "extractor",
+                            "signal",
+                            "format-timestamp",
+                            "format-severity"
+                          ]
+                        },
+                        "ref": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "file",
+                        "detail"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "mode",
+                  "reasons"
+                ],
+                "additionalProperties": false
+              },
               "knowledgeRevisions": {
                 "type": "array",
                 "items": {
@@ -32848,6 +33027,68 @@
             "items": {
               "type": "object",
               "properties": {
+                "skillSelection": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "recommended",
+                        "explicit",
+                        "generic"
+                      ]
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "file",
+                              "pattern"
+                            ]
+                          },
+                          "file": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "skill-glob",
+                              "extractor-glob",
+                              "extractor",
+                              "signal",
+                              "format-timestamp",
+                              "format-severity"
+                            ]
+                          },
+                          "ref": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "file",
+                          "detail"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "reasons"
+                  ],
+                  "additionalProperties": false
+                },
                 "knowledgeRevisions": {
                   "type": "array",
                   "items": {
@@ -38185,6 +38426,68 @@
           "log": {
             "type": "object",
             "properties": {
+              "skillSelection": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "recommended",
+                      "explicit",
+                      "generic"
+                    ]
+                  },
+                  "reasons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "pattern"
+                          ]
+                        },
+                        "file": {
+                          "type": "string"
+                        },
+                        "detail": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "skill-glob",
+                            "extractor-glob",
+                            "extractor",
+                            "signal",
+                            "format-timestamp",
+                            "format-severity"
+                          ]
+                        },
+                        "ref": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "file",
+                        "detail"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "mode",
+                  "reasons"
+                ],
+                "additionalProperties": false
+              },
               "knowledgeRevisions": {
                 "type": "array",
                 "items": {
@@ -39275,6 +39578,115 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "LogSkillListResponse"
+      },
+      "LogSkillRecommendationRequest": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "head": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "path",
+                "head"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSkillRecommendationRequest"
+      },
+      "LogSkillRecommendationResponse": {
+        "type": "object",
+        "properties": {
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "skillId": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "file",
+                          "pattern"
+                        ]
+                      },
+                      "file": {
+                        "type": "string"
+                      },
+                      "detail": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "skill-glob",
+                          "extractor-glob",
+                          "extractor",
+                          "signal",
+                          "format-timestamp",
+                          "format-severity"
+                        ]
+                      },
+                      "ref": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "file",
+                      "detail"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "skillId",
+                "score",
+                "reasons"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "recommendedSkillId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recommendations"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "LogSkillRecommendationResponse"
       },
       "CreateLogSkillRequest": {
         "type": "object",

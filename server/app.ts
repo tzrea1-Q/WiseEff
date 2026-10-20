@@ -27,6 +27,7 @@ import type { KnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embe
 import { registerKnowledgeRoutes } from "./modules/knowledge/routes";
 import { registerLogRoutes, type LogWebhookRouteContext } from "./modules/logs/routes";
 import { MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH } from "./modules/logs/schemas";
+import { LOG_SKILL_RECOMMENDATION_LIMITS as recommendationLimits } from "./modules/logs/skillRecommendation";
 import { MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_FILE_GLOBS } from "../src/domain/logs/fileApplicability";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
@@ -358,6 +359,9 @@ export const DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES = DEBUG_CATALOG_MAX_DOCUMENT_BY
 export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
 export const LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
+/** Bounded UTF-8 heads, four bytes per path unit, JSON delimiters and 1 KiB envelope. Escapes count toward the cap. */
+export const LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES = recommendationLimits.files *
+  (recommendationLimits.headLines * (recommendationLimits.lineBytes + 3) + recommendationLimits.pathChars * 4 + 32) + 1024;
 /** Draft configuration only; signal previews load the stored sample on the server. */
 export const LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 512 * 1024;
 // Six bytes per UTF-16 unit covers JSON escaping, plus row envelopes and 1 KiB whitespace.
@@ -368,6 +372,9 @@ export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
 export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+recommend\/*$/.test(path)) {
+    return LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES;
+  }
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+files\/+preview\/*$/.test(path)) {
     return LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES;
   }

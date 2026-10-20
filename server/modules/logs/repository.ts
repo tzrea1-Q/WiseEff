@@ -42,6 +42,7 @@ type RevisionRow = {
 };
 
 type LogRecordRow = RevisionRow & {
+  skill_selection?: LogRecordDto["skillSelection"] | null;
   signal_summary?: import("./genericSignals").LogSignalSummary | null;
   id: string;
   current_run_id?: string | null;
@@ -153,6 +154,9 @@ export type LogRunDto = {
 };
 
 export type CreateLogRecordWithRunAndJobInput = {
+  /** Internal recommendation snapshot; never accepted from an HTTP request. */
+  recommendedSkillRevisionId?: string;
+  skillSelection?: LogRecordDto["skillSelection"];
   sourceVersion?: string;
   logId: string;
   runId: string;
@@ -284,6 +288,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
   return {
     ...sourceProvenance(row),
     files: [],
+    skillSelection: row.skill_selection ?? undefined,
     signalSummary: row.signal_summary ?? undefined,
     id: row.id,
     reportId: row.report_id ?? "",
@@ -428,6 +433,7 @@ const logSelect = `
     lr.failure_reason,
     lr.analysis_question,
     lr.log_domain_id,
+    lr.skill_selection,
     ld.name as log_domain_name,
     lar.skill_revision_id, sr.revision_number as skill_revision_number,
     lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
@@ -511,14 +517,14 @@ export async function getFileObjectById(
 
 export async function createLogRecordWithRunAndJob(db: Database, input: CreateLogRecordWithRunAndJobInput) {
   return db.transaction(async (tx) => {
-    const skillRevisionId = await currentSkillRevisionId(tx, input.organizationId, input.logDomainId);
+    const skillRevisionId = input.recommendedSkillRevisionId ?? await currentSkillRevisionId(tx, input.organizationId, input.logDomainId);
     await tx.query<LogRecordRow>(
       `
       insert into log_records (
         id, organization_id, file_object_id, file_name, source, status,
-        analysis_question, related_parameter_id, related_parameter_project_id, submitted_by_user_id, log_domain_id
+        analysis_question, related_parameter_id, related_parameter_project_id, submitted_by_user_id, log_domain_id, skill_selection
       )
-      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9, $10)
+      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9, $10, $11::jsonb)
       returning id
       `,
       [
@@ -531,7 +537,8 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         input.relatedParameterId ?? null,
         input.relatedParameterProjectId ?? null,
         input.submittedByUserId,
-        input.logDomainId ?? null
+        input.logDomainId ?? null,
+        input.skillSelection ? jsonb(input.skillSelection) : null
       ]
     );
     await tx.query<RunRow>(
@@ -583,6 +590,7 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         failure_reason,
         analysis_question,
         log_domain_id,
+        skill_selection,
         (select name from log_domains where id = log_records.log_domain_id) as log_domain_name,
         (select skill_revision_id from log_analysis_runs where id = log_records.current_run_id) as skill_revision_id,
         (select revision_number from log_skill_revisions where id = (select skill_revision_id from log_analysis_runs where id = log_records.current_run_id)) as skill_revision_number
@@ -608,6 +616,7 @@ export async function markUnsupportedLog(
     relatedParameterId?: string;
     relatedParameterProjectId?: string;
     logDomainId?: string;
+    skillSelection?: LogRecordDto["skillSelection"];
   }
 ) {
   const result = await db.query<LogRecordRow>(
@@ -615,9 +624,9 @@ export async function markUnsupportedLog(
     insert into log_records (
       id, organization_id, file_object_id, file_name, source, status,
       failure_reason, analysis_question, related_parameter_id, submitted_by_user_id, log_domain_id,
-      related_parameter_project_id
+      related_parameter_project_id, skill_selection
     )
-    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9, $10, $11)
+    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9, $10, $11, $12::jsonb)
     returning
       id,
       current_run_id,
@@ -644,6 +653,7 @@ export async function markUnsupportedLog(
       failure_reason,
       analysis_question,
       log_domain_id,
+      skill_selection,
       (select name from log_domains where id = log_records.log_domain_id) as log_domain_name
     `,
     [
@@ -657,7 +667,8 @@ export async function markUnsupportedLog(
       input.relatedParameterId ?? null,
       input.submittedByUserId,
       input.logDomainId ?? null,
-      input.relatedParameterProjectId ?? null
+      input.relatedParameterProjectId ?? null,
+      input.skillSelection ? jsonb(input.skillSelection) : null
     ]
   );
 
@@ -1416,6 +1427,7 @@ export async function createRerunWithJob(
       current_run_id = $3,
       analysis_question = coalesce($4, analysis_question),
       log_domain_id = coalesce($5, log_domain_id),
+      skill_selection = case when $5::text is not null then '{"mode":"explicit","reasons":[]}'::jsonb else skill_selection end,
       failure_reason = null,
       updated_at = now()
     where organization_id = $1

@@ -5,6 +5,7 @@ import type {
   LogDomainStatus,
   LogFeedbackInsight,
   LogRecord,
+  LogSkillRecommendationReason,
   LogWebhookDelivery,
   TimeWindow
 } from "@/domain/logs/types";
@@ -46,6 +47,7 @@ export type LogRelatedParameterPin = {
 };
 
 export type LogUploadInput = {
+  skillSelection?: "generic";
   sourceVersion?: string;
   skillId?: string;
   file: File;
@@ -62,6 +64,12 @@ export type LogRerunInput = {
   logId: string;
   analysisQuestion?: string;
   logDomainId?: string;
+};
+
+export type LogRecommendationFile = { path: string; head: string[] };
+export type LogSkillRecommendations = {
+  recommendations: Array<{ skillId: string; score: number; reasons: LogSkillRecommendationReason[] }>;
+  recommendedSkillId?: string;
 };
 
 export type LogDomainListQuery = {
@@ -124,6 +132,7 @@ export interface LogAnalysisRepository extends Partial<SkillWorkspaceRepository>
   getLog(logId: string): Promise<LogRecord | null>;
   getLogLines?(logId: string, file: string, startLine: number, endLine: number): Promise<LogLineRange>;
   uploadLog(input: LogUploadInput): Promise<{ log: LogRecord; job: LogJobSnapshot | null }>;
+  recommendLogSkills?(files: LogRecommendationFile[], signal?: AbortSignal): Promise<LogSkillRecommendations>;
   getJob(jobId: string): Promise<LogJobSnapshot>;
   watchJob?(jobId: string, onEvent: (snapshot: LogJobSnapshot) => void): () => void;
   rerunLog(input: LogRerunInput): Promise<{ log: LogRecord; job: LogJobSnapshot }>;

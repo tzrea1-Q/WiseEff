@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { MAX_FILE_ROLE_LENGTH } from "../../../../src/domain/logs/fileApplicability";
+import { LOG_SKILL_RECOMMENDATION_LIMITS } from "../../logs/skillRecommendation";
 
 import { itemEnvelopeSchema, itemsEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
 import { logSkillSpecSchema } from "../../logs/skillSpec";
@@ -6,6 +8,7 @@ import { parseTestRunSchema } from "../../logs/parseTestSpec";
 export { parseTestSchema, parseTestSchema as parseTestCaseSchema, parseTestsSchema, parseTestRunSchema, parseTestResultSchema,
   MAX_PARSE_TESTS, MAX_PARSE_TEST_LINES, MAX_PARSE_TEST_CHARS, MAX_PARSE_TEST_RUN_LINES } from "../../logs/parseTestSpec";
 export { parseTestRequestSchema } from "../../logs/skillSpec";
+export { logSkillRecommendationRequestSchema } from "../../logs/schemas";
 import { decodedEventSchema } from "../../logs/parsing/spec";
 export { parsePreviewRequestSchema, parsePreviewResponseSchema, decodedEventSchema, decodedValueSchema } from "../../logs/parsing/spec";
 
@@ -25,6 +28,21 @@ export const logSeveritySchema = z.enum(["Critical", "Warning", "Info"]);
 export const logAnalysisSourceSchema = z.enum(["agent", "rules-fallback"]);
 export const logDegradedReasonSchema = z.enum(["provider-unavailable", "token-budget-exhausted"]);
 export const logDomainStatusSchema = z.enum(["active", "archived"]);
+export const logSkillRecommendationReasonSchema = z.object({
+  kind: z.enum(["file", "pattern"]), file: z.string(), detail: z.string(),
+  source: z.enum(["skill-glob", "extractor-glob", "extractor", "signal", "format-timestamp", "format-severity"]).optional(),
+  ref: z.string().max(LOG_SKILL_RECOMMENDATION_LIMITS.detailChars).optional(),
+  role: z.string().max(MAX_FILE_ROLE_LENGTH).optional()
+}).strict();
+export const logSkillSelectionSchema = z.object({
+  mode: z.enum(["recommended", "explicit", "generic"]), reasons: z.array(logSkillRecommendationReasonSchema).max(24)
+}).strict();
+export const logSkillRecommendationResponseSchema = z.object({
+  recommendations: z.array(z.object({
+    skillId: z.string(), score: z.number().nonnegative(), reasons: z.array(logSkillRecommendationReasonSchema).max(24)
+  }).strict()).max(100),
+  recommendedSkillId: z.string().optional()
+}).strict();
 
 export const logSignalAnchorSchema = z.object({ file: z.string(), line: z.number().int().positive(), content: z.string() });
 export const logSignalSchema = z.object({ kind: z.string(), severity: logSeveritySchema, source: z.enum(["generic", "skill"]),
@@ -60,6 +78,7 @@ export const logEvidenceDtoSchema = z.object({
 });
 
 export const logRecordDtoSchema = z.object({
+  skillSelection: logSkillSelectionSchema.optional(),
   knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
   ...sourceProvenanceShape,
   signalSummary: logSignalSummarySchema.optional(),

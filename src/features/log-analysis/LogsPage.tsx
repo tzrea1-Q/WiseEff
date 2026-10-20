@@ -7,6 +7,7 @@ import { LogFileDrawer } from "./LogFileDrawer";
 import { LogTraceTab } from "./AnalysisTrace";
 import { AnalysisCaseDialog } from "@/features/log-skills/AnalysisCaseDialog";
 import type { AnalysisCasePrefill } from "@/features/log-skills/types";
+import { readRecommendationHeads } from "./recommendationHeads";
 import { canPerform } from "@/app/permissions";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
@@ -17,12 +18,12 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
-import type { LogRelatedParameterPin } from "@/application/ports/LogAnalysisRepository";
 import { adaptivePollDelayMs } from "@/application/logs/logRuntime";
+import type { LogAnalysisRepository, LogRelatedParameterPin, LogSkillRecommendations } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
-import type { LogDomain } from "@/domain/logs/types";
+import type { LogDomain, LogSkillRecommendationReason } from "@/domain/logs/types";
 import { isSupportedLogUploadFileName, mockLogUploadAccept, supportedTextLogExtensions } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { formatBytes } from "@/domain/format/formatBytes";
@@ -465,7 +466,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [logActions, uploadDialogOpen]);
 
   const handleUploadLog = useCallback(
-    async (files: File[], supported: boolean, question?: string, logDomainId?: string, relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string) => {
+    async (files: File[], supported: boolean, question?: string, logDomainId?: string, relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string, skillSelection?: "generic") => {
       const file = files[0];
       if (!logActions) {
         dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName: file.name, supported, question });
@@ -478,6 +479,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
 
       try {
         await logActions.upload({ file, files, analysisQuestion: question, skillId: logDomainId, sourceVersion,
+          ...(skillSelection ? { skillSelection } : {}),
           ...(relatedParameterPin ? { relatedParameterPin } : {}) });
       } catch (error) {
         setPendingUpload(null);
@@ -613,6 +615,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           accept={logActions ? null : mockLogUploadAccept}
           archivesSupported={!!logActions}
           domains={uploadLogDomains}
+          recommendationRepository={logActions ? logRepository : undefined}
           parameterRepository={logActions ? runtime?.parameterRepository : undefined}
           parameterCatalogRepository={logActions ? runtime?.parameterCatalogRepository : undefined}
           onClose={() => setUploadDialogOpen(false)}
@@ -676,11 +679,37 @@ function isSupportedLogFile(fileName: string, archivesSupported = false) {
 }
 
 const UNCATEGORIZED_LOG_DOMAIN_VALUE = "";
+const AUTO_LOG_SKILL_VALUE = "__auto__";
+
+function recommendationReasonLabel(reason: LogSkillRecommendationReason) {
+  const ref = reason.ref ?? "";
+  switch (reason.source) {
+    case "skill-glob": return `适用文件规则 ${ref}${reason.role ? `（${reason.role}）` : ""}`;
+    case "extractor-glob": return `抽取规则文件 ${ref}`;
+    case "extractor": return `抽取规则 ${ref} 命中`;
+    case "signal": return `信号规则「${ref}」命中`;
+    case "format-timestamp": return "时间戳格式匹配";
+    case "format-severity": return `${ref === "error" ? "错误" : ref === "warn" ? "警告" : ref === "info" ? "信息" : ref} 级别格式匹配`;
+    default: return reason.kind === "file" ? "适用文件匹配" : "日志特征匹配";
+  }
+}
+
+function RecommendationReasons({ reasons, label }: { reasons: LogSkillRecommendationReason[]; label: string }) {
+  return <>
+    <ul className="log-skill-reasons" aria-label={label}>
+      {reasons.slice(0, 5).map((reason, index) => <li key={index}>
+        <code className="log-skill-reason-file">{reason.file}</code><span>{recommendationReasonLabel(reason)}</span>
+      </li>)}
+    </ul>
+    {reasons.length > 5 ? <p className="log-skill-reasons-more">另有 {reasons.length - 5} 条</p> : null}
+  </>;
+}
 
 function UploadLogDialog({
   accept = mockLogUploadAccept,
   archivesSupported = false,
   domains = [],
+  recommendationRepository,
   parameterRepository,
   parameterCatalogRepository,
   onClose,
@@ -689,20 +718,28 @@ function UploadLogDialog({
   accept?: string | null;
   archivesSupported?: boolean;
   domains?: LogDomain[];
+  recommendationRepository?: Pick<LogAnalysisRepository, "recommendLogSkills">;
   parameterRepository?: Pick<ParameterRepository, "listProjects">;
   parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">;
   onClose: () => void;
   onUpload: (files: File[], supported: boolean, question?: string, logDomainId?: string,
-    relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string) => Promise<void> | void;
+    relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string, skillSelection?: "generic") => Promise<void> | void;
 }) {
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadError, setUploadError] = useState("");
   const [selectedFileName, setSelectedFileName] = useState("");
   const [question, setQuestion] = useState("");
-  const [selectedDomainId, setSelectedDomainId] = useState<string>(UNCATEGORIZED_LOG_DOMAIN_VALUE);
+  const [selectedDomainId, setSelectedDomainId] = useState<string>(AUTO_LOG_SKILL_VALUE);
+  const [recommendation, setRecommendation] = useState<LogSkillRecommendations | null>(null);
+  const [recommending, setRecommending] = useState(false);
+  const manualSelection = useRef(false);
+  const recommended = recommendation?.recommendations.find((item) => item.skillId === recommendation.recommendedSkillId);
+  const recommendedDomain = domains.find((domain) => domain.id === recommended?.skillId);
+  const resolvedDomainId = selectedDomainId === AUTO_LOG_SKILL_VALUE ? recommendedDomain?.id
+    : selectedDomainId === UNCATEGORIZED_LOG_DOMAIN_VALUE ? undefined : selectedDomainId;
   const [sourceVersion, setSourceVersion] = useState("");
-  const readySourceVersions = domains.find((domain) => domain.id === selectedDomainId)?.readySourceVersions ?? [];
+  const readySourceVersions = domains.find((domain) => domain.id === resolvedDomainId)?.readySourceVersions ?? [];
   const [supported, setSupported] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -715,13 +752,29 @@ function UploadLogDialog({
   const [bindingRefresh, setBindingRefresh] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | null>(null);
-  const resolvedDomainId = selectedDomainId === UNCATEGORIZED_LOG_DOMAIN_VALUE ? undefined : selectedDomainId;
   const binding = bindings.find((item) => item.projectId === projectId && item.id === bindingId);
   const relatedParameterPin: LogRelatedParameterPin | undefined = binding ? {
     kind: "canonical-pin", projectId, bindingId: binding.id,
     definitionRevisionId: binding.effectiveRevisionId!
   } : undefined;
   const associationReady = !projectId || Boolean(!bindingLoading && !bindingError && relatedParameterPin);
+
+  useEffect(() => {
+    const recommend = recommendationRepository?.recommendLogSkills;
+    setRecommendation(null);
+    if (!manualSelection.current) { setSelectedDomainId(AUTO_LOG_SKILL_VALUE); setSourceVersion(""); }
+    if (!recommend || !selectedFiles.length) { setRecommending(false); return; }
+    const controller = new AbortController();
+    setRecommending(true);
+    // Advisory only: reading archives and scoring share a three-second deadline.
+    const timeout = window.setTimeout(() => { controller.abort(); setRecommending(false); }, 3000);
+    void readRecommendationHeads(selectedFiles, controller.signal)
+      .then((files) => controller.signal.aborted ? null : recommend(files, controller.signal))
+      .then((result) => { if (!controller.signal.aborted) setRecommendation(result); })
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setRecommending(false); window.clearTimeout(timeout); });
+    return () => { controller.abort(); window.clearTimeout(timeout); };
+  }, [selectedFiles, recommendationRepository]);
 
   useEffect(() => {
     if (!parameterRepository) return;
@@ -802,8 +855,9 @@ function UploadLogDialog({
       return;
     }
     setUploading(true);
-    void Promise.resolve(onUpload(selectedFiles, supported, question, resolvedDomainId, relatedParameterPin,
-      readySourceVersions.includes(sourceVersion) ? sourceVersion : undefined))
+    void Promise.resolve(onUpload(selectedFiles, supported, question, manualSelection.current ? resolvedDomainId : undefined, relatedParameterPin,
+      readySourceVersions.includes(sourceVersion) ? sourceVersion : undefined,
+      manualSelection.current && !resolvedDomainId ? "generic" : undefined))
       .catch((error) => setUploadError(presentError(error, "上传失败，请重试。")))
       .finally(() => setUploading(false));
   };
@@ -848,10 +902,22 @@ function UploadLogDialog({
             id="upload-log-domain"
             ariaLabel="分析技能（可选）"
             value={selectedDomainId}
-            onValueChange={(value) => { setSelectedDomainId(value); setSourceVersion(""); }}
-            options={[{ value: UNCATEGORIZED_LOG_DOMAIN_VALUE, label: "通用分析" }, ...domains.map((domain) => ({ value: domain.id, label: domain.name }))]}
+            onValueChange={(value) => {
+              manualSelection.current = value !== AUTO_LOG_SKILL_VALUE;
+              setSelectedDomainId(value);
+              setSourceVersion("");
+            }}
+            options={[{ value: AUTO_LOG_SKILL_VALUE, label: recommendedDomain ? `${recommendedDomain.name}（推荐）` : "自动推荐（无匹配时通用分析）" },
+              { value: UNCATEGORIZED_LOG_DOMAIN_VALUE, label: "不使用技能（通用分析）" }, ...domains
+                .filter((domain) => domain.id !== recommendedDomain?.id || domain.id === selectedDomainId)
+                .map((domain) => ({ value: domain.id, label: domain.name, hidden: domain.id === recommendedDomain?.id }))]}
           />
         </label>
+        {recommending ? <p role="status" className="text-sm text-muted-foreground">正在推荐分析技能…</p> : null}
+        {recommended && recommendedDomain ? <div className="text-sm text-muted-foreground">
+          <p>推荐：{recommendedDomain.name} · {recommended.reasons[0] ? `匹配 ${recommended.reasons[0].file}` : "匹配日志特征"}（{recommended.reasons.length} 条理由）</p>
+          <details><summary>查看理由</summary><RecommendationReasons reasons={recommended.reasons} label="技能推荐理由" /></details>
+        </div> : null}
         {readySourceVersions.length ? (
           <label className="upload-question-field" htmlFor="upload-source-version">
             <span>源码版本（可选）</span>
@@ -1563,6 +1629,10 @@ function LogMetadata({ log }: { log: LogRecord }) {
       <div><dt>文件名</dt><dd>{log.fileName}</dd></div>
       <div><dt>设备</dt><dd>{log.device ?? "未记录"}</dd></div>
       <div><dt>采集时间</dt><dd>{log.capturedAt}</dd></div>
+      {log.skillSelection ? <div><dt>技能选择</dt><dd>
+        {{ recommended: "自动推荐", explicit: "用户指定", generic: "通用分析" }[log.skillSelection.mode]}
+        {log.skillSelection.reasons.length ? <RecommendationReasons reasons={log.skillSelection.reasons} label="技能选择理由" /> : null}
+      </dd></div> : null}
     </dl>
   );
 }

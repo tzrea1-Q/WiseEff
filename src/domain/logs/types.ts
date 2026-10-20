@@ -13,6 +13,14 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type LogDomainStatus = "active" | "archived";
+export type LogSkillRecommendationReason = {
+  kind: "file" | "pattern"; file: string; detail: string;
+  /** Absent on historical routing decisions. */
+  source?: "skill-glob" | "extractor-glob" | "extractor" | "signal" | "format-timestamp" | "format-severity";
+  ref?: string;
+  role?: string;
+};
+export type LogSkillSelection = { mode: "recommended" | "explicit" | "generic"; reasons: LogSkillRecommendationReason[] };
 
 /**
  * Result-webhook summary for governance (P3b): the signing secret is write-only —
@@ -132,6 +140,7 @@ export type LogSignalSummary = {
 };
 
 export type LogRecord = {
+  skillSelection?: LogSkillSelection;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
   sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" };
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
