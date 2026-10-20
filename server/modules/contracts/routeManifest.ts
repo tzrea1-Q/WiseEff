@@ -775,6 +775,7 @@ export const routeManifest = [
   { id: "logs.unarchive", method: "POST", path: "/api/v1/logs/:logId/unarchive", module: "logs", stability: "mvp" },
   { id: "logs.feedback", method: "POST", path: "/api/v1/logs/:logId/feedback", module: "logs", stability: "mvp" },
   { id: "logs.listSkills", method: "GET", path: "/api/v1/log-skills", module: "logs", stability: "mvp" },
+  { id: "logs.recommendSkills", method: "POST", path: "/api/v1/log-skills/recommend", module: "logs", stability: "mvp" },
   { id: "logs.listSourceVersions", method: "GET", path: "/api/v1/log-skills/:skillId/source-versions", module: "logs", stability: "mvp" },
   { id: "logs.listSourceSnapshots", method: "GET", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
   { id: "logs.uploadSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },

@@ -49,6 +49,8 @@ import { extractorPreviewRequestSchema } from "./parsing/extractorBuilder";
 import { formatPreviewRequestSchema } from "./formatProfile";
 import { archiveSourceSnapshot, getSourceEvidence, listSourceSnapshots, setDefaultSourceSnapshot, trySourceStatement, uploadSourceSnapshot } from "./sourceSnapshots";
 import { sourceSnapshotUploadSchema } from "./schemas";
+import { recommendOrganizationLogSkills } from "./skillRecommendationService";
+import { logSkillRecommendationRequestSchema } from "./schemas";
 import type { LogAnalysisAdapter } from "./analyzer";
 import { getLogTrace, getSkillDryRun, getSkillDryRunLines, startSkillDryRun } from "./dryRuns";
 import { requireLogAdminDomains } from "./policy";
@@ -101,7 +103,7 @@ function requireLocalOrganization(auth: AuthContext) {
   }
 }
 
-function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid log route input.") {
+function parseWithSchema<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown, message = "Invalid log route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
     throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
@@ -196,6 +198,12 @@ export function registerLogRoutes(
   router.get("/api/v1/log-skills/:skillId/analysis-cases/export", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
     return { status: 200, bytes: await exportSkillAnalysisCases(requireDb(options.db), requireObjectStore(options.objectStore), auth, request.params.skillId), contentType: "application/zip", fileName: "analysis-cases.zip" };
+  });
+  router.post("/api/v1/log-skills/recommend", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    requireLocalOrganization(auth);
+    const body = parseWithSchema(logSkillRecommendationRequestSchema, request.body);
+    return { status: 200, body: await recommendOrganizationLogSkills(requireDb(options.db), auth, body.files) };
   });
   const getLogPrincipal = async (request: RouteRequest): Promise<AuthContext | IntegrationPrincipal> => {
     if (isIntegrationAuthorization(request.headers.authorization)) {
@@ -317,6 +325,7 @@ export function registerLogRoutes(
       relatedParameterId: body.relatedParameterId,
       relatedParameterPin: body.relatedParameterPin,
       sourceVersion: body.sourceVersion,
+      skillSelection: body.skillSelection,
       logDomainId: body.logDomainId,
       skillId: body.skillId,
       skillKey: body.skillKey
@@ -339,11 +348,12 @@ export function registerLogRoutes(
         relatedParameterId: body.relatedParameterId,
         relatedParameterPin: body.relatedParameterPin,
         sourceVersion: body.sourceVersion,
+        skillSelection: body.skillSelection,
         logDomainId: body.logDomainId,
         skillId: body.skillId,
         skillKey: body.skillKey
       },
-      { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue }
+      { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue, objectStore: requireObjectStore(options.objectStore) }
     );
 
     return { status: 201, body: result };

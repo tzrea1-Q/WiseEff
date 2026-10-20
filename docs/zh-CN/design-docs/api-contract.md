@@ -13,7 +13,7 @@ ADR-0048 扩展 ADR-0038：`Authorization: Bearer wie_<credentialId>_<secret>` �
 
 DTO 包含 `id`、`organizationId`、`name`、可空的 `skillId`、`skillName`、`createdBy`、`status: active \| revoked`、`createdAt` 及可空的 `rotatedAt`、`revokedAt`、`lastUsedAt`。签发、轮换仅返回一次明文，绝不存储、记录日志或写入审计。生命周期写入与成功审计同事务；归档技能撤销绑定凭据。
 
-路由边界白名单仅含 `POST /api/v1/log-files`、`POST /api/v1/logs` 及读取自身创建的记录、报告、文件；其他路由在处理器或领域读取前拒绝。绑定凭据必须选择绑定技能，省略或冲突返回 `403`；未知或已撤销凭据返回 `401`，其他创建者或其他组织的记录返回 `404`/`403`。上传复用原大小、速率、分析限制，最近使用时间至多每分钟更新一次。记录暴露可空的 `createdByCredentialId` / `createdByCredentialName`，上传用户为空，本组织有 `logs:view` 的用户照常可见。上传审计 `actor_type = integration`，actor 为凭据 id；人工策略拒绝 integration 发起者。
+路由边界白名单仅含 `POST /api/v1/log-files`、`POST /api/v1/logs` 及读取自身创建的记录、报告、文件；其他路由在处理器或领域读取前拒绝，包括仅供用户访问的推荐预览端点。绑定凭据不传选择字段时，使用绑定技能并记录 `skillSelection.mode: "explicit"`；指定其他技能返回 `403`。未绑定凭据不传选择字段时，对本组织已发布技能进行推荐。仅未绑定凭据可发送 `skillSelection: "generic"`，要求通用分析。绑定凭据请求通用分析返回 `403`，即使同时传入匹配的选择字段；冲突选择也返回 `403`。未知或已撤销凭据返回 `401`，其他创建者或其他组织的记录返回 `404`/`403`。上传复用原大小、速率、分析限制，最近使用时间至多每分钟更新一次。记录暴露可空的 `createdByCredentialId` / `createdByCredentialName`，上传用户为空，本组织有 `logs:view` 的用户照常可见。上传审计 `actor_type = integration`，actor 为凭据 id；人工策略拒绝 integration 发起者。
 
 > English: [English](../../design-docs/api-contract.md)
 
@@ -497,7 +497,25 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 
 结果 Webhook 在保留 `logDomainId`、`skillRevisionId`、`skillRevisionNumber` 及其他旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }`、`degraded: boolean`。旧未钉住运行的版本字段可为 null；规则回退或存在降级原因时 `degraded` 为 true，有原因时保留 `degradedReason`。终态入队快照保存 key 和钉住版本，重试保持相同载荷；同步测试事件维持原格式。参见[集成指南](../api/log-analysis-integration.md)。
 
-上传、创建与 rerun 接受可选 `logDomainId`：必须属于本组织且为 `active`，否则 `400`；缺省即内建未分类域语义（通用分析，上传绝不因域选择被阻塞）。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
+上传、创建与 rerun 接受可选 `logDomainId`，作为 `skillId` 的别名：必须属于本组织且为 `active`，否则 `400`。新上传未提供选择字段时使用下述推荐路由；rerun 保持原有版本策略。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
+
+### 技能推荐与上传路由（#1247）
+
+已存储日志包按路径顺序采样，最多使用前 200 个文件。采样以外的文件仍按现有接收限制参与分析。
+
+推荐理由保留 `kind`、`file`、`detail`，并新增 `source`（`skill-glob`、`extractor-glob`、`extractor`、`signal`、`format-timestamp`、`format-severity`）及 `ref`（通配、抽取器 id、信号名称或 id、时间戳模式或严重级别）。适用文件规则理由还可包含 `role`。新记录原样保存这些字段，历史理由可以缺少它们。上传对话框和报告元数据根据结构化字段显示中文说明，最多展示五条带文件名的理由，并标明剩余条数。上传选择列表只显示一次推荐技能；推荐到来前已有的手动选择仍保留为显式选择。
+
+自动路由读取已发布候选时不加行锁，并钉住所评分的不可变版本。在保存点内临时设置 200 ms 锁超时，返回前恢复调用方的锁超时，不改动调用方的语句超时。仅对胜出技能的身份和版本获取不等待的键共享锁，保护后续外键插入；遇到写入锁冲突、查询错误、取消或评分失败时，以空理由走通用分析，不中止上传事务。显式选择保留原有校验与版本钉住行为。
+
+`POST /api/v1/log-skills/recommend` 要求账号有效且具备 `logs:upload`。请求为 `{ files: [{ path: string, head: string[] }] }`，返回 `{ recommendations: [{ skillId, score, reasons: [{ kind: "file" | "pattern", file, detail }] }], recommendedSkillId?: string }`。只对调用者组织内有效且有已发布版本的技能评分。结果按分数降序、技能 id 升序排列；只有最高分唯一且至少为 **8** 时才包含 `recommendedSkillId`。并列或低分走通用分析；完成评分时仍返回零分候选。
+
+每个适用文件命中首个技能级文件 glob 得 4 分，该规则指定非空角色再加 2 分，不同角色名权重相同。抽取器文件 glob 每文件最多加 4 分。每个不同的抽取器模式命中每文件加 8 分；每条文本信号规则命中每文件加 4 分，同规则多个条件命中不重复加分。格式画像的时间戳、严重度模式命中每技能合计最多加 2 分，普通时间戳或 INFO 标记不能单独触发推荐。技能适用范围和抽取器文件过滤约束模式检查。没有文件规则表示适用于全部文件，但不产生文件 glob 分。作者模式通过共享有界 RE2 编译器和请求级模式缓存执行，不使用 JavaScript 正则引擎。
+
+限制：最多 200 个文件，路径为 1–1024 字符且不含控制字符，每文件最多 64 行、每行最多 2 KiB UTF-8。结构预检在解析数组元素前检查类型和限制，遇到首个违规字段立即返回 `400 VALIDATION_FAILED`，只包含一条问题。推荐端点另将完整 HTTP JSON 请求体限制为 27,079,424 字节：`200 × (64 × (2048 + 3) + 1024 × 4 + 32) + 1024`，涵盖文件头字节、行分隔符、路径 UTF-8 和 JSON 封装。超限在解析前返回 `413`。即使各字段都符合限制，JSON 转义也计入此传输上限。评分器只检查前 64 行，并整行忽略超长行，避免截断前缀造成错误的锚定匹配。读取已存储日志包时，每文件最多检查 131,200 字节，并丢弃不完整的末行；所有文件头读取共用 500 ms 时限，超时后路由回退通用分析。评分另有包含编译在内的 100 ms 预算，一次排名最多检查 100 个技能、每技能 512 个声明模式、200,000 次求值。文件路径或技能 id 重复、路径或模式无效、候选超限，或模式缓存、编译、求值、时间预算耗尽时，整份排名清空并走通用分析。每技能按确定的文件及特征顺序保留最多 24 条理由，每条详情最多 512 字符。推荐限制不会扩大上传或解包预算。
+
+JSON、multipart 的 `POST /api/v1/log-files` 以及基于已有文件的 `POST /api/v1/logs`，始终优先使用用户显式传入的 `skillKey`、`skillId` 或旧别名 `logDomainId`，并记录 `skillSelection.mode: "explicit"`；同时提供的选择字段仍须一致，否则返回 `400 VALIDATION_FAILED`。否则 `skillSelection: "generic"` 明确禁用技能。凭据上传先检查绑定冲突，冲突返回 `403`。绑定凭据不能绕过其绑定：发送 `skillSelection: "generic"` 返回 `403`，即使同时传入匹配的选择字段。未绑定凭据可用 `skillSelection: "generic"` 明确禁用技能。其余情况，显式选择或凭据绑定技能均记录为显式选择。所有选择字段都省略且凭据未绑定技能时，用同一评分器检查已存储日志包。推荐失败不阻挡原本有效的上传。新记录返回 `skillSelection: { mode: "recommended" | "explicit" | "generic", reasons }`；推荐模式保存获胜理由，手动指定与通用模式的理由为空。迁移 `0206_log_skill_selection.sql` 添加可空 JSONB 列 `log_records.skill_selection`，null 表示历史记录的选择来源未知。报告元数据在钉住技能版本旁显示选择结果。上传保留原始上传记录，并按最终选定的显式或推荐技能计算文件角色与 `skillMatched`，供报告及分析用例使用。
+
+上传对话框在浏览器支持时，本地读取有界文件头、压缩包路径及文件头（`.zip`、`.tar.gz`/`.tgz`、`.gz`、`.tar`），否则仅使用名称。压缩包预览另有压缩 16 MiB、展开 32 MiB 和三秒限制。错误或超时静默保留原选择，不产生新的预选，也不禁用上传。自动预选不发送上传技能选择字段，由服务端独立检查已存储数据；手动改选发送技能 id，「不使用技能」发送 `skillSelection: "generic"`。
 
 `POST /api/v1/log-files` 接受原有 JSON base64 请求，也接受 multipart/form-data：重复的 `file` 字段（多个普通文件）作为一个日志包；也可上传一个压缩包，不能与其他文件混传。支持 `.tar`、`.tar.gz`/`.tgz`、多条目 `.zip`（stored/deflate）和 `.gz`；gzip 内层名为 `.tar` 时按 tar.gz 处理。内层压缩包最多再展开一次，路径以前一层压缩条目名作为目录前缀。目录跳过；规范化相对路径最多 1024 个 UTF-8 字节。路径穿越（包括反斜杠与 `..` 段）、绝对路径、链接、设备、FIFO、加密 zip、重复规范化路径、损坏或超限压缩包生成失败记录：`failureReason` 说明规则原因，使用 `inline/` 伪存储键，不写对象存储，也不创建分析任务。接口仍返回 `201`，并写入 `log-upload-failed` 审计及 `{ fileName, failureReason }` 元数据。日志包及压缩包原因使用中文；不支持扩展名的单个普通文件保留原英文格式提示。非预期解码或压缩异常统一返回压缩包完整性提示，不暴露内部错误。
 

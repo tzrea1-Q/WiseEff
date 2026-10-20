@@ -1059,7 +1059,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await cleanupAcceptanceLogs();
 
     await page.goto("/logs");
-    await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
+    await uploadLogThroughUi(page, supportedFixture, analysisQuestion, "不使用技能（通用分析）");
     const completedLog = await latestLogByFile(page, supportedFileName);
     await expect
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })

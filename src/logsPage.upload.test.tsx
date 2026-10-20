@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { reducer } from "@/application/state/appState";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
-import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
+import type { LogAnalysisRepository, LogSkillRecommendations } from "@/application/ports/LogAnalysisRepository";
+import type { LogSkillRecommendationReason } from "@/domain/logs/types";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { projectBindingDtoSchema } from "@wiseeff/dto-schemas";
@@ -121,6 +122,194 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+describe("upload skill recommendation", () => {
+  const skill = { id: "skill-charging", name: "充电电源", status: "active" as const,
+    createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z" };
+  const recommendation: LogSkillRecommendations = { recommendedSkillId: skill.id, recommendations: [{
+    skillId: skill.id, score: 12, reasons: [{ kind: "file", file: "kernel.log", detail: "skill glob **/kernel.log (充电)",
+      source: "skill-glob", ref: "**/kernel.log", role: "充电" }]
+  }] };
+
+  async function setup(recommendLogSkills = vi.fn().mockResolvedValue(recommendation)) {
+    const repository = renderApiLogs(createLogRepository({ recommendLogSkills,
+      listLogDomains: vi.fn().mockResolvedValue([skill, { ...skill, id: "other", name: "其他技能" }]) }));
+    await waitForApiRuntime(repository);
+    openUploadDialog();
+    chooseFile(new File(["charging ready\nnext"], "kernel.log", { type: "text/plain" }));
+    await waitFor(() => expect(recommendLogSkills).toHaveBeenCalled());
+    return repository;
+  }
+
+  it("preselects the recommendation, exposes reasons and leaves routing to the server", async () => {
+    const repository = await setup();
+    await waitFor(() => expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("充电电源"));
+    expect(repository.recommendLogSkills).toHaveBeenCalledWith([{ path: "kernel.log", head: ["charging ready", "next"] }], expect.any(AbortSignal));
+    expect(screen.getByText("推荐：充电电源 · 匹配 kernel.log（1 条理由）")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("查看理由"));
+    expect(screen.getByRole("list", { name: "技能推荐理由" })).toHaveTextContent("适用文件规则 **/kernel.log（充电）");
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    await waitFor(() => expect(repository.uploadLog).toHaveBeenCalled());
+    expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillId).toBeUndefined();
+  });
+
+  it("keeps a manual override when an in-flight recommendation completes", async () => {
+    const pending = deferred<LogSkillRecommendations>();
+    const repository = await setup(vi.fn().mockReturnValue(pending.promise));
+    expect(screen.getByText("正在推荐分析技能…")).toHaveAttribute("role", "status");
+    await selectControlOption(screen.getByLabelText(/分析技能/), "other");
+    await act(async () => pending.resolve(recommendation));
+    expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("其他技能");
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    await waitFor(() => expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ skillId: "other" })));
+  });
+
+  it("shows the recommended skill once and sends no selector when choosing auto", async () => {
+    const repository = await setup();
+    await waitFor(() => expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("充电电源"));
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText(/分析技能/));
+    expect(screen.getAllByRole("option").map((option) => option.textContent))
+      .toEqual(["充电电源（推荐）", "不使用技能（通用分析）", "其他技能"]);
+    await user.keyboard("{Escape}");
+    await selectControlOption(screen.getByLabelText(/分析技能/), "other");
+    await selectControlOption(screen.getByLabelText(/分析技能/), "__auto__");
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    await waitFor(() => expect(repository.uploadLog).toHaveBeenCalled());
+    expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillId).toBeUndefined();
+    expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillSelection).toBeUndefined();
+  });
+
+  it.each([false, true])("preserves an explicit choice of the incoming recommendation unless auto is chosen (%s)", async (chooseAuto) => {
+    const pending = deferred<LogSkillRecommendations>();
+    const repository = await setup(vi.fn().mockReturnValue(pending.promise));
+    await selectControlOption(screen.getByLabelText(/分析技能/), skill.id);
+    await act(async () => pending.resolve(recommendation));
+    const trigger = screen.getByLabelText(/分析技能/), user = userEvent.setup();
+    expect(trigger).toHaveTextContent("充电电源");
+    expect(trigger).toHaveAttribute("data-value", skill.id);
+    await user.click(trigger);
+    expect(screen.getAllByRole("option").map((option) => option.textContent))
+      .toEqual(["充电电源（推荐）", "不使用技能（通用分析）", "其他技能"]);
+    await user.keyboard("{Escape}");
+    if (chooseAuto) await selectControlOption(trigger, "__auto__");
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    await waitFor(() => expect(repository.uploadLog).toHaveBeenCalled());
+    expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillId).toBe(chooseAuto ? undefined : skill.id);
+  });
+
+  it("sends explicit generic selection when the user chooses none", async () => {
+    const repository = await setup();
+    await waitFor(() => expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("充电电源"));
+    await selectControlOption(screen.getByLabelText(/分析技能/), "");
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    await waitFor(() => expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ skillSelection: "generic" })));
+    expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillId).toBeUndefined();
+  });
+
+  it("silently falls back after a recommendation failure and still uploads", async () => {
+    const repository = await setup(vi.fn().mockRejectedValue(new Error("Unavailable")));
+    await waitFor(() => expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument());
+    expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("自动推荐（无匹配时通用分析）");
+    expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    await waitFor(() => expect(repository.uploadLog).toHaveBeenCalled());
+    expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillSelection).toBeUndefined();
+  });
+
+  it("times out advisory scoring without blocking upload or applying a late result", async () => {
+    const pending = deferred<LogSkillRecommendations>();
+    const repository = await setup(vi.fn().mockReturnValue(pending.promise));
+    await waitFor(() => expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument(), { timeout: 3500 });
+    await act(async () => pending.resolve(recommendation));
+    expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("自动推荐（无匹配时通用分析）");
+    fireEvent.click(screen.getByRole("button", { name: "确认上传" }));
+    await act(async () => {});
+    expect(repository.uploadLog).toHaveBeenCalled();
+  });
+
+  it("shows the recorded routing decision and its reasons in report metadata", async () => {
+    const record = { ...initialState.logs[0], skillSelection: { mode: "recommended" as const,
+      reasons: recommendation.recommendations[0].reasons } };
+    const repository = renderApiLogs(createLogRepository({ listLogs: vi.fn().mockResolvedValue([record]),
+      getLog: vi.fn().mockResolvedValue(record) }));
+    await waitForApiRuntime(repository);
+    fireEvent.keyDown(screen.getByRole("tab", { name: "元数据" }), { key: "Enter" });
+    expect(screen.getByText("技能选择")).toBeInTheDocument();
+    expect(screen.getByText("自动推荐")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "技能选择理由" })).toHaveTextContent("kernel.log适用文件规则 **/kernel.log（充电）");
+    expect(screen.queryByText("skill glob **/kernel.log (充电)")).not.toBeInTheDocument();
+  });
+
+  it("keeps every skill option when no recommendation is available", async () => {
+    await setup(vi.fn().mockResolvedValue({ recommendations: [] }));
+    await waitFor(() => expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument());
+    await userEvent.setup().click(screen.getByLabelText(/分析技能/));
+    expect(screen.getAllByRole("option").map((option) => option.textContent))
+      .toEqual(["自动推荐（无匹配时通用分析）", "不使用技能（通用分析）", "充电电源", "其他技能"]);
+  });
+
+  it.each([
+    ["skill-glob", "charger/**", "适用文件规则 charger/**（充电）"],
+    ["extractor-glob", "kernel/*.log", "抽取规则文件 kernel/*.log"],
+    ["extractor", "voltage", "抽取规则 voltage 命中"],
+    ["signal", "充电电流降低", "信号规则「充电电流降低」命中"],
+    ["format-timestamp", "^\\d+", "时间戳格式匹配"],
+    ["format-severity", "error", "错误 级别格式匹配"],
+    ["format-severity", "warn", "警告 级别格式匹配"],
+    ["format-severity", "info", "信息 级别格式匹配"]
+  ] as const)("localizes %s reason %s", async (source, ref, label) => {
+    await setup(vi.fn().mockResolvedValue({ ...recommendation, recommendations: [{ ...recommendation.recommendations[0],
+      reasons: [{ kind: "pattern", source, ref, role: "充电", file: "charging.log", detail: "raw internal pattern" }] }] }));
+    await screen.findByText("推荐：充电电源 · 匹配 charging.log（1 条理由）");
+    fireEvent.click(screen.getByText("查看理由"));
+    const list = screen.getByRole("list", { name: "技能推荐理由" });
+    expect(within(list).getByText(label)).toBeInTheDocument();
+    expect(list.querySelector("code")).toHaveTextContent("charging.log");
+    expect(screen.queryByText("raw internal pattern")).not.toBeInTheDocument();
+  });
+
+  it("shows only five reasons with a remaining count", async () => {
+    const reasons: LogSkillRecommendationReason[] = Array.from({ length: 7 }, (_, index) => ({
+      kind: "pattern", source: "signal", ref: `信号${index + 1}`, file: "charging.log", detail: `raw ${index}`
+    }));
+    await setup(vi.fn().mockResolvedValue({ ...recommendation, recommendations: [{ ...recommendation.recommendations[0], reasons }] }));
+    await screen.findByText("推荐：充电电源 · 匹配 charging.log（7 条理由）");
+    fireEvent.click(screen.getByText("查看理由"));
+    expect(within(screen.getByRole("list", { name: "技能推荐理由" })).getAllByRole("listitem")).toHaveLength(5);
+    expect(screen.getByText("另有 2 条")).toBeInTheDocument();
+    expect(screen.queryByText("信号规则「信号6」命中")).not.toBeInTheDocument();
+  });
+
+  it("renders historical reason records without showing raw implementation details", async () => {
+    const record = { ...initialState.logs[0], skillSelection: { mode: "recommended" as const,
+      reasons: [{ kind: "pattern" as const, file: "old.log", detail: "signal internal-id: raw pattern" }] } };
+    const repository = renderApiLogs(createLogRepository({ listLogs: vi.fn().mockResolvedValue([record]), getLog: vi.fn().mockResolvedValue(record) }));
+    await waitForApiRuntime(repository);
+    fireEvent.keyDown(screen.getByRole("tab", { name: "元数据" }), { key: "Enter" });
+    expect(screen.getByText("日志特征匹配")).toBeInTheDocument();
+    expect(screen.queryByText("signal internal-id: raw pattern")).not.toBeInTheDocument();
+  });
+
+  it("preserves explicit none chosen while recommendation is pending", async () => {
+    const pending = deferred<LogSkillRecommendations>();
+    const repository = await setup(vi.fn().mockReturnValue(pending.promise));
+    await selectControlOption(screen.getByLabelText(/分析技能/), "");
+    await act(async () => pending.resolve(recommendation));
+    expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("不使用技能（通用分析）");
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    await waitFor(() => expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ skillSelection: "generic" })));
+  });
+
+  it("allows explicit none after no skill matches", async () => {
+    const repository = await setup(vi.fn().mockResolvedValue({ recommendations: [] }));
+    await waitFor(() => expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument());
+    await selectControlOption(screen.getByLabelText(/分析技能/), "");
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    await waitFor(() => expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ skillSelection: "generic" })));
+  });
+});
+
 describe("reducer · SIMULATE_LOG_UPLOAD", () => {
   it("supported=true 时新增 Processing 状态 log", () => {
     const next = reducer(userState, { type: "SIMULATE_LOG_UPLOAD", fileName: "new.log", supported: true });
@@ -202,8 +391,8 @@ describe("LogsPage api upload wiring", () => {
     openUploadDialog();
     await waitFor(() => expect(listLogSkills).toHaveBeenCalledTimes(1));
     await userEvent.click(screen.getByLabelText(/分析技能/));
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["通用分析", "已发布技能"]);
-    await userEvent.click(screen.getByRole("option", { name: "通用分析" }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["自动推荐（无匹配时通用分析）", "不使用技能（通用分析）", "已发布技能"]);
+    await userEvent.click(screen.getByRole("option", { name: "不使用技能（通用分析）" }));
     await userEvent.click(screen.getByRole("button", { name: "关闭上传日志" }));
 
     openUploadDialog();

@@ -25,6 +25,10 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  skillSelection?: {
+    mode: "recommended" | "explicit" | "generic";
+    reasons: import("./skillRecommendation").LogSkillRecommendationReason[];
+  };
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
   sourceSnapshot?: import("./analyzer").AnalyzeLogInput["sourceSnapshot"];
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
