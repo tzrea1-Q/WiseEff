@@ -37,6 +37,8 @@ export const parseTestsSchema = z.array(parseTestSchema).max(MAX_PARSE_TESTS).su
 });
 export const parseTestResultSchema = z.object({
   id: z.string(), name: z.string(), passed: z.boolean(),
+  // A deadline can expire before the runner evaluates this file's applicability.
+  applicability: z.object({ skillMatched: z.boolean(), role: z.string().nullable() }).strict().optional(),
   diffs: z.array(z.object({ path: z.string(), expected: testValueSchema, actual: testValueSchema, missing: z.boolean().optional() }).strict()),
   missingSignals: z.array(z.string()), unexpectedSignals: z.array(z.string()),
   events: z.array(decodedEventSchema), signals: z.array(z.string()), error: z.string().optional()

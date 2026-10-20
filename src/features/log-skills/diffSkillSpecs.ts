@@ -17,6 +17,7 @@ export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
   const integration = fields({ modelOverride: a.modelOverride, stepBudget: a.stepBudget, tokenBudget: a.tokenBudget },
     { modelOverride: b.modelOverride, stepBudget: b.stepBudget, tokenBudget: b.tokenBudget });
   const procedure = fields({ procedure: a.procedure }, { procedure: b.procedure });
+  const applicability = fields({ files: a.files }, { files: b.files });
   const knowledge = fields({ knowledgeEntryIds: a.knowledgeEntryIds ?? [] }, { knowledgeEntryIds: b.knowledgeEntryIds ?? [] });
   const testsBefore = new Map(a.parseTests?.map((test) => [test.id, test]));
   const testsAfter = new Map(b.parseTests?.map((test) => [test.id, test]));
@@ -49,7 +50,7 @@ export function diffSkillSpecs(a: SkillSpec, b: SkillSpec) {
     const left = parsingBefore.get(id), right = parsingAfter.get(id), changes = fields(left ?? {}, right ?? {});
     return changes.length ? [{ id, kind: !left ? "added" as const : !right ? "removed" as const : "changed" as const, fields: changes }] : [];
   });
-  return { overview, integration, procedure, knowledge, tests, source, format, rules, signalSettings, parsing, counts: {
+  return { overview, integration, procedure, applicability, knowledge, tests, source, format, rules, signalSettings, parsing, counts: {
     integration: integration.length,
     knowledge: knowledge.length,
     source: source.length, overview: overview.length, procedure: procedure.length, format: format.filter((line) => line.kind !== "equal").length,

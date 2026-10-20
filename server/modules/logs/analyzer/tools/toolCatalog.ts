@@ -1,4 +1,5 @@
 import { runLogPrefilter } from "../../prefilter";
+import { genericSignalRuleSet } from "../../analyzer";
 import { z } from "zod";
 
 import { compileFileGlob, compileLogPattern, type LogPattern } from "../../adminPattern";
@@ -76,7 +77,7 @@ export async function searchLogLines(
     matcher = (line) => line.toLowerCase().includes(needle);
   }
 
-  let fileMatcher: LogPattern | undefined;
+  let fileMatcher: ReturnType<typeof compileFileGlob> | undefined;
   if (params.file) {
     fileMatcher = compileFileGlob(params.file);
   }
@@ -167,7 +168,7 @@ export function getPrefilterFindings(context: LogAnalysisToolContext, filePath?:
     const files = context.files.filter((file) => file.parsed && (!filePath || file.path === filePath));
     return { ok: true, result: { totalFiles: files.length, truncated: files.length > MAX_MATCHES_HARD_CAP,
       files: files.slice(0, MAX_MATCHES_HARD_CAP).map((file) => ({ file: file.path,
-        findings: getPrefilterFindings({ ...context, files: undefined, prefilter: file.prefilter ?? runLogPrefilter(file.parsed!.entries, context.signalRules) }) })) } };
+        findings: getPrefilterFindings({ ...context, files: undefined, prefilter: file.prefilter ?? runLogPrefilter(file.parsed!.entries, file.skillMatched === false ? genericSignalRuleSet : context.signalRules) }) })) } };
   }
   const findings = context.prefilter;
   return {

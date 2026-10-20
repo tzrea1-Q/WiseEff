@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   createRuleBasedLogAnalyzer,
+  genericSignalRuleSet,
   type AnalyzeLogEvidence,
   type AnalyzeLogInput,
   type AnalyzeLogOutput,
@@ -116,7 +117,7 @@ function buildSystemPrompt(hasRelatedParameter: boolean): string {
 
 export function formatPrefilterFindings(findings: PrefilterFindings, files?: AnalyzeLogInput["files"], signalRules?: AnalyzeLogInput["signalRules"]): string {
   if (files) return files.filter((file) => file.parsed).map((file) =>
-    `File ${JSON.stringify(file.path)}:\n${formatPrefilterFindings(file.prefilter ?? runLogPrefilter(file.parsed!.entries, signalRules))}`).join("\n\n");
+    `File ${JSON.stringify(file.path)}:\n${formatPrefilterFindings(file.prefilter ?? runLogPrefilter(file.parsed!.entries, file.skillMatched === false ? genericSignalRuleSet : signalRules))}`).join("\n\n");
   const ruleLines = findings.evidence.map(
     (item) => `- ${item.ruleHit}: lines ${item.lineNumbers.slice(0, 20).join(", ")} (${item.inference})`
   );
@@ -196,7 +197,7 @@ function formatExcerpt(lines: ExcerptLine[]): string {
 }
 
 async function buildFileExcerpt(file: NonNullable<AnalyzeLogInput["files"]>[number], charBudget: number, signalRules: AnalyzeLogInput["signalRules"]): Promise<ExcerptLine[]> {
-  const anomalies = (file.prefilter ?? runLogPrefilter(file.parsed!.entries, signalRules)).anomalyLineNumbers;
+  const anomalies = (file.prefilter ?? runLogPrefilter(file.parsed!.entries, file.skillMatched === false ? genericSignalRuleSet : signalRules)).anomalyLineNumbers;
   if (!file.reader) return buildBudgetedExcerpt({ rawLines: file.parsed!.rawLines, anomalyLineNumbers: anomalies, charBudget })
     .map((line) => ({ ...line, filePath: file.path }));
   const candidates: number[] = [];

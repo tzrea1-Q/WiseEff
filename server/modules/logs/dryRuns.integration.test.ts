@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import JSZip from "jszip";
 import { describe, expect, it, vi } from "vitest";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
@@ -9,7 +10,7 @@ import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 import { registerLogRoutes } from "./routes";
-import { createRuleBasedLogAnalyzer, type AnalyzeLogInput, type LogAnalysisAdapter } from "./analyzer";
+import { createRuleBasedLogAnalyzer, genericSignalRuleSet, type AnalyzeLogInput, type LogAnalysisAdapter } from "./analyzer";
 import { acquireDryRunOwner, LOG_DRY_RUN_BUSY, LOG_DRY_RUN_INTERRUPTED, recoverInterruptedDryRuns } from "./dryRunAdmission";
 import type { getLogSkill } from "./skillsService";
 import type { LogSkillRevisionDto } from "./skillsRepository";
@@ -57,6 +58,60 @@ async function harness(analyzer: LogAnalysisAdapter) {
 }
 
 describe.skipIf(!available)("dry-run aggregate admission and process lifecycle over PostgreSQL", () => {
+  it("runs bundle files with their roles and applicability and retains immutable file windows beyond the sample preview", async () => {
+    const observed: AnalyzeLogInput[] = [];
+    const h = await harness({ async analyze(input) { observed.push(input); return createRuleBasedLogAnalyzer().analyze(input); } });
+    try {
+      const api = await h.prepare("bundle-dry", "Bundle sample");
+      const spec = { ...api.skill.currentRevision.spec, files: [{ glob: "charger/**", role: "充电" }],
+        formatProfile: { severityMap: { info: ["ERROR"] } },
+        parsing: { schemaVersion: "parsing/v1", extractors: [{ id: "sensor", pattern: "temperature=(?P<temperature>\\d+)",
+          fields: { temperature: { type: "int" } } }] },
+        signalRules: { ...genericSignalRuleSet, rules: [{ id: "charging-high", stageId: "rootcause", severity: "Warning",
+          anyOf: [{ type: "text", pattern: "CUSTOM" }, { type: "field", field: "sensor.temperature", operator: "range", min: 90, max: 100 }],
+          inference: "Inspect charger", suggestedAction: "Inspect", analysis: { suggestedActions: [] } }] } };
+      expect((await api.request(`${api.base}/draft`, "PUT", { spec, baseDraftRevisionId: api.revisionId,
+        basePublishedRevisionId: api.skill.currentRevision.id })).status).toBe(200);
+      const zip = new JSZip();
+      zip.file("kernel/dmesg.log", "ERROR CUSTOM temperature=95\n", { createFolders: false });
+      zip.file("charger/charger.log", "INFO filler\n".repeat(5001) + "ERROR CUSTOM temperature=95\n", { createFolders: false });
+      zip.file("misc/notes.txt", "ERROR CUSTOM temperature=95\n", { createFolders: false });
+      zip.file("capture.bin", Buffer.from([0, 1, 2]), { createFolders: false });
+      expect((await api.request(`${api.base}/sample`, "PUT", { fileName: "sample.zip",
+        contentBase64: (await zip.generateAsync({ type: "nodebuffer" })).toString("base64") })).status).toBe(200);
+      const started = await api.request<Dry>(`${api.base}/dry-runs`, "POST");
+      expect(started.status).toBe(202);
+      await h.idle();
+      expect(observed).toHaveLength(1);
+      const input = observed[0];
+      expect(input.files?.map(({ path, role, skillMatched, status }) => ({ path, role, skillMatched, status }))).toEqual([
+        { path: "kernel/dmesg.log", role: null, skillMatched: false, status: "analyzed" },
+        { path: "charger/charger.log", role: "充电", skillMatched: true, status: "analyzed" },
+        { path: "misc/notes.txt", role: null, skillMatched: false, status: "analyzed" },
+        { path: "capture.bin", role: null, skillMatched: false, status: "skipped" }
+      ]);
+      expect(input.signalSummary?.signals.filter(({ source }) => source === "skill")).toEqual([
+        expect.objectContaining({ kind: "skill:charging-high", anchors: [expect.objectContaining({ file: "charger/charger.log", line: 5002 })] })
+      ]);
+      for (const path of ["kernel/dmesg.log", "misc/notes.txt"]) expect(input.signalSummary?.signals).toEqual(expect.arrayContaining([
+        expect.objectContaining({ source: "generic", kind: "first-error", anchors: [expect.objectContaining({ file: path })] })
+      ]));
+      expect(input.decoding?.events.map(({ file }) => file)).toEqual(["charger/charger.log"]);
+      expect(await input.files!.find(({ path }) => path === "misc/notes.txt")!.reader!.readRange(1, 1))
+        .toEqual([{ lineNumber: 1, content: "ERROR CUSTOM temperature=95" }]);
+      const finished = await api.request<Dry>(`${api.base}/dry-runs/${started.body.run.id}`);
+      expect(finished.body.run).toMatchObject({ status: "complete", report: { reportContext: { lineCount: 5004 } } });
+      expect(finished.body.run.report?.evidence.filter(({ ruleHit }) => ruleHit === "charging-high"))
+        .toEqual([expect.objectContaining({ filePath: "charger/charger.log", lineNumbers: [5002] })]);
+      // A later sample replacement must not change evidence windows for this run.
+      expect((await api.request(`${api.base}/sample`, "PUT", { fileName: "new.log", contentBase64: Buffer.from("replacement").toString("base64") })).status).toBe(200);
+      expect(await api.request(`${api.base}/dry-runs/${started.body.run.id}/lines?file=charger%2Fcharger.log&startLine=5002&endLine=5002`))
+        .toMatchObject({ status: 200, body: { item: { file: "charger/charger.log", totalLines: 5002,
+          lines: [{ lineNumber: 5002, content: "ERROR CUSTOM temperature=95" }] } } });
+      expect((await api.request(`${api.base}/dry-runs/${started.body.run.id}/lines?file=missing.log&startLine=1&endLine=1`)).status).toBe(404);
+    } finally { await h.idle(); await h.close(); }
+  }, 120_000);
+
   it("atomically admits across API pools and rejects excess skills and tenants before reading or analyzing", async () => {
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => { release = resolve; });

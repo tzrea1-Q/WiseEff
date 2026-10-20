@@ -25,6 +25,21 @@ function setup(initial?: SkillSpec["formatProfile"], repository = { previewForma
   return { changed, validity, repository };
 }
 describe("basic format form", () => {
+  it("keeps format editing available while applicability disables the stored-sample preview", async () => {
+    const previewFormat = vi.fn(async () => preview);
+    const repository = { previewFormat };
+    const { rerender } = render(<FormatProfileForm skillId="s" profile={{}} onChange={() => undefined} repository={repository}
+      sample={mockSkillSample} previewEnabled />);
+    await waitFor(() => expect(previewFormat).toHaveBeenCalled());
+    expect(screen.getByRole("table", { name: "基础格式逐行预览" })).toBeInTheDocument();
+    previewFormat.mockClear();
+    rerender(<FormatProfileForm skillId="s" profile={{}} onChange={() => undefined} repository={repository}
+      sample={mockSkillSample} previewEnabled={false} />);
+    expect(screen.getByText(/未匹配技能，不运行基础格式预览/)).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "基础格式逐行预览" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "时间戳模式" })).toBeEnabled();
+    expect(previewFormat).not.toHaveBeenCalled();
+  });
   it.each([...logSkillTemplates.map((template) => ({ id: template.id, profile: template.spec.formatProfile })), {
     id: "seeded charging skill", profile: mockSkillWorkspace("skill-charging")!.currentRevision.spec.formatProfile
   }])("round trips the $id profile without changing its object or parsed output", ({ profile }) => {

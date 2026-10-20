@@ -221,7 +221,7 @@ export const signalRuleSetSchema = z.preprocess(preflightSignalRules, withLogPat
 export type SignalRuleSet = z.infer<typeof signalRuleSetSchema>;
 export type SignalCondition = z.infer<typeof signalConditionSchema>;
 
-export const signalPreviewRequestSchema = z.object({ signalRules: z.unknown(), parsing: z.unknown().optional(), formatProfile: z.unknown().optional() }).strict();
+export const signalPreviewRequestSchema = z.object({ signalRules: z.unknown(), parsing: z.unknown().optional(), formatProfile: z.unknown().optional(), files: z.unknown().optional() }).strict();
 export const signalPreviewResponseSchema = z.object({
   valid: z.boolean(), issues: z.array(z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() })),
   hits: z.array(z.object({ ruleId: z.string(), lineNumber: z.number().int().positive(), excerpt: z.string() })),

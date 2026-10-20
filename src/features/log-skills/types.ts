@@ -38,7 +38,7 @@ export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas
 
 export interface SkillWorkspaceRepository {
   runSkillParseTests?(id: string, spec: SkillSpec): Promise<ParseTestRun>;
-  signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"] }): Promise<SignalPreview>;
+  signalPreview?(id: string, input: { signalRules: NonNullable<SkillSpec["signalRules"]>; parsing?: SkillSpec["parsing"]; formatProfile?: SkillSpec["formatProfile"]; files?: SkillSpec["files"] }): Promise<SignalPreview>;
   generateExtractorPattern?(id: string, input: ExtractorPatternInput): Promise<ExtractorPatternPreview>;
   previewFormat?(id: string, input: { sampleText: string; formatProfile: unknown }): Promise<FormatPreview>;
   listAnalysisCases?(id: string): Promise<AnalysisCaseList>;

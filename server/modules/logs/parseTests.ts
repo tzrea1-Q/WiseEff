@@ -9,6 +9,7 @@ import { logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
 import type { ParseTest, ParseTestResult, ParseTestRun, ParseTestValue } from "./parseTestSpec";
 import { registerCaseKey, type DecodedEvent } from "./parsing/spec";
 import { createSignalEvaluationBudget } from "./signalRules";
+import { compileSkillFiles } from "../../../src/domain/logs/fileApplicability";
 
 export const PARSE_TEST_MAX_MS = 1000;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -74,13 +75,17 @@ export async function runParseTests(value: LogSkillSpec, options: { maxMs?: numb
     spec = value;
   }
   let bytes = 0, fields = 0, eventCount = 0, truncated = false;
+  let assignFile: ReturnType<typeof compileSkillFiles> | undefined;
   for (const test of spec.parseTests ?? []) {
     const result: ParseTestResult = { id: test.id, name: test.name, passed: false, diffs: [], missingSignals: [], unexpectedSignals: [], events: [], signals: [] };
     try {
       if (!remaining()) throw new Error("Parse test deadline exceeded");
       if (bytes >= MAX_DECODE_OUTPUT_BYTES || fields >= MAX_DECODE_OUTPUT_FIELDS || eventCount >= MAX_DECODE_EVENTS) throw new Error("Parse test output cap exceeded");
       const file = test.fileName ?? "sample.log";
-      if (spec.parsing) {
+      assignFile ??= bounded(() => compileSkillFiles(spec.files));
+      const applicability = bounded(() => assignFile!(file));
+      result.applicability = applicability;
+      if (applicability.skillMatched && spec.parsing) {
         const decoded = await decodeLogFilesCooperatively(spec.parsing, [{ file, lines: test.lines }],
           { maxMs: remaining(), maxEvents: MAX_DECODE_EVENTS - eventCount, hardTimeout: true });
         if (decoded.truncated || Object.keys(decoded.counts.errors).length) result.error = decoded.reason ?? Object.keys(decoded.counts.errors).join(", ");
@@ -96,9 +101,10 @@ export async function runParseTests(value: LogSkillSpec, options: { maxMs?: numb
           if (!remaining()) throw new Error("Parse test deadline exceeded");
           yield { lineNumber: index + 1, content };
         }
-      })(), spec.formatProfile)) entries.push(entry);
-      const signals = await extractLogSignalsCooperatively([{ path: file, parsed: { ok: true, rawLines: test.lines, entries } }],
-        spec.signalRules ?? genericSignalRuleSet, { maxMs: remaining(), hardTimeout: true, evaluation, eventsByLine: indexDecodedEvents(result.events) });
+      })(), applicability.skillMatched ? spec.formatProfile : undefined)) entries.push(entry);
+      const signals = await extractLogSignalsCooperatively([{ path: file, ...applicability, parsed: { ok: true, rawLines: test.lines, entries } }],
+        applicability.skillMatched ? spec.signalRules ?? genericSignalRuleSet : genericSignalRuleSet,
+        { maxMs: remaining(), hardTimeout: true, evaluation, eventsByLine: indexDecodedEvents(result.events) });
       if (signals.truncated || signals.truncatedSignals) result.error = signals.reason ?? "Parse test signal cap exceeded";
       const signalNames = signals.signals.map((signal) => ({ id: signal.kind.startsWith("skill:") ? signal.kind.slice(6) : signal.kind, title: signal.title }));
       result.signals = [...new Set(signalNames.map((signal) => signal.id))];

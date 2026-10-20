@@ -20,6 +20,14 @@ Open a skill's Samples and parsing section. Select a line in the docked sample p
 
 The Basic format form edits the existing `formatProfile`: timestamp pattern, severity patterns for error/warn/info, and either indentation or a start pattern for multi-line entries. The live sample preview shows detected timestamps, each line's severity and the original line numbers grouped into entries. Timestamp capture group 1 is used when present; severity checks error, warn and info in that order. Patterns use RE2. Code view edits the same JSON object and round-trips without converting existing profiles. Invalid code or patterns must be corrected before saving or publishing. Form changes do not migrate profiles or change parsing semantics. Live basic-format preview is limited to the first 500 lines and 1 MiB, with at most 6,144 characters per line.
 
+## Choose applicable files and roles
+
+In the skill workspace, open Samples and parsing and use the Applicable files block beside the sample workflow. Keeping applicability here lets you check paths against the same sample bundle while editing. Add a path glob and, optionally, a short role such as `main`, `kernel`, `charging` or `config`; suggestions do not restrict custom labels. Move rows up or down to change their order, or remove them. The first matching row assigns the role, even when that row has no role. With no rows, the skill applies to every file.
+
+Globs match the complete bundle-relative path, case-sensitively. `*` stays within one directory, `**` crosses directories, `?` matches one non-slash character, and character classes such as `[0-9]` match a character. For example, `charger/**` matches `charger/charger.log`, but not `kernel/dmesg.log` or `Charger/charger.log`. You can configure at most 100 globs, each at most 256 characters, with roles at most 40 characters. Validation identifies the affected row and field.
+
+Upload a sample bundle or a single text sample to see every sample file's matched/unmatched status and assigned role as you edit. A single-file sample has one entry. Preview and analysis use the same matcher and ordered rules. Save and publish to apply the configuration to new analyses. Only matching files receive the pinned skill's signal rules, extractors and decoding; an extractor's own file filters still apply. Other analyzable files retain generic signals and remain readable by the agent.
+
 ## Author signal rules
 
 The field picker groups choices by extractor and decoder. Choose a register bit field or frame quantity (units are shown when declared), or its `.meaning` enum label. For example, BQ25890 `addr=0x0C val=0x20` decoded by the charger map can trigger a signal with `charger.val.fields.CHRG_FAULT.meaning` equals `thermal_shutdown`. Meanings offer selectable values for equals/set conditions; numeric thresholds use the scaled decoded value. Paths start with `extractorId.captureName`, traverse `.fields.NAME`, and may end in `.value` or `.meaning`. Repeated frame/TLV elements use `.fields.*` to match any element, such as `pd.pdo.fields.pdos.fields.*.fields.voltage.value`; numeric indexes are not supported. Missing or errored fields do not match. These signals contribute line references to report evidence and participate in rule fallback.
@@ -62,6 +70,8 @@ Entries you cannot read appear with a restricted-entry label and their id; title
 Save and publish the skill draft to make its link set available to new analyses. A run uses the entries linked by its pinned skill revision, so later skill edits cannot change that set. Unpublished and archived knowledge is excluded from retrieval. The report's source information records the entry and revision ids actually returned during analysis, rather than treating every linked entry as used. Later knowledge edits do not rewrite that run's recorded sources.
 
 ## Keep decoders correct with parse tests
+
+Test filenames, including the default `sample.log`, follow the skill's applicability rules and each extractor's globs; unmatched files use only generic parsing and signals, with a general-analysis notice in the result detail explaining why skill fields are missing.
 
 The skill workspace has one Tests section with Parse tests and Analysis cases tabs. Parse tests opens by default; switching tabs preserves their edits and displayed results. Links ending in `?section=tests&tab=parse` or `?section=tests&tab=cases` open the corresponding tab.
 
@@ -146,6 +156,10 @@ After completion, choose "Export report" to download a Markdown summary or "Copy
 ![Selected evidence card with cited log lines](images/log-analysis-evidence.png)
 
 *A selected evidence card from the freshly uploaded sample exposes cited raw lines and inference for manual checking.*
+
+## Inspect file roles
+
+Open the report's Files tab to inspect each bundle path, size, line count, role and any skip reason. Files outside the pinned skill's applicability are marked as general analysis only. This does not mean the file was skipped: supported text still receives generic analysis and can be opened in the file viewer. A matching file can have no role when its first matching row leaves the role blank. Older records may have no saved applicability assignment.
 
 ## Inspect signals and repeated lines
 

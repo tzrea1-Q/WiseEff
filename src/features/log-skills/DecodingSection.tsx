@@ -1,7 +1,8 @@
 import { useDeferredValue, useEffect, useId, useMemo, useState } from "react";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { stringify } from "yaml";
-import { parsingSpecSchema, registerCaseKey } from "@wiseeff/dto-schemas";
+import { parsingSpecSchema, registerCaseKey, logSkillSpecSchema } from "@wiseeff/dto-schemas";
+import { matchSkillFile } from "@/domain/logs/fileApplicability";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
@@ -96,9 +97,9 @@ function EnumEditor({ value, onChange, disabled, label }: { value?: unknown; onC
   }} />{error ? <span id={errorId} role="alert">枚举需为值到含义的 JSON 对象。</span> : null}</>;
 }
 
-export function DecodingSection({ skillId, yaml, onChange, disabled, repository, sample, selectedLine }: {
+export function DecodingSection({ skillId, yaml, onChange, disabled, repository, sample, selectedLine, files }: {
   skillId: string; yaml: string; onChange: (text: string) => void; disabled: boolean; repository?: Partial<SkillWorkspaceRepository>;
-  sample?: SkillSample | null; selectedLine?: number | null;
+  sample?: SkillSample | null; selectedLine?: number | null; files?: SkillSpec["files"];
 }) {
   const id = useId();
   const [view, setView] = useState("form");
@@ -107,13 +108,15 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
   const [pasteOpen, setPasteOpen] = useState(false);
   const [paste, setPaste] = useState("");
   const deferredPaste = useDeferredValue(paste);
-  const [outcome, setOutcome] = useState<{ yaml: string; sample: SkillSample; line: number; preview?: ParsePreview; error?: string } | null>(null);
+  const [outcome, setOutcome] = useState<{ yaml: string; sample: SkillSample; files: SkillSpec["files"]; line: number; preview?: ParsePreview; error?: string } | null>(null);
   const parsed = useMemo(() => parseParsingYaml(yaml), [yaml]);
   const validation = useMemo(() => parsingSpecSchema.safeParse(parsed.value), [parsed.value]);
-  const current = outcome && outcome.yaml === yaml && outcome.sample === sample && outcome.line === selectedLine ? outcome : null;
+  const skillMatched = !!sample && logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", files }).success
+    && matchSkillFile(files, sample.contentFilePath ?? sample.fileName).skillMatched;
+  const current = skillMatched && outcome && outcome.yaml === yaml && outcome.sample === sample && outcome.files === files && outcome.line === selectedLine ? outcome : null;
   const preview = current?.preview;
   const error = current?.error;
-  const pending = !!sample && !!selectedLine && validation.success && !!repository?.parsePreview && !current;
+  const pending = skillMatched && !!selectedLine && validation.success && !!repository?.parsePreview && !current;
   const spec = formSpec(parsed.value) ? parsed.value : null;
   const registers = spec?.registers ?? {};
   const activeId = Object.hasOwn(registers, registerId) ? registerId : Object.keys(registers)[0] ?? "";
@@ -130,12 +133,12 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
   const storedPreview = useMemo(() => boundedSamplePreview(sample?.content ?? ""), [sample]);
   useEffect(() => {
     let active = true;
-    if (!sample || !selectedLine || !validation.success || !repository?.parsePreview) return;
-    void repository.parsePreview(skillId, { parsing: parsed.value, sampleText: storedPreview.content, fileName: sample.fileName })
-      .then((result) => { if (active) setOutcome({ yaml, sample, line: selectedLine, preview: result }); })
-      .catch(() => { if (active) setOutcome({ yaml, sample, line: selectedLine, error: "样例解码失败，请重新选择样例行或检查规则。" }); });
+    if (!sample || !skillMatched || !selectedLine || !validation.success || !repository?.parsePreview) return;
+    void repository.parsePreview(skillId, { parsing: parsed.value, sampleText: storedPreview.content, fileName: sample.contentFilePath ?? sample.fileName })
+      .then((result) => { if (active) setOutcome({ yaml, sample, files, line: selectedLine, preview: result }); })
+      .catch(() => { if (active) setOutcome({ yaml, sample, files, line: selectedLine, error: "样例解码失败，请重新选择样例行或检查规则。" }); });
     return () => { active = false; };
-  }, [skillId, yaml, sample, selectedLine, repository, validation.success, parsed.value, storedPreview.content]);
+  }, [skillId, yaml, sample, files, skillMatched, selectedLine, repository, validation.success, parsed.value, storedPreview.content]);
   const selectedEvents = preview?.events.filter((event) => selectedLine && event.line <= selectedLine && (event.endLine ?? event.line) >= selectedLine) ?? [];
   const occurrences = spec ? decodedOccurrences(spec, selectedEvents).filter((item) => "register" in item.decoder && item.decoder.register === activeId) : [];
   const matching = (occurrence?.register === activeId && occurrence.line === selectedLine ? occurrences.find((item) => item.key === occurrence.key) : undefined) ?? occurrences[0];
@@ -157,6 +160,7 @@ export function DecodingSection({ skillId, yaml, onChange, disabled, repository,
   const unmatchedDetails = eventErrors.filter((issue) => isRegisterCaseError(issue.code)).map((issue) => issue.message).join("\n");
   const fieldNames = [...new Set(spec?.extractors.flatMap((extractor) => Object.keys(extractor.fields)) ?? [])];
   return <section className="skill-section skill-decoding" aria-label="解码"><h2>解码</h2>
+    {sample && !skillMatched ? <p>此文件未匹配技能，仅通用分析；不会运行技能解码预览。</p> : null}
     <ViewSwitch variant="tabs" ariaLabel="解码视图" value={view} onValueChange={setView} items={[
       { value: "form", label: "表单", id: `${id}-form`, panelId: `${id}-form-panel` },
       { value: "code", label: "代码视图", id: `${id}-code`, panelId: `${id}-code-panel` }

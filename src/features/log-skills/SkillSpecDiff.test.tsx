@@ -7,6 +7,13 @@ import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 afterEach(cleanup);
 const spec: SkillSpec = { schemaVersion: "skill/v1" };
 
+it("includes ordered file applicability and roles in publication differences", () => {
+  render(<SkillSpecDiff before={spec} after={{ ...spec, files: [{ glob: "charger/**", role: "充电" }] }} />);
+  expect(screen.getByRole("region", { name: "适用文件差异" })).toHaveTextContent("charger/**");
+  expect(screen.getByRole("region", { name: "适用文件差异" })).toHaveTextContent("充电");
+  expect(screen.getByLabelText("变更摘要").querySelector("p")).toHaveTextContent("适用文件 1 项");
+});
+
 it("makes model and budget changes visible in integration publication review", () => {
   render(<SkillSpecDiff before={{ ...spec, modelOverride: "previous-model", stepBudget: 4, tokenBudget: 4000 }} after={{ ...spec, stepBudget: 5, tokenBudget: 5000 }} />);
   expect(screen.getByLabelText("变更摘要").querySelector("p")).toHaveTextContent(/^集成 3 项$/);

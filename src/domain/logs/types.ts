@@ -96,6 +96,7 @@ export type LogFeedbackInsight = {
 export type LogFile = {
   path: string; sizeBytes: number; lineCount: number; encoding: "utf-8" | "utf-16le" | "utf-16be";
   lossy: boolean; status: "analyzed" | "skipped"; skipReason: string | null;
+  role?: string | null; skillMatched?: boolean | null;
 };
 export type LogEvidence = {
   sourceLocation?: { snapshotId: string; path: string; line: number };
