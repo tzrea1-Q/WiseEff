@@ -283,7 +283,8 @@ describe.skipIf(!available)("generic signals through upload, worker and HTTP rep
       const router = createRouter(); registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
       for (const { analyzer, confidence } of adapters) for (const skillId of [skill.id, undefined]) {
         const uploaded = await requestJson<{ log: { id: string }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
-          method: "POST", body: JSON.stringify({ fileName: "charging-foldback.log", contentType: "text/plain", skillId, contentBase64: bytes.toString("base64") })
+          method: "POST", body: JSON.stringify({ fileName: "charging-foldback.log", contentType: "text/plain", skillId,
+            skillSelection: skillId ? undefined : "generic", contentBase64: bytes.toString("base64") })
         });
         expect(uploaded.status).toBe(201);
         expect(await processLogAnalysisJobById({ db, objectStore, jobId: uploaded.body.job.id, analyzer, maxAttempts: 1 })).toEqual({ status: "processed" });
@@ -323,7 +324,7 @@ describe.skipIf(!available)("generic signals through upload, worker and HTTP rep
       zip.file("app.log", Array.from({ length: 6 }, (_, index) => `2026-10-19T10:02:0${index}Z ERROR request id=${index} failed /tmp/request-${index}`).join("\n"));
       const router = createRouter(); registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
       const uploaded = await requestJson<{ log: { id: string }; job: { id: string; runId: string } }>(createHttpServer(router), "/api/v1/log-files", {
-        method: "POST", body: JSON.stringify({ fileName: "signals.zip", contentType: "application/zip",
+        method: "POST", body: JSON.stringify({ fileName: "signals.zip", contentType: "application/zip", skillSelection: "generic",
           contentBase64: (await zip.generateAsync({ type: "nodebuffer" })).toString("base64") })
       });
       expect(uploaded.status).toBe(201);
@@ -355,7 +356,7 @@ describe.skipIf(!available)("generic signals through upload, worker and HTTP rep
       expect((await requestJson(createHttpServer(router), `/api/v1/logs/${uploaded.body.log.id}`)).status).toBe(404);
       auth = authFor();
       // Exhausted provider retries use the same generic summary and preserve honest degradation.
-      const fallback = await uploadLogFile(db, objectStore, auth, { fileName: "fallback.log", contentType: "text/plain", bytes: Buffer.from("kernel panic\nERROR unrelated fault") });
+      const fallback = await uploadLogFile(db, objectStore, auth, { fileName: "fallback.log", contentType: "text/plain", skillSelection: "generic", bytes: Buffer.from("kernel panic\nERROR unrelated fault") });
       await processLogAnalysisJobById({ db, objectStore, jobId: fallback.job!.id, maxAttempts: 1,
         analyzer: { analyze: async () => { throw new LogAnalysisProviderError("offline"); } } });
       const degraded = await getLogRecord(db, auth, fallback.log.id);

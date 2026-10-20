@@ -100,7 +100,7 @@ describe.skipIf(!available)("pinned source snapshot run over PostgreSQL", () => 
         }]);
       }
       const upload = await requestJson<{ log: { id: string }; job: { id: string } }>(server, "/api/v1/log-files", {
-        method: "POST", body: JSON.stringify({ fileName: "generic.log", contentType: "text/plain", sourceVersion: "unknown",
+        method: "POST", body: JSON.stringify({ fileName: "generic.log", contentType: "text/plain", sourceVersion: "unknown", skillSelection: "generic",
           contentBase64: Buffer.from("INFO no skill\n").toString("base64") })
       });
       expect(upload.status).toBe(201);
