@@ -10,7 +10,7 @@ import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mo
 import { initialState } from "@/mockData";
 import { ParameterAdminNextPage, type ParameterAdminNextPageProps } from "./ParameterAdminNextPage";
 import { createMockCatalogPorts } from "@/application/parameter-catalog";
-import { CATALOG_ORGANIZATION_ID } from "@/application/parameter-catalog/fixtures";
+import { CATALOG_ORGANIZATION_ID, catalogPlacement, catalogRegistration } from "@/application/parameter-catalog/fixtures";
 import { createTestParameterTopologyRepository, withPortSpies } from "./test/harness";
 import type { AppRuntime } from "@/app/appRuntime";
 import * as dtsStructuredRuntime from "@/application/parameters/dtsStructuredRuntime";
@@ -83,7 +83,7 @@ function renderPage(options: {
   state?: typeof initialState;
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
-  sessionRoles?: import("@/infrastructure/http/authClient").AuthContextDto["roles"] | null;
+  sessionRoles?: ParameterAdminNextPageProps["sessionRoles"];
 } = {}) {
   const path = options.path ?? "/parameter-admin/specs";
   window.history.replaceState(null, "", path);
@@ -260,6 +260,43 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(screen.queryByText(/Platform 权限不能代替组织审核权限/)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "处理审核" })).toBeEnabled());
     expect(listReviewItems).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID);
+  });
+
+  it.each<{ sessionRoles: ParameterAdminNextPageProps["sessionRoles"]; editable: boolean }>([
+    { sessionRoles: [{ roleId: "platform-admin", projectId: null }, { roleId: "admin", projectId: null }], editable: true },
+    { sessionRoles: [{ roleId: "admin", projectId: null }], editable: true },
+    { sessionRoles: [{ roleId: "platform-admin", projectId: null }], editable: false },
+    { sessionRoles: [{ roleId: "admin", projectId: "aurora" }], editable: false },
+    { sessionRoles: [{ roleId: "hardware-user", projectId: null }], editable: false },
+    { sessionRoles: [], editable: false },
+    { sessionRoles: null, editable: false },
+    { sessionRoles: undefined, editable: false }
+  ])("uses hydrated organization authority for module subjects ($editable, $sessionRoles)", async ({ sessionRoles, editable }) => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    vi.spyOn(ports.governance, "getRegistration").mockResolvedValue({
+      item: { ...catalogRegistration, impact: { bindingCount: 0, projectCount: 0 } }
+    });
+    vi.spyOn(ports.governance, "getPlacement").mockImplementation(async () => ({ item: catalogPlacement, etag: "placement-etag" }));
+    renderPage({
+      path: "/parameter-admin/modules",
+      runtimeMode: "api",
+      state: { ...initialState, activeRoleId: "platform-admin" },
+      sessionRoles,
+      runtime: { parameterCatalogRepository: ports.catalog, parameterCatalogGovernanceRepository: ports.governance } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+    await screen.findByRole("list", { name: "规范主体列表" });
+    const notice = "此页仅可查看；登记主体和调整归属需要组织管理员权限。";
+    if (editable) {
+      expect(screen.queryByText(notice)).not.toBeInTheDocument();
+      const action = await screen.findByRole("button", { name: /^调整归属：/ });
+      expect(action).toBeEnabled();
+      await userEvent.click(action);
+      expect(await screen.findByRole("dialog")).toBeVisible();
+    } else {
+      expect(screen.getByText(notice)).toBeVisible();
+      expect(screen.queryByRole("button", { name: /^调整归属：/ })).not.toBeInTheDocument();
+    }
   });
 
   it("marks a withdrawn mock identity-task deep link unavailable without loading legacy tasks", async () => {

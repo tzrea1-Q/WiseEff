@@ -290,7 +290,9 @@ export function ParameterAdminNextPage({
                 governance={runtime?.parameterCatalogGovernanceRepository}
                 organizationId={catalogOrganizationId}
                 actor={catalogActorForSession({
-                  roleId: migrateLegacyRoleId(state?.activeRoleId ?? "")
+                  roleId: runtimeMode === "api"
+                    ? sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "admin" : ""
+                    : migrateLegacyRoleId(state?.activeRoleId ?? "")
                 })}
                 sessionPermissions={sessionPermissions}
                 canonicalEnabled={runtimeMode === "api"}

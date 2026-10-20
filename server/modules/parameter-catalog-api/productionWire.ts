@@ -429,7 +429,13 @@ const authenticateGovernance =
     }
     const scope = governanceScope(auth);
     const matched = matchCatalogGovernanceRoute(request.method, request.path);
-    if (matched && ["catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem"].includes(matched.id)) {
+    const organizationDetail = matched?.id === "catalog.getRegistration" &&
+      matched.params.organizationId === auth.organization.id &&
+      auth.roles.some((role) => role.roleId === "admin" && role.projectId === null);
+    if (matched && (organizationDetail || [
+      "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
+      "catalog.createRegistration", "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement"
+    ].includes(matched.id))) {
       if (matched.params.organizationId !== auth.organization.id ||
         !auth.roles.some((role) => role.roleId === "admin" && role.projectId === null)) {
         return { ok: false as const, status: 403 as const };
@@ -440,6 +446,7 @@ const authenticateGovernance =
         [auth.user.id, auth.organization.id],
       );
       if (!organizationAdmin?.rows[0]?.authorized) {
+        if (organizationDetail) return { ok: true as const, scope: { ...scope, canMutateOrganization: false } };
         return { ok: false as const, status: 403 as const };
       }
       return { ok: true as const, scope: { ...scope, actorKind: "org-admin" as const, canMutateOrganization: true } };
