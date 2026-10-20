@@ -1,6 +1,6 @@
 # Log analysis skill platform
 
-> Status: **Proposed — design only, implementation not started**
+> Status: **S1–S5 implementation present; #1250 documentation updated, browser and product-owner acceptance pending**
 > Date: 2026-10-18
 > Planning branch: `docs/log-analysis-skills-design` (this plan, ADR-0047, glossary)
 > Implementation branches: one per phase, each from the latest `main` (`feat/log-skills-s1-revisions`, `feat/log-skills-s2-bundles`, `feat/log-skills-s3-decoding`, `feat/log-skills-s4-source`, `feat/log-skills-s5-testing-integration`)
@@ -316,24 +316,31 @@ Each phase's PR lists the interactions from its [UI by phase](#ui-by-phase) row 
 
 ## Documentation Impact Matrix
 
-| Document | Change | Phase |
-| --- | --- | --- |
-| ADR-0047 (+ zh companion) | new | planning |
-| `CONTEXT.md` | analysis skill terms; log domain retired | planning |
-| `ARCHITECTURE.md` (+ zh) | logs module description | S1, S4 |
-| `docs/api/log-analysis-integration.md` (+ zh) | skill-based integration | S1 (fields), S5 (rewrite) |
-| `docs/user-guide/log-analysis.md` (+ zh) | skills, bundles, decoded evidence, source | S1–S5 |
-| `docs/SECURITY.md` (+ zh) | source data flow; scripts | S4, S6 |
-| DB schema doc (`docs:check`) | new tables | S1–S5 |
-| `docs/developer/environment-variables.md` (+ zh) | intake/snapshot caps, budget caps | S2, S4 |
-| `docs/runbooks/log-analysis-llm.md` (+ zh) | budgets, source tools | S1, S4 |
-| `docs/FRONTEND.md` (+ `docs/zh-CN/frontend.md`) | log analysis UI: skills list, workspace, builders, report | S1–S5 |
-| `docs/design-docs/ui-design-system.md` | canonical skill workspace layout, bit bar and hex view if adopted as shared patterns | S1, S3 |
-| ADR for integration credentials | new principal kind | before S5 |
+| Document | Change | Phase | Documentation status (#1250) |
+| --- | --- | --- | --- |
+| ADR-0047 (+ zh companion) | new | planning | Complete; implementation note refreshed without changing decision status |
+| `CONTEXT.md` | analysis skill terms; log domain retired | planning | Complete; existing bilingual glossary retained, obsolete planned marker removed |
+| `ARCHITECTURE.md` (+ zh) | logs module description | S1, S4 | Complete; composed tools, revisions, bundles and integration |
+| `docs/api/log-analysis-integration.md` (+ zh) | skill-based integration | S1 (fields), S5 (rewrite) | Complete; template → tests → package → credential → push/read → signed webhook |
+| `docs/user-guide/log-analysis.md` (+ zh) | skills, bundles, decoded evidence, source | S1–S5 | Complete; end-to-end flow and integration lifecycle |
+| `docs/SECURITY.md` (+ zh) | source data flow; scripts | S4, S6 | Complete for S1–S5; credentials/package boundaries updated, source flow retained; S6 remains deferred |
+| DB schema doc (`docs:check`) | new tables | S1–S5 | Complete; existing generated schema includes revisions, source, tests and credentials; no schema change in #1250 |
+| `docs/developer/environment-variables.md` (+ zh) | intake/snapshot caps, budget caps | S2, S4 | Complete; existing intake caps reviewed, budget caps corrected, source statement caps added |
+| `docs/runbooks/log-analysis-llm.md` (+ zh) | budgets, source tools | S1, S4 | Complete; source selection/tools, provider flow and authoring checks |
+| `docs/FRONTEND.md` (+ `docs/zh-CN/frontend.md`) | log analysis UI: skills list, workspace, builders, report | S1–S5 | Complete; delivered sections/forms, routing, packages and report tabs |
+| `docs/design-docs/ui-design-system.md` (+ zh) | canonical skill workspace layout, bit bar and hex view if adopted as shared patterns | S1, S3 | Complete; adopted NavigatorWorkbench slots documented; bit/hex remain feature-local |
+| ADR-0048 (+ zh companion) | new principal kind | before S5 | Complete; accepted credential ADR reviewed, no decision change needed |
 
 ## Documentation Update Gate
 
 A phase PR is not ready until its rows above are updated with English and Chinese companions and `npm run docs:check` passes.
+
+- [x] All S1–S5 matrix rows updated or reviewed above, with applicable English/Chinese companions.
+- [x] `npm run docs:check` passes for the #1250 candidate (documentation governance and current generated DB schema).
+- [ ] Both scripted 1440×900 walkthroughs pass in a real browser with attached screenshots.
+- [ ] Product owner follows the integration guide in a real scenario without repository access.
+
+The walkthroughs are in `e2e/acceptance/log-skill-design-goals.acceptance.spec.ts`, each bounded to 170 seconds. Use the standard seeded acceptance API runtime, an isolated `WISEEFF_RUNTIME_LANE`, `LOG_ANALYSIS_DETERMINISTIC=true` and `LOG_WEBHOOK_ALLOW_INSECURE_LOCAL=true`. Browser execution belongs to the coordinator; collecting/listing tests is not browser acceptance. Keep this plan active until the remaining acceptance is observed; S6 remains a separate future scope.
 
 ## Git and PR workflow
 

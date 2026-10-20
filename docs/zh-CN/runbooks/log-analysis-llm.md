@@ -2,7 +2,7 @@
 
 > English: [English](../../runbooks/log-analysis-llm.md)
 
-在 staging 或试点环境验证日志分析 LLM 路径时使用本运行手册。内核在日志 worker 内、`LogAnalysisAdapter` 之后运行（ADR-0022），使用独立 `LOG_ANALYSIS_*` 环境变量家族，不用 LangGraph、不进 ToolRegistry、没有任何写路径——全部输出是仅供参考、证据接地的报告。默认内核是**有界 agent 循环**（`LOG_ANALYSIS_KERNEL=loop`）：一个至多 `LOG_ANALYSIS_MAX_STEPS` 步的普通 for 循环，驱动按运行组合的只读工具，在 `rootcause` 阶段内运行并按步推进进度条。文件、信号、模板、时间线、知识与关联参数工具属于平台能力；解码事件工具要求版本含抽取器。P1 单发内核保留为配置回退（`LOG_ANALYSIS_KERNEL=single-shot`）。
+在 staging 或试点环境验证日志分析 LLM 路径时使用本运行手册。内核在日志 worker 内、`LogAnalysisAdapter` 之后运行（ADR-0022），使用独立 `LOG_ANALYSIS_*` 环境变量家族，不用 LangGraph、不进 ToolRegistry、没有任何写路径——全部输出是仅供参考、证据接地的报告。默认内核是**有界 agent 循环**（`LOG_ANALYSIS_KERNEL=loop`）：一个至多 `LOG_ANALYSIS_MAX_STEPS` 步的普通 for 循环，驱动按运行组合的只读工具，在 `rootcause` 阶段内运行并按步推进进度条。文件、信号、模板、时间线、知识与关联参数工具属于平台能力；解码事件工具要求版本含抽取器，源码工具要求选中快照已就绪。P1 单发内核保留为配置回退（`LOG_ANALYSIS_KERNEL=single-shot`）。
 
 ## 必需配置
 
@@ -17,6 +17,12 @@
 验收或离线演练可设 `LOG_ANALYSIS_DETERMINISTIC=true`，无需填写 `LOG_ANALYSIS_API_*`；此时报告的 `model` 记为 `deterministic`。确定性桩模型同时支持两种内核的协议。
 
 未配置且未开确定性模式的部署等同于 provider 宕机：每次分析先重试、最终以显式标注的规则回退报告完成，`/health/ready` 的 `logAnalysisLlm` 报告 missing。该状态可见、不算故障——但生产环境应配置真实 provider，或明确接受降级决策。
+
+## 技能预算与编写检查
+
+`LOG_ANALYSIS_MAX_STEPS`（默认 6）与 `LOG_ANALYSIS_TOKEN_BUDGET`（默认 8000）同时是默认值与平台上限。版本可设置更低的 `stepBudget` 和 `tokenBudget`，省略时沿用全局配置。步数至少为 1；显式 token 预算至少为 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`。API 暴露 `budgetCaps` 并校验创建、保存、发布、恢复和技能包导入，worker 运行时再次取上限。API 与 worker 应配置一致。`modelOverride` 只修改模型名，不修改模型服务凭据或超时。已发布运行使用所钉版本的流程与预算，保存草稿不会改变进行中的运行。
+
+在技能工作区试运行前先保存样例与草稿。解析测试无需模型服务，检查字段和信号；分析用例与试运行使用已配置的分析器，只有显式开启确定性模式时才不用真实模型。将分析用例与上一已发布版本对比，通过试运行轨迹检查预算耗尽、源码工具不可用及未接地输出。测试结果与警告供发布时参考，不阻止发布。试运行不创建公开日志记录或结果 Webhook；该投递链路须通过普通上传验证。
 
 ## 就绪检查
 
@@ -186,7 +192,17 @@ npx tsx scripts/log-bundle-memory-probe.ts --mode=api-multipart --profile=config
 
 跳过原因区分不支持类型、超大文件、二进制/非 UTF-8 内容及忽略目录。忽略的目录段为 `third_party`、`third-party`、`thirdparty`、`vendor`、`vendors`、`node_modules`、`external`、`.git`、`.svn`、`.hg`、`__pycache__`、`.venv` 和 `venv`，不区分大小写。拒绝路径穿越、绝对/超长路径、重复路径、链接/设备/特殊文件、损坏压缩包、加密或不支持的 ZIP 条目、ZIP64 和重叠 ZIP 范围。累计限制按实际解压字节计数，包含跳过条目；ZIP 实际大小与 CRC 必须匹配。符合条件的文件保存路径、大小、SHA-256、行数和语言，并生成最多 200 行或 32 KiB 字符的分块，使用 PostgreSQL 全文与 trigram GIN 索引。
 
-「设为默认」更新或创建技能草稿的可选 `defaultSourceSnapshotId`；发布后才影响新运行。已归档快照不能被新选为默认值；已有归档引用可在保存、发布和恢复历史版本时保持不变，保留历史 spec。每次运行解析其固定版本的默认快照，记录观察到的快照 id/状态。排队、索引中、失败或已归档的默认快照不导致分析失败，持久化报告会说明源码不可用，例如「源码快照仍在索引，本次分析未使用源码」。本切片不增加源码工具、公开内容路由，也不将源码文本放入模型提示词。语句索引、检索工具、源码证据及上传 `sourceVersion` 匹配仍由 #1244/#1245 负责。
+「设为默认」更新或创建技能草稿的可选 `defaultSourceSnapshotId`；发布后才影响新运行。已归档快照不能被新选为默认值；已有归档引用可在保存、发布和恢复历史版本时保持不变，保留历史 spec。上传 `sourceVersion` 在所钉技能中精确匹配同标签的未归档快照；未匹配时回退版本默认值。运行记录请求标签、选中快照 id/状态与 `sourceSnapshotSelection`（`matched_version`、`default` 或 `none`）。排队、索引中、失败或已归档快照不导致分析失败，报告会用中文说明源码不可用，并且不提供源码工具。
+
+索引器使用内置输出语句模式，以及上传快照时从草稿捕获的附加模式；没有草稿时取已发布版本。修改模式后需重新上传快照以重建索引。`LOG_SOURCE_MAX_STATEMENTS_PER_FILE` 默认每文件 500 条，`LOG_SOURCE_MAX_STATEMENTS` 默认每快照 20,000 条，均要求正的安全整数。预览未命中已知输出语句时，检查 `statementCount` 与 `statementsTruncated`。分析前可在「源码」分区对就绪快照预览样例行的语句匹配。
+
+就绪快照提供三种工具，均限定在选中的组织、技能和快照内：
+
+- `locate_log_statement`：匹配提供的日志行或包内文件/行锚点，最多返回 20 个候选源码位置及有上限的周边摘录。
+- `search_source`：按区分大小写的路径通配符执行字面量或全文检索，查询长度 3–200 字符；最多返回 20 个命中，每段摘录 400 字符、总计 16 KiB。字面量查询须含连续三个字母或数字，不能有换行；常见查询可能要求缩小为带字面量前缀的路径。检索最多接收 200 个分块及 200 个边界窗口，数据库截止时间一秒；出现 `truncated` 与 `reason: statement_timeout` 时应缩小查询。
+- `read_source_range`：最多读取 80 个编号行，每行 1000 字符、总计 16 KiB；拒绝其他快照 id。
+
+工具返回的源码和日志摘录可发送给已配置模型服务（ADR-0047），不会将整个压缩包载入提示词。只有返回的命中位置或范围读取中的编号行建立源码证据，周边摘录行不算已见证据。报告将证据绑定到快照/路径/行，`logs:view` 仅能获取被引用摘录，此权限不允许浏览快照；语句预览要求技能管理权限。轨迹保留引用，不保存源码文本。
 
 单独运行 `npx tsx scripts/log-source-memory-probe.ts`，不要加入测试。默认探针流式处理由 512 个达到 2 MiB 上限的文件组成的 1 GiB tar.gz，执行解包与 UTF-8 分块序列化，不保留此前文件；输出峰值 RSS/堆内存，并断言 RSS 低于标准 worker 的 384 MiB 上限。另行运行 `npx tsx scripts/log-source-memory-probe.ts --upload`，通过共享 HTTP 解析器流式上传 100 MiB multipart 请求，断言 RSS 低于标准 API 的 512 MiB 上限。探针不包含 PostgreSQL 持久化或完整生产 API 进程；将实测 RSS 记入本次运行证据。
 

@@ -1,6 +1,6 @@
 # 日志分析技能平台
 
-> Status: **提议中——仅设计，尚未开始实施**
+> Status: **S1–S5 实现已具备；#1250 文档已更新，浏览器与产品负责人验收待完成**
 > Date: 2026-10-18
 > 规划分支：`docs/log-analysis-skills-design`（本计划、ADR-0047、词汇表）
 > 实施分支：每阶段一支，均从最新 `main` 拉出（`feat/log-skills-s1-revisions`、`feat/log-skills-s2-bundles`、`feat/log-skills-s3-decoding`、`feat/log-skills-s4-source`、`feat/log-skills-s5-testing-integration`）
@@ -316,24 +316,31 @@ Mock 模式保留一个只读的种子技能，演示和组件测试仍可渲染
 
 ## 文档影响矩阵
 
-| 文档 | 变更 | 阶段 |
-| --- | --- | --- |
-| ADR-0047（+ 中文对照） | 新增 | 规划 |
-| `CONTEXT.md` | 分析技能相关术语；日志业务域退役 | 规划 |
-| `ARCHITECTURE.md`（+ 中文） | logs 模块描述 | S1、S4 |
-| `docs/api/log-analysis-integration.md`（+ 中文） | 基于技能的集成 | S1（字段）、S5（重写） |
-| `docs/user-guide/log-analysis.md`（+ 中文） | 技能、日志包、解码证据、源码 | S1–S5 |
-| `docs/SECURITY.md`（+ 中文） | 源码数据流；脚本 | S4、S6 |
-| 数据库 schema 文档（`docs:check`） | 新表 | S1–S5 |
-| `docs/developer/environment-variables.md`（+ 中文） | 接收/快照上限、预算上限 | S2、S4 |
-| `docs/runbooks/log-analysis-llm.md`（+ 中文） | 预算、源码工具 | S1、S4 |
-| `docs/FRONTEND.md`（+ `docs/zh-CN/frontend.md`） | 日志分析 UI：技能列表、工作区、构建器、报告 | S1–S5 |
-| `docs/design-docs/ui-design-system.md` | 若作为共享模式采用：技能工作区布局、位条和十六进制视图 | S1、S3 |
-| 集成凭据 ADR | 新主体类型 | S5 之前 |
+| 文档 | 变更 | 阶段 | 文档状态（#1250） |
+| --- | --- | --- | --- |
+| ADR-0047（+ 中文对照） | 新增 | 规划 | 完成；更新实施说明，不改变决策状态 |
+| `CONTEXT.md` | 分析技能相关术语；日志业务域退役 | 规划 | 完成；保留已有双语词汇表，移除过时的 planned 标记 |
+| `ARCHITECTURE.md`（+ 中文） | logs 模块描述 | S1、S4 | 完成；组合工具、版本、日志包和集成 |
+| `docs/api/log-analysis-integration.md`（+ 中文） | 基于技能的集成 | S1（字段）、S5（重写） | 完成；模板 → 测试 → 包 → 凭据 → 推送/读取 → 签名回调 |
+| `docs/user-guide/log-analysis.md`（+ 中文） | 技能、日志包、解码证据、源码 | S1–S5 | 完成；端到端流程与集成生命周期 |
+| `docs/SECURITY.md`（+ 中文） | 源码数据流；脚本 | S4、S6 | S1–S5 完成；补齐凭据/包边界，保留源码数据流；S6 仍推迟 |
+| 数据库 schema 文档（`docs:check`） | 新表 | S1–S5 | 完成；现有生成文档含版本、源码、测试、凭据；#1250 无 schema 变更 |
+| `docs/developer/environment-variables.md`（+ 中文） | 接收/快照上限、预算上限 | S2、S4 | 完成；核对接收上限，纠正预算上限，补充源码语句上限 |
+| `docs/runbooks/log-analysis-llm.md`（+ 中文） | 预算、源码工具 | S1、S4 | 完成；源码选择/工具、模型数据流与编写检查 |
+| `docs/FRONTEND.md`（+ `docs/zh-CN/frontend.md`） | 日志分析 UI：技能列表、工作区、构建器、报告 | S1–S5 | 完成；已交付分区/表单、路由、包和报告标签 |
+| `docs/design-docs/ui-design-system.md`（+ 中文） | 若作为共享模式采用：技能工作区布局、位条和十六进制视图 | S1、S3 | 完成；记录已采用的 NavigatorWorkbench 槽位；位条/hex 保持功能内组件 |
+| ADR-0048（+ 中文对照） | 新主体类型 | S5 之前 | 完成；已审阅已接受的凭据 ADR，无需改变决策 |
 
 ## 文档更新门禁
 
 某阶段 PR 在其上表各行完成中英文更新且 `npm run docs:check` 通过之前不算就绪。
+
+- [x] 上述 S1–S5 矩阵行已更新或审阅，并维护适用中英文对照。
+- [x] #1250 候选的 `npm run docs:check` 通过（文档治理及当前数据库 schema 生成文档）。
+- [ ] 两条 1440×900 脚本走查在真实浏览器通过并附截图。
+- [ ] 产品负责人无需仓库，按集成指南完成真实场景接入。
+
+脚本位于 `e2e/acceptance/log-skill-design-goals.acceptance.spec.ts`，每条限时 170 秒。使用标准已播种的验收 API 运行时、隔离 `WISEEFF_RUNTIME_LANE`、`LOG_ANALYSIS_DETERMINISTIC=true` 和 `LOG_WEBHOOK_ALLOW_INSECURE_LOCAL=true`。浏览器由协调者执行；收集/列举测试不等于浏览器验收。剩余验收获得实际证据前，本计划保持 active；S6 仍为独立后续范围。
 
 ## Git 与 PR 流程
 

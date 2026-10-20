@@ -6,7 +6,7 @@
 
 ## 状态
 
-提议中。产品负责人已于 2026-10-18 敲定三项待定输入（见"决策"）。实施由[分析技能平台计划](../exec-plans/active/2026-10-18-log-analysis-skill-platform.md)跟踪；本记录中的内容均尚未实现。
+提议中（决策状态不变）。产品负责人已于 2026-10-18 敲定三项待定输入（见"决策"）。S1–S5 实现已具备；最终文档与端到端验收切片由[分析技能平台计划](../exec-plans/active/2026-10-18-log-analysis-skill-platform.md)中的 #1250 跟踪。两条设计目标走查已作为浏览器验收测试运行（`e2e/acceptance/log-skill-design-goals.acceptance.spec.ts`）；产品负责人的真实场景验证仍待完成。沙箱脚本（S6）仍推迟，需单独 ADR。
 
 ## 背景
 

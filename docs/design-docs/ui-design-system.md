@@ -377,6 +377,12 @@ The consistency quality project checks expanded and collapsed geometry (±1px), 
 - Sidebar: 256px expanded / 76px rail on desktop; below 768px it becomes an overlay drawer (a persistent rail consuming ~18% of a phone screen is a defect). The user menu must remain reachable at all widths.
 - Navigation preserves SPA behavior (no full-page reloads from in-app links), resets main scroll position on route change, and keeps exactly one visual hierarchy of active states.
 
+### Analysis skill workspace
+
+`/log-admin/skills/:skillId` adopts `NavigatorWorkbench` with page key `log-skill-workspace`: labelled skill sections in the navigator, the active editor in task, and `SkillSamplePane` in inspector. The sample pane stays mounted outside the keyed section editor so navigation preserves its state and scroll position; Diagnostic procedure, Source and Versions hide it to give their task more room. The toolbar contains back navigation, skill identity and Dry run. Context holds the unpublished-changes bar with save, confirmed discard and publication actions; conflicts and failures use the notice slot. Retain the shared named regions, collapse behavior and internal scrollports rather than introducing another workspace shell.
+
+Form and code views edit the same draft. Invalid text remains visible with its errors and navigation protection; it cannot silently replace valid state. Preview results identify truncation and ignore stale responses. Selection in the sample, rule-hit links and decoded fields refers to explicit file/line or field paths. The register bit bar and frame hex view remain local to log-skill decoding; their implementation and usage are documented in [Frontend](../FRONTEND.md#log-analysis-repository), without defining new shared primitives here.
+
 ### Settings forms
 
 `SettingsFormPage` and `SettingsFormSection` in `src/components/layout/` own configuration-form layout. Organization settings (`/organization`), DTS reload defaults (`/debugging-admin`) and project review roles (`/parameter-admin/projects/:projectId/review-roles`) use one column capped by `--settings-form-max-width` (960px). The shell owns the outer gutter; only section cards add padding. Each section has a heading and short help text; the review-role matrix scrolls horizontally inside its section, not on the page.
