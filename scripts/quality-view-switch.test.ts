@@ -19,7 +19,7 @@ describe("view-switch consistency", () => {
   it("enforces styles on every live switch route, including explicit project conflicts and the retired account redirect", () => {
     const auditPaths = [
       "/debugging-admin", "/debugging-admin/nodes", "/knowledge-admin",
-      "/log-admin", "/log-admin?tab=quality", "/log-admin?tab=skills", "/logs",
+      "/log-admin", "/log-admin?tab=quality", "/log-admin?tab=records", "/log-admin?tab=skills", "/logs",
       "/organization", "/organization/members", "/parameter-admin", "/parameter-admin/identity-mapping",
       "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
       "/parameter-admin/projects", "/parameter-admin/projects/aurora/configuration?tab=conflicts",
