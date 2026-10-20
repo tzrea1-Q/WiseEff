@@ -41,12 +41,6 @@ type ModuleRecognitionRow = {
   legacy_node_type: string | null;
   legacy_nature: DriverNature | null;
   legacy_cardinality: InstanceCardinality | null;
-  rule_module_id: string | null;
-  canonical_subject_id: string | null;
-  compatibles: string[] | null;
-  driver_nature: DriverNature | null;
-  instance_cardinality: InstanceCardinality | null;
-  node_type_name: string | null;
 };
 
 export async function lockOrganizationModuleRecognition(db: Queryable, organizationId: string) {
@@ -78,22 +72,20 @@ export async function loadModuleRecognitionSettings(
          from public.parameter_module_mappings mapping where mapping.organization_id = module.organization_id
            and mapping.parameter_module_id = module.id and mapping.match_kind = 'compatible'), '{}') as legacy_compatibles,
        node_type.bare_node_name as legacy_node_type,
-       driver.driver_nature as legacy_nature, driver.instance_cardinality as legacy_cardinality,
-       ${rulesAvailable ? `rule.module_id as rule_module_id, rule.canonical_subject_id, rule.compatibles,
-       rule.driver_nature, rule.instance_cardinality, rule.node_type_name` : `null::text as rule_module_id,
-       null::text as canonical_subject_id, null::text[] as compatibles,
-       null::text as driver_nature, null::text as instance_cardinality, null::text as node_type_name`}
+       driver.driver_nature as legacy_nature, driver.instance_cardinality as legacy_cardinality
      from public.parameter_modules module
      left join public.driver_registrations driver on driver.attribution_subject_id = module.attribution_subject_id
      left join public.node_type_definitions node_type on node_type.attribution_subject_id = module.attribution_subject_id
-     ${rulesAvailable ? "left join public.module_recognition_rules rule on rule.organization_id = module.organization_id and rule.module_id = module.id" : ""}
      where module.organization_id = $1 and module.kind in ('driver-group', 'node-type')`,
     [organizationId],
   );
   if (rows.rows.length === 0) return new Map();
+  const rules = new Map((rulesAvailable ? await readSavedModuleRecognitionRules(db, organizationId) : [])
+    .map(rule => [rule.module_id, rule]));
   const placements = await listModuleRecognitionPlacements(db, organizationId);
   const settings = new Map<string, ModuleRecognitionSettings>();
   for (const row of rows.rows) {
+    const rule = rules.get(row.id);
     const subjectIds = [...new Set(placements.filter(placement => placement.module_id === row.id).map(placement => placement.subject_id))];
     const sourceCompatible = row.source_key?.startsWith("compatible:") ? row.source_key.slice("compatible:".length) : "";
     let compatibles = validCompatibles([...row.legacy_compatibles, ...(sourceCompatible ? [sourceCompatible] : [])]);
@@ -101,7 +93,7 @@ export async function loadModuleRecognitionSettings(
     const parsedNode = parseCanonicalNodeName(row.legacy_node_type || sourceNodeType);
     let nodeTypeName: string | null = parsedNode.ok ? parsedNode.value : null;
     let subjectId = subjectIds.length === 1 ? subjectIds[0]!
-      : subjectIds.length > 1 ? null : row.canonical_subject_id;
+      : subjectIds.length > 1 ? null : rule?.canonical_subject_id ?? null;
     if (!subjectId && subjectIds.length === 0 && catalog?.resolveSubject) {
       const match = catalog.resolveSubject({ driverCompatibles: row.kind === "driver-group" ? compatibles.map(DriverCompatible) : [],
         nodeTypeFallback: row.kind === "node-type" && nodeTypeName
@@ -110,16 +102,16 @@ export async function loadModuleRecognitionSettings(
         subjectId = match.subject.id;
       }
     }
-    if (row.rule_module_id) {
-      compatibles = row.compatibles ?? [];
-      nodeTypeName = row.node_type_name;
+    if (rule) {
+      compatibles = rule.compatibles;
+      nodeTypeName = rule.node_type_name;
     }
     settings.set(row.id, {
       recognitionSubjectId: subjectId, compatibles: row.kind === "driver-group" ? compatibles : [],
       nodeTypeName: row.kind === "node-type" ? nodeTypeName : null,
-      driverNature: row.kind === "driver-group" ? (row.driver_nature ?? row.legacy_nature ?? "physical-device") : null,
-      instanceCardinality: row.kind === "driver-group" ? (row.instance_cardinality ?? row.legacy_cardinality ?? "multiple") : null,
-      overridden: row.rule_module_id !== null,
+      driverNature: row.kind === "driver-group" ? (rule?.driver_nature ?? row.legacy_nature ?? "physical-device") : null,
+      instanceCardinality: row.kind === "driver-group" ? (rule?.instance_cardinality ?? row.legacy_cardinality ?? "multiple") : null,
+      overridden: rule !== undefined,
     });
   }
   const subjectIds = [...new Set([...settings.values()].flatMap(value => value.recognitionSubjectId ? [value.recognitionSubjectId] : []))];
@@ -152,16 +144,21 @@ export type EffectiveModuleRecognitionRule = {
   driver_nature: DriverNature | null; instance_cardinality: InstanceCardinality | null; node_type_name: string | null;
 };
 
-/** Placement is authoritative when a Subject is registered or moved after a local rule was saved. */
-export async function loadOrganizationRecognitionRules(db: Queryable, organizationId: string): Promise<EffectiveModuleRecognitionRule[]> {
-  if (!await moduleRecognitionRulesAvailable(db)) return [];
+async function readSavedModuleRecognitionRules(db: Queryable, organizationId: string): Promise<EffectiveModuleRecognitionRule[]> {
   const rules = await db.query<EffectiveModuleRecognitionRule>(
     `select module_id, canonical_subject_id, compatibles, driver_nature, instance_cardinality, node_type_name
      from public.module_recognition_rules where organization_id = $1`, [organizationId],
   );
-  if (rules.rows.length === 0) return [];
+  return rules.rows;
+}
+
+/** Placement is authoritative when a Subject is registered or moved after a local rule was saved. */
+export async function loadOrganizationRecognitionRules(db: Queryable, organizationId: string): Promise<EffectiveModuleRecognitionRule[]> {
+  if (!await moduleRecognitionRulesAvailable(db)) return [];
+  const rules = await readSavedModuleRecognitionRules(db, organizationId);
+  if (rules.length === 0) return [];
   const placements = await listModuleRecognitionPlacements(db, organizationId);
-  return rules.rows.map(rule => {
+  return rules.map(rule => {
     const currentSubjects = [...new Set(placements.filter(placement => placement.module_id === rule.module_id).map(placement => placement.subject_id))];
     const prior = placements.find(placement => placement.subject_id === rule.canonical_subject_id);
     const subjectId = currentSubjects.length === 1 ? currentSubjects[0]!

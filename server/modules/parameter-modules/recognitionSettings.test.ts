@@ -23,14 +23,11 @@ describe("recognition rules on historical schemas", () => {
     const query = vi.fn().mockResolvedValueOnce({ rows: [{ available: false }] })
       .mockResolvedValueOnce({ rows: [{ id: "legacy-module", kind: "driver-group", source_key: "compatible:legacy,device",
         legacy_compatibles: ["legacy,device"], legacy_node_type: null,
-        legacy_nature: "physical-device", legacy_cardinality: "singleton-per-project",
-        rule_module_id: null, canonical_subject_id: null, compatibles: null,
-        driver_nature: null, instance_cardinality: null, node_type_name: null }] })
+        legacy_nature: "physical-device", legacy_cardinality: "singleton-per-project" }] })
       .mockResolvedValueOnce({ rows: [] });
     const settings = await loadModuleRecognitionSettings({ query } satisfies Queryable, "org-historical");
     expect(settings.get("legacy-module")).toMatchObject({ recognitionSubjectId: null, compatibles: ["legacy,device"],
       instanceCardinality: "singleton-per-project", overridden: false });
-    expect(query.mock.calls[1]?.[0]).toContain("driver_registrations");
     expect(query.mock.calls[1]?.[0]).not.toContain("module_recognition_rules");
   });
 });

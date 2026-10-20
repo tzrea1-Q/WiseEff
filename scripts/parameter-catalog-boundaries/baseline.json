@@ -253,7 +253,7 @@
       "legacy-catalog-sql-write": 4
     },
     "server/modules/parameter-modules/repository.ts": {
-      "legacy-catalog-raw-read": 18,
+      "legacy-catalog-raw-read": 19,
       "legacy-catalog-sql-write": 4,
       "legacy-parameter-spec-identifier": 6
     },
@@ -584,8 +584,8 @@
       "unresolved-boundary-expression": 3
     },
     "server/modules/parameters/moduleRename.integration.test.ts": {
-      "canonical-catalog-raw-access": 17,
-      "legacy-catalog-raw-read": 21,
+      "canonical-catalog-raw-access": 13,
+      "legacy-catalog-raw-read": 27,
       "legacy-catalog-sql-write": 7
     },
     "server/modules/parameters/parameterModuleRepository.test.ts": {

@@ -51,6 +51,22 @@ function makeServer(db: RootDatabase, auth = adminAuth()) {
   return createHttpServer(router);
 }
 
+async function readCanonicalRenameState(db: Database) {
+  return db.query(`select
+    (select jsonb_agg(r order by id) from parameter_catalog.organization_subject_registrations r) as registrations,
+    (select jsonb_agg(s order by id) from parameter_catalog.catalog_subjects s) as subjects,
+    (select jsonb_agg(d order by id) from parameter_catalog.parameter_definitions d) as definitions,
+    (select jsonb_agg(b order by id) from parameter_catalog.project_parameter_bindings b) as bindings,
+    (select jsonb_agg(h order by id) from parameter_catalog.binding_history_events h) as history`);
+}
+
+async function readUnregisteredCanonicalRenameState(db: Database) {
+  return db.query(`select
+    (select jsonb_agg(subject order by id) from parameter_catalog.catalog_subjects subject) as subjects,
+    (select jsonb_agg(registration order by id) from parameter_catalog.organization_subject_registrations registration) as registrations,
+    (select jsonb_agg(placement order by id) from parameter_catalog.subject_placements placement) as placements`);
+}
+
 async function withModuleRenameDatabase<T>(
   options: { prefix: string },
   fn: (fixture: { db: RootDatabase; connectionString: string }) => Promise<T>
@@ -242,13 +258,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename with the standard A
     await withLegacyApiLogin(false, async ({ db, apiDb, moduleId, errors, statements }) => {
       const identity = await db.query("select id, organization_id, parent_id, path, kind, source_key, attribution_subject_id from parameter_modules where id = $1", [moduleId]);
       const placement = await db.query<Record<string, unknown> & { updated_at: Date }>("select * from parameter_catalog.subject_placements where module_id = $1", [moduleId]);
-      const canonicalSql = `select
-        (select jsonb_agg(r order by id) from parameter_catalog.organization_subject_registrations r) as registrations,
-        (select jsonb_agg(s order by id) from parameter_catalog.catalog_subjects s) as subjects,
-        (select jsonb_agg(d order by id) from parameter_catalog.parameter_definitions d) as definitions,
-        (select jsonb_agg(b order by id) from parameter_catalog.project_parameter_bindings b) as bindings,
-        (select jsonb_agg(h order by id) from parameter_catalog.binding_history_events h) as history`;
-      const canonical = await db.query(canonicalSql);
+      const canonical = await readCanonicalRenameState(db);
       const response = await requestJson(makeServer(apiDb), `/api/v1/parameter-modules/${moduleId}`, {
         method: "PATCH", body: JSON.stringify({ name: "API Driver Renamed" })
       });
@@ -263,7 +273,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename with the standard A
       const renamedPlacement = (await db.query<Record<string, unknown> & { updated_at: Date }>("select * from parameter_catalog.subject_placements where module_id = $1", [moduleId])).rows;
       expect(renamedPlacement).toEqual([expect.objectContaining({ ...placement.rows[0]!, updated_at: expect.any(Date) })]);
       expect(renamedPlacement[0]!.updated_at).not.toEqual(placement.rows[0]!.updated_at);
-      expect((await db.query(canonicalSql)).rows).toEqual(canonical.rows);
+      expect((await readCanonicalRenameState(db)).rows).toEqual(canonical.rows);
       expect(audit.rows).toEqual([{ target_id: moduleId, metadata: expect.objectContaining({ previousName: "API Driver", name: "API Driver Renamed" }) }]);
       expect((await db.query("select actor_user_id,action from audit_events where kind='legacy-surface-retired' and organization_id=$1", [ORG])).rows)
         .toEqual([]);
@@ -275,7 +285,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename with the standard A
         expect(saved.body).toMatchObject({ item: { id: moduleId, name: "API Driver Renamed" } });
       }
       expect(statements.filter(statement => statement === "commit")).toHaveLength(3);
-      expect((await db.query(canonicalSql)).rows).toEqual(canonical.rows);
+      expect((await readCanonicalRenameState(db)).rows).toEqual(canonical.rows);
       expect((await db.query("select module from parameter_definitions where id = 'pd-api-foreign'")).rows).toEqual([{ module: "Foreign Legacy" }]);
     });
   });
@@ -328,11 +338,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename with the standard A
     await withLegacyApiLogin(true, async ({ db, apiDb, moduleId, errors }) => {
       const identitySql = "select id,organization_id,parent_id,path,kind,source_key,attribution_subject_id from parameter_modules where id=$1";
       const identity = (await db.query(identitySql, [moduleId])).rows;
-      const canonicalSql = `select
-        (select jsonb_agg(subject order by id) from parameter_catalog.catalog_subjects subject) as subjects,
-        (select jsonb_agg(registration order by id) from parameter_catalog.organization_subject_registrations registration) as registrations,
-        (select jsonb_agg(placement order by id) from parameter_catalog.subject_placements placement) as placements`;
-      const canonical = (await db.query(canonicalSql)).rows;
+      const canonical = (await readUnregisteredCanonicalRenameState(db)).rows;
       expect((await db.query("select id from parameter_catalog.subject_placements where organization_id=$1 and module_id=$2", [ORG, moduleId])).rows).toEqual([]);
       const response = await requestJson(makeServer(apiDb), `/api/v1/parameter-modules/${moduleId}`, {
         method: "PATCH", body: JSON.stringify({ name: "Unregistered Driver Renamed" }),
@@ -341,7 +347,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename with the standard A
       expect(response.body).toMatchObject({ item: { id: moduleId, name: "Unregistered Driver Renamed", kind: "driver-group" } });
       expect(errors).toEqual([]);
       expect((await db.query(identitySql, [moduleId])).rows).toEqual(identity);
-      expect((await db.query(canonicalSql)).rows).toEqual(canonical);
+      expect((await readUnregisteredCanonicalRenameState(db)).rows).toEqual(canonical);
       expect((await db.query("select id,module from parameter_definitions order by id")).rows).toEqual([
         { id: "pd-api-foreign", module: "Foreign Legacy" }, { id: "pd-api-local", module: "API Driver" },
       ]);

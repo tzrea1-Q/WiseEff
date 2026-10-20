@@ -131,7 +131,7 @@ export async function readRegistry(
   catalog: RegistryCatalogSnapshot | null,
   options: { includeAdminSettings?: boolean } = {},
 ): Promise<ParameterModuleRegistryDto> {
-  const modules = await db.query<ParameterModuleRow>(
+  const modules = options.includeAdminSettings === false ? await db.query<ParameterModuleRow>(
     `select
        pm.id,
        pm.name,
@@ -140,7 +140,25 @@ export async function readRegistry(
        coalesce(pm.description, '') as description,
        coalesce(pm.scope, '') as scope,
        coalesce(pm.importance, 'medium') as importance,
-       ${options.includeAdminSettings === false ? "" : "pm.importance_override,"}
+       coalesce(pm.kind, 'business') as kind,
+       coalesce(pm.origin, 'curated') as origin,
+       pm.source_key,
+       pm.attribution_subject_id,
+       pm.path
+       from parameter_modules pm
+      where pm.organization_id = $1
+      order by pm.sort_order asc, pm.path asc, pm.name asc`,
+    [organizationId]
+  ) : await db.query<ParameterModuleRow>(
+    `select
+       pm.id,
+       pm.name,
+       pm.parent_id,
+       pm.sort_order,
+       coalesce(pm.description, '') as description,
+       coalesce(pm.scope, '') as scope,
+       coalesce(pm.importance, 'medium') as importance,
+       pm.importance_override,
        coalesce(pm.kind, 'business') as kind,
        coalesce(pm.origin, 'curated') as origin,
        pm.source_key,
