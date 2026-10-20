@@ -1,12 +1,41 @@
-# Log Analysis API Integration Guide
+# Log Analysis Integration Guide
 
 > Chinese: [Chinese](../zh-CN/api/log-analysis-integration.md)
 
-How an external system pushes logs into WiseEff for analysis and consumes results through polling or a skill's **result webhook**. Inline examples cover uploads, jobs, reports, file windows and webhook signature checks without a packaged SDK.
+From a first skill to a first signed result webhook, using WiseEff forms and copyable requests.
 
-Prerequisites: an integration credential issued by an administrator, [Authentication](authentication.md), and [Errors](errors.md). Endpoint schemas: [API Contract](../design-docs/api-contract.md) and [openapi.json](../generated/openapi.json).
+## 1. Build a skill from a template
 
-## Integration credentials
+You need your WiseEff URL and an organization account with **Manage analysis skills** (`logs:admin-domains`). Ask your administrator for access; no repository checkout or SDK is needed. Authoring uses API mode; mock mode is read-only.
+
+1. Open **Log administration → Analysis skills** (`/log-admin?tab=skills`), choose **New skill** (新建技能), enter a name and select Generic text, Linux dmesg, Android logcat or JSON Lines. You can also copy a skill. Attach a sample text log (at most 2 MiB).
+2. In **Overview**, set the description. In **Sample & parsing**, set applicable file globs and roles and check the sample path matches. Files outside the globs receive generic analysis without skill extraction/decoding.
+3. In **Diagnostic procedure**, complete the Markdown outline: scope, first checks, root-cause criteria, common misjudgements and actions. Preview it. The procedure cannot override the platform's grounding or read-only protocol.
+4. In **Sample & parsing**, use the basic-format form for timestamps, severity and multiline records. Select a sample line, choose **Create extractor from this line**, click value segments, name fields and choose types. Check match counts/coverage, then save the extractor.
+5. In **Decoding**, add a register, choose its 8/16/32/64-bit width, add named bit ranges and optional enum/scale/offset/unit/signedness, and bind the numeric extractor field to it. Inspect the selected line's bit bar. Register maps choose a register using another field; frame forms define byte layouts, endianness and checksums.
+6. In **Signals**, add a rule, choose an extracted or decoded field, comparison and value, and name the signal. For example, extract `reg=0x20`, decode bit 5 as `thermal_shutdown`, and signal when its decoded value equals numeric `1`. Check the sample hit and line.
+7. Link knowledge in **Knowledge** if needed (creating entries also requires knowledge-edit permission). Upload optional version-labelled source archives in **Source** and wait for indexing. Source/log excerpts may reach the configured model provider; check your organization's data policy before upload.
+
+Keep **Form** selected in parsing/decoding; code views are optional. **Save draft** preserves edits without changing already pinned runs.
+
+## 2. Test and publish
+
+- **Sample preview:** check matching and nonmatching lines, typed/decoded fields, errors and signal hits. A truncated preview covers only completed work.
+- **Parse tests:** in **Tests**, select a sample line and **New test**, review expected field paths/values and add expected signal names or ids. **Run tests** checks deterministic parsing/signals. Tests travel with the revision and run on draft save and before publication.
+- **Analysis cases:** add an original log bundle with expected root cause, file/line or pattern evidence, actions, or expected refusal. Run against the saved draft and compare with the last publication. These use the configured analyzer; degraded/rules-fallback results are not full model acceptance.
+- **Dry run:** save the draft, run it on the stored sample and inspect its report, degradation reason and tool trace. It creates neither a normal log record nor a result webhook.
+
+Choose **Publish**, review test outcomes and confirm. Failed tests inform the author but do not block publication. Publishing freezes a revision; new uploads use it, while previous runs retain their pinned revision.
+
+## 3. Package and move the skill
+
+Choose **Export skill package** in the workspace, select the current publication (default) or saved draft and download the ZIP. Unsaved edits are excluded. In the destination organization's skill list, choose **Import skill package**, select the ZIP, optionally override the name and choose Draft (default) or Published.
+
+The package carries `SKILL.md` (procedure and settings), `parsing.yaml`, `signals.yaml`, `tests.yaml`, linked Markdown knowledge and analysis cases with original fixtures. It excludes workspace samples, source snapshots, credentials, webhook settings/secrets, runs and traces. Import allocates new destination ids; the key is a suggestion, so copy the destination's actual key. Imported knowledge always starts as draft, even when the skill is published: review and publish it separately. Upload samples/source snapshots separately and select the destination snapshot.
+
+Validation occurs before an atomic audited write. Path-specific errors identify malformed/unsafe files; name collisions offer a replacement name. Fix and retry. Identical parsing/signals and case bytes preserve deterministic rule evidence; model results also depend on destination knowledge, source and provider settings.
+
+## 4. Issue a credential and choose the skill key
 
 An administrator with `logs:admin-domains` issues a credential in the skill workspace's Integration → Integration credentials subsection. The secret appears once, at issue or rotation; copy it to a secret manager and acknowledge that it is saved before closing. Use `Authorization: Bearer <integration-credential>` over TLS. Set `$WISEEFF_INTEGRATION_CREDENTIAL` from your secret manager for the examples below; never commit or log its value.
 
@@ -14,7 +43,18 @@ A credential is an organization-scoped machine principal with no user account, r
 
 Rotation invalidates the old secret immediately; revocation takes effect on the next request. Archiving a skill revokes its bound credentials. Only a hash is stored; lists never return a secret. Metadata exposes `createdByCredentialId` and `createdByCredentialName`; uploading user is null, and organization users with `logs:view` retain normal visibility. Upload audits identify the integration credential. Last-used timestamps update at most once a minute.
 
-## 1. Push a log
+
+Open **Integration** (集成), copy **Skill key** (技能标识), **Upload URL** (上传地址) and a request snippet. Choose **Issue credential** (签发凭据), name it and keep **Bind to current skill** checked for a skill-specific integration. The reveal dialog displays `wie_<credentialId>_<secret>` once. Copy it to your secret manager and acknowledge saving it before closing. The API credential and the webhook signing secret are separate secrets.
+
+For the examples below, set `WISEEFF_API` to your HTTPS origin (without `/api/v1`), `WISEEFF_SKILL_KEY` to the copied key and `WISEEFF_INTEGRATION_CREDENTIAL` from your secret manager. The copied Upload URL already includes `/api/v1/log-files`. All values here are placeholders.
+
+```bash
+WISEEFF_API='https://wiseeff.example.com'
+WISEEFF_SKILL_KEY='replace-with-copied-skill-key'
+# Supply WISEEFF_INTEGRATION_CREDENTIAL from your secret manager.
+```
+
+## 5. Push a log bundle with curl
 
 ### Select an analysis skill by key
 
@@ -22,25 +62,36 @@ Open a skill workspace's Integration section to copy its `skillKey`, upload URL 
 
 Both `POST /api/v1/log-files` (JSON or multipart) and `POST /api/v1/logs` (stored file) accept `skillKey`. `skillId` and its compatibility alias `logDomainId` remain supported. When several selectors are supplied they must identify the same skill; conflicting selectors return `400 VALIDATION_FAILED`. Keys resolve only within the caller's organization. Unknown or foreign keys are rejected. A successful upload pins the skill's current published revision, including its model and budgets; later edits or publications do not change that run.
 
+### Single file: JSON / Base64
+
+This small example sends `INFO reg=0x20\n`. For your own file, replace the filename/content type and the standard Base64 string with the file's bytes encoded without embedded newlines.
+
 ```bash
-curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
+curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
   -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   -H 'Content-Type: application/json' \
-  --data '{"skillKey":"charging","fileName":"example.log","contentType":"text/plain","contentBase64":"SU5GTyBib290Cg=="}'
-
-curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
-  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
-  --form-string 'skillKey=charging' \
-  -F 'file=@device.log;type=text/plain' -F 'file=@kernel.log;type=text/plain'
+  --data "{\"skillKey\":\"$WISEEFF_SKILL_KEY\",\"fileName\":\"example.log\",\"contentType\":\"text/plain\",\"contentBase64\":\"SU5GTyByZWc9MHgyMAo=\"}"
 ```
 
-Replace `charging` with the copied key. The multipart example expects the named local files. The workspace keeps model override and optional step/token budgets in the draft; publish them to affect new runs. Missing budgets use the platform defaults. Values above `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` are rejected with field errors. Webhook configuration and the key remain live identity settings, independent of publication.
+### Multipart: multiple files or one archive
+
+```bash
+curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
+  --form-string "skillKey=$WISEEFF_SKILL_KEY" \
+  -F 'file=@application.log;type=text/plain' \
+  -F 'file=@system.log;type=text/plain'
+```
+
+For a single archive replace both `-F` lines with `-F 'file=@logs.tar.gz;type=application/gzip'`. Send an archive alone, without accompanying loose files. Do not set the multipart Content-Type yourself; curl supplies its boundary.
+
+The multipart example expects the named local files. The workspace keeps model override and optional step/token budgets in the draft; publish them to affect new runs. Missing budgets use the platform defaults. Values above `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` are rejected with field errors. Webhook configuration and the key remain live identity settings, independent of publication.
 
 Step budgets must be integers of at least 1. Per-revision token budgets must be integers of at least `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`. Save and publish validate these bounds with field-specific errors. An explicit per-revision token budget bounds cumulative usage reported by the provider, checked before each model call, including early convergence; it is not a token estimate or a strict per-call ceiling. One completion may take cumulative usage above the budget, but no further call is made after exhaustion. Exhausted runs without a grounded final report use the existing `rules-fallback` result with `degradedReason: "token-budget-exhausted"`. Omitting `tokenBudget` preserves the existing platform-global budget accounting and early-convergence behavior.
 
 `POST /api/v1/log-files` with base64 content. JSON uploads accept at most 32 MiB of decoded file bytes; larger bundles use multipart under the configured upload cap (100 MiB by default). Oversized transport bodies return `413` before parsing. Select a published skill using `skillKey`, `skillId` or the compatibility alias `logDomainId` (users can list skills with `GET /api/v1/log-skills`). Any explicit selector, including a credential's bound skill, takes precedence over recommendation. Without a selector or credential binding, the server scores the stored bundle against only your organization's active published skills. A unique best score of at least 8 selects that skill; ties, lower scores and exhausted recommendation budgets use general analysis. To require general analysis, send `skillSelection: "generic"` without a skill selector, using a user session or an unbound credential. Bound credentials cannot request generic analysis: `skillSelection: "generic"` returns `403`, even with a matching skill selector. A selector conflicting with the credential's bound skill also returns `403`. These rules also apply to multipart uploads and `POST /api/v1/logs` for stored files.
 
-### Preview a recommendation
+### Routing and optional source versions
 
 `POST /api/v1/log-skills/recommend` requires an active user account with `logs:upload`; integration credentials cannot call this endpoint. Send `{ "files": [{ "path": "kernel.log", "head": ["charging current reduced"] }] }`. The response is `{ "recommendations": [{ "skillId": "...", "score": 8, "reasons": [{ "kind": "pattern", "file": "kernel.log", "detail": "..." }] }], "recommendedSkillId": "..." }`. `recommendedSkillId` is omitted when no unique candidate meets the threshold. Rankings contain at most 100 skills and 24 reasons per skill. `kind` is `file` or `pattern`; scores are ranking evidence, not a probability of a correct analysis. The endpoint only previews selection; omit the upload selector to let the server independently score the stored contents when no credential binding applies. See the [recommendation contract](../design-docs/api-contract.md#skill-recommendation-and-upload-routing-1247) for weights and limits.
 
@@ -48,47 +99,48 @@ Supply an optional `sourceVersion` label (trimmed, 1–200 characters) to select
 
 `GET /api/v1/log-skills/{skillId}/source-versions` returns only `{ "items": ["v2.4.0"] }` for ready snapshots in the skill's organization. It permits `logs:view` or active users with `logs:upload`, including upload-only clients; foreign-organization skills return `404`. It exposes no snapshot ids, status, file inventory or source content.
 
+A successful `201` response is `{ fileObject, log, job }`. Save `log.id` as `LOG_ID`; no second create request is needed. `POST /api/v1/logs` is an alternative for an already stored file, not the next step after uploading.
+
+Supported text extensions are `.log`, `.txt`, `.csv`, `.json` and extensionless text files; bundle intake recognizes UTF-8 and BOM-marked UTF-16 text. Archives can contain several files and use `.gz`, `.zip`, `.tar`, `.tar.gz` or `.tgz`. For several loose text files in one record, send `multipart/form-data` with a repeated `file` field. Inspect the record's `files` inventory for analyzed and skipped entries. Configured compressed, unpacked, file-count and per-file limits apply; see [environment variables](../developer/environment-variables.md). Archive expansion also has a 200× ratio bound with a 1 MiB minimum budget. Rejected inputs retain a readable failure reason.
+
+
+| Intake limit | Shipped default |
+| --- | --- |
+| JSON decoded file bytes | 32 MiB; use multipart above this |
+| Total uploaded/compressed bytes | 100 MiB |
+| Total unpacked original bytes | 100 MiB |
+| Per-file bytes | 100 MiB |
+| File count | 2,000 |
+| Archive expansion | 200×, with a 1 MiB minimum budget; file/total caps still apply |
+
+Deployment caps may differ. Archive safety/expansion violations return `201` with a failed `log`, readable `failureReason`, no job and no stored archive. Check `log.status`, not only HTTP status. Transport caps can instead return `413`.
+
+For an **unbound** credential, force generic analysis with this request; for automatic routing remove `"skillSelection":"generic",`. A bound credential cannot use either technique to bypass its binding.
+
 ```bash
-curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
+curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
   -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n \
-    --arg content "$(base64 < charging-foldback.log)" \
-    --arg domain "$LOG_DOMAIN_ID" \
-    '{fileName: "charging-foldback.log", contentType: "text/plain",
-      contentBase64: $content, logDomainId: $domain, sourceVersion: "firmware-v7",
-      analysisQuestion: "Why did fast charging fold back?"}')"
+  -H 'Content-Type: application/json' \
+  --data '{"skillSelection":"generic","fileName":"example.log","contentType":"text/plain","contentBase64":"SU5GTyByZWc9MHgyMAo="}'
 ```
 
-The `201` response carries `log.id` (the record) and `job.id` (the analysis job).
+Credentials cannot select related parameters. Recommendation preview and source-version listing require user authentication; the upload itself accepts a free-text `sourceVersion` from a credential.
 
-Supported text extensions are `.log`, `.txt`, `.csv` and `.json`; bundle intake recognizes UTF-8 and BOM-marked UTF-16 text. Archives can contain several files and use `.gz`, `.zip`, `.tar`, `.tar.gz` or `.tgz`. For several loose text files in one record, send `multipart/form-data` with a repeated `file` field. Inspect the record's `files` inventory for analyzed and skipped entries. Configured compressed, unpacked, file-count and per-file limits apply; see [environment variables](../developer/environment-variables.md). Archive expansion also has a 200× ratio bound with a 1 MiB minimum budget. Rejected inputs retain a readable failure reason.
-
-## 2. Poll the record
+## 6. Read results with the same credential
 
 Poll `GET /api/v1/logs/{logId}` using the credential that uploaded the record until `status` is `complete` or `failed`. Recommended cadence: 1s for the first ~30s, then back off to 2–5s; analysis targets p95 ≤ 3 minutes for ≤ 10MB logs. Job polling (`GET /api/v1/jobs/{jobId}`) and job SSE (`GET /api/v1/jobs/{jobId}/events`) require a user session and are outside credential scope.
 
-## 3. Fetch the result
+### Read the report
 
 `GET /api/v1/logs/{logId}` returns the conclusion, impact, severity, confidence, evidence (with line anchors), suggested actions, and the provenance fields `analysisSource` / `degradedReason` — a `rules-fallback` report is a degraded analysis and never impersonates a full agent analysis.
 
 New records also expose `skillSelection: { mode: "recommended" | "explicit" | "generic", reasons: [{ kind, file, detail }] }` in report metadata. Recommended selection records the winning score's reasons. Explicit and generic choices have no matching reasons; older records can omit the field. The selected publication is separately recorded in `skillRevision`.
 
-Source provenance appears on the record and its runs (`GET /api/v1/logs/{logId}/runs`): `sourceSnapshot: { id, versionLabel, status }` identifies the selected snapshot, `sourceSnapshotSelection` is `matched_version`, `default` or `none`, and `requestedSourceVersion` preserves the requested label when supplied. A `default` or `none` result with a requested label means that label was not found. Selection notes belong only to provenance, never the report conclusion. Source evidence locations must have appeared in tool results; `search_source` returns bounded ranked excerpts and `read_source_range` returns at most 80 numbered lines from the selected snapshot.
+Source provenance appears on the record (run-history reads require a user session): `sourceSnapshot: { id, versionLabel, status }` identifies the selected snapshot, `sourceSnapshotSelection` is `matched_version`, `default` or `none`, and `requestedSourceVersion` preserves the requested label when supplied. A `default` or `none` result with a requested label means that label was not found. Selection notes belong only to provenance, never the report conclusion. Source evidence locations must have appeared in tool results; `search_source` returns bounded ranked excerpts and `read_source_range` returns at most 80 numbered lines from the selected snapshot.
 
 The record also exposes optional `signalSummary: { signals, templates, truncatedSignals, truncatedTemplates }` for its current run. Generic signals are produced without selecting a skill; a pinned skill contributes its own signal hits. Signals carry kind, severity, source, occurrence count and bounded `file:line` anchors with excerpts. Templates carry normalized text, count and first/last anchors. Check the truncation flags before treating a summary as complete. Older records can omit this field. Rule fallback uses generic and pinned-skill signals while retaining the degraded marker and confidence caps. See the [signal contract](../design-docs/api-contract.md#generic-signals) for field shapes and the internal agent tools; the tools do not add REST endpoints.
 
 Optional `signalSummary.truncated` and `reason` describe incomplete extraction: `time_cap` retains completed results, `line_cap` limits matching to line prefixes, and `extraction_error` returns an empty summary while analysis continues. Check these fields alongside the count-cap flags before interpreting an empty summary as absence of anomalies.
-
-### Administrator traces and draft dry runs
-
-`GET /api/v1/logs/{logId}/trace` returns ordered `{ steps }` for the record's current run. It requires `logs:admin-domains`; `logs:view` alone receives `403`, and inaccessible records return `404`. Steps contain bounded tool-argument summaries, result byte counts, returned line references, outcomes and available token counts, never raw prompts or provider payloads. See the [trace and dry-run contract](../design-docs/api-contract.md#analysis-traces-and-draft-dry-runs-1230) for storage bounds and the administrator-only draft dry-run endpoints. Dry runs use the saved draft and stored sample; they create no `/logs` records or result webhooks.
-
-### Skill analysis cases
-
-All analysis-case routes require `logs:admin-domains` and organization-scoped access. Cases belong to a skill identity across revisions. See the [analysis-case API contract](../design-docs/api-contract.md#skill-analysis-cases-1246) for CRUD, run, trace, report-prefill and ZIP endpoints. New uploads preserve original input bytes separately from normalized analysis files, so saving a report as a case retains its original bundle. Historical reports without retained original uploads cannot reconstruct those bytes and return an explicit error when saved as a case.
-
-Case runs use the configured analyzer, compare the saved draft with its last published revision, and persist isolated test outcomes. They share draft dry-run admission, produce no user-visible log record or result webhook, and never block publishing. Import and export use the [`eval-cases/logs` layout](../../eval-cases/logs/README.md), with exact fixture bytes and path-specific validation errors.
 
 ### Fetch a file's line window
 
@@ -97,7 +149,11 @@ Case runs use the configured analyzer, compare the saved draft with its last pub
 Both line bounds are required, positive, 1-based integers and inclusive. A request may contain at most 400 lines. The server clips `endLine` at the end of the file; a `startLine` beyond the file, reversed bounds, or a window over 400 lines returns `400 VALIDATION_FAILED`. A final newline does not add a line; actual blank lines remain addressable. An empty file returns `startLine: 1`, `endLine: 0`, `totalLines: 0` and `lines: []`. Older indexes rebuild lazily on access. A missing or skipped file returns `404 NOT_FOUND`.
 
 ```bash
-curl -sS --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
+LOG_ID='replace-with-log.id'
+curl --fail-with-body "$WISEEFF_API/api/v1/logs/$LOG_ID" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL"
+
+curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
   -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   --data-urlencode "file=device/kernel.log" \
   --data-urlencode "startLine=40" \
@@ -124,9 +180,11 @@ The reader uses the file's UTF-8 text object and line-offset index, including fo
 
 The record's existing raw-log panel remains a preview: at most the first 400 lines per file, with a shared 128 KiB text budget per run. In `/logs`, clicking an evidence `file:line` chip or a signal/template anchor opens the shared file drawer, scrolls to and highlights its citation, and offers context loading above and below plus line copying. Use the line-window endpoint for locations beyond the preview rather than treating `rawLines` as the complete file.
 
-## 4. Or consume the result webhook
+The complete credential allowlist is the two upload POSTs and these two GETs (`/logs/{id}` and `/logs/{id}/lines`). The report and file inventory are embedded in `{ item }`; there is no separate credential report endpoint. Only records created by the same credential are readable. Lists, jobs/SSE, run history, traces, source browsing, recommendation, `/me` and administration require a user session.
 
-An administrator configures a skill's webhook in its workspace's Integration section: HTTPS URL, write-only signing secret (set or rotate), and enabled flag. The same section offers a test delivery and recent delivery attempts. The old administration page links to this workspace. After an analysis for that skill reaches a terminal state (complete, including degraded, or failed), WiseEff POSTs a compact JSON summary. Raw log content and evidence text are **never** sent; fetch details through the API using `recordId`.
+## 7. Consume the result webhook
+
+Before the first push, an administrator configures a skill's webhook in its workspace's Integration section: public HTTPS URL, write-only signing secret of at least 16 characters (set or rotate), and enabled flag. The same section offers a test delivery and recent delivery attempts. The old administration page links to this workspace. After an analysis for that skill reaches a terminal state (complete, including degraded, or failed), WiseEff POSTs a compact JSON summary. Raw log content and evidence text are **never** sent; fetch details through the API using `recordId`.
 
 ```json
 {
@@ -173,47 +231,52 @@ Every request carries:
 
 The timestamp is part of the signed input, which is what makes it a real replay defence. Verify with a constant-time comparison and reject deliveries whose timestamp is outside your replay window (recommended: 300 seconds).
 
-Node:
+Keep the exact raw request bytes (a Buffer) before JSON middleware; re-serializing JSON changes the signature input. Pass Node's lowercase request headers and the configured signing secret. This standalone Node function needs no dependency:
 
 ```js
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export function verifyWiseEffWebhook({ secret, rawBody, headers, toleranceSeconds = 300 }) {
-  const timestamp = Number(headers["x-wiseeff-timestamp"]);
-  const signature = headers["x-wiseeff-signature"] ?? "";
+  const header = headers["x-wiseeff-timestamp"];
+  if (typeof header !== "string" || !/^\d+$/.test(header)) return false;
+  const timestamp = Number(header);
+  const signature = headers["x-wiseeff-signature"];
+  if (typeof signature !== "string" || !/^sha256=[a-f0-9]{64}$/.test(signature)) return false;
   if (!Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > toleranceSeconds) {
     return false; // stale or missing timestamp — possible replay
   }
-  const expected = `sha256=${createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex")}`;
+  const expected = "sha256=" + createHmac("sha256", secret)
+    .update(header + ".").update(rawBody).digest("hex");
   const a = Buffer.from(expected);
   const b = Buffer.from(signature);
   return a.length === b.length && timingSafeEqual(a, b);
 }
 ```
 
-curl / openssl (recompute the signature for a captured request):
-
-```bash
-TIMESTAMP=1755050000            # X-WiseEff-Timestamp header
-SECRET=your-domain-signing-secret
-BODY_FILE=payload.json          # raw request body, byte-for-byte
-
-printf '%s.' "$TIMESTAMP" | cat - "$BODY_FILE" \
-  | openssl dgst -sha256 -hmac "$SECRET" -hex \
-  | sed 's/^.*= /sha256=/'
-# compare (constant-time in real code) with X-WiseEff-Signature
-```
-
 ### Receiver checklist
 
 - Verify the signature and replay window before parsing the body.
-- Return `2xx` fast; retry-causing statuses (`5xx`, timeouts) consume the sender's bounded retries.
+- After verification, atomically deduplicate `eventId` (or `runId`), durably enqueue work and return `2xx` fast; retry-causing statuses (`5xx`, timeouts) consume the sender's bounded retries.
 - Rotate the secret in `/log-admin` when needed; the API never echoes it (only configured-state and its last four characters).
 - Local development: senders refuse plain HTTP and private/loopback addresses by default; a local receiver such as `http://127.0.0.1:9999` only works when the server runs with `LOG_WEBHOOK_ALLOW_INSECURE_LOCAL=true` (never in production).
 
-## Error handling and retries (push side)
+## 8. Troubleshooting, rotation and revocation
 
-- `400 VALIDATION_FAILED`: bad base64/fields — fix the request, do not retry as-is.
-- `401 / 403`: invalid/revoked credential, disallowed route or skill binding; user uploads still require `logs:upload`. See [Authentication](authentication.md).
-- `5xx` on upload: safe to retry with backoff; each accepted upload creates a new record (no server-side dedup), so reuse a client-side idempotency guard if you retry aggressively.
-- A `failed` record carries a readable `failureReason` (unsupported format, oversized archive, exhausted attempts). An authorized user can rerun with `POST /api/v1/logs/{logId}/rerun`; an integration credential must submit a new upload after fixing its input.
+| Symptom | Meaning and action |
+| --- | --- |
+| `400 VALIDATION_FAILED` | Invalid fields/Base64, conflicting selectors or invalid skill. Correct the request; do not retry unchanged. Package errors name the file/field. |
+| `401 UNAUTHENTICATED` | Missing/malformed, unknown, rotated or revoked token, or a user-only route. Check Bearer formatting and the current secret on an allowlisted route. |
+| `403 FORBIDDEN` | Binding/scope violation (bound → generic, a different skill, or related parameters), or insufficient user permission. Use the bound skill or ask an administrator for the intended scope. |
+| `404 NOT_FOUND` | Inaccessible/unknown record, another creator's record, or missing/skipped file. Check the uploaded id, creating credential and exact file path. |
+| `409` | Authoring conflict: stale draft/publication, an existing draft during restore, missing sample/draft for dry run, or duplicate import name. Reload and reconcile/save, supply a sample, or rename as indicated. This is not authentication failure; do not blindly retry stale edits. |
+| `413 PAYLOAD_TOO_LARGE` | HTTP/JSON cap exceeded. Use multipart above 32 MiB decoded JSON, then split/reduce bundles to deployment caps. Archive validation can instead return `201` failed records. |
+| `429` | Rate/admission capacity exhausted; back off. |
+| Failed/degraded record or missing webhook | Inspect `failureReason`, `analysisSource`, `degradedReason` and Integration delivery attempts. Generic analysis has no selected skill's callback. Correct input/configuration and push again; credentials cannot rerun records. |
+
+Upload retries may create duplicates: there is no server upload idempotency key. Persist returned record ids, reconcile ambiguous failures and back off for transient server errors.
+
+In **Integration → Credentials**, inspect last-used time (updated at most once a minute). **Rotate** immediately invalidates the old secret and reveals the replacement once; coordinate updating callers. It keeps the credential identity, so the replacement can read earlier records. **Revoke** is irreversible and affects the next request; issuing another credential does not transfer old-record read scope. Archiving a skill revokes its bound credentials.
+
+Rotate the webhook signing secret separately in its editor; blank keeps the existing secret. Pending deliveries use current webhook configuration. Keep raw secrets out of code, logs and screenshots.
+
+Full schemas: [API contract](../design-docs/api-contract.md), [Authentication](authentication.md), [Errors](errors.md). These supplement the UI snippets and require no repository checkout.

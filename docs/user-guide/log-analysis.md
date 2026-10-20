@@ -6,13 +6,26 @@
 
 Intelligent analysis (`/logs`), under Log analysis, is available to hardware users, software users, hardware/software committers, Organization Admins (`admin`), and Platform Admins (`platform-admin`). Guests cannot open this page. Viewing records requires `logs:view`. Uploading requires an active account with `logs:upload`; giving quality feedback requires an active account with `logs:feedback`. Standard non-guest roles include these permissions, but records are accessible only within your Organization's scope.
 
-Turning a report into a knowledge draft also requires `knowledge:edit`. Admins with `logs:admin-domains` can maintain Log domains in Log administration (`/log-admin`). This guide describes the real API workflow. Mock mode simulates uploads and cannot confirm whether an analysis or feedback was saved on the server.
+Turning a report into a knowledge draft also requires `knowledge:edit`. Admins with `logs:admin-domains` can maintain analysis skills in Log administration (`/log-admin?tab=skills`). This guide describes the real API workflow. Mock mode simulates uploads and cannot confirm whether an analysis or feedback was saved on the server.
+
+## From a template to a result webhook
+
+1. In Log administration, choose Create skill. Enter a name and choose Generic text, Linux kernel dmesg, Android logcat or JSON Lines, or copy an existing skill. Attach a text sample up to 2 MiB, then open the workspace.
+2. In Samples and parsing, select a sample line and use the extractor builder to name its segments. In Decode, add a register or frame and bind the extracted field to it. In Signals, choose a decoded field and define its condition, signal name and severity. These steps use forms; code view is optional.
+3. Check the sample previews, add Parse tests and Analysis cases in Tests, and run a Dry run. Review its conclusion, signal evidence and trace. Save the draft and review the test results and changes in the publish dialog, then publish. Test results inform publication rather than block it.
+4. To move the skill, export its package from Versions and import it in the destination Organization. Review imported knowledge drafts and upload any required sample or source snapshot separately.
+5. Open Integration on the published skill. Set the model and budgets as needed, save and publish those revision settings, then configure the result webhook and send a test delivery. Issue a credential and securely save its one-time secret. Copy the skill key, upload address and request example to the uploader.
+6. Push a log bundle, read its record and report with the same credential, and verify the result webhook signature before processing the delivery. The [integration guide](../api/log-analysis-integration.md) gives the exact requests, signature check, limits and retry behavior.
+
+Workspace navigation groups Overview, Diagnostic procedure, Samples and parsing, Decode, Signals, Knowledge, Source, Tests, Integration and Versions. The sample remains available across form sections; Diagnostic procedure, Source and Versions use the wider task area without the sample pane. The draft bar distinguishes saved unpublished changes from the published revision. Source snapshots and analysis cases have their own lifecycle; check their state before relying on them in a run.
 
 ## Connect an external uploader
 
 In the skill workspace, open Integration → Integration credentials. Administrators with `logs:admin-domains` can issue a named credential; Bind to this skill is on by default. The list shows its name, bound skill, status, creation time and last use. Unbound credentials can upload to other skills in the same organization. Copy the skill key and upload example, replacing the credential placeholder with the secret from your secret manager.
 
 The issue and rotation dialogs show the secret once. Copy it, save it securely and select the acknowledgement before closing. Rotation immediately invalidates the old secret; update the uploader. Revocation requires confirmation and cannot be undone. Archiving a skill revokes its bound credentials. Credentials can upload and read only their own records, reports and files; they cannot access administration or another uploader's records. Users with `logs:view` see these records normally; the Metadata tab identifies the credential that uploaded them.
+
+In Integration → Result webhook, enter the receiver URL and signing secret, enable delivery and save. The secret is write-only; an empty secret field preserves the configured value. Send a test delivery and inspect Recent deliveries for the attempt, HTTP status or error and retry state. Webhook configuration and credential lifecycle take effect separately from publishing the skill's model and budget settings. A dry run or analysis-case run never sends a result webhook; use a normal upload to check the whole integration.
 
 ## Author a diagnostic procedure
 
@@ -40,7 +53,7 @@ The field picker groups choices by extractor and decoder. Choose a register bit 
 
 Open a skill's Signals section to add rules in the form “When a condition holds, produce a named signal with a severity.” Conditions match messages with bounded RE2 patterns, compare an extracted `extractorId.fieldName` against a scalar, numeric range or set, or count matches within a time window in one file. Multiple conditions within a rule are alternatives. Reorder or delete rules as needed. Invalid fields show their validation paths and prevent saving or publishing.
 
-Upload a sample in the persistent right pane. Valid rules preview automatically after a short pause. Each collapsed rule card shows its sentence summary and hit count; expand it to edit conditions or choose a matching line chip to highlight the sample. Legacy conditions have readable descriptions and remain editable in code. A limit notice identifies partial results. Preview uses unsaved rules on the server. Save and publish to apply the rules to new uploads; draft changes do not affect a run's pinned revision. The seeded Charging skill carries the existing charging rules, while uploads without a skill retain the legacy charging prefilter.
+Upload a sample in the persistent right pane. Valid rules preview automatically after a short pause. Each collapsed rule card shows its sentence summary and hit count; expand it to edit conditions or choose a matching line chip to highlight the sample. Legacy conditions have readable descriptions and remain editable in code. A limit notice identifies partial results. Preview uses unsaved rules on the server. Save and publish to apply the rules to new uploads; draft changes do not affect a run's pinned revision. The seeded Charging skill carries the existing charging rules, while uploads without a skill retain the legacy charging prefilter and also receive platform generic signals.
 
 ## Decode registers in a skill
 
@@ -139,7 +152,7 @@ The page shows Processing, Complete, or Failed, with a four-stage timeline to tr
 
 | Stage | Meaning |
 | --- | --- |
-| Log parsing | Read and parse the file into log lines, using the domain's format profile when present. |
+| Log parsing | Read and parse bundle files into log lines, using the pinned skill revision's format profile when present. |
 | Pattern matching | The pipeline's milestone for finding known operational patterns before root-cause analysis. |
 | Root-cause inference | Analyze log evidence to form a likely explanation; the multi-step Log analysis agent runs inside this stage. |
 | Report generation | Prepare the conclusion, impact, evidence, and suggested actions. |
@@ -189,7 +202,7 @@ The Signals tab also explains when extraction ran out of time, scanned only the 
 
 ## Inspect the analysis trace
 
-Skill administrators with `logs:admin-domains` can open Analysis trace beside Conclusion, Files and Signals on a `/logs` report. Accounts with only `logs:view` do not see this tab and cannot read the trace API. The trace belongs to the record's current run; older records may have no saved steps.
+Skill administrators with `logs:admin-domains` can open Analysis trace beside Report, Files and Signals on a `/logs` report. Accounts with only `logs:view` do not see this tab and cannot read the trace API. The trace belongs to the record's current run; older records may have no saved steps.
 
 The summary above the steps totals steps, tool calls and reported input/output tokens and marks degradation or early convergence. Read steps in order to follow model turns, tool calls, early convergence, rule fallback or other degradation. Check the tool's argument summary, result byte count, outcome and short reason, and token counts when the model service provides them. A file argument shows the matching bundle-relative path, truncated to 120 characters; query and pattern text stays redacted. An error or truncation describes that step, not proof that the full analysis failed. Click a returned log `file:line` chip to open the existing log viewer drawer at that line and inspect surrounding context. Source references appear as source badges with a snapshot identity; they do not open the log viewer. Traces contain bounded summaries and line references rather than raw prompts or tool-result text; they help review the procedure but do not replace the final evidence.
 

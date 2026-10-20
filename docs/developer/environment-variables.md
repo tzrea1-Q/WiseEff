@@ -192,13 +192,13 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `LOG_ANALYSIS_API_BASE_URL` | blank | live log-analysis LLM | OpenAI-compatible endpoint. Never commit secrets or private endpoints. |
-| `LOG_ANALYSIS_MODEL` | blank | live log-analysis LLM | GLOBAL model id recorded on every report (`model` column) and metrics label. A log domain's `modelOverride` (P3b, `/log-admin` governance) replaces only this model name for analyses bound to that domain — endpoint, key, timeout, and token budget stay global. |
+| `LOG_ANALYSIS_MODEL` | blank | live log-analysis LLM | Global model id recorded on reports and metrics. The pinned skill revision's `modelOverride` replaces only the model name; endpoint, key and request timeout stay global. Revision budgets remain within the global caps below. |
 | `LOG_ANALYSIS_API_KEY` | blank | live log-analysis LLM | Secret. |
 | `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live log-analysis LLM | Request timeout per `ChatOpenAI` call (each loop step is one call). |
-| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | analysis cost bound | Per-analysis token budget. Single-shot: bounds the prompt excerpt (≈4 chars/token) and response `maxTokens`. Loop: cumulative input+output tokens across steps; exhaustion triggers the marked early convergence. |
+| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | analysis cost bound | Default and platform cap for a revision's `tokenBudget`. Single-shot: bounds the prompt excerpt (≈4 chars/token) and response `maxTokens`. Loop: cumulative input+output tokens across steps; exhaustion triggers the marked early convergence. |
 | `LOG_ANALYSIS_DETERMINISTIC` | `true` in `.env.example`, `false` in code | offline dev/test/eval | Runs the deterministic stub model (`model` recorded as `deterministic`); no provider required and readiness reports ready. Production must configure a real provider and keep this `false`. |
-| `LOG_ANALYSIS_KERNEL` | `loop` | analysis kernel selection | `loop` = P2 bounded multi-step agent with the five read-only tools (default); `single-shot` = the P1 kernel kept as a config fallback. |
-| `LOG_ANALYSIS_MAX_STEPS` | `6` | loop bound | Max model steps per analysis before the marked early convergence (`token-budget-exhausted`). |
+| `LOG_ANALYSIS_KERNEL` | `loop` | analysis kernel selection | `loop` = bounded multi-step agent with read-only tools composed per run (default); `single-shot` = the P1 kernel kept as a config fallback. |
+| `LOG_ANALYSIS_MAX_STEPS` | `6` | loop bound | Default and platform cap for a revision's `stepBudget`; exhaustion triggers marked early convergence (`token-budget-exhausted`). |
 | `LOG_ANALYSIS_JOB_MAX_MS` | `600000` | worker attempt bound | Total wall time from the claimed attempt through preprocessing, analysis and persistence. Lease renewal does not reset this deadline. Positive integer, at most `2147483647`; central environment validation rejects invalid values, while standalone worker calls fall back to the default. |
 | `LOG_ANALYSIS_PREPROCESS_MAX_MS` | `20000` | shared signal/decode bound | Fixed combined allowance starting when signal extraction begins, also capped by remaining attempt wall time. Renewals never refill it; `LOG_SIGNAL_MAX_MS` and `LOG_DECODE_MAX_MS` still cap their own phases. Same validation and standalone fallback as `LOG_ANALYSIS_JOB_MAX_MS`. |
 | `LOG_DRY_RUN_MAX_CONCURRENT` | `2` | skill dry-run admission | Integer 1–4; invalid values use 2. PostgreSQL atomically enforces this conservative aggregate cap across API instances, with one execution per organization. Set the same value on every instance. Capacity remains reserved until execution settles, including work still unwinding after timeout. Full capacity returns `429 RATE_LIMITED` before sample reads or analyzer work. |
@@ -213,11 +213,15 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | `LOG_SOURCE_MAX_UNPACKED_BYTES` | `1073741824` | source snapshot indexing | Cumulative unpacked bytes, including skipped entries; default 1 GiB. |
 | `LOG_SOURCE_MAX_FILE_BYTES` | `2097152` | source snapshot indexing | Files larger than 2 MiB are skipped with a recorded reason. |
 | `LOG_SOURCE_MAX_FILES` | `20000` | source snapshot indexing | Maximum non-directory files, including skipped files; archive entries have a separate ceiling of twice this value. |
+| `LOG_SOURCE_MAX_STATEMENTS` | `20000` | source statement indexing | Maximum indexed output statements per snapshot; reaching the cap marks statement indexing as truncated. |
+| `LOG_SOURCE_MAX_STATEMENTS_PER_FILE` | `500` | source statement indexing | Maximum indexed output statements per file; reaching the cap marks statement indexing as truncated. |
 | `LOG_ANALYSIS_JUDGE_API_BASE_URL` | blank | quality eval judge | OpenAI-compatible endpoint for the LLM-as-judge in `npm run logs:eval:quality` (real-model mode). Unset → deterministic rubric stub. |
 | `LOG_ANALYSIS_JUDGE_MODEL` | blank | quality eval judge | Judge model id, recorded in the quality report. |
 | `LOG_ANALYSIS_JUDGE_API_KEY` | blank | quality eval judge | Secret. |
 | `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | quality eval judge | Judge request timeout. |
 | `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge calibration | Deterministic human-review sampling rate (0..1) for `docs/generated/log-analysis-judge-sample.md`; at least one judged case is always sampled. |
+
+Skill budgets are optional; omitted values use the global settings. Explicit step budgets must be at least 1 and token budgets at least `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`, both no higher than their global caps. The skill response exposes `budgetCaps` to the editor. Create, save, publish, restore and package import validate these limits; the analyzer clamps again at runtime. Configure API and worker with the same caps.
 
 The worker renews its default 60-second lease every lease/3 during all long phases. Renewal requires the processing job's matching owner and an unexpired lease, checked against PostgreSQL `clock_timestamp()`; a failed renewal stops work. `LOG_ANALYSIS_JOB_MAX_MS` bounds the whole claimed attempt independently of renewals.
 

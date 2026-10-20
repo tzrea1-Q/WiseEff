@@ -172,13 +172,13 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
 | `LOG_ANALYSIS_API_BASE_URL` | 空 | live 日志分析 LLM | OpenAI-compatible 端点；不得提交 secret 或私有端点。 |
-| `LOG_ANALYSIS_MODEL` | 空 | live 日志分析 LLM | **全局**模型名，写入报告 `model` 列并作为指标标签。业务域的 `modelOverride`（P3b，`/log-admin` 治理）只对绑定该域的分析替换这个模型名——端点、key、超时与 token 预算仍用全局配置。 |
+| `LOG_ANALYSIS_MODEL` | 空 | live 日志分析 LLM | 全局模型名，写入报告与指标。所钉技能版本的 `modelOverride` 只替换模型名；端点、key 和单次请求超时仍用全局配置，版本预算受下方全局上限约束。 |
 | `LOG_ANALYSIS_API_KEY` | 空 | live 日志分析 LLM | secret。 |
 | `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live 日志分析 LLM | 单次 `ChatOpenAI` 调用超时（循环内核每步一次调用）。 |
-| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | 单次分析成本上界 | 单发内核：限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。循环内核：跨步累计输入+输出 token；耗尽触发显式标注的提前收敛。 |
+| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | 单次分析成本上界 | 版本 `tokenBudget` 的默认值与平台上限。单发内核：限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。循环内核：跨步累计输入+输出 token；耗尽触发显式标注的提前收敛。 |
 | `LOG_ANALYSIS_DETERMINISTIC` | `.env.example` 为 `true`，代码默认 `false` | 离线开发/测试/评测 | 使用确定性桩模型（`model` 记 `deterministic`），无需 provider 且就绪检查通过。生产必须配置真实 provider 并保持 `false`。 |
-| `LOG_ANALYSIS_KERNEL` | `loop` | 分析内核选择 | `loop` = P2 有界多步 agent（五个只读工具，默认）；`single-shot` = P1 单发内核，保留为配置回退。 |
-| `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 每次分析的最大模型步数；超出触发标注为 `token-budget-exhausted` 的提前收敛。 |
+| `LOG_ANALYSIS_KERNEL` | `loop` | 分析内核选择 | `loop` = 有界多步 agent，按运行组合只读工具（默认）；`single-shot` = P1 单发内核，保留为配置回退。 |
+| `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 版本 `stepBudget` 的默认值与平台上限；耗尽触发标注为 `token-budget-exhausted` 的提前收敛。 |
 | `LOG_ANALYSIS_JOB_MAX_MS` | `600000` | worker 尝试时限 | 从任务认领开始，覆盖预处理、分析与持久化的总墙钟时限；续租不会重置截止时间。须为不超过 `2147483647` 的正整数；中央环境校验拒绝无效值，直接独立调用 worker 时回退默认值。 |
 | `LOG_ANALYSIS_PREPROCESS_MAX_MS` | `20000` | 信号与解码共享时限 | 从信号提取开始的固定合计额度，并受本次尝试剩余墙钟时限约束。续租不补充额度；`LOG_SIGNAL_MAX_MS` 和 `LOG_DECODE_MAX_MS` 仍分别约束各阶段。校验与独立调用回退规则同 `LOG_ANALYSIS_JOB_MAX_MS`。 |
 | `LOG_DRY_RUN_MAX_CONCURRENT` | `2` | 技能试运行并发接收 | 整数 1–4，无效值回退为 2。PostgreSQL 原子地执行此跨 API 实例的保守总量上限，每组织最多一个执行。各实例应使用相同值。直到执行实际结束才释放容量，包括超时后仍在退出的工作。容量已满时，在读取样例或调用分析器前返回 `429 RATE_LIMITED`，提示「试运行繁忙，请稍后重试」。 |
@@ -193,11 +193,15 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_SOURCE_MAX_UNPACKED_BYTES` | `1073741824` | 源码快照索引 | 累计解包字节上限，包含跳过条目，默认 1 GiB。 |
 | `LOG_SOURCE_MAX_FILE_BYTES` | `2097152` | 源码快照索引 | 大于 2 MiB 的文件跳过并记录原因。 |
 | `LOG_SOURCE_MAX_FILES` | `20000` | 源码快照索引 | 非目录文件数上限，包含跳过文件；压缩包条目另有该值两倍的上限。 |
+| `LOG_SOURCE_MAX_STATEMENTS` | `20000` | 源码语句索引 | 每快照最多索引的输出语句数；达到上限时标记语句索引已截断。 |
+| `LOG_SOURCE_MAX_STATEMENTS_PER_FILE` | `500` | 源码语句索引 | 每文件最多索引的输出语句数；达到上限时标记语句索引已截断。 |
 | `LOG_ANALYSIS_JUDGE_API_BASE_URL` | 空 | 效果层评测 judge | `npm run logs:eval:quality` 真模型模式下 LLM-as-judge 的 OpenAI-compatible 端点；未配置时使用确定性 rubric 桩。 |
 | `LOG_ANALYSIS_JUDGE_MODEL` | 空 | 效果层评测 judge | judge 模型名，写入质量报告。 |
 | `LOG_ANALYSIS_JUDGE_API_KEY` | 空 | 效果层评测 judge | secret。 |
 | `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | 效果层评测 judge | judge 请求超时。 |
 | `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge 校准 | `docs/generated/log-analysis-judge-sample.md` 人工复核清单的确定性抽样率（0..1）；至少抽 1 条已评分案例。 |
+
+技能预算可省略，此时使用全局配置。显式步数至少为 1，token 预算至少为 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`，二者均不得超过相应全局上限。技能响应通过 `budgetCaps` 向编辑器提供上限；创建、保存、发布、恢复和技能包导入均校验，分析器在运行时再次取上限。API 与 worker 应使用相同配置。
 
 worker 在各耗时阶段每隔租约时长的三分之一续租，默认租约为 60 秒。续租要求任务仍为处理中、持有者匹配且租约未过期，以 PostgreSQL `clock_timestamp()` 检查；续租失败即停止工作。`LOG_ANALYSIS_JOB_MAX_MS` 独立限制整个已认领尝试，续租不会延长总时限。
 

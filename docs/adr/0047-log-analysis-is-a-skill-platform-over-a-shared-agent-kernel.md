@@ -6,7 +6,7 @@ Date: 2026-10-18
 
 ## Status
 
-Proposed. The product owner settled the three open inputs on 2026-10-18 (recorded under Decision). Implementation is tracked in the [analysis skill platform plan](../exec-plans/active/2026-10-18-log-analysis-skill-platform.md); nothing in this record is implemented yet.
+Proposed (decision status unchanged). The product owner settled the three open inputs on 2026-10-18 (recorded under Decision). S1–S5 implementation is present; the final documentation and end-to-end acceptance slice is tracked by #1250 in the [analysis skill platform plan](../exec-plans/active/2026-10-18-log-analysis-skill-platform.md). The two design-goal walkthroughs run as browser acceptance tests (`e2e/acceptance/log-skill-design-goals.acceptance.spec.ts`); the product owner's real-scenario validation remains pending. Sandboxed scripts (S6) remain deferred pending their own ADR.
 
 ## Context
 
