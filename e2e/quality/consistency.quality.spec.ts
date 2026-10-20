@@ -293,9 +293,10 @@ const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", 
     } }));
     const target = { id: "bridge:quality-multiline-target", deviceId: "bridge:quality-multiline-bridge", bridgeId: "quality-multiline-bridge",
       bridgeMachineLabel: "多行布局检查工作站", protocol: "hdc", label: "多行布局检查设备", targetRef: "quality-multiline-target", status: "detected" };
-    await context.route("**/api/v1/debugging/targets/detect", (route) => route.fulfill({ json: {
-      items: route.request().postDataJSON().protocol === "hdc" ? [target] : []
-    } }));
+    await context.route("**/api/v1/debugging/targets/detect", (route) => {
+      expect(route.request().postDataJSON()).not.toHaveProperty("protocol");
+      return route.fulfill({ json: { items: [target] } });
+    });
     await context.route("**/api/v1/debugging/sessions", (route) => route.fulfill({ json: { item: {
       id: "quality-multiline-session", deviceId: target.deviceId, targetId: target.id, protocol: "hdc", status: "active",
       startedAt: "2026-10-19T00:00:00Z", endedAt: null
@@ -414,6 +415,13 @@ const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", 
     const unchanged = dialog.getByRole("list", { name: "值未改变", exact: true });
     for (const width of [1440, 1280]) {
       await page.setViewportSize({ width, height: width === 1440 ? 900 : 800 });
+      const listPreview = page.locator(`[data-binding-id="${bindingId}"] [data-label="当前值"] code`);
+      expect(await listPreview.textContent()).toBe(rawValue);
+      const previewSize = await listPreview.evaluate((element) => ({
+        height: element.getBoundingClientRect().height, lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight)
+      }));
+      expect(previewSize.height, "the table must keep a four-line preview while details retain the full value")
+        .toBeLessThanOrEqual(previewSize.lineHeight * 4 + 1);
       await expect(target).toHaveValue(rawValue);
       expect(await target.evaluate((element) => element.tagName)).toBe("TEXTAREA");
       const editor = await target.evaluate((element) => ({ height: element.clientHeight, scrollHeight: element.scrollHeight }));

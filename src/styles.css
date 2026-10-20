@@ -22201,6 +22201,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
   white-space: pre-wrap;
 }
 
+.dts-parameter-workbench-table__row [data-label="当前值"] code {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
 .dts-parameter-workbench-table__location {
   display: grid;
   gap: var(--space-1);
