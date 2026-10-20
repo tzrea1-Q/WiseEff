@@ -12,16 +12,14 @@ function createFakeDb() {
   const tx: Queryable = {
     async query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
       txCalls.push({ text, values });
+      if (text.includes("select id from organizations")) return { rows: [{ id: values[0] } as Row], rowCount: 1 };
       return { rows: [], rowCount: 0 };
     }
   };
   const db: Database = {
-    async query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
-      txCalls.push({ text, values });
-      return { rows: [], rowCount: 0 };
-    },
-    async transaction<T>(fn: (queryable: Queryable) => Promise<T>): Promise<T> {
-      return fn(tx);
+    query: tx.query,
+    async transaction<T>(fn: (queryable: Database) => Promise<T>): Promise<T> {
+      return fn(db);
     }
   };
 

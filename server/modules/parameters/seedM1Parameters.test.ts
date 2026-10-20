@@ -60,7 +60,7 @@ function createSeedDatabase() {
 
   const db: Database = {
     query: tx.query,
-    transaction: async (fn) => fn(tx)
+    transaction: async (fn) => fn(db)
   };
 
   return { db, queries };

@@ -239,7 +239,7 @@ export function PageRouter({
     if (!debuggingGateway) {
       return undefined;
     }
-    return async (protocol: DtsReloadDeployProtocol, bridgeId?: string) => {
+    return async (protocol?: DtsReloadDeployProtocol, bridgeId?: string) => {
       const normalizedBridgeId = bridgeId?.trim();
       const targets = await debuggingGateway.detectTargets({
         protocol,
@@ -399,11 +399,13 @@ export function PageRouter({
           parameterActions={parameterActions}
           runtime={runtime}
           knowledgeCapability={knowledgeCapability}
+          sessionPermissions={sessionPermissions}
         />
       );
     case "log-admin":
       if (workspaceSkillId) return <SkillWorkspace key={workspaceSkillId} skillId={workspaceSkillId} search={search}
         repository={runtime?.logAnalysisRepository} apiMode={runtimeMode === "api"}
+        knowledgeRepository={knowledgeRepository} knowledgeCapability={knowledgeCapability}
         canEdit={runtimeMode === "api" && (sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(currentRoleId, "logs.admin-domains"))}
         onNavigate={onNavigate} onPublished={(message) => dispatch({ type: "ADD_NOTIFICATION", message })} />;
       return (

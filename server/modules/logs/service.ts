@@ -9,7 +9,7 @@ import type { LogAnalysisJobDto } from "../jobs/types";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { enqueueLogAnalysisJob, type LogAnalysisQueue } from "./logAnalysisQueue";
-import { getActiveLogDomainForBinding } from "./domainsRepository";
+import { findLogDomainBySkillKey, getActiveLogDomainForBinding } from "./domainsRepository";
 import { currentSkillRevisionId } from "./skillsRepository";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
@@ -38,14 +38,16 @@ import {
 } from "./policy";
 import { loadLogBundleLimits } from "../../config/env";
 import { bundleFileUtf8Bytes, intakeLogBundle, isLogArchive, type BundleFile } from "./bundleIntake";
-import { insertLogFiles, fileInventory, loadLogFiles } from "./filesRepository";
+import { insertLogFiles, fileInventory, loadLegacyLogFile, loadLogFiles } from "./filesRepository";
+import { ensureStoredLogIndex, readStoredLogRange } from "./fileReader";
+import { logLineRangeQuerySchema } from "./schemas";
 import { supportedLogExtensions } from "./status";
 import {
   isSupportedStoredLogFileName,
   isSupportedTextLogFileName,
   supportedLogArchiveExtensions
 } from "./unpack";
-import type { LogFeedbackRating, LogRecordDto } from "./types";
+import type { LogFeedbackRating, LogLineRangeDto, LogRecordDto } from "./types";
 import {
   resolveAuthorizedRelatedParameter,
   toRelatedParameterRunSnapshot,
@@ -54,6 +56,9 @@ import {
 } from "./relatedParameter";
 
 export type UploadLogFileInput = {
+  skillId?: string;
+  skillKey?: string;
+  sourceVersion?: string;
   fileName: string;
   contentType: string;
   bytes: Buffer | Uint8Array;
@@ -65,6 +70,9 @@ export type UploadLogFileInput = {
 };
 
 export type CreateLogFromFileInput = {
+  skillId?: string;
+  skillKey?: string;
+  sourceVersion?: string;
   fileObjectId: string;
   fileName: string;
   analysisQuestion?: string;
@@ -172,6 +180,24 @@ async function requireBindableLogDomainId(db: Queryable, auth: AuthContext, logD
   return domain.id;
 }
 
+async function resolveUploadSkillId(db: Queryable, auth: AuthContext, input: {
+  skillId?: string; logDomainId?: string; skillKey?: string;
+}) {
+  if (input.skillId && input.logDomainId && input.skillId !== input.logDomainId) {
+    throw new ApiError("VALIDATION_FAILED", "skillId and logDomainId must identify the same analysis skill.");
+  }
+  const id = input.skillId ?? input.logDomainId;
+  if (input.skillKey !== undefined) {
+    const skill = await findLogDomainBySkillKey(db, { organizationId: auth.organization.id, skillKey: input.skillKey });
+    if (!skill || skill.status !== "active") {
+      throw new ApiError("VALIDATION_FAILED", "skillKey is unknown or not active in this organization.", { fieldErrors: { skillKey: "Unknown or inactive analysis skill." } });
+    }
+    if (id && id !== skill.id) throw new ApiError("VALIDATION_FAILED", "skillKey and skillId/logDomainId must identify the same analysis skill.");
+    return skill.id;
+  }
+  return requireBindableLogDomainId(db, auth, id);
+}
+
 async function createLogAudit(
   tx: AuditTx,
   invocation: TrustedInvocationContext,
@@ -222,7 +248,7 @@ export async function uploadLogFile(
   context: ServiceContext = {}
 ): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
   requireLogUpload(auth);
-  const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
+  const logDomainId = await resolveUploadSkillId(db, auth, input);
   const relatedParameter = await resolveLogRelatedParameter(db, auth, input);
   const uploads = input.files ?? [{ fileName: input.fileName, bytes: Buffer.isBuffer(input.bytes) ? input.bytes
     : Buffer.from(input.bytes.buffer, input.bytes.byteOffset, input.bytes.byteLength) }];
@@ -233,6 +259,7 @@ export async function uploadLogFile(
   const failureReason = !intake.ok ? intake.reason : intake.files.some((file) => file.status === "analyzed")
     ? undefined : singleUnsupported ? unsupportedReason() : "日志包中没有可分析的文本文件";
   const storedFiles: Array<Omit<BundleFile, "bytes"> & { objectKey: string | null }> = [];
+  const originalObjects = new Map<string, StoredObject>();
   let stored: StoredObject | undefined;
   for (const file of intake.ok ? intake.files : []) {
     const object = file.status === "analyzed" ? await objectStore.put({
@@ -241,6 +268,8 @@ export async function uploadLogFile(
       contentType: "text/plain; charset=utf-8", bytes: bundleFileUtf8Bytes(file)
     }) : undefined;
     stored ??= object;
+    const original = uploads.find((upload) => upload.fileName === file.path && !isLogArchive(upload.fileName));
+    if (object && original && bundleFileUtf8Bytes(file).equals(original.bytes)) originalObjects.set(original.fileName, object);
     delete file.bytes;
     storedFiles.push({ ...file, objectKey: object?.storageKey ?? null });
   }
@@ -250,6 +279,11 @@ export async function uploadLogFile(
     fileSizeBytes: uploads.reduce((sum, file) => sum + file.bytes.length, 0),
     checksumSha256: createHash("sha256").update(input.bytes).digest("hex")
   };
+  const originalUploads = failureReason ? [] : await Promise.all(uploads.map(async (upload) => ({
+    fileName: upload.fileName, sizeBytes: upload.bytes.length,
+    objectKey: (originalObjects.get(upload.fileName) ?? await objectStore.put({ organizationId: auth.organization.id,
+      fileName: `original-${randomUUID()}.bin`, contentType: "application/octet-stream", bytes: upload.bytes })).storageKey
+  })));
 
   const result = await db.transaction(async (tx) => {
     const fileObject = await persistFileObject(tx, auth, { stored: primary });
@@ -281,6 +315,7 @@ export async function uploadLogFile(
         relatedParameterId: relatedParameter?.relatedParameterId,
         relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
         relatedParameterSnapshot: relatedParameter?.relatedParameterSnapshot,
+        sourceVersion: input.sourceVersion,
         logDomainId
       }
     );
@@ -297,6 +332,9 @@ export async function uploadLogFile(
     );
 
     await insertLogFiles(tx, auth.organization.id, log.id, storedFiles);
+    for (const [position, upload] of originalUploads.entries()) await tx.query(`insert into log_original_uploads
+      (organization_id, record_id, position, file_name, object_key, size_bytes) values ($1,$2,$3,$4,$5,$6)`,
+    [auth.organization.id, log.id, position, upload.fileName, upload.objectKey, upload.sizeBytes]);
     return { fileObject, log: { ...log, files: fileInventory(storedFiles) }, job };
   });
 
@@ -312,7 +350,7 @@ export async function uploadLogFile(
 
 export async function createLogFromFile(db: Database, auth: AuthContext, input: CreateLogFromFileInput, context: ServiceContext = {}) {
   requireLogUpload(auth);
-  const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
+  const logDomainId = await resolveUploadSkillId(db, auth, input);
 
   const fileObject = await getFileObjectById(db, {
     organizationId: auth.organization.id,
@@ -387,6 +425,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         relatedParameterId: relatedParameter?.relatedParameterId,
         relatedParameterProjectId: relatedParameter?.relatedParameterProjectId,
         relatedParameterSnapshot: relatedParameter?.relatedParameterSnapshot,
+        sourceVersion: input.sourceVersion,
         logDomainId
       }
     );
@@ -403,10 +442,13 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
     );
     if (sourceRecordId) {
       await tx.query(`insert into log_files(id, organization_id, record_id, path, size_bytes, sha256, encoding, lossy,
-        line_count, status, skip_reason, object_key)
+        line_count, status, skip_reason, object_key, line_index_key)
         select gen_random_uuid()::text, organization_id, $3, path, size_bytes, sha256, encoding, lossy,
-          line_count, status, skip_reason, object_key from log_files where organization_id=$1 and record_id=$2`,
+          line_count, status, skip_reason, object_key, line_index_key from log_files where organization_id=$1 and record_id=$2`,
       [auth.organization.id, sourceRecordId, result.log.id]);
+      await tx.query(`insert into log_original_uploads (organization_id, record_id, position, file_name, object_key, size_bytes)
+        select organization_id, $3, position, file_name, object_key, size_bytes from log_original_uploads
+        where organization_id = $1 and record_id = $2`, [auth.organization.id, sourceRecordId, result.log.id]);
       result.log.files = fileInventory(await loadLogFiles(tx, auth.organization.id, result.log.id));
     }
     return result;
@@ -434,6 +476,26 @@ export async function getLogRecord(db: Queryable, auth: AuthContext, logId: stri
     throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
   }
   return log;
+}
+
+export async function getLogLineRange(db: Queryable, objectStore: ObjectStore, auth: AuthContext,
+  logId: string, input: { file: string; startLine: number; endLine: number }): Promise<LogLineRangeDto> {
+  await getLogRecord(db, auth, logId);
+  const parsed = logLineRangeQuerySchema.safeParse(input);
+  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Request an inclusive range of at most 400 lines.");
+  const inventory = await loadLogFiles(db, auth.organization.id, logId);
+  const storedFile = inventory.find((item) => item.path === input.file)
+    ?? (!inventory.length ? await loadLegacyLogFile(db, auth.organization.id, logId, input.file) : undefined);
+  if (!storedFile || storedFile.status !== "analyzed" || !storedFile.objectKey) {
+    throw new ApiError("NOT_FOUND", "Log file was not found.", { logId, file: input.file });
+  }
+  const file = await ensureStoredLogIndex(db, objectStore, auth.organization.id, logId, storedFile);
+  if (input.startLine > Math.max(1, file.lineCount)) {
+    throw new ApiError("VALIDATION_FAILED", "Start line is outside the log file.");
+  }
+  const endLine = Math.min(input.endLine, file.lineCount);
+  const lines = endLine < input.startLine ? [] : await readStoredLogRange(objectStore, file, input.startLine, endLine);
+  return { file: file.path, startLine: input.startLine, endLine, totalLines: file.lineCount, lines };
 }
 
 export async function listLogRuns(db: Queryable, auth: AuthContext, logId: string): Promise<LogRunDto[]> {
@@ -478,6 +540,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
       : await currentSkillRevisionId(tx, auth.organization.id, logDomainId ?? current.logDomainId);
     const job = await createRerunWithJob(tx, {
       skillRevisionId,
+      preserveLegacyKnowledgeScope: input.revisionPolicy === "pinned",
       runId: randomUUID(),
       jobId: randomUUID(),
       organizationId: auth.organization.id,

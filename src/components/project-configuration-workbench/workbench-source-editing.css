@@ -1,0 +1,44 @@
+.workbench-source-editing {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.workbench-source-editing[hidden] { display: none; }
+.workbench-source-editing__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--stroke-hairline) solid var(--configuration-source-outline);
+}
+.workbench-source-editing__toolbar > [role="status"] { font-size: var(--text-xs); color: var(--configuration-source-text-muted); }
+.workbench-source-editing__actions { display: flex; gap: var(--space-2); margin-left: auto; }
+.workbench-source-editing__notice { margin: 0; padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
+.workbench-source-save-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(calc(100vw - var(--space-8)), 64rem);
+  max-height: calc(100vh - var(--space-8));
+  overflow: auto;
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+}
+.workbench-source-save-dialog h2, .workbench-source-save-dialog p { margin: 0; }
+.workbench-source-save-dialog label { display: grid; gap: var(--space-2); }
+.workbench-source-save-dialog textarea { width: 100%; font: inherit; resize: vertical; }
+.workbench-source-save-dialog__diff {
+  flex: 1 1 auto;
+  min-height: var(--space-16);
+  height: 45vh;
+  overflow: hidden;
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+  font: var(--text-sm) / 1.6 var(--font-code);
+  tab-size: 2;
+}

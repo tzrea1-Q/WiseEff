@@ -162,7 +162,7 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
       try {
         const result = await repo.downloadVersion(projectId, fileId, versionId);
         if (generation !== loadGeneration) return;
-        const text = new TextDecoder().decode(result.bytes);
+        const text = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }).decode(result.bytes);
         counterpartLoaded = true;
         historySource = text;
         historySourceAvailable = true;
@@ -170,7 +170,7 @@ export function createWorkbenchCanvasHistorySession(): WorkbenchCanvasHistorySes
           if (currentVersionId) {
             const working = await repo.downloadVersion(projectId, fileId, currentVersionId);
             if (generation !== loadGeneration) return;
-            compareSource = new TextDecoder().decode(working.bytes);
+            compareSource = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }).decode(working.bytes);
           } else {
             compareSource = workingSource;
           }

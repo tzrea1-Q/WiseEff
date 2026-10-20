@@ -167,6 +167,12 @@ function createFakeWorkerDb(fixture = createFixture()) {
       const normalized = text.replace(/\s+/g, " ").trim();
       calls.push(normalized);
 
+      if (normalized.startsWith("select job.id from jobs job") && normalized.includes("for update of job")) {
+        const current = values[0] === fixture.job.organization_id && values[1] === fixture.job.id && values[2] === fixture.run.id
+          && values[3] === fixture.job.lease_owner && fixture.job.status === "processing" && fixture.log.current_run_id === fixture.run.id;
+        return { rows: current ? [{ id: fixture.job.id } as Row] : [], rowCount: current ? 1 : 0 };
+      }
+
       if (normalized.startsWith("select r.log_domain_id, a.log_record_id")) {
         if (!fixture.log.log_domain) return { rows: [], rowCount: 0 };
         return { rows: [{
@@ -429,6 +435,15 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe("log worker", () => {
   const parsing = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "current", pattern: "(?P<value>.+)", fields: { value: { type: "string" } } }] });
+  it("includes the initial prefilter in the preprocessing deadline and preserves truncation", async () => {
+    const { db, fixture } = createFakeWorkerDb();
+    const analyze = vi.fn(createRuleBasedLogAnalyzer().analyze);
+    expect(await processNextLogAnalysisJob({ db, objectStore: createObjectStore(Buffer.from("thermal\nthermal\nthermal")),
+      preprocessingMs: 0, analyzer: { analyze } })).toBe("processed");
+    expect(fixture.log.status).toBe("complete");
+    expect(analyze.mock.calls[0][0].files?.[0].prefilter).toMatchObject({ truncated: true, evidence: [], severityCounts: { error: 0, warn: 0, info: 0 } });
+    expect(analyze.mock.calls[0][0].signalSummary).toMatchObject({ truncated: true, reason: "time_cap" });
+  });
   it("keeps a deadline-limited decode within the lease and finishes with partial events", async () => {
     const { db, fixture } = createFakeWorkerDb();
     fixture.parsing = parsing;
@@ -436,8 +451,10 @@ describe("log worker", () => {
     fixture.job.lease_expires_at = "2026-05-25T02:01:00.000Z";
     vi.stubEnv("LOG_DECODE_MAX_MS", "60000");
     vi.stubEnv("LOG_SIGNAL_MAX_MS", "1000");
+    vi.stubEnv("LOG_ANALYSIS_PREPROCESS_MAX_MS", "15000");
     let elapsed = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => (elapsed += 0.75));
+    // Include initial prefilter work while leaving enough allowance for partial decoding.
+    vi.spyOn(performance, "now").mockImplementation(() => (elapsed += 0.5));
     const objectStore = createObjectStore(Buffer.from(Array(6000).fill("value").join("\n")));
     objectStore.put = async (input) => ({ storageKey: "decoded.gz", fileName: input.fileName, contentType: input.contentType, fileSizeBytes: input.bytes.length, checksumSha256: "checksum" });
     const analyze = vi.fn(createRuleBasedLogAnalyzer().analyze);
@@ -447,7 +464,7 @@ describe("log worker", () => {
     expect(fixture.decoded?.counts.errors).toEqual({ time_cap: 1 });
     expect(fixture.decoded!.counts.total).toBeGreaterThan(0);
     expect(fixture.decoded!.counts.total).toBeLessThan(6000);
-    // The configured budgets together exceed this 60s lease's 15s share.
+    // Signals and decoding share one fixed 15s allowance, independent of renewals.
     // Synthetic clock increments allow only the final bounded checkpoint to overshoot.
     expect(elapsed).toBeLessThan(15_020);
     expect(analyze.mock.calls[0][0].signalSummary).toMatchObject({ truncated: true, reason: "time_cap" });
@@ -578,6 +595,19 @@ describe("log worker", () => {
     expect(workerDb.fixture.stages).toEqual([]);
     expect(workerDb.fixture.run).toMatchObject({ status: "queued", progress: 0, current_stage: "parse" });
     expect(workerDb.fixture.job).toMatchObject({ status: "processing", progress: 0, current_stage: "parse" });
+  });
+
+  it("rejects trace callbacks from an analyzer continuing after the job timeout", async () => {
+    const { db, calls } = createFakeWorkerDb();
+    let onTrace: AnalyzeLogInput["onTrace"];
+    await processLogAnalysisJobById({
+      db, objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")), jobId: "job-1", maxJobMs: 100, maxAttempts: 1,
+      analyzer: { async analyze(input) { onTrace = input.onTrace; return new Promise<AnalyzeLogOutput>(() => undefined); } }
+    });
+    expect(onTrace).toBeTypeOf("function");
+    const writes = calls.length;
+    await expect(onTrace!({ index: 1, kind: "model-turn", tool: null, arguments: {}, resultBytes: 0, lines: [], outcome: "ok", reason: null })).rejects.toThrow("LOG_ANALYSIS_JOB_MAX_MS");
+    expect(calls).toHaveLength(writes);
   });
 
   it("does not fail a stale run when the claimed job lease is lost", async () => {

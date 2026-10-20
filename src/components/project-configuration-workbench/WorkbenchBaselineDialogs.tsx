@@ -16,6 +16,8 @@ export type WorkbenchBaselineDialogsProps = {
   releaseOpen: boolean;
   restoreOpen: boolean;
   leaveOpen: boolean;
+  leaveError?: string;
+  leavePending?: boolean;
   sessionDraftsDirty: boolean;
   baselineActionError: string;
   newBaselineName: string;
@@ -53,6 +55,8 @@ export function WorkbenchBaselineDialogs({
   releaseOpen,
   restoreOpen,
   leaveOpen,
+  leaveError,
+  leavePending,
   sessionDraftsDirty,
   baselineActionError,
   newBaselineName,
@@ -193,12 +197,14 @@ export function WorkbenchBaselineDialogs({
         open={leaveOpen}
         title="离开配置工作台"
         description={
-          <p>
-            还有未提交的会话变更。离开将丢弃本机可恢复草稿；若仅想稍后继续，请留在本页或先复制草稿。
-          </p>
+          <>
+            <p>还有未提交的会话变更。离开将丢弃本机可恢复草稿；若仅想稍后继续，请留在本页或先复制草稿。</p>
+            {leaveError ? <p role="alert">{leaveError}</p> : null}
+          </>
         }
         confirmLabel="丢弃并离开"
         cancelLabel="留在本页"
+        pending={leavePending}
         tone="danger"
         onCancel={onCancelLeave}
         onConfirm={onConfirmLeave}

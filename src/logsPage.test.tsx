@@ -1,6 +1,6 @@
 import { selectControlOption } from "@/test/selectControlOption";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { useState } from "react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { useReducer, useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,7 +18,8 @@ import { initialState } from "./mockData";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
 import { createApiClient } from "@/infrastructure/http/apiClient";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
-import { renderApp } from "@/test/harness";
+import { createTestAppPorts, createTestLogAnalysisRepository, renderApp } from "@/test/harness";
+import { reducer } from "@/application/state/appState";
 
 const userState = { ...initialState, activeRoleId: "user" };
 
@@ -40,10 +41,69 @@ function FakeXiaozeToggle() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   window.history.replaceState(null, "", "/");
 });
 
 describe("LogsPage · Header", () => {
+  it("resumes a hydrated processing report without an upload and stops refreshing after completion", async () => {
+    vi.useFakeTimers();
+    const processing = { ...initialState.logs[0], status: "Processing" as const };
+    const complete = { ...processing, status: "Complete" as const, conclusion: "Thermal foldback reduced charging output." };
+    const repository = createTestLogAnalysisRepository([processing], {
+      getLog: vi.fn().mockResolvedValueOnce(processing).mockResolvedValue(complete)
+    });
+    const runtime = createTestAppPorts({ overrides: { logAnalysisRepository: repository } });
+    function RestoredLogs() {
+      const [state, dispatch] = useReducer(reducer, { ...userState, logs: [processing] });
+      return <LogsPage search="" state={state} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />;
+    }
+    render(<RestoredLogs />);
+    expect(screen.getByRole("heading", { name: "AI 正在分析..." })).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(screen.getByRole("heading", { name: complete.conclusion })).toBeInTheDocument();
+    expect(repository.uploadLog).not.toHaveBeenCalled();
+    expect(repository.rerunLog).not.toHaveBeenCalled();
+    const completedCalls = vi.mocked(repository.getLog).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    expect(repository.getLog).toHaveBeenCalledTimes(completedCalls);
+  });
+
+  it.each(["selection", "unmount"])("cancels a processing refresh on %s", async (cancel) => {
+    vi.useFakeTimers();
+    const processing = { ...initialState.logs[0], status: "Processing" as const };
+    let resolve!: (record: (typeof initialState.logs)[number]) => void;
+    const repository = createTestLogAnalysisRepository([processing], {
+      getLog: vi.fn().mockReturnValue(new Promise<(typeof initialState.logs)[number]>((complete) => { resolve = complete; }))
+    });
+    const runtime = createTestAppPorts({ overrides: { logAnalysisRepository: repository } });
+    const dispatch = vi.fn();
+    const view = render(<LogsPage search="" state={{ ...userState, logs: [processing] }} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(repository.getLog).toHaveBeenCalledWith(processing.id);
+    if (cancel === "selection") view.rerender(<LogsPage search="" state={{ ...userState, logs: [] }} dispatch={dispatch} runtime={runtime} onNavigate={() => undefined} />);
+    else view.unmount();
+    await act(async () => {
+      resolve({ ...processing, status: "Complete" });
+      await vi.advanceTimersByTimeAsync(300_000);
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(repository.getLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds processing recovery retries to five minutes", async () => {
+    vi.useFakeTimers();
+    const processing = { ...initialState.logs[0], status: "Processing" as const };
+    const repository = createTestLogAnalysisRepository([processing]);
+    const runtime = createTestAppPorts({ overrides: { logAnalysisRepository: repository } });
+    render(<LogsPage search="" state={{ ...userState, logs: [processing] }} dispatch={() => undefined} runtime={runtime} onNavigate={() => undefined} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    const exhaustedCalls = vi.mocked(repository.getLog).mock.calls.length;
+    expect(exhaustedCalls).toBeGreaterThan(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    expect(repository.getLog).toHaveBeenCalledTimes(exhaustedCalls);
+  });
+
   it.each(["selection", "deep link"])("hydrates a completed kernel report from detail on %s and renders decoded evidence", async (entry) => {
     const evidence = [{
       decodedFields: [{ v: 1, file: "kernel.log", line: 1, fields: {
@@ -88,7 +148,8 @@ describe("LogsPage · Header", () => {
 
   it("renders the file inventory tab with analyzed, skipped and lossy files", async () => {
     const log = { ...initialState.logs[0], files: [
-      { path: "device/a.log", sizeBytes: 1024, lineCount: 12, encoding: "utf-8" as const, lossy: true, status: "analyzed" as const, skipReason: null },
+      { path: "device/a.log", sizeBytes: 1024, lineCount: 12, encoding: "utf-8" as const, lossy: true, status: "analyzed" as const, skipReason: null, role: "主日志", skillMatched: true },
+      { path: "misc/notes.txt", sizeBytes: 16, lineCount: 1, encoding: "utf-8" as const, lossy: false, status: "analyzed" as const, skipReason: null, role: null, skillMatched: false },
       { path: "image.bin", sizeBytes: 256, lineCount: 0, encoding: "utf-8" as const, lossy: false, status: "skipped" as const, skipReason: "二进制文件" }
     ] };
     render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
@@ -97,6 +158,9 @@ describe("LogsPage · Header", () => {
     expect(inventory).toHaveTextContent("device/a.log"); expect(inventory).toHaveTextContent("1.0 KiB");
     expect(inventory).toHaveTextContent("12"); expect(inventory).toHaveTextContent("有损解码");
     expect(inventory).toHaveTextContent("已分析"); expect(inventory).toHaveTextContent("已跳过 · 二进制文件");
+    expect(within(inventory).getByRole("columnheader", { name: "角色" })).toBeInTheDocument();
+    expect(within(inventory).getByText("主日志")).toBeInTheDocument();
+    expect(within(inventory).getByText("misc/notes.txt").closest("tr")).toHaveTextContent("仅通用分析");
   });
   it("shows file:line evidence without borrowing text from a different file", () => {
     const log = { ...initialState.logs[0], evidence: [{ ...initialState.logs[0].evidence[0], filePath: "device/b.log", lineNumbers: [2] }] };
@@ -344,6 +408,33 @@ describe("LogsPage · Header", () => {
 describe("LogsPage · 分析来源与降级标注", () => {
   const completedTemplate = initialState.logs.find((log) => log.status === "Complete")!;
 
+  it("shows the selected source snapshot, requested version and unmatched-label fallback", () => {
+    window.history.replaceState(null, "", "/logs");
+    render(<App initialAppState={{ ...userState, logs: [{ ...completedTemplate,
+      sourceSnapshot: { id: "snapshot-default", versionLabel: "v2.4.0", status: "ready" as const },
+      sourceSnapshotSelection: "default" as const, requestedSourceVersion: "firmware-unknown"
+    }] }} />);
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(provenance).toHaveTextContent("源码：默认快照 v2.4.0 · 请求版本 firmware-unknown");
+    expect(provenance).not.toHaveTextContent("snapshot-default");
+    expect(provenance).not.toHaveTextContent("就绪");
+    expect(within(provenance).getByTitle("snapshot-default")).toHaveTextContent("源码：默认快照 v2.4.0");
+    expect(provenance).toHaveTextContent("未找到源码版本 firmware-unknown；已使用默认快照。");
+  });
+
+  it("shows a non-ready snapshot status alongside its version label", () => {
+    window.history.replaceState(null, "", "/logs");
+    render(<App initialAppState={{ ...userState, logs: [{ ...completedTemplate,
+      sourceSnapshot: { id: "snapshot-indexing", versionLabel: "v2.4.0", status: "indexing" as const },
+      sourceSnapshotSelection: "matched_version" as const, requestedSourceVersion: "v2.4.0"
+    }] }} />);
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(provenance).toHaveTextContent("源码：版本匹配 v2.4.0 · 索引中 · 请求版本 v2.4.0");
+    expect(provenance).not.toHaveTextContent("snapshot-indexing");
+    expect(within(provenance).getByTitle("snapshot-indexing")).toBeInTheDocument();
+    expect(provenance).not.toHaveTextContent("未找到源码版本");
+  });
+
   it("规则回退结果显著标注降级来源与原因", () => {
     window.history.replaceState(null, "", "/logs");
     const degradedState = {
@@ -383,6 +474,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
           id: "log-agent",
           reportId: "RPT-AGENT",
           fileName: "agent_analysis.log",
+          knowledgeRevisions: [{ entryId: "retrieved-entry", revisionId: "retrieved-revision" }],
           analysisSource: "agent" as const
         },
         ...userState.logs
@@ -393,6 +485,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
 
     const provenance = screen.getByTestId("analysis-provenance");
     expect(provenance).toHaveTextContent("Agent 分析");
+    expect(provenance).toHaveTextContent("实际检索的知识修订（1）");
+    expect(provenance).toHaveTextContent("条目 retrieved-entry · 修订 retrieved-revision");
     expect(provenance).not.toHaveTextContent("降级分析");
     expect(screen.getByText("模型自估")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();

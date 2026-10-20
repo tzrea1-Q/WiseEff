@@ -27,6 +27,7 @@ import type { KnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embe
 import { registerKnowledgeRoutes } from "./modules/knowledge/routes";
 import { registerLogRoutes, type LogWebhookRouteContext } from "./modules/logs/routes";
 import { MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH } from "./modules/logs/schemas";
+import { MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_FILE_GLOBS } from "../src/domain/logs/fileApplicability";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
 import { createMetricsRegistry, type MetricsRegistry } from "./observability/metrics";
@@ -55,6 +56,7 @@ import { isRootDatabase, type Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import { loadLogBundleLimits } from "./config/env";
 import { getSourceSnapshotLimits } from "./modules/logs/sourceArchive";
+import { analysisCaseArchiveLimits } from "./modules/logs/analysisCaseArchive";
 import { ApiError } from "./shared/http/errors";
 import type { JsonWebKey } from "node:crypto";
 
@@ -95,6 +97,7 @@ export type WiseEffServerOptions = {
   objectStore?: ObjectStore;
   objectStoreHealth?: ObjectStoreHealthCheck;
   logAnalysisQueue?: LogAnalysisQueue;
+  logAnalyzer?: import("./modules/logs/analyzer").LogAnalysisAdapter;
   debugGateway?: DebugDeviceGateway;
   debugGatewayRegistry?: DebugDeviceGatewayRegistry;
   durableQueue?: DurableQueueHealthCheck;
@@ -207,7 +210,12 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     objectStore: options.objectStore,
     logAnalysisQueue: options.logAnalysisQueue,
+    analyzer: options.logAnalyzer,
     webhooks: options.logWebhooks,
+    skillBudgetCaps: {
+      stepBudget: options.env?.LOG_ANALYSIS_MAX_STEPS ?? 6,
+      tokenBudget: options.env?.LOG_ANALYSIS_TOKEN_BUDGET ?? 8000
+    },
     getCurrentAuthContext: authResolver
   });
   registerProductFeedbackRoutes(router, {
@@ -349,8 +357,39 @@ export const DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES = DEBUG_CATALOG_MAX_DOCUMENT_BY
 /** Encoded 2 MiB source plus bounded JSON field and proof-token headroom. */
 export const CANONICAL_MANUAL_SYNC_HTTP_BODY_LIMIT_BYTES =
   4 * Math.ceil(MAX_PARAMETER_SOURCE_BYTES / 3) + 64 * 1024;
+export const LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
+/** Draft configuration only; signal previews load the stored sample on the server. */
+export const LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 512 * 1024;
+// Six bytes per UTF-16 unit covers JSON escaping, plus row envelopes and 1 KiB whitespace.
+export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
+  MAX_SKILL_FILE_GLOBS * (6 * (MAX_FILE_GLOB_LENGTH + MAX_FILE_ROLE_LENGTH) + 32) + 1024;
+
+/** A 1 MiB sample can expand sixfold in JSON; retain headroom for unsaved rules. */
+export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+files\/+preview\/*$/.test(path)) {
+    return LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+(?:parse|extractor|format)-preview\/*$/.test(path)) {
+    return LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+parse-tests\/*$/.test(path)) {
+    return LOG_PARSE_TEST_HTTP_BODY_LIMIT_BYTES;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+signals-preview\/*$/.test(path)) {
+    return LOG_SIGNAL_PREVIEW_HTTP_BODY_LIMIT_BYTES;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+analysis-cases\/+import\/*$/.test(path)) {
+    if (contentType !== undefined && contentType !== "multipart/form-data") throw new ApiError("VALIDATION_FAILED", "Case imports require multipart/form-data.");
+    return analysisCaseArchiveLimits.maxCompressedBytes + 64 * 1024;
+  }
+  if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+analysis-cases\/*$/.test(path)) {
+    return Math.ceil(analysisCaseArchiveLimits.maxCaseBytes * 4 / 3) + 2 * 1024 * 1024;
+  }
+  if (method === "PATCH" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+analysis-cases\/+[^/]+\/*$/.test(path)) {
+    return 2 * 1024 * 1024;
+  }
   if (method === "PUT" && /^\/+api\/+v1\/+log-skills\/+[^/]+\/+sample\/*$/.test(path)) {
     // Base64 of one 2 MiB sample plus a bounded JSON envelope.
     return MAX_LOG_SKILL_SAMPLE_BASE64_LENGTH + 64 * 1024;
@@ -361,7 +400,10 @@ export function resolveRouteBodyLimit({ method, path, contentType }: { method: s
   }
   if (method === "POST" && /^\/+api\/+v1\/+log-files\/*$/.test(path)) {
     // Bound collection too: allow JSON base64 expansion and multipart headers.
-    return Math.ceil(loadLogBundleLimits().maxCompressedBytes * 4 / 3) + 4 * 1024 * 1024;
+    const compressed = loadLogBundleLimits().maxCompressedBytes;
+    if (contentType === "multipart/form-data") return compressed + 4 * 1024 * 1024;
+    const cap = contentType !== undefined && contentType !== "multipart/form-data" ? Math.min(compressed, MAX_LOG_JSON_UPLOAD_BYTES) : compressed;
+    return Math.ceil(cap * 4 / 3) + 4 * 1024 * 1024;
   }
   if (
     method === "POST" &&
@@ -523,6 +565,7 @@ export function createWiseEffServerFromEnv(
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
     logAnalysisQueue?: LogAnalysisQueue;
+    logAnalyzer?: import("./modules/logs/analyzer").LogAnalysisAdapter;
     debugGateway?: DebugDeviceGateway;
     debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     durableQueue?: DurableQueueHealthCheck;
@@ -584,3 +627,4 @@ function createVerifierFromEnv(env: ServerEnv): TokenVerifier {
     }
   });
 }
+import { MAX_LOG_JSON_UPLOAD_BYTES } from "./modules/logs/bundleIntake";

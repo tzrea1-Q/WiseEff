@@ -1,4 +1,5 @@
 import { SubmissionWorkflowTimeline } from "@/components/SubmissionWorkflowTimeline";
+import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { useTopBarActions } from "@/components/layout";
 import { deriveSubmissionTimeline } from "@/parameterSubmissionTimeline";
 import { type PageProps } from "@/app/routes";
@@ -49,6 +50,7 @@ export function ParameterSubmissionsPage({
   runtimeMode
 }: PageProps) {
   const isApiMode = runtimeMode === "api";
+  const sourceRepository = useMemo(() => isApiMode ? resolveParameterFileRepository("api") : undefined, [isApiMode]);
   const canonicalRepository = runtime?.parameterCatalogRepository;
   const contextProjectId = getContextQuery(search).projectId;
   const canonicalProjectId = contextProjectId || state.activeProjectId;
@@ -288,6 +290,7 @@ export function ParameterSubmissionsPage({
       {canonicalProject ? <ReviewInbox
         projectId={canonicalProject.id}
         repository={isApiMode ? canonicalRepository : undefined}
+        sourceRepository={sourceRepository}
         state={state}
         search={inboxParams.toString() ? `?${inboxParams.toString()}` : ""}
         mineOnly

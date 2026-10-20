@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createRuleBasedLogAnalyzer } from "./analyzer";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
 import type { ParsedLogEntry } from "./parser";
-import { collectRuleEvidence, runLogPrefilter } from "./prefilter";
-import { compileSignalCondition, signalRuleSetSchema, type SignalRuleSet } from "./signalRules";
+import { collectRuleEvidence, createPrefilterBudget, prefilterLogStream, runLogPrefilter } from "./prefilter";
+import { compileSignalCondition, compileSignalRules, createSignalEvaluationBudget, SIGNAL_RULE_LIMITS, signalRuleSetSchema, MAX_SIGNAL_RULES, MAX_SIGNAL_CONDITIONS_PER_RULE,
+  MAX_SIGNAL_CONDITIONS, MAX_SIGNAL_TOKEN_NAMES, MAX_SIGNAL_TOTAL_PATTERN_CHARS, type SignalRuleSet } from "./signalRules";
+import * as adminPattern from "./adminPattern";
+import { logSkillSpecSchema } from "./skillSpec";
+
+afterEach(() => vi.restoreAllMocks());
 
 const entry = (overrides: Partial<ParsedLogEntry> = {}): ParsedLogEntry => ({
   lineNumber: 1, severity: "info", message: "nominal", tokens: {}, ...overrides
@@ -86,6 +91,109 @@ describe("signal conditions", () => {
 });
 
 describe("signal rule schema", () => {
+  it("rejects oversized rule graphs at exact paths before compiling any child pattern", () => {
+    const base = structuredClone(defaultChargingRuleSet), rule = base.rules[0];
+    const text = { type: "text" as const, pattern: "never-compiled" };
+    const cases: Array<{ rules: unknown[]; path: (string | number)[] }> = [
+      { rules: Array(MAX_SIGNAL_RULES + 1).fill(rule), path: ["rules"] },
+      { rules: [{ ...rule, anyOf: Array(500_000).fill(text) }], path: ["rules", 0, "anyOf"] },
+      { rules: Array.from({ length: MAX_SIGNAL_CONDITIONS / MAX_SIGNAL_CONDITIONS_PER_RULE + 1 }, (_, index) => ({
+        ...rule, id: `rule-${index}`, anyOf: Array(MAX_SIGNAL_CONDITIONS_PER_RULE).fill(text)
+      })), path: ["rules", MAX_SIGNAL_CONDITIONS / MAX_SIGNAL_CONDITIONS_PER_RULE, "anyOf"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "numericComparison", leftTokens: Array(500_000).fill("a"), operator: "lt", rightTokens: ["b"] }] }],
+        path: ["rules", 0, "anyOf", 1, "leftTokens"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "severityToken", severity: "error", token: "x".repeat(101) }] }], path: ["rules", 0, "anyOf", 1, "token"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "text", pattern: "x".repeat(4097) }] }], path: ["rules", 0, "anyOf", 1, "pattern"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "window", condition: { type: "text", pattern: "x".repeat(4097) }, count: 2, seconds: 1 }] }],
+        path: ["rules", 0, "anyOf", 1, "condition", "pattern"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "window", condition: { type: "field", field: "value.v", operator: "in", values: Array(257).fill(1) }, count: 2, seconds: 1 }] }],
+        path: ["rules", 0, "anyOf", 1, "condition", "values"] },
+      { rules: [{ ...rule, anyOf: [text, { type: "numericComparison", leftTokens: ["x".repeat(101)], operator: "lt", rightTokens: ["b"] }] }],
+        path: ["rules", 0, "anyOf", 1, "leftTokens", 0] },
+      { rules: [{ ...rule, anyOf: [text], analysis: { suggestedActions: Array(33).fill({ value: "a", priority: 1 }) } }],
+        path: ["rules", 0, "analysis", "suggestedActions"] },
+      { rules: Array.from({ length: 2 }, (_, index) => ({ ...rule, id: `rule-${index}`, anyOf: Array(MAX_SIGNAL_CONDITIONS_PER_RULE)
+        .fill({ type: "text", pattern: "x".repeat(4096) }) })), path: ["rules", 1, "anyOf", 0, "pattern"] },
+      { rules: Array.from({ length: 2 }, (_, index) => ({ ...rule, id: `rule-${index}`, anyOf: Array(index === 0 ? SIGNAL_RULE_LIMITS.windows : 1)
+        .fill({ type: "window", condition: text, count: 2, seconds: 1 }) })), path: ["rules", 1, "anyOf", 0] }
+    ];
+    const compile = vi.spyOn(adminPattern, "compileLogPattern");
+    const cost = vi.spyOn(adminPattern, "logPatternProgramCost");
+    for (const { rules, path } of cases) {
+      const signals = { ...base, rules };
+      for (const [result, prefix] of [
+        [signalRuleSetSchema.safeParse(signals), []],
+        [logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", signalRules: signals,
+          formatProfile: { severityMap: { error: ["never-visited"] } } }), ["signalRules"]]
+      ] as const) {
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error.issues).toEqual([expect.objectContaining({ path: [...prefix, ...path] })]);
+      }
+      expect(cost).not.toHaveBeenCalled();
+      expect(compile).not.toHaveBeenCalled();
+    }
+    expect(MAX_SIGNAL_TOTAL_PATTERN_CHARS).toBe(16 * 4096);
+    expect(MAX_SIGNAL_TOKEN_NAMES).toBe(16);
+  });
+
+  it.each([
+    ["rules", ["rules"]], ["conditions", ["rules", 0, "anyOf"]], ["windows", ["rules", 1, "anyOf", 0]]
+  ] as const)("rejects excess %s with a stable error path", (kind, path) => {
+    const data = structuredClone(defaultChargingRuleSet);
+    const rule = data.rules[0];
+    if (kind === "rules") data.rules = Array.from({ length: 65 }, (_, i) => ({ ...rule, id: `rule-${i}` }));
+    if (kind === "conditions") rule.anyOf = Array.from({ length: 17 }, () => ({ type: "text", pattern: "x" }));
+    if (kind === "windows") {
+      const window = { type: "window" as const, condition: { type: "text" as const, pattern: "x" }, count: 10_000, seconds: 1 };
+      rule.anyOf = Array.from({ length: 16 }, () => window);
+      data.rules[1].anyOf = [window];
+    }
+    const result = signalRuleSetSchema.safeParse(data);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ path: [...path] }));
+  });
+
+  it("bounds the worst allowed skill to 1.28 MB of rings and a shared evaluation allowance", async () => {
+    const rule = defaultChargingRuleSet.rules[0];
+    const data: SignalRuleSet = { ...defaultChargingRuleSet, rules: Array.from({ length: 64 }, (_, i) => ({ ...rule, id: `rule-${i}`,
+      anyOf: Array.from({ length: i < 12 ? 16 : i === 12 ? 13 : 1 }, () => i === 0
+        ? { type: "window" as const, condition: { type: "text" as const, pattern: "x" }, count: 10_000, seconds: 86400 }
+        : { type: "text" as const, pattern: "never" }) })) };
+    expect(data.rules.reduce((total, item) => total + item.anyOf.length, 0)).toBe(MAX_SIGNAL_CONDITIONS);
+    expect(signalRuleSetSchema.safeParse(data).success).toBe(true);
+    const allocated = process.memoryUsage().arrayBuffers;
+    const compiled = compileSignalRules(data);
+    expect(process.memoryUsage().arrayBuffers - allocated).toBeLessThanOrEqual(SIGNAL_RULE_LIMITS.windowTimestamps * 8 + 65536);
+    expect(compiled).toHaveLength(64);
+    const budget = createPrefilterBudget(createSignalEvaluationBudget(performance.now() + 5000));
+    const started = performance.now();
+    const result = await prefilterLogStream((async function* () {
+      for (let i = 0; i < 10_000; i++) yield entry({ lineNumber: i + 1, message: "x", timestamp: "2026-01-01T00:00:00Z" });
+    })(), data, budget);
+    expect(result.truncated).toBe(true);
+    expect(budget.evaluation.remaining).toBeLessThan(0);
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(Object.values(result.severityCounts).reduce((a, b) => a + b, 0)).toBeLessThan(10_000);
+  }, 10_000);
+
+  it("enforces the same total condition cap when compiling rules directly", () => {
+    const rule = defaultChargingRuleSet.rules[0];
+    const data: SignalRuleSet = { ...defaultChargingRuleSet, rules: Array.from({ length: MAX_SIGNAL_CONDITIONS / MAX_SIGNAL_CONDITIONS_PER_RULE + 1 }, (_, index) => ({
+      ...rule, id: `rule-${index}`, anyOf: Array.from({ length: MAX_SIGNAL_CONDITIONS_PER_RULE }, () => ({ type: "text" as const, pattern: "never" }))
+    })) };
+    const compile = vi.spyOn(adminPattern, "compileLogPattern");
+    expect(() => compileSignalRules(data)).toThrow("evaluation_cap");
+    expect(compile).not.toHaveBeenCalled();
+  });
+
+  it("shares deadline/evaluation exhaustion across initial and subsequent prefilter passes", async () => {
+    let now = 0;
+    const budget = createPrefilterBudget(createSignalEvaluationBudget(5, 100, () => now));
+    const stream = () => (async function* () { yield entry({ message: "thermal" }); now = 5; yield entry({ message: "thermal" }); })();
+    expect(await prefilterLogStream(stream(), defaultChargingRuleSet, budget)).toMatchObject({ truncated: true, evidence: [{ lineNumbers: [1] }] });
+    expect(await prefilterLogStream(stream(), defaultChargingRuleSet, budget)).toMatchObject({ truncated: true, evidence: [] });
+    expect(await prefilterLogStream(stream(), { ...defaultChargingRuleSet, rules: [] }, budget)).toMatchObject({ truncated: true, severityCounts: { error: 0, warn: 0, info: 0 } });
+  });
   it("round-trips the charging data through JSON and zod", () => {
     expect(signalRuleSetSchema.parse(JSON.parse(JSON.stringify(defaultChargingRuleSet)))).toEqual(defaultChargingRuleSet);
   });

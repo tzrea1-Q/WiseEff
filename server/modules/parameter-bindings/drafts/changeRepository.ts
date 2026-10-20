@@ -20,7 +20,7 @@ export async function listPendingCanonicalValueChangeRequestIds(
       from public.project_parameter_value_change_requests request
      where request.organization_id=$1 and request.project_id=$2 and request.status='pending'
        and (
-         request.batch_config_set_id=$3 or request.member_config_set_id=$3
+         request.batch_config_set_id=$3 or request.member_config_set_id=$3 or request.source_revision_config_set_id=$3
          or exists (
            select 1 from public.project_parameter_value_change_targets target
              left join parameter_catalog.project_value_source_pins pin

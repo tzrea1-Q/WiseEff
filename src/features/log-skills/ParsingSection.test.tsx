@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ParsingSection } from "./ParsingSection";
 import { mockSkillSample } from "@/infrastructure/mock/logSkills";
 import type { ParsePreview, SkillWorkspaceRepository } from "./types";
@@ -14,6 +15,18 @@ function setup(repository: Partial<SkillWorkspaceRepository> = { parsePreview: v
   render(<Harness />); return repository;
 }
 describe("parsing code view", () => {
+  it("uses the bundle content path for extractors and blocks skill parsing for unmatched files", async () => {
+    const parsePreview = vi.fn(async () => preview);
+    const sample = { ...mockSkillSample, fileName: "bundle.zip", contentFilePath: "charger/charger.log" };
+    const { rerender } = render(<ParsingSection skillId="s" yaml={initial} onChange={() => undefined} disabled={false} repository={{ parsePreview }} sample={sample} files={[{ glob: "charger/**" }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "运行预览" }));
+    await waitFor(() => expect(parsePreview).toHaveBeenCalledWith("s", expect.objectContaining({ fileName: "charger/charger.log" })));
+    rerender(<ParsingSection skillId="s" yaml={initial} onChange={() => undefined} disabled={false} repository={{ parsePreview }} sample={sample} files={[{ glob: "kernel/**" }]} />);
+    expect(screen.getByRole("button", { name: "运行预览" })).toBeDisabled();
+    expect(screen.getByText(/此文件未匹配技能/)).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "解析预览结果" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "抽取规则列表" })).toBeInTheDocument();
+  });
   it("bounds a stored 2 MiB sample to complete lines within the preview request's 1 MiB limit", async () => {
     const parsePreview = vi.fn(async () => preview);
     const content = "first complete line\n" + "界".repeat(400_000);
@@ -28,8 +41,9 @@ describe("parsing code view", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("100 ms");
     expect(screen.getByRole("table", { name: "解析预览结果" })).toHaveTextContent("state = thermal");
   });
-  it("shows YAML errors with line numbers and disables preview, then recovers", () => {
+  it("shows YAML errors with line numbers and disables preview, then recovers", async () => {
     setup();
+    await userEvent.click(screen.getByRole("tab", { name: "代码视图" }));
     fireEvent.change(screen.getByRole("textbox", { name: "代码视图 · YAML" }), { target: { value: "schemaVersion: parsing/v1\nextractors: [\n" } });
     expect(screen.getByRole("alert")).toHaveTextContent(/第 \d+ 行/);
     expect(screen.getByRole("button", { name: "运行预览" })).toBeDisabled();

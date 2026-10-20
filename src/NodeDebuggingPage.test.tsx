@@ -1487,7 +1487,8 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    await waitFor(() => expect(gateway.detectTargets).toHaveBeenCalledWith(expect.objectContaining({ protocol: "hdc" })));
+    await waitFor(() => expect(gateway.detectTargets).toHaveBeenCalledExactlyOnceWith({ bridgeId: "mock-bridge" }));
+    expect(gateway.createSession).toHaveBeenCalledWith(expect.objectContaining({ protocol: "hdc" }));
     await waitFor(() => expect(gateway.readNode).toHaveBeenCalled());
     await waitFor(() => expect(gateway.writeNode).toHaveBeenCalledWith(expect.objectContaining({
       nodeId: "dbg-charge-input-current",

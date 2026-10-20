@@ -4,6 +4,7 @@ import { defaultChargingRuleSet } from "./chargingSignalRules";
 import type { SignalRuleSet } from "./signalRules";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 import { extractLogSignals, type LogSignalSummary } from "./genericSignals";
+import { emitLogTrace, withLogTrace, LOG_TRACE_MAX_LINES, type LogAnalysisTraceStep } from "./traceTypes";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
@@ -14,13 +15,18 @@ export type LogAnalysisSource = "agent" | "rules-fallback";
 export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
 
 export type AnalyzeLogInput = {
+  onTrace?: (step: LogAnalysisTraceStep) => void | Promise<void>;
+  knowledgeEntryIds?: string[];
+  onKnowledgeRetrieved?: (revisions: Array<{ entryId: string; revisionId: string }>) => void;
+  signal?: AbortSignal;
   signalSummary?: LogSignalSummary;
   /** Untrusted diagnostic guidance from this run's immutable skill revision. */
   procedure?: string;
   decoding?: { spec: import("./parsing/spec").ParsingSpec; events: import("./parsing/spec").DecodedEvent[]; counts: import("./parsing/spec").DecodeCounts };
   /** Pinned revision's source availability at worker execution; source tools bind this scope later. */
-  sourceSnapshot?: { id: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" } | null;
-  files?: Array<import("./filesRepository").LogFileDto & { parsed?: Extract<ParseResult, { ok: true }> }>;
+  sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" } | null;
+  files?: Array<import("./filesRepository").LogFileDto & { parsed?: Extract<ParseResult, { ok: true }>; reader?: import("./fileReader").LogFileReader; prefilter?: import("./prefilter").PrefilterFindings }>;
+  stats?: { lineCount: number; entryCount: number };
   filePath?: string;
   signalRules?: SignalRuleSet;
   parsed: Extract<ParseResult, { ok: true }>;
@@ -28,8 +34,10 @@ export type AnalyzeLogInput = {
   logDomain?: {
     name: string;
     description?: string;
-    /** Per-domain model-name override (P3b); endpoint/key/budget stay global. */
+    /** Pinned skill revision overrides; endpoint and credentials stay global. */
     modelOverride?: string;
+    stepBudget?: number;
+    tokenBudget?: number;
   };
   /**
    * P2 loop-kernel run context (internal input, not part of the output contract):
@@ -90,12 +98,16 @@ export const genericSignalRuleSet: SignalRuleSet = {
 export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultChargingRuleSet): LogAnalysisAdapter {
   return {
     async analyze(input) {
-      const activeRules = input.signalRules ?? ruleSet;
+      input = withLogTrace(input);
+      const activeRules = input.files && !input.files.some((file) => (file.parsed || file.reader) && file.skillMatched !== false)
+        ? genericSignalRuleSet : input.signalRules ?? ruleSet;
       const evidence = input.files
-        ? input.files.flatMap((file) => file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules).map((item) => ({ ...item, filePath: file.path })) : [])
+        ? input.files.flatMap((file) => (file.skillMatched === false ? [] : file.prefilter?.evidence ?? (file.parsed ? collectRuleEvidence(file.parsed.entries, activeRules) : [])).map((item) => ({ ...item, filePath: file.path })))
         : collectRuleEvidence(input.parsed.entries, activeRules).map((item) => ({ ...item, filePath: input.filePath }));
       const ruleHits = new Set(evidence.map((item) => item.ruleHit));
-      const hasErrorEvidence = input.files ? input.files.some((file) => file.parsed?.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence.filter((item) => item.filePath === file.path), entry)))
+      const hasErrorEvidence = input.files ? input.files.some((file) => file.prefilter?.hasErrorEvidence
+        || file.prefilter?.errorLineNumbers?.some((line) => evidence.some((item) => item.filePath === file.path && item.lineNumbers.includes(line)))
+        || file.parsed?.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence.filter((item) => item.filePath === file.path), entry)))
         : input.parsed.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence, entry));
       const summary = input.signalSummary ?? extractLogSignals(input.files ?? [{ path: input.filePath ?? "log", parsed: input.parsed }], input.signalRules);
       const generic = summary.signals.filter((signal) => signal.source === "generic");
@@ -114,19 +126,22 @@ export function createRuleBasedLogAnalyzer(ruleSet: SignalRuleSet = defaultCharg
         eligible(outputs.filter((output) => output !== undefined))[0]?.value ?? fallback;
       const actions = eligible(matchedRules.flatMap((rule) => rule.analysis.suggestedActions));
 
-      return {
+      const output: AnalyzeLogOutput = {
         confidence: choose(matchedRules.map((rule) => rule.analysis.confidence), defaults.confidence),
-        conclusion: choose(matchedRules.map((rule) => rule.analysis.conclusion), defaults.conclusion),
+        conclusion: choose(matchedRules.map((rule) => rule.analysis.conclusion ?? (rule.name ? { value: rule.name, priority: 0 } : undefined)), defaults.conclusion),
         impact: choose(matchedRules.map((rule) => rule.analysis.impact), defaults.impact),
-        severity: choose(matchedRules.map((rule) => rule.analysis.severity), matchedRules.length === 0 && generic.some((signal) => signal.severity === "Critical") ? "Critical" : defaults.severity),
+        severity: choose(matchedRules.map((rule) => rule.severity ? { value: rule.severity, priority: ["Critical", "Warning", "Info"].indexOf(rule.severity) } : rule.analysis.severity), matchedRules.length === 0 && generic.some((signal) => signal.severity === "Critical") ? "Critical" : defaults.severity),
         evidence,
         suggestedActions: [...new Set([...defaults.suggestedActions, ...actions.map((action) => action.value)])],
         reportContext: {
           analysisQuestion: input.analysisQuestion,
-          lineCount: input.parsed.rawLines.length,
-          entryCount: input.parsed.entries.length
+          lineCount: input.stats?.lineCount ?? input.parsed.rawLines.length,
+          entryCount: input.stats?.entryCount ?? input.parsed.entries.length
         }
       };
+      await emitLogTrace(input, { kind: "rule-fallback", resultBytes: Buffer.byteLength(JSON.stringify(output)),
+        lines: evidence.flatMap((item) => item.lineNumbers.map((line) => ({ file: (item.filePath ?? input.filePath ?? "").slice(0, 1024), line }))).slice(0, LOG_TRACE_MAX_LINES) });
+      return output;
     }
   };
 }

@@ -94,6 +94,8 @@
 }
 
 .analysis-provenance__badge {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -123,6 +125,7 @@
 }
 
 .analysis-provenance__reason {
+  overflow-wrap: anywhere;
   margin: 0;
   padding: var(--space-2) var(--space-3);
   color: var(--warning);
@@ -674,6 +677,7 @@
 }
 
 .upload-file-field input,
+.upload-question-field input,
 .upload-question-field textarea,
 .upload-question-field select {
   width: 100%;
@@ -1363,5 +1367,21 @@
 
   .rawlog-viewer .rawlog-line {
     grid-template-columns: calc(var(--space-3) * 3) minmax(0, 1fr);
+  }
+}
+
+.log-file-drawer[data-slot="sheet-content"][data-side="right"] {
+  width: 100vw;
+  max-width: none;
+  z-index: var(--z-modal-backdrop);
+}
+
+[data-slot="sheet-overlay"]:has(+ .log-file-drawer) {
+  z-index: var(--z-modal-backdrop);
+}
+
+@media (min-width: 640px) {
+  .log-file-drawer[data-slot="sheet-content"][data-side="right"] {
+    width: var(--log-file-drawer-width);
   }
 }

@@ -12,7 +12,11 @@ Generic-signal scenarios call `get_signals`, `get_line_templates`, and `get_time
 
 Source-location scenarios call `locate_log_statement` on a ready pinned snapshot. Only exact returned snapshot/path/line tuples can become evidence; an unseen source paired with a valid log line, another snapshot/path, or a nearby excerpt line is rejected. Source excerpts remain untrusted input.
 
-The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.signals.source.1`; existing tolerances and its pending-real-cases status stay unchanged.
+Source-tool scenarios legally call `search_source` with a path glob and literal or full-text query, and `read_source_range` with a snapshot, path and range. Oversized backend responses must still obey the 20-hit, 400-character excerpt and 16 KiB search caps. A requested 100-line range returns at most 80 numbered lines; a source-only citation to returned line 80 is grounded, while unseen line 81 is rejected. Both tools are unavailable with a queued, indexing, failed, archived or absent snapshot. Grounding checks inspect the tool output the model received after caps, rather than the backend fixtures.
+
+Source-search timeout coverage verifies that the agent can continue with grounded log evidence after a truncated source result. PostgreSQL integration checks candidate admission before scoring, common-query rejection, the database deadline and transaction timeout restoration.
+
+The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.signals.source.3`; existing tolerances and its pending-real-cases status stay unchanged.
 
 ## Layout
 
@@ -27,6 +31,14 @@ eval-cases/logs/
 ```
 
 ## `case.yaml` schema
+
+### Product analysis cases and ZIP interchange
+
+Skill administrators can import or export this directory layout in the workspace's Tests section. A ZIP starts directly at `<domain>/<case-id>/`, without an enclosing `eval-cases/logs/` directory. Existing `case.yaml` and `log.txt` files retain their bytes, including YAML comments and original line endings, through import and export. Edit an imported case's expectations to replace its annotation; unchanged fixtures retain their bytes.
+
+Bundle cases extend the annotation with optional `bundleFiles`, a list of relative fixture paths such as `fixtures/device.zip`. These fixtures retain the original uploaded bytes, including archives and UTF-16 input. `log.txt` is a flattened UTF-8 projection for the existing command-line evaluator; `keyEvidenceLines` addresses that projection. The product uses `bundleFiles` to reconstruct the original multi-file input. Optional `keyEvidence` entries identify an unpacked file with a positive `line`, a bounded linear-time `pattern`, or both. Optional `expectedDegradedReason` names an existing degradation reason. Optional `caseName` preserves a case name independently of its summary. These fields do not change the legacy golden-case vocabulary or make synthetic cases count toward the quality baseline.
+
+Imports reject unsafe paths, duplicate entries, links, malformed annotations, missing fixtures and size/count violations before saving. Errors include the exact case path and annotation field. The product bounds a skill to 20 cases, each input bundle and its normalized text to 10 MiB each and 100 files, a run to at most 20 cases and 120 seconds, and retained history to the latest 10 runs per skill. Edited expectations are capped at 1 MiB of YAML; imported annotations at 2 MiB. The ZIP envelope is capped at 440 MiB compressed/unpacked and 2040 entries to accommodate the full bounded corpus and its projections. Runs share organization and aggregate admission with draft dry runs. They compare the saved draft against the current publication using the existing quality evaluator and configured judge, or deterministic rubric checks when no judge is configured. Scores are publishing advice and never a publication gate.
 
 Validated by `server/modules/logs/eval/goldenCases.ts` (zod). A broken case fails the quality-eval run with a per-case problem list.
 

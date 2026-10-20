@@ -11,6 +11,14 @@ import type {
 
 export type LogRunStatus = "queued" | "processing" | "complete" | "failed";
 
+export type LogLineRange = {
+  file: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  lines: Array<{ lineNumber: number; content: string }>;
+};
+
 export type LogListQuery = {
   status?: LogRecord["status"];
   timeWindow?: TimeWindow;
@@ -38,6 +46,7 @@ export type LogRelatedParameterPin = {
 };
 
 export type LogUploadInput = {
+  sourceVersion?: string;
   skillId?: string;
   file: File;
   files?: File[];
@@ -67,6 +76,7 @@ export type LogDomainCreateInput = {
 
 export type LogDomainUpdateInput = {
   domainId: string;
+  skillKey?: string;
   name?: string;
   description?: string | null;
   /** undefined = keep; null = clear the stored profile. */
@@ -108,9 +118,11 @@ export type LogFeedbackInsightsQuery = {
 };
 
 export interface LogAnalysisRepository extends Partial<SkillWorkspaceRepository>, Partial<SkillAuthoringRepository> {
+  getLogTrace?(logId: string): Promise<import("@/features/log-skills/types").AnalysisTraceStep[]>;
   getSourceEvidence?(logId: string, evidenceId: string): Promise<import("@/features/log-skills/types").SourceExcerpt>;
   listLogs(query?: LogListQuery): Promise<LogRecord[]>;
   getLog(logId: string): Promise<LogRecord | null>;
+  getLogLines?(logId: string, file: string, startLine: number, endLine: number): Promise<LogLineRange>;
   uploadLog(input: LogUploadInput): Promise<{ log: LogRecord; job: LogJobSnapshot | null }>;
   getJob(jobId: string): Promise<LogJobSnapshot>;
   watchJob?(jobId: string, onEvent: (snapshot: LogJobSnapshot) => void): () => void;

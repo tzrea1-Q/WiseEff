@@ -1,7 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
 
 import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
-import type { Queryable } from "../../../shared/database/client";
+import type { Database } from "../../../shared/database/client";
 import type { LogAnalysisAdapter } from "../analyzer";
 import { createAgentLoopLogAnalyzer } from "./agentLoop";
 import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel } from "./deterministicModel";
@@ -50,21 +50,21 @@ function contentToText(content: unknown): string {
   return String(content ?? "");
 }
 
-function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string): LogAnalysisChatModel {
+function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string, tokenBudget: number): LogAnalysisChatModel {
   const chat = new ChatOpenAI({
     model: modelLabel,
     apiKey: env.LOG_ANALYSIS_API_KEY,
     temperature: 0,
     timeout: env.LOG_ANALYSIS_API_TIMEOUT_MS,
-    maxTokens: Math.min(2048, Math.max(256, Math.floor(env.LOG_ANALYSIS_TOKEN_BUDGET / 4))),
+    maxTokens: Math.min(tokenBudget, 2048, Math.max(256, Math.floor(tokenBudget / 4))),
     configuration: {
       baseURL: env.LOG_ANALYSIS_API_BASE_URL
     }
   });
 
   return {
-    async invoke(messages) {
-      const response = await chat.invoke(messages.map((message) => ({ role: message.role, content: message.content })));
+    async invoke(messages, options) {
+      const response = await chat.invoke(messages.map((message) => ({ role: message.role, content: message.content })), options);
       return {
         content: contentToText(response.content),
         usage: {
@@ -93,7 +93,7 @@ export type CreateLogAnalyzerFromEnvOptions = {
    * (`read_domain_knowledge`, `get_related_parameter_context`). Absent (offline
    * eval, unit tests) the two tools honestly report themselves unavailable.
    */
-  db?: Queryable;
+  db?: Database;
   /** Embedding client for hybrid domain-knowledge retrieval; absent = FTS-only. */
   embeddingClient?: KnowledgeEmbeddingClient;
 };
@@ -106,10 +106,10 @@ export type CreateLogAnalyzerFromEnvOptions = {
  * provider behaves like an unavailable one — retries, then an honestly marked
  * rules-fallback report.
  *
- * Per-domain model override (P3b): when the analyzed record's log domain carries
- * `modelOverride`, ONLY the model name is swapped — endpoint, API key, timeout,
- * and token budget stay global. The effective label flows into the report's
- * `model` provenance and the `model`-labelled metrics unchanged. In
+ * Pinned skill revisions may override the model name and reduce the platform
+ * step/token budgets. Endpoint, API key and timeout stay global, and a platform
+ * cap lowered after publication still bounds an older revision. The label flows
+ * into the report's `model` provenance and the `model`-labelled metrics unchanged. In
  * deterministic mode the stub model still answers, but the label reflects the
  * override so behavior eval can assert the override is actually applied.
  */
@@ -122,8 +122,9 @@ export function createLogAnalyzerFromEnv(
   const providerConfigured = Boolean(readNonBlank(env.LOG_ANALYSIS_API_BASE_URL) && readNonBlank(env.LOG_ANALYSIS_API_KEY));
   const modelsByLabel = new Map<string, LogAnalysisChatModel>();
 
-  function resolveModel(modelLabel: string): LogAnalysisChatModel {
-    const cached = modelsByLabel.get(modelLabel);
+  function resolveModel(modelLabel: string, tokenBudget: number): LogAnalysisChatModel {
+    const cacheKey = JSON.stringify([modelLabel, tokenBudget]);
+    const cached = modelsByLabel.get(cacheKey);
     if (cached) {
       return cached;
     }
@@ -132,19 +133,19 @@ export function createLogAnalyzerFromEnv(
         ? createDeterministicLogAnalysisLoopModel()
         : createDeterministicLogAnalysisModel()
       : providerConfigured
-        ? createChatOpenAiModel(env, modelLabel)
+        ? createChatOpenAiModel(env, modelLabel, tokenBudget)
         : createUnconfiguredModel();
-    modelsByLabel.set(modelLabel, model);
+    modelsByLabel.set(cacheKey, model);
     return model;
   }
 
-  function createKernel(modelLabel: string): LogAnalysisAdapter {
-    const model = resolveModel(modelLabel);
+  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number, hasTokenBudgetOverride: boolean): LogAnalysisAdapter {
+    const model = resolveModel(modelLabel, tokenBudget);
     if (!useLoopKernel) {
       return createLlmLogAnalyzer({
         model,
         modelLabel,
-        tokenBudget: env.LOG_ANALYSIS_TOKEN_BUDGET,
+        tokenBudget,
         telemetry: options.telemetry
       });
     }
@@ -153,8 +154,10 @@ export function createLogAnalyzerFromEnv(
     return createAgentLoopLogAnalyzer({
       model,
       modelLabel,
-      tokenBudget: env.LOG_ANALYSIS_TOKEN_BUDGET,
-      maxSteps: env.LOG_ANALYSIS_MAX_STEPS,
+      tokenBudget,
+      maxSteps: stepBudget,
+      // Unset revision budgets retain the pre-skill global convergence behavior.
+      enforceTokenBudgetBeforeCall: hasTokenBudgetOverride,
       telemetry: options.telemetry,
       bindToolBackends: (input) =>
         db && input.organizationId
@@ -162,6 +165,8 @@ export function createLogAnalyzerFromEnv(
               db,
               organizationId: input.organizationId,
               logDomainId: input.logDomainId,
+              knowledgeEntryIds: input.knowledgeEntryIds,
+              onKnowledgeRetrieved: input.onKnowledgeRetrieved,
               relatedParameterId: input.relatedParameterId,
               relatedParameterSnapshot: input.relatedParameterSnapshot,
               sourceSnapshot: input.sourceSnapshot,
@@ -174,7 +179,9 @@ export function createLogAnalyzerFromEnv(
   return {
     async analyze(input) {
       const modelLabel = readNonBlank(input.logDomain?.modelOverride) ?? globalModelLabel;
-      return createKernel(modelLabel).analyze(input);
+      const stepBudget = Math.min(input.logDomain?.stepBudget ?? env.LOG_ANALYSIS_MAX_STEPS, env.LOG_ANALYSIS_MAX_STEPS);
+      const tokenBudget = Math.min(input.logDomain?.tokenBudget ?? env.LOG_ANALYSIS_TOKEN_BUDGET, env.LOG_ANALYSIS_TOKEN_BUDGET);
+      return createKernel(modelLabel, stepBudget, tokenBudget, input.logDomain?.tokenBudget !== undefined).analyze(input);
     }
   };
 }

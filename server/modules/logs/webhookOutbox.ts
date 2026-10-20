@@ -34,13 +34,14 @@ export async function enqueueTerminalLogWebhook(db: Queryable, input: { organiza
     completed_at: Date | string; error_message: string | null; related_parameter_snapshot: unknown;
     analysis_source: string | null; degraded_reason: string | null; severity: string | null;
     confidence: number | null; conclusion: string | null;
-    skill_revision_id: string | null; skill_revision_number: number | null;
+    skill_revision_id: string | null; skill_revision_number: number | null; skill_key: string;
   }>(
     `select r.log_domain_id, a.log_record_id, r.file_name, a.status, a.completed_at,
        a.error_message, a.related_parameter_snapshot, p.analysis_source, p.degraded_reason, p.severity, p.confidence, p.conclusion,
-       a.skill_revision_id, s.revision_number as skill_revision_number
+       a.skill_revision_id, s.revision_number as skill_revision_number, d.skill_key
      from log_analysis_runs a
      join log_records r on r.id = a.log_record_id and r.organization_id = a.organization_id
+     join log_domains d on d.id = r.log_domain_id and d.organization_id = a.organization_id
      left join log_analysis_reports p on p.run_id = a.id and p.organization_id = a.organization_id
      left join log_skill_revisions s on s.id = a.skill_revision_id and s.organization_id = a.organization_id
      where a.organization_id = $1 and a.id = $2 and r.log_domain_id is not null
@@ -53,6 +54,7 @@ export async function enqueueTerminalLogWebhook(db: Queryable, input: { organiza
     organizationId: input.organizationId, runId: input.runId, logDomainId: row.log_domain_id,
     logId: row.log_record_id, fileName: row.file_name, status: row.status,
     skillRevisionId: row.skill_revision_id, skillRevisionNumber: row.skill_revision_number,
+    skillKey: row.skill_key,
     occurredAt: new Date(row.completed_at).toISOString(),
     analysisSource: row.analysis_source ?? undefined, degradedReason: row.degraded_reason ?? undefined,
     severity: row.severity ?? undefined, confidence: row.confidence ?? undefined,

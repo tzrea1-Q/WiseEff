@@ -20,7 +20,7 @@ import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from
 import { formatPercent } from "@/domain/format/formatPercent";
 import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/domain/prototype/types";
-import type { LogDomain, LogFeedbackInsight, LogWebhookDelivery } from "@/domain/logs/types";
+import type { LogDomain, LogFeedbackInsight } from "@/domain/logs/types";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import { mapLogDomainGovernanceError } from "@/application/logs/logDomainGovernanceError";
@@ -33,8 +33,10 @@ import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
 
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
+import { FormatProfileForm } from "@/features/log-skills/FormatProfileForm";
+import { parseFormatProfileCode } from "@/features/log-skills/formatProfileFields";
 import { SectionSkeleton } from "@/components/common/SectionState";
-import type { SkillAuthoringRepository } from "@/features/log-skills/types";
+import type { SkillAuthoringRepository, SkillWorkspaceRepository } from "@/features/log-skills/types";
 
 const collectionTabs = ["records", "skills", "quality"] as const;
 
@@ -44,7 +46,7 @@ export type LogAdminPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   logActions?: LogRuntimeActions;
-  skillRepository?: Partial<SkillAuthoringRepository>;
+  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository>;
   apiMode?: boolean;
   /** Published-entry catalog for the domain ↔ knowledge link editor (API mode only). */
   knowledgeRepository?: KnowledgeRepository;
@@ -108,10 +110,9 @@ type LogDomainFormState = {
   name: string;
   description: string;
   profileText: string;
-  modelOverride: string;
 };
 
-const emptyLogDomainForm: LogDomainFormState = { name: "", description: "", profileText: "", modelOverride: "" };
+const emptyLogDomainForm: LogDomainFormState = { name: "", description: "", profileText: "" };
 
 function formatProfileLabel(domain: LogDomain): string {
   return domain.formatProfile ? "已配置" : "未配置";
@@ -147,214 +148,6 @@ function formatProfileText(profile: unknown): string {
   return JSON.stringify(profile, null, 2);
 }
 
-const deliveryStatusLabels: Record<LogWebhookDelivery["status"], string> = {
-  delivered: "已送达",
-  retrying: "重试中",
-  failed: "投递失败"
-};
-
-const deliveryStatusClasses: Record<LogWebhookDelivery["status"], string> = {
-  delivered: "bg-emerald-100 text-emerald-900",
-  retrying: "bg-amber-100 text-amber-900",
-  failed: "bg-destructive/15 text-destructive"
-};
-
-function formatDeliveryTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString("zh-CN", { hour12: false });
-}
-
-/**
- * Domain result-webhook editor (P3b): URL/secret/enabled ride the same
- * `logs:admin-domains` governance path. The signing secret is write-only — the
- * API only reports configured + last four — and the recent-deliveries list shows
- * per-attempt honesty (delivered / retrying / failed with HTTP status).
- */
-function DomainWebhookEditor({
-  domain,
-  logActions,
-  onSaved,
-  onClose
-}: {
-  domain: LogDomain;
-  logActions: LogRuntimeActions;
-  onSaved: () => Promise<void>;
-  onClose: () => void;
-}) {
-  const [enabled, setEnabled] = useState(domain.webhook?.enabled ?? false);
-  const [url, setUrl] = useState(domain.webhook?.url ?? "");
-  const [secretInput, setSecretInput] = useState("");
-  const [secretConfigured, setSecretConfigured] = useState(domain.webhook?.secretConfigured ?? false);
-  const [secretLastFour, setSecretLastFour] = useState(domain.webhook?.secretLastFour);
-  const [deliveries, setDeliveries] = useState<LogWebhookDelivery[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [statusText, setStatusText] = useState<string | null>(null);
-  const [errorText, setErrorText] = useState<string | null>(null);
-
-  const refreshDeliveries = useCallback(async () => {
-    setDeliveries(await logActions.listLogDomainWebhookDeliveries(domain.id, 10));
-  }, [domain.id, logActions]);
-
-  useEffect(() => {
-    void refreshDeliveries();
-  }, [refreshDeliveries]);
-
-  const save = async () => {
-    if (saving) {
-      return;
-    }
-    setSaving(true);
-    setStatusText(null);
-    setErrorText(null);
-    try {
-      const saved = await logActions.setLogDomainWebhook({
-        domainId: domain.id,
-        url: url.trim() === "" ? null : url.trim(),
-        enabled,
-        // Empty input keeps the stored secret; typing replaces it.
-        ...(secretInput.trim() === "" ? {} : { secret: secretInput.trim() })
-      });
-      if (saved) {
-        setSecretConfigured(saved.webhook?.secretConfigured ?? false);
-        setSecretLastFour(saved.webhook?.secretLastFour);
-        setSecretInput("");
-        setStatusText("配置已保存");
-        await onSaved();
-      }
-    } catch {
-      setErrorText("保存失败：请检查 URL（仅支持 https，禁止私网/环回/元数据地址）与密钥。");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const sendTest = async () => {
-    if (testing) {
-      return;
-    }
-    setTesting(true);
-    setStatusText(null);
-    setErrorText(null);
-    try {
-      const outcome = await logActions.sendLogDomainWebhookTest(domain.id);
-      if (outcome) {
-        if (outcome.status === "delivered") {
-          setStatusText(`测试投递成功（HTTP ${outcome.httpStatus ?? "-"}）`);
-        } else {
-          setErrorText(`测试投递${outcome.status === "skipped" ? "未执行" : "失败"}：${outcome.error ?? "未知原因"}`);
-        }
-      }
-      await refreshDeliveries();
-    } catch {
-      setErrorText("测试投递未完成，请稍后重试。");
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div
-      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
-      role="group"
-      aria-label={`分析技能 ${domain.name} 的结果回调配置`}
-      data-testid="domain-webhook-editor"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">结果回调 Webhook · {domain.name}</h3>
-          <p className="text-xs text-muted-foreground">
-            分析到达终态（完成含降级、失败）后向该 URL 推送签名摘要（HMAC-SHA256 + 时间戳，不含原始日志内容）；投递尽力而为，失败自动重试后如实记录。
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={onClose}>
-          关闭
-        </Button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor={`domain-webhook-url-${domain.id}`}>
-          Webhook URL（仅 https；禁止私网/环回/链路本地/元数据地址）
-          <input
-            id={`domain-webhook-url-${domain.id}`}
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder="https://hooks.example.com/wiseeff"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor={`domain-webhook-secret-${domain.id}`}>
-          签名密钥（写入后不回显；{secretConfigured ? `已配置 · 末四位 ${secretLastFour ?? "????"}` : "未配置"}）
-          <input
-            id={`domain-webhook-secret-${domain.id}`}
-            type="password"
-            value={secretInput}
-            onChange={(event) => setSecretInput(event.target.value)}
-            className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder={secretConfigured ? "留空保持现有密钥" : "至少 16 个字符"}
-          />
-        </label>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(event) => setEnabled(event.target.checked)}
-            aria-label="启用结果回调"
-          />
-          启用结果回调
-        </label>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void sendTest()}
-            disabled={testing || !secretConfigured || url.trim() === ""}
-            aria-busy={testing || undefined}
-          >
-            发送测试投递
-          </Button>
-          <Button size="sm" onClick={() => void save()} disabled={saving} aria-busy={saving || undefined}>
-            保存配置
-          </Button>
-        </div>
-      </div>
-
-      {statusText ? (
-        <p role="status" className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-900">
-          {statusText}
-        </p>
-      ) : null}
-      {errorText ? (
-        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
-          {errorText}
-        </p>
-      ) : null}
-
-      <div className="flex flex-col gap-1">
-        <h4 className="text-xs font-semibold text-foreground">最近投递</h4>
-        {deliveries.length === 0 ? (
-          <p className="text-xs text-muted-foreground">暂无投递记录。</p>
-        ) : (
-          <ul className="flex flex-col gap-1" aria-label="最近投递记录" data-testid="domain-webhook-deliveries">
-            {deliveries.map((delivery) => (
-              <li key={delivery.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-xs">
-                <span className="font-mono text-muted-foreground">{formatDeliveryTime(delivery.createdAt)}</span>
-                <span className="text-muted-foreground">{delivery.kind === "test" ? "测试" : "结果"} · 第 {delivery.attempt} 次</span>
-                <span className={cn("inline-flex h-5 items-center rounded-md px-1.5 text-xs font-medium", deliveryStatusClasses[delivery.status])}>
-                  {deliveryStatusLabels[delivery.status]}
-                </span>
-                <span className="font-mono text-muted-foreground">{delivery.httpStatus ? `HTTP ${delivery.httpStatus}` : delivery.error ?? ""}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /**
  * Domain ↔ knowledge link editor (P2): the link set bounds `read_domain_knowledge`
@@ -537,7 +330,7 @@ function LogDomainGovernanceSection({
   logActions?: LogRuntimeActions;
   knowledgeRepository?: KnowledgeRepository;
   onNavigate: (path: string) => void;
-  skillRepository?: Partial<SkillAuthoringRepository>;
+  skillRepository?: Partial<SkillAuthoringRepository & SkillWorkspaceRepository>;
   apiMode: boolean;
 }) {
   const [domains, setDomains] = useState<LogDomain[] | null>(null);
@@ -546,11 +339,11 @@ function LogDomainGovernanceSection({
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileValid, setProfileValid] = useState(true);
   const [nameError, setNameError] = useState<string | null>(null);
   const [draftConflict, setDraftConflict] = useState(false);
   const [pending, setPending] = useState(false);
   const [linksDomain, setLinksDomain] = useState<LogDomain | null>(null);
-  const [webhookDomain, setWebhookDomain] = useState<LogDomain | null>(null);
 
   const refreshDomains = useCallback(async () => {
     if (!logActions) {
@@ -573,8 +366,7 @@ function LogDomainGovernanceSection({
       domainId: domain.id,
       name: domain.name,
       description: domain.description ?? "",
-      profileText: formatProfileText(domain.formatProfile),
-      modelOverride: domain.modelOverride ?? ""
+      profileText: formatProfileText(domain.formatProfile)
     });
     setProfileError(null);
     setNameError(null);
@@ -583,7 +375,7 @@ function LogDomainGovernanceSection({
 
   const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!logActions || !form.domainId || pending) {
+    if (!logActions || !form.domainId || pending || !profileValid) {
       return;
     }
     const parsedProfile = parseProfileText(form.profileText);
@@ -601,8 +393,7 @@ function LogDomainGovernanceSection({
         domainId: form.domainId,
         name: form.name.trim(),
         ...(form.description !== (original?.description ?? "") ? { description: form.description.trim() === "" ? null : form.description.trim() } : {}),
-        ...(form.profileText !== formatProfileText(original?.formatProfile) ? { formatProfile: form.profileText.trim() === "" ? null : parsedProfile.profile } : {}),
-        ...(form.modelOverride !== (original?.modelOverride ?? "") ? { modelOverride: form.modelOverride.trim() === "" ? null : form.modelOverride.trim() } : {})
+        ...(form.profileText !== formatProfileText(original?.formatProfile) ? { formatProfile: form.profileText.trim() === "" ? null : parsedProfile.profile } : {})
       });
       if (saved) {
         setFormOpen(false);
@@ -749,7 +540,7 @@ function LogDomainGovernanceSection({
               primaryAction: { id: "edit", label: "编辑", disabled: pending, onSelect: () => openEditForm(domain) },
               items: domain.status === "active" ? [
                 { id: "knowledge", label: "知识条目", disabled: pending, onSelect: () => setLinksDomain((current) => current?.id === domain.id ? null : domain) },
-                { id: "webhook", label: "结果回调", disabled: pending, onSelect: () => setWebhookDomain((current) => current?.id === domain.id ? null : domain) },
+                { id: "webhook", label: "集成与结果回调", disabled: pending, onSelect: () => onNavigate(`/log-admin/skills/${encodeURIComponent(domain.id)}?section=integration`) },
                 { id: "archive", label: "归档", disabled: pending, destructive: true,
                   confirmation: { title: `归档「${domain.name}」`, description: "该分析技能将被归档，不再供新日志绑定；已有日志及其分析记录保留。", confirmLabel: "归档" },
                   onSelect: () => archiveDomain(domain.id) }
@@ -799,41 +590,12 @@ function LogDomainGovernanceSection({
                   />
                 </label>
               </div>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-model-override">
-                模型覆盖（可选：仅替换模型名，端点 / API Key / 预算仍用全局配置）
-                <input
-                  id="log-domain-model-override"
-                  value={form.modelOverride}
-                  onChange={(event) => setForm((current) => ({ ...current, modelOverride: event.target.value }))}
-                  className="h-8 rounded-md border border-border bg-background px-2.5 font-mono text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="留空使用全局模型"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-profile">
-                格式画像 JSON（可选：timestampPattern / multiline / severityMap）
-                <textarea
-                  id="log-domain-profile"
-                  value={form.profileText}
-                  rows={6}
-                  aria-invalid={profileError ? true : undefined}
-                  aria-describedby={profileError ? "log-domain-profile-error" : undefined}
-                  onChange={(event) => {
-                    setProfileError(null);
-                    setForm((current) => ({ ...current, profileText: event.target.value }));
-                  }}
-                  className="rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder={'{\n  "timestampPattern": "^\\\\[(\\\\d+\\\\.\\\\d+)\\\\]",\n  "severityMap": { "error": ["<3>"] }\n}'}
-                />
-              </label>
-              {profileError ? (
-                <p
-                  id="log-domain-profile-error"
-                  role="alert"
-                  className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"
-                >
-                  {profileError}
-                </p>
-              ) : null}
+              {form.domainId ? <Button type="button" variant="link" onClick={() => onNavigate(`/log-admin/skills/${encodeURIComponent(form.domainId!)}?section=integration`)}>前往集成配置模型、预算与结果回调</Button>
+                : <p>创建后可在工作区「集成」分区配置模型、预算与结果回调。</p>}
+              <FormatProfileForm skillId={form.domainId ?? ""} profile={parseFormatProfileCode(form.profileText).profile}
+                repository={skillRepository} disabled={pending} onValidityChange={setProfileValid} externalError={profileError} onChange={(profile) => {
+                  setProfileError(null); setForm((current) => ({ ...current, profileText: formatProfileText(profile) }));
+                }} />
               {draftConflict && form.domainId ? <p role="alert" className="text-sm text-destructive">
                 该技能有未发布草稿，请先在技能工作区发布或放弃草稿。{" "}
                 <a className="underline" href={`/log-admin/skills/${encodeURIComponent(form.domainId)}`}
@@ -843,7 +605,7 @@ function LogDomainGovernanceSection({
                 <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setFormOpen(false)}>
                   取消
                 </Button>
-                <Button type="submit" size="sm" disabled={pending || form.name.trim() === ""} aria-busy={pending || undefined}>
+                <Button type="submit" size="sm" disabled={pending || !profileValid || form.name.trim() === ""} aria-busy={pending || undefined}>
                   保存修改
                 </Button>
               </div>
@@ -859,14 +621,6 @@ function LogDomainGovernanceSection({
             />
           ) : null}
 
-          {webhookDomain && logActions ? (
-            <DomainWebhookEditor
-              domain={webhookDomain}
-              logActions={logActions}
-              onSaved={refreshDomains}
-              onClose={() => setWebhookDomain(null)}
-            />
-          ) : null}
         </>
       )}
     </section>

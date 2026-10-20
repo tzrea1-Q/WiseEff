@@ -17,8 +17,8 @@ function createFakeDb() {
   };
   const db: Database = {
     query: queryable.query,
-    async transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
-      return fn(queryable);
+    async transaction<T>(fn: (tx: Database) => Promise<T>): Promise<T> {
+      return fn(db);
     }
   };
 

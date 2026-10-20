@@ -21,7 +21,7 @@ export type ContractSchemaRef = {
   requestBody?: string;
   responseBody: string;
   responseMedia?: "json" | "binary";
-  successStatus?: 200 | 201 | 204 | 410;
+  successStatus?: 200 | 201 | 202 | 204 | 410;
   additionalSuccessResponses?: Record<string, string>;
   additionalResponses?: Record<string, string>;
   requestParameters?: readonly ContractParameterRef[];
@@ -267,8 +267,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "parameters.getParameterFileStructure": {
     summary: "Read structured DTS nodes/properties for a file version (includes source locators)",
     tags: ["parameters"],
+    requestParameters: [{ name: "navigationScope", in: "query", schema: { type: "string", enum: ["organization"] },
+      description: "Also resolve directly matched organization-registered nodes for navigation; full nodes remain available." }],
     responseBody: "StructuralReadResponse",
-    additionalResponses: { "404": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "parameters.listParameterFileCandidates": {
     summary: "List staged parameter-file candidates for a project",
@@ -277,12 +279,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "parameters.createParameterFileCandidate": {
-    summary: "Upload a staged candidate file version without activating Working configuration",
+    summary: "Upload a staged candidate; source_revision intent requires original file/config versions and a scoped mutation key",
     tags: ["parameters"],
     requestBody: "CreateParameterFileCandidateRequest",
     responseBody: "ParameterFileCandidateResponse",
     successStatus: 201,
-    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "413": "ErrorResponse" }
   },
   "parameters.getParameterFileCandidate": {
     summary: "Read one staged parameter-file candidate",
@@ -318,8 +320,14 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "parameters.searchDts": {
     summary: "Search project DTS structure by path/address/label/compatible/value/file (omit by for all)",
     tags: ["parameters"],
+    requestParameters: [
+      { name: "q", in: "query", required: true, schema: { type: "string" } },
+      { name: "by", in: "query", schema: { type: "string", enum: ["path", "address", "label", "compatible", "value", "file"] } },
+      { name: "navigationScope", in: "query", schema: { type: "string", enum: ["organization"] },
+        description: "Restrict node/property results to organization-managed nodes and structural ancestors; file-name results remain reachable." }
+    ],
     responseBody: "DtsSearchResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "500": "ErrorResponse" }
   },
 
   "parameters.listProjectModules": {
@@ -1008,7 +1016,35 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201
   },
   "logs.list": { summary: "List log records", tags: ["logs"], responseBody: "LogRecordListResponse" },
+  "logs.getTrace": { summary: "Read current run trace (logs:admin-domains)", tags: ["logs"], responseBody: "LogTraceResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
+  "logs.listAnalysisCases": { summary: "List skill analysis cases and current run (logs:admin-domains)", tags: ["logs"], responseBody: "LogAnalysisCaseListResponse" },
+  "logs.createAnalysisCase": { summary: "Create an audited skill analysis case", tags: ["logs"], requestBody: "LogAnalysisCaseCreateRequest", responseBody: "LogAnalysisCaseResponse", successStatus: 201 },
+  "logs.updateAnalysisCase": { summary: "Update audited analysis-case expectations", tags: ["logs"], requestBody: "LogAnalysisCaseUpdateRequest", responseBody: "LogAnalysisCaseResponse" },
+  "logs.deleteAnalysisCase": { summary: "Delete an audited skill analysis case", tags: ["logs"], responseBody: "LogFeedbackResponse" },
+  "logs.startAnalysisCaseRun": { summary: "Compare saved draft and published revision on analysis cases", tags: ["logs"], requestBody: "LogAnalysisCaseRunRequest", responseBody: "LogAnalysisCaseRunResponse", successStatus: 202, additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "429": "ErrorResponse" } },
+  "logs.getAnalysisCaseRun": { summary: "Read an analysis-case run", tags: ["logs"], responseBody: "LogAnalysisCaseRunResponse" },
+  "logs.getAnalysisCaseTrace": { summary: "Read a case trace for the captured revision", tags: ["logs"], responseBody: "LogTraceResponse", requestParameters: [{ name: "revision", in: "query", schema: { type: "string", enum: ["draft", "published"] } }] },
+  "logs.getAnalysisCasePrefill": { summary: "Prefill a case from a completed accessible skill report", tags: ["logs"], responseBody: "LogAnalysisCasePrefillResponse" },
+  "logs.importAnalysisCases": { summary: "Import bounded analysis cases from an eval ZIP", tags: ["logs"], requestBody: "LogAnalysisCaseMultipartImport", responseBody: "LogAnalysisCaseImportResponse", successStatus: 201 },
+  "logs.exportAnalysisCases": { summary: "Export analysis cases as an eval ZIP", tags: ["logs"], responseBody: "BinaryAttachment", responseMedia: "binary" },
+  "logs.startDryRun": { summary: "Run the saved draft on its stored sample (logs:admin-domains)", tags: ["logs"], responseBody: "LogSkillDryRunResponse", successStatus: 202, additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "429": "ErrorResponse" } },
+  "logs.getDryRun": { summary: "Read skill dry run and trace (logs:admin-domains)", tags: ["logs"], responseBody: "LogSkillDryRunDetailResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
+  "logs.getDryRunLines": { summary: "Read at most 400 lines from the dry run pinned sample (logs:admin-domains)", tags: ["logs"], responseBody: "LogLineRangeResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" },
+    requestParameters: [
+      { name: "file", in: "query", required: true, schema: { type: "string" } },
+      { name: "startLine", in: "query", required: true, schema: { type: "integer" } },
+      { name: "endLine", in: "query", required: true, schema: { type: "integer" } }
+    ] },
   "logs.get": { summary: "Get log record with run-owned signals and line templates", tags: ["logs"], responseBody: "LogRecordResponse" },
+  "logs.getLines": {
+    summary: "Read an inclusive window of at most 400 indexed log lines",
+    tags: ["logs"], responseBody: "LogLineRangeResponse",
+    requestParameters: [
+      { name: "file", in: "query", required: true, description: "Exact file path in the record inventory", schema: { type: "string" } },
+      { name: "startLine", in: "query", required: true, description: "First line, 1-based inclusive", schema: { type: "integer" } },
+      { name: "endLine", in: "query", required: true, description: "Last line, inclusive; clipped to the file length", schema: { type: "integer" } }
+    ]
+  },
   "logs.listRuns": { summary: "List log analysis runs", tags: ["logs"], responseBody: "LogRunListResponse" },
   "logs.rerun": { summary: "Rerun log analysis", tags: ["logs"], requestBody: "LogRerunRequest", responseBody: "LogRunResponse" },
   "logs.archive": { summary: "Archive log record", tags: ["logs"], responseBody: "LogRecordResponse" },
@@ -1027,10 +1063,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.listSkills": { summary: "List analysis skills", tags: ["logs"], responseBody: "LogSkillListResponse" },
   "logs.createSkill": { summary: "Create analysis skill", tags: ["logs"], requestBody: "CreateLogSkillRequest", responseBody: "LogSkillResponse", successStatus: 201 },
   "logs.listSkillTemplates": { summary: "List skill templates", tags: ["logs"], responseBody: "LogSkillTemplateListResponse" },
-  "logs.getSkillSample": { summary: "Read skill sample (first 5000 lines)", tags: ["logs"], responseBody: "LogSkillSampleResponse" },
-  "logs.replaceSkillSample": { summary: "Replace skill sample (text, up to 2 MiB)", tags: ["logs"], requestBody: "ReplaceLogSkillSampleRequest", responseBody: "LogSkillSampleReplaceResponse" },
+  "logs.getSkillSample": { summary: "Read skill sample inventory and first 5000 lines per text file", tags: ["logs"], responseBody: "LogSkillSampleResponse" },
+  "logs.replaceSkillSample": { summary: "Replace skill sample (text or archive, up to 2 MiB uploaded and expanded)", tags: ["logs"], requestBody: "ReplaceLogSkillSampleRequest", responseBody: "LogSkillSampleReplaceResponse" },
   "logs.deleteSkillSample": { summary: "Delete skill sample", tags: ["logs"], successStatus: 204, responseBody: "LogSkillDiscardResponse" },
   "logs.listSourceSnapshots": { summary: "List source snapshot metadata", tags: ["logs"], responseBody: "LogSourceSnapshotListResponse" },
+  "logs.listSourceVersions": { summary: "List ready source version labels (logs:view or logs:upload)", tags: ["logs"], responseBody: "LogSourceVersionListResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
   "logs.uploadSourceSnapshot": { summary: "Upload a version-labelled source archive", tags: ["logs"], requestBody: "LogSourceSnapshotUploadRequest", responseBody: "LogSourceSnapshotResponse", successStatus: 201 },
   "logs.defaultSourceSnapshot": { summary: "Set the skill draft default source snapshot", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.archiveSourceSnapshot": { summary: "Archive a source snapshot", tags: ["logs"], responseBody: "LogSourceSnapshotResponse" },
@@ -1038,6 +1075,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.sourceEvidence": { summary: "Read the bounded source excerpt cited by record evidence (logs:view)", tags: ["logs"], responseBody: "LogSourceEvidenceResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
   "logs.getSkill": { summary: "Get analysis skill", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.parsePreview": { summary: "Preview unsaved parsing rules", tags: ["logs"], requestBody: "LogParsePreviewRequest", responseBody: "LogParsePreviewResponse" },
+  "logs.parseTests": { summary: "Run parse tests against an unsaved skill draft", tags: ["logs"], requestBody: "LogParseTestRequest", responseBody: "LogParseTestRun" },
+  "logs.signalPreview": { summary: "Preview draft signal rules on the stored sample", tags: ["logs"], requestBody: "LogSignalPreviewRequest", responseBody: "LogSignalPreviewResponse" },
+  "logs.filesPreview": { summary: "Preview draft applicability on the stored sample inventory", tags: ["logs"], requestBody: "LogSkillFilePreviewRequest", responseBody: "LogSkillFilePreviewResponse" },
+  "logs.extractorPreview": { summary: "Generate and preview an extractor pattern", tags: ["logs"], requestBody: "LogExtractorPreviewRequest", responseBody: "LogExtractorPreviewResponse" },
+  "logs.formatPreview": { summary: "Preview an unsaved basic format profile", tags: ["logs"], requestBody: "LogFormatPreviewRequest", responseBody: "LogFormatPreviewResponse" },
   "logs.saveSkillDraft": { summary: "Save skill draft", tags: ["logs"], requestBody: "LogSkillDraftRequest", responseBody: "LogSkillRevisionResponse", additionalResponses: { "409": "ErrorResponse" } },
   "logs.discardSkillDraft": { summary: "Discard skill draft", tags: ["logs"], successStatus: 204, responseBody: "LogSkillDiscardResponse",
     requestParameters: [{ name: "draftRevisionId", in: "query", required: true, description: "The draft id observed by the editor.", schema: { type: "string" } }],
@@ -1695,6 +1737,36 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterFileListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "parameterFiles.listSourceRevisionRequests": {
+    summary: "List the submitter's and eligible assigned reviewer's whole-DTS source requests",
+    tags: ["parameter-files"],
+    requestParameters: [
+      { name: "mine", in: "query", schema: { type: "string", enum: ["true", "false"] } },
+      { name: "status", in: "query", schema: { type: "string", enum: ["pending", "approved", "rejected", "withdrawn"] } }
+    ],
+    responseBody: "SourceRevisionRequestListResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.getSourceRevisionRequest": {
+    summary: "Read a visible whole-DTS source request and its verified immutable source diff",
+    tags: ["parameter-files"],
+    responseBody: "SourceRevisionRequestDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.reviewSourceRevisionRequest": {
+    summary: "Approve or reject the frozen whole-source proof as its separate assigned file administrator and software reviewer",
+    tags: ["parameter-files"],
+    requestBody: "SourceRevisionReviewRequest",
+    responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.withdrawSourceRevisionRequest": {
+    summary: "Withdraw the submitter's pending whole-source request without changing active source",
+    tags: ["parameter-files"],
+    requestBody: "SourceRevisionWithdrawRequest",
+    responseBody: "SourceRevisionRequestResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.uploadFile": {
     summary: "Upload a project parameter file (new file or new version) and sync drafts",
     tags: ["parameter-files"],
@@ -1835,7 +1907,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterFiles.previewCanonicalCandidate": {
-    summary: "Preview a staged candidate against exact canonical source pins",
+    summary: "Preview a staged candidate against exact source pins or its complete source_revision proof and impact",
     tags: ["parameter-files"],
     responseBody: "CanonicalSourceCandidatePreviewResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
@@ -1861,7 +1933,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterFiles.submitCanonicalCandidate": {
-    summary: "Submit one source candidate through canonical draft and human review",
+    summary: "Submit a source candidate for human review; source_revision candidates require assignedToUserId and clientMutationId",
     tags: ["parameter-files"],
     requestBody: "CanonicalSourceSubmitRequest",
     responseBody: "CanonicalSourceSubmissionResponse",

@@ -1,9 +1,11 @@
 import type { AnalyzeLogOutput, LogAnalysisDegradedReason, LogAnalysisSource } from "../analyzer";
 import type { LogAnalysisChatMessage } from "../analyzer/llmAnalyzer";
+import type { LogAnalysisTraceStep } from "../traceTypes";
 
 type SourceLocation = { snapshotId: string; path: string; line: number };
 
 export type LogEvalRunResult = {
+  trace?: LogAnalysisTraceStep[];
   output: AnalyzeLogOutput;
   /** Line numbers of the parsed (non-empty) raw lines — the grounding universe. */
   parsedLineNumbers: number[];
@@ -18,11 +20,16 @@ export type LogEvalRunResult = {
 };
 
 export type LogEvalExpectation =
+  | { type: "expectsTrace"; kinds: LogAnalysisTraceStep["kind"][] }
+  | { type: "expectsPrivateTrace"; forbidden: string[] }
+  | { type: "expectsTraceArguments"; tool: string; arguments: LogAnalysisTraceStep["arguments"] }
   | { type: "expectsAnalysisSource"; source: LogAnalysisSource }
   | { type: "expectsDegradedReason"; reason: LogAnalysisDegradedReason }
   | { type: "expectsNoDegradation" }
   | { type: "expectsGroundedEvidence" }
   | { type: "expectsSourceLocations"; locations: SourceLocation[] }
+  | { type: "expectsSourceToolBounds"; tool: "search_source" | "read_source_range"; maxBytes: number;
+      maxItems?: number; expectedItems?: number; maxExcerptChars?: number; expectedLines?: number; endLine?: number; truncated: boolean }
   | { type: "expectsEvidenceNotCitingLines"; lineNumbers: number[] }
   | { type: "expectsPromptVersionRecorded"; promptVersion: string }
   | { type: "expectsPromptContains"; substrings: string[] }
@@ -42,6 +49,25 @@ export function evaluateLogEvalExpectation(
   result: LogEvalRunResult
 ): LogEvalExpectationResult {
   switch (expectation.type) {
+    case "expectsTrace": {
+      const trace = result.trace ?? [];
+      const pass = trace.length > 0 && trace.length <= 200 && trace.every((step, index) => step.index === index + 1)
+        && trace.every((step) => step.resultBytes >= 0 && step.lines.length <= 50)
+        && expectation.kinds.every((kind) => trace.some((step) => step.kind === kind))
+        && trace.some((step) => step.lines.length > 0);
+      return pass ? { pass: true } : { pass: false, message: "Expected ordered bounded trace with every required step kind" };
+    }
+    case "expectsPrivateTrace": {
+      const serialized = JSON.stringify(result.trace ?? []);
+      const pass = Boolean(result.trace?.length) && expectation.forbidden.every((text) => !serialized.includes(text))
+        && result.trace!.every((step) => Object.values(step.arguments).every((value) => typeof value !== "string" || value.length <= 120));
+      return pass ? { pass: true } : { pass: false, message: "Trace leaked forbidden prompt content or unbounded argument text" };
+    }
+    case "expectsTraceArguments": {
+      const pass = Boolean(result.trace?.some((step) => step.tool === expectation.tool
+        && Object.entries(expectation.arguments).every(([key, value]) => step.arguments[key] === value)));
+      return pass ? { pass: true } : { pass: false, message: `Expected bounded argument summary for ${expectation.tool}` };
+    }
     case "expectsAnalysisSource": {
       const pass = result.output.analysisSource === expectation.source;
       return pass
@@ -87,6 +113,21 @@ export function evaluateLogEvalExpectation(
       const actual = result.output.evidence.flatMap((item) => item.sourceLocation ? [item.sourceLocation] : []);
       const pass = JSON.stringify(actual) === JSON.stringify(expectation.locations);
       return pass ? { pass: true } : { pass: false, message: `Unexpected source locations: ${JSON.stringify(actual)}` };
+    }
+    case "expectsSourceToolBounds": {
+      const prefix = `Tool result for ${expectation.tool}:\n`;
+      const content = result.promptMessages.find((message) => message.role === "user" && message.content.startsWith(prefix))?.content.slice(prefix.length);
+      if (!content) return { pass: false, message: `No successful ${expectation.tool} result was observed` };
+      const output = JSON.parse(content) as { truncated: boolean; startLine?: number; endLine?: number;
+        items?: Array<{ excerpt: string }>; lines?: Array<{ line: number }> };
+      const pass = Buffer.byteLength(content, "utf8") <= expectation.maxBytes && output.truncated === expectation.truncated
+        && (expectation.maxItems === undefined || (output.items?.length ?? Infinity) <= expectation.maxItems)
+        && (expectation.expectedItems === undefined || output.items?.length === expectation.expectedItems)
+        && (expectation.maxExcerptChars === undefined || !!output.items?.every((item) => item.excerpt.length <= expectation.maxExcerptChars!))
+        && (expectation.expectedLines === undefined || output.lines?.length === expectation.expectedLines
+          && output.lines.every(({ line }, index) => line === output.startLine! + index))
+        && (expectation.endLine === undefined || output.endLine === expectation.endLine && output.lines?.at(-1)?.line === expectation.endLine);
+      return pass ? { pass: true } : { pass: false, message: `${expectation.tool} output exceeded its expected bounds or did not report truncation` };
     }
     case "expectsEvidenceNotCitingLines": {
       const banned = new Set(expectation.lineNumbers);

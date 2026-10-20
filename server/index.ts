@@ -14,6 +14,7 @@ import { ensureKnowledgeVectorColumn } from "./modules/knowledge/indexing/vector
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
 import { startSourceIndexWorkerLoop } from "./modules/logs/sourceIndexWorker";
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
+import { recoverInterruptedDryRuns } from "./modules/logs/dryRunAdmission";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { createLogWebhookDeliverer } from "./modules/logs/webhookDelivery";
 import { ensureLogWebhookSecretsEncrypted } from "./modules/logs/webhookSecrets";
@@ -100,6 +101,8 @@ const logAnalysisQueueRuntime =
           env: logAnalysisQueueEnv,
           db,
           objectStore,
+          maxJobMs: env.LOG_ANALYSIS_JOB_MAX_MS,
+          preprocessingMs: env.LOG_ANALYSIS_PREPROCESS_MAX_MS,
           analyzer: logAnalyzer,
           metrics,
           tracing: defaultTracingBoundary,
@@ -109,7 +112,11 @@ const logAnalysisQueueRuntime =
     : undefined;
 const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
-    ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer })
+    ? startLogWorkerLoop({
+        db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer,
+        maxJobMs: env.LOG_ANALYSIS_JOB_MAX_MS,
+        preprocessingMs: env.LOG_ANALYSIS_PREPROCESS_MAX_MS
+      })
     : undefined;
 const stopSourceIndexWorker = env.LOG_WORKER_ENABLED && db && objectStore
   ? startSourceIndexWorkerLoop({ db, objectStore }) : undefined;
@@ -177,6 +184,7 @@ const server = createWiseEffServerFromEnv({
   objectStore,
   objectStoreHealth: objectStore,
   logAnalysisQueue: logAnalysisQueueRuntime?.queue,
+  logAnalyzer,
   debugGateway,
   debugGatewayRegistry,
   durableQueue: logAnalysisQueueRuntime?.queue,
@@ -224,6 +232,7 @@ process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
 
 async function start() {
+  if (db) await recoverInterruptedDryRuns(db);
   if (db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
     try {
       const cutover = await maybeEnsureLocalPostCutoverOnApiBoot(db);

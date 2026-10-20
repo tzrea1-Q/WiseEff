@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseLogText } from "./parser";
-import { runLogPrefilter } from "./prefilter";
+import { createPrefilterBudget, prefilterLogStream, runLogPrefilter } from "./prefilter";
 
 function parseFixture(content: string) {
   const parsed = parseLogText({ fileName: "fixture.log", content: Buffer.from(content, "utf8") });
@@ -12,6 +12,18 @@ function parseFixture(content: string) {
 }
 
 describe("runLogPrefilter", () => {
+  it("shares retained reference/code budgets across file streams while counting all entries", async () => {
+    const budget = { ...createPrefilterBudget(), references: 10, codes: 2, codeBytes: 2048 };
+    const entries = parseFixture(Array.from({ length: 30 }, (_, i) => `ERROR code=${i}-${"x".repeat(1000)}`).join("\n")).entries;
+    const first = await prefilterLogStream((async function* () { yield* entries; })(), undefined, budget);
+    const second = await prefilterLogStream((async function* () { yield* entries; })(), undefined, budget);
+    expect(first.severityCounts.error).toBe(30); expect(second.severityCounts.error).toBe(30);
+    expect(first.truncated).toBe(true); expect(second.truncated).toBe(true);
+    expect(first.errorCodeStats).toHaveLength(2); expect(second.errorCodeStats).toHaveLength(0);
+    expect(first.errorCodeStats.every((stat) => stat.code.length < 300)).toBe(true);
+    expect(budget.references).toBe(0); expect(budget.codes).toBe(0);
+    expect(createPrefilterBudget().references).toBeGreaterThan(0);
+  });
   it("collects rule evidence, anomaly lines, error-code stats, and severity counts", () => {
     const parsed = parseFixture(
       [

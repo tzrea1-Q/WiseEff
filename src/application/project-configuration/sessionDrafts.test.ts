@@ -115,6 +115,14 @@ describe("sessionDrafts helpers", () => {
     expect(aggregate.edits).toHaveLength(1);
   });
 
+  it("retains unfinished editor state even if its serialized text matches the original", () => {
+    const editorState = { kind: "cells" as const, bits: 32 as const, groups: [["", "1"]] };
+    const rows = listSessionDraftRows({ fileId: "file-board", nodes, drafts: {
+      "file-board::board::model": { rawText: '"Aurora"', normalizedValue: "Aurora", valid: true, editorState }
+    } });
+    expect(rows).toEqual([expect.objectContaining({ valid: false, editorState })]);
+  });
+
   it("clears only submitted draft keys", () => {
     const drafts: Record<string, SessionPropertyDraft> = {
       "file-board::board::model": { rawText: '"A"', normalizedValue: "A" },

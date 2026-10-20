@@ -18,6 +18,13 @@ import { parseContractDto } from "./parseContractDto";
 import {
   jobResponseSchema,
   logJobDtoSchema,
+  logTraceResponseSchema,
+  logSkillDryRunResponseSchema,
+  logSkillDryRunDetailResponseSchema,
+  logAnalysisCaseListResponseSchema,
+  logAnalysisCaseResponseSchema,
+  logAnalysisCaseRunResponseSchema,
+  logAnalysisCasePrefillResponseSchema,
   logDomainKnowledgeLinkListResponseSchema,
   logDomainListResponseSchema,
   logSkillListResponseSchema,
@@ -36,11 +43,12 @@ import {
   logFileUploadResponseSchema,
   logRecordListResponseSchema,
   logRecordResponseSchema,
+  logLineRangeResponseSchema,
   logRunResponseSchema,
   logWebhookDeliveryListResponseSchema,
   logWebhookTestOutcomeResponseSchema
 } from "@wiseeff/dto-schemas";
-import { parsePreviewResponseSchema } from "@wiseeff/dto-schemas";
+import { parsePreviewResponseSchema, parseTestRunSchema, signalPreviewResponseSchema, extractorPreviewResponseSchema, formatPreviewResponseSchema } from "@wiseeff/dto-schemas";
 import {
   jobSnapshotFromDto,
   logDomainFromDto,
@@ -113,6 +121,7 @@ function uploadBody(input: LogUploadInput, contentBase64: string) {
     fileName: input.file.name,
     contentType: input.file.type || "application/octet-stream",
     contentBase64,
+    ...(input.sourceVersion !== undefined ? { sourceVersion: input.sourceVersion } : {}),
     ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {}),
     ...(input.relatedParameterPin !== undefined ? { relatedParameterPin: input.relatedParameterPin } : {}),
     ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {}),
@@ -145,6 +154,7 @@ function logDomainCreateBody(input: LogDomainCreateInput) {
 
 function logDomainUpdateBody(input: LogDomainUpdateInput) {
   return {
+    ...(input.skillKey !== undefined ? { skillKey: input.skillKey } : {}),
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.formatProfile !== undefined ? { formatProfile: input.formatProfile } : {}),
@@ -173,6 +183,7 @@ export function createHttpLogAnalysisRepository(
   async function uploadFiles(input: LogUploadInput): Promise<LogUploadResponse> {
     if (!input.files) return apiClient.post<LogUploadResponse>("/api/v1/log-files", uploadBody(input, await fileToBase64(input.file)));
     const form = new FormData();
+    if (input.sourceVersion !== undefined) form.append("sourceVersion", input.sourceVersion);
     for (const file of input.files) form.append("file", file);
     if (input.analysisQuestion) form.append("analysisQuestion", input.analysisQuestion);
     if (input.skillId ?? input.logDomainId) form.append("skillId", (input.skillId ?? input.logDomainId)!);
@@ -180,14 +191,73 @@ export function createHttpLogAnalysisRepository(
     return (await apiClient.raw("/api/v1/log-files", { method: "POST", body: form })).json() as Promise<LogUploadResponse>;
   }
   const repository: LogAnalysisRepository = {
+    async listAnalysisCases(id) {
+      return parseContractDto(logAnalysisCaseListResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases`), "LogAnalysisCaseListResponse");
+    },
+    async createAnalysisCase(id, input) {
+      const { files, ...fields } = input;
+      const body = { ...fields, ...(files ? { files: await Promise.all(files.map(async (file) => ({ fileName: file.name, contentBase64: await fileToBase64(file) }))) } : {}) };
+      return parseContractDto(logAnalysisCaseResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases`, body), "LogAnalysisCaseResponse").item;
+    },
+    async updateAnalysisCase(id, caseId, input) {
+      return parseContractDto(logAnalysisCaseResponseSchema, await apiClient.patch(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/${encodeURIComponent(caseId)}`, input), "LogAnalysisCaseResponse").item;
+    },
+    async deleteAnalysisCase(id, caseId) {
+      await apiClient.delete(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/${encodeURIComponent(caseId)}`);
+    },
+    async startAnalysisCaseRun(id, caseIds) {
+      return parseContractDto(logAnalysisCaseRunResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-case-runs`, { caseIds }), "LogAnalysisCaseRunResponse").run;
+    },
+    async getAnalysisCaseRun(id, runId) {
+      return parseContractDto(logAnalysisCaseRunResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-case-runs/${encodeURIComponent(runId)}`), "LogAnalysisCaseRunResponse").run;
+    },
+    async getAnalysisCaseTrace(id, runId, caseId, revision) {
+      return parseContractDto(logTraceResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-case-runs/${encodeURIComponent(runId)}/cases/${encodeURIComponent(caseId)}/trace?revision=${revision}`), "LogTraceResponse").steps;
+    },
+    async getAnalysisCasePrefill(logId) {
+      return parseContractDto(logAnalysisCasePrefillResponseSchema, await apiClient.get(`${routeLogPath(logId)}/analysis-case-prefill`), "LogAnalysisCasePrefillResponse");
+    },
+    async importAnalysisCases(id, file) {
+      await apiClient.upload(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/import`, file);
+    },
+    async exportAnalysisCases(id) {
+      return (await apiClient.raw(`/api/v1/log-skills/${encodeURIComponent(id)}/analysis-cases/export`, { method: "GET" })).blob();
+    },
+    async getLogTrace(logId) {
+      return parseContractDto(logTraceResponseSchema, await apiClient.get(`${routeLogPath(logId)}/trace`), "LogTraceResponse").steps;
+    },
+    async startSkillDryRun(id) {
+      return parseContractDto(logSkillDryRunResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/dry-runs`, {}), "LogSkillDryRunResponse").run;
+    },
+    async getSkillDryRun(id, runId) {
+      return parseContractDto(logSkillDryRunDetailResponseSchema, await apiClient.get(`/api/v1/log-skills/${encodeURIComponent(id)}/dry-runs/${encodeURIComponent(runId)}`), "LogSkillDryRunDetailResponse");
+    },
+    async getSkillDryRunLines(id, runId, file, startLine, endLine) {
+      const params = new URLSearchParams({ file, startLine: String(startLine), endLine: String(endLine) });
+      return parseContractDto(logLineRangeResponseSchema, await apiClient.get(appendQuery(`/api/v1/log-skills/${encodeURIComponent(id)}/dry-runs/${encodeURIComponent(runId)}/lines`, params)), "LogLineRangeResponse").item;
+    },
+    async getLogLines(logId, file, startLine, endLine) {
+      const params = new URLSearchParams({ file, startLine: String(startLine), endLine: String(endLine) });
+      return parseContractDto(logLineRangeResponseSchema,
+        await apiClient.get(appendQuery(`${routeLogPath(logId)}/lines`, params)), "LogLineRangeResponse").item;
+    },
     async parsePreview(id, input) {
       return parseContractDto(parsePreviewResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/parse-preview`, input), "LogParsePreviewResponse");
     },
+    async signalPreview(id, input) {
+      return parseContractDto(signalPreviewResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/signals-preview`, input), "LogSignalPreviewResponse");
+    },
+    async generateExtractorPattern(id, input) {
+      return parseContractDto(extractorPreviewResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/extractor-preview`, input), "LogExtractorPreviewResponse");
+    },
+    async previewFormat(id, input) {
+      return parseContractDto(formatPreviewResponseSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/format-preview`, input), "LogFormatPreviewResponse");
+    },
     async getSkillSampleText(id) {
       try {
-        const result = await apiClient.get<{ item: { content?: string; fileName?: string } | null }>(`/api/v1/log-skills/${encodeURIComponent(id)}/sample`);
+        const result = await apiClient.get<{ item: { content?: string; fileName?: string; contentFilePath?: string } | null }>(`/api/v1/log-skills/${encodeURIComponent(id)}/sample`);
         const text = result.item?.content;
-        return typeof text === "string" ? { text, fileName: result.item?.fileName } : null;
+        return typeof text === "string" ? { text, fileName: result.item?.contentFilePath ?? result.item?.fileName } : null;
       } catch (error) {
         if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") return null;
         throw error;
@@ -356,6 +426,9 @@ export function createHttpLogAnalysisRepository(
     },
     async saveSkillDraft(id, spec, baseDraftRevisionId, basePublishedRevisionId) {
       return parseContractDto(logSkillRevisionResponseSchema, await apiClient.put(`/api/v1/log-skills/${encodeURIComponent(id)}/draft`, { spec, baseDraftRevisionId, basePublishedRevisionId }), "LogSkillRevisionResponse").item;
+    },
+    async runSkillParseTests(id, spec) {
+      return parseContractDto(parseTestRunSchema, await apiClient.post(`/api/v1/log-skills/${encodeURIComponent(id)}/parse-tests`, { spec }), "ParseTestRun");
     },
     async discardSkillDraft(id, draftRevisionId) {
       await apiClient.delete(`/api/v1/log-skills/${encodeURIComponent(id)}/draft?draftRevisionId=${encodeURIComponent(draftRevisionId)}`);

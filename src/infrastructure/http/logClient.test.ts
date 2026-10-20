@@ -61,6 +61,28 @@ function createRepository(fetchMock: typeof fetch) {
   });
 }
 
+it("validates extractor and format preview responses through encoded skill endpoints", async () => {
+  const extractor = { pattern: "^n=(?P<n>\\d+)$", fields: { n: { type: "uint" } }, matchedLines: [{ line: 1, text: "n=2" }], matchCount: 1, totalLines: 1, coverage: 1 };
+  const format = { lines: [{ line: 1, text: "INFO ready", severity: "info" }], entries: [{ lineNumbers: [1], text: "INFO ready", severity: "info" }] };
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse(extractor)).mockResolvedValueOnce(jsonResponse(format));
+  const repository = createRepository(fetchMock);
+  const extractorInput = { line: "n=1", segments: [{ start: 2, end: 3, name: "n", type: "uint" as const }], sampleLines: ["n=2"] };
+  await expect(repository.generateExtractorPattern!("skill/a", extractorInput)).resolves.toEqual(extractor);
+  await expect(repository.previewFormat!("skill/a", { sampleText: "INFO ready", formatProfile: {} })).resolves.toEqual(format);
+  expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills/skill%2Fa/extractor-preview");
+  expect(fetchMock.mock.calls[1][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills/skill%2Fa/format-preview");
+});
+
+it("requests a bounded line range with encoded record and file identity", async () => {
+  const item = { file: "device/a b.log", startLine: 2, endLine: 3, totalLines: 3,
+    lines: [{ lineNumber: 2, content: "second" }, { lineNumber: 3, content: "last" }] };
+  const fetchMock = createFetchMock({ item });
+  await expect(createRepository(fetchMock).getLogLines!("record/id", item.file, 2, 100)).resolves.toEqual(item);
+  const url = new URL(String(fetchMock.mock.calls[0][0]));
+  expect(url.pathname).toBe("/api/v1/logs/record%2Fid/lines");
+  expect(Object.fromEntries(url.searchParams)).toEqual({ file: item.file, startLine: "2", endLine: "100" });
+});
+
 it("uses template, creation and sample contracts with encoded skill ids", async () => {
   const skill = mockSkillWorkspace("skill-charging")!;
   const fetchMock = createFetchMock({ items: mockSkillTemplates });
@@ -119,6 +141,17 @@ it("uses workspace contracts, encodes ids and sends draft bases for all authorin
   await expect(repository.saveSkillDraft!(skill.id, draft.spec, null, skill.currentRevision.id)).rejects.toMatchObject({ code: "LOG_SKILL_DRAFT_CONFLICT" });
   fetchMock.mockResolvedValueOnce(jsonResponse({ error: { code: "LOG_SKILL_DRAFT_CONFLICT" } }, 409));
   await expect(repository.discardSkillDraft!(skill.id, "draft")).rejects.toMatchObject({ code: "LOG_SKILL_DRAFT_CONFLICT" });
+});
+
+it("runs unsaved parse tests through the bounded server contract with an encoded skill id", async () => {
+  const run = { total: 1, passed: 0, failed: 1, truncated: false, results: [{ id: "test", name: "Sample", passed: false,
+    diffs: [{ path: "value", expected: 2, actual: null, missing: true }], missingSignals: [], unexpectedSignals: [], events: [], signals: [] }] };
+  const fetchMock = createFetchMock(run);
+  const spec = { schemaVersion: "skill/v1" as const, parseTests: [{ id: "test", name: "Sample", lines: ["value=1"], expect: { fields: { value: 2 } } }] };
+  await expect(createRepository(fetchMock).runSkillParseTests!("skill/a", spec)).resolves.toEqual(run);
+  expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills/skill%2Fa/parse-tests");
+  expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ spec });
 });
 
 it("uses source snapshot DTOs, multipart archives, and encoded skill/snapshot paths", async () => {
@@ -192,26 +225,39 @@ describe("createHttpLogAnalysisRepository", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ item: { content: "stored", fileName: "a.log", truncated: false } }));
     await expect(repository.getSkillSampleText!("skill/a")).resolves.toEqual({ text: "stored", fileName: "a.log" });
   });
+  it("previews draft signals on the stored sample through the validated HTTP port", async () => {
+    const preview = { valid: true, issues: [], hits: [{ ruleId: "timeout", lineNumber: 2, excerpt: "ERROR timeout" }], truncated: true, reason: "hit_cap" };
+    const fetchMock = createFetchMock(preview);
+    const defaults = { conclusion: "None", impact: "Review", severity: "Info" as const, confidence: 0.5, suggestedActions: [] };
+    const input = { signalRules: { rules: [], noHit: defaults, hitDefaults: defaults } };
+    await expect(createRepository(fetchMock).signalPreview!("skill/a", input)).resolves.toEqual(preview);
+    expect(fetchMock.mock.calls[0][0]).toContain("/log-skills/skill%2Fa/signals-preview");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(input);
+  });
   it("sends repeated multipart file parts as one bundle and preserves inventory and evidence paths", async () => {
     const files = [new File(["first"], "a.log"), new File(["second"], "b.log")];
     const inventory = [{ path: "a.log", sizeBytes: 5, lineCount: 1, encoding: "utf-8", lossy: false, status: "analyzed", skipReason: null }];
     const fetchMock = createFetchMock({ fileObject: { id: "file-1" }, log: { ...baseLogDto, files: inventory,
       evidence: [{ id: "e1", stageId: "rootcause", filePath: "a.log", lineNumbers: [1], inference: "failure", suggestedAction: "inspect" }] }, job: baseJobDto }, 201);
-    const result = await createRepository(fetchMock).uploadLog({ file: files[0], files, skillId: "skill-1", analysisQuestion: "why" });
+    const result = await createRepository(fetchMock).uploadLog({ file: files[0], files, skillId: "skill-1", analysisQuestion: "why", sourceVersion: "v7" });
     const form = fetchMock.mock.calls[0][1]?.body as FormData;
     expect(form.getAll("file")).toEqual(files); expect(form.get("skillId")).toBe("skill-1"); expect(form.get("analysisQuestion")).toBe("why");
+    expect(form.get("sourceVersion")).toBe("v7");
     expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty("Content-Type");
     expect(result.log.files).toEqual(inventory); expect(result.log.evidence[0].filePath).toBe("a.log");
   });
   it("reads skill publication summaries and preserves the run revision pin", async () => {
-    const skill = { id: "skill-1", name: "设备诊断", status: "active", createdAt: "2026-10-18", updatedAt: "2026-10-18",
-      currentRevision: { id: "skill-v2", number: 2, publishedAt: "2026-10-18" }, hasDraft: true, analyses7d: 4, helpfulRate7d: 0.75 };
+    const skill = { id: "skill-1", skillKey: "device-diagnostics", name: "设备诊断", status: "active", createdAt: "2026-10-18", updatedAt: "2026-10-18",
+      currentRevision: { id: "skill-v2", number: 2, publishedAt: "2026-10-18" }, hasDraft: true, hasSourceSnapshots: true,
+      readySourceVersions: ["v7"], analyses7d: 4, helpfulRate7d: 0.75 };
     const fetchMock = createFetchMock({ items: [skill] });
     const repository = createRepository(fetchMock);
     await expect(repository.listLogSkills?.({ includeArchived: true })).resolves.toEqual([skill]);
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-skills?includeArchived=true");
-    fetchMock.mockResolvedValue(jsonResponse({ item: { ...baseLogDto, skillRevision: { id: "skill-v2", number: 2 } } }));
-    await expect(repository.getLog("log-1")).resolves.toMatchObject({ skillRevision: { id: "skill-v2", number: 2 } });
+    const knowledgeRevisions = [{ entryId: "6bd19f72-6710-4bbc-9d04-0a30bf151043", revisionId: "11e090bc-c5ef-4544-9900-01adcb20f558" }];
+    const provenance = { sourceSnapshot: { id: "source-v7", versionLabel: "v7", status: "ready" }, sourceSnapshotSelection: "matched_version", requestedSourceVersion: "v7" };
+    fetchMock.mockResolvedValue(jsonResponse({ item: { ...baseLogDto, knowledgeRevisions, skillRevision: { id: "skill-v2", number: 2 }, ...provenance } }));
+    await expect(repository.getLog("log-1")).resolves.toMatchObject({ knowledgeRevisions, skillRevision: { id: "skill-v2", number: 2 }, ...provenance });
   });
 
   it("sends skillId on upload and preserves explicit pinned rerun policy", async () => {
@@ -219,9 +265,9 @@ describe("createHttpLogAnalysisRepository", () => {
     const repository = createRepository(fetchMock);
     const file = new File(["INFO ok"], "device.log", { type: "text/plain" });
     Object.defineProperty(file, "arrayBuffer", { value: async () => new TextEncoder().encode("INFO ok").buffer });
-    await repository.uploadLog({ file, skillId: "skill-1" });
+    await repository.uploadLog({ file, skillId: "skill-1", sourceVersion: "v7" });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ fileName: "device.log", contentType: "text/plain",
-      contentBase64: btoa("INFO ok"), skillId: "skill-1" });
+      contentBase64: btoa("INFO ok"), skillId: "skill-1", sourceVersion: "v7" });
     fetchMock.mockResolvedValue(jsonResponse({ log: baseLogDto, job: baseJobDto }));
     await repository.rerunLog({ logId: "log-1", revisionPolicy: "pinned" });
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ revisionPolicy: "pinned" });
@@ -517,6 +563,30 @@ describe("createHttpLogAnalysisRepository", () => {
     const repository = createRepository(fetchMock);
 
     await expect(repository.listLogs()).rejects.toBeInstanceOf(WiseEffApiError);
+  });
+
+  it("uses the administrator trace and skill dry-run endpoints with contract validation", async () => {
+    const run = { id: "run/one", skillRevisionId: "draft", status: "processing", progress: 10, report: null, error: null, createdAt: "2026-10-19T00:00:00Z" };
+    const step = { index: 1, kind: "model-turn", tool: null, arguments: {}, resultBytes: 12, lines: [], outcome: "ok", reason: null };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ run }))
+      .mockResolvedValueOnce(jsonResponse({ run, steps: [step] }))
+      .mockResolvedValueOnce(jsonResponse({ steps: [step] }))
+      .mockResolvedValueOnce(jsonResponse({ item: { file: "sample.log", startLine: 1, endLine: 1, totalLines: 1, lines: [{ lineNumber: 1, content: "sample" }] } }))
+      .mockResolvedValueOnce(jsonResponse({ steps: [{ ...step, arguments: { query: "x".repeat(121) } }] }));
+    const repository = createRepository(fetchMock);
+    await expect(repository.startSkillDryRun!("skill/one")).resolves.toEqual(run);
+    await expect(repository.getSkillDryRun!("skill/one", run.id)).resolves.toEqual({ run, steps: [step] });
+    await expect(repository.getLogTrace!("log/one")).resolves.toEqual([step]);
+    await repository.getSkillDryRunLines!("skill/one", run.id, "sample.log", 1, 101);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "http://127.0.0.1:8787/api/v1/log-skills/skill%2Fone/dry-runs",
+      "http://127.0.0.1:8787/api/v1/log-skills/skill%2Fone/dry-runs/run%2Fone",
+      "http://127.0.0.1:8787/api/v1/logs/log%2Fone/trace",
+      "http://127.0.0.1:8787/api/v1/log-skills/skill%2Fone/dry-runs/run%2Fone/lines?file=sample.log&startLine=1&endLine=101"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    await expect(repository.getLogTrace!("log/one")).rejects.toMatchObject({ code: "INTERNAL_ERROR", details: { reason: "contract-drift" } });
   });
 
   it("lists a domain's knowledge links", async () => {

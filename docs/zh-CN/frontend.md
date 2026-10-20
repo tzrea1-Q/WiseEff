@@ -110,8 +110,9 @@ API 导入向导的匹配、模块选项与逐行核对仅使用项目规范 Bin
 
 P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直接 new HTTP client）：
 
+- 配置工作台的 DTS 源码采用延迟加载的 CodeMirror 6，支持「预览 / 编辑」，两种模式共用文档、搜索、选区、折叠和撤销历史。右侧仅显示固定定义说明。整文件草稿按用户、组织、项目、配置和文件隔离，存于 IndexedDB，并用事务代数校验防止多标签页覆盖；旧属性草稿仍独立保留。保存固定精确源码及文件/配置基线，经 `ParameterFileRepository` 预览并提交 `source_revision` 审核。「待审核」不代表工作配置已更新，批准回执也不会清除之后继续输入的内容。大差异复用虚拟视口编辑器。左侧仍只显示已登记模块及其 DTS 实际父节点，定位范围随编辑映射，正式结构在批准后刷新。
 - `submitStructuredEdits`：经 `POST /api/v1/projects/:projectId/dts-structured-edits/submit` 提交结构化编辑；CR 与 CST 回写载荷用 `rawText`（非 `normalizedValue`）保真。共享验收/CI 库为 post-cutover（语义身份）。`PROJ-CONFIG-EDIT-001` / `PARAM-DTS-EDIT-002` 在可丢弃 post-cutover 运行时上证明 live submit。
-- `StructuredValueEditor`：按 `valueType` 编辑 `rawText`（与后端值类型对齐的客户端校验）。
+- `StructuredValueEditor` 根据 DTS AST 选择紧凑的有序字符串/数值/字节编辑、可搜索的有序引用、布尔属性存在性及完整混合原文。侧栏预览六项，展开窗口每页五十项，共用同一份本地草稿。普通字符串批量输入每行一项，保留空项、重复项和内容中的逗号，预览后选择替换或追加；DTS 原文模式保留语法。未完成数值和未确认批量文本以严格读取的 `StructuredEditorState` 持久保留，不能作为有效目标保存。语法校验消费全部字符并保持 64 位精度。Binding 固定定义修订的 `valueShape.schema` 为编辑器提供范围及项数约束，迟到元数据只重新校验、不覆盖输入。输入只更新底部计数，不自动展开任务；原值折叠展示，存储失败明确提示仅当前页面保留，保存回执仅清除仍匹配发送快照的草稿。生效值仍来自人工审核及 CST 回写。
 - `DtsStructureBrowserPanel`：结构浏览、属性编辑、本地变更集聚合与「提交变更请求」；需 `parameter:edit`（`canEdit`），安全关键节点另需 `parameter:edit-critical`（`canEditCritical`）。
 - 配置工作台统一检索：路径 / `@地址` / 标签 / compatible / 值检索，挂在规范路由 `/parameter-admin/projects/:projectId/configuration` 的源结构区（旧 `DtsSearchPanel` 页面式挂载已随 cutover 移除）。
 - `ConfigSetBaselinePanel`：配置 / 基线 / 对比 / 发布 / 导出，同对话框「配置 / 基线」标签；对比变更集行映射真实参数并可走同一提交端口。
@@ -256,7 +257,9 @@ API 模式的参数指标读取 canonical Binding、值、草稿、请求和历�
 
 日志分析：
 
-点击技能名称进入 `/log-admin/skills/:skillId` 的 `NavigatorWorkbench`，返回 `/log-admin?tab=skills`。分区注册表启用「概览」「样例与解析」「版本」，后续分区禁用并提示即将推出；`?section=overview|parsing|versions` 选择分区。概览在本地版本副本中编辑描述和模型，固定草稿栏提供保存、确认丢弃和大尺寸发布摘要对话框。版本历史支持按分区并排比较，回滚须确认并发布为新版本。草稿冲突可确认后重新加载；复用应用导航保护事件和 `beforeunload` 保护未保存更改。只读用户无法编辑；mock 保留只读种子并说明编辑需要 API 模式。HTTP 端口通过 `/api/v1/log-skills` 读写工作区。
+点击技能名称进入 `/log-admin/skills/:skillId` 的 `NavigatorWorkbench`，返回 `/log-admin?tab=skills`。分区注册表启用「概览」「样例与解析」「解码」「版本」，后续分区禁用并提示即将推出；`?section=overview|parsing|decoding|versions` 选择分区。概览在本地版本副本中编辑描述和模型，固定草稿栏提供保存、确认丢弃和大尺寸发布摘要对话框。版本历史支持按分区并排比较，回滚须确认并发布为新版本。草稿冲突可确认后重新加载；复用应用导航保护事件和 `beforeunload` 保护未保存更改。只读用户无法编辑；mock 保留只读种子并说明编辑需要 API 模式。HTTP 端口通过 `/api/v1/log-skills` 读写工作区。
+
+「解码」通过寄存器列表、固定位宽编辑器、高位到低位的位条、字段表、粘贴表格对话框及地址/消息 id 映射编辑器，修改 `spec.parsing.registers` 和 `registerMaps`。位条除可访问的颜色外，还标注名称、位范围和样例解码值。字段表支持枚举、比例、偏移、单位、有符号和说明。粘贴预览支持制表符、逗号、多个空格与竖线分列，跳过表头，解释被拒行并导入有效行。选择常驻 `SkillSamplePane` 中的行，经既有端点预览未保存解析规范；过期响应不能覆盖更新的编辑或选择。表单和 YAML 代码视图往返同一规范。`DecodedFields` 在引用行下以嵌套树显示寄存器子字段、枚举含义和单位；工具输出沿用既有字节上限。
 
 「样例与解析」的「代码视图」以等宽 textarea 和同步行号编辑同一草稿的 `spec.parsing`。YAML 语法错误标明行号；非法文本会保留、受离开保护，并禁用保存和发布。预览经日志仓储端口向 `/api/v1/log-skills/:skillId/parse-preview` 提交未保存规则和样例，显示 schema 路径、行号/抽取规则/字段表格、各规则计数、错误和未匹配行数。达到 100 ms 执行预算、5000 个处理行或 500 个返回事件时，以状态消息说明结果不完整。默认使用右侧常驻样例面板已加载的内容和文件名，不重复读取；替换/删除样例立即更新预览输入并丢弃旧结果。无样例时保留粘贴文本与文件名输入。大于预览 1 MiB 上限的样例仅发送限额内的完整行，并显示提示；过期响应不覆盖新编辑。从样例行创建抽取规则的表单在 #1240 提供。发布与版本差异新增「解析规则」，按 id 展示新增/修改/移除。报告和记录抽屉在证据锚点下显示紧凑字段芯片，使用类型值与枚举标签，契约见[解析参考](design-docs/log-parsing-v1.md)。
 

@@ -41,6 +41,9 @@ export type LogWebhookDelivery = {
 
 /** Org-scoped log domain registration (业务域); absence on a record = 未分类域. */
 export type LogDomain = {
+  skillKey?: string;
+  hasSourceSnapshots?: boolean;
+  readySourceVersions?: string[];
   currentRevision?: { id: string; number: number; publishedAt: string | null };
   hasDraft?: boolean;
   analyses7d?: number;
@@ -67,7 +70,7 @@ export type LogDomainKnowledgeLink = {
   logDomainId: string;
   knowledgeEntryId: string;
   entryTitle: string;
-  entryStatus: "draft" | "published" | "archived";
+  entryStatus?: "draft" | "published" | "archived";
   entryTags: string[];
   linkedAt: string;
 };
@@ -93,6 +96,7 @@ export type LogFeedbackInsight = {
 export type LogFile = {
   path: string; sizeBytes: number; lineCount: number; encoding: "utf-8" | "utf-16le" | "utf-16be";
   lossy: boolean; status: "analyzed" | "skipped"; skipReason: string | null;
+  role?: string | null; skillMatched?: boolean | null;
 };
 export type LogEvidence = {
   sourceLocation?: { snapshotId: string; path: string; line: number };
@@ -128,6 +132,10 @@ export type LogSignalSummary = {
 };
 
 export type LogRecord = {
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
+  sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" };
+  sourceSnapshotSelection?: "matched_version" | "default" | "none";
+  requestedSourceVersion?: string;
   signalSummary?: LogSignalSummary;
   files?: LogFile[];
   skillRevision?: { id: string; number: number } | null;

@@ -4,7 +4,16 @@ import type {
   DtsStructuredSubmissionRound
 } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import { loadCanonicalDtsDefinitionDetail } from "@/application/parameters/loadCanonicalDtsDefinitionDetail";
 import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
+import { validateDtsValue } from "@/domain/dts/dtsValueClient";
+import { validateDtsValueAgainstSchema } from "@/domain/dts/dtsValueSchema";
+import {
+  readStructuredEditorState,
+  sameStructuredEditorState,
+  type StructuredEditorState
+} from "@/domain/dts/structuredEditorState";
 import {
   aggregateSessionDraftSubset,
   clearSubmittedDrafts,
@@ -32,6 +41,7 @@ export type StructuredEditChangeInput = {
   valid?: boolean;
   error?: string;
   present?: boolean;
+  editorState?: StructuredEditorState;
 };
 
 export type StructuredEditIdentity = {
@@ -54,6 +64,7 @@ export type StructuredEditSubmitInput = {
   fileName: string;
   dtsRepository: Pick<DtsStructuredRepository, "submitStructuredEdits">;
   catalogRepository?: Pick<ParameterTopologyRepository, "listBindings" | "createBindingDraft" | "listConfigRevisions">;
+  definitionRepository?: Pick<ParameterCatalogRepository, "getDefinitionRevision">;
   revisionId?: string | null;
   configSetId?: string;
 };
@@ -66,6 +77,7 @@ export type StructuredEditSessionSnapshot = {
   validateStatus: string;
   submitError: string;
   submitStatus: string;
+  storageError: string;
   submitting: boolean;
   stagedDrafts: StagedStructuredDraft[];
   rows: SessionDraftRow[];
@@ -106,6 +118,7 @@ function emptySnapshot(): StructuredEditSessionSnapshot {
     validateStatus: "",
     submitError: "",
     submitStatus: "",
+    storageError: "",
     submitting: false,
     rows: [],
     isDirty: false,
@@ -139,6 +152,30 @@ function computeRows(
   return listSessionDraftRows({ fileId, nodes, drafts });
 }
 
+function unfinishedEditorError(state: StructuredEditorState): string {
+  return state.kind === "string-input" || state.kind === "numeric-input"
+    ? "批量输入待确认。" : "请完成或修正保留的单元格输入。";
+}
+
+function restoreDraft(key: string, draft: SessionPropertyDraft): SessionPropertyDraft {
+  const propertyName = key.slice(key.lastIndexOf("::") + 2);
+  const validation = validateDtsValue(draft.rawText, propertyName);
+  const error = draft.editorState ? unfinishedEditorError(draft.editorState) : validation.error;
+  return {
+    rawText: draft.rawText,
+    normalizedValue: validation.normalizedValue,
+    ...(typeof draft.present === "boolean" ? { present: draft.present } : {}),
+    ...(draft.editorState ? { editorState: draft.editorState } : {}),
+    valid: !draft.editorState && validation.valid,
+    ...(error ? { error } : {})
+  };
+}
+
+function matchesSubmittedDraft(draft: SessionPropertyDraft | undefined, row: SessionDraftRow): boolean {
+  return draft?.rawText === row.rawText && draft.present === row.present
+    && sameStructuredEditorState(draft.editorState, row.editorState);
+}
+
 export function createStructuredEditSession(
   options: StructuredEditSessionOptions = {}
 ): StructuredEditSession {
@@ -160,6 +197,7 @@ export function createStructuredEditSession(
   let validateStatus = "";
   let submitError = "";
   let submitStatus = "";
+  let storageError = "";
   let submitting = false;
   let stagedDrafts: StagedStructuredDraft[] = [];
   let cachedSnapshot = emptySnapshot();
@@ -189,6 +227,7 @@ export function createStructuredEditSession(
       validateStatus,
       submitError,
       submitStatus,
+      storageError,
       submitting,
       stagedDrafts,
       rows,
@@ -208,11 +247,11 @@ export function createStructuredEditSession(
     if (!scope) return;
     const draftKeys = Object.keys(drafts);
     if (draftKeys.length === 0) {
-      removeSessionDraftBucket(scope, storage);
+      reportStorageResult(removeSessionDraftBucket(scope, storage));
       return;
     }
     const selected = selectedKeys.size > 0 ? Array.from(selectedKeys) : draftKeys;
-    upsertSessionDraftBucket(
+    reportStorageResult(upsertSessionDraftBucket(
       {
         scope,
         drafts,
@@ -221,7 +260,16 @@ export function createStructuredEditSession(
         updatedAt: now()
       },
       storage
-    );
+    ));
+  }
+
+  function reportStorageResult(success: boolean): void {
+    const nextError = success ? "" : Object.keys(drafts).length > 0
+      ? "本地保存失败，修改仅当前页面保留。请复制当前修改后再离开页面。"
+      : "无法清理本地草稿，刷新后可能再次恢复旧修改。";
+    if (storageError === nextError) return;
+    storageError = nextError;
+    emit();
   }
 
   function clearStatuses(): void {
@@ -251,6 +299,9 @@ export function createStructuredEditSession(
     },
     get submitStatus() {
       return cachedSnapshot.submitStatus;
+    },
+    get storageError() {
+      return cachedSnapshot.storageError;
     },
     get submitting() {
       return cachedSnapshot.submitting;
@@ -302,6 +353,7 @@ export function createStructuredEditSession(
       persistEnabled = false;
       currentScope = scope;
       clearStatuses();
+      storageError = "";
       stagedDrafts = [];
       submitting = false;
       drafts = {};
@@ -313,7 +365,6 @@ export function createStructuredEditSession(
 
       if (!scope) return;
 
-      await Promise.resolve();
       if (generation !== hydrateGeneration) return;
 
       const recovered = findRecoverableSessionDraft(scope, storage);
@@ -323,7 +374,8 @@ export function createStructuredEditSession(
         const draftKeys = Object.keys(recovered.bucket.drafts);
         const restoredSelected =
           recovered.bucket.selectedKeys.length > 0 ? recovered.bucket.selectedKeys : draftKeys;
-        drafts = { ...recovered.bucket.drafts };
+        drafts = Object.fromEntries(Object.entries(recovered.bucket.drafts)
+          .map(([key, draft]) => [key, restoreDraft(key, draft)]));
         selectedKeys = new Set(restoredSelected);
         reason = recovered.bucket.reason;
         recoveryStatus = recovered.classification;
@@ -341,7 +393,6 @@ export function createStructuredEditSession(
         emit();
       }
 
-      await Promise.resolve();
       if (generation !== hydrateGeneration) return;
       persistEnabled = true;
       persist();
@@ -349,6 +400,8 @@ export function createStructuredEditSession(
 
     change(identity, next) {
       const key = sessionDraftKey(identity);
+      const editorState = next.editorState ? readStructuredEditorState(next.editorState) : undefined;
+      if (editorState === null) throw new Error("无效的参数编辑状态。");
       drafts = {
         ...clearSubmittedDrafts(drafts, [propertyIdentity(identity.nodePath, identity.propertyName)]),
         [key]: {
@@ -356,7 +409,8 @@ export function createStructuredEditSession(
           normalizedValue: next.normalizedValue,
           ...(typeof next.valid === "boolean" ? { valid: next.valid } : {}),
           ...(next.error ? { error: next.error } : {}),
-          ...(typeof next.present === "boolean" ? { present: next.present } : {})
+          ...(typeof next.present === "boolean" ? { present: next.present } : {}),
+          ...(editorState ? { editorState, valid: false, error: next.error || unfinishedEditorError(editorState) } : {})
         }
       };
       const nextKeys = new Set(selectedKeys);
@@ -402,7 +456,7 @@ export function createStructuredEditSession(
         emit();
         return { ok: false, message };
       }
-      const message = `校验通过：${selected.length} 项`;
+      const message = `本地输入检查通过：${selected.length} 项；保存时仍需核对固定参数定义。`;
       validateStatus = message;
       submitError = "";
       emit();
@@ -435,7 +489,9 @@ export function createStructuredEditSession(
         emit();
         throw new Error(message);
       }
-      const invalid = selected.filter((row) => row.valid === false);
+      const invalid = selected.filter((row) => input.catalogRepository && input.definitionRepository
+        ? row.editorState || (row.present !== false && !validateDtsValue(row.rawText, row.propertyName).valid)
+        : row.valid === false);
       if (invalid.length > 0) {
         const message = `仍有未通过校验的变更：${invalid
           .map((row) => `${row.nodePath}/${row.propertyName}`)
@@ -475,6 +531,29 @@ export function createStructuredEditSession(
                 && binding.propertyKey === row.propertyName);
               if (matches.length !== 1) throw new Error("没有唯一精确 Binding。");
               const binding = matches[0]!;
+              if (input.definitionRepository) {
+                const definitionRevisionId = binding.effectiveRevisionId || binding.definitionRevisionId;
+                if (!definitionRevisionId) throw new Error("Binding 缺少固定参数定义修订。");
+                const detail = await loadCanonicalDtsDefinitionDetail(input.definitionRepository, {
+                  definitionId: binding.definitionId!, revisionId: definitionRevisionId, propertyKey: row.propertyName
+                });
+                assertCurrentScope();
+                const valueShape = detail.valueShape;
+                const schema = valueShape && typeof valueShape === "object" && "schema" in valueShape
+                  ? valueShape.schema : undefined;
+                const schemaError = row.present === false ? undefined
+                  : validateDtsValueAgainstSchema(row.propertyName, row.rawText, schema);
+                if (schemaError) {
+                  const currentDraft = drafts[row.key] ?? drafts[row.identity];
+                  if (matchesSubmittedDraft(currentDraft, row)) {
+                    const key = drafts[row.key] ? row.key : row.identity;
+                    drafts = { ...drafts, [key]: { ...currentDraft!, valid: false, error: schemaError } };
+                    emit();
+                    persist();
+                  }
+                  throw new Error(schemaError);
+                }
+              }
               const saved = await repository.createBindingDraft(input.projectId, binding.id, {
                 baseRevisionId: revisionId, reason: trimmedReason,
                 ...(row.present === false ? { action: "delete" } : {
@@ -493,7 +572,7 @@ export function createStructuredEditSession(
                 currentValueId: saved.currentValueId, pending: true });
               draftId = saved.draftId;
               const localDraft = drafts[row.key] ?? drafts[row.identity];
-              if (localDraft?.rawText === row.rawText && localDraft.present === row.present) {
+              if (matchesSubmittedDraft(localDraft, row)) {
                 drafts = clearSubmittedDrafts(drafts, [row.key, row.identity]);
                 selectedKeys.delete(row.key);
               }
@@ -521,7 +600,8 @@ export function createStructuredEditSession(
           reason: trimmedReason
         });
         assertCurrentScope();
-        const submittedKeys = selected.map((row) => row.key);
+        const submittedKeys = selected.filter((row) => matchesSubmittedDraft(drafts[row.key] ?? drafts[row.identity], row))
+          .flatMap((row) => [row.key, row.identity]);
         drafts = clearSubmittedDrafts(drafts, submittedKeys);
         submitStatus = `已提交变更请求 ${round.id}`;
         validateStatus = "";
@@ -543,14 +623,6 @@ export function createStructuredEditSession(
 
     recover() {
       if (!currentScope || Object.keys(drafts).length === 0) return;
-      const nextBucket = {
-        scope: currentScope,
-        drafts,
-        selectedKeys: Array.from(selectedKeys),
-        reason,
-        updatedAt: now()
-      };
-      upsertSessionDraftBucket(nextBucket, storage);
       persistScope = currentScope;
       recoveryStatus = "none";
       submitError = "";
@@ -570,15 +642,13 @@ export function createStructuredEditSession(
         return;
       }
       const scope = persistScope ?? currentScope;
-      if (scope) {
-        removeSessionDraftBucket(scope, storage);
-      }
       drafts = {};
       selectedKeys = new Set();
       reason = "";
       recoveryStatus = "none";
       clearStatuses();
       emit();
+      if (scope) reportStorageResult(removeSessionDraftBucket(scope, storage));
     },
 
     copyText() {

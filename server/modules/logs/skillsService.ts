@@ -6,7 +6,7 @@ import { withAuditedWrite, type AuditedWriteContext, type AuditSpec } from "../a
 import type { AuthContext } from "../auth/types";
 import { assertTrustedInvocationMatchesAuth, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { findLogDomainByName, getLogDomainById, insertLogDomain, listLogDomains, updateLogDomainRow } from "./domainsRepository";
-import { requireLogAdminDomains, requireLogView } from "./policy";
+import { requireLogAdminDomains, requireLogUpload, requireLogView } from "./policy";
 import { aggregateFeedbackInsights, relatedParameterVisibilityValues } from "./repository";
 import { logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
 import { insertSkillRevision, listSkillRevisions, lockSkill, publishSkillRevision } from "./skillsRepository";
@@ -14,10 +14,34 @@ import { logSkillTemplates } from "./skillTemplates";
 import { parsingSpecSchema } from "./parsing/spec";
 import { decodeLogFilesCooperatively } from "./parsing/workerDecoding";
 import { MAX_DECODE_EVENTS } from "./parsing/engine";
+import { generateExtractorPattern, type ExtractorPatternInput } from "./parsing/extractorBuilder";
+import { previewLogFormat } from "./formatPreview";
 import { validateDefaultSourceSnapshot } from "./sourceSnapshots";
+import { validateSkillKnowledge } from "./skillKnowledge";
+import { defaultLogSkillBudgetCaps, validateLogSkillBudgets, type LogSkillBudgetCaps } from "./skillBudgets";
+import { runParseTests, PARSE_TEST_MAX_MS } from "./parseTests";
+import type { ParseTestRun } from "./parseTestSpec";
 
 export const PARSE_PREVIEW_MAX_MS = 100;
 export const PARSE_PREVIEW_MAX_LINES = 5000;
+
+export async function previewLogSkillExtractor(db: Queryable, auth: AuthContext, skillId: string, input: ExtractorPatternInput) {
+  await requirePreviewSkill(db, auth, skillId);
+  try { return runInNewContext("preview()", { preview: () => generateExtractorPattern(input) }, { timeout: PARSE_PREVIEW_MAX_MS }) as ReturnType<typeof generateExtractorPattern>; }
+  catch (error) { throw new ApiError("VALIDATION_FAILED", error instanceof Error ? error.message : String(error)); }
+}
+
+export async function previewLogSkillFormat(db: Queryable, auth: AuthContext, skillId: string, input: Parameters<typeof previewLogFormat>[0]) {
+  await requirePreviewSkill(db, auth, skillId);
+  try { return runInNewContext("preview()", { preview: () => previewLogFormat(input) }, { timeout: PARSE_PREVIEW_MAX_MS }) as ReturnType<typeof previewLogFormat>; }
+  catch (error) { throw new ApiError("VALIDATION_FAILED", error instanceof Error ? error.message : String(error)); }
+}
+
+async function requirePreviewSkill(db: Queryable, auth: AuthContext, skillId: string) {
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+}
 
 export function listLogSkillTemplates(auth: AuthContext) {
   requireOrganization(auth);
@@ -34,24 +58,26 @@ function skillAudit(skillId: string, kind: string, metadata: Record<string, unkn
     targetType: "log-skill", targetId: skillId, metadata };
 }
 
-function parseSpec(value: unknown): LogSkillSpec {
+/** Budget caps apply to saved and published specs; parse tests validate structure only. */
+function parseSpec(value: unknown, caps?: LogSkillBudgetCaps): LogSkillSpec {
   const result = logSkillSpecSchema.safeParse(value);
   if (!result.success) throw new ApiError("VALIDATION_FAILED", "Invalid analysis skill spec.", { issues: result.error.issues });
+  if (caps) validateLogSkillBudgets(result.data, caps);
   return result.data;
 }
 
-async function readSkill(db: Queryable, organizationId: string, skillId: string) {
+async function readSkill(db: Queryable, organizationId: string, skillId: string, budgetCaps = defaultLogSkillBudgetCaps) {
   const identity = await getLogDomainById(db, { organizationId, domainId: skillId });
   if (!identity) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
   const revisions = await listSkillRevisions(db, organizationId, skillId);
-  return { ...identity, currentRevision: revisions.find((r) => r.status === "published")!,
+  return { ...identity, budgetCaps, currentRevision: revisions.find((r) => r.status === "published")!,
     draft: revisions.find((r) => r.status === "draft") ?? null };
 }
 
-export async function getLogSkill(db: Queryable, auth: AuthContext, skillId: string) {
+export async function getLogSkill(db: Queryable, auth: AuthContext, skillId: string, caps = defaultLogSkillBudgetCaps) {
   requireOrganization(auth);
   requireLogView(auth);
-  return readSkill(db, auth.organization.id, skillId);
+  return readSkill(db, auth.organization.id, skillId, caps);
 }
 
 export async function listLogSkills(db: Queryable, auth: AuthContext, includeArchived = false) {
@@ -69,23 +95,41 @@ export async function listLogSkills(db: Queryable, auth: AuthContext, includeArc
         and exists (select 1 from projects p where p.id = lr.related_parameter_project_id and p.organization_id = lr.organization_id)
         and ($2::boolean or lr.related_parameter_project_id = any($3::text[]))))
     group by s.skill_id`, [auth.organization.id, organizationWide, projectIds]);
-  const heads = await db.query<{ id: string; skill_id: string; revision_number: number; published_at: Date | null; status: string }>(
-    `select id, skill_id, revision_number, published_at, status from log_skill_revisions
-      where organization_id = $1 and status in ('published', 'draft')`, [auth.organization.id]);
+  const heads = await db.query<{ id: string; skill_id: string; revision_number: number; published_at: Date | null; status: string; has_source_snapshots: boolean; ready_source_versions: string[] }>(
+    `select id, skill_id, revision_number, published_at, status,
+      exists (select 1 from log_source_snapshots ss where ss.organization_id = sr.organization_id
+        and ss.skill_id = sr.skill_id and ss.status <> 'archived') as has_source_snapshots,
+      array(select ss.version_label from log_source_snapshots ss where ss.organization_id = sr.organization_id
+        and ss.skill_id = sr.skill_id and ss.status = 'ready' order by ss.version_label) as ready_source_versions
+      from log_skill_revisions sr where organization_id = $1 and status in ('published', 'draft')`, [auth.organization.id]);
   return { items: identities.map((identity) => {
     const current = heads.rows.find((r) => r.skill_id === identity.id && r.status === "published")!;
     const feedback = insights.filter((r) => r.logDomainId === identity.id);
     const total = feedback.reduce((sum, r) => sum + r.totalCount, 0);
     return { ...identity, currentRevision: { id: current.id, number: current.revision_number, publishedAt: current.published_at?.toISOString() ?? null },
+      hasSourceSnapshots: current.has_source_snapshots,
+      readySourceVersions: current.ready_source_versions,
       hasDraft: heads.rows.some((r) => r.skill_id === identity.id && r.status === "draft"), analyses7d: counts.rows.find((r) => r.skill_id === identity.id)?.count ?? 0,
       helpfulRate7d: total ? feedback.reduce((sum, r) => sum + r.helpfulCount, 0) / total : null };
   }) };
 }
 
+export async function listLogSkillSourceVersions(db: Queryable, auth: AuthContext, skillId: string) {
+  requireOrganization(auth);
+  if (auth.permissions.includes("logs:view")) requireLogView(auth);
+  else requireLogUpload(auth);
+  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) {
+    throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  }
+  const result = await db.query<{ version_label: string }>(`select version_label from log_source_snapshots
+    where organization_id = $1 and skill_id = $2 and status = 'ready' order by version_label`, [auth.organization.id, skillId]);
+  return { items: result.rows.map((row) => row.version_label) };
+}
+
 export async function createLogSkill(db: Database, auth: AuthContext, input: {
   name: string; description?: string; formatProfile?: unknown;
   startingPoint?: { templateId: string } | { copyFromSkillId: string };
-}, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+}, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Create analysis skill");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
@@ -105,7 +149,8 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
       if (!template) throw new ApiError("VALIDATION_FAILED", "未找到所选技能模板。");
       source = start || input.formatProfile == null ? template.spec : { schemaVersion: "skill/v1", formatProfile: input.formatProfile } as LogSkillSpec;
     }
-    const spec = parseSpec({ ...source, ...(input.description !== undefined ? { description: input.description } : {}) });
+    const spec = parseSpec({ ...source, ...(input.description !== undefined ? { description: input.description } : {}) }, caps);
+    await validateSkillKnowledge(tx, auth, spec, source);
     if (await findLogDomainByName(tx, { organizationId: auth.organization.id, name })) {
       throw new ApiError("CONFLICT", "An analysis skill with this name already exists.");
     }
@@ -113,20 +158,21 @@ export async function createLogSkill(db: Database, auth: AuthContext, input: {
       description: spec.description, formatProfile: spec.formatProfile });
     if (spec.modelOverride) await updateLogDomainRow(tx, { organizationId: auth.organization.id, domainId: skill.id, modelOverride: spec.modelOverride });
     await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: skill.id, spec, userId: auth.user.id, published: true });
-    return { result: await readSkill(tx, auth.organization.id, skill.id),
+    return { result: await readSkill(tx, auth.organization.id, skill.id, caps),
       audit: skillAudit(skill.id, "log-skill-create", start ?? (input.formatProfile == null ? { templateId: "generic-text" } : {})) };
   });
 }
 
-export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId: string, value: unknown, baseDraftRevisionId: string | null, basePublishedRevisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId: string, value: unknown, baseDraftRevisionId: string | null, basePublishedRevisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Save analysis skill draft");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
-  const spec = parseSpec(value);
+  const spec = parseSpec(value, caps);
   return withAuditedWrite(db, invocation, context, async (tx) => {
     await lockSkill(tx, auth.organization.id, skillId);
     const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
     const baseSpec = (revisions.find((r) => r.status === "draft") ?? revisions.find((r) => r.status === "published"))?.spec;
+    await validateSkillKnowledge(tx, auth, spec, baseSpec);
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, spec, spec.defaultSourceSnapshotId === baseSpec?.defaultSourceSnapshotId);
     if (revisions.find((r) => r.status === "published")?.id !== basePublishedRevisionId) {
       throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "Skill publication has changed.");
@@ -138,12 +184,13 @@ export async function saveLogSkillDraft(db: Database, auth: AuthContext, skillId
     // A new draft id on every save makes stale publish requests detectable.
     await tx.query(`delete from log_skill_revisions where organization_id = $1 and skill_id = $2 and status = 'draft'`, [auth.organization.id, skillId]);
     const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec, userId: auth.user.id });
-    return { result: (await listSkillRevisions(tx, auth.organization.id, skillId)).find((r) => r.id === id)!,
+    const parseTestRun = spec.parseTests ? await runParseTests(spec) : undefined;
+    return { result: { ...(await listSkillRevisions(tx, auth.organization.id, skillId)).find((r) => r.id === id)!, ...(parseTestRun ? { parseTestRun } : {}) },
       audit: skillAudit(skillId, "log-skill-draft-save", { draftRevisionId: id }) };
   });
 }
 
-export async function publishLogSkill(db: Database, auth: AuthContext, skillId: string, draftId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+export async function publishLogSkill(db: Database, auth: AuthContext, skillId: string, draftId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Publish analysis skill");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
@@ -152,18 +199,18 @@ export async function publishLogSkill(db: Database, auth: AuthContext, skillId: 
     // Workspace saves validate both heads under this lock; publish consumes that
     // exact draft id, and restore refuses drafts, so no extra publish token is needed.
     const draft = (await listSkillRevisions(tx, auth.organization.id, skillId)).find((revision) => revision.id === draftId && revision.status === "draft");
-    if (draft) parseSpec(draft.spec);
+    if (draft) parseSpec(draft.spec, caps);
+    if (draft) await validateSkillKnowledge(tx, auth, draft.spec, draft.spec);
     if (draft) await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, draft.spec, true);
+    const parseTestRun = draft?.spec.parseTests ? await runParseTests(draft.spec) : undefined;
     await publishSkillRevision(tx, auth.organization.id, skillId, draftId, auth.user.id);
-    return { result: await readSkill(tx, auth.organization.id, skillId), audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
+    return { result: { ...await readSkill(tx, auth.organization.id, skillId, caps), ...(parseTestRun ? { parseTestRun } : {}) }, audit: skillAudit(skillId, "log-skill-publish", { draftRevisionId: draftId }) };
   });
 }
 
 export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, skillId: string,
   input: { parsing?: unknown; sampleText: string; fileName?: string }) {
-  requireOrganization(auth);
-  requireLogAdminDomains(auth);
-  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  await requirePreviewSkill(db, auth, skillId);
   const lines = input.sampleText === "" ? [] : input.sampleText.split(/\r\n|\n|\r/);
   if (Buffer.byteLength(input.sampleText, "utf8") > 1024 * 1024) throw new ApiError("VALIDATION_FAILED", "Sample exceeds 1 MiB.");
   const started = performance.now();
@@ -180,10 +227,25 @@ export async function previewLogSkillParsing(db: Queryable, auth: AuthContext, s
     events: [], counts: { total: 0, byExtractor: {}, errors: {} }, unmatchedLineCount: lines.length, truncated: false };
   const decoded = await decodeLogFilesCooperatively(result.data, [{ file: input.fileName ?? "sample.log", lines: lines.slice(0, PARSE_PREVIEW_MAX_LINES) }],
     { maxMs: Math.max(0, PARSE_PREVIEW_MAX_MS - (performance.now() - started)), maxEvents: MAX_DECODE_EVENTS, hardTimeout: true });
-  const reason = decoded.counts.errors.time_cap ? "time_cap" as const : lines.length > PARSE_PREVIEW_MAX_LINES ? "line_cap" as const
-    : decoded.events.length > 500 ? "event_cap" as const : undefined;
+  const reason = decoded.reason ?? (decoded.counts.errors.time_cap ? "time_cap" as const : lines.length > PARSE_PREVIEW_MAX_LINES ? "line_cap" as const
+    : decoded.events.length > 500 ? "event_cap" as const : undefined);
   return { valid: true, issues: [], ...decoded, unmatchedLineCount: decoded.unmatchedLineCount + Math.max(0, lines.length - PARSE_PREVIEW_MAX_LINES),
     events: decoded.events.slice(0, 500), truncated: !!reason, ...(reason ? { reason } : {}) };
+}
+
+export async function runLogSkillParseTests(db: Queryable, auth: AuthContext, skillId: string, spec: unknown) {
+  requireOrganization(auth);
+  requireLogAdminDomains(auth);
+  if (!await getLogDomainById(db, { organizationId: auth.organization.id, domainId: skillId })) throw new ApiError("NOT_FOUND", "Analysis skill was not found.");
+  const started = performance.now();
+  let parsed: LogSkillSpec;
+  try {
+    parsed = runInNewContext("validate()", { validate: () => parseSpec(spec) }, { timeout: PARSE_TEST_MAX_MS });
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT")) throw error;
+    throw new ApiError("VALIDATION_FAILED", "Skill validation exceeded the 1000 ms parse test budget.");
+  }
+  return runParseTests(parsed, { maxMs: Math.max(0, PARSE_TEST_MAX_MS - (performance.now() - started)) });
 }
 
 export async function readLogSkillRevisions(db: Queryable, auth: AuthContext, skillId: string) {
@@ -204,7 +266,7 @@ export async function discardLogSkillDraft(db: Database, auth: AuthContext, skil
   });
 }
 
-export async function restoreLogSkillRevision(db: Database, auth: AuthContext, skillId: string, revisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext) {
+export async function restoreLogSkillRevision(db: Database, auth: AuthContext, skillId: string, revisionId: string, invocation: TrustedInvocationContext, context: AuditedWriteContext, caps = defaultLogSkillBudgetCaps) {
   assertTrustedInvocationMatchesAuth(auth, invocation, "Restore analysis skill revision");
   requireOrganization(auth);
   requireLogAdminDomains(auth);
@@ -213,12 +275,13 @@ export async function restoreLogSkillRevision(db: Database, auth: AuthContext, s
     const revisions = await listSkillRevisions(tx, auth.organization.id, skillId);
     const source = revisions.find((r) => r.id === revisionId && r.status !== "draft");
     if (!source) throw new ApiError("NOT_FOUND", "Skill revision was not found.");
-    parseSpec(source.spec);
+    parseSpec(source.spec, caps);
+    await validateSkillKnowledge(tx, auth, source.spec, source.spec);
     await validateDefaultSourceSnapshot(tx, auth.organization.id, skillId, source.spec, true);
     if (revisions.some((r) => r.status === "draft")) throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the draft first.");
     const id = await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId, spec: source.spec, userId: auth.user.id });
     await publishSkillRevision(tx, auth.organization.id, skillId, id, auth.user.id);
-    return { result: await readSkill(tx, auth.organization.id, skillId),
+    return { result: await readSkill(tx, auth.organization.id, skillId, caps),
       audit: skillAudit(skillId, "log-skill-restore", { fromRevisionId: revisionId, newRevisionId: id }) };
   });
 }

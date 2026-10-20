@@ -137,6 +137,7 @@ function buildSchemaPlaceholders() {
     type: "object", required: ["file"], properties: {
       file: { type: "array", minItems: 1, items: { type: "string", format: "binary" }, description: "Several plain files or one archive; repeated file parts form one log bundle." },
       analysisQuestion: { type: "string" }, skillId: { type: "string" }, logDomainId: { type: "string" },
+      sourceVersion: { type: "string", minLength: 1, maxLength: 200, description: "Source snapshot version label; unmatched labels fall back to the pinned revision's default snapshot." },
       relatedParameterPin: { type: "string", description: "JSON-encoded canonical parameter pin." }
     }
   };
@@ -144,6 +145,11 @@ function buildSchemaPlaceholders() {
     type: "object", required: ["file", "versionLabel"], properties: {
       file: { type: "string", format: "binary", description: "One .tar.gz, .tgz or .zip source archive." },
       versionLabel: { type: "string", minLength: 1, maxLength: 200 }
+    }
+  };
+  schemas.LogAnalysisCaseMultipartImport = {
+    type: "object", "x-wiseeff-schema": "LogAnalysisCaseMultipartImport", required: ["file"], properties: {
+      file: { type: "string", format: "binary", description: "One bounded ZIP in eval-cases/logs layout." }
     }
   };
   return schemas;
@@ -194,9 +200,10 @@ export function buildOpenApiDocument(): OpenApiDocument {
             requestBody: {
               required: true,
               content: {
-                ...(route.id === "logs.uploadSourceSnapshot" ? {} : jsonContent(schema.requestBody)),
+                ...(["logs.uploadSourceSnapshot", "logs.importAnalysisCases"].includes(route.id) ? {} : jsonContent(schema.requestBody)),
                 ...(route.id === "logs.uploadFile" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogBundleMultipartUpload" } } } : {}),
-                ...(route.id === "logs.uploadSourceSnapshot" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogSourceSnapshotMultipartUpload" } } } : {})
+                ...(route.id === "logs.uploadSourceSnapshot" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogSourceSnapshotMultipartUpload" } } } : {}),
+                ...(route.id === "logs.importAnalysisCases" ? { "multipart/form-data": { schema: { $ref: "#/components/schemas/LogAnalysisCaseMultipartImport" } } } : {})
               }
             }
           }

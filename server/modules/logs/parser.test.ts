@@ -13,7 +13,7 @@ describe("parseLogText", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.rawLines).toHaveLength(6);
+    expect(result.rawLines).toHaveLength(5);
     expect(result.entries.map((entry) => entry.lineNumber)).toEqual([1, 2, 3, 4, 5]);
     expect(result.entries[0]).toMatchObject({
       lineNumber: 1,
@@ -36,7 +36,7 @@ describe("parseLogText", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.rawLines).toEqual(["2026-05-25T10:00:00Z INFO started", "", "WARN retry=1", ""]);
+    expect(result.rawLines).toEqual(["2026-05-25T10:00:00Z INFO started", "", "WARN retry=1"]);
     expect(result.entries.map((entry) => entry.lineNumber)).toEqual([1, 3]);
   });
 

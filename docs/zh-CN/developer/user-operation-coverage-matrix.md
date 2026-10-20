@@ -6,6 +6,8 @@
 
 ## 使用方式
 
+`LOG-REGISTER-001`（P1，`coverage: future`）：Admin 在 `/log-admin/skills/:skillId?section=decoding` 编辑寄存器字段与映射，预览并导入数据手册表格，往返 YAML，并选择样例行检查位条。组件与真实 PostgreSQL 集成覆盖已提供；协调者浏览器走查与专属自动化覆盖分别记录，后者尚待补充。
+
 `PCAT-REGISTRATION-INITIALIZE-001`（P1，`coverage: future`）：组织管理员在 `/parameter-admin/modules` 明确选择业务父分类和目标名称，确认原子创建目标并登记主体。组件测试及原生 PostgreSQL 覆盖租户、发布、重试并发和失败回滚；专属浏览器写入与审计回执仍待补。
 
 `PROJ-ARCHIVE-001`（P1，`coverage: future`）：Admin 在 `/parameter-admin/projects` 确认归档或恢复为在研。默认隐藏已归档项目，状态筛选可查；保留规范历史，不改变现有读写权限。focused 组件/客户端用例：`src/components/admin/ProjectAdminTable.test.tsx`、`src/components/parameter-admin-next/ProjectsOperationsPanel.test.tsx`、`src/infrastructure/http/parameterAdminClient.test.ts`；原有服务端状态/鉴权/审计契约：`server/modules/parameters/projectAdminMutations.test.ts`。归档专属浏览器、数据库与审计验收尚未完成。
@@ -77,6 +79,7 @@
 - `PFB-AUTHZ-001`：Hardware User 访问产品反馈管理 API 和 `/feedback-admin` 时被拒绝，断言覆盖 UI、API、DB 和截图证据。
 - `LOG-DOMAIN-001`：Admin 在 `/log-admin` 业务域治理区注册业务域并在 `/logs` 上传时绑定该域，断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-DOMAIN-KNOWLEDGE-001`：Admin 在 `/log-admin` 业务域治理区为业务域关联已发布知识条目（只列已发布条目、整组替换保存），断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
+- `LOG-SKILL-KNOWLEDGE-001`：技能工作区查看/取消知识链接、搜索已发布条目、多文件 Markdown 创建知识草稿与链接，以及缺少知识编辑权限的禁用原因。必需的 1440×900 浏览器证据仍待完成：`e2e/acceptance/log-skill-knowledge.acceptance.spec.ts` 已编写，但原生 Chromium 启动因 MachPortRendezvous PermissionDenied 失败，CUA 来源授权被用户明确拒绝，未取得浏览器交互或截图证据。组件测试为 `src/features/log-skills/KnowledgeSection.test.tsx`；实际检索修订来源由 PostgreSQL 集成测试断言，不是确定性浏览器模型证据（`coverage: future`）。
 - `LOG-DEGRADED-001`：上传含确定性故障标记的日志触发 provider 故障，分析降级为规则回退并在 UI 显著标注来源与原因，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-FEEDBACK-INSIGHTS-001`：Admin 提交日志反馈后在 `/log-admin`「分析质量」区看到按业务域 × 分析来源 × Prompt 版本聚合的有帮助率，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-EVAL-DRAFT-001`：Admin 在 `/log-admin` 已完成记录抽屉中导出评测案例草稿（脱敏清单弹层 + case.yaml/log.txt 下载内容校验），断言覆盖 UI（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。

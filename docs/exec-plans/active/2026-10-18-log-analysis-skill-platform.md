@@ -160,7 +160,8 @@ The diagnostic-procedure slice (#1227) reads optional `skill/v1.procedure` (maxi
 | `log_analysis_runs.skill_revision_id` | S1 | pin |
 | `log_files` | S2 | per record: path, size, sha256, encoding, line count, role, object keys (text + line-offset index) |
 | `log_evidence.file_path`, `source_ref` | S2 / S4 | additive evidence location |
-| `log_skill_test_cases`, `log_skill_test_runs` | S3 (parse) / S5 (analysis) | cases and results per revision |
+| `log_skill_revisions.spec.parseTests` | S3 | parse-test inputs and expectations versioned with the rules; latest results are returned to the workspace, without a new table |
+| `log_skill_test_cases`, `log_skill_test_runs` | S5 | analysis cases and results per revision |
 | `log_source_snapshots`, `log_source_files`, `log_source_chunks`, `log_source_statements` | S4 | snapshot metadata, files, FTS/trigram chunks, log-statement index |
 
 | `log_analysis_traces` | S1 | per run: ordered steps with tool name, argument summary, result size and lines returned, step outcome, token use; never raw prompts or provider payloads |
@@ -183,7 +184,7 @@ UX is decided here under the standing delegation and follows `docs/design-docs/u
 1. **Zero configuration works.** Uploading without a skill always analyzes with generic signals; skills improve results and never gate an upload.
 2. **Sample first.** An author starts by attaching a sample log. Parsing, decoding and signal screens preview against it live: matched lines are highlighted, coverage is counted, decoded values are shown.
 3. **Forms first, code optional.** Every rule has a visual form. A `代码视图` toggle shows the same draft as YAML for bulk edits and copy/paste; both views edit one draft and validate the same way.
-4. **Draft, check, publish.** A sticky draft bar shows `未发布更改` · `运行测试` · `发布`. Publishing shows the change summary and test results and never blocks; rollback publishes an older revision as a new one.
+4. **Draft, check, publish.** A sticky draft bar shows unpublished changes, save/discard and Publish; Run tests belongs to the Tests section toolbar, alongside a compact run status. Publishing shows test results at the top and a per-test change summary and never blocks on failed tests; rollback publishes an older revision as a new one.
 5. **Every claim is one click from its proof.** Evidence opens the log viewer at the cited line, with decoded fields and the source location beside it.
 6. **Integration is self-service.** Everything an integrator needs (key, endpoint, credential, copyable request, webhook, delivery log) is on one tab.
 
@@ -206,10 +207,10 @@ UX is decided here under the standing delegation and follows `docs/design-docs/u
 | Signals | Sentence builder: `当 [抽取规则] 的 [字段] [等于 / 在范围 / 属于 / 匹配] [值]，产生信号 [名称]，级别 [错误]`. Hits in the sample are listed; clicking one jumps to the line. |
 | Knowledge | Linked-entry list with `链接已有条目` (picker over published entries) and `上传 Markdown` (multi-file drop; creates knowledge entries linked to the skill). Without knowledge-edit permission the upload shows a disabled reason. |
 | Source | Snapshot table (`版本标签` · `文件数` · `索引状态` with progress · `跳过文件` · `上传时间`), `上传源码` dialog (archive + label), `设为默认`. `试一试`: paste a log line and see the source statement that printed it. |
-| Tests | `解析测试` (sample lines + expected fields, pass/fail with an inline diff) and `分析用例` (bundle + expected root cause, evidence and actions; latest score vs previous revision). `全部运行`. Cases can also be created from a report with `存为测试用例`. |
+| Tests | The section toolbar owns Run tests and a compact passed/failed count, Not run or Running status; the list shows each test's status. Add test uses the selected sample line and current decoded fields; expectations are edited in a field-path table with a code-view fallback. Failures show Field path / Expected / Actual and missing/unexpected signals. The sample inspector follows the section registry's visibility rule. Analysis cases (S5) use a bundle plus expected root cause, evidence and actions, with latest score vs previous revision; cases can also be created from a report. |
 | Integration | skillKey and endpoint with copy buttons; a ready-to-run `curl` prefilled with the skillKey; integration credentials (create shows the secret once, then rotate/revoke, last used); result webhook and test delivery (moved from the domain row); delivery records; link to the integration guide. |
 | Versions | Revision list; side-by-side diff grouped by section (procedure text, rules added/changed/removed); `回滚` publishes an older revision as a new one. |
-| Publish dialog (`lg`) | Change summary; parse tests passed/total; analysis-case scores vs the previous revision; warnings (for example an extractor with zero sample matches); `发布`. |
+| Publish dialog (`lg`) | Parse tests passed/total and a failure link appear at the top. The change summary lists added/changed/deleted tests by name and identifies changed parts instead of dumping test JSON. Analysis-case scores vs the previous revision and warnings (for example an extractor with zero sample matches) follow; Publish remains available when tests fail. |
 | Upload (`/logs`) | Drop files or one archive; optional question and related parameter; skill selector preselected by suggestion with its reason (`推荐：充电电源 · 匹配 kernel.log`); one primary action `开始分析`. |
 | Report (`/logs`) | Conclusion card with provenance badges (`技能与版本` · `模型` · `降级`); evidence items show `file:line`, the inference, decoded-field chips and an expandable source excerpt; clicking opens the log viewer drawer at the line with context. `文件` tab: tree with size, lines, role and skipped reasons. Feedback stays; skill administrators also see `存为测试用例`. |
 
@@ -259,9 +260,11 @@ Issue #1237 delivers the extraction core and code view; the sample-line extracto
 1. `parsing/v1` schema (zod) with path-precise validation errors; decoder engine as pure, bounded functions.
 2. Parse stage runs extractors and decoders, applies signal rules over decoded values, and stores decoded events as a per-run artifact (object store, line-anchored) plus per-extractor counts and signal hits in the database; reports persist cited events only.
 3. Tools `query_events` (extractor, field filters, line/time range, limit) and `describe_event_schema`; an event in a tool result counts as seeing its line for grounding.
-4. Parse tests: sample line(s) → expected decoded fields; run on every draft save and before publish.
+4. Parse tests (#1242): optional `skill/v1.parseTests` stores sample lines, optional filename and expected field paths/signals alongside the rules, so publication versions them. Expected fields match a subset of a decoded event, including nested register fields; converted fields compare `value` unless `raw` is explicitly requested. Signal ids or names compare as a set, with optional exact matching. One server runner uses the real parsing engine and per-line signal rules, applies input/output caps and a deadline, and returns per-test results with path/expected/actual differences. It runs after each draft save, on demand from Run tests in the Tests section toolbar, and before publication. Results stay only in the open workspace and are recomputed rather than persisted, avoiding a migration and stale-result storage. The publish dialog shows passed/total and a failure link at the top, then per-test changes, without blocking publication. See the [parse-test contract](../../design-docs/log-parsing-v1.md#parse-tests).
 5. Frontend: the S3 row of [UI by phase](#ui-by-phase). Forms and `代码视图` share one validator, so a draft round-trips between them without loss.
 6. A preview endpoint decodes pasted or selected sample lines against an unsaved draft for the live panes.
+
+Signal-rule preflight is shared by save, publish and test validation: at most 64 rules, 16 conditions per rule, 256 conditions overall, 4096 UTF-16 code units per text pattern and 65,536 across patterns. The on-demand parse-test POST has an 8 MiB body limit, including slash aliases, and shares one 1000 ms budget between validation and execution. Invalid input or validation timeout returns HTTP 400; an execution timeout returns failed tests. Transport overflow returns HTTP 413 before JSON parsing.
 
 **S3 acceptance**: the illustrative register-map and PD-frame examples decode exactly as specified; every construct has unit tests including cap violations; an agent conclusion cites a decoded field and the report renders it; parse tests block nothing but are shown in the publish dialog.
 

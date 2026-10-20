@@ -87,7 +87,7 @@ describe("parsing/v1 engine interface", () => {
       expect.objectContaining({ path: ["extractors", 0, "fields", "value"], message: expect.stringContaining("value") })
     ]));
     for (const pattern of ["(?P<value>a)\\1", "(?P<value>a)(b)"]) expect(parsingSpecSchema.safeParse({ ...spec, extractors: [{ ...spec.extractors[0], pattern }] }).success).toBe(false);
-    expect(parsingSpecSchema.safeParse({ ...specFor({ type: "string" }), registers: {} }).success).toBe(false);
+    expect(parsingSpecSchema.safeParse({ ...specFor({ type: "string" }), scripts: {} }).success).toBe(false);
     expect(parsingSpecSchema.safeParse({ ...spec, extractors: [{ ...specFor({ type: "string" }).extractors[0], extra: true }] }).success).toBe(false);
     expect(parsingSpecSchema.safeParse({ schemaVersion: "parsing/v1", extractors: [{ ...specFor({ type: "string" }).extractors[0], fields: { value: { type: "string", decode: {} } } }] }).success).toBe(false);
     for (const format of ["%Q", "%Y%Y", "%", "%%%Q"]) expect(parsingSpecSchema.safeParse(specForTimestamp(format)).success).toBe(false);
@@ -132,9 +132,10 @@ describe("parsing/v1 engine interface", () => {
     expect(decodeLogFiles(spec, [{ file: "a.log", lines: ["aa".repeat(3000), "bb".repeat(1097)] }]).counts.errors).toEqual({ byte_cap: 1 });
   });
   it("caps events across files, preserving the completed run result", () => {
-    const result = decodeLogFiles(specFor({ type: "string" }), [{ file: "a.log", lines: Array(MAX_DECODE_EVENTS).fill("a") }, { file: "b.log", lines: ["b"] }]);
-    expect(result.events).toHaveLength(MAX_DECODE_EVENTS);
-    expect(result.counts).toEqual({ total: MAX_DECODE_EVENTS, byExtractor: { value: MAX_DECODE_EVENTS }, errors: { event_cap: 1 } });
+    expect(MAX_DECODE_EVENTS).toBe(50_000);
+    const result = decodeLogFiles(specFor({ type: "string" }), [{ file: "a.log", lines: Array(3).fill("a") }, { file: "b.log", lines: ["b"] }], 3);
+    expect(result.events).toHaveLength(3);
+    expect(result.counts).toEqual({ total: 3, byExtractor: { value: 3 }, errors: { event_cap: 1 } });
   }, 30_000);
 });
 

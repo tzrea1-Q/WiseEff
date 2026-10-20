@@ -114,6 +114,7 @@ describe("searchPublishedKnowledgeForLogAnalysis", () => {
     expect(result.items.map((item) => item.entryId).sort()).toEqual([entryRow.id, chunkRow.entry_id].sort());
 
     const vectorCall = calls.find((call) => call.text.includes("from knowledge_chunks c"));
+    expect(vectorCall?.text).toContain("c.revision_id = e.head_revision_id");
     expect(vectorCall?.text).toContain("e.status = 'published'");
     expect(vectorCall?.text).toContain("c.entry_id = any(");
     expect(vectorCall?.values[0]).toBe("org-1");

@@ -1,0 +1,100 @@
+.workbench-dts-editor {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex: 1;
+  overflow: hidden;
+  color: var(--configuration-source-text);
+  background: var(--configuration-source-surface);
+}
+
+.workbench-dts-editor .cm-editor {
+  height: 100%;
+  color: inherit;
+  background: inherit;
+  font: var(--text-sm) / var(--leading-md) var(--font-code);
+}
+
+.workbench-dts-editor .cm-editor.cm-focused {
+  outline: var(--stroke-strong) solid var(--accent);
+  outline-offset: calc(-1 * var(--stroke-strong));
+}
+
+.workbench-dts-editor .cm-scroller {
+  overflow: auto;
+  font-family: inherit;
+  overscroll-behavior: contain;
+}
+
+.workbench-dts-editor .cm-content {
+  padding: var(--space-2) 0;
+  caret-color: var(--text);
+}
+
+.workbench-dts-editor .cm-line {
+  padding: 0 var(--space-3);
+}
+
+.workbench-dts-editor .cm-gutters {
+  color: var(--configuration-source-line-number);
+  background: var(--configuration-source-surface-raised);
+  border-right: var(--stroke-hairline) solid var(--configuration-source-outline);
+}
+
+.workbench-dts-editor .cm-activeLine,
+.workbench-dts-editor .cm-activeLineGutter,
+.workbench-dts-editor__focused-range {
+  background: var(--accent-soft);
+}
+
+.workbench-dts-editor .cm-focused .cm-selectionBackground,
+.workbench-dts-editor .cm-selectionBackground,
+.workbench-dts-editor .cm-searchMatch-selected {
+  background: var(--configuration-source-find-active);
+}
+
+.workbench-dts-editor .cm-searchMatch {
+  background: var(--configuration-source-find);
+  outline: var(--stroke-hairline) solid var(--border-strong);
+}
+
+.workbench-dts-editor .cm-cursor {
+  border-left-color: var(--text);
+}
+
+.workbench-dts-editor .cm-foldPlaceholder,
+.workbench-dts-editor .cm-panels {
+  color: var(--text);
+  background: var(--surface-sunken);
+  border-color: var(--border);
+}
+
+.workbench-dts-editor .cm-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font: var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.workbench-dts-editor .cm-textfield {
+  color: var(--text);
+  background: var(--surface);
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.workbench-dts-editor .cm-button {
+  color: var(--text);
+  background: var(--surface);
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  text-transform: none;
+}
+
+.workbench-dts-editor :is(.cm-textfield, .cm-button, .cm-foldGutter .cm-gutterElement):focus-visible {
+  outline: var(--stroke-strong) solid var(--accent);
+  outline-offset: var(--space-1);
+}

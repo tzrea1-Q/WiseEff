@@ -1,8 +1,11 @@
 import { runLogPrefilter } from "../../prefilter";
+import { genericSignalRuleSet } from "../../analyzer";
 import { z } from "zod";
 
 import { compileFileGlob, compileLogPattern, type LogPattern } from "../../adminPattern";
 import { extractLogSignals } from "../../genericSignals";
+import { MAX_SOURCE_EXCERPT_CHARS, MAX_SOURCE_LINE_CHARS, MAX_SOURCE_RANGE_LINES, MAX_SOURCE_SEARCH_RESULTS, MAX_SOURCE_TOOL_BYTES,
+  type SourceRangeParams, type SourceSearchParams } from "../../sourceSearchRepository";
 import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolContext";
 
 /**
@@ -12,6 +15,8 @@ import type { LogAnalysisToolContext, LogAnalysisToolOutcome } from "./toolConte
  */
 export const LOG_ANALYSIS_TOOL_NAMES = [
   "locate_log_statement",
+  "search_source",
+  "read_source_range",
   "search_log_lines",
   "search_lines",
   "list_files",
@@ -39,6 +44,13 @@ function clipLine(content: string) {
   return content.length > MAX_LINE_CHARS ? `${content.slice(0, MAX_LINE_CHARS)}…` : content;
 }
 
+function analyzedFiles(context: LogAnalysisToolContext): Array<{
+  path?: string; parsed?: LogAnalysisToolContext["parsed"];
+  reader?: import("../../fileReader").LogFileReader; prefilter?: LogAnalysisToolContext["prefilter"];
+}> {
+  return context.files?.filter((file) => file.parsed || file.reader) ?? [{ path: context.filePath, parsed: context.parsed }];
+}
+
 export const searchLogLinesParamsSchema = z.object({
   file: z.string().min(1).max(1024).optional(),
   pattern: z.string().min(1).max(200),
@@ -47,10 +59,10 @@ export const searchLogLinesParamsSchema = z.object({
   neighborhood: z.number().int().min(0).max(3).optional().default(1)
 });
 
-export function searchLogLines(
+export async function searchLogLines(
   context: LogAnalysisToolContext,
   params: z.infer<typeof searchLogLinesParamsSchema>
-): LogAnalysisToolOutcome {
+): Promise<LogAnalysisToolOutcome> {
   let matcher: (line: string) => boolean;
   if (params.isRegex) {
     let regex: LogPattern;
@@ -65,31 +77,42 @@ export function searchLogLines(
     matcher = (line) => line.toLowerCase().includes(needle);
   }
 
-  let fileMatcher: LogPattern | undefined;
+  let fileMatcher: ReturnType<typeof compileFileGlob> | undefined;
   if (params.file) {
     fileMatcher = compileFileGlob(params.file);
   }
-  const files = context.files?.filter((file) => file.parsed) ?? [{ path: context.filePath, parsed: context.parsed }];
+  const files = analyzedFiles(context);
   let totalMatches = 0, returnedMatches = 0;
   const lines: Array<{ file?: string; line?: number; lineNumber: number; isMatch: boolean; content: string }> = [];
   for (const file of files) {
     if (fileMatcher && (!file.path || !fileMatcher.test(file.path))) continue;
     const rawLines = file.parsed!.rawLines;
+    const totalLines = file.reader?.lineCount ?? rawLines.length;
     const kept: number[] = [];
-    for (let line = 1; line <= rawLines.length; line++) {
-      if (matcher(rawLines[line - 1])) {
+    const source = file.reader ? file.reader.lines() : rawLines.map((content, index) => ({ lineNumber: index + 1, content }));
+    for await (const { lineNumber: line, content } of source) {
+      if (matcher(content)) {
         totalMatches++;
         if (returnedMatches < params.maxMatches) { kept.push(line); returnedMatches++; }
       }
     }
     const included = new Set<number>();
     for (const line of kept) for (let offset = -params.neighborhood; offset <= params.neighborhood; offset++) {
-      if (line + offset >= 1 && line + offset <= rawLines.length) included.add(line + offset);
+      if (line + offset >= 1 && line + offset <= totalLines) included.add(line + offset);
     }
     const matched = new Set(kept);
-    for (const line of [...included].sort((a, b) => a - b)) lines.push({
+    const ordered = [...included].sort((a, b) => a - b);
+    const contents = new Map<number, string>();
+    if (file.reader) for (let at = 0; at < ordered.length;) {
+      const start = ordered[at];
+      let end = at;
+      while (end + 1 < ordered.length && ordered[end + 1] - start < 400) end++;
+      for (const item of await file.reader.readRange(start, ordered[end])) if (included.has(item.lineNumber)) contents.set(item.lineNumber, clipLine(item.content));
+      at = end + 1;
+    }
+    for (const line of ordered) lines.push({
       ...(file.path ? { file: file.path, line } : {}), lineNumber: line,
-      isMatch: matched.has(line), content: clipLine(rawLines[line - 1])
+      isMatch: matched.has(line), content: file.reader ? contents.get(line)! : clipLine(rawLines[line - 1])
     });
   }
   return { ok: true, result: { totalMatches, returnedMatches, truncated: totalMatches > returnedMatches, lines } };
@@ -101,27 +124,29 @@ export const readLineRangeParamsSchema = z.object({
   endLine: z.number().int().min(1)
 });
 
-export function readLineRange(
+export async function readLineRange(
   context: LogAnalysisToolContext,
   params: z.infer<typeof readLineRangeParamsSchema>
-): LogAnalysisToolOutcome {
+): Promise<LogAnalysisToolOutcome> {
   if (params.endLine < params.startLine) {
     return { ok: false, error: "endLine must be greater than or equal to startLine." };
   }
-  const files = context.files?.filter((file) => file.parsed) ?? [{ path: context.filePath, parsed: context.parsed }];
+  const files = analyzedFiles(context);
   if (!params.file && files.length > 1) return { ok: false, error: "file is required for multi-file records." };
   const selected = params.file ? files.find((file) => file.path === params.file) : files[0];
   if (!selected) return { ok: false, error: "File was not found or was skipped." };
-  const totalLines = selected.parsed!.rawLines.length;
+  const totalLines = selected.reader?.lineCount ?? selected.parsed!.rawLines.length;
   if (params.startLine > totalLines) {
     return { ok: false, error: `startLine ${params.startLine} is beyond the end of the log (${totalLines} lines).` };
   }
 
   const clampedEnd = Math.min(params.endLine, totalLines);
   const cappedEnd = Math.min(clampedEnd, params.startLine + MAX_RANGE_LINES - 1);
+  const read = selected.reader ? await selected.reader.readRange(params.startLine, cappedEnd) : undefined;
   const lines: Array<{ file?: string; line?: number; lineNumber: number; content: string }> = [];
   for (let lineNumber = params.startLine; lineNumber <= cappedEnd; lineNumber += 1) {
-    lines.push({ ...(selected.path ? { file: selected.path, line: lineNumber } : {}), lineNumber, content: clipLine(selected.parsed!.rawLines[lineNumber - 1]) });
+    const content = read ? read[lineNumber - params.startLine].content : selected.parsed!.rawLines[lineNumber - 1];
+    lines.push({ ...(selected.path ? { file: selected.path, line: lineNumber } : {}), lineNumber, content: clipLine(content) });
   }
 
   return {
@@ -143,12 +168,13 @@ export function getPrefilterFindings(context: LogAnalysisToolContext, filePath?:
     const files = context.files.filter((file) => file.parsed && (!filePath || file.path === filePath));
     return { ok: true, result: { totalFiles: files.length, truncated: files.length > MAX_MATCHES_HARD_CAP,
       files: files.slice(0, MAX_MATCHES_HARD_CAP).map((file) => ({ file: file.path,
-        findings: getPrefilterFindings({ ...context, files: undefined, prefilter: runLogPrefilter(file.parsed!.entries, context.signalRules) }) })) } };
+        findings: getPrefilterFindings({ ...context, files: undefined, prefilter: file.prefilter ?? runLogPrefilter(file.parsed!.entries, file.skillMatched === false ? genericSignalRuleSet : context.signalRules) }) })) } };
   }
   const findings = context.prefilter;
   return {
     ok: true,
     result: {
+      ...(findings.truncated ? { truncated: true } : {}),
       ruleHits: findings.ruleHits,
       evidence: findings.evidence.map((item) => ({
         ruleHit: item.ruleHit,
@@ -199,6 +225,7 @@ export async function readDomainKnowledge(
       retrievalMode: search.retrievalMode,
       items: search.items.slice(0, MAX_KNOWLEDGE_ITEMS).map((item) => ({
         entryId: item.entryId,
+        revisionId: item.revisionId,
         title: item.title,
         excerpt:
           item.excerpt.length > MAX_KNOWLEDGE_EXCERPT_CHARS
@@ -277,9 +304,14 @@ function signalPage(field: "signals" | "templates", items: unknown[], params: { 
   return outcome();
 }
 
-export function getTimeline(context: LogAnalysisToolContext, params: z.infer<typeof getTimelineParamsSchema>): LogAnalysisToolOutcome {
-  const files = context.files?.filter((file) => file.parsed) ?? [{ path: context.filePath ?? "", parsed: context.parsed }];
-  const anchor = params.file !== undefined ? files.find((file) => file.path === params.file)?.parsed?.entries.find((entry) => entry.lineNumber === params.line) : undefined;
+export async function getTimeline(context: LogAnalysisToolContext, params: z.infer<typeof getTimelineParamsSchema>): Promise<LogAnalysisToolOutcome> {
+  const files = analyzedFiles(context);
+  const selected = files.find((file) => file.path === params.file);
+  let anchor = selected?.parsed?.entries.find((entry) => entry.lineNumber === params.line);
+  if (selected?.reader) for await (const entry of selected.reader.entries()) {
+    if (entry.lineNumber > params.line!) break;
+    if (entry.lineNumber === params.line) { anchor = entry; break; }
+  }
   const targetTime = Date.parse(params.time ?? anchor?.timestamp ?? "");
   if (!Number.isFinite(targetTime)) return { ok: false, error: "The anchor must identify an analyzed line with a valid timestamp." };
   type TimedLine = { file: string; line: number; lineNumber: number; timestamp: string; content: string; time: number };
@@ -287,18 +319,22 @@ export function getTimeline(context: LogAnalysisToolContext, params: z.infer<typ
   const target: TimedLine = { file: params.file ?? "", line: params.line ?? 0, lineNumber: 0, timestamp: "", content: "", time: targetTime };
   const before: TimedLine[] = [], after: TimedLine[] = [];
   let total = 0;
-  for (const file of files) for (const entry of file.parsed!.entries) {
+  for (const file of files) for await (const entry of file.reader ? file.reader.entries() : file.parsed!.entries) {
     const time = Date.parse(entry.timestamp ?? "");
     if (!Number.isFinite(time)) continue;
     total++;
     const item: TimedLine = { file: file.path ?? "", line: entry.lineNumber, lineNumber: entry.lineNumber,
-      timestamp: new Date(time).toISOString(), content: clipLine(file.parsed!.rawLines[entry.lineNumber - 1]), time };
+      timestamp: new Date(time).toISOString(), content: file.reader ? "" : clipLine(file.parsed!.rawLines[entry.lineNumber - 1]), time };
     const earlier = params.time !== undefined ? time < targetTime : compare(item, target) < 0;
     const list = earlier ? before : after;
     list.push(item); list.sort(compare);
     if (list.length > (earlier ? params.before : params.after + 1)) list.splice(earlier ? 0 : list.length - 1, 1);
   }
   const lines = [...before, ...after].map(({ time: _time, ...line }) => line);
+  for (const line of lines) {
+    const reader = files.find((file) => file.path === line.file)?.reader;
+    if (reader) line.content = clipLine((await reader.readRange(line.lineNumber, line.lineNumber))[0].content);
+  }
   const outcome = () => ({ ok: true as const, result: { lines, truncated: total > lines.length } });
   while (lines.length && Buffer.byteLength(JSON.stringify(outcome()), "utf8") > MAX_SIGNAL_TOOL_BYTES) {
     // Drop the farther edge; the requested time/anchor remains in the window.
@@ -320,9 +356,10 @@ export const queryEventsParamsSchema = z.object({ extractor: z.string().min(1).m
 export const MAX_QUERY_EVENTS_BYTES = 16 * 1024;
 export const MAX_QUERY_FIELD_BYTES = 1024;
 
-export function availableLogAnalysisTools(context: Pick<LogAnalysisToolContext, "decoding" | "sourceSnapshot" | "locateLogStatement">) {
-  return LOG_ANALYSIS_TOOL_NAMES.filter((name) => name === "locate_log_statement"
-    ? context.sourceSnapshot?.status === "ready" && !!context.locateLogStatement
+export function availableLogAnalysisTools(context: Pick<LogAnalysisToolContext, "decoding" | "sourceSnapshot" | "locateLogStatement" | "searchSource" | "readSourceRange">) {
+  const sourceBackends = { locate_log_statement: context.locateLogStatement, search_source: context.searchSource, read_source_range: context.readSourceRange };
+  return LOG_ANALYSIS_TOOL_NAMES.filter((name) => Object.hasOwn(sourceBackends, name)
+    ? context.sourceSnapshot?.status === "ready" && !!sourceBackends[name as keyof typeof sourceBackends]
     : context.decoding?.spec.extractors.length || (name !== "query_events" && name !== "describe_event_schema"));
 }
 
@@ -335,9 +372,10 @@ export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typ
     if ((condition.op === "in") !== Array.isArray(condition.value)) return { ok: false, error: "Only in requires an array value" };
   }
   const events: typeof decoding.events = [];
-  let truncated = false;
+  let truncated = !!decoding.counts.truncated;
   const outcome = (cursor: number) => ({ ok: true as const, result: { events,
-    nextCursor: cursor < decoding.events.length ? String(cursor) : null, truncated } });
+    nextCursor: cursor < decoding.events.length ? String(cursor) : null, truncated,
+    ...(decoding.counts.reason ? { reason: decoding.counts.reason } : {}) } });
   const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
   let index = Number(params.cursor ?? 0);
   for (; index < decoding.events.length; index++) {
@@ -379,6 +417,51 @@ export function queryEvents(context: LogAnalysisToolContext, params: z.infer<typ
 }
 
 export const logAnalysisToolCatalog: Record<LogAnalysisToolName, ToolDefinition> = {
+  search_source: {
+    description: 'Search the pinned ready source snapshot by case-sensitive path glob and literal or full-text query. Args: {pathGlob: string (e.g. drivers/power/**/*.c), query: string (3-200 characters), mode?: literal|full_text (default literal), limit?: 1-20 (default 8)}. Literal queries need three consecutive letters/numbers and no newlines. Common queries require a literal path prefix; narrow pathGlob or query if rejected. Scores at most 200 admitted indexed chunks and 200 split-line boundary windows, with a 1-second database deadline. Timeout returns truncated with reason statement_timeout. Returns ranked snapshotId/path/line/excerpt hits; max 20 hits, 400 characters per excerpt and 16 KiB total; truncated marks caps. Only returned hit locations can be source evidence.',
+    paramsSchema: z.object({ pathGlob: z.string().min(1).max(1024), query: z.string().trim().min(3).max(200),
+      mode: z.enum(["literal", "full_text"]).default("literal"), limit: z.number().int().min(1).max(MAX_SOURCE_SEARCH_RESULTS).default(8) }).strict()
+      .refine((args) => args.mode !== "literal" || /[\p{L}\p{N}]{3}/u.test(args.query) && !/[\r\n]/.test(args.query),
+        "Literal queries require at least three consecutive letters or numbers and no newlines."),
+    execute: async (context, args) => {
+      const params = args as SourceSearchParams;
+      const result = await context.searchSource!(params);
+      const items = [] as typeof result.items;
+      let truncated = result.truncated;
+      const outcome = () => ({ ok: true as const, result: { items, truncated, ...(result.reason ? { reason: result.reason } : {}) } });
+      for (const item of result.items.slice(0, params.limit)) {
+        truncated ||= item.excerpt.length > MAX_SOURCE_EXCERPT_CHARS;
+        items.push({ ...item, excerpt: item.excerpt.slice(0, MAX_SOURCE_EXCERPT_CHARS) });
+        if (Buffer.byteLength(JSON.stringify(outcome()), "utf8") > MAX_SOURCE_TOOL_BYTES) { items.pop(); truncated = true; break; }
+      }
+      truncated ||= result.items.length > items.length;
+      return outcome();
+    }
+  },
+  read_source_range: {
+    description: 'Read numbered source lines from the run\'s pinned ready snapshot. Args: {snapshotId: string, path: string, startLine: positive integer, endLine: positive integer}. Range clamped to 80 lines, each line to 1000 characters, total output to 16 KiB; truncated marks caps. Only returned numbered lines can be source evidence; a different snapshot is rejected.',
+    paramsSchema: z.object({ snapshotId: z.string().min(1).max(200), path: z.string().min(1).max(1024),
+      startLine: z.number().int().safe().positive(), endLine: z.number().int().safe().positive() }).strict()
+      .refine((args) => args.endLine >= args.startLine, "endLine must be greater than or equal to startLine."),
+    execute: async (context, args) => {
+      const params = args as SourceRangeParams;
+      if (params.snapshotId !== context.sourceSnapshot?.id) return { ok: false, error: "Source snapshot does not match this run." };
+      const cappedEnd = Math.min(params.endLine, params.startLine + MAX_SOURCE_RANGE_LINES - 1);
+      const result = await context.readSourceRange!({ ...params, endLine: cappedEnd });
+      if (!result) return { ok: false, error: "Source file or range unavailable." };
+      const lines = [] as typeof result.lines;
+      let truncated = result.truncated || cappedEnd < params.endLine;
+      const outcome = () => ({ ok: true as const, result: { ...result, snapshotId: params.snapshotId, path: params.path,
+        startLine: params.startLine, endLine: lines.at(-1)?.line ?? params.startLine, lines, truncated } });
+      for (const item of result.lines.filter((line) => line.line >= params.startLine && line.line <= cappedEnd).slice(0, MAX_SOURCE_RANGE_LINES)) {
+        truncated ||= item.content.length > MAX_SOURCE_LINE_CHARS;
+        lines.push({ ...item, content: item.content.slice(0, MAX_SOURCE_LINE_CHARS) });
+        if (Buffer.byteLength(JSON.stringify(outcome()), "utf8") > MAX_SOURCE_TOOL_BYTES) { lines.pop(); truncated = true; break; }
+      }
+      truncated ||= result.lines.length > lines.length;
+      return outcome();
+    }
+  },
   locate_log_statement: {
     description: 'Locate output statements in the pinned ready source snapshot. Args: {line?: string (max 4000 characters), file?: string, anchorLine?: positive integer, limit?: 1-20}. Supply line OR file+anchorLine. Returns candidate snapshotId/path/line, confidence and an untrusted ±3-line excerpt, capped at 16 KiB. Only the returned statement locations can be source evidence.',
     paramsSchema: z.object({ line: z.string().min(1).max(4000).optional(), file: z.string().min(1).max(1024).optional(),
@@ -386,8 +469,10 @@ export const logAnalysisToolCatalog: Record<LogAnalysisToolName, ToolDefinition>
       .refine((args) => !!args.line !== !!(args.file && args.anchorLine), "Supply line or file+anchorLine"),
     execute: async (context, args) => {
       const params = args as { line?: string; file?: string; anchorLine?: number; limit: number };
-      const file = context.files?.find((file) => file.path === params.file && file.parsed);
-      const content = params.line ?? (file?.parsed ?? (params.file === context.filePath ? context.parsed : undefined))?.rawLines[(params.anchorLine ?? 0) - 1];
+      const file = context.files?.find((file) => file.path === params.file && (file.reader || file.parsed));
+      const content = params.line ?? (file?.reader
+        ? (await file.reader.readRange(params.anchorLine!, params.anchorLine!))[0]?.content
+        : (file?.parsed ?? (params.file === context.filePath ? context.parsed : undefined))?.rawLines[(params.anchorLine ?? 0) - 1]);
       if (!content || content.length > 4000 || !context.locateLogStatement) return { ok: false, error: "Source locator or log anchor unavailable" };
       const result = await context.locateLogStatement(content, params.limit);
       // Enforce output bounds before the kernel observes citations, even with an alternate backend.
@@ -437,7 +522,7 @@ export const logAnalysisToolCatalog: Record<LogAnalysisToolName, ToolDefinition>
     paramsSchema: z.object({ offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(200).default(100) }),
     execute: (context, args) => {
       const { offset, limit } = args as { offset: number; limit: number };
-      const files = context.files?.map(({ parsed: _parsed, ...file }) => file) ?? [{ path: context.filePath, lineCount: context.parsed.rawLines.length, status: "analyzed" }];
+      const files = context.files?.map(({ parsed: _parsed, reader: _reader, prefilter: _prefilter, ...file }) => file) ?? [{ path: context.filePath, lineCount: context.parsed.rawLines.length, status: "analyzed" }];
       return { ok: true, result: { files: files.slice(offset, offset + limit), total: files.length, truncated: files.length > offset + limit } };
     }
   },

@@ -7,8 +7,10 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { getEntryById as getKnowledgeEntryById } from "../knowledge/repository";
+import { canReadEntry } from "../knowledge/policy";
 import {
   findLogDomainByName,
+  findLogDomainBySkillKey,
   getLogDomainById,
   insertLogDomain,
   listLogDomainKnowledgeLinks,
@@ -26,6 +28,7 @@ import { listRecentLogWebhookDeliveries, type LogWebhookDeliveryDto } from "./we
 import type { LogWebhookDeliverer, LogWebhookDeliveryOutcome } from "./webhookDelivery";
 import { validateWebhookUrl } from "./webhookSecurity";
 import { insertSkillRevision, listSkillRevisions, lockSkill } from "./skillsRepository";
+import { skillKeySchema } from "./schemas";
 
 export type CreateLogDomainInput = {
   name: string;
@@ -35,6 +38,7 @@ export type CreateLogDomainInput = {
 
 export type UpdateLogDomainInput = {
   domainId: string;
+  skillKey?: string;
   name?: string;
   description?: string | null;
   /** undefined = keep; null = clear the stored profile. */
@@ -144,6 +148,9 @@ export async function updateLogDomainRecord(
 ): Promise<LogDomainDto> {
   requireLogAdminDomains(auth);
   const name = input.name !== undefined ? trimmedName(input.name) : undefined;
+  if (input.skillKey !== undefined && !skillKeySchema.safeParse(input.skillKey).success) {
+    throw new ApiError("VALIDATION_FAILED", "Analysis skill key is invalid.", { fieldErrors: { skillKey: "Use 2–63 lowercase letters, digits or hyphens, starting with a letter or digit." } });
+  }
   const formatProfile =
     input.formatProfile === undefined ? undefined : input.formatProfile === null ? null : parseFormatProfileOrThrow(input.formatProfile);
 
@@ -152,6 +159,15 @@ export async function updateLogDomainRecord(
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
+    }
+    if (input.skillKey !== undefined && input.skillKey !== existing.skillKey) {
+      // Serialize key allocation and edits in this organization, including the
+      // database creation trigger, before checking the unique constraint.
+      await tx.query("select pg_advisory_xact_lock(hashtextextended('log-skill-key:' || $1, 0))", [auth.organization.id]);
+      const conflicting = await findLogDomainBySkillKey(tx, { organizationId: auth.organization.id, skillKey: input.skillKey });
+      if (conflicting) throw new ApiError("VALIDATION_FAILED", "Analysis skill key is already used in this organization.", {
+        fieldErrors: { skillKey: "This skill key is already used in this organization." }
+      });
     }
     const revisioned = input.formatProfile !== undefined || input.modelOverride !== undefined || input.description !== undefined;
     const revisions = revisioned ? await listSkillRevisions(tx, auth.organization.id, input.domainId) : [];
@@ -170,6 +186,7 @@ export async function updateLogDomainRecord(
     const domain = await updateLogDomainRow(tx, {
       organizationId: auth.organization.id,
       domainId: input.domainId,
+      skillKey: input.skillKey,
       name,
       description: input.description,
       formatProfile,
@@ -209,7 +226,10 @@ export async function updateLogDomainRecord(
           status: domain.status,
           formatProfileChanged: input.formatProfile !== undefined,
           modelOverrideChanged: input.modelOverride !== undefined,
-          modelOverride: domain.modelOverride ?? null
+          modelOverride: domain.modelOverride ?? null,
+          ...(input.skillKey !== undefined && input.skillKey !== existing.skillKey ? {
+            previousSkillKey: existing.skillKey, skillKey: domain.skillKey
+          } : {})
         }
       })
     };
@@ -261,7 +281,7 @@ export async function listLogDomainKnowledgeLinkRecords(
   if (!domain) {
     throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
   }
-  return { items: await listLogDomainKnowledgeLinks(db, { organizationId: auth.organization.id, domainId }) };
+  return { items: await listLogDomainKnowledgeLinks(db, auth, domainId) };
 }
 
 /**
@@ -281,6 +301,11 @@ export async function setLogDomainKnowledgeLinkRecords(
   const knowledgeEntryIds = [...new Set(input.knowledgeEntryIds)];
 
   const items = await withAuditedWrite(db, createUserInvocation(auth), context, async (tx) => {
+    await lockSkill(tx, auth.organization.id, input.domainId);
+    const revisions = await listSkillRevisions(tx, auth.organization.id, input.domainId);
+    if (revisions.some((revision) => revision.status === "draft")) {
+      throw new ApiError("LOG_SKILL_DRAFT_EXISTS", "Publish or discard the skill draft before editing legacy knowledge links.");
+    }
     const domain = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!domain) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
@@ -288,7 +313,7 @@ export async function setLogDomainKnowledgeLinkRecords(
 
     for (const entryId of knowledgeEntryIds) {
       const entry = await getKnowledgeEntryById(tx, auth, entryId);
-      if (!entry) {
+      if (!entry || (entry.status !== "published" && !canReadEntry(auth, entry))) {
         throw new ApiError("NOT_FOUND", "Knowledge entry was not found.", { knowledgeEntryId: entryId });
       }
       if (entry.status !== "published") {
@@ -299,7 +324,9 @@ export async function setLogDomainKnowledgeLinkRecords(
       }
     }
 
-    const { added, removed } = await replaceLogDomainKnowledgeLinks(tx, {
+    const current = revisions.find((revision) => revision.status === "published")!;
+    const previousIds = current.spec.knowledgeEntryIds ?? [];
+    await replaceLogDomainKnowledgeLinks(tx, {
       organizationId: auth.organization.id,
       domainId: input.domainId,
       knowledgeEntryIds,
@@ -307,8 +334,13 @@ export async function setLogDomainKnowledgeLinkRecords(
       newLinkId: () => randomUUID()
     });
 
+    await tx.query(`update log_skill_revisions set status = 'superseded'
+      where organization_id = $1 and skill_id = $2 and status = 'published'`, [auth.organization.id, input.domainId]);
+    await insertSkillRevision(tx, { organizationId: auth.organization.id, skillId: input.domainId,
+      spec: { ...current.spec, knowledgeEntryIds }, userId: auth.user.id, published: true });
+
     return {
-      result: await listLogDomainKnowledgeLinks(tx, { organizationId: auth.organization.id, domainId: input.domainId }),
+      result: await listLogDomainKnowledgeLinks(tx, auth, input.domainId),
       audit: logDomainAudit({
         kind: "log-domain-knowledge-links-update",
         action: "update-knowledge-links",
@@ -316,8 +348,8 @@ export async function setLogDomainKnowledgeLinkRecords(
         metadata: {
           name: domain.name,
           linkedCount: knowledgeEntryIds.length,
-          addedCount: added.length,
-          removedCount: removed.length
+          addedCount: knowledgeEntryIds.filter((id) => !previousIds.includes(id)).length,
+          removedCount: previousIds.filter((id) => !knowledgeEntryIds.includes(id)).length
         }
       })
     };

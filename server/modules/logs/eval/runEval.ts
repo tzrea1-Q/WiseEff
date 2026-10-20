@@ -11,6 +11,7 @@ import {
 } from "../analyzer/llmAnalyzer";
 import { createScriptedLogAnalysisModel } from "../analyzer/scriptedModel";
 import { analyzeWithDegradation } from "../worker";
+import type { LogAnalysisTraceStep } from "../traceTypes";
 import { evaluateAllLogEvalExpectations, evaluateLogEvalExpectation, type LogEvalExpectation, type LogEvalRunResult } from "./expectations";
 import {
   LOG_EVAL_SCENARIOS,
@@ -38,6 +39,8 @@ export type LogScenarioEvalResult = {
     evidenceLineNumbers: number[][];
     evidenceSourceLocations?: Array<{ snapshotId: string; path: string; line: number }>;
     conclusion: string;
+    traceStepCount?: number;
+    traceKinds?: LogAnalysisTraceStep["kind"][];
   };
 };
 
@@ -118,7 +121,8 @@ function toScenarioResult(
       ...(output.evidence.some((item) => item.sourceLocation) ? {
         evidenceSourceLocations: output.evidence.flatMap((item) => item.sourceLocation ? [item.sourceLocation] : [])
       } : {}),
-      conclusion: output.conclusion
+      conclusion: output.conclusion,
+      ...(runResult.trace ? { traceStepCount: runResult.trace.length, traceKinds: [...new Set(runResult.trace.map((step) => step.kind))] } : {})
     }
   };
 }
@@ -130,6 +134,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
   }
 
   const promptMessages: LogAnalysisChatMessage[] = [];
+  const trace: LogAnalysisTraceStep[] = [];
   const analyzer = createLlmLogAnalyzer({
     model: capturePrompts(scenario.model, promptMessages),
     modelLabel: EVAL_MODEL_LABEL,
@@ -140,6 +145,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
     analyzer,
     analyzeInput: {
       parsed,
+      onTrace: (step) => { trace.push(step); },
       filePath: scenario.fileName,
       procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
@@ -153,6 +159,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
 
   return toScenarioResult(scenario, "single-shot", {
     output,
+    trace,
     parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber),
     promptMessages,
     platformProtocol: scenario.procedure ? await capturePlatformProtocol(
@@ -171,24 +178,25 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
 
   const scriptedModel = createScriptedLogAnalysisModel(scenario.script);
   const promptMessages: LogAnalysisChatMessage[] = [];
+  const trace: LogAnalysisTraceStep[] = [];
   const returnedSourceLocations: NonNullable<LogEvalRunResult["returnedSourceLocations"]> = [];
   const analyzer = createAgentLoopLogAnalyzer({
     model: capturePrompts(scriptedModel, promptMessages),
     modelLabel: EVAL_MODEL_LABEL,
     tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
-    bindToolBackends: () => scenario.sourceMatches ? {
-      locateLogStatement: async () => {
-        returnedSourceLocations.push(...scenario.sourceMatches!.items.map(({ snapshotId, path, line }) => ({ snapshotId, path, line })));
-        return scenario.sourceMatches!;
-      }
-    } : {}
+    bindToolBackends: () => ({
+      ...(scenario.sourceMatches ? { locateLogStatement: async () => scenario.sourceMatches! } : {}),
+      ...(scenario.sourceSearch ? { searchSource: async () => scenario.sourceSearch! } : {}),
+      ...(scenario.sourceRange ? { readSourceRange: async () => scenario.sourceRange! } : {})
+    })
   });
 
   const output = await analyzeWithDegradation({
     analyzer,
     analyzeInput: {
       parsed,
+      onTrace: (step) => { trace.push(step); },
       filePath: scenario.fileName,
       procedure: scenario.procedure,
       analysisQuestion: scenario.analysisQuestion,
@@ -201,8 +209,22 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     now: () => new Date()
   });
 
+  // Inspect what the model actually saw, after catalog caps, rather than trusting backend fixtures.
+  for (const message of promptMessages) {
+    const match = /^Tool result for (locate_log_statement|search_source|read_source_range):\n(.*)$/s.exec(message.content);
+    if (!match) continue;
+    const result = JSON.parse(match[2]) as { snapshotId?: string; path?: string; lines?: Array<{ line: number }>;
+      items?: Array<{ snapshotId: string; path: string; line: number }> };
+    if (match[1] === "read_source_range" && result.snapshotId && result.path) {
+      returnedSourceLocations.push(...(result.lines ?? []).map(({ line }) => ({ snapshotId: result.snapshotId!, path: result.path!, line })));
+    } else {
+      returnedSourceLocations.push(...(result.items ?? []).map(({ snapshotId, path, line }) => ({ snapshotId, path, line })));
+    }
+  }
+
   return toScenarioResult(scenario, "loop", {
     output,
+    trace,
     parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber),
     promptMessages,
     platformProtocol: scenario.procedure ? await capturePlatformProtocol(
@@ -357,13 +379,13 @@ export function formatLogEvalReportMarkdown(report: LogEvalReport): string {
     "",
     "## Scenario Results",
     "",
-    "| Scenario | Category | Kernel | Source | Degraded | Result |",
-    "| --- | --- | --- | --- | --- | --- |"
+    "| Scenario | Category | Kernel | Source | Degraded | Trace steps | Result |",
+    "| --- | --- | --- | --- | --- | --- | --- |"
   ];
 
   for (const scenario of report.scenarios) {
     lines.push(
-      `| ${scenario.name} | ${scenario.category} | ${scenario.kernel} | ${scenario.runResult.analysisSource ?? "-"} | ${scenario.runResult.degradedReason ?? "-"} | ${scenario.pass ? "PASS" : "FAIL"} |`
+      `| ${scenario.name} | ${scenario.category} | ${scenario.kernel} | ${scenario.runResult.analysisSource ?? "-"} | ${scenario.runResult.degradedReason ?? "-"} | ${scenario.runResult.traceStepCount ?? "-"} | ${scenario.pass ? "PASS" : "FAIL"} |`
     );
   }
 

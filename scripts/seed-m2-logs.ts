@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { loadServerEnv } from "../server/config/env";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
+import { provisionChargingSkill } from "../server/modules/logs/provisionChargingSkill";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const organizationId = "org-chargelab";
@@ -33,6 +34,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
   const unsupportedChecksum = checksum(unsupportedBytes);
 
   await db.transaction(async (tx) => {
+    await provisionChargingSkill(tx, organizationId);
     await tx.query(
       `
       insert into log_file_objects (

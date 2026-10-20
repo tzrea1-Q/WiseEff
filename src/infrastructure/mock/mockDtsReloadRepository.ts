@@ -77,6 +77,7 @@ export function createMockDtsReloadBridgeSeams() {
     }),
     detectTargets: async () => [
       {
+        protocol: "hdc" as const,
         targetRef: MOCK_DTS_RELOAD_TARGET_REF,
         label: `Mock Bridge · ${MOCK_DTS_RELOAD_TARGET_REF}`,
         bridgeId: MOCK_DTS_RELOAD_BRIDGE_ID

@@ -3,6 +3,11 @@ import { DecodedFields } from "./DecodedFields";
 import { SourceEvidence } from "./SourceEvidence";
 import { Button } from "@/components/ui/button";
 import { SignalsTab } from "./SignalsTab";
+import { LogFileDrawer } from "./LogFileDrawer";
+import { LogTraceTab } from "./AnalysisTrace";
+import { AnalysisCaseDialog } from "@/features/log-skills/AnalysisCaseDialog";
+import type { AnalysisCasePrefill } from "@/features/log-skills/types";
+import { canPerform } from "@/app/permissions";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -13,6 +18,7 @@ import { SearchField } from "@/components/common/SearchField";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
 import type { LogRelatedParameterPin } from "@/application/ports/LogAnalysisRepository";
+import { adaptivePollDelayMs } from "@/application/logs/logRuntime";
 import type { ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogProtectedProjectBindingListResponse } from "@/infrastructure/http/parameterCatalogDtos";
@@ -72,7 +78,7 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-type LogsAuxTab = "report" | "files" | "signals" | "metadata" | "related";
+type LogsAuxTab = "report" | "files" | "signals" | "trace" | "metadata" | "related";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 
 function createEmptyLogRecord(): LogRecord {
@@ -101,9 +107,10 @@ function createEmptyLogRecord(): LogRecord {
   };
 }
 
-export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
+export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability, sessionPermissions }: PageProps) {
   const knowledgeRepository = runtime?.knowledgeRepository;
   const logRepository = runtime?.logAnalysisRepository;
+  const canViewTrace = sessionPermissions ? sessionPermissions.includes("logs:admin-domains") : canPerform(state.activeRoleId, "logs.admin-domains");
   const [selectedLogDetail, setSelectedLogDetail] = useState<{ summary: LogRecord; record: LogRecord } | null>(null);
   const [selectedLogId, setSelectedLogId] = useState(() => {
     // Deep link: /logs?logId=<id> (the target of 复制链接) restores the selection.
@@ -116,15 +123,19 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadLogDomains, setUploadLogDomains] = useState<LogDomain[]>([]);
   const [distilPending, setDistilPending] = useState(false);
+  const [casePrefill, setCasePrefill] = useState<(AnalysisCasePrefill & { sourceRecordId: string }) | null>(null);
+  const [casePending, setCasePending] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [auxTab, setAuxTab] = useState<LogsAuxTab>("report");
+  const [selectedAuxTab, setAuxTab] = useState<LogsAuxTab>("report");
+  const auxTab = selectedAuxTab === "trace" && !canViewTrace ? "report" : selectedAuxTab;
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [hoveredLine, setHoveredLine] = useState<number | null>(null);
   const [focusedSignalLine, setFocusedSignalLine] = useState<number | null>(null);
+  const [viewer, setViewer] = useState<{ file: string; lines: number[] } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [liveMessage, setLiveMessage] = useState("");
@@ -145,6 +156,33 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       if (!cancelled) dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "日志详情加载失败，请稍后重试。") });
     });
     return () => { cancelled = true; };
+  }, [logRepository, selectedLog, dispatch]);
+
+  // A reload loses the upload/rerun job poll; resume the selected report from its summary.
+  useEffect(() => {
+    if (!logRepository || !selectedLog || selectedLog.status !== "Processing") return;
+    let cancelled = false;
+    let timer: number | undefined;
+    let attempt = 0;
+    let scheduledMs = 0;
+    const schedule = () => {
+      const delayMs = adaptivePollDelayMs(attempt++);
+      if (scheduledMs + delayMs > 300_000) return;
+      scheduledMs += delayMs;
+      timer = window.setTimeout(() => {
+        void logRepository.getLog(selectedLog.id).then((record) => {
+          if (cancelled) return;
+          if (record?.id === selectedLog.id && record.status !== "Processing"
+            && record.updatedAtIso >= selectedLog.updatedAtIso) {
+            dispatch({ type: "UPSERT_LOG_RECORD", log: record });
+          } else schedule();
+        }, (error: unknown) => {
+          if (!cancelled) dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "日志详情加载失败，请稍后重试。") });
+        });
+      }, delayMs);
+    };
+    schedule();
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [logRepository, selectedLog, dispatch]);
 
   // API mode hydrates logs after mount, so a deep-linked id may not exist yet
@@ -180,7 +218,15 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [selectedLogId]);
   const hasActiveLog = Boolean(selectedLog);
   const activeLog = selectedLogDetail && selectedLogDetail.summary === selectedLog ? selectedLogDetail.record : selectedLog ?? emptyLogRecord;
-  const rawFilePath = activeLog.files?.find((file) => file.status === "analyzed")?.path ?? activeLog.fileName;
+  const rawFile = activeLog.files?.find((file) => file.status === "analyzed");
+  const rawFilePath = rawFile?.path ?? activeLog.fileName;
+  const readViewerLines = useCallback(async (startLine: number, endLine: number) => {
+    const file = viewer?.file ?? rawFilePath;
+    if (logRepository?.getLogLines) return logRepository.getLogLines(activeLog.id, file, startLine, endLine);
+    if (file !== rawFilePath) throw new Error("当前日志视图未包含此文件，请连接日志服务后重试。");
+    return { file, startLine, endLine: Math.min(endLine, activeLog.rawLines.length), totalLines: activeLog.rawLines.length,
+      lines: activeLog.rawLines.slice(startLine - 1, endLine).map((content, index) => ({ lineNumber: startLine + index, content })) };
+  }, [logRepository, activeLog.id, activeLog.rawLines, rawFilePath, viewer?.file]);
   const relatedParameterUnlocated = Boolean(logActions && activeLog.relatedParameterId && !activeLog.relatedParameterProjectId);
   const evidenceByLine = useMemo(() => {
     const map = new Map<number, LogEvidence[]>();
@@ -227,6 +273,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     setFocusedEvidenceId(null);
     setHoveredLine(null);
     setFocusedSignalLine(null);
+    setViewer(null);
   }, [activeLog.id]);
 
   useEffect(() => {
@@ -418,7 +465,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [logActions, uploadDialogOpen]);
 
   const handleUploadLog = useCallback(
-    async (files: File[], supported: boolean, question?: string, logDomainId?: string, relatedParameterPin?: LogRelatedParameterPin) => {
+    async (files: File[], supported: boolean, question?: string, logDomainId?: string, relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string) => {
       const file = files[0];
       if (!logActions) {
         dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName: file.name, supported, question });
@@ -430,7 +477,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
 
       try {
-        await logActions.upload({ file, files, analysisQuestion: question, skillId: logDomainId,
+        await logActions.upload({ file, files, analysisQuestion: question, skillId: logDomainId, sourceVersion,
           ...(relatedParameterPin ? { relatedParameterPin } : {}) });
       } catch (error) {
         setPendingUpload(null);
@@ -463,7 +510,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         tabId={`logs-aux-tab-${auxTab}`}
         toolbar={<ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
           onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
-          items={([["report", "报告"], ["files", "文件"], ["signals", "信号"], ["metadata", "元数据"], ["related", "相关"]] as const)
+          items={([["report", "报告"], ["files", "文件"], ["signals", "信号"], ["trace", "分析轨迹"], ["metadata", "元数据"], ["related", "相关"]] as const)
+            .filter(([value]) => value !== "trace" || canViewTrace)
             .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} />}
         primaryAction={<button className="button primary" type="button" onClick={openUploadDialog}>
           <Upload size={16} />上传新日志
@@ -480,8 +528,14 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           </div>
         </aside>}
       >
-      {auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length}
-        onAnchor={(anchor) => { setSearchQuery(""); setFocusedSignalLine(anchor.line); setAuxTab("report"); }} />
+      {auxTab === "trace" ? (canViewTrace ? <LogTraceTab key={`${activeLog.id}:${activeLog.updatedAtIso}`} logId={activeLog.id} analysis={activeLog} repository={logRepository}
+        onOpenLine={(file, line) => setViewer({ file, lines: [line] })} /> : null)
+        : auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length}
+        allFilesAvailable={Boolean(logRepository?.getLogLines)}
+        onAnchor={(anchor) => {
+          if (logRepository?.getLogLines) { setViewer({ file: anchor.file, lines: [anchor.line] }); return; }
+          setSearchQuery(""); setFocusedSignalLine(anchor.line); setAuxTab("report");
+        }} />
         : auxTab === "files" ? <LogFilesTable log={activeLog} /> : auxTab !== "metadata" ? <div className="logs-v2-main">
         {auxTab === "report" || activeLog.status === "Complete" ? <LogConclusionCard
           log={activeLog}
@@ -489,6 +543,13 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
           onCopyLink={onCopyLink}
           onDistil={canDistil ? onDistil : undefined}
           distilPending={distilPending}
+          onSaveCase={canViewTrace && activeLog.status === "Complete" && activeLog.logDomainId && logRepository?.getAnalysisCasePrefill && logRepository.createAnalysisCase ? () => {
+            setCasePending(true);
+            void logRepository.getAnalysisCasePrefill!(activeLog.id).then((prefill) => setCasePrefill({ ...prefill, sourceRecordId: activeLog.id }))
+              .catch((cause) => dispatch({ type: "ADD_NOTIFICATION", message: presentError(cause, "无法加载测试用例，请重试。") }))
+              .finally(() => setCasePending(false));
+          } : undefined}
+          casePending={casePending}
           onExport={onExport}
           onFeedback={() => setFeedbackLogId(activeLog.id)}
           onPrimary={onPrimary}
@@ -503,6 +564,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
               <PanelHeader title="分析结果" meta={logStatusLabels[activeLog.status]} />
               {(activeLog.files?.filter((file) => file.status === "analyzed").length ?? 0) > 1
                 ? <p className="px-3 text-sm text-muted-foreground">当前原始日志：{rawFilePath}；证据按各自文件与行号定位。</p> : null}
+              {rawFile && activeLog.rawLines.length < rawFile.lineCount
+                ? <p className="px-3 text-sm text-muted-foreground">原始日志预览：前 {activeLog.rawLines.length} 行，共 {rawFile.lineCount} 行。点击证据或信号查看更多上下文。</p> : null}
               <div className="logs-v2-split">
                 <RawLogViewer
                   activeMatchIndex={activeMatchIndex}
@@ -529,6 +592,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
                   rawLines={activeLog.rawLines}
                   onClickEvidence={focusEvidence}
                   onHoverEvidence={setHoveredEvidenceId}
+                  onOpenFile={(file, lines) => setViewer({ file, lines })}
                 />
               </div>
             </section>
@@ -539,6 +603,11 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         ) : null}
       </div> : <LogMetadata log={activeLog} />}
       </NavigatorWorkbench>
+      {casePrefill ? <AnalysisCaseDialog title="存为测试用例" initial={casePrefill} availableFiles={casePrefill.files}
+        originalUploads={casePrefill.originalUploads} sourceDegradation={casePrefill.sourceDegradation} onClose={() => setCasePrefill(null)} onSave={async (input) => {
+        await logRepository!.createAnalysisCase!(casePrefill.skillId, { ...input, sourceRecordId: casePrefill.sourceRecordId });
+        dispatch({ type: "ADD_NOTIFICATION", message: "已保存为分析测试用例" });
+      }} /> : null}
       {uploadDialogOpen ? (
         <UploadLogDialog
           accept={logActions ? null : mockLogUploadAccept}
@@ -596,6 +665,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
         />
       ) : null}
       {/* Reducer notifications render through the global AppToastLayer in both runtime modes. */}
+      {viewer ? <LogFileDrawer key={`${activeLog.id}:${viewer.file}:${viewer.lines.join(",")}`} file={viewer.file} citedLines={viewer.lines}
+        readLines={readViewerLines} onClose={() => setViewer(null)} /> : null}
     </div>
   );
 }
@@ -622,7 +693,7 @@ function UploadLogDialog({
   parameterCatalogRepository?: Pick<ParameterCatalogRepository, "listProtectedProjectBindings">;
   onClose: () => void;
   onUpload: (files: File[], supported: boolean, question?: string, logDomainId?: string,
-    relatedParameterPin?: LogRelatedParameterPin) => Promise<void> | void;
+    relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string) => Promise<void> | void;
 }) {
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -630,6 +701,8 @@ function UploadLogDialog({
   const [selectedFileName, setSelectedFileName] = useState("");
   const [question, setQuestion] = useState("");
   const [selectedDomainId, setSelectedDomainId] = useState<string>(UNCATEGORIZED_LOG_DOMAIN_VALUE);
+  const [sourceVersion, setSourceVersion] = useState("");
+  const readySourceVersions = domains.find((domain) => domain.id === selectedDomainId)?.readySourceVersions ?? [];
   const [supported, setSupported] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -729,7 +802,8 @@ function UploadLogDialog({
       return;
     }
     setUploading(true);
-    void Promise.resolve(onUpload(selectedFiles, supported, question, resolvedDomainId, relatedParameterPin))
+    void Promise.resolve(onUpload(selectedFiles, supported, question, resolvedDomainId, relatedParameterPin,
+      readySourceVersions.includes(sourceVersion) ? sourceVersion : undefined))
       .catch((error) => setUploadError(presentError(error, "上传失败，请重试。")))
       .finally(() => setUploading(false));
   };
@@ -774,10 +848,19 @@ function UploadLogDialog({
             id="upload-log-domain"
             ariaLabel="分析技能（可选）"
             value={selectedDomainId}
-            onValueChange={setSelectedDomainId}
+            onValueChange={(value) => { setSelectedDomainId(value); setSourceVersion(""); }}
             options={[{ value: UNCATEGORIZED_LOG_DOMAIN_VALUE, label: "通用分析" }, ...domains.map((domain) => ({ value: domain.id, label: domain.name }))]}
           />
         </label>
+        {readySourceVersions.length ? (
+          <label className="upload-question-field" htmlFor="upload-source-version">
+            <span>源码版本（可选）</span>
+            <SelectControl id="upload-source-version" ariaLabel="源码版本（可选）" ariaDescribedBy="upload-source-version-help"
+              value={sourceVersion} disabled={uploading} onValueChange={setSourceVersion}
+              options={[{ value: "", label: "使用默认快照" }, ...readySourceVersions.map((version) => ({ value: version, label: version }))]} />
+            <span id="upload-source-version-help">选择源码快照版本；不选择时使用技能版本的默认快照。</span>
+          </label>
+        ) : null}
         {parameterRepository ? (
           <>
             <label className="upload-question-field" htmlFor="upload-parameter-project">
@@ -904,7 +987,7 @@ function ConfidenceBar({
 
 function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
   const degraded = classifyAnalysisDegradation(log);
-  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName) {
+  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName && !log.knowledgeRevisions?.length && !log.sourceSnapshotSelection) {
     return null;
   }
 
@@ -925,7 +1008,24 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
         {log.logDomainName ? (
           <span className="analysis-provenance__badge analysis-provenance__badge--domain">技能 {log.logDomainName}{log.skillRevision ? ` · v${log.skillRevision.number}` : ""}</span>
         ) : null}
+        {log.sourceSnapshotSelection ? (
+          <span className="analysis-provenance__badge analysis-provenance__badge--domain" title={log.sourceSnapshot?.id}>
+            源码：{log.sourceSnapshotSelection === "matched_version" ? "版本匹配" : log.sourceSnapshotSelection === "default" ? "默认快照" : "无快照"}
+            {log.sourceSnapshot?.versionLabel ? ` ${log.sourceSnapshot.versionLabel}` : ""}
+            {log.sourceSnapshot && log.sourceSnapshot.status !== "ready" ? ` · ${{ queued: "等待索引", indexing: "索引中", failed: "索引失败", archived: "已归档" }[log.sourceSnapshot.status]}` : ""}
+            {log.requestedSourceVersion ? ` · 请求版本 ${log.requestedSourceVersion}` : ""}
+          </span>
+        ) : null}
       </div>
+      {log.requestedSourceVersion && log.sourceSnapshotSelection !== "matched_version" ? (
+        <p className="analysis-provenance__reason">未找到源码版本 {log.requestedSourceVersion}；{log.sourceSnapshot ? "已使用默认快照。" : "没有可用的默认快照。"}</p>
+      ) : null}
+      {log.knowledgeRevisions?.length ? <details className="analysis-provenance__reason">
+        <summary>实际检索的知识修订（{log.knowledgeRevisions.length}）</summary>
+        <ul>{log.knowledgeRevisions.map(({ entryId, revisionId }) => <li key={`${entryId}:${revisionId}`}>
+          {revisionId ? `条目 ${entryId} · 修订 ${revisionId}` : `无权查看的条目 · ${entryId}`}
+        </li>)}</ul>
+      </details> : null}
       {degraded ? (
         <p className="analysis-provenance__reason">{degraded.reason}</p>
       ) : null}
@@ -943,6 +1043,8 @@ function LogConclusionCard({
   onCopyLink,
   onDistil,
   distilPending = false,
+  onSaveCase,
+  casePending = false,
   onFeedback,
   onRetry
 }: {
@@ -956,6 +1058,8 @@ function LogConclusionCard({
   /** Present only when the user holds knowledge:edit (distil-to-knowledge). */
   onDistil?: () => void;
   distilPending?: boolean;
+  onSaveCase?: () => void;
+  casePending?: boolean;
   onFeedback: () => void;
   onRetry: () => void;
 }) {
@@ -986,6 +1090,7 @@ function LogConclusionCard({
           {relatedParameterLocated ? "查看关联参数" : "生成参数修改请求"}
         </button>
         {relatedParameterUnlocated ? <p role="status">旧参数关联缺少可验证的项目与 Binding 定位，无法作为当前参数发起修改。</p> : null}
+        {onSaveCase ? <Button variant="outline" disabled={casePending} aria-busy={casePending} onClick={onSaveCase}>存为测试用例</Button> : null}
         <button className="button subtle" disabled={log.status !== "Complete"} type="button" onClick={onExport}>
           <Download size={16} />
           导出报告
@@ -1347,7 +1452,8 @@ function EvidenceChainPanel({
   focusedEvidenceId,
   hoveredLine,
   onHoverEvidence,
-  onClickEvidence
+  onClickEvidence,
+  onOpenFile
 }: {
   loadSourceExcerpt?: (evidenceId: string) => Promise<import("@/features/log-skills/types").SourceExcerpt>;
   evidence: LogEvidence[];
@@ -1357,6 +1463,7 @@ function EvidenceChainPanel({
   hoveredLine: number | null;
   onHoverEvidence: (id: string | null) => void;
   onClickEvidence: (id: string) => void;
+  onOpenFile: (file: string, lines: number[]) => void;
 }) {
   return (
     <section className="evidence-chain" aria-label="日志分析证据链">
@@ -1376,6 +1483,7 @@ function EvidenceChainPanel({
               rawLines={rawLines}
               onClick={() => onClickEvidence(item.id)}
               onHover={(id) => onHoverEvidence(id)}
+              onOpenFile={onOpenFile}
             />
           );
         })}
@@ -1391,7 +1499,8 @@ function EvidenceCard({
   rawLines,
   focused,
   onHover,
-  onClick
+  onClick,
+  onOpenFile
 }: {
   loadSourceExcerpt?: () => Promise<import("@/features/log-skills/types").SourceExcerpt>;
   evidence: LogEvidence;
@@ -1400,32 +1509,40 @@ function EvidenceCard({
   focused: boolean;
   onHover: (id: string | null) => void;
   onClick: () => void;
+  onOpenFile: (file: string, lines: number[]) => void;
 }) {
   const title = `证据 ${String(index + 1).padStart(2, "0")}`;
   const hasSource = !!evidence.sourceLocation;
+  const isGroup = !!evidence.filePath || hasSource;
 
   return (
     <div
       aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`}
-      aria-pressed={hasSource ? undefined : focused}
+      aria-pressed={isGroup ? undefined : focused}
       className={classNames("evidence-card", focused && "evidence-card--focused", `evidence-card--${evidence.stageId}`)}
       id={`evidence-card-${evidence.id}`}
-      role={hasSource ? "group" : "button"}
-      tabIndex={hasSource ? undefined : 0}
-      onClick={hasSource ? undefined : onClick}
-      onKeyDown={hasSource ? undefined : (event) => {
+      role={isGroup ? "group" : "button"}
+      tabIndex={isGroup ? undefined : 0}
+      onClick={(event) => {
+        if (isGroup && (event.target as Element).closest("button, a, input, select, textarea, [role='button'], [role='link']")) return;
+        onClick();
+      }}
+      onKeyDown={isGroup ? undefined : (event) => {
         if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); }
       }}
       onMouseEnter={() => onHover(evidence.id)}
       onMouseLeave={() => onHover(null)}
     >
       <header>
-        {hasSource ? <Button variant="link" size="sm" aria-pressed={focused} aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`} onClick={onClick}>{title}</Button> : <span>{title}</span>}
+        {isGroup ? <Button variant="link" size="sm" aria-pressed={focused} aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`} title="定位到原始日志" onClick={onClick}>{title}</Button> : <span>{title}</span>}
         <strong>{STAGE_LABELS[evidence.stageId]}</strong>
       </header>
       <div className="evidence-card__body">
         {evidence.lineNumbers.map((lineNumber) => <div key={lineNumber}>
-          <code>{evidence.filePath ? `${evidence.filePath}:${lineNumber}` : `#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`}</code>
+          {evidence.filePath ? <button type="button" className="text-left text-primary underline underline-offset-2"
+            onClick={() => onOpenFile(evidence.filePath!, [lineNumber, ...evidence.lineNumbers.filter((line) => line !== lineNumber)])}>
+            <code>{evidence.filePath}:{lineNumber}</code>
+          </button> : <code>{`#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`}</code>}
           <DecodedFields events={evidence.decodedFields?.filter((event) => event.line === lineNumber)} />
         </div>)}
         <p>{evidence.inference}</p>
@@ -1454,11 +1571,11 @@ function LogFilesTable({ log }: { log: LogRecord }) {
   if (!log.files?.length) return <EmptyState text="该历史记录暂无文件清单。" />;
   return <section className="analysis-card overflow-auto" aria-label="日志文件清单">
     <table className="w-full text-left text-sm">
-      <thead><tr>{["路径", "大小", "行数", "编码", "状态"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
+      <thead><tr>{["路径", "角色", "大小", "行数", "编码", "状态"].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
       <tbody>{log.files.map((file) => <tr key={file.path} className="border-t border-border">
-        <td className="p-3 break-all">{file.path}</td><td className="p-3">{formatBytes(file.sizeBytes)}</td>
+        <td className="p-3 break-all">{file.path}</td><td className="p-3">{file.role ?? "—"}</td><td className="p-3">{formatBytes(file.sizeBytes)}</td>
         <td className="p-3">{file.lineCount}</td><td className="p-3">{file.encoding.toUpperCase()}{file.lossy ? " · 有损解码" : ""}</td>
-        <td className="p-3">{file.status === "analyzed" ? "已分析" : `已跳过 · ${file.skipReason}`}</td>
+        <td className="p-3">{file.status === "analyzed" ? "已分析" : `已跳过 · ${file.skipReason}`}{file.skillMatched === false ? " · 仅通用分析" : ""}</td>
       </tr>)}</tbody>
     </table>
   </section>;

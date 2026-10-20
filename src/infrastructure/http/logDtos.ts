@@ -23,6 +23,10 @@ export type LogEvidenceDto = {
 };
 
 export type LogRecordDto = {
+  knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
+  sourceSnapshot?: LogRecord["sourceSnapshot"];
+  sourceSnapshotSelection?: LogRecord["sourceSnapshotSelection"];
+  requestedSourceVersion?: string;
   signalSummary?: LogRecord["signalSummary"];
   files?: import("@/domain/logs/types").LogFile[];
   skillRevision?: { id: string; number: number } | null;
@@ -62,6 +66,9 @@ export type LogRecordDto = {
 };
 
 export type LogDomainDto = {
+  skillKey?: string;
+  hasSourceSnapshots?: boolean;
+  readySourceVersions?: string[];
   currentRevision?: { id: string; number: number; publishedAt: string | null };
   hasDraft?: boolean;
   analyses7d?: number;
@@ -107,9 +114,13 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     id: dto.id,
     reportId: dto.reportId,
     skillRevision: dto.skillRevision ?? null,
+    knowledgeRevisions: dto.knowledgeRevisions ?? [],
     fileName: dto.fileName,
     files: dto.files,
     signalSummary: dto.signalSummary,
+    sourceSnapshot: dto.sourceSnapshot,
+    sourceSnapshotSelection: dto.sourceSnapshotSelection,
+    requestedSourceVersion: dto.requestedSourceVersion,
     source: dto.source,
     fileSizeMB: Math.round((dto.fileSizeBytes / 1024 / 1024) * 10) / 10,
     status: statusLabels[dto.status],
@@ -144,12 +155,15 @@ export function logListFromDto(response: { items: LogRecordDto[] }): LogRecord[]
 
 export function logDomainFromDto(dto: LogDomainDto): LogDomain {
   return {
+    skillKey: dto.skillKey,
     id: dto.id,
     name: dto.name,
     description: dto.description,
     status: dto.status,
     currentRevision: dto.currentRevision,
     hasDraft: dto.hasDraft,
+    hasSourceSnapshots: dto.hasSourceSnapshots,
+    readySourceVersions: dto.readySourceVersions,
     analyses7d: dto.analyses7d,
     helpfulRate7d: dto.helpfulRate7d,
     formatProfile: dto.formatProfile,
@@ -169,7 +183,7 @@ export type LogDomainKnowledgeLinkDto = {
   logDomainId: string;
   knowledgeEntryId: string;
   entryTitle: string;
-  entryStatus: "draft" | "published" | "archived";
+  entryStatus?: "draft" | "published" | "archived";
   entryTags: string[];
   linkedAt: string;
 };

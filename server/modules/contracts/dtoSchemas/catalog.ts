@@ -1,8 +1,12 @@
 import type { ZodTypeAny } from "zod";
 import { z } from "zod";
 import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema } from "../../logs/schemas";
-import { logSkillSpecSchema } from "../../logs/skillSpec";
+import { logSkillSpecSchema, parseTestRequestSchema, skillFilePreviewRequestSchema, skillFilePreviewResponseSchema } from "../../logs/skillSpec";
+import { parseTestRunSchema } from "../../logs/parseTestSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
+import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
+import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from "../../logs/parsing/extractorBuilder";
+import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
 
 import {
   xiaozeAgUiRunRequestSchema,
@@ -32,7 +36,7 @@ import {
   logDomainListResponseSchema,
   logSkillListResponseSchema, logSkillResponseSchema, logSkillRevisionResponseSchema, logSkillRevisionListResponseSchema,
   logSkillTemplateListResponseSchema, logSkillSampleResponseSchema, logSkillSampleReplaceResponseSchema,
-  logSourceSnapshotListResponseSchema, logSourceSnapshotResponseSchema,
+  logSourceSnapshotListResponseSchema, logSourceSnapshotResponseSchema, logSourceVersionListResponseSchema,
   logSourceEvidenceResponseSchema, logSourceLocateRequestSchema, logSourceLocateResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
@@ -40,6 +44,10 @@ import {
   logFileUploadResponseSchema,
   logRecordListResponseSchema,
   logRecordResponseSchema,
+  logLineRangeResponseSchema,
+  logTraceResponseSchema, logSkillDryRunResponseSchema, logSkillDryRunDetailResponseSchema,
+  logAnalysisCaseExpectationsSchema, logAnalysisCaseListResponseSchema, logAnalysisCaseResponseSchema,
+  logAnalysisCaseRunResponseSchema, logAnalysisCasePrefillResponseSchema,
   logRunListResponseSchema,
   logRunResponseSchema,
   logWebhookDeliveryListResponseSchema,
@@ -71,7 +79,17 @@ import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
  */
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogParsePreviewRequest: parsePreviewRequestSchema,
+  LogParseTestRequest: parseTestRequestSchema,
+  LogParseTestRun: parseTestRunSchema,
   LogParsePreviewResponse: parsePreviewResponseSchema,
+  LogSignalPreviewRequest: signalPreviewRequestSchema,
+  LogSignalPreviewResponse: signalPreviewResponseSchema,
+  LogSkillFilePreviewRequest: skillFilePreviewRequestSchema,
+  LogSkillFilePreviewResponse: skillFilePreviewResponseSchema,
+  LogExtractorPreviewRequest: extractorPreviewRequestSchema,
+  LogExtractorPreviewResponse: extractorPreviewResponseSchema,
+  LogFormatPreviewRequest: formatPreviewRequestSchema,
+  LogFormatPreviewResponse: formatPreviewResponseSchema,
   LogFileUploadRequest: createLogFileBodySchema,
   CreateLogRecordRequest: createLogBodySchema,
   CreateLogDomainRequest: createLogDomainBodySchema,
@@ -85,6 +103,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogSkillSampleReplaceResponse: logSkillSampleReplaceResponseSchema,
   LogSourceSnapshotUploadRequest: sourceSnapshotUploadSchema,
   LogSourceSnapshotListResponse: logSourceSnapshotListResponseSchema,
+  LogSourceVersionListResponse: logSourceVersionListResponseSchema,
   LogSourceSnapshotResponse: logSourceSnapshotResponseSchema,
   LogSourceEvidenceResponse: logSourceEvidenceResponseSchema,
   LogSourceLocateRequest: logSourceLocateRequestSchema,
@@ -112,6 +131,20 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogFileUploadResponse: logFileUploadResponseSchema,
   LogRecordListResponse: logRecordListResponseSchema,
   LogRecordResponse: logRecordResponseSchema,
+  LogLineRangeResponse: logLineRangeResponseSchema,
+  LogTraceResponse: logTraceResponseSchema,
+  LogSkillDryRunResponse: logSkillDryRunResponseSchema,
+  LogSkillDryRunDetailResponse: logSkillDryRunDetailResponseSchema,
+  LogAnalysisCaseListResponse: logAnalysisCaseListResponseSchema,
+  LogAnalysisCaseResponse: logAnalysisCaseResponseSchema,
+  LogAnalysisCaseRunResponse: logAnalysisCaseRunResponseSchema,
+  LogAnalysisCasePrefillResponse: logAnalysisCasePrefillResponseSchema,
+  LogAnalysisCaseCreateRequest: z.object({ name: z.string().min(1).max(200), expectations: logAnalysisCaseExpectationsSchema,
+    files: z.array(z.object({ fileName: z.string().min(1), contentBase64: z.string().min(1) })).min(1).max(100).optional(), sourceRecordId: z.string().min(1).optional() }),
+  LogAnalysisCaseUpdateRequest: z.object({ name: z.string().min(1).max(200), expectations: logAnalysisCaseExpectationsSchema }),
+  LogAnalysisCaseRunRequest: z.object({ caseIds: z.array(z.string().min(1)).min(1).max(20).optional() }),
+  LogAnalysisCaseImportResponse: z.object({ items: z.array(logAnalysisCaseResponseSchema.shape.item) }),
+  LogAnalysisCaseMultipartImport: z.object({ file: z.string().describe("ZIP archive in eval-cases/logs layout") }),
   LogRunListResponse: logRunListResponseSchema,
   LogRunResponse: logRunResponseSchema,
   JobResponse: jobResponseSchema,
@@ -170,6 +203,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.uploadFile",
   "logs.list",
   "logs.get",
+  "logs.getLines",
   "logs.listRuns",
   "logs.rerun",
   "logs.archive",
@@ -179,7 +213,15 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.listSkills", "logs.createSkill", "logs.getSkill", "logs.saveSkillDraft", "logs.discardSkillDraft", "logs.restoreSkillRevision", "logs.publishSkill", "logs.listSkillRevisions", "logs.getSkillRevision",
   "logs.listSkillTemplates", "logs.getSkillSample", "logs.replaceSkillSample", "logs.deleteSkillSample",
   "logs.parsePreview",
-  "logs.listSourceSnapshots", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot", "logs.locateSourceStatement", "logs.sourceEvidence",
+  "logs.parseTests",
+  "logs.signalPreview",
+  "logs.filesPreview",
+  "logs.extractorPreview", "logs.formatPreview",
+  "logs.getTrace", "logs.startDryRun", "logs.getDryRun", "logs.getDryRunLines",
+  "logs.listAnalysisCases", "logs.createAnalysisCase", "logs.updateAnalysisCase", "logs.deleteAnalysisCase",
+  "logs.startAnalysisCaseRun", "logs.getAnalysisCaseRun", "logs.getAnalysisCaseTrace", "logs.getAnalysisCasePrefill",
+  "logs.importAnalysisCases",
+  "logs.listSourceSnapshots", "logs.listSourceVersions", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot", "logs.locateSourceStatement", "logs.sourceEvidence",
   "logs.listDomains",
   "logs.createDomain",
   "logs.updateDomain",

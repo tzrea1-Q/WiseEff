@@ -318,7 +318,9 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 `skill/v1` 新增可选 `parsing: {schemaVersion: "parsing/v1", extractors}`，保存、发布和回滚均校验，错误为带路径的 `400`。严格规范、时间格式子集、上限和事件外壳见[解析参考](log-parsing-v1.md)。worker 只使用钉住版本，有抽取器的运行在解析完成后按当前任务租约保护写入迁移 0190 的产物键及 `{total, byExtractor, errors}`，provider 重试时仍保留；无抽取器保持旧行为。
 
-证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+证据新增可选 `decodedFields: DecodedEvent[]`，落库至 `log_evidence.decoded_fields`。事件自带 `v`、`source`、`extractor`、`file`、`line`、可选 `endLine`、`fields` 和错误，只补充精确文件/首行锚点被引用的事件。转换值保留 raw 和类型值，枚举显示标签。寄存器节点另含嵌套 `fields`、可选枚举含义 `meaning` 和单位 `unit`，父节点仍保留原始寄存器值；不安全整数使用十进制字符串。帧/寄存器构件最多嵌套 8 层，输出树允许最多 25 层结构以容纳 TLV 外壳及寄存器叶节点。报告在引用行下展示此树。循环、单次 LLM 和规则报告共用补充逻辑；Webhook 仍只发送摘要。
+
+`parsing` 还接受可选 `registers: Record<id, {width: 8|16|32|64, fields: {bits: [hi,lo], name, enum?, scale?, offset?, unit?, signed?, description?}[]}>` 和 `registerMaps: Record<id, {selectBy, cases: Record<地址或消息id, registerId>, default?}>`。抽取器的 `int`/`uint`/`hex` 字段配置 `decode: {register: id}` 或 `decode: {registerMap: id}`。保存、发布及既有未保存草稿预览均校验位重叠、越界、重名和引用，返回精确路径。映射无匹配分支或默认项时，事件记录 `unmatched_register`，不使运行失败。寄存器工作共享既有执行预算。参见 [BQ25890 示例与数值规则](log-parsing-v1.md#寄存器与寄存器映射)。
 
 以下是 ADR-0022 内部只读工具，不是 HTTP 端点，仅在钉住版本有抽取器时注册，沿用步数和 token 预算。
 
@@ -329,7 +331,13 @@ GET    /api/v1/parameters/dashboard/hotspots
 
 grounding 只认可 query 工具自身 `events[].file/line`。endLine 范围、字段内嵌引用、结构元数据和非白名单工具返回的引用不能建立观察记录。
 
-`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值最多 1 KiB；超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
+`parsing` 还接受 `frames: Record<id, {endian?: "big" | "little", fields: FrameField[]}>`。有序具名字段支持 `uint`/`int`、固定或先前字段决定长度的 `bytes`、嵌套 `register`/`frame`、按先前解码值选择的 `switch`、使用常量或先前字段计数且可乘固定倍数的 `repeat`，以及配置 tag/length 宽度和已知 tag 引用的 TLV。switch/TLV 数字键沿用寄存器映射的归一化规则，未知 TLV tag 保留原始字节。抽取器十六进制/字节字段使用 `decode: {frame: id}`，包括 `hexbytes`、`base64bytes` 及十六进制 `bytes` 别名。帧十六进制输入支持空白和可选 `0x`。[帧规范与 USB-PD 示例](log-parsing-v1.md#字节布局帧)定义封闭的字段结构和路径查找规则。
+
+帧校验和支持 `sum8`、`xor8`、`crc8`（多项式 `0x07`）、`crc16-ccitt`（`0x1021`，初值 `0xFFFF`）、`crc16-modbus`（反射形式 `0x8005`，初值 `0xFFFF`）及 IEEE `crc32`。校验字段声明相对所在帧的半开区间 `range: [start, endExclusive]`、存储字节数及字节序，覆盖范围不得包含该字段自身存储校验和的字节或与其他校验范围重叠。解码节点在既有 raw/value/meaning/unit/fields 树外增加 `byteOffset`、`byteLength` 和可选 `checksum: {expected, actual, ok}`。`checksum_mismatch` 是事件错误，保留节点并继续分析。
+
+帧/寄存器合计最多嵌套 8 层，单帧输入最多 4096 字节，每个 repeat 乘倍数后最多 256 项，单事件解码元素合计最多 1024，每个 TLV 字段最多 256 项。输出共享单事件 1024 字段/32 KiB、单运行 32,768 字段/4 MiB 和时间预算。保存、发布及未保存草稿预览拒绝未知引用、循环、向前路径、无效长度和重叠校验范围，返回精确路径；运行时超限记录具体事件错误。无需迁移或新增端点；嵌套帧字段沿用报告证据与解码事件工具及其既有响应上限。
+
+`query_events` 还返回 `truncated: boolean`。含外壳的序列化响应最多 16 KiB，每个字段值（包含嵌套寄存器/帧树）最多 1 KiB；限额内完整返回子字段与含义，超长值转为带标记的字符串预览，单事件字段过多时可省略尾部字段。筛选使用原始值，存储证据不变。事件数仍最多 50，达到字节或数量上限时，`nextCursor` 从首个未返回事件继续。
 
 M2 日志合同锁定为组织级作用域（迁移 `0037` 移除 `projectId`）：
 
@@ -371,24 +379,59 @@ GET  /api/v1/jobs/:jobId
 GET  /api/v1/jobs/:jobId/events
 ```
 
+三个编写预览 POST 接口（`parse-preview`、`extractor-preview`、`format-preview`）在 JSON 解析和鉴权前共用 16 MiB HTTP 请求体上限，含重复斜杠和尾斜杠别名。超出返回 `413 PAYLOAD_TOO_LARGE`；解析后仍执行下表更小的样例及模式上限。
+
+所有管理员模式均经过共享编译器的编译前展开量检查，以及编译后的 RE2 `programSize()` 检查：计数重复上下界最多 100，单模式最多 16,384 条指令，每份规范/请求缓存的保守总预算为 65,536 条指令。程序超限返回 `400 VALIDATION_FAILED` 并定位到对应字段。格式预览和抽取器预览会在单次请求内复用已编译模式。
+
+保守预算还在编译前计入模式源码的解析工作量，包括密集 Unicode 字符类。格式预览和抽取器预览有 100 ms 执行看门狗，超时返回 `400 VALIDATION_FAILED`，不返回不完整预览。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/v1/log-skills` | `{ items }`：技能身份、`currentRevision: { id, number, publishedAt }`、`hasDraft`、`analyses7d`（近七天创建的运行数）、`helpfulRate7d`（0..1，无反馈为 null；归因语义同反馈洞察）。`includeArchived=true` 包含归档技能。 |
 | `GET` | `/api/v1/log-skills/:skillId` | `{ item }`：技能身份、完整 `currentRevision` 与可空 `draft`。 |
 | `GET` | `/api/v1/log-skill-templates` | 需 `logs:admin-domains`。返回 `{ items: [{ id, label, description, spec }] }`，包含 `generic-text`、`linux-dmesg`、`android-logcat`、`json-lines`，分别预填流程大纲、基础格式和信号规则。JSON Lines 使用通用画像与 JSON level 字段信号。 |
 | `POST` | `/api/v1/log-skills` | `{ name, description?, startingPoint?: { templateId } \| { copyFromSkillId }, formatProfile? }` 创建身份与已发布版本 1，返回 `201 { item }`。复制优先取来源草稿，否则取当前发布版；不复制样例。跨组织来源返回 `404`。省略起点时使用通用模板，旧 `formatProfile` 请求仍有效并优先使用该画像。显式描述覆盖起点 spec 的描述。审计元数据记录 `templateId` 或 `copyFromSkillId`。 |
-| `PUT` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`。`{ fileName, contentBase64 }` 替换技能唯一且不版本化的文本样例；base64 解码后的原文件最多 2 MiB，复用 bundle intake 的 UTF-8／带 BOM 的 UTF-16 检测。二进制或压缩包返回 `400` 与中文原因。返回 `{ item: metadata }`，同事务写入 `log-skill-sample-replace` 审计。对象名称独立；替换后保留旧对象。 |
-| `GET` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:view`。返回 `{ item: metadata & { content, truncated } \| null }`；无样例为 null，技能不可访问为 `404`。正文统一 LF、最多前 5000 行，`lineCount` 保留总行数。元数据包含 `id`、`skillId`、`fileName`、原始 `sizeBytes`、`sha256`、`encoding`、`lineCount`、可空 `uploadedByUserId`、`createdAt`、`updatedAt`，不暴露存储键。 |
+| `PUT` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`。`{ fileName, contentBase64 }` 替换技能不版本化的文本或日志包样例。原始上传与展开后的解码文本均最多 2 MiB，同时受配置的日志包上限及压缩包安全检查约束。复用 bundle intake 的 UTF-8／带 BOM 的 UTF-16 检测。返回 `{ item: metadata }`，同事务写入 `log-skill-sample-replace` 审计。对象名称独立；替换后保留旧对象。 |
+| `GET` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:view`。返回 `{ item: metadata & { content, contentFilePath, truncated, files } \| null }`；无样例为 null，技能不可访问为 `404`。`files` 每项为 `{path, sizeBytes, lineCount, status, skipReason, encoding, lossy, content?, truncated?}`。正文统一 LF，每个文件最多前 5000 行；顶层正文取第一个可分析文件。旧单文本样例返回一条清单记录。元数据包含 `id`、`skillId`、`fileName`、原始 `sizeBytes`、`sha256`、`encoding`、`lineCount`、可空 `uploadedByUserId`、`createdAt`、`updatedAt`，不暴露存储键。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/sample` | 需 `logs:admin-domains`，按组织隔离，幂等返回 `204`；同事务写入 `log-skill-sample-delete`，保留对象与技能版本。 |
-| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, formatProfile?, modelOverride?, signalRules?, parsing?, procedure? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。省略信号规则时沿用平台充电规则。 |
+| `PUT` | `/api/v1/log-skills/:skillId/draft` | `{ spec: { schemaVersion: "skill/v1", description?, files?, formatProfile?, modelOverride?, signalRules?, parsing?, procedure?, knowledgeEntryIds? }, baseDraftRevisionId: string \| null, basePublishedRevisionId: string }` 替换草稿，返回 `{ item: revision }`，每次保存产生新的草稿 id。两个基础字段均必填：编辑开始时的草稿 id（没有草稿时为 null）和已发布版本 id；技能锁内任一版本检查不一致时返回 `409 LOG_SKILL_DRAFT_CONFLICT`。`description` 可选、去除首尾空白、最多 2000 字符，不升级 schemaVersion。发布或回滚时省略描述会保留身份行原值，显式空字符串才会清空。钉住技能省略信号规则时使用通用信号，未分类上传保留旧充电预筛。 |
 | `POST` | `/api/v1/log-skills/:skillId/parse-preview` | 需 `logs:admin-domains`，按组织查找技能。请求 `{parsing, sampleText, fileName?}` 校验未保存的 `parsing/v1`；响应 `{valid, issues: [{path, message}], events, counts: {total, byExtractor, errors}, unmatchedLineCount, truncated, reason?}`。规范错误为 `200`、`valid: false` 和问题路径；样例超过 UTF-8 1 MiB 或请求体错误为 `400`。固定 100 ms 校验/解码硬超时、最多处理 5000 行及返回 500 事件，受限时返回部分结果及 `truncated: true`、`reason: time_cap \| line_cap \| event_cap`；计数描述已完成工作，未处理行计入未匹配。校验超时返回 `valid: false`、问题及相同时间上限标记。跨组织或不存在为 `404`，无权限为 `403`。只读，不写审计，不存样例。 |
+| `POST` | `/api/v1/log-skills/:skillId/extractor-preview` | 需 `logs:admin-domains`，按组织查找技能。请求 `{line, segments: [{start, end, name, type}], sampleLines, generalizeNumbers?, timestampPattern?, pattern?}`；片段为互不重叠的 UTF-16 左闭右开区间，类型为 `int`、`uint`、`hex`、`float`、`string`、`quoted`。生成首尾锚定的 RE2 模式，转义字面量并泛化空白；`generalizeNumbers` 默认开启，同时泛化标识符之外的十进制数字串；false 保留数字字面量。开启时，可选 `timestampPattern`（最多 4096 UTF-16 单元）识别非空行首时间戳区域；未提供则识别方括号中的 dmesg 数字时间戳。该区域和随后空白作为可选非捕获前缀，消息内容仍保持首尾锚定。引号保留在捕获组外，quoted 字段映射为 string。可选 `pattern` 改为校验高级模式，此时允许空片段列表，未映射的命名组默认 string。返回 `{pattern, fields, matchedLines: [{line, text}], matchCount, totalLines, coverage}`；仅返回前五个命中行；行号从 1 开始，保留中间空行的原始行号；末尾空行不计入命中数和 totalLines。coverage 为比例，空样例为 0。上限为 32 片段/捕获组、500 样例行、每行 6144 UTF-16 单元、源行与样例合计 UTF-8 1 MiB、模式 512 单元。非法输入、RE2 不支持或超限返回 `400 VALIDATION_FAILED`；跨组织或不存在为 `404`，无权限为 `403`。只读，保存沿用草稿接口。 |
+| `POST` | `/api/v1/log-skills/:skillId/format-preview` | 同上，要求管理员权限和组织隔离。请求 `{sampleText, formatProfile}` 使用原有格式画像 schema 和 RE2 校验；复用运行时解析器返回 `{lines: [{line, text, timestamp?, severity}], entries: [{lineNumbers, text, timestamp?, severity}]}`。逐行标注仅关闭多行合并；条目保留原有合并及去除时间戳的语义，并携带原始非空行号。最多 500 行、每行 6144 UTF-16 单元、UTF-8 1 MiB。画像、模式非法或超限返回 `400 VALIDATION_FAILED`；跨组织或不存在为 `404`，无权限为 `403`。只读，不存样例，不写审计。 |
 | `DELETE` | `/api/v1/log-skills/:skillId/draft?draftRevisionId=:revisionId` | 必填查询参数 `draftRevisionId` 是编辑器看到的草稿 id。技能锁内若现有草稿 id 不同，返回 `409 LOG_SKILL_DRAFT_CONFLICT`；草稿匹配或已不存在时幂等返回 `204`。成功时写入 `log-skill-draft-discard` 审计，包括草稿已不存在的情况。 |
 | `POST` | `/api/v1/log-skills/:skillId/publish` | `{ draftRevisionId }` 原子发布草稿并将前版置为 superseded；草稿缺失或过期返回 `409 LOG_SKILL_DRAFT_CONFLICT`；同步身份行的描述、基础格式和模型覆盖；成功返回 `{ item: skill }`。 |
 | `POST` | `/api/v1/log-skills/:skillId/revisions/:revisionId/restore` | 将所选历史 spec 发布为下一编号的新版本，不改写历史内容；返回 `{ item: skill }`。技能锁内若存在草稿则返回 `409 LOG_SKILL_DRAFT_EXISTS`；来源不存在、跨组织或为草稿则返回 `404`。同一发布事务写入 `log-skill-restore`，元数据 `{ fromRevisionId, newRevisionId }`。 |
 | `GET` | `/api/v1/log-skills/:skillId/revisions` | `{ items: revision[] }`，版本号倒序。 |
 | `GET` | `/api/v1/log-skills/:skillId/revisions/:revisionId` | `{ item: revision }`：`id`、`skillId`、`number`、`status`、`spec`、`contentHash`、创建和发布时间及用户。已发布/已替代版本内容不可变。账号删除时按既有历史保留策略清空作者/发布者引用，spec、哈希与发布事实不变。 |
 
-`skill/v1` 增加可选 `procedure`：Markdown，去除首尾空白，最多 20000 字符，无版本升级。版本差异在「概览」组显示流程内容；本切片不提供流程编辑器。
+`skill/v1` 增加可选 `procedure`：Markdown，去除首尾空白，最多 20000 字符，无版本升级。版本差异在「概览」组显示流程内容。
+
+### 适用文件与角色
+
+`skill/v1.files` 可选：`[{glob: string, role?: string}]`，按匹配顺序排列。省略或 `[]` 表示技能适用于所有文件。最多 100 项，非空通配最多 256 字符，角色最多 40 字符。非法项返回 `files.0.glob` 等稳定问题路径。匹配区分大小写，针对使用 `/` 的包内相对路径，支持 `*`、`**`、`?` 和字符类；绝对路径及路径穿越通配非法。第一个匹配项决定可选角色，即使未填角色也不会被后续匹配覆盖。见[匹配参考](log-parsing-v1.md#技能适用文件与角色)。
+
+`POST /api/v1/log-skills/:skillId/files/preview` 需要 `logs:admin-domains` 与 `logs:view`。接受 `{files?: [{glob, role?}]}`，返回 `{valid, issues: [{path: (string | number)[], message}], files: [{path, skillMatched, role}]}`。使用技能已存样例清单预览未保存通配，与客户端及 Worker 复用同一匹配器。非法通配返回 `200`、`valid: false`、问题路径及空文件列表。没有样例时返回空清单。预览按组织隔离，只读且不保存草稿。
+
+预览请求体上限为 181,824 字节，覆盖最大配置的 JSON 转义与少量封装余量；超限在解析或认证前返回 `413`。整批数量与所有字符串长度通过检查后才会编译通配。校验、编译和匹配共用 100 ms 执行时限，预览最多接受 2,000 个样例路径。任一执行上限被触发时，返回 `valid: false`、问题说明及空文件列表。
+
+Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自身的文件过滤仍为附加限制。未匹配的可分析文件继续产生通用信号，Agent 仍可读取。迁移 `0204` 在 `log_files` 保存 `role` 与 `skill_matched`。记录清单返回可空的 `role`、`skillMatched`，Agent 文件列表也包含这些分配。适用状态为 null 表示旧文件或尚未分配，为 `false` 表示「仅通用分析」。报告「文件」页显示角色及该标记。
+
+### 技能信号规则
+
+`POST /api/v1/log-skills/:skillId/signals-preview` 需要 `logs:admin-domains` 与 `logs:view`。请求 `{signalRules, parsing?, formatProfile?}` 在技能已存样例上执行未保存规则，不接受客户端日志正文。请求体超过 512 KiB 时，在 JSON 解析前返回 `413`。响应 `{valid, issues: [{path, message}], hits: [{ruleId, lineNumber, excerpt}], truncated, reason?}`。规范错误返回 `200`、`valid: false`；路径以 `signalRules` 或 `parsing` 开始，定位规则、条件与字段。无样例或请求体错误为 `400`，跨组织或不存在为 `404`，无权限为 `403`。只读预览复用 Worker 的匹配器，校验与执行硬超时 100 ms，最多处理 5000 样例行、返回 500 命中，每条摘录最多 400 字符。`reason` 为 `time_cap`、`line_cap`、`hit_cap`、`event_cap` 或 `evaluation_cap`；只保留已完成工作的命中。解码行、输入或事件超限也标记预览不完整。不写审计，不保存草稿。
+
+`signalRules.rules` 每项保留既有 `id`、`anyOf`、`stageId`、`inference`、`suggestedAction` 与 `analysis`。可选 `name` 和 `severity`（`Critical`、`Warning`、`Info`）提供作者填写的信号名称与报告级别。回退证据保留 `inference`，显式配置的优先级结论优先于名称。句式构建器直接编辑此表示，保留条件顺序、多个备选条件及旧分析元数据。每个技能最多 64 条规则，每条最多 16 个条件，总计最多 16 个时间窗；超限项返回稳定校验路径。时间窗环形缓冲仅保留最近 N 个匹配时间戳，总上限为 160,000 个（1.28 MB）。Worker 的首轮预筛、字段精筛和信号提取共享固定预处理截止时间及两百万次操作预算；耗尽时标记结果不完整。
+
+条件保留 `text`、`numericComparison`、`severityToken`，新增 `{type: "field", field: "extractorId.fieldName", operator: "equals", value}`、`operator: "range", min, max`（闭区间数值范围）及 `operator: "in", values`。比较使用 `parsing/v1` 成功解码的标量值，严格检查类型；字节对象和未声明字段会被拒绝。`{type: "window", condition: textOrFieldCondition, count, seconds}` 在含当前行的向前时间窗内至少出现 `count` 个匹配后，对每个匹配行产生信号。计数范围 1–10000；秒数大于零且不超过 86400。只有含已解析时间戳的行参与计数；时间回退会清空窗口，各文件不共享计数。消息模式使用 RE2，保留模式 4096 字符及输入 65536 字符上限。
+
+迁移 `0196_seed_charging_skill.sql` 在内联 `DO` 块中为已有的每个组织创建已发布的「充电」技能，不写应用审计，也不留下持久化初始化函数。组织 bootstrap 和 M0/M1/M2/M3 种子为之后新建的组织调用 TypeScript 服务 `provisionChargingSkill`。运行时初始化通过系统服务调用使用 `withAuditedWrite`，技能、发布版本和审计在同一事务中提交或回滚。两条路径都使用组织行锁和租户复合外键；重试不修改已有种子或作者版本。测试校验冻结的迁移字面量与运行时种子一致，两者均保留原充电规则证据。钉住且未配置规则的技能使用通用信号，未分类上传保留旧充电预筛。草稿编辑不改变既有运行钉住的规则；规则回退同时使用钉住规则与通用信号。
+
+`skill/v1.knowledgeEntryIds?: uuid[]` 将知识条目链接保存在技能草稿和不可变已发布版本中。服务端校验组织范围，拒绝跨组织条目 id。工作区通过正常的 `GET /api/v1/knowledge/entries?status=published&q=...` 搜索已有条目，上传则调用 `POST /api/v1/knowledge/entries` 并传入 Markdown 内容。上传创建知识草稿，需要 `knowledge:edit` 并保留正常知识审计，单有技能管理权限不足。新建草稿可以链接，但仍需单独发布后才能参与检索。取消链接不删除条目。
+
+`read_domain_knowledge` 使用运行钉住的技能版本所携带的条目 id，不读取实时身份链接集合。保留仅已发布可检索的行为，包括未配置链接时的全组织检索。报告/记录和运行 DTO 返回 `knowledgeRevisions: [{ entryId, revisionId }]`，保存该次运行实际返回的去重知识修订。链接但未检索到的条目不在其中。后续编辑或新知识修订不改写既有来源；未检索和历史未知来源均返回 `[]`。迁移 `0197` 在将既有业务域链接回填到当前已发布技能版本之前，先冻结旧运行的链接范围，不为历史报告补造来源。
+
+链接条目的元数据遵循知识模块的 `canReadEntry` 策略，日志管理权限不能代替知识读取权限。技能 spec 只携带条目 id。知识选择器需要 `knowledge:view`，仅列出已发布条目。旧链接接口对不可读条目返回「无权查看的条目」、空标签并省略 `entryStatus`；旧接口替换链接时，对不可读的未发布条目返回 `404`，不披露状态。报告、日志列表和运行来源保留 `entryId`，但省略不可读条目的 `revisionId`。这种读取时的投影不会改写已存储的来源。
+
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
 | `POST` | `/api/v1/logs` | 创建日志分析记录 |
 | `GET` | `/api/v1/logs` | 日志列表 |
@@ -403,8 +446,8 @@ GET  /api/v1/jobs/:jobId/events
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`；画像中的模式使用线性时间引擎上的 RE2 语法，不支持环视与反向引用，长度 ≤ 4,096 字符，超过 65,536 字符的行不参与匹配，不支持的模式返回 `400` 并给出字段路径） |
 | `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态/模型覆盖（`formatProfile: null` 清空画像；`modelOverride: null` 清空回全局 `LOG_ANALYSIS_MODEL`）。传入描述、格式画像或模型覆盖会立即发布新版本；技能锁内若已有工作区草稿，返回 `409 LOG_SKILL_DRAFT_EXISTS`（`Publish or discard the skill draft first.`）。仅修改名称/状态、归档和 Webhook 更新仍可用。 |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | 归档业务域；既有日志记录保留绑定 |
-| `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：列出业务域的知识条目关联及各条目当前状态（`logs:admin-domains`） |
-| `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：整组替换关联集合（`{ knowledgeEntryIds: uuid[] }`）。只接受本组织**已发布**知识条目（草稿/已归档 `400`，未知条目 `404`）；写 `log-domain-knowledge-links-update` 审计 |
+| `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | 列出当前已发布技能版本的知识条目链接及各条目当前状态（`logs:admin-domains`） |
+| `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | 立即发布新技能版本以整组替换链接集合（`{ knowledgeEntryIds: uuid[] }`），保留旧接口即时生效的行为。存在工作区草稿时返回 `409 LOG_SKILL_DRAFT_EXISTS`，须先发布或丢弃草稿。只接受本组织**已发布**知识条目（草稿/已归档 `400`，未知或跨组织条目 `404`）；写 `log-domain-knowledge-links-update` 审计。旧运行保留其钉住的链接范围。 |
 | `PUT` | `/api/v1/log-domains/:domainId/webhook` | P3b：整组替换结果 Webhook 配置（`{ url: string\|null, enabled: boolean, secret?: string\|null }`；省略 `secret` 保持现有密钥）。URL 必须通过 SSRF 策略（仅 https、禁止内嵌凭据、禁止私网/环回/元数据地址——`400` 带 `reason` 码 `webhook-url-scheme` / `webhook-url-private-address` / `webhook-url-required` / `webhook-secret-required`）。写 `log-domain-webhook-config` 审计；密钥绝不回显 |
 | `GET` | `/api/v1/log-domains/:domainId/webhook-deliveries` | P3b：最近投递尝试（`limit` 1..50，默认 10）——每次尝试一行，含 `kind`（`result`/`test`）、`attempt`、`status`（`delivered`/`retrying`/`failed`）、`httpStatus?`、`error?` |
 | `POST` | `/api/v1/log-domains/:domainId/webhook-test` | P3b：经同一 SSRF 防护的签名发送端发出单次测试投递；返回 `{ outcome: { status, attempts, httpStatus?, error? } }`，写 `log-domain-webhook-test` 审计 |
@@ -421,19 +464,65 @@ GET  /api/v1/jobs/:jobId/events
 
 只读 Agent 始终具有 `get_signals`（可选 `kind`、`severity`、`offset`、`limit`）、`get_line_templates`（`offset`、`limit`）和 `get_timeline`（ISO `time` 或 `file` + `line`，以及 `before`/`after`）。分页偏移非负，每页 1–20 条。时间线上下文前后各最多 20 行，按时间戳跨文件排序。只有实际返回的锚点与日志行算已读证据；不在返回页或窗口中的真实行仍算未读。这些是 Worker 内部工具，不是新增 HTTP 端点。
 
-分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，写入要求 `logs:admin-domains`；每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save`、`log-skill-publish`、`log-skill-draft-discard` 或 `log-skill-restore` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、状态、知识关联和 Webhook 配置仍属于身份。工作区描述按版本管理，发布时同步身份行描述；旧 PATCH 仍可独立编辑身份描述。版本 DTO 另有可选的 `publishedByDisplayName`，供工作区显示发布者。
+分析技能保留 `log_domains` 身份与 id。新资源读取要求 `logs:view`，但轨迹与试运行要求 `logs:admin-domains`；写入要求 `logs:admin-domains`。每次写入在同一事务中记录 `log-skill-create`、`log-skill-draft-save`、`log-skill-publish`、`log-skill-draft-discard` 或 `log-skill-restore` 审计。技能与版本均按组织隔离，跨组织访问返回 `404`。旧 `/api/v1/log-domains` 接口全部保留：创建同时发布 v1；PATCH 含 `formatProfile` 或 `modelOverride` 时立即发布新版本，保留独立草稿与旧运行钉住值。名称、状态、知识关联和 Webhook 配置仍属于身份。工作区描述按版本管理，发布时同步身份行描述；旧 PATCH 仍可独立编辑身份描述。版本 DTO 另有可选的 `publishedByDisplayName`，供工作区显示发布者。
 
 上传、创建与 rerun 接受 `skillId`，`logDomainId` 继续作为别名。rerun 接受 `revisionPolicy: "current" | "pinned"`，默认 `current` 使用当前发布版本；`pinned` 复用前一次运行版本，不能同时更换技能。未分类运行保持 null 钉住值并使用平台默认配置。记录和运行 DTO 暴露 `skillRevision: { id, number } | null`；结果 Webhook 增加可空 `skillRevisionId`、`skillRevisionNumber`。Worker 只从所钉版本读取格式画像、模型覆盖和信号规则。
+
+技能身份新增组织内唯一的 `skillKey`，满足 `^[a-z0-9][a-z0-9-]{1,62}$`。创建时按名称生成 slug，非 ASCII 名称或碰撞时添加短 id 后缀；迁移 0202 回填已有技能。改名、发布不改变 key。管理员可通过 `PATCH /api/v1/log-domains/:domainId` 修改 `skillKey`，同事务审计；非法或重复 key 返回字段错误。`POST /api/v1/log-files`（JSON/multipart）和 `POST /api/v1/logs` 均接受 `skillKey`，保留 `skillId`、`logDomainId`。选择字段仅在调用方组织内解析，同时提供时必须一致，冲突返回 `400 VALIDATION_FAILED`，未知或跨组织 key 拒绝；上传钉住当前已发布版本。
+
+工作区「集成」统一编辑 key、展示上传示例、配置和测试 Webhook、查看投递记录、编辑模型及预算。「概览」保留指引，旧管理页提供工作区链接，不再重复编辑。`spec.stepBudget`、`spec.tokenBudget` 为可选正整数，随版本发布，省略时使用全局默认。服务端拒绝超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值，返回 `VALIDATION_FAILED` 字段错误；技能详情提供 `budgetCaps`。旧版本在平台上限降低后仍受运行时上限约束。Webhook 和 key 继续属于即时生效的身份设置。
+
+保存及发布还校验 `stepBudget >= 1`、`tokenBudget >= min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`，错误指向具体字段路径。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含收敛调用，不做 token 估算。单次完成可能超过剩余预算；已报告用量达到预算后，不再发起后续调用。没有得到已接地最终报告时，耗尽运行返回 `rules-fallback` 及 `degradedReason: "token-budget-exhausted"`。没有版本 `tokenBudget` 时，既有平台全局预算计量及提前收敛行为不变。
+
+结果 Webhook 在保留 `logDomainId`、`skillRevisionId`、`skillRevisionNumber` 及其他旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }`、`degraded: boolean`。旧未钉住运行的版本字段可为 null；规则回退或存在降级原因时 `degraded` 为 true，有原因时保留 `degradedReason`。终态入队快照保存 key 和钉住版本，重试保持相同载荷；同步测试事件维持原格式。参见[集成指南](../api/log-analysis-integration.md)。
 
 上传、创建与 rerun 接受可选 `logDomainId`：必须属于本组织且为 `active`，否则 `400`；缺省即内建未分类域语义（通用分析，上传绝不因域选择被阻塞）。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
 
 `POST /api/v1/log-files` 接受原有 JSON base64 请求，也接受 multipart/form-data：重复的 `file` 字段（多个普通文件）作为一个日志包；也可上传一个压缩包，不能与其他文件混传。支持 `.tar`、`.tar.gz`/`.tgz`、多条目 `.zip`（stored/deflate）和 `.gz`；gzip 内层名为 `.tar` 时按 tar.gz 处理。内层压缩包最多再展开一次，路径以前一层压缩条目名作为目录前缀。目录跳过；规范化相对路径最多 1024 个 UTF-8 字节。路径穿越（包括反斜杠与 `..` 段）、绝对路径、链接、设备、FIFO、加密 zip、重复规范化路径、损坏或超限压缩包生成失败记录：`failureReason` 说明规则原因，使用 `inline/` 伪存储键，不写对象存储，也不创建分析任务。接口仍返回 `201`，并写入 `log-upload-failed` 审计及 `{ fileName, failureReason }` 元数据。日志包及压缩包原因使用中文；不支持扩展名的单个普通文件保留原英文格式提示。非预期解码或压缩异常统一返回压缩包完整性提示，不暴露内部错误。
 
-每条记录返回 `files: [{ path, sizeBytes, lineCount, encoding, lossy, status, skipReason }]`；证据增加可空的 `filePath`，行号始终相对于该文件。`encoding` 为 `utf-8|utf-16le|utf-16be`：识别 UTF-8 及 BOM、UTF-16 LE/BE BOM，其余以 UTF-8 有损解码并标记 `lossy`。无 UTF-16 BOM 且前 8 KiB 含 NUL、解码后含 PostgreSQL 文本不支持的 U+0000，或文本样本中控制字符占比大于 20% 的文件列为已跳过（「二进制文件」）；不支持扩展名也列出原因。`.log/.txt/.csv/.json` 和内容为文本的无扩展名文件参与分析。只有跳过文件的包仍保存清单及失败记录，不创建任务。原始文本逐文件存为 UTF-8；旧记录没有清单时继续读取原单对象。结果 webhook 仍仅发送摘要，不含证据或原始文本。
+每条记录返回 `files: [{ path, sizeBytes, lineCount, encoding, lossy, status, skipReason, role, skillMatched }]`；证据增加可空的 `filePath`，行号始终相对于该文件。`encoding` 为 `utf-8|utf-16le|utf-16be`：识别 UTF-8 及 BOM、UTF-16 LE/BE BOM，其余以 UTF-8 有损解码并标记 `lossy`。无 UTF-16 BOM 且前 8 KiB 含 NUL、解码后含 PostgreSQL 文本不支持的 U+0000，或文本样本中控制字符占比大于 20% 的文件列为已跳过（「二进制文件」）；不支持扩展名也列出原因。`.log/.txt/.csv/.json` 和内容为文本的无扩展名文件参与分析。只有跳过文件的包仍保存清单及失败记录，不创建任务。原始文本逐文件存为 UTF-8；旧记录没有清单时继续读取原单对象。结果 webhook 仍仅发送摘要，不含证据或原始文本。
 
 默认限制：上传总字节 100 MiB（`LOG_BUNDLE_MAX_COMPRESSED_BYTES`），文件总原始字节 100 MiB（`LOG_BUNDLE_MAX_UNPACKED_BYTES`），最多 2000 文件（`LOG_BUNDLE_MAX_FILES`），单文件 100 MiB（`LOG_BUNDLE_MAX_FILE_BYTES`）。整个压缩包和每次 inflate 都受 200 倍压缩比约束（1 MiB 最低预算），并受单文件/剩余总大小限制；tar.gz 的中间 tar 容器也受剩余总大小约束，含 tar 头及填充。普通单文件默认仍至多 100 MiB；配置后的上传、总大小、单文件限制取最小值。服务端最终判定，客户端仅作明显超限预检。
 
 **反馈质量洞察（P3）**：`GET /api/v1/logs/feedback-insights`（`logs:view`，组织隔离）把 `log_feedback` 聚合给 `/log-admin`「分析质量」看板：按业务域 × `analysisSource` × `promptVersion` 每组一行，含 `totalCount`、`helpfulCount`、`helpfulRate`（0..1）与 `lastFeedbackAt`。可选 `timeWindow=today|7d|30d` 按反馈创建时间过滤（与 `GET /api/v1/logs` 相同的区间语义）。反馈归因到写入时戳记的分析 run（`log_feedback.run_id`，取当时日志的 `current_run_id`）；`run_id` 仍为空的历史行回退到日志当前 run。列表/详情仍读取当前 run 的报告。未分类域的 `logDomainId`/`logDomainName` 为 `null`，无来源信息的历史报告 `analysisSource`/`promptVersion` 为 `null`。
+
+### 技能分析用例（#1246）
+
+以下接口均要求 `logs:admin-domains`，读写限定于当前组织，不可访问的技能、记录或运行返回 `404`。用例归属技能身份。迁移 `0203_log_analysis_cases.sql` 添加组织复合外键及运行角色授权；用例新增、修改、删除、导入和运行结果写入均走审计事务。
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-cases` | `{ items, latestRun, current }`；`current` 要求捕获的草稿、发布版本及全部用例仍保持一致。 |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-cases` | `{ name, expectations, files?: [{ fileName, contentBase64 }], sourceRecordId? }`；提供上传文件或本技能可访问的已完成报告，返回 `201 { item }`，保留原始上传字节及文件清单。 |
+| `PATCH` | `/api/v1/log-skills/:skillId/analysis-cases/:caseId` | `{ name, expectations }`，返回 `{ item }`，使先前运行过期。 |
+| `DELETE` | `/api/v1/log-skills/:skillId/analysis-cases/:caseId` | 审计删除，`200 { ok: true }`。 |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-case-runs` | `{ caseIds? }`，省略 ids 运行全部用例，返回 `202 { run }`。需先保存草稿；容量耗尽返回 `429`。 |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-case-runs/:runId` | `{ run }`，含 `processing`、`complete` 或 `failed` 状态、进度，以及逐用例草稿/已发布结果。结果含 0–100 得分、通过情况、报告、轨迹引用及差值。 |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-case-runs/:runId/cases/:caseId/trace?revision=draft` | 复用有界管理员轨迹契约的 `{ steps }`；`revision` 也支持 `published`。 |
+| `GET` | `/api/v1/logs/:logId/analysis-case-prefill` | 对已完成且绑定技能的报告返回 `{ skillId, name, expectations }`；结论映射为期望根因，引用映射为文件/行证据，建议映射为期望动作。保存需要原始上传；缺少原包的历史报告明确报错。 |
+| `POST` | `/api/v1/log-skills/:skillId/analysis-cases/import` | multipart `file` ZIP，完整校验后才持久化，返回导入用例的 `201 { items }`。 |
+| `GET` | `/api/v1/log-skills/:skillId/analysis-cases/export` | [`eval-cases/logs` 布局](../../../eval-cases/logs/README.zh-CN.md)的二进制 ZIP，保留原始日志字节及未编辑标注。 |
+
+期望复用 `domain`、`summary`、`realLog`、`deIdentified`、`rootCauseCategory`、`rootCausePoints`、`keyEvidenceLines`、`expectedActions`、`expectRefusal`、`analysisQuestion` 和 `formatProfile`。日志包扩展为可选用例名 `caseName`、`bundleFiles`、文件感知的 `keyEvidence: [{ file, line?, pattern? }]` 和可选 `expectedDegradedReason`。非拒答用例须包含期望根因、证据和动作。导入错误指出具体归档路径与字段，文件沿用有界日志包接收校验，模式使用线性时间引擎。
+
+限制：每技能/运行 20 个用例，每用例原始字节及规范化文本各 10 MiB、解包文件 100 个，每次运行 120 秒，每技能保留 10 次运行。导入 ZIP 的压缩/解压总量均为 440 MiB，最多 2040 条目。准入时捕获输入及两个版本，与试运行共享组织/总量 owner 锁，使用已配置分析器和质量评测。配置 judge 时评分根因及动作，否则使用确定性评分。运行不产生记录、统计、搜索条目或结果 Webhook。当前草稿及全部用例的完整结果可提供发布摘要；过期、缺少或失败结果提示重跑，始终不阻止发布。
+
+### 分析轨迹与草稿试运行（#1230）
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| `GET` | `/api/v1/logs/:logId/trace` | 返回记录当前分析运行的 `{ steps }`，按步骤序号排序。需要 `logs:admin-domains`，只有 `logs:view` 时返回 `403`。记录不存在或跨组织时返回 `404`。 |
+| `POST` | `/api/v1/log-skills/:skillId/dry-runs` | 用已配置的分析器，在技能已存样例上运行已保存草稿；返回 `202 { run }`。需要 `logs:admin-domains`。缺少草稿或样例时返回 `409 CONFLICT`；技能不存在或跨组织时返回 `404`。总并发或组织并发已满时返回 `429 RATE_LIMITED`，提示「试运行繁忙，请稍后重试」，且不启动分析。 |
+| `GET` | `/api/v1/log-skills/:skillId/dry-runs/:runId` | 返回 `{ run, steps }`，轨迹按序排列；需要 `logs:admin-domains`，且运行必须属于当前组织及指定技能。不存在、跨组织或已清理的运行返回 `404`。 |
+| `GET` | `/api/v1/log-skills/:skillId/dry-runs/:runId/lines` | 返回接收运行时所捕获样例的 `{ item: { file, startLine, endLine, totalLines, lines } }`；技能后续替换样例不改变此读取。需要 `logs:admin-domains`。查询参数为精确样例 `file` 及正整数、首尾均包含的 `startLine` / `endLine`，最多 400 行；窗口不合法为 `400`，运行不可访问或文件不匹配为 `404`。 |
+
+试运行的 `run` 包含 `id`、`skillRevisionId`、`status`（`processing`、`complete` 或 `failed`）、整数 `progress`（0–100）、可空的 `report` 与 `error`，以及 `createdAt`。轮询至终态；完成报告沿用既有结论与证据契约。启动前先保存草稿并上传样例。接收运行时捕获草稿规范供本次执行，并保留版本 id；后续替换或删除草稿不会使已接收的运行切换版本。
+
+试运行使用独立的 `log_skill_dry_runs` 表，不使用带标记的日志记录。它不创建 `log_records`、分析作业或结果 Webhook 事件，因此不会进入 `/logs` 列表、计数或搜索。PostgreSQL 将跨 API 实例的接收操作串行化：每组织最多一个运行，总并发取 `LOG_DRY_RUN_MAX_CONCURRENT`（默认 2，有效范围 1–4；无效值回退为 2）。此共享数据库上限保守地限制跨实例总量，也限制单进程并发；各实例应配置相同值。容量已满的请求不读取样例、不调用分析器。执行受现有分析预算约束，超时取 120 秒与所配置最长作业时限的较小值。样例准备沿用 worker 的流式读取、每行 64 KiB 上限及有界引用摘要，只将最多 400 行且不超过 128 KiB 的预览解析到内存。信号提取和解码在共享预处理预算内保留既有时间、事件及行上限。接收运行时，每技能保留最近 10 次，清理更早的终态运行及其轨迹。
+
+每个活动运行持有 PostgreSQL 会话 advisory lock，作为所属进程仍存活的标记。启动恢复与状态读取时的惰性恢复会将所属锁已消失或已过截止时间的处理中运行标为失败，提示「服务重启，试运行已中断」。即使超时后界面已显示失败，也要等底层执行实际结束才释放容量。抽屉提供「重试」。两处轨迹均汇总步骤数、工具调用次数及已报告的输入/输出 token 数，并标记降级或提前收敛。报告中的日志行标签打开既有日志查看器，试运行轨迹标签仅展示文本。
+
+每步轨迹包含 `index`（1–200）、`kind`（`tool-call`、`model-turn`、`early-convergence`、`rule-fallback` 或 `degradation`）、可空的 `tool`、结构化 `arguments`、`resultBytes`、`lines: [{ file, line, snapshotId? }]`、`outcome`（`ok`、`error` 或 `truncated`）、可空的 `reason`，以及模型服务提供时的可选 `inputTokens` / `outputTokens`。每次运行最多保存 200 步；每步最多 50 个行引用，并共用 64 KiB 的引用序列化预算。含 `snapshotId` 的引用标识源码位置，界面显示为源码标签，不打开日志文件；日志行标签打开既有日志查看器抽屉。参数键使用白名单，保留有限数值、布尔值和 null。`file` 字符串只有与本次输入文件清单中已校验的包内相对路径匹配时才保留，并截断为最多 120 字符。其他字符串（包括查询和匹配模式）及复合值替换为 `[redacted]`；schema 另将字符串参数值、工具名和原因限制在 120 字符内。轨迹绝不包含原始提示词、系统消息、诊断流程正文、知识正文或模型服务载荷。轨迹通过组织复合外键引用普通运行或试运行父行，仅管理员可见的报告标签页展示这些摘要。
 
 创建日志文件：
 
@@ -479,7 +568,13 @@ GET  /api/v1/jobs/:jobId/events
 
 必填 `versionLabel` 去首尾空白后为 1–200 字符，在技能的未归档快照中唯一，冲突返回 `409`。压缩包支持 `.tar.gz`、`.tgz` 和 `.zip`，默认压缩上限 100 MiB。路由请求体另加 64 KiB multipart 封装预算，过大的 `Content-Length` 在缓冲前拒绝，实际请求字节同样受限，超限返回 `413`；文件字节共享请求缓冲，不支持 JSON/base64 上传。上传和索引由 `LOG_SOURCE_*` 配置，白名单和安全规则见[环境变量](../developer/environment-variables.md#日志分析-llm)及[运行手册](../runbooks/log-analysis-llm.md#源码快照1243)。技能与快照查询必须匹配组织和技能，跨范围 id 返回 `404`。已归档快照不能被新选为默认值，返回 `409`；保存、发布和恢复可保留不变的已有归档默认值，所有引用仍须属于同一组织和技能。上传、默认设置和归档分别在数据库写入事务内记录 `log-source-snapshot-upload`、`log-source-snapshot-default` 和 `log-source-snapshot-archive` 审计。
 
-快照元数据含 `id`、`skillId`、`versionLabel`、`status`（`queued`、`indexing`、`ready`、`failed`、`archived`）、`filesProcessed`、`filesTotal`、`fileCount`、`skippedCount`、`skippedFiles: [{ path, reason }]`（最多 200 条）、可空 `error` 和 `createdAt`。不提供公开源码文件或内容路由。运行从其不可变固定版本解析默认快照，持久化 `source_snapshot_id`/`source_snapshot_status`；快照未就绪或已归档不使运行失败，报告持久化中文不可用提示。本切片只暴露内部 `{ id, status }` 上下文，源码工具、语句索引、源码证据及上传 `sourceVersion` 选择留给 #1244/#1245。
+快照元数据含 `id`、`skillId`、`versionLabel`、`status`（`queued`、`indexing`、`ready`、`failed`、`archived`）、`filesProcessed`、`filesTotal`、`fileCount`、`skippedCount`、`skippedFiles: [{ path, reason }]`（最多 200 条）、可空 `error` 和 `createdAt`。上传可选传入 `sourceVersion`（去除首尾空白后 1–200 字符）。Worker 在钉住版本所属组织和技能内匹配未归档快照，不要求就绪；否则使用该版本的默认快照。记录和运行返回 `sourceSnapshot: { id, status }`、`sourceSnapshotSelection`（`matched_version`、`default`、`none`）及可选 `requestedSourceVersion`。标签未匹配时附加回退说明。快照未就绪或已归档不会使分析失败，报告会说明源码不可用。
+
+只有快照就绪的运行才提供 `locate_log_statement`、`search_source` 和 `read_source_range`。检索接收 `pathGlob`、`query`、可选 `mode`（`literal`、`full_text`）及 `limit`（1–20）。字面量查询至少含三个连续字母或数字，不得含换行。全文与三元组索引最多选取 200 个分块，另有有界查询覆盖最多 200 个行内分块边界。排序命中返回快照、路径、行号和最多 400 字符的摘录。范围读取须传入运行的 `snapshotId`、`path`、`startLine` 和 `endLine`，限制为 80 行、每行 1,000 字符，返回带行号的内容。两个工具均限制总输出为 16 KiB，并标记截断。源码证据必须引用工具实际返回的位置，相邻行和省略行不算已看到。报告查看者只能读取已持久化引用周围的有界摘录，没有通用源码浏览端点。
+
+检索在评分前最多接纳 201 个匹配分块 id，额外的一个仅用于检测截断；只对前 200 个候选评分排序，不对整个快照排序。所有查询至少需要三个字符。没有字面路径前缀且匹配超过 200 个分块时，工具拒绝查询并提示缩小通配路径或细化查询。每次检索语句在事务内设置一秒 PostgreSQL 超时；超时回滚该事务范围，返回 `{ items: [], truncated: true, reason: "statement_timeout" }`。成功时恢复外层事务原有的超时设置。源码检索超时不会使日志分析失败。
+
+字面量排序只对匹配附近的 400 字符评分。单行分块复用已索引的全文匹配结果，不再重新解析该行。调用方设置了更短的非零数据库超时时，保留该上限。
 
 ## 7. Product Feedback
 
@@ -636,6 +731,23 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 
 审计动作：`parameter-file-upload`、`parameter-file-rollback`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
 
+### DTS 整文件来源审核
+
+既有候选创建接口增加 `{ intent: "source_revision", fileId, expectedCurrentVersionId, expectedConfigRevisionId, clientMutationId, fileName, contentBase64 }`。固定单份非空且最多 2 MiB 的 DTS 及完整配置成员上下文，不改变活跃状态。候选 source-preview 返回 `kind: "source_revision"`、精确 `before` / `after`、诊断、影响、证明令牌及当前合资格的软件审核人。既有 source-review 提交另需范围内的幂等键；同键同内容重放，不同内容冲突。每个配置集最多一个待审来源请求。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v2/projects/:projectId/source-revision-requests?mine=true&status=pending` | `mine=true` 读取本人提交，否则读取分配给当前合资格审核人的请求。 |
+| `GET` | `/api/v2/projects/:projectId/source-revision-requests/:requestId` | 按权限读取固定源码差异、上下文摘要、影响及应用后的文件/配置回执。 |
+| `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/review` | `{ decision: "approve" | "reject", proofDigest, note? }`；要求当前指定审核人且不能自审。 |
+| `POST` | `/api/v2/projects/:projectId/source-revision-requests/:requestId/withdraw` | 提交人撤回待审请求，不更新活跃来源。 |
+
+`source_revision` 是独立且不可变的请求类型，支持注释、未登记内容等零参数目标的变更；保留旧 single/batch 约束与独立分发。固定证明包含精确文件、配置和成员版本、摘要、Catalog/组织登记、Binding/值/来源 pin 集合、身份连续性及新增项计划。提交和批准都重新核对当前权限、版本及上下文；历史固定定义使用其历史 Catalog 快照校验，当前 Catalog 指针变化要求重新预览。登记校验暂在事务内持有表级共享锁，会串行化登记写入；按组织设置版本栅栏是已记录的扩展方向。
+
+值校验保留 Catalog 的厂商 bytes 投影：string schema 接受合法字节字面量或纯整数字节宽度 8 的 cells，按 DTS 文本校验。数值 schema 继续按精确整数值及边界校验；此投影不把普通数值 cells 或引用放宽为字符串，也不跳过未变化的已登记值。
+
+批准通过既有 owner，在同一事务推进文件/配置版本、结构 occurrence、稳定 Binding、值、pin、历史、审计和经校验的回执。对象存储或关系写入失败均不留下部分活跃状态。实际生效的绑定属性被删除时，使用 `dts-source-absence` / `dts-source-absence-v1`，锚定真实修改前 occurrence 和修改后配置，不伪造删除节点或删除历史。当前重新加入同一来源中已终止删除的绑定 occurrence，会在预览阶段返回 `source-occurrence-restoration-requires-mapping`，需显式身份映射流程。下载保留经确认的精确字节，包括注释、数值写法、BOM 和一致换行。本流程不重命名全局定义、不改变成员、不发布基线，也不写设备。
+
 ### 结构化读取与 DTS 检索（P3）
 
 | 方法 | 路径 | 说明 |
@@ -643,6 +755,10 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | 从 `dts_*` 读取某一文件版本的结构化模型（请求内不重解析）。返回 `{ nodes }`；节点含类型化 `properties`（`valueType`/`rawText`/`normalizedValue`）、`phandleRefs`，以及 ingest 时写入的可选 `source` 定位器（`startOffset`/`endOffset`/`startLine`/`startColumn`/`endLine`/`endColumn`）。需要 `parameter:view`。 |
 | `GET` | `/api/v1/projects/:projectId/dts-search` | 在项目当前文件版本的 `dts_*` 上检索。查询：`q`（必填），可选 `by` = `path`\|`address`\|`label`\|`compatible`\|`value`\|`file`（省略 `by` 表示全维度含文件名）。返回 `{ hits }`，可含 `source` 定位器。需要 `parameter:view`。 |
 Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上持久化源码定位器，并在 structure/search 读取中返回（不重解析）。
+
+两个读取接口均接受可选 `navigationScope=organization`。Structure 继续返回完整 `nodes`，并增加 `navigation`：成功为 `{ status: "ready", catalogReleaseId, managedNodePaths }`，不可用为 `{ status: "unavailable", reason: "catalog-unavailable" | "registration-unavailable" }`。成功路径只标识直接匹配到有效 Catalog 主体、且在认证组织中有效登记的节点，包含禁用实例及尚无参数值的实例。识别复用 Catalog 的 compatible、正式别名规则，仅在节点未声明 compatible 时按节点名称回退。客户端补齐实际 DTS 祖先作为导航路径，并隐藏仅作祖先的节点属性；保留祖先不会保留其无关后代。成功空集合与读取不可用必须区分。文件结构使用请求中的版本，组织登记使用当前状态，不是由 `catalogReleaseId` 固定的历史组织状态。
+
+范围内搜索在既有项目搜索范围中，对每个现行文件版本应用同一规则。节点结果可包含结构祖先，属性结果只属于直接命中的节点；没有节点命中时仍可返回文件名结果。Catalog 或登记读取不可用时，范围内搜索返回 `500`（`INTERNAL_ERROR`）；未指定范围的读取保持原有行为。组织和操作者来自服务端认证上下文，不接受查询参数指定。导航范围仅影响展示，完整源码、编辑校验及授权仍由原有规则决定。
 
 | `POST` | `/api/v1/projects/:projectId/dts-structured-edits/submit` | 将一条或多条结构化 DTS 属性编辑提交为参数提交轮次。请求体：`{ edits: [{ fileId, nodePath, propertyName, rawText, reason? }], reason?, assignees? }`。按 `source_file_name`/`source_node_path` 映射到 `project_parameter_value`，创建草稿并提交 CR；`targetValue` 使用 `rawText`（非 `normalizedValue`）。返回 `201 { item }`（含 CR 项的提交轮次）。需要 `parameter:edit`；敏感节点规则适用（关键路径需 `parameter:edit-critical`；Agent 写 critical 节点拒绝）。审计：`parameter-structured-edit-submit`。 |
 

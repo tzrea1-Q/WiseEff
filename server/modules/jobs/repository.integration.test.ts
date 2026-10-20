@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import pg from "pg";
+import { createDatabase } from "../../shared/database/client";
 import {
+  createEphemeralTestDatabase,
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
@@ -13,6 +16,7 @@ import {
   getJobSnapshot,
   markJobDeadLettered,
   markJobRetryScheduled,
+  renewJobLease,
   updateJobProgress
 } from "./repository";
 
@@ -140,6 +144,77 @@ describe.skipIf(!databaseAvailable)("jobs repository (behavior)", () => {
     expect(await completeJob(db, { organizationId: ORG, jobId: "job-1", leaseOwner: WORKER_B })).toBe(false);
     expect(await completeJob(db, { organizationId: ORG, jobId: "job-1", leaseOwner: WORKER_A })).toBe(true);
     expect(await jobState("job-1")).toMatchObject({ status: "complete", progress: 100, current_stage: "report" });
+  });
+
+  it("renews a live processing lease only for its owner", async () => {
+    await seedJob("job-1");
+    const claimed = await claimNextJob(db, { kind: "log-analysis", leaseOwner: WORKER_A, leaseTtlMs: 15_000 });
+    const initialExpiry = Date.parse(claimed!.leaseExpiresAt!);
+
+    expect(await renewJobLease(db, { jobId: "job-1", leaseOwner: WORKER_B, leaseMs: 60_000 })).toBe(false);
+    const refused = await db.query<{ lease_expires_at: Date }>(`select lease_expires_at from jobs where id = 'job-1'`);
+    expect(refused.rows[0]!.lease_expires_at.getTime()).toBe(initialExpiry);
+
+    expect(await renewJobLease(db, { jobId: "job-1", leaseOwner: WORKER_A, leaseMs: 60_000 })).toBe(true);
+    const renewed = await db.query<{ lease_expires_at: Date }>(`select lease_expires_at from jobs where id = 'job-1'`);
+    expect(renewed.rows[0]!.lease_expires_at.getTime()).toBeGreaterThan(initialExpiry);
+    expect(await jobState("job-1")).toMatchObject({ lease_owner: WORKER_A, attempt_count: 1 });
+  });
+
+  it("never resurrects an expired lease, including expiry after a transaction began", async () => {
+    await seedJob("job-1");
+    await claimNextJob(db, { kind: "log-analysis", leaseOwner: WORKER_A });
+    // now() stays fixed in the transaction; renewal must use the actual database clock.
+    await db.query(`update jobs set lease_expires_at = clock_timestamp() + interval '10 milliseconds' where id = 'job-1'`);
+    await db.query(`select pg_sleep(0.02)`);
+    expect(await renewJobLease(db, { jobId: "job-1", leaseOwner: WORKER_A, leaseMs: 60_000 })).toBe(false);
+    expect((await jobState("job-1")).status).toBe("processing");
+  });
+
+  it("does not resurrect a lease that expires while renewal waits for a row lock", async () => {
+    const fixture = await createEphemeralTestDatabase("renewlock");
+    const owner = new pg.Client({ connectionString: fixture.url });
+    const renewing = new pg.Client({ connectionString: fixture.url });
+    try {
+      await owner.connect();
+      await renewing.connect();
+      const ownerDb = createDatabase(owner);
+      const renewingDb = createDatabase(renewing);
+      await owner.query(`insert into organizations (id, name) values ($1, 'Jobs Org')`, [ORG]);
+      await createLogAnalysisJob(ownerDb, { id: "job-1", organizationId: ORG, logId: "log-1", runId: "run-1" });
+      await claimJobById(ownerDb, { kind: "log-analysis", jobId: "job-1", leaseOwner: WORKER_A });
+      const expiry = await owner.query<{ expiry: string }>(
+        `update jobs set lease_expires_at = clock_timestamp() + interval '1 second'
+         where id = 'job-1' returning lease_expires_at::text as expiry`
+      );
+      const pid = (await renewing.query<{ pid: number }>(`select pg_backend_pid() as pid`)).rows[0]!.pid;
+      await owner.query("begin");
+      await owner.query(`select id from jobs where id = 'job-1' for update`);
+      const renewal = renewJobLease(renewingDb, { jobId: "job-1", leaseOwner: WORKER_A, leaseMs: 60_000 });
+      await expect.poll(async () => (await owner.query<{ blocked: boolean }>(
+        `select pg_backend_pid() = any(pg_blocking_pids($1)) as blocked`, [pid]
+      )).rows[0]!.blocked).toBe(true);
+      await owner.query(`select pg_sleep(greatest(0, extract(epoch from ($1::timestamptz - clock_timestamp()))) + 0.02)`,
+        [expiry.rows[0]!.expiry]);
+      await owner.query("commit");
+      expect(await renewal).toBe(false);
+      const unchanged = await owner.query<{ expiry: string }>(`select lease_expires_at::text as expiry from jobs where id = 'job-1'`);
+      expect(unchanged.rows[0]!.expiry).toBe(expiry.rows[0]!.expiry);
+    } finally {
+      await owner.query("rollback").catch(() => undefined);
+      await Promise.all([owner.end(), renewing.end()]);
+      await fixture.drop();
+    }
+  });
+
+  it("does not renew a completed job or accept an invalid lease duration", async () => {
+    await seedJob("job-1");
+    await claimNextJob(db, { kind: "log-analysis", leaseOwner: WORKER_A });
+    await db.query(`update jobs set status = 'complete' where id = 'job-1'`);
+    expect(await renewJobLease(db, { jobId: "job-1", leaseOwner: WORKER_A, leaseMs: 60_000 })).toBe(false);
+    for (const leaseMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(renewJobLease(db, { jobId: "job-1", leaseOwner: WORKER_A, leaseMs })).rejects.toThrow(RangeError);
+    }
   });
 
   it("fences writes once the lease expires, even for the previous owner", async () => {

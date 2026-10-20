@@ -106,8 +106,14 @@ function coverageScore(
     return 0;
   }
   const candidateTokens = new Set(significantTokens(candidateText).map(canonicalize));
+  const literalCandidate = candidateText.toLowerCase();
   let covered = 0;
   for (const target of targets) {
+    // Keep literal expectations usable for reports in scripts without ASCII word boundaries.
+    if (/[^\p{ASCII}]/u.test(target) && literalCandidate.includes(target.toLowerCase())) {
+      covered += 1;
+      continue;
+    }
     const tokens = significantTokens(target).map(canonicalize);
     if (tokens.length === 0) {
       continue;

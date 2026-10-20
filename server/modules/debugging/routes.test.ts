@@ -11,6 +11,7 @@ import type { DebugDeviceGateway } from "./gateway";
 import type { DebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { registerDebuggingRoutes } from "./routes";
 import * as serviceModule from "./service";
+import type { CanonicalDebugPin } from "./canonicalProtectedReference";
 import type {
   DebugDeviceRecord,
   DebugNodeBindingRecord,
@@ -71,7 +72,7 @@ function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
       email: "riley@example.com",
       title: "Software User",
       organizationName: "ChargeLab",
-      roles: [{ roleId: "software-user" }],
+      roles: [{ roleId: "software-user", projectId: null }],
       permissions: ["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"]
     }),
     ...overrides
@@ -180,11 +181,12 @@ function parameterRecord(overrides: Partial<DebugParameterRecord> = {}): DebugPa
     valueFormat: "raw",
     normalizationMode: "trim",
     maxValueBytes: null,
+    projectParameterBindingId: null,
     ...overrides
   };
 }
 
-function debugNodeWithBindingsRecord(overrides: Partial<DebugNodeWithBindingsRecord> = {}): DebugNodeWithBindingsRecord {
+function debugNodeWithBindingsRecord(overrides: Partial<DebugNodeWithBindingsRecord & CanonicalDebugPin> = {}): DebugNodeWithBindingsRecord {
   return {
     id: "node-1",
     organizationId: "org-1",
@@ -244,13 +246,14 @@ function sessionRecord(overrides: Partial<DebugSessionRecord> = {}): DebugSessio
   };
 }
 
-function operationRecord(overrides: Partial<NodeOperationRecord> = {}): NodeOperationRecord {
+function operationRecord(overrides: Partial<NodeOperationRecord & CanonicalDebugPin> = {}): NodeOperationRecord {
   return {
     id: "op-1",
     organizationId: "org-1",
     sessionId: "session-1",
     parameterId: "param-1",
     parameterDefinitionId: null,
+    projectParameterBindingId: null,
     protocol: "hdc",
     nodePath: "/sys/current",
     operationType: "read",
@@ -386,7 +389,7 @@ describe("debugging routes", () => {
     expect(response.body).toEqual({ items: [target] });
     expect(serviceMocks.detectTargets).toHaveBeenCalledWith(
       makeAuth(),
-      {  deviceId: "device-1", protocol: "hdc" },
+      {  deviceId: "device-1" },
       { requestId: "test-request" }
     );
   });
@@ -747,7 +750,7 @@ describe("debugging routes", () => {
       nodes: []
     };
 
-    const response = await requestJson<{ error: { code: string; details: { missing: string[] } } }>(
+    const response = await requestJson<{ error: { code: string; details: { issues: unknown[] } } }>(
       makeServer({ db, gateway }),
       "/api/v1/debugging/admin/catalog/import",
       { method: "POST", body: JSON.stringify(document) }

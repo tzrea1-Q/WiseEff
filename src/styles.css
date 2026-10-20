@@ -111,6 +111,8 @@
   --admin-list-role-control-width: 180px;
   --admin-list-role-cell-width: 204px;
   --settings-form-max-width: 960px;
+  --skill-integration-text-width: 32rem;
+  --skill-integration-number-width: 12rem;
 
   /* ── Radius ── */
   --radius-sm: 6px;
@@ -216,6 +218,7 @@
   --configuration-workbench-compact-project-clearance: 110px;
   --configuration-workbench-compact-metadata-width: 150px;
   --configuration-workbench-rollback-dialog-width: min(720px, calc(100vw - var(--space-12)));
+  --log-file-drawer-width: min(880px, 60vw);
   --configuration-workbench-meta-tracking: 0.05em;
   --configuration-workbench-title-tracking: 0.01em;
   --configuration-workbench-source-tracking: 0.04em;
@@ -4169,6 +4172,10 @@ td small {
 
 .data-table-scroll > table {
   min-width: 720px;
+}
+
+.data-table-scroll.data-table-scroll--fluid > table {
+  min-width: 0;
 }
 
 .horizontal-drag-scroll-shell {

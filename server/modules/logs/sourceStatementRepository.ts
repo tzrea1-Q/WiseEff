@@ -13,7 +13,7 @@ export async function readSourceExcerpt(db: Queryable, input: { organizationId: 
   const startLine = Math.max(1, input.line - 3), endLine = Math.min(file.lineCount, input.line + 3);
   const chunks = (await db.query<{ startLine: number; content: string }>(`select c.start_line as "startLine", c.content from log_source_chunks c
     join log_source_files f on f.id=c.file_id and f.organization_id=c.organization_id and f.snapshot_id=c.snapshot_id
-    where c.organization_id=$1 and c.snapshot_id=$2 and f.path=$3 and c.start_line <= $5 and c.end_line >= $4
+    where c.organization_id=$1 and c.snapshot_id=$2 and f.path=$3 and c.start_line <= $5 and c.end_line >= $4 - 1
     order by c.start_line, c.chunk_ordinal limit 70`, [input.organizationId, input.snapshotId, input.path, startLine, endLine])).rows;
   const lines = new Map<number, string>();
   for (const chunk of chunks) {

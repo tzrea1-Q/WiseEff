@@ -234,6 +234,14 @@ async function assertPreparedDeletedAnchorsRemainAbsent(
       proveJsonSourceMemberAbsent(content,anchor.locator.pointer,anchor.locator.rootPointer);
       continue;
     }
+    if (anchor.locator.kind === "dts-source-absence" && typeof anchor.locator.propertyName === "string" && anchor.nodeLocator) {
+      const node = resolved?.effective.nodesByLocator.get(anchor.nodeLocator);
+      const property = node?.properties.get(anchor.locator.propertyName);
+      if (node && !node.deleted && property && !property.deleted && property.sourceChain.at(-1)?.fileName === member.sourceName) {
+        throw new ApiError("CONFLICT", "Source revision would resurrect a terminal deleted source occurrence.");
+      }
+      continue;
+    }
     if (anchor.locator.kind !== "dts-delete" || typeof anchor.locator.propertyName !== "string" || !anchor.nodeLocator) {
       throw new ApiError("CONFLICT", "Deleted DTS anchor has no exact absence proof.");
     }

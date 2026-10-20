@@ -8,6 +8,7 @@ import {
   readSessionDraftStore,
   removeSessionDraftBucket,
   upsertSessionDraftBucket,
+  SESSION_DRAFT_STORAGE_KEY,
   type SessionDraftScope
 } from "./sessionDraftStorage";
 
@@ -167,5 +168,35 @@ describe("sessionDraftStorage", () => {
     );
     removeSessionDraftBucket(scope, storage);
     expect(findRecoverableSessionDraft(scope, storage)).toBeNull();
+  });
+
+  it("persists incomplete cell positions alongside v1 patches", () => {
+    const storage = createMemoryStorage();
+    const pending: SessionPropertyDraft = {
+      rawText: "< 0>, <- 0x>", normalizedValue: "pending", valid: false,
+      editorState: { kind: "cells", bits: 32, groups: [["", "0"], ["-", "0x"]] }
+    };
+    expect(upsertSessionDraftBucket({ scope, drafts: { "file-board::board::values": pending },
+      selectedKeys: [], reason: "pending", updatedAt: "2026-10-19T00:00:00.000Z" }, storage)).toBe(true);
+    expect(findRecoverableSessionDraft(scope, storage)?.bucket.drafts["file-board::board::values"]).toEqual(pending);
+  });
+
+  it("rejects an invalid editor-state shape without trusting stored validity", () => {
+    const storage = createMemoryStorage({ [SESSION_DRAFT_STORAGE_KEY]: JSON.stringify({ version: 1, buckets: [{
+      scope, drafts: { "board::values": { ...draft, valid: true,
+        editorState: { kind: "cells", bits: 32, groups: [[null]] } } },
+      selectedKeys: [], reason: "pending", updatedAt: "2026-10-19T00:00:00.000Z"
+    }] }) });
+    expect(findRecoverableSessionDraft(scope, storage)).toBeNull();
+  });
+
+  it("reports write/remove failures and does not overwrite buckets when reading fails", () => {
+    const storage = createMemoryStorage();
+    const bucket = { scope, drafts: { "board::model": draft }, selectedKeys: [], reason: "pending", updatedAt: "now" };
+    const unavailable = { ...storage, getItem() { throw new Error("denied"); } };
+    expect(upsertSessionDraftBucket(bucket, unavailable)).toBe(false);
+    expect(storage.getItem(SESSION_DRAFT_STORAGE_KEY)).toBeNull();
+    expect(upsertSessionDraftBucket(bucket, { ...storage, setItem() { throw new Error("full"); } })).toBe(false);
+    expect(removeSessionDraftBucket(scope, { ...storage, removeItem() { throw new Error("denied"); } })).toBe(false);
   });
 });

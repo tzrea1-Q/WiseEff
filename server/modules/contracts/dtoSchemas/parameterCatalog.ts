@@ -999,6 +999,11 @@ const sourceDeleteProofSchema = z.union([
     beforeValueDigest: sourceProofDigestSchema, beforeSourceDigest: sourceProofDigestSchema,
     afterSourceDigest: sourceProofDigestSchema,
   }),
+  catalogObject({
+    kind: z.literal("dts-source-absence-v1"), scannerVersion: z.literal("dts-config-v1"),
+    beforeValueDigest: sourceProofDigestSchema, beforeSourceDigest: sourceProofDigestSchema,
+    afterSourceDigest: sourceProofDigestSchema,
+  }),
 ]);
 
 export const canonicalSourceManifestSchema = catalogObject({
@@ -1017,6 +1022,9 @@ export const canonicalSourceManifestSchema = catalogObject({
     catalogObject({ kind: z.literal("dts-property"), propertyOccurrenceId: z.string(), nodeOccurrenceId: z.string(),
       fileVersionId: z.string(), propertyName: z.string() }),
     catalogObject({ kind: z.literal("dts-delete"), nodeOccurrenceId: z.string(), fileVersionId: z.string(), propertyName: z.string() }),
+    catalogObject({ kind: z.literal("dts-source-absence"), basePropertyOccurrenceId: z.string().min(1),
+      baseNodeOccurrenceId: z.string().min(1), baseFileVersionId: z.string().min(1), fileVersionId: z.string().min(1),
+      propertyName: z.string().min(1), logicalNodeId: z.string().min(1) }),
     catalogObject({ kind: z.literal("json-delete"), rootPointer: z.string(), pointer: z.string(),
       parentPointer: z.string(), memberKey: z.string(), fileVersionId: z.string() }),
   ]),
@@ -1027,14 +1035,20 @@ export const canonicalSourceManifestSchema = catalogObject({
   }))
 }).superRefine((manifest, context) => {
   const deleted = manifest.valueState === "deleted";
-  const expectedKind = deleted ? `${manifest.format}-delete` : manifest.format === "dts" ? "dts-property" : "json-pointer";
+  const wholeSourceAbsence = deleted && manifest.format === "dts" && manifest.locator.kind === "dts-source-absence";
+  const expectedKind = wholeSourceAbsence ? "dts-source-absence" : deleted ? `${manifest.format}-delete` : manifest.format === "dts" ? "dts-property" : "json-pointer";
+  const expectedProofKind = wholeSourceAbsence ? "dts-source-absence-v1" : `${manifest.format}-delete-v1`;
   if (manifest.locator.kind !== expectedKind || (deleted
-    ? !manifest.baseSourcePinId || !manifest.deleteRequestId || manifest.deleteProof?.kind !== `${manifest.format}-delete-v1`
+    ? !manifest.baseSourcePinId || !manifest.deleteRequestId || manifest.deleteProof?.kind !== expectedProofKind
     : manifest.baseSourcePinId !== null || manifest.deleteRequestId !== null || manifest.deleteProof !== null)) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Source value state must match its exact pin and deletion proof." });
   }
   const locator = manifest.locator;
   const proof = manifest.deleteProof;
+  if (locator.kind === "dts-source-absence" && (locator.fileVersionId !== manifest.fileVersionId
+    || locator.logicalNodeId !== manifest.logicalNodeId)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Whole-source absence proof must match its file version and logical node." });
+  }
   if (locator.kind === "dts-delete" && proof?.kind === "dts-delete-v1"
     && (locator.fileVersionId !== manifest.fileVersionId || locator.nodeOccurrenceId !== proof.nodeOccurrenceId
       || locator.propertyName !== proof.propertyName)) {

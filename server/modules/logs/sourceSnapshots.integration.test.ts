@@ -12,7 +12,7 @@ import { requestJson } from "../../test/testClient";
 import { registerLogRoutes } from "./routes";
 import { resolveRouteBodyLimit } from "../../app";
 import { archiveSourceSnapshot, uploadSourceSnapshot, type SourceSnapshotDto } from "./sourceSnapshots";
-import { createLogSkill, getLogSkill } from "./skillsService";
+import { createLogSkill, getLogSkill, listLogSkills } from "./skillsService";
 
 const available = await isTestDatabaseAvailable();
 const auth = (organizationId = "source-org") => makeTestAuthContext({ organizationId, userId: `${organizationId}-admin`,
@@ -33,7 +33,7 @@ describe.skipIf(!available)("source snapshot governance over PostgreSQL", () => 
       const otherSkill = await createLogSkill(db, auth(), { name: "Sibling skill" }, createUserInvocation(auth()), context);
       let currentAuth = auth();
       const router = createRouter();
-      registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => currentAuth });
+      registerLogRoutes(router, { db, objectStore, skillBudgetCaps: { stepBudget: 4, tokenBudget: 5000 }, getCurrentAuthContext: () => currentAuth });
       const request = <T,>(path: string, method = "GET", body?: unknown) => requestJson<T>(
         createHttpServer(router, { maxBodyBytes: resolveRouteBodyLimit }), path,
         { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -50,8 +50,44 @@ describe.skipIf(!available)("source snapshot governance over PostgreSQL", () => 
       expect(uploaded.status).toBe(201);
       const id = uploaded.body.item.id;
       expect(uploaded.body.item).toMatchObject({ status: "queued", versionLabel: "v1", filesProcessed: 0 });
+      const foreignSkill = await createLogSkill(db, auth("other-source-org"), { name: "Foreign source skill" },
+        createUserInvocation(auth("other-source-org")), context);
+      for (const [snapshotId, organizationId, skillId, label, status] of [
+        ["ready-source-v2", "source-org", skill.id, "v2.4.0", "ready"],
+        ["ready-source-v1", "source-org", skill.id, "v1.0.0", "ready"],
+        ["indexing-source", "source-org", skill.id, "indexing-version", "indexing"],
+        ["failed-source", "source-org", skill.id, "failed-version", "failed"],
+        ["archived-source", "source-org", skill.id, "archived-version", "archived"],
+        ["sibling-source", "source-org", otherSkill.id, "sibling-version", "ready"],
+        ["foreign-source", "other-source-org", foreignSkill.id, "foreign-version", "ready"]
+      ]) await db.query(`insert into log_source_snapshots (id, organization_id, skill_id, version_label, storage_key, file_name, status)
+        values ($1,$2,$3,$4,$1,'source.zip',$5)`, [snapshotId, organizationId, skillId, label, status]);
+      // Uploaders and viewers need only ready labels, never the snapshot metadata exposed to administrators.
+      const summaries = await listLogSkills(db, { ...auth(), permissions: ["logs:view", "logs:upload"] });
+      expect(summaries.items.find((item) => item.id === skill.id)?.readySourceVersions).toEqual(["v1.0.0", "v2.4.0"]);
+      expect(summaries.items.find((item) => item.id === otherSkill.id)?.readySourceVersions).toEqual(["sibling-version"]);
+      expect(JSON.stringify(summaries)).not.toMatch(/foreign-version|indexing-version|failed-version|archived-version|ready-source-v2|storage_key/);
+      expect(summaries.items.some((item) => item.id === foreignSkill.id)).toBe(false);
+      expect((await listLogSkills(db, { ...auth(), permissions: ["logs:view"] })).items
+        .find((item) => item.id === skill.id)?.readySourceVersions).toEqual(["v1.0.0", "v2.4.0"]);
+      await expect(listLogSkills(db, { ...auth(), permissions: [] })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      const versionsPath = `/api/v1/log-skills/${skill.id}/source-versions`;
+      currentAuth = { ...auth(), permissions: ["logs:upload"] };
+      expect((await request<{ items: string[] }>(versionsPath)).body).toEqual({ items: ["v1.0.0", "v2.4.0"] });
+      expect((await request(`/api/v1/log-skills/${foreignSkill.id}/source-versions`)).status).toBe(404);
+      expect((await request(base)).status).toBe(403);
+      currentAuth = { ...auth(), permissions: ["logs:view"] };
+      expect((await request<{ items: string[] }>(versionsPath)).body).toEqual({ items: ["v1.0.0", "v2.4.0"] });
+      currentAuth = { ...auth(), permissions: [] };
+      expect((await request(versionsPath)).status).toBe(403);
+      currentAuth = { ...auth(), user: { ...auth().user, isActive: false }, permissions: ["logs:upload"] };
+      expect((await request(versionsPath)).status).toBe(403);
+      currentAuth = auth();
+      await db.query(`delete from log_source_snapshots where id <> $1`, [id]);
       expect((await upload(base, "v1")).status).toBe(409);
-      expect((await request(`${base}/${id}/default`, "POST")).status).toBe(200);
+      expect(await request(`${base}/${id}/default`, "POST")).toMatchObject({
+        status: 200, body: { item: { budgetCaps: { stepBudget: 4, tokenBudget: 5000 } } }
+      });
       const afterDefault = await getLogSkill(db, auth(), skill.id);
       expect(afterDefault.currentRevision).toEqual(skill.currentRevision);
       expect(afterDefault.draft?.spec.defaultSourceSnapshotId).toBe(id);

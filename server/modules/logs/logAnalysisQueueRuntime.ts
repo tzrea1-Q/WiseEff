@@ -52,6 +52,8 @@ type CreateLogAnalysisQueueRuntimeOptions = {
   WorkerCtor?: BullMqWorkerConstructor;
   processByJobId?: (options: ProcessLogWorkerByIdOptions) => Promise<ProcessLogWorkerResult>;
   workerId?: string;
+  maxJobMs?: number;
+  preprocessingMs?: number;
   metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
   tracing?: Pick<TracingBoundary, "withSpan">;
   webhooks?: LogWorkerWebhooks;
@@ -66,6 +68,8 @@ export function createLogAnalysisQueueRuntime({
   WorkerCtor = Worker as unknown as BullMqWorkerConstructor,
   processByJobId = processLogAnalysisJobById,
   workerId = "wiseeff-log-worker",
+  maxJobMs,
+  preprocessingMs,
   metrics,
   tracing,
   webhooks
@@ -99,6 +103,8 @@ export function createLogAnalysisQueueRuntime({
           workerId,
           maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
           retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
+          ...(maxJobMs === undefined ? {} : { maxJobMs }),
+          ...(preprocessingMs === undefined ? {} : { preprocessingMs }),
           metrics,
           ...(analyzer ? { analyzer } : {}),
           ...(tracing ? { tracing } : {}),

@@ -7,6 +7,8 @@ import { availableLogAnalysisTools, executeLogAnalysisTool, MAX_SIGNAL_TOOL_BYTE
 import { parsingSpecSchema } from "../../parsing/spec";
 import { decodeLogFiles } from "../../parsing/engine";
 import type { LogAnalysisToolContext } from "./toolContext";
+import { createLogFileReader } from "../../fileReader";
+import { createMemoryObjectStore } from "../../../../testing/objectStore";
 
 function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnalysisToolContext {
   const content = [
@@ -29,6 +31,67 @@ function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnaly
 }
 
 describe("executeLogAnalysisTool dispatch", () => {
+  it("locates source statements from indexed anchors beyond the parsed preview", async () => {
+    const context = buildContext({ sourceSnapshot: { id: "snapshot", status: "ready" },
+      locateLogStatement: async (line) => {
+        expect(line).toBe("WARN thermal foldback at EOF");
+        return { items: [], truncated: false };
+      } });
+    const store = createMemoryObjectStore();
+    const content = [...Array.from({ length: 400 }, () => "INFO healthy"), "WARN thermal foldback at EOF"].join("\r\n");
+    const object = await store.put({ organizationId: "org", fileName: "tail.log", contentType: "text/plain", bytes: Buffer.from(content) });
+    const file = { path: "tail.log", sizeBytes: content.length, encoding: "utf-8" as const, lossy: false, lineCount: 401,
+      status: "analyzed" as const, skipReason: null, objectKey: object.storageKey };
+    context.files = [{ ...file, parsed: context.parsed, reader: createLogFileReader(store, file) }];
+    expect(await executeLogAnalysisTool("locate_log_statement", { file: file.path, anchorLine: 401 }, context))
+      .toMatchObject({ ok: true, result: { items: [] } });
+    expect(await executeLogAnalysisTool("locate_log_statement", { file: file.path, anchorLine: 402 }, context)).toMatchObject({ ok: false });
+  });
+
+  it("preserves a source-search deadline as a truncated result and gives helpful admission errors", async () => {
+    const context = buildContext({ sourceSnapshot: { id: "snapshot", status: "ready" },
+      searchSource: async () => ({ items: [], truncated: true, reason: "statement_timeout" }) });
+    expect(await executeLogAnalysisTool("search_source", { pathGlob: "drivers/**", query: "return", limit: 1 }, context))
+      .toEqual({ ok: true, result: { items: [], truncated: true, reason: "statement_timeout" } });
+    for (const mode of ["literal", "full_text"])
+      expect(await executeLogAnalysisTool("search_source", { pathGlob: "**", query: "ab", mode }, context)).toMatchObject({ ok: false });
+    context.searchSource = async () => { throw new Error("Source query is too common without a literal path prefix. Narrow pathGlob."); };
+    expect(await executeLogAnalysisTool("search_source", { pathGlob: "**", query: "return" }, context))
+      .toMatchObject({ ok: false, error: expect.stringContaining("Narrow pathGlob") });
+  });
+
+  it("bounds source search and numbered reads before exposing source locations", async () => {
+    let requestedEnd = 0;
+    const context = buildContext({ sourceSnapshot: { id: "snapshot", status: "ready" },
+      searchSource: async () => ({ items: Array.from({ length: 30 }, (_, i) => ({ snapshotId: "snapshot", path: `power/${i}.c`,
+        line: i + 1, excerpt: "界".repeat(800), rank: 1, versionLabel: "v1" })), truncated: false }),
+      readSourceRange: async (params) => {
+        requestedEnd = params.endLine;
+        return { snapshotId: "snapshot", path: "power/main.c", startLine: 1, endLine: 100, totalLines: 100,
+          truncated: false, lines: Array.from({ length: 100 }, (_, i) => ({ line: i + 1, content: "line" })) };
+      } });
+    expect(availableLogAnalysisTools(context)).toEqual(expect.arrayContaining(["search_source", "read_source_range"]));
+    const search = await executeLogAnalysisTool("search_source", { pathGlob: "power/**/*.c", query: "power", limit: 20 }, context);
+    expect(search).toMatchObject({ ok: true, result: { truncated: true } });
+    expect(Buffer.byteLength(JSON.stringify(search))).toBeLessThanOrEqual(16 * 1024);
+    if (search.ok) {
+      const items = (search.result as { items: Array<{ excerpt: string }> }).items;
+      expect(items.length).toBeLessThanOrEqual(20);
+      expect(items.every((item) => item.excerpt.length <= 400)).toBe(true);
+    }
+    const read = await executeLogAnalysisTool("read_source_range", { snapshotId: "snapshot", path: "power/main.c", startLine: 1, endLine: 100 }, context);
+    expect(requestedEnd).toBe(80);
+    expect(read).toMatchObject({ ok: true, result: { endLine: 80, truncated: true, lines: expect.any(Array) } });
+    if (read.ok) expect((read.result as { lines: unknown[] }).lines).toHaveLength(80);
+    expect(await executeLogAnalysisTool("search_source", { pathGlob: "**", query: "ab" }, context)).toMatchObject({ ok: false });
+    expect(await executeLogAnalysisTool("read_source_range", { snapshotId: "other", path: "power/main.c", startLine: 1, endLine: 80 }, context))
+      .toMatchObject({ ok: false, error: "Source snapshot does not match this run." });
+    context.sourceSnapshot = { id: "snapshot", status: "indexing" };
+    expect(availableLogAnalysisTools(context)).not.toContain("search_source");
+    expect(availableLogAnalysisTools(context)).not.toContain("read_source_range");
+    expect(await executeLogAnalysisTool("search_source", { pathGlob: "**", query: "power" }, context)).toMatchObject({ ok: false });
+  });
+
   it("offers source location only for ready snapshots, resolves log anchors and caps returned citations", async () => {
     let observed = "";
     const context = buildContext({ filePath: "charging.log", sourceSnapshot: { id: "snapshot", status: "ready" },
@@ -126,6 +189,28 @@ describe("executeLogAnalysisTool dispatch", () => {
     const invalid = await executeLogAnalysisTool("query_events", { extractor: "large", ["x".repeat(20_000)]: true }, context);
     expect(invalid.ok).toBe(false);
     expect(Buffer.byteLength(JSON.stringify(invalid))).toBeLessThanOrEqual(16 * 1024);
+  });
+  it("returns nested register fields and meanings within existing output caps", async () => {
+    const spec = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "register", pattern: "(?P<val>0x[0-9A-Fa-f]+)",
+      fields: { val: { type: "hex", decode: { register: "fault" } } } }],
+    registers: { fault: { width: 8, fields: [{ bits: [5, 4], name: "CHRG_FAULT", enum: { "2": "thermal_shutdown" } }] } } });
+    const context = buildContext({ decoding: { spec, ...decodeLogFiles(spec, [{ file: "a.log", lines: ["0x20"] }]) } });
+    expect(await executeLogAnalysisTool("query_events", { extractor: "register" }, context)).toMatchObject({ ok: true, result: {
+      events: [{ fields: { val: { raw: "0x20", value: 32, fields: { CHRG_FAULT: { value: 2, meaning: "thermal_shutdown" } } } } }], truncated: false
+    } });
+    const nested = { raw: "0x20", value: 32, fields: { CHRG_FAULT: { raw: "2", value: 2, meaning: "界".repeat(2000) } } };
+    const events = Array.from({ length: 50 }, (_, i) => ({ v: 1 as const, source: "declarative" as const, extractor: "register", file: "a.log", line: i + 1, fields: { val: nested } }));
+    context.decoding = { spec, events, counts: { total: events.length, byExtractor: { register: events.length }, errors: {} } };
+    const outcome = await executeLogAnalysisTool("query_events", { extractor: "register" }, context);
+    expect(outcome).toMatchObject({ ok: true, result: { truncated: true } });
+    expect(Buffer.byteLength(JSON.stringify(outcome))).toBeLessThanOrEqual(16 * 1024);
+    if (outcome.ok) {
+      const result = outcome.result as { events: Array<{ fields: { val: unknown } }>; nextCursor: string };
+      expect(result.events.length).toBeGreaterThan(0);
+      expect(result.nextCursor).toBe(String(result.events.length));
+      expect(Buffer.byteLength(JSON.stringify(result.events[0].fields.val))).toBeLessThanOrEqual(1024);
+    }
+    expect(nested.fields.CHRG_FAULT.meaning).toHaveLength(2000);
   });
   it("composes decoded tools per revision, describes counts, and queries typed values with bounded pagination", async () => {
     const context = buildContext();

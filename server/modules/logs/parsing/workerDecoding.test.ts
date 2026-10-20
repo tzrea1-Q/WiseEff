@@ -57,6 +57,55 @@ describe("worker decoding", () => {
       { file: "b.txt", lines: ["START a", "DATA a 1", "END a"] }];
     expect(await decodeLogFilesCooperatively(multiline, files)).toEqual(decodeLogFiles(multiline, files));
   });
+  it("streams repeated extractor passes with identical keyed multiline output and closes readers", async () => {
+    const multiline = parsingSpecSchema.parse({ schemaVersion: "parsing/v1", extractors: [{ id: "message",
+      pattern: "START (?P<value>.+)", fields: { value: { type: "string" } },
+      multiline: { start: "^START", maxLines: 3 }
+    }, spec.extractors[0]] });
+    const files = [{ file: "a.log", lines: ["START a", "body", "START b", "end", "x".repeat(9000), "START c"] },
+      { file: "b.log", lines: ["START other", "body"] }];
+    let opened = 0, closed = 0;
+    const streamed = files.map(({ file, lines }) => ({ file, reader: { lineCount: lines.length, async* lines() {
+      opened++;
+      try { for (const [index, content] of lines.entries()) yield { lineNumber: index + 1, content }; }
+      finally { closed++; }
+    } } }));
+    expect(await decodeLogFilesCooperatively(multiline, streamed)).toEqual(decodeLogFiles(multiline, files));
+    expect(opened).toBe(files.length * (multiline.extractors.length + 1));
+    expect(closed).toBe(opened);
+  });
+  it("shares the streaming deadline across files and closes an unfinished reader", async () => {
+    let reads = 0, closed = 0;
+    const files = ["a.log", "b.log"].map((file) => ({ file, reader: { lineCount: 3, async* lines() {
+      try { for (let lineNumber = 1; lineNumber <= 3; lineNumber++) { reads++; yield { lineNumber, content: "value" }; } }
+      finally { closed++; }
+    } } }));
+    const result = await decodeLogFilesCooperatively(spec, files, { maxMs: 8, now: () => reads });
+    expect(result.counts.errors.time_cap).toBe(1);
+    expect(result.events).toHaveLength(3);
+    expect(reads).toBe(8);
+    expect(closed).toBe(3);
+    expect(result).not.toHaveProperty("readLine");
+  });
+  it("preserves completed events when a reader deadline interrupts a long physical line", async () => {
+    const deadlines: Array<number | undefined> = [];
+    let closed = 0;
+    const files = ["kept.log", "slow.log"].map((file) => ({ file, reader: { lineCount: 1,
+      async* lines(options?: { deadline?: number }) {
+        deadlines.push(options?.deadline);
+        try {
+          if (file === "slow.log") throw Object.assign(new Error("Reader time cap"), { code: "LOG_READER_TIME_CAP" });
+          yield { lineNumber: 1, content: "kept" };
+        } finally { closed++; }
+      }
+    } }));
+    const result = await decodeLogFilesCooperatively(spec, files);
+    expect(result).toMatchObject({ events: [{ file: "kept.log", line: 1 }], counts: { total: 1, errors: { time_cap: 1 } }, unmatchedLineCount: 1 });
+    expect(deadlines).toHaveLength(3);
+    expect(deadlines.every((deadline) => Number.isFinite(deadline))).toBe(true);
+    expect(closed).toBe(3);
+    expect(result).not.toHaveProperty("readLine");
+  });
   it("stops on the run deadline with completed events, without failing or exceeding a configured event cap", async () => {
     let time = 0;
     const files = [{ file: "a.log", lines: Array(6000).fill("value") }];
