@@ -1,5 +1,20 @@
 # WiseEff API 合同设计
 
+## 日志集成凭据（#1248）
+
+ADR-0048 扩展 ADR-0038：`Authorization: Bearer wie_<credentialId>_<secret>` 仅按 `wie_` 前缀进入凭据解析器，其他用户令牌不变。集成主体受组织隔离，绝不成为 `AuthContext`，没有用户角色或权限。
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-integration-credentials` | 用户须有 `logs:admin-domains`；返回本组织 `{ items }`，不含密钥或哈希。 |
+| `POST` | `/api/v1/log-integration-credentials` | 同上；请求 `{ name, skillId?: string \| null }`；返回 `201 { item, token }`。 |
+| `POST` | `/api/v1/log-integration-credentials/:credentialId/rotate` | 同上；请求 `{}`；返回 `{ item, token }`，旧密钥立即失效。 |
+| `POST` | `/api/v1/log-integration-credentials/:credentialId/revoke` | 同上；请求 `{}`；返回 `{ item }`，下一请求即拒绝该凭据。 |
+
+DTO 包含 `id`、`organizationId`、`name`、可空的 `skillId`、`skillName`、`createdBy`、`status: active \| revoked`、`createdAt` 及可空的 `rotatedAt`、`revokedAt`、`lastUsedAt`。签发、轮换仅返回一次明文，绝不存储、记录日志或写入审计。生命周期写入与成功审计同事务；归档技能撤销绑定凭据。
+
+路由边界白名单仅含 `POST /api/v1/log-files`、`POST /api/v1/logs` 及读取自身创建的记录、报告、文件；其他路由在处理器或领域读取前拒绝。绑定凭据必须选择绑定技能，省略或冲突返回 `403`；未知或已撤销凭据返回 `401`，其他创建者或其他组织的记录返回 `404`/`403`。上传复用原大小、速率、分析限制，最近使用时间至多每分钟更新一次。记录暴露可空的 `createdByCredentialId` / `createdByCredentialName`，上传用户为空，本组织有 `logs:view` 的用户照常可见。上传审计 `actor_type = integration`，actor 为凭据 id；人工策略拒绝 integration 发起者。
+
 > English: [English](../../design-docs/api-contract.md)
 
 日期：2026-05-25

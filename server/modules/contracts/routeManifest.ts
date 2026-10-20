@@ -746,6 +746,10 @@ export const routeManifest = [
   ...parameterCatalogCanonicalRoutes,
 
   { id: "logs.uploadFile", method: "POST", path: "/api/v1/log-files", module: "logs", stability: "mvp" },
+  { id: "logs.listIntegrationCredentials", method: "GET", path: "/api/v1/log-integration-credentials", module: "logs", stability: "mvp" },
+  { id: "logs.issueIntegrationCredential", method: "POST", path: "/api/v1/log-integration-credentials", module: "logs", stability: "mvp" },
+  { id: "logs.rotateIntegrationCredential", method: "POST", path: "/api/v1/log-integration-credentials/:credentialId/rotate", module: "logs", stability: "mvp" },
+  { id: "logs.revokeIntegrationCredential", method: "POST", path: "/api/v1/log-integration-credentials/:credentialId/revoke", module: "logs", stability: "mvp" },
   { id: "logs.upload", method: "POST", path: "/api/v1/logs", module: "logs", stability: "mvp" },
   { id: "logs.list", method: "GET", path: "/api/v1/logs", module: "logs", stability: "mvp" },
   { id: "logs.feedbackInsights", method: "GET", path: "/api/v1/logs/feedback-insights", module: "logs", stability: "mvp" },

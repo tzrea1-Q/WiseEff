@@ -3,6 +3,7 @@ import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
+import { resolveIntegrationCredential } from "../auth/integrationCredentialResolver";
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
@@ -14,6 +15,10 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import type { LogAnalysisQueue } from "./logAnalysisQueue";
 import { completeRun, createFileObject, persistLogAnalysisReport } from "./repository";
+import { issueIntegrationCredential } from "./integrationCredentials";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { insertLogDomain } from "./domainsRepository";
+import { insertSkillRevision } from "./skillsRepository";
 import {
   archiveLogRecord,
   createLogFromFile,
@@ -131,6 +136,59 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     );
     return result.rows;
   }
+
+  async function integration(skillId?: string) {
+    const auth = makeAuth({ permissions: ["logs:admin-domains"] });
+    const issued = await issueIntegrationCredential(db, auth,
+      { name: "Build upload", skillId }, createUserInvocation(auth), { requestId: "test-integration-service" });
+    return resolveIntegrationCredential(db, `Bearer ${issued.token}`);
+  }
+
+  it("integration file reuse requires the creating credential and never accepts a shared null uploading user", async () => {
+    const owner = await integration();
+    const other = await integration();
+    const result = await uploadLogFile(db, createMemoryObjectStore(), owner, {
+      fileName: "machine.log", contentType: "text/plain", bytes: Buffer.from("machine log")
+    });
+    expect(result.fileObject).toMatchObject({ uploadedByUserId: null, createdByCredentialId: owner.credentialId });
+    expect(result.log).toMatchObject({ createdByCredentialId: owner.credentialId, createdByCredentialName: owner.name });
+    const input = { fileObjectId: result.fileObject.id, fileName: "machine.log" };
+    await expect(createLogFromFile(db, other, input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(createLogFromFile(db, makeAuth(), input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const reused = await createLogFromFile(db, owner, input);
+    expect(reused.log.createdByCredentialId).toBe(owner.credentialId);
+    await expect(getLogRecord(db, other, reused.log.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(getLogRecord(db, owner, reused.log.id)).resolves.toMatchObject({ id: reused.log.id });
+    await expect(getLogRecord(db, makeAuth(), reused.log.id)).resolves.toMatchObject({ id: reused.log.id });
+    const rows = await db.query<{ submitted_by_user_id: string | null }>("select submitted_by_user_id from log_records where id=$1", [reused.log.id]);
+    expect(rows.rows[0].submitted_by_user_id).toBeNull();
+    const audits = await db.query<{ actor_type: string; actor_user_id: string | null; metadata: unknown }>("select actor_type, actor_user_id, metadata from audit_events where target_id=$1", [reused.log.id]);
+    expect(audits.rows).toEqual([expect.objectContaining({ actor_type: "integration", actor_user_id: null,
+      metadata: expect.objectContaining({ credentialId: owner.credentialId }) })]);
+  });
+
+  it("bound integration credentials require matching skill selectors before storing any files", async () => {
+    const skill = await insertLogDomain(db, { id: "bound-skill", organizationId: "org-1", name: "Bound skill" });
+    await insertSkillRevision(db, { organizationId: "org-1", skillId: skill.id,
+      userId: "user-1", spec: { schemaVersion: "skill/v1" }, published: true });
+    const principal = await integration(skill.id);
+    const store = createMemoryObjectStore();
+    const input = { fileName: "machine.log", contentType: "text/plain", bytes: Buffer.from("machine log") };
+    for (const selectors of [{}, { skillId: "another-skill" }, { skillKey: "unknown" },
+      { skillId: skill.id, logDomainId: "another-skill" }, { skillId: skill.id, skillKey: "unknown" }]) {
+      await expect(uploadLogFile(db, store, principal, { ...input, ...selectors })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+    expect(store.entries.size).toBe(0);
+    await expect(uploadLogFile(db, store, principal, { ...input, skillKey: skill.skillKey })).resolves.toMatchObject({ log: { logDomainId: skill.id } });
+  });
+
+  it("integration credentials cannot gain parameter access through upload selectors", async () => {
+    const principal = await integration();
+    const store = createMemoryObjectStore();
+    await expect(uploadLogFile(db, store, principal, { fileName: "machine.log", contentType: "text/plain",
+      bytes: Buffer.from("machine log"), relatedParameterId: "parameter-binding" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(store.entries.size).toBe(0);
+  });
 
   it("guest can list logs but cannot upload", async () => {
     await uploadSampleLog();

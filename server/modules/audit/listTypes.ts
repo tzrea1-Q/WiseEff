@@ -40,7 +40,7 @@ export type AuditEventListItemDto = {
     sourceLabel?: string;
   };
   actorUserId: string | null;
-  actorType: "user" | "agent" | "system";
+  actorType: "user" | "agent" | "system" | "integration";
   actorName: string | null;
   app: string;
   kind: string;

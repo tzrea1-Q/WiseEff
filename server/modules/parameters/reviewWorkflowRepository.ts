@@ -246,7 +246,7 @@ export type ReviewDecisionDto = {
 /** Internal-only decision projection used by trusted workflow/audit code. */
 type ReviewDecisionInternal = ReviewDecisionDto & {
   principalDeleted: boolean;
-  initiatorType: "user" | "agent" | "system" | "legacy";
+  initiatorType: "user" | "agent" | "system" | "integration" | "legacy";
   initiatorSystemKind: "service" | "job" | null;
   initiatorSystemName: string | null;
   initiatorSessionId: string | null;

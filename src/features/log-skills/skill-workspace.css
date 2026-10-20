@@ -43,6 +43,11 @@
 .skill-facts dt { color: var(--text-muted); }
 .skill-facts dd { color: var(--text); overflow-wrap: anywhere; }
 .skill-integration-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.skill-credential-toolbar, .skill-credential-secret { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.skill-credential-toolbar { justify-content: space-between; }
+.skill-credential-toolbar > button, .skill-credential-secret > button { flex: none; width: auto; }
+.skill-credential-secret > input { flex: 1; min-width: 0; }
+.skill-publish-dialog .skill-credential-checkbox { display: flex; align-items: center; gap: var(--space-2); }
 .skill-integration input:not([type="checkbox"]) { min-width: 0; max-width: min(100%, var(--skill-integration-text-width)); }
 .skill-integration input[type="number"] { max-width: min(100%, var(--skill-integration-number-width)); }
 .skill-section .skill-webhook-toggle { display: flex; align-items: center; }

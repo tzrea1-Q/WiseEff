@@ -63,7 +63,7 @@ const hasPermission = (
   permission: BackendPermission,
 ): boolean => {
   const trusted = assertTrustedInvocationContext(actor);
-  if (trusted.initiator === "system") {
+  if (trusted.initiator === "system" || trusted.initiator === "integration") {
     return false;
   }
   return trusted.principal.permissions.includes(permission);

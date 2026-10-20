@@ -26,7 +26,7 @@ type AuditEventRow = {
   organization_id: string | null;
   project_id: string | null;
   actor_user_id: string | null;
-  actor_type: "user" | "agent" | "system";
+  actor_type: "user" | "agent" | "system" | "integration";
   actor_name: string | null;
   app: string;
   kind: string;

@@ -166,6 +166,9 @@ function assertParameterSubmissionContext(
   }
   assertTrustedRefusalAuditSink(context.refusalSink);
   const invocation = assertTrustedInvocationContext(context.invocation);
+  if (invocation.initiator === "integration") {
+    throw new TrustedInvocationContextError("Parameter submission requires an authenticated user or system invocation");
+  }
   if (
     invocation.initiator !== "system" &&
     (invocation.principal.user.id !== auth.user.id ||
@@ -1913,7 +1916,7 @@ export async function reviewChange(
     }
 
     const participants = await buildReviewParticipants(tx, auth.organization.id, request, reviewDecisions);
-    const mergeInvocation = trustedMergeContext.invocation;
+    const mergeInvocation = assertTrustedInvocationMatchesAuth(auth, trustedMergeContext.invocation, "parameter review software merge");
     participants.push(
       mergeInvocation.initiator === "user"
         ? {

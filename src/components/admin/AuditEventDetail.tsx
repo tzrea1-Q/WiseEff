@@ -15,7 +15,8 @@ const severityBadge: Record<AuditSeverity, string> = {
 const actorTypeLabel = {
   user: "用户",
   agent: "Agent",
-  system: "系统"
+  system: "系统",
+  integration: "集成凭据"
 } as const;
 
 const debugWriteOutcomeLabel: Record<string, string> = {

@@ -9,7 +9,7 @@ export function buildSkillUploadExamples(apiOrigin: string, skillKey: string) {
     { fieldName: "file", fileName: "application.log", contentType: "text/plain", content: "INFO application started\n" },
     { fieldName: "file", fileName: "system.log", contentType: "text/plain", content: "ERROR example timeout\n" }
   ];
-  const authorization = '-H "Authorization: Bearer $WISEEFF_TOKEN"';
+  const authorization = '-H "Authorization: Bearer <集成凭据>"';
   return {
     endpoint,
     json: { body, curl: `curl --fail-with-body ${quote(endpoint)} \\\n  ${authorization} \\\n  -H 'Content-Type: application/json' \\\n  --data ${quote(JSON.stringify(body))}` },

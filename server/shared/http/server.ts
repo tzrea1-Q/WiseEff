@@ -290,6 +290,8 @@ export function createHttpServer(
   options: {
     metrics?: MetricsRegistry;
     tracing?: Pick<TracingBoundary, "withSpan">;
+    /** Reject forbidden routes before content-type validation or request-body collection. */
+    beforeBody?: (request: { method: HttpMethod; routePattern: string | undefined; headers: RouteRequest["headers"] }) => void;
     /** Per-request body collection bound; returns the default when the route has no declared limit. */
     maxBodyBytes?: (request: { method: string; path: string; contentType?: string }) => number;
   } = {}
@@ -309,7 +311,9 @@ export function createHttpServer(
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
       const method = request.method as HttpMethod;
-      const route = router.matchRoutePattern?.(method, url.pathname) ?? url.pathname;
+      const routePattern = router.matchRoutePattern?.(method, url.pathname);
+      const route = routePattern ?? url.pathname;
+      options.beforeBody?.({ method, routePattern, headers: request.headers });
       const maxBodyBytes = options.maxBodyBytes?.({ method, path: url.pathname, contentType: getContentType(request) }) ?? DEFAULT_MAX_REQUEST_BODY_BYTES;
       const spanAttributes: Record<string, string | number | boolean> = {
         method: request.method ?? "GET",
