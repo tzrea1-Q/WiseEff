@@ -6,6 +6,7 @@ import { expect, test, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
+import { openLogUploadDialog } from "./helpers/logAnalysis";
 import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import type { AnalysisSkill } from "../../src/features/log-skills/types";
 
@@ -71,7 +72,7 @@ test("forms only: template to published extractor, register decoder and decoded-
   const create = page.getByRole("dialog", { name: "新建技能", exact: true });
   await create.getByLabel("名称", { exact: true }).fill(`acceptance-design-forms-${randomUUID()}`);
   await create.getByRole("radio", { name: /通用文本日志/ }).check();
-  await create.getByLabel("样例日志（可选）", { exact: true }).setInputFiles({
+  await create.getByTestId("file-drop-zone-input").setInputFiles({
     name: "thermal.log", mimeType: "text/plain", buffer: Buffer.from(sampleText)
   });
   const creating = page.waitForResponse((response) => response.request().method() === "POST"
@@ -135,18 +136,16 @@ test("forms only: template to published extractor, register decoder and decoded-
     anyOf: [{ type: "field", field: decodedField, operator: "equals", value: 1 }] });
 
   await page.goto("/logs");
-  await prepareInteractionSurface(page);
-  await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志", exact: true }).click();
-  const uploadDialog = page.getByRole("dialog", { name: "上传日志", exact: true });
+  const uploadDialog = await openLogUploadDialog(page);
   await expect.poll(async () => (await readSelectControlOptions(uploadDialog.locator("#upload-log-domain")))
     .some((option) => option.value === skill.id)).toBe(true);
   await selectControlOption(uploadDialog.locator("#upload-log-domain"), skill.id);
-  await uploadDialog.getByLabel("选择日志文件", { exact: true }).setInputFiles({
+  await uploadDialog.getByTestId("file-drop-zone-input").setInputFiles({
     name: "thermal.log", mimeType: "text/plain", buffer: Buffer.from(sampleText)
   });
   const uploading = page.waitForResponse((response) => response.request().method() === "POST"
     && new URL(response.url()).pathname === "/api/v1/log-files");
-  await uploadDialog.getByRole("button", { name: "确认上传", exact: true }).click();
+  await uploadDialog.getByRole("button", { name: "开始分析", exact: true }).click();
   const uploaded = await uploading;
   expect(uploaded.status()).toBe(201);
   const recordId = (await uploaded.json() as { log: { id: string } }).log.id;

@@ -628,7 +628,7 @@ describe("skill workspace", () => {
     expect(sample.scrollTop).toBe(120);
     expect(repository.getSkillSample).toHaveBeenCalledTimes(1);
     repository.getSkillSample.mockResolvedValueOnce({ ...mockSkillSample, fileName: "replacement.log", content: "replacement sample" });
-    fireEvent.change(screen.getByLabelText("选择样例日志"), { target: { files: [new File(["replacement sample"], "replacement.log")] } });
+    fireEvent.change(within(document.querySelector(".skill-sample-pane")!).getByTestId("file-drop-zone-input"), { target: { files: [new File(["replacement sample"], "replacement.log")] } });
     await screen.findByText("replacement.log");
     await waitFor(() => expect(repository.parsePreview).toHaveBeenLastCalledWith("skill-charging", expect.objectContaining({ sampleText: "replacement sample", fileName: "replacement.log" })));
     fireEvent.click(screen.getByRole("button", { name: "删除样例" }));

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { FileDropZone } from "@/components/common/FileDropZone";
 import { z } from "zod";
 import { DataTable } from "@/components/admin/DataTable";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -89,7 +90,7 @@ export function AnalysisCasesSection({ skillId, repository, canEdit, beforeRun, 
   const [details, setDetails] = useState<{ name: string; runId: string; fileAnchors: boolean; result: AnalysisCaseRun["results"][number] } | null>(null);
   const [traces, setTraces] = useState<Partial<Record<"draft" | "published", AnalysisTraceStep[]>>>({});
   const [importStatus, setImportStatus] = useState("");
-  const importInput = useRef<HTMLInputElement>(null);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
   const refresh = useCallback(async () => { if (repository?.listAnalysisCases) setData(await repository.listAnalysisCases(skillId)); }, [repository, skillId]);
   useEffect(() => { let active = true; if (repository?.listAnalysisCases) void repository.listAnalysisCases(skillId).then((value) => { if (active) setData(value); }, (cause) => { if (active) setError(presentError(cause, "无法加载分析用例。")); }); return () => { active = false; }; }, [repository, skillId]);
   const run = data?.latestRun;
@@ -133,19 +134,20 @@ export function AnalysisCasesSection({ skillId, repository, canEdit, beforeRun, 
     <div className="flex flex-wrap items-center gap-2">
       {canEdit ? <><Button disabled={disabled || data.items.length >= 20} onClick={() => setEditing("new")}>添加分析用例</Button>
         <Button variant="outline" disabled={disabled || !data.items.length || !repository.startAnalysisCaseRun} onClick={() => start()}>运行全部用例</Button>
-        <Button variant="outline" disabled={disabled} onClick={() => importInput.current?.click()}>导入用例</Button>
-        <input ref={importInput} hidden aria-label="导入分析用例 ZIP" type="file" accept=".zip" disabled={disabled} onChange={(event) => {
-          const file = event.target.files?.[0]; event.target.value = "";
-          if (file) { setImportStatus(`正在导入 ${file.name}…`); void action(async () => {
-            try { await repository.importAnalysisCases!(skillId, file); await refresh(); setImportStatus(`已导入 ${file.name}`); }
-            catch (cause) { setImportStatus(`导入 ${file.name} 失败`); throw cause; }
-          }); }
-        }} /></> : null}
+        </> : null}
       <Button variant="outline" disabled={busy || !data.items.length} onClick={() => void action(async () => {
         const blob = await repository.exportAnalysisCases!(skillId); const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a"); anchor.href = url; anchor.download = "analysis-cases.zip"; anchor.click(); URL.revokeObjectURL(url);
       })}>导出用例</Button>
     </div>
+    {canEdit ? <FileDropZone label="导入分析用例 ZIP" browseLabel="导入用例" accept=".zip" disabled={disabled} files={importFiles}
+      hint="选择用例压缩包后立即导入。" onRemove={() => setImportFiles([])} onSelect={(files) => {
+        const file = files[0]; setImportFiles(files); setImportStatus(`正在导入 ${file.name}…`);
+        void action(async () => {
+          try { await repository.importAnalysisCases!(skillId, file); await refresh(); setImportStatus(`已导入 ${file.name}`); }
+          catch (cause) { setImportStatus(`导入 ${file.name} 失败`); throw cause; }
+        });
+      }} /> : null}
     {importStatus ? <p role="status">{importStatus}</p> : null}
     {run ? <div role="status" aria-live="polite"><p>{run.status === "processing" ? `正在运行分析用例… ${run.progress}%` : run.status === "complete" ? "分析用例运行完成" : "分析用例运行失败"}</p>
       {run.status === "processing" ? <progress aria-label="分析用例运行进度" max={100} value={run.progress} /> : null}

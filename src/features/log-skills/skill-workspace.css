@@ -91,7 +91,7 @@
 .skill-authoring-dialog .skill-template-choice { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
 .skill-template-choice span { display: grid; gap: var(--space-1); min-width: 0; }
 .skill-template-choice strong { font: 500 var(--text-base) / var(--leading-base) var(--font-sans); }
-.skill-template-choice small { white-space: normal; overflow-wrap: anywhere; font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans); }
+.skill-authoring-dialog .skill-template-choice small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans); }
 .skill-template-choice small, .skill-sample-pane p { color: var(--text-muted); }
 .skill-template-choice:hover, .skill-template-choice:focus-within { border-color: var(--accent); }
 .skill-template-choice:has(:checked) { background: var(--accent-soft); }

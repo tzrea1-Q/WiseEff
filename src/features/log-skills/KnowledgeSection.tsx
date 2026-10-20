@@ -3,9 +3,9 @@ import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepositor
 import { canSeeEntry, type KnowledgeCapability } from "@/domain/knowledge/rules";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
-import { formatBytes } from "@/domain/format/formatBytes";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { FileDropZone } from "@/components/common/FileDropZone";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SearchField } from "@/components/common/SearchField";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
@@ -37,10 +37,8 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
   const [uploadOpen, setUploadOpen] = useState(false);
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [pending, setPending] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const fileSequence = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const chooseRef = useRef<HTMLButtonElement>(null);
   const reasonId = useId();
   const canRead = apiMode && !!repository && !!capability?.canView;
@@ -81,7 +79,6 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
       return { id: ++fileSequence.current, file, status: error ? "invalid" : "validating", error };
     });
     setFiles((current) => [...current, ...selectedItems]);
-    if (fileRef.current) fileRef.current.value = "";
     for (const item of selectedItems) {
       if (item.error) continue;
       try {
@@ -124,7 +121,7 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
     <p>链接和上传结果需保存草稿，再随技能版本发布。仅已发布的知识进入分析检索；上传会创建知识草稿，请在知识库按正常流程发布。</p>
     <div className="flex flex-wrap gap-2">
       <Button variant="outline" disabled={disabled || !canRead || atLimit} onClick={() => { setQuery(""); setLinkOpen(true); }}>链接已有条目</Button>
-      <Button disabled={!canUpload} aria-describedby={uploadReason ? reasonId : undefined} onClick={() => { setFiles([]); setDragging(false); setUploadOpen(true); }}>上传 Markdown</Button>
+      <Button disabled={!canUpload} aria-describedby={uploadReason ? reasonId : undefined} onClick={() => { setFiles([]); setUploadOpen(true); }}>上传 Markdown</Button>
     </div>
     {uploadReason ? <p id={reasonId}>{uploadReason}</p> : null}
     {!canRead ? <p>{apiMode ? "查看知识条目需要知识查看权限；仍可管理技能中保存的链接。" : "请在 API 模式下管理知识链接。"}</p> : null}
@@ -158,20 +155,13 @@ export function KnowledgeSection({ spec, setSpec, disabled, apiMode, knowledgeRe
     <ModalDialog open={uploadOpen} initialFocusRef={chooseRef} onDismiss={pending ? undefined : () => setUploadOpen(false)} className="skill-publish-dialog">
       {({ titleId }) => <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void upload(); }}>
         <h2 id={titleId}>上传 Markdown</h2><p>支持多选或拖放 .md 文件。每个文件创建一个知识草稿，标题取文件名；不会自动发布。</p>
-        <div className={`grid justify-items-center gap-3 rounded-md border border-dashed p-5 ${dragging ? "border-primary bg-primary/5" : "border-border bg-muted/40"}`} role="region" aria-label="拖放 Markdown 文件"
-          onDragOver={(event) => { event.preventDefault(); if (canUpload && !pending) setDragging(true); }} onDragLeave={() => setDragging(false)}
-          onDrop={(event) => { event.preventDefault(); setDragging(false); if (canUpload && !pending) void selectFiles(Array.from(event.dataTransfer.files)); }}>
-          <p>将 Markdown 文件拖到此处</p>
-          <Button ref={chooseRef} type="button" variant="outline" disabled={pending || !canUpload} onClick={() => fileRef.current?.click()}>选择文件</Button>
-          <input ref={fileRef} type="file" aria-label="Markdown 文件" hidden className="hidden" accept=".md" multiple disabled={pending} onChange={(event) => { void selectFiles(Array.from(event.target.files ?? [])); }} />
-          <p className="text-xs text-muted-foreground">支持多选 .md；每个文件不超过 20 MiB，正文不超过 200,000 字符。</p>
-        </div>
-        {files.length ? <ul aria-label="待上传文件" className="grid gap-3">{files.map((item) => <li key={item.id} className="grid gap-1 rounded-md border border-border p-3">
-          <div className="flex items-start justify-between gap-3"><span className="min-w-0 break-all">{item.file.name} · {formatBytes(item.file.size)}</span>
-            {item.status !== "success" ? <Button type="button" variant="ghost" size="sm" disabled={pending} aria-label={`移除 ${item.file.name}`} onClick={() => setFiles((current) => current.filter((row) => row.id !== item.id))}>移除</Button> : null}</div>
-          <span role="status" className="text-xs text-muted-foreground">{uploadStatus[item.status]}</span>
-          {item.error ? <p role="alert" className="text-sm text-destructive">{item.error}</p> : null}
-        </li>)}</ul> : null}
+        <FileDropZone label="Markdown 文件" regionLabel="拖放 Markdown 文件" browseRef={chooseRef} accept=".md" multiple disabled={pending || !canUpload}
+          hint="支持多选 .md；每个文件不超过 20 MiB，正文不超过 200,000 字符。" files={files.map((item) => item.file)} listLabel="待上传文件"
+          onSelect={(selected) => { void selectFiles(selected); }} onRemove={(index) => setFiles((current) => current.filter((_, at) => at !== index))}
+          canRemove={(index) => files[index].status !== "success"} renderFileDetails={(index) => <>
+            <span role="status" className="text-xs text-muted-foreground">{uploadStatus[files[index].status]}</span>
+            {files[index].error ? <p role="alert" className="text-sm text-destructive">{files[index].error}</p> : null}
+          </>} />
         {files.some((item) => item.status === "success") ? <p role="status">已创建的条目保留在当前未保存草稿中；请保存草稿，失败的文件可单独重试。</p> : null}
         <div className="dialog-actions"><Button type="button" variant="outline" disabled={pending} onClick={() => setUploadOpen(false)}>取消</Button>
           <Button type="submit" disabled={!canUpload || pending || !readyFiles.length} aria-busy={pending}>{pending ? "上传中…" : "创建并链接"}</Button></div>

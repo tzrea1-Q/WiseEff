@@ -126,7 +126,7 @@ describe("analysis cases", () => {
   it("validates file anchors before saving an uploaded bundle", async () => {
     const onSave = vi.fn(async () => undefined);
     render(<AnalysisCaseDialog initial={item} uploadRequired availableFiles={item.files} onSave={onSave} onClose={() => undefined} />);
-    fireEvent.change(screen.getByLabelText("原始日志包"), { target: { files: [new File(["original bytes"], "device.log")] } });
+    fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["original bytes"], "device.log")] } });
     fireEvent.change(screen.getByRole("spinbutton", { name: "证据 1 行号" }), { target: { value: "0" } });
     fireEvent.submit(screen.getByRole("button", { name: "保存用例" }).closest("form")!);
     expect(await screen.findByRole("alert")).toHaveTextContent("请修正标出的字段"); expect(onSave).not.toHaveBeenCalled();
@@ -150,12 +150,12 @@ describe("analysis cases", () => {
     expect(screen.getByRole("region", { name: "草稿评分详情" })).not.toHaveTextContent("100% / 100%");
   });
 
-  it("uses an outline import trigger and reports the chosen archive status", async () => {
+  it("uses a shared drop target and reports the chosen archive status", async () => {
     const importAnalysisCases = vi.fn(async () => undefined);
     render(<AnalysisCasesSection skillId="skill" canEdit beforeRun={async () => undefined}
       repository={{ importAnalysisCases, listAnalysisCases: async () => ({ items: [item], latestRun: run, current: true }) }} />);
     expect(await screen.findByRole("button", { name: "导入用例" })).toBeEnabled();
-    const input = screen.getByLabelText("导入分析用例 ZIP"); expect(input).toHaveAttribute("hidden");
+    const input = screen.getByTestId("file-drop-zone-input"); expect(input).toHaveAttribute("hidden");
     const file = new File(["zip"], "regressions.zip"); fireEvent.change(input, { target: { files: [file] } });
     expect(await screen.findByText("已导入 regressions.zip")).toBeInTheDocument();
     expect(importAnalysisCases).toHaveBeenCalledWith("skill", file);
@@ -167,20 +167,20 @@ describe("analysis cases", () => {
     expect(screen.getByRole("textbox", { name: "用例名称" })).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByText("请输入用例名称。")).toBeInTheDocument();
     expect(screen.getByText("请选择原始日志文件或压缩包。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "选择文件" })).toHaveAccessibleDescription("请选择原始日志文件或压缩包。");
+    expect(screen.getByRole("button", { name: "原始日志包" })).toHaveAccessibleDescription("请选择原始日志文件或压缩包。");
     expect(screen.getByText("请至少添加一条关键证据。")).toBeInTheDocument();
   });
 
-  it("opens the multiple-file picker from the visible outline action and lists selected uploads", async () => {
+  it("opens the multiple-file picker from the drop target and lists selected uploads", async () => {
     render(<AnalysisCaseDialog initial={{ name: "多文件用例", expectations: emptyCaseExpectations }} uploadRequired onSave={vi.fn()} onClose={vi.fn()} />);
-    const chooser = screen.getByRole("button", { name: "选择文件" });
-    expect(chooser).toHaveAttribute("data-variant", "outline");
-    const input = screen.getByLabelText("原始日志包");
+    const chooser = screen.getByRole("button", { name: "原始日志包" });
+    expect(chooser.closest("section")).toHaveClass("file-drop-zone__target");
+    const input = screen.getByTestId("file-drop-zone-input");
     expect(input).toHaveAttribute("hidden"); expect(input).toHaveAttribute("multiple");
     const open = vi.spyOn(input, "click");
     await userEvent.click(chooser); expect(open).toHaveBeenCalledOnce();
     fireEvent.change(input, { target: { files: [new File(["one"], "device.log"), new File(["two"], "driver.log")] } });
-    const selected = screen.getByRole("region", { name: "原始日志文件" });
+    const selected = screen.getByRole("list", { name: "已选文件" });
     expect(selected).toHaveTextContent("device.log"); expect(selected).toHaveTextContent("driver.log");
     expect(within(selected).getAllByRole("listitem")).toHaveLength(2);
   });
@@ -215,7 +215,7 @@ describe("analysis cases", () => {
 
   it("offers manual internal paths for uploaded archives rather than the archive filename", async () => {
     render(<AnalysisCaseDialog initial={{ name: "归档用例", expectations: emptyCaseExpectations }} uploadRequired onSave={vi.fn()} onClose={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("原始日志包"), { target: { files: [new File(["archive"], "pack.zip")] } });
+    fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["archive"], "pack.zip")] } });
     fireEvent.click(screen.getByRole("button", { name: "添加证据" }));
     expect(screen.getByRole("textbox", { name: "证据 1 文件路径" })).toHaveValue("");
     expect(screen.getByText(/请填写包内文件的相对路径/)).toBeInTheDocument();

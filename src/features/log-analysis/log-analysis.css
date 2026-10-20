@@ -755,15 +755,6 @@
   font-weight: 700;
 }
 
-.upload-file-field {
-  display: grid;
-  gap: var(--space-2);
-  color: var(--text);
-  font-size: var(--text-base);
-  font-weight: 700;
-}
-
-.upload-file-field input,
 .upload-question-field input,
 .upload-question-field textarea,
 .upload-question-field select {
@@ -791,31 +782,7 @@
   line-height: 1.45;
 }
 
-.upload-file-field--dragging {
-  border: calc(var(--stroke-hairline) * 2) dashed var(--app-primary);
-  background: color-mix(in srgb, var(--accent-pressed) 4%, transparent);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-}
-
-.upload-dialog__state {
-  min-height: calc(var(--space-1) * 17);
-  padding: var(--space-3);
-  color: var(--app-muted);
-  background: var(--surface-low);
-  border: var(--stroke-hairline) solid var(--border);
-  border-radius: var(--radius-md);
-}
-
-.upload-dialog__state p {
-  margin: 0;
-}
-
-.upload-dialog__state--error {
-  color: var(--danger);
-  background: var(--danger-soft);
-  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
-}
+.upload-advanced-options[open] > .upload-question-field { margin-top: var(--space-3); }
 
 .upload-dialog__actions {
   display: flex;

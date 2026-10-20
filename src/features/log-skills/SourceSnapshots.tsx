@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { DataTable } from "@/components/admin/DataTable";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { FileDropZone } from "@/components/common/FileDropZone";
 import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
@@ -151,7 +152,8 @@ export function SourceSnapshots({ skill, repository, apiMode, canEdit, disabled,
       {({ titleId }) => <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void upload(); }} noValidate>
         <h2 id={titleId}>上传源码快照</h2>
         <label className="grid gap-2">版本标签<Input ref={labelRef} value={versionLabel} maxLength={200} disabled={pending} required aria-invalid={!!formError} aria-describedby={formError ? errorId : undefined} onChange={(event) => setVersionLabel(event.target.value)} /></label>
-        <label className="grid gap-2">源码压缩包<Input type="file" accept=".tar.gz,.tgz,.zip" required disabled={pending} aria-invalid={!!formError} aria-describedby={formError ? errorId : undefined} onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
+        <div className="grid gap-2"><span>源码压缩包</span><FileDropZone label="源码压缩包" accept=".tar.gz,.tgz,.zip" required disabled={pending} invalid={!!formError}
+          describedBy={formError ? errorId : undefined} files={file ? [file] : []} onSelect={(files) => setFile(files[0] ?? null)} onRemove={() => setFile(null)} /></div>
         <p>支持 .tar.gz、.tgz、.zip；上传上限由服务器配置，默认 100 MiB。</p>
         {formError ? <p id={errorId} role="alert">{formError}</p> : null}
         <div className="dialog-actions"><Button type="button" variant="outline" disabled={pending} onClick={() => setUploadOpen(false)}>取消</Button><Button type="submit" disabled={pending} aria-busy={pending}>{pending ? "上传中…" : "上传"}</Button></div>
