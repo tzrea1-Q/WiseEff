@@ -138,8 +138,8 @@ describe("knowledge skill section", () => {
     const { repository } = setup();
     await userEvent.click(screen.getByRole("button", { name: "上传 Markdown" }));
     const dialog = screen.getByRole("dialog", { name: "上传 Markdown" });
-    expect(within(dialog).getByLabelText("Markdown 文件")).not.toBeVisible();
-    expect(within(dialog).getByRole("button", { name: "选择文件" })).toBeVisible();
+    expect(within(dialog).getByTestId("file-drop-zone-input")).not.toBeVisible();
+    expect(within(dialog).getByRole("button", { name: "Markdown 文件" })).toBeVisible();
     const oversized = markdownFile("oversized.md", "large");
     Object.defineProperty(oversized, "size", { value: 20 * 1024 * 1024 + 1 });
     fireEvent.drop(within(dialog).getByRole("region", { name: "拖放 Markdown 文件" }), { dataTransfer: { files: [
@@ -196,11 +196,11 @@ describe("knowledge skill section", () => {
     expect(within(dialog).getByRole("alert")).toHaveTextContent("仅支持 .md 文件");
     expect(within(dialog).getByRole("button", { name: "创建并链接" })).toBeDisabled();
     await userEvent.click(within(dialog).getByRole("button", { name: "移除 bad.txt" }));
-    fireEvent.change(within(dialog).getByLabelText("Markdown 文件"), { target: { files: [markdownFile("one.md", "one"), markdownFile("two.md", "two"), markdownFile("three.md", "three")] } });
+    fireEvent.change(within(dialog).getByTestId("file-drop-zone-input"), { target: { files: [markdownFile("one.md", "one"), markdownFile("two.md", "two"), markdownFile("three.md", "three")] } });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "创建并链接" })).toBeEnabled());
     await userEvent.click(within(dialog).getByRole("button", { name: "创建并链接" }));
     expect(within(dialog).getByText("正在创建…")).toBeVisible();
-    expect(within(dialog).getByRole("button", { name: "选择文件" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Markdown 文件" })).toBeDisabled();
     finishFirst(entry("one", "draft"));
     await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("没有权限执行该操作"));
     expect(changed).toHaveBeenLastCalledWith({ schemaVersion: "skill/v1", knowledgeEntryIds: ["one", "three"] });
@@ -217,7 +217,7 @@ describe("knowledge skill section", () => {
     const { repository } = setup();
     await userEvent.click(screen.getByRole("button", { name: "上传 Markdown" }));
     const dialog = screen.getByRole("dialog", { name: "上传 Markdown" });
-    fireEvent.change(within(dialog).getByLabelText("Markdown 文件"), { target: { files: [markdownFile("long.md", "中".repeat(200_001))] } });
+    fireEvent.change(within(dialog).getByTestId("file-drop-zone-input"), { target: { files: [markdownFile("long.md", "中".repeat(200_001))] } });
     expect(await within(dialog).findByText("正文超过知识库 200,000 字符上限。")).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "创建并链接" })).toBeDisabled();
     expect(repository.createMarkdown).not.toHaveBeenCalled();

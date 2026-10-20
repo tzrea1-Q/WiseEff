@@ -27,6 +27,7 @@ import type { LogDomain, LogSkillRecommendationReason } from "@/domain/logs/type
 import { isSupportedLogUploadFileName, mockLogUploadAccept } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { formatBytes } from "@/domain/format/formatBytes";
+import { FileDropZone } from "@/components/common/FileDropZone";
 import { formatLogDateTime } from "@/domain/format/formatDateTime";
 import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { classifyAnalysisDegradation } from "@/domain/logs/analysisProvenance";
@@ -47,7 +48,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
@@ -74,7 +74,6 @@ function classNames(...values: Array<string | false | null | undefined>) {
 }
 
 type LogsAuxTab = "report" | "files" | "signals" | "trace";
-type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 
 function createEmptyLogRecord(): LogRecord {
   const nowIso = new Date(0).toISOString();
@@ -727,10 +726,9 @@ function UploadLogDialog({
   onUpload: (files: File[], supported: boolean, question?: string, logDomainId?: string,
     relatedParameterPin?: LogRelatedParameterPin, sourceVersion?: string, skillSelection?: "generic") => Promise<void> | void;
 }) {
-  const [phase, setPhase] = useState<UploadDialogPhase>("idle");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadError, setUploadError] = useState("");
-  const [selectedFileName, setSelectedFileName] = useState("");
+  const [selectionError, setSelectionError] = useState("");
   const [question, setQuestion] = useState("");
   const [selectedDomainId, setSelectedDomainId] = useState<string>(AUTO_LOG_SKILL_VALUE);
   const [recommendation, setRecommendation] = useState<LogSkillRecommendations | null>(null);
@@ -743,7 +741,6 @@ function UploadLogDialog({
   const [sourceVersion, setSourceVersion] = useState("");
   const readySourceVersions = domains.find((domain) => domain.id === resolvedDomainId)?.readySourceVersions ?? [];
   const [supported, setSupported] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectId, setProjectId] = useState("");
@@ -752,8 +749,6 @@ function UploadLogDialog({
   const [bindingLoading, setBindingLoading] = useState(false);
   const [bindingError, setBindingError] = useState("");
   const [bindingRefresh, setBindingRefresh] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const timerRef = useRef<number | null>(null);
   const binding = bindings.find((item) => item.projectId === projectId && item.id === bindingId);
   const relatedParameterPin: LogRelatedParameterPin | undefined = binding ? {
     kind: "canonical-pin", projectId, bindingId: binding.id,
@@ -811,49 +806,21 @@ function UploadLogDialog({
     return () => { cancelled = true; };
   }, [parameterRepository, parameterCatalogRepository, projectId, bindingRefresh]);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-      }
-    };
-  }, []);
-
   const selectFiles = (files: File[]) => {
     setSelectedFiles(files);
-    setSelectedFileName(files.map((file) => file.name).join("、"));
     const limitError = files.length > 2000 ? "文件数超过默认 2000 个上限，实际以服务端配置为准。"
       : files.reduce((sum, file) => sum + file.size, 0) > 100 * 1024 * 1024 ? "上传总大小超过默认 100 MiB 上限，实际以服务端配置为准。"
       : files.length > 1 && files.some((file) => /\.(gz|tgz|zip|tar)$/i.test(file.name)) ? "请选择多个文本文件或一个压缩包。"
       : new Set(files.map((file) => file.name)).size !== files.length ? "不能上传同名文件。" : "";
-    setUploadError(limitError);
+    setSelectionError(limitError);
+    setUploadError("");
     const nextSupported = !limitError && ((archivesSupported && files.length > 1)
       || files.every((file) => isSupportedLogFile(file.name, archivesSupported)));
     setSupported(nextSupported);
-    setPhase(files.length ? "validating" : "idle");
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => { setPhase(files.length ? nextSupported ? "confirm" : "unsupported" : "idle"); timerRef.current = null; }, 200);
-  };
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => selectFiles(Array.from(event.target.files ?? []));
-  const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault(); setDragging(false); selectFiles(Array.from(event.dataTransfer.files));
-  };
-
-  const resetSelection = () => {
-    setPhase("idle");
-    setSelectedFiles([]);
-    setUploadError("");
-    setSelectedFileName("");
-    setSupported(false);
-    setQuestion("");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-      fileInputRef.current.focus();
-    }
   };
 
   const uploadSelected = () => {
-    if (!selectedFiles.length || uploading || !associationReady) {
+    if (!selectedFiles.length || selectionError || uploading || !associationReady) {
       return;
     }
     setUploading(true);
@@ -871,33 +838,16 @@ function UploadLogDialog({
         <div className="upload-dialog__header">
           <div>
             <h2 id={titleId}><strong>上传日志</strong></h2>
-            <p>
-              {archivesSupported
-                ? "选择多个 .log / .txt / .csv / .json 文本日志，或一个 .tar / .tar.gz / .tgz / .zip / .gz 压缩包。"
-                : "选择 .log、.txt、.csv 或 .json 文本日志，雷泽会模拟创建分析任务。"}
-            </p>
+            <p>文本日志或压缩包，单次最多 100 MiB</p>
           </div>
-          <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="关闭上传日志" disabled={uploading} onClick={onClose}>
             <X size={18} />
           </button>
         </div>
-        <label
-          className={classNames("upload-file-field", dragging && "upload-file-field--dragging")}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-        >
-          <span>选择日志文件（支持拖放多份）</span>
-          <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept={accept ?? undefined} multiple onChange={handleFileChange} />
-        </label>
-        {selectedFiles.length ? <ul aria-label="已选文件" className="space-y-2">
-          {selectedFiles.map((file, index) => <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 text-sm">
-            <span className="min-w-0 break-all">{file.name} · {formatBytes(file.size)}</span>
-            <button className="button subtle" type="button" disabled={uploading} aria-label={`移除 ${file.name}`}
-              onClick={() => selectFiles(selectedFiles.filter((_, at) => at !== index))}>移除</button>
-          </li>)}
-        </ul> : null}
-        {uploadError ? <p role="alert">{uploadError}</p> : null}
+        <FileDropZone label="选择日志文件" accept={accept ?? undefined} multiple disabled={uploading} files={selectedFiles}
+          onSelect={selectFiles} onRemove={(index) => selectFiles(selectedFiles.filter((_, at) => at !== index))}
+          hint={archivesSupported ? "支持 .log、.txt、.csv、.json 文本日志，或一个 .tar、.tar.gz、.tgz、.zip、.gz 压缩包。" : "支持 .log、.txt、.csv、.json 文本日志；演示模式将模拟创建分析任务。"} />
+        {selectionError || uploadError ? <p role="alert">{selectionError || uploadError}</p> : null}
         <label className="upload-question-field" htmlFor="upload-log-domain">
           <span>分析技能（可选）</span>
           <SelectControl
@@ -920,6 +870,8 @@ function UploadLogDialog({
           <p>推荐：{recommendedDomain.name} · {recommended.reasons[0] ? `匹配 ${recommended.reasons[0].file}` : "匹配日志特征"}（{recommended.reasons.length} 条理由）</p>
           <details><summary>查看理由</summary><RecommendationReasons reasons={recommended.reasons} label="技能推荐理由" /></details>
         </div> : null}
+        {readySourceVersions.length || parameterRepository ? <details className="upload-advanced-options">
+          <summary>高级选项</summary>
         {readySourceVersions.length ? (
           <label className="upload-question-field" htmlFor="upload-source-version">
             <span>源码版本（可选）</span>
@@ -942,7 +894,7 @@ function UploadLogDialog({
                 <span>项目参数</span>
                 <SelectControl id="upload-parameter-binding" ariaLabel="项目参数" value={bindingId} disabled={uploading || bindingLoading}
                   onValueChange={setBindingId}
-                  options={[{ value: "", label: bindingLoading ? "正在加载参数…" : "请选择项目参数" }, ...bindings.map((item) => ({ value: item.id, label: `${item.displayName ?? item.propertyKey} · ${item.locator || item.driverModule} · ${item.id}` }))]} />
+                  options={[{ value: "", label: bindingLoading ? "正在加载参数…" : "请选择项目参数" }, ...bindings.map((item) => ({ value: item.id, label: item.displayName || "未命名参数" }))]} />
                 {!bindingLoading && !bindingError && !bindings.length ? <span>该项目暂无可关联的当前参数。</span> : null}
               </label>
             ) : null}
@@ -952,6 +904,7 @@ function UploadLogDialog({
             </p> : null}
           </>
         ) : null}
+        </details> : null}
         <label className="upload-question-field" htmlFor="upload-analysis-question">
           <span>分析问题（可选）</span>
           <textarea
@@ -962,41 +915,16 @@ function UploadLogDialog({
             onChange={(event) => setQuestion(event.target.value)}
           />
         </label>
-        <div className={classNames("upload-dialog__state", phase === "unsupported" && "upload-dialog__state--error")}>
-          {phase === "idle" ? (
-            <p>等待选择日志文件。</p>
-          ) : phase === "validating" ? (
-            <p>正在读取 {selectedFileName}...</p>
-          ) : phase === "confirm" ? (
-            <p><strong>{selectedFileName}</strong> 已选择，确认后由服务端校验并分析。</p>
-          ) : uploadError ? (
-            <p><strong>{selectedFileName}</strong> 请核对以上提示，服务端将执行完整校验。</p>
-          ) : (
-            <p>
-              <strong>{selectedFileName}</strong> 格式不支持。
-              {archivesSupported
-                ? "请上传文本日志或 .tar / .tar.gz / .tgz / .zip / .gz 压缩包。"
-                : "请优先上传 .log / .txt / .csv / .json 文本日志。"}
-            </p>
-          )}
-        </div>
+        {selectedFiles.length && !supported && !selectionError ? <p className="text-sm text-muted-foreground">未识别文件扩展名，可仍然上传，由服务端校验是否为文本日志。</p> : null}
         <div className="upload-dialog__actions">
-          {phase === "unsupported" ? (
-            <button className="button subtle" type="button" onClick={resetSelection}>
-              知道了
-            </button>
-          ) : (
             <button className="button subtle" type="button" disabled={uploading} onClick={onClose}>
               取消
             </button>
-          )}
-          {phase === "confirm" ? (
-            <button className="button primary" type="button" aria-busy={uploading ? "true" : undefined} disabled={uploading || !associationReady} onClick={uploadSelected}>
-              确认上传
+            <button className="button primary" type="button" aria-busy={uploading ? "true" : undefined} disabled={!selectedFiles.length || !supported || uploading || !associationReady} onClick={uploadSelected}>
+              开始分析
             </button>
-          ) : null}
-          {phase === "unsupported" ? (
-            <button className="button danger" type="button" aria-busy={uploading ? "true" : undefined} disabled={uploading || !associationReady} onClick={uploadSelected}>
+          {selectedFiles.length && !supported && !selectionError ? (
+            <button className="button subtle" type="button" aria-busy={uploading ? "true" : undefined} disabled={uploading || !associationReady} onClick={uploadSelected}>
               仍然上传
             </button>
           ) : null}

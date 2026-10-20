@@ -14,25 +14,33 @@ function setup(apiMode = true) {
   return { repository, onNavigate, onDismiss };
 }
 describe("create skill dialog", () => {
+  it("exposes complete template descriptions in the visible and accessible choice", async () => {
+    setup();
+    await screen.findByRole("radio", { name: /通用文本日志/ });
+    for (const template of mockSkillTemplates) {
+      const choice = screen.getByRole("radio", { name: `${template.label}${template.description}` }).closest("label")!;
+      expect(within(choice).getByText(template.description, { exact: true })).toBeVisible();
+    }
+  });
   it("uses shared field labels, compact choices and an inline removable sample", async () => {
     setup();
     await screen.findByRole("radio", { name: /通用文本日志/ });
     expect(screen.getAllByRole("radio")).toHaveLength(5);
     for (const name of ["名称", "描述（可选）", "样例日志（可选）"])
-      expect(screen.getByLabelText<HTMLInputElement | HTMLTextAreaElement>(name).labels?.[0]).toHaveAttribute("data-slot", "label");
+      expect(screen.getByLabelText<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>(name).labels?.[0]).toHaveAttribute("data-slot", "label");
     expect(screen.getByRole("textbox", { name: "描述（可选）" })).toHaveAttribute("rows", "2");
-    const input = screen.getByLabelText("样例日志（可选）");
+    const input = screen.getByTestId("file-drop-zone-input");
     expect(input).toHaveAttribute("type", "file");
-    expect(input.nextElementSibling).toHaveTextContent("请选择一个文本文件，最大 2 MB。");
+    expect(screen.getByRole("button", { name: "样例日志（可选）" })).toHaveAccessibleDescription("请选择一个文本文件，最大 2 MB。");
     for (const template of mockSkillTemplates) {
       const choice = screen.getByRole("radio", { name: new RegExp(template.label) }).closest("label")!;
       expect(within(choice).getByText(template.description, { selector: "small" })).toHaveTextContent(template.description);
     }
     await userEvent.upload(input, new File(["hello"], "device.log"));
-    const name = screen.getByText("device.log");
-    await userEvent.click(within(name.parentElement!).getByRole("button", { name: "移除已选样例" }));
+    expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent("device.log · 5 B");
+    await userEvent.click(screen.getByRole("button", { name: "移除 device.log" }));
     expect(input).toHaveValue("");
-    expect(screen.queryByText("device.log")).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "已选文件" })).not.toBeInTheDocument();
   });
   it.each(mockSkillTemplates)("creates from $id and navigates after uploading a chosen sample", async (template) => {
     const { repository, onNavigate } = setup();
@@ -40,7 +48,7 @@ describe("create skill dialog", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "名称" }), { target: { value: "  Device  " } });
     fireEvent.change(screen.getByRole("textbox", { name: "描述（可选）" }), { target: { value: "Description" } });
     const sample = new File(["hello"], "device.log");
-    await userEvent.upload(screen.getByLabelText("样例日志（可选）"), sample);
+    await userEvent.upload(screen.getByTestId("file-drop-zone-input"), sample);
     await userEvent.click(screen.getByRole("button", { name: "创建技能" }));
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging"));
     expect(repository.createLogSkill).toHaveBeenCalledWith({ name: "Device", description: "Description", startingPoint: { templateId: template.id } });
@@ -77,7 +85,7 @@ describe("create skill dialog", () => {
     repository.replaceSkillSample.mockRejectedValueOnce(new Error("failed"));
     await screen.findByRole("radio", { name: /通用文本日志/ });
     await userEvent.type(screen.getByRole("textbox", { name: "名称" }), "Sample");
-    await userEvent.upload(screen.getByLabelText("样例日志（可选）"), new File(["hello"], "sample.log"));
+    await userEvent.upload(screen.getByTestId("file-drop-zone-input"), new File(["hello"], "sample.log"));
     await userEvent.click(screen.getByRole("button", { name: "创建技能" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("技能已创建，样例上传失败");
     await userEvent.click(screen.getByRole("button", { name: "打开技能" }));

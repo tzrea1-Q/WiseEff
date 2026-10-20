@@ -104,7 +104,7 @@ it("opens skill package import from the skill list toolbar and links to the impo
   const { onNavigate } = renderPage({ logActions: createLogActions(), skillRepository, apiMode: true });
   await userEvent.click(await screen.findByRole("button", { name: "导入技能包" }));
   const dialog = screen.getByRole("dialog", { name: "导入技能包" });
-  await userEvent.upload(within(dialog).getByLabelText("技能包 ZIP"), new File(["zip"], "skill.zip", { type: "application/zip" }));
+  await userEvent.upload(within(dialog).getByTestId("file-drop-zone-input"), new File(["zip"], "skill.zip", { type: "application/zip" }));
   await userEvent.click(within(dialog).getByRole("button", { name: "校验并导入" }));
   await userEvent.click(await within(dialog).findByRole("link", { name: "打开技能工作区" }));
   expect(onNavigate).toHaveBeenCalledWith("/log-admin/skills/skill-charging");

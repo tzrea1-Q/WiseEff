@@ -532,11 +532,11 @@ async function uploadLogThroughUi(page: Page, filePath: string, question?: strin
     await expect.poll(async () => (await readSelectControlOptions(dialog.locator("#upload-log-domain"))).filter((option) => option.label.includes(domainName)).length, { timeout: 10_000 }).toBe(1);
     await selectControlOption(dialog.locator("#upload-log-domain"), { label: domainName });
   }
-  await dialog.getByLabel("选择日志文件").setInputFiles(filePath);
+  await dialog.getByTestId("file-drop-zone-input").setInputFiles(filePath);
   if (question) {
     await dialog.locator("#upload-analysis-question").fill(question);
   }
-  await dialog.getByRole("button", { name: question ? "确认上传" : "仍然上传" }).click();
+  await dialog.getByRole("button", { name: question ? "开始分析" : "仍然上传" }).click();
   await expect(dialog).not.toBeVisible({ timeout: 70_000 });
 }
 
@@ -1246,14 +1246,14 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const gzBuffer = gzipSync(readFileSync(supportedFixture));
     await page.goto("/logs");
     const uploadDialog = await openLogUploadDialog(page);
-    await expect(uploadDialog).toContainText(/\.tar\.gz \/ \.tgz \/ \.zip \/ \.gz 压缩包/);
-    await uploadDialog.getByLabel("选择日志文件").setInputFiles({
+    await expect(uploadDialog).toContainText("支持 .log、.txt、.csv、.json 文本日志，或一个 .tar、.tar.gz、.tgz、.zip、.gz 压缩包。");
+    await uploadDialog.getByTestId("file-drop-zone-input").setInputFiles({
       name: archiveFileName,
       mimeType: "application/gzip",
       buffer: gzBuffer
     });
     await uploadDialog.locator("#upload-analysis-question").fill(analysisQuestion);
-    await uploadDialog.getByRole("button", { name: "确认上传" }).click();
+    await uploadDialog.getByRole("button", { name: "开始分析" }).click();
     await expect(uploadDialog).not.toBeVisible({ timeout: 70_000 });
 
     const archiveLog = await latestLogByFile(page, archiveFileName);

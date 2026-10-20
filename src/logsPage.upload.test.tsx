@@ -91,9 +91,6 @@ function setQuestion(value: string) {
 
 async function confirmSelectedFile(selector = ".upload-dialog__actions .button.primary") {
   await act(async () => {
-    vi.advanceTimersByTime(250);
-  });
-  await act(async () => {
     fireEvent.click(document.querySelector(selector) as HTMLButtonElement);
   });
 }
@@ -130,13 +127,15 @@ describe("upload skill recommendation", () => {
       source: "skill-glob", ref: "**/kernel.log", role: "充电" }]
   }] };
 
-  async function setup(recommendLogSkills = vi.fn().mockResolvedValue(recommendation)) {
+  async function setup(recommendLogSkills = vi.fn().mockResolvedValue(recommendation), fakeTimers = false) {
     const repository = renderApiLogs(createLogRepository({ recommendLogSkills,
       listLogDomains: vi.fn().mockResolvedValue([skill, { ...skill, id: "other", name: "其他技能" }]) }));
     await waitForApiRuntime(repository);
+    if (fakeTimers) vi.useFakeTimers();
     openUploadDialog();
     chooseFile(new File(["charging ready\nnext"], "kernel.log", { type: "text/plain" }));
-    await waitFor(() => expect(recommendLogSkills).toHaveBeenCalled());
+    if (fakeTimers) await act(async () => { await vi.waitFor(() => expect(recommendLogSkills).toHaveBeenCalled()); });
+    else await waitFor(() => expect(recommendLogSkills).toHaveBeenCalled());
     return repository;
   }
 
@@ -147,7 +146,7 @@ describe("upload skill recommendation", () => {
     expect(screen.getByText("推荐：充电电源 · 匹配 kernel.log（1 条理由）")).toBeInTheDocument();
     fireEvent.click(screen.getByText("查看理由"));
     expect(screen.getByRole("list", { name: "技能推荐理由" })).toHaveTextContent("适用文件规则 **/kernel.log（充电）");
-    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始分析" }));
     await waitFor(() => expect(repository.uploadLog).toHaveBeenCalled());
     expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillId).toBeUndefined();
   });
@@ -159,7 +158,7 @@ describe("upload skill recommendation", () => {
     await selectControlOption(screen.getByLabelText(/分析技能/), "other");
     await act(async () => pending.resolve(recommendation));
     expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("其他技能");
-    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始分析" }));
     await waitFor(() => expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ skillId: "other" })));
   });
 
@@ -173,7 +172,7 @@ describe("upload skill recommendation", () => {
     await user.keyboard("{Escape}");
     await selectControlOption(screen.getByLabelText(/分析技能/), "other");
     await selectControlOption(screen.getByLabelText(/分析技能/), "__auto__");
-    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始分析" }));
     await waitFor(() => expect(repository.uploadLog).toHaveBeenCalled());
     expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillId).toBeUndefined();
     expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillSelection).toBeUndefined();
@@ -192,7 +191,7 @@ describe("upload skill recommendation", () => {
       .toEqual(["充电电源（推荐）", "不使用技能（通用分析）", "其他技能"]);
     await user.keyboard("{Escape}");
     if (chooseAuto) await selectControlOption(trigger, "__auto__");
-    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始分析" }));
     await waitFor(() => expect(repository.uploadLog).toHaveBeenCalled());
     expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillId).toBe(chooseAuto ? undefined : skill.id);
   });
@@ -201,7 +200,7 @@ describe("upload skill recommendation", () => {
     const repository = await setup();
     await waitFor(() => expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("充电电源"));
     await selectControlOption(screen.getByLabelText(/分析技能/), "");
-    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始分析" }));
     await waitFor(() => expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ skillSelection: "generic" })));
     expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillId).toBeUndefined();
   });
@@ -211,19 +210,20 @@ describe("upload skill recommendation", () => {
     await waitFor(() => expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument());
     expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("自动推荐（无匹配时通用分析）");
     expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始分析" }));
     await waitFor(() => expect(repository.uploadLog).toHaveBeenCalled());
     expect(vi.mocked(repository.uploadLog).mock.calls[0][0].skillSelection).toBeUndefined();
   });
 
   it("times out advisory scoring without blocking upload or applying a late result", async () => {
     const pending = deferred<LogSkillRecommendations>();
-    const repository = await setup(vi.fn().mockReturnValue(pending.promise));
-    await waitFor(() => expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument(), { timeout: 3500 });
+    const repository = await setup(vi.fn().mockReturnValue(pending.promise), true);
+    expect(screen.getByText("正在推荐分析技能…")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
     await act(async () => pending.resolve(recommendation));
     expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument();
     expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("自动推荐（无匹配时通用分析）");
-    fireEvent.click(screen.getByRole("button", { name: "确认上传" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     await act(async () => {});
     expect(repository.uploadLog).toHaveBeenCalled();
   });
@@ -296,7 +296,7 @@ describe("upload skill recommendation", () => {
     await selectControlOption(screen.getByLabelText(/分析技能/), "");
     await act(async () => pending.resolve(recommendation));
     expect(screen.getByLabelText(/分析技能/)).toHaveTextContent("不使用技能（通用分析）");
-    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始分析" }));
     await waitFor(() => expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ skillSelection: "generic" })));
   });
 
@@ -304,7 +304,7 @@ describe("upload skill recommendation", () => {
     const repository = await setup(vi.fn().mockResolvedValue({ recommendations: [] }));
     await waitFor(() => expect(screen.queryByText("正在推荐分析技能…")).not.toBeInTheDocument());
     await selectControlOption(screen.getByLabelText(/分析技能/), "");
-    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始分析" }));
     await waitFor(() => expect(repository.uploadLog).toHaveBeenCalledWith(expect.objectContaining({ skillSelection: "generic" })));
   });
 });
@@ -422,6 +422,10 @@ describe("LogsPage api upload wiring", () => {
     await waitFor(() => expect(repository.listLogDomains).toHaveBeenCalled());
     const domainSelect = await screen.findByLabelText(/分析技能/);
     await selectControlOption(domainSelect, chargingDomain.id);
+    const advanced = screen.getByText("高级选项");
+    expect(advanced.parentElement).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("源码版本（可选）")).not.toBeVisible();
+    fireEvent.click(advanced);
     const sourceSelect = screen.getByRole("combobox", { name: "源码版本（可选）" });
     expect(sourceSelect).toHaveTextContent("使用默认快照");
     expect(sourceSelect).toHaveAccessibleDescription("选择源码快照版本；不选择时使用技能版本的默认快照。");
@@ -461,9 +465,10 @@ describe("LogsPage api upload wiring", () => {
     await waitForApiRuntime(repository);
     vi.mocked(parameters.listParameters).mockClear();
     openUploadDialog();
+    fireEvent.click(screen.getByText("高级选项"));
     await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), project.id);
     await userEvent.click(await screen.findByRole("combobox", { name: /^项目参数$/ }));
-    const selectedBindingOption = await screen.findByRole("option", { name: "Canonical current parameter · /limit · binding-current" });
+    const selectedBindingOption = await screen.findByRole("option", { name: "Canonical current parameter" });
     expect(listProtectedProjectBindings).toHaveBeenCalledWith(project.id);
     expect(parameters.listParameters).not.toHaveBeenCalled();
     expect(screen.queryByRole("option", { name: /Foreign parameter|Incomplete parameter/ })).not.toBeInTheDocument();
@@ -484,13 +489,14 @@ describe("LogsPage api upload wiring", () => {
       listProtectedProjectBindings: vi.fn().mockRejectedValue(new Error("Parameter reader unavailable")) });
     await waitForApiRuntime(repository);
     openUploadDialog();
+    fireEvent.click(screen.getByText("高级选项"));
     await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), project.id);
     await screen.findByRole("button", { name: "重试加载关联参数" });
     vi.useFakeTimers();
     const file = new File(["line"], "unassociated.log", { type: "text/plain" });
     chooseFile(file);
     await act(async () => { vi.advanceTimersByTime(250); });
-    expect(screen.getByRole("button", { name: "确认上传" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "开始分析" })).toBeDisabled();
     expect(repository.uploadLog).not.toHaveBeenCalled();
     // The file-validation timer has settled; use real event timing for the Radix menu.
     vi.useRealTimers();
@@ -516,12 +522,13 @@ describe("LogsPage api upload wiring", () => {
     listProtectedProjectBindings.mockImplementation((projectId: string) =>
       projectId === "project-a" ? delayed.promise : Promise.resolve({ items: [second] }));
     openUploadDialog();
+    fireEvent.click(screen.getByText("高级选项"));
     const projectSelect = screen.getByLabelText("关联参数的项目（可选）");
     await selectControlOption(projectSelect, "project-a");
     await selectControlOption(projectSelect, "project-b");
     await act(async () => { delayed.resolve({ items: [first] }); await delayed.promise; });
     await userEvent.click(screen.getByRole("combobox", { name: /^项目参数$/ }));
-    const currentBindingOption = await screen.findByRole("option", { name: "Selected project parameter · /limit · binding-b" });
+    const currentBindingOption = await screen.findByRole("option", { name: "Selected project parameter" });
     expect(screen.queryByRole("option", { name: /Old project parameter/ })).not.toBeInTheDocument();
     await userEvent.click(currentBindingOption);
     vi.useFakeTimers();
@@ -539,6 +546,7 @@ describe("LogsPage api upload wiring", () => {
     await waitForApiRuntime(repository);
     vi.mocked(parameters.listParameters).mockClear();
     const dialog = openUploadDialog();
+    fireEvent.click(screen.getByText("高级选项"));
     await selectControlOption(screen.getByLabelText("关联参数的项目（可选）"), project.id);
     await screen.findByRole("button", { name: "重试加载关联参数" });
     expect(within(dialog).getByRole("alert")).toHaveTextContent("加载项目参数失败；请重试或取消关联。");
@@ -547,7 +555,7 @@ describe("LogsPage api upload wiring", () => {
     const file = new File(["line"], "reader-missing.log", { type: "text/plain" });
     chooseFile(file);
     await act(async () => { vi.advanceTimersByTime(250); });
-    expect(screen.getByRole("button", { name: "确认上传" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "开始分析" })).toBeDisabled();
     expect(repository.uploadLog).not.toHaveBeenCalled();
     // The file-validation timer has settled; use real event timing for the Radix menu.
     vi.useRealTimers();
@@ -591,12 +599,13 @@ describe("LogsPage api upload wiring", () => {
     const dialog = openUploadDialog();
     chooseFile(file);
     await act(async () => { vi.advanceTimersByTime(250); });
-    expect(dialog).toHaveTextContent("thermal.bin 格式不支持。");
-    expect(within(dialog).getByRole("button", { name: "知道了" })).toBeInTheDocument();
-    expect(within(dialog).queryByRole("button", { name: "确认上传" })).not.toBeInTheDocument();
+    expect(dialog).toHaveTextContent("未识别文件扩展名，可仍然上传，由服务端校验是否为文本日志。");
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "开始分析" })).toBeDisabled();
     expect(repository.uploadLog).not.toHaveBeenCalled();
     const uploadButton = within(dialog).getByRole("button", { name: "仍然上传" });
-    expect(uploadButton).toHaveClass("danger");
+    expect(uploadButton).toHaveClass("subtle");
+    expect(uploadButton).not.toHaveClass("danger");
     await act(async () => { fireEvent.click(uploadButton); });
 
     expect(repository.uploadLog).toHaveBeenCalledWith(
@@ -826,7 +835,7 @@ describe("LogsPage · 上传日志对话框", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
 
-    expect(screen.getByLabelText("选择日志文件")).toHaveAttribute("accept", ".log,.txt,.csv,.json");
+    expect(screen.getByTestId("file-drop-zone-input")).toHaveAttribute("accept", ".log,.txt,.csv,.json");
   });
 
   it.each(["fresh.json", "fresh.csv"])("treats %s as a supported mock upload", (fileName) => {
@@ -834,33 +843,29 @@ describe("LogsPage · 上传日志对话框", () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
-    fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], fileName)] } });
+    fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["x"], fileName)] } });
 
     act(() => {
       vi.advanceTimersByTime(250);
     });
 
-    expect(screen.getByRole("button", { name: "确认上传" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开始分析" })).toBeInTheDocument();
     expect(screen.queryByText(/格式不支持/)).not.toBeInTheDocument();
   });
 
-  it("选择支持格式后先显示 validating，再确认上传并新增 Processing 日志", () => {
+  it("始终展示开始分析，选择支持格式后立即可提交并新增 Processing 日志", () => {
     vi.useFakeTimers();
     renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
-    fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], "fresh.log")] } });
-
-    expect(screen.getByText(/正在读取/)).toBeInTheDocument();
-
-    act(() => {
-      vi.advanceTimersByTime(250);
-    });
-
+    expect(screen.getByRole("button", { name: "开始分析" })).toBeDisabled();
+    fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["x"], "fresh.log")] } });
+    expect(screen.getByRole("button", { name: "开始分析" })).toBeEnabled();
     expect(screen.queryByText(/正在读取/)).not.toBeInTheDocument();
-    expect(screen.getByText("fresh.log")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "已选文件" })).toHaveTextContent("fresh.log");
+    expect(document.querySelector(".upload-dialog__state")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "确认上传" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     expect(within(history).getByRole("button", { name: /fresh\.log/ })).toHaveAttribute("aria-pressed", "true");
@@ -872,7 +877,7 @@ describe("LogsPage · 上传日志对话框", () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
-    fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], "question.log")] } });
+    fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["x"], "question.log")] } });
     fireEvent.change(screen.getByLabelText("分析问题（可选）"), {
       target: { value: "为什么充电后段降频？" }
     });
@@ -881,7 +886,7 @@ describe("LogsPage · 上传日志对话框", () => {
       vi.advanceTimersByTime(250);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "确认上传" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
 
     expect(screen.getByText("用户问题")).toBeInTheDocument();
     expect(screen.getByText("为什么充电后段降频？")).toBeInTheDocument();
@@ -892,14 +897,14 @@ describe("LogsPage · 上传日志对话框", () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
-    fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], "thermal.bin")] } });
+    fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["x"], "thermal.bin")] } });
 
     act(() => {
       vi.advanceTimersByTime(250);
     });
 
     const dialog = screen.getByRole("dialog", { name: "上传日志" });
-    expect(dialog).toHaveTextContent("格式不支持");
+    expect(dialog).toHaveTextContent("未识别文件扩展名");
 
     fireEvent.click(within(dialog).getByRole("button", { name: "仍然上传" }));
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { FileDropZone } from "@/components/common/FileDropZone";
 import { SelectControl } from "@/components/common/SelectControl";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,6 @@ export function CreateSkillDialog({ repository, apiMode, skills, onDismiss, onNa
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     let active = true;
     setLoadError(false);
@@ -74,10 +74,9 @@ export function CreateSkillDialog({ repository, apiMode, skills, onDismiss, onNa
           {start === "copy" ? <div className="grid gap-2"><Label htmlFor="create-skill-source">来源技能</Label><SelectControl id="create-skill-source" ariaLabel="来源技能" value={copyId} onValueChange={setCopyId} placeholder="请选择技能" disabled={pending || !!createdId}
             options={skills.map((skill) => ({ value: skill.id, label: skill.name }))} />{!skills.length ? <small>当前没有可复制的技能。</small> : null}</div> : null}
         </fieldset>}
-      <div className="grid gap-2"><Label htmlFor="create-skill-sample">样例日志（可选）</Label><Input id="create-skill-sample" ref={fileRef} type="file" aria-describedby="create-skill-sample-hint" disabled={pending} onChange={(e) => setSample(e.target.files?.[0])} />
-        <small id="create-skill-sample-hint" className="text-muted-foreground">请选择一个文本文件，最大 2 MB。</small>
-        {sample ? <div className="flex items-center gap-2 text-sm"><span className="min-w-0 break-all">{sample.name}</span>
-          <Button type="button" variant="link" size="sm" disabled={pending} onClick={() => { setSample(undefined); if (fileRef.current) fileRef.current.value = ""; }}>移除已选样例</Button></div> : null}
+      <div className="grid gap-2"><Label htmlFor="create-skill-sample">样例日志（可选）</Label>
+        <FileDropZone id="create-skill-sample" label="样例日志（可选）" disabled={pending} files={sample ? [sample] : []}
+          onSelect={(files) => setSample(files[0])} onRemove={() => setSample(undefined)} hint="请选择一个文本文件，最大 2 MB。" />
       </div>
       {!apiMode ? <p>演示模式仅供查看，请在 API 模式下新建技能。</p> : null}
       {error ? <p id="create-skill-error" role="alert">{error}</p> : null}

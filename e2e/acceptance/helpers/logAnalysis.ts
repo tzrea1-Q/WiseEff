@@ -14,6 +14,8 @@ export async function openLogUploadDialog(page: Page) {
   await upload.click();
   const dialog = page.getByRole("dialog", { name: "上传日志", exact: true });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("file-drop-zone-input")).toHaveCount(1);
+  await expect(dialog.getByRole("button", { name: "选择日志文件", exact: true })).toBeEnabled();
   return dialog;
 }
 

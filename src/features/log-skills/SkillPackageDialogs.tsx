@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { FileDropZone } from "@/components/common/FileDropZone";
 import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +38,7 @@ export function ImportSkillPackageDialog({ repository, onDismiss, onNavigate, on
   const [errors, setErrors] = useState<PackageIssue[]>([]);
   const [pending, setPending] = useState(false);
   const [created, setCreated] = useState<AnalysisSkill>();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLButtonElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (nameError && !pending) nameRef.current?.focus(); }, [nameError, pending]);
   return <ModalDialog open describedBy onDismiss={pending ? undefined : onDismiss} initialFocusRef={fileRef} className="skill-authoring-dialog modal-card--md">
@@ -66,8 +67,9 @@ export function ImportSkillPackageDialog({ repository, onDismiss, onNavigate, on
           if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(event.currentTarget.getAttribute("href")!); onDismiss(); }
         }}>打开技能工作区</a></Button></div> : <>
         <div className="grid gap-2"><Label htmlFor="skill-package-file">技能包 ZIP</Label>
-          <Input id="skill-package-file" ref={fileRef} type="file" accept=".zip,application/zip" required disabled={pending} aria-invalid={errors.length > 0 || undefined}
-            aria-describedby={errors.length ? "skill-package-errors" : undefined} onChange={(event) => { setFile(event.target.files?.[0]); setErrors([]); setNameError(""); setPackageName(""); }} /></div>
+          <FileDropZone id="skill-package-file" label="技能包 ZIP" browseRef={fileRef} accept=".zip,application/zip" required disabled={pending} invalid={errors.length > 0}
+            describedBy={errors.length ? "skill-package-errors" : undefined} files={file ? [file] : []} onRemove={() => setFile(undefined)}
+            onSelect={(files) => { setFile(files[0]); setErrors([]); setNameError(""); setPackageName(""); }} /></div>
         <div className="grid gap-2"><Label htmlFor="skill-package-name">技能名称</Label>
           <Input id="skill-package-name" ref={nameRef} value={name} maxLength={120} disabled={pending} placeholder={packageName || "默认使用包内名称"}
             aria-invalid={!!nameError} aria-describedby={nameError ? "skill-package-name-error" : undefined} onChange={(event) => { setName(event.target.value); setNameError(""); }} />

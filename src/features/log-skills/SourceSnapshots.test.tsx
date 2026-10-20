@@ -117,7 +117,7 @@ describe("source snapshots section", () => {
     fireEvent.change(label, { target: { value: " release-v1 " } });
     await userEvent.click(within(dialog).getByRole("button", { name: "上传" }));
     expect(within(dialog).getByRole("alert")).toHaveTextContent("请选择源码压缩包");
-    const picker = within(dialog).getByLabelText("源码压缩包");
+    const picker = within(dialog).getByTestId("file-drop-zone-input");
     fireEvent.change(picker, { target: { files: [new File(["bad"], "source.exe")] } });
     await userEvent.click(within(dialog).getByRole("button", { name: "上传" }));
     expect(within(dialog).getByRole("alert")).toHaveTextContent("请选择 .tar.gz、.tgz 或 .zip");
@@ -134,7 +134,7 @@ describe("source snapshots section", () => {
     repository.uploadSourceSnapshot.mockRejectedValueOnce(new Error("internal storage path"));
     await userEvent.click(screen.getByRole("button", { name: "上传快照" }));
     fireEvent.change(screen.getByLabelText("版本标签"), { target: { value: "v2" } });
-    fireEvent.change(screen.getByLabelText("源码压缩包"), { target: { files: [new File(["data"], "source.zip")] } });
+    fireEvent.change(screen.getByTestId("file-drop-zone-input"), { target: { files: [new File(["data"], "source.zip")] } });
     await userEvent.click(screen.getByRole("button", { name: "上传" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("上传失败");
     expect(screen.getByLabelText("版本标签")).toHaveValue("v2");

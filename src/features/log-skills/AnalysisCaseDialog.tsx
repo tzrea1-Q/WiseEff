@@ -1,4 +1,5 @@
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
+import { FileDropZone } from "@/components/common/FileDropZone";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
@@ -56,7 +57,6 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
   const [refusal, setRefusal] = useState(initial.expectations.expectRefusal);
   const [degraded, setDegraded] = useState(initial.expectations.expectedDegradedReason ?? "");
   const [files, setFiles] = useState<File[]>([]);
-  const fileInput = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -122,14 +122,14 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
       <h2 id={titleId}>{title}</h2>
       <p>保留原始日志包，使用真实模型对比草稿与已发布版本。每行填写一条根因或建议。</p>
       <label>用例名称（必填）<Input aria-label="用例名称" required maxLength={200} disabled={pending} value={name} {...fieldProps("name")} onChange={(event) => setName(event.target.value)} /></label>{fieldError("name")}
-      {uploadRequired ? <div className="grid justify-items-start gap-2"><span>原始日志包（必填）</span>
-        <Button type="button" variant="outline" disabled={pending} {...fieldProps("files")} onClick={() => fileInput.current?.click()}>选择文件</Button>
-        <input ref={fileInput} hidden aria-label="原始日志包" type="file" multiple required disabled={pending} onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+      {uploadRequired ? <div className="grid gap-2"><span>原始日志包（必填）</span>
+        <FileDropZone label="原始日志包" multiple required disabled={pending} invalid={!!fieldErrors.files} describedBy={fieldErrors.files ? `${formId}-files-error` : undefined}
+          files={files} onSelect={setFiles} onRemove={(index) => setFiles((current) => current.filter((_, at) => at !== index))} />
       </div> : null}{fieldError("files")}
       {uploadRequired ? <p>最多 100 个文件、10 MiB；可选择多个文本日志或一个压缩包。</p> : null}
-      {originalUploads?.length || availableFiles.length || files.length ? <section aria-label="原始日志文件"><h3>原始日志文件</h3><ul>{originalUploads?.length
+      {originalUploads?.length || availableFiles.length ? <section aria-label="原始日志文件"><h3>原始日志文件</h3><ul>{originalUploads?.length
         ? originalUploads.map((file) => <li key={file.fileName}>{file.fileName} · {formatBytes(file.sizeBytes)}</li>)
-        : (uploadRequired ? files.map((file) => ({ path: file.name, sizeBytes: file.size })) : availableFiles).map((file) => <li key={file.path}>{file.path} · {formatBytes(file.sizeBytes)}</li>)}</ul></section> : null}
+        : availableFiles.map((file) => <li key={file.path}>{file.path} · {formatBytes(file.sizeBytes)}</li>)}</ul></section> : null}
       {sourceDegradation ? <div className="status-banner" data-tone="warning"><p>{sourceDegradation.source === "agent" ? "该报告已提前收敛，期望内容请人工核对。" : "该报告由规则回退生成，期望内容请人工核对。"}</p>
         <p>原因：{sourceDegradation.reason === "provider-unavailable" ? "模型服务不可用" : "Token 预算耗尽"}。此次降级不会自动设为用例期望。</p></div> : null}
       <label>根因分类<SelectControl value={category} ariaLabel="根因分类" disabled={pending} onValueChange={(value) => setCategory(value as AnalysisCaseExpectations["rootCauseCategory"])}

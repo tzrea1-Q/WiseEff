@@ -4,10 +4,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { mockSkillWorkspace } from "@/infrastructure/mock/logSkills";
 import { ExportSkillPackageDialog, ImportSkillPackageDialog } from "./SkillPackageDialogs";
+import { declarationsFor, readStylesheet } from "@/test/cssAssertions";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("skill package import", () => {
+  it("keeps introductory copy on the standard small dialog scale", () => {
+    const style = declarationsFor(readStylesheet("src/features/log-skills/skill-workspace.css"), ".skill-authoring-dialog .skill-package-intro");
+    expect(style.font).toBe("400 var(--text-sm) / var(--leading-base) var(--font-sans)");
+  });
   it.each([
     { issues: [{ path: "signals.yaml: rules[2].anyOf[0].field", message: "unknown decoded path" }] },
     { problems: ["signals.yaml: rules[2].anyOf[0].field: unknown decoded path"] }
@@ -16,18 +21,18 @@ describe("skill package import", () => {
     const repository = { importSkillPackage: vi.fn().mockRejectedValueOnce(new WiseEffApiError("VALIDATION_FAILED", "Invalid package", details, "request")).mockResolvedValueOnce(skill) };
     const onNavigate = vi.fn(), onDismiss = vi.fn(), onImported = vi.fn();
     render(<ImportSkillPackageDialog repository={repository} onNavigate={onNavigate} onDismiss={onDismiss} onImported={onImported} />);
-    expect(screen.getByLabelText("技能包 ZIP")).toHaveAttribute("type", "file");
+    expect(screen.getByTestId("file-drop-zone-input")).toHaveAttribute("type", "file");
     expect(screen.getByText(/^选择技能 ZIP 包/)).toHaveClass("skill-package-intro");
     expect(screen.getByRole("button", { name: "校验并导入" })).toBeDisabled();
     const file = new File(["broken"], "skill.zip", { type: "application/zip" });
-    await userEvent.upload(screen.getByLabelText("技能包 ZIP"), file);
+    await userEvent.upload(screen.getByTestId("file-drop-zone-input"), file);
     await userEvent.click(screen.getByRole("button", { name: "校验并导入" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("signals.yaml: rules[2].anyOf[0].field");
     expect(alert).toHaveTextContent("unknown decoded path");
     expect(repository.importSkillPackage).toHaveBeenCalledWith(file, "draft", undefined);
     expect(onNavigate).not.toHaveBeenCalled(); expect(onImported).not.toHaveBeenCalled();
-    await userEvent.upload(screen.getByLabelText("技能包 ZIP"), new File(["valid"], "fixed.zip", { type: "application/zip" }));
+    await userEvent.upload(screen.getByTestId("file-drop-zone-input"), new File(["valid"], "fixed.zip", { type: "application/zip" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "校验并导入" }));
     expect(await screen.findByRole("status")).toHaveTextContent("技能包校验通过，已导入");
@@ -39,7 +44,7 @@ describe("skill package import", () => {
   it("sends an explicit published choice", async () => {
     const repository = { importSkillPackage: vi.fn().mockResolvedValue(mockSkillWorkspace("skill-charging")) };
     render(<ImportSkillPackageDialog repository={repository} onNavigate={vi.fn()} onDismiss={vi.fn()} onImported={vi.fn()} />);
-    await userEvent.upload(screen.getByLabelText("技能包 ZIP"), new File(["valid"], "skill.zip", { type: "application/zip" }));
+    await userEvent.upload(screen.getByTestId("file-drop-zone-input"), new File(["valid"], "skill.zip", { type: "application/zip" }));
     await userEvent.click(screen.getByRole("combobox", { name: "导入后的技能版本" }));
     await userEvent.click(screen.getByRole("option", { name: /^发布$/ }));
     await userEvent.click(screen.getByRole("button", { name: "校验并导入" }));
@@ -56,7 +61,7 @@ describe("skill package import", () => {
     render(<ImportSkillPackageDialog repository={repository} onNavigate={vi.fn()} onDismiss={vi.fn()} onImported={vi.fn()} />);
     expect(screen.getByLabelText("技能名称")).toHaveValue("");
     expect(screen.getByLabelText("技能名称")).toHaveAttribute("placeholder", "默认使用包内名称");
-    await userEvent.upload(screen.getByLabelText("技能包 ZIP"), new File(["broken"], "skill.zip", { type: "application/zip" }));
+    await userEvent.upload(screen.getByTestId("file-drop-zone-input"), new File(["broken"], "skill.zip", { type: "application/zip" }));
     await userEvent.click(screen.getByRole("button", { name: "校验并导入" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveClass("skill-package-error");
@@ -76,7 +81,7 @@ describe("skill package import", () => {
       fieldErrors: { name: "已存在同名技能，请修改技能名称后重试。" }, nameSuggestion: "充电（导入）", packageName: "充电"
     }, "request")).mockResolvedValueOnce(mockSkillWorkspace("skill-charging")) };
     render(<ImportSkillPackageDialog repository={repository} onNavigate={vi.fn()} onDismiss={vi.fn()} onImported={vi.fn()} />);
-    await userEvent.upload(screen.getByLabelText("技能包 ZIP"), file);
+    await userEvent.upload(screen.getByTestId("file-drop-zone-input"), file);
     await userEvent.click(screen.getByRole("button", { name: "校验并导入" }));
     const name = screen.getByLabelText("技能名称");
     expect(await screen.findByRole("alert")).toHaveTextContent("已存在同名技能，请修改技能名称后重试。");
@@ -93,7 +98,7 @@ describe("skill package import", () => {
   it("sends the trimmed optional name and clears field validation when it is edited", async () => {
     const repository = { importSkillPackage: vi.fn().mockRejectedValueOnce(new WiseEffApiError("VALIDATION_FAILED", "名称无效", { fieldErrors: { name: ["名称不能超过 120 个字符"] } }, "request")) };
     render(<ImportSkillPackageDialog repository={repository} onNavigate={vi.fn()} onDismiss={vi.fn()} onImported={vi.fn()} />);
-    await userEvent.upload(screen.getByLabelText("技能包 ZIP"), new File(["valid"], "skill.zip", { type: "application/zip" }));
+    await userEvent.upload(screen.getByTestId("file-drop-zone-input"), new File(["valid"], "skill.zip", { type: "application/zip" }));
     const name = screen.getByLabelText("技能名称");
     await userEvent.type(name, "  自定义技能  ");
     await userEvent.click(screen.getByRole("button", { name: "校验并导入" }));
