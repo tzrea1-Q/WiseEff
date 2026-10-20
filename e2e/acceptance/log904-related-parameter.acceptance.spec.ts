@@ -6,6 +6,7 @@ import { seedCanonicalParameterFixture, type CanonicalParameterFixture } from ".
 import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
 import { authHeadersForUser, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { apiRoute } from "./helpers/runtime";
+import { openLogReportAction } from "./helpers/logAnalysis";
 import { startDisposablePostCutoverRuntime, disposableRuntimeOutcomeFromTestInfo, type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
 import { captureProcessEnvForDisposableRuntime, applyDisposableRuntimeEnv, restoreProcessEnvFromDisposableRuntime } from "./helpers/semanticBindingFixture";
 
@@ -80,11 +81,11 @@ test.describe("#904 canonical related log reanalysis", () => {
       page, actor.id, "issue904-editor@example.com", actor.name,
       `${runtime.frontendUrl}/logs?logId=${encodeURIComponent(created.log.id)}`, fixture.organizationId
     );
-    await expect(page.getByRole("button", { name: "重新分析" })).toBeVisible();
+    await expect(page.getByRole("group", { name: "报告操作", exact: true }).getByRole("button", { name: "更多", exact: true })).toBeVisible();
     const rerunResponse = page.waitForResponse((response) =>
       response.request().method() === "POST" && response.url().includes(`/api/v1/logs/${created.log.id}/rerun`)
     );
-    await page.getByRole("button", { name: "重新分析" }).click();
+    await openLogReportAction(page, "重新分析");
     const rerun = await rerunResponse;
     expect(rerun.status(), await rerun.text()).toBe(200);
     const rerunBody = (await rerun.json()) as { job: { id: string } };

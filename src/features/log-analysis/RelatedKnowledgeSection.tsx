@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { BookOpen } from "lucide-react";
 
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
-import type { KnowledgeRetrievalInfo, KnowledgeSearchResult } from "@/domain/knowledge/types";
-import { knowledgeRetrievalModeLabels } from "@/domain/knowledge/types";
-import { EmptyState, PanelHeader } from "@/workbenchUi";
+import type { KnowledgeSearchResult } from "@/domain/knowledge/types";
+import { PanelHeader } from "@/workbenchUi";
 
 /**
  * Related published knowledge for a completed log-analysis record. The parent
@@ -21,7 +20,6 @@ export function RelatedKnowledgeSection({
   onNavigate: (path: string) => void;
 }) {
   const [items, setItems] = useState<KnowledgeSearchResult[]>([]);
-  const [retrieval, setRetrieval] = useState<KnowledgeRetrievalInfo | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
@@ -34,7 +32,6 @@ export function RelatedKnowledgeSection({
       (response) => {
         if (cancelled) return;
         setItems(response.items);
-        setRetrieval(response.retrieval);
         setPhase("ready");
       },
       (error: unknown) => {
@@ -54,10 +51,7 @@ export function RelatedKnowledgeSection({
       aria-label="相关知识"
       data-testid="related-knowledge-section"
     >
-      <PanelHeader
-        title="相关知识"
-        meta={phase === "ready" && retrieval ? `检索模式:${knowledgeRetrievalModeLabels[retrieval.mode]}` : undefined}
-      />
+      <PanelHeader title="相关知识" />
       {phase === "loading" ? (
         <p className="logs-related-knowledge__state" role="status">
           正在检索相关知识...
@@ -70,7 +64,7 @@ export function RelatedKnowledgeSection({
           </button>
         </div>
       ) : items.length === 0 ? (
-        <EmptyState text="暂无相关知识" />
+        <p className="logs-related-knowledge__state">暂无相关知识</p>
       ) : (
         <ul className="logs-related-knowledge__list">
           {items.map((item) => (

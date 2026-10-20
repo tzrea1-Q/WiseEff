@@ -76,3 +76,9 @@ export function formatAbsolute(iso: string): string {
   }
   return `${formatDatePart(date)} ${formatTimePart(date)}:${pad(date.getSeconds())}`;
 }
+
+/** Log surfaces use a local, minute-precision timestamp: "2026/08/05 12:52". */
+export function formatLogDateTime(iso: string): string {
+  const date = parseDate(iso);
+  return date ? `${formatDatePart(date).replaceAll("-", "/")} ${formatTimePart(date)}` : iso;
+}

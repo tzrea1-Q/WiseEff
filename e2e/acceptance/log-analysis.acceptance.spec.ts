@@ -12,6 +12,7 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { dismissXiaozeToggleHint, prepareInteractionSurface } from "./helpers/interactionSurface";
+import { openLogUploadDialog } from "./helpers/logAnalysis";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import type { AnalysisSkill } from "../../src/features/log-skills/types";
 
@@ -525,9 +526,7 @@ function auditSummaryFor(
 }
 
 async function uploadLogThroughUi(page: Page, filePath: string, question?: string, domainName?: string) {
-  await prepareInteractionSurface(page);
-  await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
-  const dialog = page.getByRole("dialog", { name: "上传日志" });
+  const dialog = await openLogUploadDialog(page);
   if (domainName) {
     await expect.poll(async () => (await readSelectControlOptions(dialog.locator("#upload-log-domain"))).filter((option) => option.label.includes(domainName)).length, { timeout: 10_000 }).toBe(1);
     await selectControlOption(dialog.locator("#upload-log-domain"), { label: domainName });
@@ -571,6 +570,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const completedLog = await latestLogByFile(page, supportedFileName);
     await historyItem(page, supportedFileName).click();
     await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i);
+    await expect(page.locator(".logs-conclusion-head")).toContainText("已完成");
+    await expect(page.getByRole("tablist", { name: "日志辅助信息" }).getByRole("tab"))
+      .toHaveText(["报告", "信号", "文件", "分析轨迹"]);
+    await expect(page.getByRole("banner", { name: "页面栏" }).getByRole("button", { name: "首页", exact: true })).toHaveCount(0);
 
     // LOG-CONFIDENCE-PERCENT-001: the server stores confidence as 0-1; the UI
     // confidence bar must render the normalized percentage (e.g. 85%), never "0.85%".
@@ -594,13 +597,43 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       )
       .toBe(true);
 
+    const feedback = page.getByRole("group", { name: "分析反馈", exact: true });
+    const helpfulResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v1/logs/${completedLog.id}/feedback`);
+    await feedback.getByRole("button", { name: "有帮助", exact: true }).click();
+    const helpfulResponse = await helpfulResponsePromise;
+    expect(helpfulResponse.ok()).toBe(true);
+    expect(helpfulResponse.request().postDataJSON()).toEqual({ rating: "helpful" });
+    await expect(feedback.getByRole("status")).toHaveText("已反馈：有帮助");
+    await feedback.getByRole("button", { name: "没帮助", exact: true }).click();
+    const feedbackDialog = page.getByRole("dialog", { name: "没帮助", exact: true });
+    const feedbackNote = "根因判断错误、证据不足";
+    await feedbackDialog.getByLabel("补充说明（可选）", { exact: true }).fill(feedbackNote);
+    const notHelpfulResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v1/logs/${completedLog.id}/feedback`);
+    await feedbackDialog.getByRole("button", { name: "提交反馈", exact: true }).click();
+    const notHelpfulResponse = await notHelpfulResponsePromise;
+    expect(notHelpfulResponse.ok()).toBe(true);
+    expect(notHelpfulResponse.request().postDataJSON()).toEqual({ rating: "not_helpful", note: feedbackNote });
+    await expect(feedbackDialog).toBeHidden();
+    await expect(feedback.getByRole("status")).toHaveText("已反馈：没帮助");
+    const reportFeedback = await logFeedbackDbSummary(completedLog.id);
+    expect(reportFeedback.rowCount).toBe(2);
+    expect(reportFeedback.observed.split("; ")).toEqual(["helpful", "not_helpful"]);
+
     await page.goto("/log-dashboard");
     await page.goto("/log-admin");
     // The Xiaoze toggle hint floats over the detail panel's corner actions.
     await dismissXiaozeToggleHint(page);
     await page.locator('input[type="search"]').fill(supportedFileName);
     await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();
+    const adminFeedbackResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v1/logs/${completedLog.id}/feedback`);
     await page.locator('button:has(svg[class*="lucide-thumbs-up"])').click();
+    const adminFeedbackResponse = await adminFeedbackResponsePromise;
+    expect(adminFeedbackResponse.ok()).toBe(true);
+    expect(adminFeedbackResponse.request().postDataJSON()).toEqual({ rating: "helpful" });
+    expect((await logFeedbackDbSummary(completedLog.id)).rowCount).toBe(3);
     await expect
       .poll(async () => {
         const response = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
@@ -674,6 +707,12 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       page,
       testInfo,
       api: [
+        summarizeApiResponse(helpfulResponse, {
+          method: "POST", path: `/api/v1/logs/${completedLog.id}/feedback`, responseSummary: "rating=helpful recorded through report header"
+        }),
+        summarizeApiResponse(notHelpfulResponse, {
+          method: "POST", path: `/api/v1/logs/${completedLog.id}/feedback`, responseSummary: "rating=not_helpful with optional note recorded through report dialog"
+        }),
         summarizeApiResponse(archiveResponse, {
           method: "POST",
           path: `/api/v1/logs/${completedLog.id}/archive`,
@@ -690,7 +729,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
           responseSummary: `audit events=${auditBody.items.length}`
         })
       ],
-      db: [await logRecordDbSummary(completedLog.id)],
+      db: [await logRecordDbSummary(completedLog.id), await logFeedbackDbSummary(completedLog.id)],
       audit: [
         auditSummaryFor(auditBody.items, { kind: "log-feedback", targetId: completedLog.id }),
         auditSummaryFor(auditBody.items, { kind: "log-archive", targetId: completedLog.id })
@@ -749,7 +788,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await page.goto("/logs");
     await expect(historyItem(page, supportedFileName)).toBeVisible();
     await historyItem(page, supportedFileName).click();
-    await expect(page.locator("#log-conclusion-title")).toContainText(/AI 正在分析|thermal|foldback/i, { timeout: 30_000 });
+    await expect(page.locator("#log-conclusion-title")).toContainText(/正在分析…|thermal|foldback/i, { timeout: 30_000 });
 
     await expect
       .poll(async () => {
@@ -838,7 +877,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
       .toBe("complete");
     await historyItem(page, supportedFileName).click();
-    await expect(page.getByTestId("analysis-provenance")).toContainText(`技能 ${acceptanceLogDomainName} · v2`);
+    await expect(page.getByTestId("analysis-provenance").getByRole("link", { name: `技能：${acceptanceLogDomainName} v2`, exact: true }))
+      .toHaveAttribute("href", `/log-admin/skills/${createdDomain!.id}`);
+    await expect(page.getByTestId("analysis-provenance")).toContainText("手动选择");
 
     const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
     expect(auditResponse.ok()).toBe(true);
@@ -1031,7 +1072,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await historyItem(page, providerOutageFileName).click();
     const provenance = page.getByTestId("analysis-provenance");
     await expect(provenance).toBeVisible();
-    await expect(provenance).toContainText("降级分析 · 规则回退");
+    await expect(provenance.getByText("规则回退", { exact: true })).toBeVisible();
     await expect(provenance).toContainText("AI 分析服务不可用");
 
     await recordOperationEvidence({
@@ -1187,9 +1228,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
     const gzBuffer = gzipSync(readFileSync(supportedFixture));
     await page.goto("/logs");
-    await prepareInteractionSurface(page);
-    await page.getByRole("group", { name: "工作台操作" }).getByRole("button", { name: "上传新日志" }).click();
-    const uploadDialog = page.getByRole("dialog", { name: "上传日志" });
+    const uploadDialog = await openLogUploadDialog(page);
     await expect(uploadDialog).toContainText(/\.tar\.gz \/ \.tgz \/ \.zip \/ \.gz 压缩包/);
     await uploadDialog.getByLabel("选择日志文件").setInputFiles({
       name: archiveFileName,
@@ -1412,7 +1451,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .toBe("complete");
 
     await historyItem(page, supportedFileName).click();
-    await expect(page.getByTestId("analysis-provenance")).toContainText(`技能 ${acceptanceModelDomainName} · v2`);
+    await expect(page.getByTestId("analysis-provenance").getByRole("link", { name: `技能：${acceptanceModelDomainName} v2`, exact: true }))
+      .toHaveAttribute("href", `/log-admin/skills/${createdDomain!.id}`);
+    await expect(page.getByTestId("analysis-provenance")).toContainText("手动选择");
 
     // The override replaces only the model NAME; the report's provenance records it.
     await expect

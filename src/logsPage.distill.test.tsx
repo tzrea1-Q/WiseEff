@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 import App from "./App";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
@@ -25,16 +26,16 @@ function selectCompleteLog() {
 }
 
 describe("LogsPage · 沉淀为知识", () => {
-  it.each(["报告", "相关"])("Complete 日志从%s沉淀后交接到 /knowledge 草稿详情(预填结论标题与来源关联)", async (tab) => {
+  it("Complete 日志从报告沉淀后交接到 /knowledge 草稿详情(预填结论标题与来源关联)", async () => {
     renderLogsPage();
     selectCompleteLog();
-    fireEvent.keyDown(screen.getByRole("tab", { name: tab, exact: true }), { key: "Enter" });
-    expect(screen.getByRole("tab", { name: tab, selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "报告", selected: true })).toBeInTheDocument();
 
-    const task = screen.getByRole("region", { name: "日志任务区" });
-    const distil = within(task).getByRole("button", { name: "沉淀为知识", exact: true });
-    expect(distil).toBeEnabled();
-    fireEvent.click(distil);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    const distil = await screen.findByRole("menuitem", { name: "沉淀为知识" });
+    expect(distil).not.toHaveAttribute("aria-disabled", "true");
+    await user.click(distil);
 
     await waitFor(() => {
       expect(window.location.pathname).toBe("/knowledge");
@@ -48,16 +49,17 @@ describe("LogsPage · 沉淀为知识", () => {
     expect(within(detail).getByText(/由日志分析记录沉淀/)).toBeInTheDocument();
   });
 
-  it("Processing 日志的沉淀入口保持禁用", () => {
+  it("Processing 日志不显示报告操作", () => {
     renderLogsPage();
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /charging_thermal_trace/ }));
 
-    expect(screen.getByRole("button", { name: /沉淀为知识/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "更多" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /沉淀为知识/ })).not.toBeInTheDocument();
   });
 
-  it("无 knowledge:edit 能力时不渲染沉淀入口", () => {
+  it("无 knowledge:edit 能力时不渲染沉淀入口", async () => {
     const runtime = { knowledgeRepository: createMockKnowledgeRepository() } as unknown as NonNullable<
       Parameters<typeof LogsPage>[0]["runtime"]
     >;
@@ -74,8 +76,10 @@ describe("LogsPage · 沉淀为知识", () => {
       </ToastProvider>
     );
 
-    expect(screen.queryByRole("button", { name: /沉淀为知识/ })).not.toBeInTheDocument();
+    selectCompleteLog();
+    await userEvent.setup().click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.queryByRole("menuitem", { name: /沉淀为知识/ })).not.toBeInTheDocument();
     // The rest of the conclusion actions stay intact.
-    expect(screen.getByRole("button", { name: /导出报告/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /导出报告/ })).toBeInTheDocument();
   });
 });

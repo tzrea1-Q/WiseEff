@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatAbsolute, formatRelativeOrAbsolute } from "./formatDateTime";
+import { formatAbsolute, formatLogDateTime, formatRelativeOrAbsolute } from "./formatDateTime";
 
 describe("formatRelativeOrAbsolute", () => {
   const now = new Date("2026-08-13T10:00:00");
@@ -56,5 +56,16 @@ describe("formatAbsolute", () => {
   it("falls back to the original text for invalid input", () => {
     expect(formatAbsolute("—")).toBe("—");
     expect(formatAbsolute("")).toBe("");
+  });
+});
+
+describe("formatLogDateTime", () => {
+  it("renders a zero-padded local timestamp with slash separators and minute precision", () => {
+    expect(formatLogDateTime("2026-08-05T02:09:49")).toBe("2026/08/05 02:09");
+  });
+
+  it("preserves invalid input", () => {
+    expect(formatLogDateTime("—")).toBe("—");
+    expect(formatLogDateTime("")).toBe("");
   });
 });

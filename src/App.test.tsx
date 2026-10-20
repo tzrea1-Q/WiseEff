@@ -3513,8 +3513,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "上传新日志" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "上传日志" })).toBeEnabled();
     });
+    fireEvent.click(screen.getByRole("button", { name: "上传日志" }));
+    expect(screen.getByRole("dialog", { name: "上传日志" })).toBeInTheDocument();
   });
 
   it("switches log analysis content from clickable history records", () => {
@@ -3527,14 +3529,16 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       "aria-pressed",
       "true"
     );
-    expect(screen.getByText("快充阶段电池包温升过快，触发热降额链路。")).toBeInTheDocument();
-    expect(screen.getByText("日志分析证据链")).toBeInTheDocument();
-    expect(screen.getByText("关联处置：下调快充电流上限")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "正在分析…" })).toBeInTheDocument();
+    expect(screen.queryByText("快充阶段电池包温升过快，触发热降额链路。")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "日志分析证据链" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "分析结果" })).not.toBeInTheDocument();
 
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation_20260503\.log/ }));
 
     expect(screen.getByText("PD 协商在 9V/3A 档位稳定完成，未出现握手重试。")).toBeInTheDocument();
-    expect(screen.getByText("关联处置：保留 9V/3A 充电档位")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "日志分析证据链" })).toBeInTheDocument();
+    expect(screen.getByText("建议：保留 9V/3A 充电档位")).toBeInTheDocument();
     expect(screen.getAllByText(/PD_CTRL Accept profile 9V\/3A/)).toHaveLength(2);
 
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot\.bin/ }));
@@ -3546,7 +3550,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("shows a log analysis evidence chain instead of suggested actions", () => {
-    window.history.replaceState(null, "", "/logs");
+    window.history.replaceState(null, "", "/logs?logId=log-auth");
 
     renderAppForCurrentPath();
 
@@ -3556,9 +3560,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(analysis).getByText("证据 01")).toBeInTheDocument();
     expect(within(analysis).getByText("证据 02")).toBeInTheDocument();
     expect(within(analysis).getByText("证据 03")).toBeInTheDocument();
-    expect(within(analysis).getByText("battery_pack_temp=46.8C over soft_limit=45C")).toBeInTheDocument();
-    expect(within(analysis).getByText(/#20 10:24:01 WARN \[CHG_THERMAL\]/)).toBeInTheDocument();
-    expect(within(analysis).getByText("电池包温度越过 45°C 软阈值，确认热异常触发点。")).toBeInTheDocument();
+    expect(within(analysis).getByText("SourceCap includes 5V/3A, 9V/3A, 12V/2.25A")).toBeInTheDocument();
+    expect(within(analysis).getByText(/#9 09:18:11 INFO \[PD_CTRL\]/)).toBeInTheDocument();
+    expect(within(analysis).getByText("适配器上报的 SourceCap 覆盖目标档位，具备稳定协商基础。")).toBeInTheDocument();
     expect(within(analysis).queryByText("建议动作")).not.toBeInTheDocument();
     expect(within(analysis).queryByText("应用缓解措施")).not.toBeInTheDocument();
   });
@@ -3635,7 +3639,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         absent: ["项目参数 Admin", "items", "events", "建设中", "目录发布"]
       },
       {
-        path: "/logs",
+        path: "/logs?logId=log-auth",
         present: ["上传新日志", "分析结果", "原始日志", "日志分析证据链"],
         absent: ["Unsupported Log Format", "Drag and drop log files here", "Analysis Results", "Suggested Actions", "Apply Mitigation", "建议动作", "应用缓解措施"]
       },

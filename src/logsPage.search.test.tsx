@@ -2,8 +2,9 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
 import { initialState } from "./mockData";
+import { LogsPage } from "@/features/log-analysis/LogsPage";
 
-const userState = { ...initialState, activeRoleId: "user" };
+const userState = { ...initialState, activeRoleId: "user", logs: initialState.logs.map((log, index) => index === 0 ? { ...log, status: "Complete" as const } : log) };
 
 afterEach(() => {
   cleanup();
@@ -11,6 +12,34 @@ afterEach(() => {
 });
 
 describe("LogsPage · 原始日志搜索", () => {
+  it("空筛选结果隐藏无值列后仍可清空筛选恢复日志", () => {
+    render(<LogsPage search="" state={{ ...userState, logs: [{ ...userState.logs[0], rawLines: ["10:00 INFO [ONE] first", "10:01 WARN [TWO] second"] }] }}
+      dispatch={() => undefined} onNavigate={() => undefined} />);
+    const rawLog = screen.getByRole("region", { name: "原始日志" });
+    fireEvent.click(within(rawLog).getByRole("button", { name: "筛选模块" }));
+    fireEvent.click(within(rawLog).getByRole("checkbox", { name: "INFO [ONE]" }));
+    fireEvent.click(within(rawLog).getByRole("button", { name: "筛选时间" }));
+    fireEvent.click(within(rawLog).getByRole("checkbox", { name: "10:01" }));
+    expect(within(rawLog).getByText("当前筛选条件下没有日志行。")).toBeInTheDocument();
+    expect(within(rawLog).queryByRole("columnheader", { name: /时间|模块/ })).not.toBeInTheDocument();
+    fireEvent.click(within(rawLog).getByRole("button", { name: "清空筛选" }));
+    expect(within(rawLog).getByTestId("rawlog-line-1")).toBeInTheDocument();
+    expect(within(rawLog).getByTestId("rawlog-line-2")).toBeInTheDocument();
+    expect(within(rawLog).getByRole("columnheader", { name: /时间/ })).toBeInTheDocument();
+  });
+  it("无时间与模块值时隐藏列和筛选，并提供自动换行开关", () => {
+    render(<LogsPage search="" state={{ ...userState, logs: [{ ...userState.logs[0], rawLines: ["retry 1/3", "长内容".repeat(100)] }] }}
+      dispatch={() => undefined} onNavigate={() => undefined} />);
+    const rawLog = screen.getByRole("region", { name: "原始日志" });
+    expect(within(rawLog).queryByRole("columnheader", { name: /时间|模块/ })).not.toBeInTheDocument();
+    expect(within(rawLog).queryByRole("button", { name: /筛选时间|筛选模块/ })).not.toBeInTheDocument();
+    expect(within(rawLog).getByRole("columnheader", { name: /内容/ })).toBeInTheDocument();
+    const toggle = within(rawLog).getByRole("button", { name: "自动换行" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(within(rawLog).getByRole("grid")).toHaveClass("rawlog-table--wrap");
+  });
   it("输入关键词后显示匹配数并标记当前匹配行", () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);

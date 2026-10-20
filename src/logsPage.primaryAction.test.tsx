@@ -1,4 +1,5 @@
-import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getContextQuery } from "@/workbenchUi";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
@@ -87,6 +88,12 @@ async function waitForApiRuntime(repository: LogAnalysisRepository) {
   await waitFor(() => expect(document.querySelector(".api-runtime-sync-banner")).not.toBeInTheDocument());
 }
 
+async function selectReportAction(name: string) {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "更多" }));
+  await user.click(await screen.findByRole("menuitem", { name }));
+}
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
@@ -120,8 +127,9 @@ describe("LogsPage api rerun wiring", () => {
 
     const history = document.querySelector(".logs-aux-panel") as HTMLElement;
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
-    expect(screen.getByRole("button", { name: /生成参数修改请求/ })).toBeDisabled();
-    expect(screen.getByText(/旧参数关联缺少可验证的项目与 Binding 定位/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "查看关联参数" })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.queryByRole("menuitem", { name: "生成参数修改请求" })).not.toBeInTheDocument();
   });
 
   it("Complete log api rerun action calls repository rerunLog", async () => {
@@ -130,7 +138,7 @@ describe("LogsPage api rerun wiring", () => {
 
     const history = document.querySelector(".logs-aux-panel") as HTMLElement;
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
-    fireEvent.click(document.querySelector(".logs-conclusion-actions .button.danger") as HTMLButtonElement);
+    await selectReportAction("重新分析");
 
     expect(repository.rerunLog).toHaveBeenCalledWith({
       logId: "log-auth",
@@ -144,10 +152,7 @@ describe("LogsPage api rerun wiring", () => {
 
     const history = document.querySelector(".logs-aux-panel") as HTMLElement;
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
-    await act(async () => {
-      fireEvent.click(document.querySelector(".logs-conclusion-actions .button.danger") as HTMLButtonElement);
-      await Promise.resolve();
-    });
+    await selectReportAction("重新分析");
 
     expect(repository.rerunLog).toHaveBeenCalledWith({
       logId: "log-auth",
@@ -167,7 +172,7 @@ describe("LogsPage api rerun wiring", () => {
     const history = document.querySelector(".logs-aux-panel") as HTMLElement;
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
     const reportBefore = document.querySelector(".logs-conclusion-actions")?.parentElement?.textContent;
-    fireEvent.click(document.querySelector(".logs-conclusion-actions .button.danger") as HTMLButtonElement);
+    await selectReportAction("重新分析");
     await waitFor(() => expect(document.body).toHaveTextContent("关联参数已删除或其规范值、来源快照不可用"));
     expect(document.body).toHaveTextContent("已有报告保持不变");
     expect(document.querySelector(".logs-conclusion-actions")?.parentElement?.textContent).toBe(reportBefore);
@@ -216,7 +221,7 @@ describe("LogsPage · 主行动", () => {
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
-    fireEvent.click(screen.getByRole("button", { name: /生成参数修改请求/ }));
+    fireEvent.click(screen.getByRole("button", { name: "查看关联参数" }));
 
     expect(window.location.pathname).toBe("/parameters");
     expect(window.location.search).toContain("project=project-exact");
@@ -224,44 +229,66 @@ describe("LogsPage · 主行动", () => {
     expect(window.location.search).not.toContain("parameter=");
   });
 
-  it("Complete 日志点击主按钮跳转到 /parameters 且 URL 带 logId", () => {
+  it("mock 关联日志以查看关联参数作为唯一主行动", () => {
+    renderApp({
+      path: "/logs",
+      initialAppState: {
+        ...userState,
+        logs: userState.logs.map((log) => log.id === completeLog.id
+          ? { ...log, relatedParameterId: "aurora-battery-temp-target" }
+          : log)
+      }
+    });
+
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+    fireEvent.click(screen.getByRole("button", { name: "查看关联参数" }));
+
+    expect(window.location.pathname).toBe("/parameters");
+    expect(window.location.search).toContain("parameter=aurora-battery-temp-target");
+    expect(window.location.search).toContain("logId=log-auth");
+  });
+
+  it("Complete 日志从更多菜单生成参数修改请求且 URL 带 logId", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
-    fireEvent.click(screen.getByRole("button", { name: /生成参数修改请求/ }));
+    await selectReportAction("生成参数修改请求");
 
     expect(window.location.pathname).toBe("/parameters");
     expect(window.location.search).toContain("logId=log-auth");
     expect(window.location.search).not.toContain("project=");
   });
 
-  it("从日志跳到参数页后，修改原因预填日志结论", () => {
+  it("从日志跳到参数页后，修改原因预填日志结论", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
-    fireEvent.click(screen.getByRole("button", { name: /生成参数修改请求/ }));
+    await selectReportAction("生成参数修改请求");
 
     const reason = screen.getByLabelText("修改原因");
     expect(reason).toHaveValue("依据日志 usb_pd_negotiation_20260503.log 分析：PD 协商在 9V/3A 档位稳定完成，未出现握手重试。");
   });
 
-  it("点击导出报告会创建 Markdown 下载", () => {
+  it("点击导出报告会创建 Markdown 下载", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
-    fireEvent.click(screen.getByRole("button", { name: /导出报告/ }));
+    await selectReportAction("导出报告");
 
     expect(URL.createObjectURL).toHaveBeenCalled();
   });
 
-  it("点击复制链接会写入包含 logId 的分享链接", () => {
+  it("点击复制链接会写入包含 logId 的分享链接", async () => {
     renderApp({ path: "/logs", initialAppState: userState });
 
-    fireEvent.click(screen.getByRole("button", { name: /复制链接/ }));
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+    await selectReportAction("复制链接");
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("logId=log-active"));
+    expect(await navigator.clipboard.readText()).toContain("logId=log-auth");
   });
 });

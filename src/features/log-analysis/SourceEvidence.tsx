@@ -20,8 +20,8 @@ export function SourceEvidence({ evidence, loadExcerpt }: { evidence: LogEvidenc
     catch (cause) { setError(presentError(cause, "源码摘录加载失败，请收起后重试。")); }
     finally { setPending(false); }
   }
-  return <section className="grid gap-2" aria-label="源码证据">
-    <p className="break-all">源码：{location.path}:{location.line} · {evidence.sourceVersionLabel ?? excerpt?.versionLabel ?? location.snapshotId}</p>
+  return <section className="grid min-w-0 gap-2" aria-label="源码证据">
+    <p className="break-all">源码：{location.path}:{location.line} · {evidence.sourceVersionLabel ?? excerpt?.versionLabel ?? "已固定版本"}</p>
     <div><Button variant="outline" size="sm" aria-expanded={open} disabled={pending || !loadExcerpt} onClick={() => void toggle()}>{open ? "收起源码摘录" : "展开源码摘录"}</Button></div>
     {open ? <div aria-live="polite">{pending ? <p role="status">正在加载源码摘录…</p> : error ? <p role="alert">{error}</p> : excerpt ?
       <pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-xs" aria-label="已引用源码摘录">{excerpt.excerpt.split("\n").map((line, index) => {

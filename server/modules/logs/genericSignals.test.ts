@@ -68,6 +68,13 @@ describe("generic log signals", () => {
       first: { file: "a.log", line: 1, content: "INFO retry 1 /tmp/a" }, last: { file: "b.log", line: 1, content: "INFO retry 3 /tmp/c" } }]);
   });
 
+  it("normalizes retry ratios without treating their denominator as a file path", () => {
+    expect(normalizeLogTemplate("retry 1/3 /var/log/3.log C:\\logs\\3.log"))
+      .toBe("retry <n>/<n> <path> <path>");
+    const { templates } = extractLogSignals([file("retry.log", "retry 1/3\nretry 2/3\nretry 3/3")]);
+    expect(templates).toMatchObject([{ template: "retry <n>/<n>", count: 3, first: { line: 1 }, last: { line: 3 } }]);
+  });
+
   it("adds only explicitly supplied pinned skill rules alongside generic signals", () => {
     const input = [file("a.log", "ERROR code=E_THERMAL_FOLDBACK thermal foldback")];
     expect(extractLogSignals(input).signals.every((signal) => signal.source === "generic")).toBe(true);

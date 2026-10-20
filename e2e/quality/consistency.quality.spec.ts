@@ -1069,7 +1069,7 @@ for (const route of consistencyReadOnlyRoutes) {
               contentType: "image/png", body: await test.step("quality:capture", () => page.screenshot({ animations: "disabled" }))
             });
           }
-          const navigatorLabel = routePath.startsWith("/parameter-admin/projects/aurora") ? "配置导航" : "模块导航";
+          const navigatorLabel = routePath.startsWith("/parameter-admin/projects/aurora") ? "配置导航" : routePath === "/logs" ? "日志记录" : "模块导航";
           await page.getByRole("button", { name: `收起${navigatorLabel}`, exact: true }).click();
           await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
           const collapsed = await test.step("quality:capture", () => page.evaluate(collectConsistencyMeasurements));

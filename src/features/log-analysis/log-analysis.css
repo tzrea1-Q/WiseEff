@@ -83,15 +83,53 @@
 
 .logs-v2-split {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: var(--space-4);
   padding: var(--space-4);
+}
+
+.logs-v2-split > *,
+.evidence-card,
+.evidence-card__body {
+  min-width: 0;
+}
+
+.evidence-card__body {
+  overflow-wrap: anywhere;
+}
+
+.evidence-card__body button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.logs-empty-state {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-4);
+  min-height: calc(var(--space-16) * 5);
+  text-align: center;
+}
+
+.logs-history-filters {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.logs-header-meta,
+.history-item time {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
 }
 
 .logs-conclusion-card {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .logs-conclusion-head {
@@ -280,9 +318,9 @@
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--space-3);
   padding: var(--space-4);
-  color: var(--danger);
-  background: var(--danger-soft);
-  border: var(--stroke-hairline) solid color-mix(in srgb, var(--danger) 28%, transparent);
+  color: var(--text);
+  background: var(--surface);
+  border: var(--stroke-hairline) solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
 }
@@ -476,6 +514,7 @@
 
 .rawlog-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   border-spacing: 0;
 }
@@ -510,6 +549,17 @@
 .rawlog-table__time code { color: var(--info); }
 .rawlog-table__module code { color: var(--success); }
 .rawlog-table__content code { color: var(--text-secondary); }
+
+.rawlog-table__content code {
+  display: block;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.rawlog-table--wrap .rawlog-table__content code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 .rawlog-viewer .rawlog-line td {
   padding: var(--space-1) var(--space-2);
@@ -595,6 +645,11 @@
   gap: var(--space-2);
 }
 
+.evidence-card footer.evidence-card__suggestion {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 .evidence-card header span {
   color: var(--app-primary);
   font-size: var(--text-xs);
@@ -635,9 +690,9 @@
   background: var(--accent-soft);
   border: var(--stroke-hairline) solid var(--border);
   border-radius: var(--radius-md);
-  overflow-x: auto;
+  overflow-wrap: anywhere;
   font-size: var(--text-xs);
-  white-space: pre;
+  white-space: pre-wrap;
 }
 
 .evidence-card__body p,
