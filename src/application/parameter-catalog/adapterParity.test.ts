@@ -562,7 +562,7 @@ describe("catalog API and mock adapter parity", () => {
     const document = await mock.catalog.getCatalog();
     const state = deriveCatalogDomainState({
       inFlight: true,
-      previousReleaseId: document.item.catalogReleaseId,
+      previousReleaseId: document.item?.catalogReleaseId,
       document
     });
     expect(state).toMatchObject({ kind: "loading", stale: true, writesEnabled: false });
@@ -711,7 +711,7 @@ describe("catalog API and mock adapter parity", () => {
       mock.catalog.getCatalog({ catalogReleaseId: "crel_historical" })
     ).rejects.toMatchObject({ details: { reason: "release-drift" } });
     const current = await mock.catalog.getCatalog({ catalogReleaseId: CATALOG_RELEASE_ID });
-    expect(current.item.catalogReleaseId).toBe(CATALOG_RELEASE_ID);
+    expect(current.item?.catalogReleaseId).toBe(CATALOG_RELEASE_ID);
   });
 
   it("hides unknown legacy, out-of-scope org, and never returns Acme fixtures", async () => {

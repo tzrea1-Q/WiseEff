@@ -5,7 +5,7 @@ import { unwrapMaterializationKernelError } from "./materializeRelease";
 
 describe("permanently erased Catalog identities", () => {
   it("reports the database resurrection guard as an explicit invalid release", () => {
-    const error = new pg.DatabaseError("Parameter definition was permanently erased", 0, "ERROR");
+    const error = new pg.DatabaseError("Parameter definition was permanently erased", 0, "error");
     error.code = "55000";
     error.detail = "pdef_erased";
     expect(unwrapMaterializationKernelError(error)).toEqual({

@@ -16,7 +16,7 @@ describe("definition deletion boundary", () => {
 
   it.each([["40001", "definition-erasure-preview-stale"], ["40P01", "definition-erasure-busy"],
     ["55P03", "definition-erasure-busy"], ["PCA05", "definition-erasure-busy"]])("maps PostgreSQL %s to a retryable HTTP conflict", async (code, reason) => {
-    const error = new pg.DatabaseError("Database concurrency refusal", 0, "ERROR");
+    const error = new pg.DatabaseError("Database concurrency refusal", 0, "error");
     error.code = code;
     const transaction = vi.fn(async () => { throw error; });
     const db: Database = { query: vi.fn(), transaction };
