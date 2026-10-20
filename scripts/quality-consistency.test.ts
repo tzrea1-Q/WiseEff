@@ -770,7 +770,7 @@ describe("consistency measurement coverage", () => {
   });
 
   it("accepts collected categories and ignores categories that do not apply", () => {
-    expect(() => requireMeasuredCategories({ primaryActions: [{}], rowActions: [] }, ["primaryActions"], "/log-dashboard"))
+    expect(() => requireMeasuredCategories({ primaryActions: [{}], rowActions: [] }, ["primaryActions"], "/log-admin"))
       .not.toThrow();
   });
 
@@ -783,7 +783,7 @@ describe("consistency measurement coverage", () => {
       "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/parameter-admin/spec-review",
       "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
       "/parameter-submissions", "/parameters", "/user-permissions", "/parameters/definitions", "/knowledge",
-      "/log-dashboard", "/log-admin", "/feedback-admin", "/parameter-admin/projects/aurora",
+      "/log-admin", "/log-admin?tab=records", "/feedback-admin", "/parameter-admin/projects/aurora",
       "/parameter-admin/projects/aurora/config-sets", "/parameter-admin/projects/aurora/configuration",
       "/parameter-admin/projects/aurora/conflicts", "/parameter-admin/projects/aurora/files",
       "/parameter-admin/projects/aurora/structure"
@@ -817,23 +817,23 @@ describe("overview consistency", () => {
   const overview = {
     root: { ...rect, bottom: 500, height: 480 }, summary: rect,
     content: { ...rect, top: 140, bottom: 400, height: 260 },
-    actions: null, gap: 20, pageOverflow: 0, viewportHeight: 900,
+    actions: null, gap: 20, pageOverflow: 0, viewportHeight: 900, emptyStateCount: 0,
     tiles: [{ rect, hasSamples: false, value: "暂无样本", trendCount: 0 }],
     items: [{ ...rect, top: 140, bottom: 400, height: 260 }],
     verdicts: [{ hasSamples: false, text: "暂无样本，无法判断" }]
   };
   it("requires template measurements on both overviews and both retired routes", () => {
-    for (const path of ["/parameter-home", "/log-dashboard"]) {
+    for (const path of ["/parameter-home", "/log-admin"]) {
       expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("overviewPages");
     }
     for (const path of ["/parameter-comparison", "/debugging"]) {
       expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("retiredNotices");
     }
-    expect(() => requireOverviewGeometry([], "/log-dashboard")).toThrow(/missing/i);
+    expect(() => requireOverviewGeometry([], "/log-admin")).toThrow(/missing/i);
     expect(() => requireRetiredNotice([], "/debugging")).toThrow(/missing/i);
   });
   it("accepts the token-aligned grid and rejects overflow, missing tiles and fabricated empty-source verdicts", () => {
-    expect(() => requireOverviewGeometry([overview], "/log-dashboard")).not.toThrow();
+    expect(() => requireOverviewGeometry([overview], "/log-admin")).not.toThrow();
     for (const invalid of [
       { ...overview, content: { ...overview.content, left: 48 } },
       { ...overview, pageOverflow: 10 },
@@ -844,12 +844,25 @@ describe("overview consistency", () => {
       { ...overview, tiles: [{ ...overview.tiles[0], trendCount: 1 }] },
       { ...overview, verdicts: [{ hasSamples: false, text: "质量表现稳定" }] }
     ]) {
-      expect(() => requireOverviewGeometry([invalid], "/log-dashboard")).toThrow();
+      expect(() => requireOverviewGeometry([invalid], "/log-admin")).toThrow();
     }
   });
   it("rejects an overview with its first content section below the PC viewport", () => {
     const belowFold = { ...overview, viewportHeight: 100 };
     expect(() => requireOverviewGeometry([belowFold], "/parameter-home")).toThrow(/first section/i);
+  });
+  it("requires one aligned empty state without summary metrics when the log window has no samples", () => {
+    const empty = { ...overview, summary: null, content: rect, emptyStateCount: 1, tiles: [], verdicts: [], items: [rect] };
+    expect(() => requireOverviewGeometry([empty], "/log-admin")).not.toThrow();
+    for (const invalid of [
+      { ...empty, emptyStateCount: 2 }, { ...empty, tiles: overview.tiles },
+      { ...empty, verdicts: overview.verdicts }, { ...empty, summary: rect },
+      { ...empty, items: [rect, rect] }, { ...empty, pageOverflow: 10 },
+      { ...empty, content: { ...rect, left: 48 } }, { ...empty, viewportHeight: 10 }
+    ]) expect(() => requireOverviewGeometry([invalid], "/log-admin")).toThrow(/empty overview/i);
+    const measured = collectMarkup('<section class="overview-page"><div class="overview-page__content"><div data-testid="log-admin-overview-empty">当前时间窗口内暂无日志</div></div></section>');
+    expect(measured.overviewPages[0].emptyStateCount).toBe(1);
+    expect(measured.overviewPages[0].tiles).toHaveLength(0);
   });
   it("collects overview tiles and retired replacement links through the rendered DOM", () => {
     const measurements = collectMarkup(`

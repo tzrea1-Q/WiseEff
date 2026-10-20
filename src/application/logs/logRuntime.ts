@@ -423,13 +423,8 @@ export function createLogRuntimeActions({
         return [];
       }
 
-      try {
-        const api = requireRepository(repository);
-        return (await api.listFeedbackInsights?.(query)) ?? [];
-      } catch {
-        // Monitoring reads never block the admin page; failures degrade to the empty state.
-        return [];
-      }
+      const api = requireRepository(repository);
+      return (await api.listFeedbackInsights?.(query)) ?? [];
     },
     async setLogDomainWebhook(input) {
       if (mode !== "api") {

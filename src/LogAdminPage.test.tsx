@@ -15,9 +15,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-beforeEach(() => window.history.replaceState(null, "", "/log-admin"));
+beforeEach(() => window.history.replaceState(null, "", "/log-admin?tab=records"));
 
-it.each(["", "records", "domains", "skills", "quality"])("keeps one table, aligned-list slots and one rightmost primary action on tab %s", async (tab) => {
+it.each(["records", "domains", "skills", "quality"])("keeps one table, aligned-list slots and one rightmost primary action on tab %s", async (tab) => {
   window.history.replaceState(null, "", `/log-admin${tab ? `?tab=${tab}` : ""}`);
   renderPage({ logActions: createLogActions() });
   const table = await screen.findByRole("table");

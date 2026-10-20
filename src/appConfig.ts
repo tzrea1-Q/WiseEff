@@ -1,7 +1,6 @@
 import {
   Activity,
   BookOpen,
-  ChartNoAxesCombined,
   Database,
   FileText,
   Gauge,
@@ -46,7 +45,6 @@ export type PageKey =
   | "parameter-comparison"
   | "parameter-review"
   | "parameter-admin"
-  | "log-dashboard"
   | "logs"
   | "log-admin"
   | "debugging"
@@ -153,15 +151,6 @@ export const navigationItems: PageConfig[] = [
     subtitle: DEBUGGING_ADMIN_UI.parameterSubtitle
   },
   {
-    key: "log-dashboard",
-    path: "/log-dashboard",
-    label: "看板",
-    group: "日志分析",
-    icon: ChartNoAxesCombined,
-    title: "日志分析看板",
-    subtitle: "日志分析的处理量、失败与质量"
-  },
-  {
     key: "logs",
     path: "/logs",
     label: "智能分析",
@@ -177,7 +166,7 @@ export const navigationItems: PageConfig[] = [
     group: "日志分析",
     icon: Activity,
     title: "日志分析管理后台",
-    subtitle: "分析记录、技能与分析质量"
+    subtitle: "分析概览、记录、技能与分析质量"
   },
   {
     key: "knowledge",
@@ -206,6 +195,9 @@ export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: strin
 ];
 
 export function getPageByPath(path: string): PageConfig {
+  if (path === "/log-dashboard") {
+    return navigationItems.find((item) => item.key === "log-admin")!;
+  }
   if (path === CATALOG_READ_PAGE_PATH) {
     return {
       key: "parameters",

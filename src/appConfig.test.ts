@@ -26,7 +26,6 @@ describe("WiseEff prototype configuration", () => {
       "/dts-reload",
       "/node-debugging",
       "/debugging-admin",
-      "/log-dashboard",
       "/logs",
       "/log-admin",
       "/knowledge",
@@ -93,24 +92,26 @@ describe("WiseEff prototype configuration", () => {
     expect(homePage.subtitle).toBe("业务流程里的 AI 协同工作系统");
   });
 
-  it("exposes a dedicated log analysis dashboard route", () => {
+  it("redirects the former dashboard to the log back office with only two log navigation entries", () => {
     const page = getPageByPath("/log-dashboard");
 
-    expect(page.key).toBe("log-dashboard");
-    expect(page.label).toBe("看板");
+    expect(page.key).toBe("log-admin");
+    expect(page.path).toBe("/log-admin");
+    expect(page.label).toBe("日志后台");
     expect(page.group).toBe("日志分析");
+    expect(navigationItems.filter((item) => item.group === "日志分析").map((item) => item.label)).toEqual(["智能分析", "日志后台"]);
   });
 
-  it("labels the parameter homepage as the user workbench without changing the log dashboard label", () => {
+  it("labels the parameter homepage as the user workbench and the logs admin as the back office", () => {
     const parameterHome = getPageByPath("/parameter-home");
-    const logDashboard = getPageByPath("/log-dashboard");
+    const logAdmin = getPageByPath("/log-admin");
 
     expect(parameterHome.label).toBe("我的工作台");
     expect(parameterHome.group).toBe("参数管理");
     expect(parameterHome.title).toBe("我的工作台");
     expect(parameterHome.subtitle).toBe("");
-    expect(logDashboard.label).toBe("看板");
-    expect(logDashboard.group).toBe("日志分析");
+    expect(logAdmin.label).toBe("日志后台");
+    expect(logAdmin.group).toBe("日志分析");
   });
 
   it("exposes a dedicated node debugging route", () => {

@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
 import { initialState } from "./mockData";
 
-const userState = { ...initialState, activeRoleId: "user" };
 const adminState = { ...initialState, activeRoleId: "admin" };
 
 afterEach(() => {
@@ -12,18 +11,20 @@ afterEach(() => {
 });
 
 describe("normalized workspace headers", () => {
-  it("moves log dashboard page actions into the topbar and removes the duplicate content h1", () => {
-    window.history.replaceState(null, "", "/log-dashboard");
+  it("keeps log overview actions in its local toolbar without a duplicate page title", () => {
+    window.history.replaceState(null, "", "/log-admin");
 
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
 
-    expect(within(topbar).getByRole("button", { name: "查看管理后台" })).toBeInTheDocument();
-    expect(within(topbar).getByRole("button", { name: "进入智能分析" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { level: 1, name: "日志分析看板" })).not.toBeInTheDocument();
+    expect(within(topbar).queryByRole("button", { name: "进入智能分析" })).not.toBeInTheDocument();
+    expect(within(topbar).queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "进入智能分析" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "日志分析管理后台" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "日志分析核心指标" })).toBeInTheDocument();
+    expect(screen.getByTestId("log-admin-overview")).toHaveAccessibleName("日志概览");
   });
 
   it("keeps parameter admin bulk import in the topbar without a duplicate page title", () => {

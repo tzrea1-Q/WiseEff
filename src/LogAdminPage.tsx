@@ -32,9 +32,10 @@ import type { AppAction } from "@/application/state/appState";
 import { CreateSkillDialog } from "@/features/log-skills/CreateSkillDialog";
 import { ImportSkillPackageDialog } from "@/features/log-skills/SkillPackageDialogs";
 import { SectionSkeleton } from "@/components/common/SectionState";
+import { LogAdminOverview, matchesOverviewFilter, type OverviewRecordFilter } from "@/features/log-analysis/LogAdminOverview";
 import type { SkillAuthoringRepository, SkillWorkspaceRepository } from "@/features/log-skills/types";
 
-const collectionTabs = ["records", "skills", "quality"] as const;
+const collectionTabs = ["overview", "records", "skills", "quality"] as const;
 
 export type LogAdminPageProps = {
   state: PrototypeState;
@@ -297,6 +298,8 @@ function FeedbackQualityInsightsSection({
   logActions,
   refreshKey,
   onRowsChange,
+  onLoadingChange,
+  onErrorChange,
   headerActions,
   onTimeWindowChange,
   onViewRecords
@@ -305,12 +308,15 @@ function FeedbackQualityInsightsSection({
   logActions?: LogRuntimeActions;
   refreshKey: number;
   onRowsChange: (rows: LogFeedbackInsight[]) => void;
+  onLoadingChange: (loading: boolean) => void;
+  onErrorChange: (unavailable: boolean) => void;
   headerActions: ReactNode;
   onTimeWindowChange: (value: TimeWindow) => void;
   onViewRecords: () => void;
 }) {
   const [rows, setRows] = useState<LogFeedbackInsight[]>([]);
   const [loading, setLoading] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
 
 
   useEffect(() => {
@@ -319,6 +325,9 @@ function FeedbackQualityInsightsSection({
     }
     let cancelled = false;
     setLoading(true);
+    onLoadingChange(true);
+    setUnavailable(false);
+    onErrorChange(false);
     void logActions
       .listFeedbackInsights({ timeWindow })
       .then((items) => {
@@ -327,15 +336,19 @@ function FeedbackQualityInsightsSection({
           onRowsChange(items);
         }
       })
+      .catch(() => {
+        if (!cancelled) { setRows([]); onRowsChange([]); setUnavailable(true); onErrorChange(true); }
+      })
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
+          onLoadingChange(false);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [logActions, onRowsChange, refreshKey, timeWindow]);
+  }, [logActions, onErrorChange, onLoadingChange, onRowsChange, refreshKey, timeWindow]);
 
   const columns: Column<LogFeedbackInsight>[] = [
     {
@@ -396,17 +409,18 @@ function FeedbackQualityInsightsSection({
           headerActions={headerActions}
           filterBar={<TimeWindowSelect value={timeWindow} onChange={onTimeWindowChange} />}
           table={{ "aria-label": "分析质量反馈聚合", rows, rowKey: feedbackInsightRowKey, columns, pageSize: 6 }}
-          emptyState={{ message: loading ? "正在加载反馈数据…" : "暂无反馈", actionLabel: "查看分析记录", onAction: onViewRecords }} />
+          emptyState={{ message: loading ? "正在加载反馈数据…" : unavailable ? "反馈数据暂不可用，请刷新重试。" : "暂无反馈", actionLabel: "查看分析记录", onAction: onViewRecords }} />
       )}
     </section>
   );
 }
 
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, skillRepository, apiMode = false }: LogAdminPageProps) {
-  const [collection, selectCollection] = useCollectionTab(collectionTabs, new URLSearchParams(window.location.search).has("tab") ? "skills" : "records");
+  const [collection, selectCollection] = useCollectionTab(collectionTabs, new URLSearchParams(window.location.search).get("tab") === "domains" ? "skills" : "overview");
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
+  const [overviewFilter, setOverviewFilter] = useState<OverviewRecordFilter | null>(null);
   const [sortBy, setSortBy] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "updatedAtIso", dir: "desc" });
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
@@ -417,6 +431,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const [archivedLoaded, setArchivedLoaded] = useState(false);
   const [skillsRefreshKey, setSkillsRefreshKey] = useState(0);
   const [qualityRows, setQualityRows] = useState<LogFeedbackInsight[]>([]);
+  const [qualityLoading, setQualityLoading] = useState(Boolean(logActions));
+  const [qualityUnavailable, setQualityUnavailable] = useState(false);
   const [feedbackInsightsRefreshKey, setFeedbackInsightsRefreshKey] = useState(0);
 
   const runPendingAction = async (kind: PendingLogAction, logId: string, action: () => Promise<void>) => {
@@ -469,7 +485,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   );
   const windowLogs = useMemo(() => applyTimeWindow(visibleLogs, timeWindow), [timeWindow, visibleLogs]);
   const metrics = useMemo(() => deriveMetrics(windowLogs, timeWindow, visibleLogs), [timeWindow, visibleLogs, windowLogs]);
-  const tableSourceLogs = logView === "archived" ? archivedLogs : windowLogs;
+  const tableSourceLogs = useMemo(() => (logView === "archived" ? archivedLogs : windowLogs).filter((log) => matchesOverviewFilter(log, overviewFilter)), [archivedLogs, logView, overviewFilter, windowLogs]);
   const filteredRows = useMemo(
     () => applyTableFilters(tableSourceLogs, { tableQuery, statusFilter, moduleFilter: [], sortBy }),
     [sortBy, statusFilter, tableQuery, tableSourceLogs]
@@ -500,7 +516,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
     {
       key: "fileName",
       header: "文件",
-      render: (record) => <Button variant="link" className="font-medium" onClick={() => setSelectedRecordId(record.id)}>{record.fileName}</Button>,
+      render: (record) => <Button variant="link" className="font-medium" onClick={() => setSelectedRecordId(record.id)}>{record.fileName.trim() || record.reportId}</Button>,
       sortAccessor: (record) => record.fileName
     },
     {
@@ -549,6 +565,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const resetFilters = () => {
     setTableQuery("");
     setStatusFilter([]);
+    setOverviewFilter(null);
     setSortBy({ key: "updatedAtIso", dir: "desc" });
   };
 
@@ -620,6 +637,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const handleSync = async () => {
     if (collection === "skills") { setSkillsRefreshKey((key) => key + 1); return; }
     if (collection === "quality") { setFeedbackInsightsRefreshKey((key) => key + 1); return; }
+    if (collection === "overview") setFeedbackInsightsRefreshKey((key) => key + 1);
     if (!logActions) {
       dispatch({ type: "LOG_ADMIN_SYNC_LOGS" });
       return;
@@ -642,7 +660,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const selectedRecordFeedbackPending = selectedRecord ? pendingActions.has(pendingKey("feedback", selectedRecord.id)) : false;
   const undoArchivePending = undoArchive ? pendingActions.has(pendingKey("unarchive", undoArchive.logId)) : false;
 
-  const hasActiveFilters = tableQuery !== "" || statusFilter.length > 0;
+  const hasActiveFilters = tableQuery !== "" || statusFilter.length > 0 || overviewFilter !== null;
   const refreshAction = (
     <Button variant="outline" size="sm" onClick={handleSync} disabled={syncPending} aria-busy={syncPending || undefined}>
       <RefreshCw data-icon="inline-start" />
@@ -680,18 +698,22 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
 
       <ViewSwitch variant="tabs" ariaLabel="日志后台集合" value={collection} onValueChange={selectCollection}
         items={[
+          { value: "overview", label: "概览", id: "log-tab-overview", panelId: "log-panel-overview" },
           { value: "records", label: "日志分析记录", id: "log-tab-records", panelId: "log-panel-records" },
           { value: "skills", label: "分析技能", id: "log-tab-skills", panelId: "log-panel-skills" },
           { value: "quality", label: "分析质量", id: "log-tab-quality", panelId: "log-panel-quality" }
         ]} />
       <TabPanel id={`log-panel-${collection}`} aria-labelledby={`log-tab-${collection}`}>
+        {collection === "overview" ? <LogAdminOverview logs={windowLogs} allLogs={visibleLogs} timeWindow={timeWindow} feedback={qualityRows} feedbackLoading={qualityLoading} feedbackUnavailable={qualityUnavailable}
+          controls={<><TimeWindowSelect value={timeWindow} onChange={setTimeWindow} /><div className="flex items-center gap-2">{refreshAction}<Button onClick={() => onNavigate("/logs")}>进入智能分析</Button></div></>}
+          onViewRecords={(filter) => { resetFilters(); setOverviewFilter(filter); setLogView("active"); selectCollection("records"); }} /> : null}
         <div hidden={collection !== "skills"}>
           <LogDomainGovernanceSection canGovern={canPerform(state.activeRoleId, "logs.admin-domains")} logActions={logActions} refreshKey={skillsRefreshKey} onNavigate={onNavigate}
             skillRepository={skillRepository} apiMode={apiMode} refreshAction={refreshAction} />
         </div>
         <div hidden={collection !== "quality"}>
-          <FeedbackQualityInsightsSection timeWindow={timeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} onRowsChange={setQualityRows}
-            headerActions={reportHeaderActions} onTimeWindowChange={setTimeWindow} onViewRecords={() => selectCollection("records")} />
+          <FeedbackQualityInsightsSection timeWindow={timeWindow} logActions={logActions} refreshKey={feedbackInsightsRefreshKey} onRowsChange={setQualityRows} onLoadingChange={setQualityLoading} onErrorChange={setQualityUnavailable}
+            headerActions={reportHeaderActions} onTimeWindowChange={setTimeWindow} onViewRecords={() => { resetFilters(); selectCollection("records"); }} />
         </div>
         {collection === "records" ? (
           <AdminListPage label="日志分析记录"
@@ -707,6 +729,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
                   placeholder="搜索文件名、技能或结论"
                   ariaLabel="搜索日志分析记录"
                 />
+                {overviewFilter ? <span className="text-xs text-muted-foreground">{overviewFilter.kind === "degraded" ? "降级到规则" : overviewFilter.kind === "generic" ? "通用分析" : overviewFilter.kind === "skill" ? "所选技能" : overviewFilter.kind === "review" ? "待复核" : overviewFilter.reason ?? "失败记录"}</span> : null}
                 {hasActiveFilters && filteredRows.length > 0 ? (
                   <button
                     type="button"

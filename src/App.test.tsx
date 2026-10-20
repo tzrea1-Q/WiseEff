@@ -331,11 +331,11 @@ function stateForCurrentPath() {
     case "/parameter-admin":
     case "/parameter-admin/projects":
     case "/log-admin":
+    case "/log-dashboard":
     case "/debugging-admin":
     case "/debugging-admin/nodes":
       return adminState;
     case "/logs":
-    case "/log-dashboard":
     case "/debugging":
     case "/node-debugging":
     case "/parameter-submissions":
@@ -350,6 +350,26 @@ function renderAppForCurrentPath() {
 }
 
 describe("WiseEff app shell", { timeout: 20_000 }, () => {
+  it.each(["/log-dashboard", "/log-dashboard?tab=records"])("redirects %s to the default log overview", async (path) => {
+    window.history.replaceState(null, "", path);
+    render(<App runtimeMode="mock" initialAppState={adminState} />);
+
+    expect(await screen.findByTestId("log-admin-overview")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/log-admin");
+    expect(window.location.search).toBe("");
+    expect(screen.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps the former dashboard bookmark behind the log back-office administrator gate", () => {
+    window.history.replaceState(null, "", "/log-dashboard");
+    render(<App runtimeMode="mock" initialAppState={userState} />);
+
+    expect(window.location.pathname).toBe("/log-admin");
+    expect(screen.queryByTestId("log-admin-overview")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
+    expect(screen.getByText(/所需角色：管理员/)).toBeInTheDocument();
+  });
+
   it.each(["/log-admin/skills/skill-charging", "/log-admin/skills/skill-charging/"])("leaves %s with its own workspace header", async (path) => {
     window.history.replaceState(null, "", path);
     render(<App runtimeMode="mock" initialAppState={adminState} />);
@@ -3656,7 +3676,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/log-admin",
-        present: ["日志分析管理后台", "日志分析记录"],
+        present: ["日志分析管理后台", "概览", "降级到规则", "通用分析"],
         absent: ["日志分析 Admin", "Failed", "Complete", "Processing"]
       },
       {

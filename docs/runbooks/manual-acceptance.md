@@ -457,7 +457,9 @@ Checklist:
 - [ ] Analysis progresses through staged status and reaches `Complete`.
 - [ ] Conclusion mentions thermal/foldback evidence.
 - [ ] Evidence card links to a raw log line and highlights the line.
-- [ ] Open `/log-dashboard` and `/log-admin`.
+- [ ] Open `/log-admin` and confirm the Overview tab is selected. Check that `/log-dashboard` redirects here.
+- [ ] Review the shared time window's rules-fallback share and warning, generic-analysis share, per-skill volume/helpful rate, and failure reasons/counts. Follow applicable links to filtered Records; an empty window shows one empty state.
+- [ ] Open `/log-admin?tab=records`.
 - [ ] Find the uploaded log in admin view.
 - [ ] Submit helpful feedback and verify feedback/audit evidence if available.
 - [ ] Archive the log and confirm it disappears from the default `/logs` history.

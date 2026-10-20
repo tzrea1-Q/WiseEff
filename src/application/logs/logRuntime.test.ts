@@ -20,6 +20,13 @@ const apiLog: LogRecord = {
   updatedAtIso: "2026-05-25T08:00:00.000Z"
 };
 
+it("preserves feedback-read failures so overview can distinguish unavailable data from no feedback", async () => {
+  const failure = new Error("offline");
+  const repository = createRepository({ listFeedbackInsights: vi.fn().mockRejectedValue(failure) });
+  const actions = createLogRuntimeActions({ mode: "api", repository, dispatch: vi.fn(), getState: () => initialState });
+  await expect(actions.listFeedbackInsights({ timeWindow: "7d" })).rejects.toBe(failure);
+});
+
 const completedApiLog: LogRecord = {
   ...apiLog,
   status: "Complete",

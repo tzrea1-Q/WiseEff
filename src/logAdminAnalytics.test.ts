@@ -271,6 +271,15 @@ describe("deriveMetrics", () => {
   const now = new Date("2026-05-10T12:00:00Z");
   const nowMs = now.getTime();
 
+  it("leaves absent day baselines and incomparable multi-day windows unknown", () => {
+    const logs = [mkLog("today", 30, nowMs)];
+    expect(deriveMetrics(logs, "today", logs, now).todayCount.trendPct).toBeNull();
+    expect(deriveMetrics(logs, "today", logs, now).avgConfidence.trendPct).toBeNull();
+    const history = [...logs, mkLog("yesterday", 24 * 60, nowMs)];
+    expect(deriveMetrics(logs, "7d", history, now).todayCount.trendPct).toBeNull();
+    expect(deriveMetrics(logs, "30d", history, now).avgConfidence.trendPct).toBeNull();
+  });
+
   it("todayCount returns count of today's logs", () => {
     const logs = [mkLog("t1", 30, nowMs), mkLog("t2", 60, nowMs)];
 

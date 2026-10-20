@@ -12,9 +12,11 @@ const moduleListPaths = ["/parameter-admin/modules/queue", "/parameter-admin/mod
 const adminListPaths = ["/parameter-admin/projects", "/organization/members", "/user-permissions",
   "/debugging-admin/nodes", "/feedback-admin", "/audit", "/knowledge"];
 export const collectionPaths = ["/knowledge-admin", "/log-admin"];
+const collectionListPaths = ["/knowledge-admin", "/log-admin?tab=records", "/log-admin?tab=skills", "/log-admin?tab=quality"];
 export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("section" | "tabs" | "toggle")[]>> = {
   "/knowledge-admin": ["tabs"],
-  "/log-admin": ["tabs", "toggle"],
+  "/log-admin": ["tabs"],
+  "/log-admin?tab=records": ["tabs", "toggle"],
   "/log-admin?tab=skills": ["tabs"],
   "/log-admin?tab=quality": ["tabs"],
   "/parameter-admin/projects/aurora/configuration?tab=conflicts": ["tabs"],
@@ -43,19 +45,19 @@ export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
 const applicablePaths: Omit<Record<ConsistencyCategory, readonly string[]>, "xiaozeLaunchers" | "xiaozeHints" | "stickyActionAreas" | "unmarkedCompactControls" | "titles" | "buttons" | "typeScale" | "pageEdges" | "workbenchTables"> = {
   viewSwitches: viewSwitchStylePaths,
   viewSwitchSignatures: viewSwitchStylePaths,
-  primaryActions: ["/dts-reload", "/knowledge", "/log-dashboard", "/log-admin", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
+  primaryActions: ["/dts-reload", "/knowledge", "/log-admin", "/log-admin?tab=records", "/logs", "/node-debugging", "/organization/members", "/parameter-admin", "/parameter-admin/specs", "/user-permissions", "/parameter-admin/projects", "/parameter-comparison", "/debugging"],
   rowActions: [...catalogPaths, "/parameters", ...adminListPaths],
   tableScrollports: [...catalogPaths, "/parameters", "/node-debugging", "/audit", "/logs", "/user-permissions", "/organization/members",
     // /debugging-admin defaults to the DTS reload settings form, which renders no table.
-    "/debugging-admin/nodes", "/feedback-admin", ...collectionPaths, "/dts-reload",
+    "/debugging-admin/nodes", "/feedback-admin", ...collectionListPaths, "/dts-reload",
     "/parameter-admin/projects", "/parameter-admin/projects/aurora/review-roles", "/knowledge", "/parameter-admin/modules/registry"],
   moduleTreeLabels: [...catalogPaths, ...moduleGovernancePaths, "/parameters", "/node-debugging", "/dts-reload"],
   filterControls: ["/audit", "/debugging-admin/nodes", "/dts-reload", "/feedback-admin", "/organization/members", "/parameter-home", "/user-permissions", "/parameter-admin/projects", ...moduleListPaths],
   sortControls: ["/parameter-admin/projects"],
   paginationControls: catalogPaths,
   navigatorWorkbenches: ["/parameters", "/logs", ...catalogPaths, "/node-debugging", "/dts-reload", ...moduleGovernancePaths, ...projectConfigurationPaths],
-  adminLists: [...adminListPaths, ...collectionPaths],
-  overviewPages: ["/parameter-home", "/log-dashboard"],
+  adminLists: [...adminListPaths, ...collectionListPaths],
+  overviewPages: ["/parameter-home", "/log-admin"],
   retiredNotices: ["/parameter-comparison", "/debugging"],
   settingsForms: ["/organization", "/debugging-admin", "/parameter-admin/projects/aurora/review-roles"]
 };
@@ -72,8 +74,6 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
     route,
     ...(route.path === "/knowledge-admin"
       ? ["drafts", "index", "archived"].map((tab) => ({ ...route, path: `${route.path}?tab=${tab}` })) : []),
-    ...(route.path === "/log-admin"
-      ? [{ ...route, path: `${route.path}?tab=records` }] : []),
     ...(projectConfigurationPaths.includes(route.path)
       ? ["history", "candidate", "unified-diff", "side-by-side"].map((mode) => ({ ...route, path: `${route.path}?sourceMode=${mode}` }))
       : []),
@@ -89,7 +89,8 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
   .map(({ path }) => {
     const [pathname, search = ""] = path.split("?");
     const moduleView = parseParameterAdminModulesSubView(pathname, search);
-    const contractPath = moduleView && moduleView !== "tree" ? `/parameter-admin/modules/${moduleView}` : pathname;
+    const contractPath = moduleView && moduleView !== "tree" ? `/parameter-admin/modules/${moduleView}`
+      : pathname === "/log-admin" ? path : pathname;
     return {
       path,
       required: [

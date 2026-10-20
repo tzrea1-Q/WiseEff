@@ -58,7 +58,7 @@ describe("M5.11 quality gates", () => {
   it.each([
     "/debugging-admin/nodes",
     "/log-admin",
-    "/log-dashboard",
+    "/log-admin?tab=records",
     "/parameter-admin/projects/aurora",
     "/parameter-admin/projects/aurora/config-sets",
     "/parameter-admin/projects/aurora/configuration",

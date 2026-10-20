@@ -30,7 +30,7 @@ const coreRoutes = [
   "/node-debugging",
   "/debugging-admin/nodes",
   "/log-admin",
-  "/log-dashboard",
+  "/log-admin?tab=records",
   "/parameter-admin/projects/aurora",
   "/parameter-admin/projects/aurora/config-sets",
   "/parameter-admin/projects/aurora/conflicts",
@@ -103,7 +103,7 @@ test.describe("M5.11 accessibility quality gate", () => {
     });
   }
 
-  for (const route of ["/log-dashboard", "/parameters/definitions"]) {
+  for (const route of ["/log-admin", "/parameters/definitions"]) {
     test(`permits accessible names on groups on ${route}`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await test.step("quality:navigation", () => page.goto(route));
@@ -111,7 +111,9 @@ test.describe("M5.11 accessibility quality gate", () => {
       await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
       // The Catalog action group renders only when it has actions, so wait on the definitions table there.
       await expect(
-        route === "/log-dashboard" ? page.getByRole("group", { name: "今日状态拆分" }) : page.getByRole("table").first()
+        route === "/log-admin"
+          ? page.getByRole("group", { name: "分析状态拆分" }).or(page.getByTestId("log-admin-overview-empty"))
+          : page.getByRole("table").first()
       ).toBeVisible();
       const results = await test.step("quality:axe", () => new AxeBuilder({ page }).withRules(["aria-prohibited-attr"]).analyze());
       expect(results.violations).toEqual([]);
@@ -130,7 +132,7 @@ test.describe("M5.11 accessibility quality gate", () => {
         await test.step("quality:navigation", () => page.goto(route));
       }
       await expect(page.locator("main, .main-content").first()).toBeVisible();
-      await test.step("quality:readiness", () => settleQualityRoute(page, route));
+      await test.step("quality:readiness", () => settleQualityRoute(page, route.split("?")[0]));
       await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
       if (populatedReview) {
         const title = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";
