@@ -8984,6 +8984,8 @@ td small {
   background: var(--surface-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .debug-value-code-block__head {
@@ -8995,6 +8997,8 @@ td small {
 
 .debug-value-code-block pre {
   margin: 0;
+  min-width: 0;
+  max-width: 100%;
   max-height: calc(var(--space-10) * 7);
   overflow: auto;
   padding: var(--space-3) var(--space-3);
@@ -9010,6 +9014,36 @@ td small {
   line-height: 1.55;
   white-space: pre;
   overflow-wrap: normal;
+}
+
+.debug-value-code-block--text code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.parameter-value-content {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  max-height: min(40vh, calc(5 * var(--space-16)));
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  font-family: var(--font-code);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.parameter-text-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.parameter-value-content:focus-visible {
+  outline: calc(2 * var(--stroke-hairline)) solid var(--ring);
+  outline-offset: var(--space-1);
 }
 
 .node-complex-editor .workbench-sheet {
@@ -9208,6 +9242,11 @@ td small {
 .focused-draft-editor {
   display: grid;
   gap: var(--space-3);
+}
+
+.draft-sheet-stack {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
 }
 
 .draft-card,
@@ -10738,6 +10777,8 @@ td small {
 
 .submission-preview-diff {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   max-height: 380px;
   overflow: auto;
   border: 1px solid rgba(148, 163, 184, 0.3);
@@ -10808,9 +10849,11 @@ td small {
 
 .submission-preview-diff--scalar .submission-preview-diff-row {
   grid-template-columns: 24px minmax(0, 1fr);
+  min-width: 0;
 }
 
 .submission-preview-diff--scalar .submission-preview-diff-row code {
+  min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -20638,6 +20681,7 @@ body.xiaoze-popup-drag-active {
 
 .parameter-import-wizard .import-review-diff-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 10px;
@@ -20680,6 +20724,8 @@ body.xiaoze-popup-drag-active {
 }
 
 .parameter-import-wizard .parameter-import-preview-table {
+  width: 100%;
+  table-layout: fixed;
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -22153,6 +22199,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.dts-parameter-workbench-table__row [data-label="当前值"] code {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
 }
 
 .dts-parameter-workbench-table__location {

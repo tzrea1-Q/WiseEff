@@ -96,10 +96,8 @@ export function DtsBindingDetailDialog({
   const targetDisplay = formatDtsValueForUi(value.rawValue, row.effectiveValue, isDelete ? "deleted" : "present");
   const scalar = row.effectiveValue.kind === "cells" && row.effectiveValue.groups.length === 1
     && row.effectiveValue.groups[0].length === 1 && row.effectiveValue.groups[0][0].kind === "integer";
-  const simpleString = row.effectiveValue.kind === "strings" && row.effectiveValue.values.length === 1;
   let scalarText = value.rawValue;
   if (scalar) scalarText = value.rawValue.match(/<\s*([^<>]*)\s*>/)?.[1]?.trim() ?? value.rawValue;
-  if (simpleString) { try { const parsed: unknown = JSON.parse(value.rawValue); if (typeof parsed === "string") scalarText = parsed; } catch { /* Keep incomplete input visible. */ } }
   const update = (patch: Partial<DtsParameterEdit>) => { setFeedback(null); onDraftChange?.({ ...value, ...patch }); };
   const save = async () => {
     if (locked || !onSaveDraft || syntaxError || !value.reason.trim() || !hasLocalChanges) return;
@@ -134,7 +132,7 @@ export function DtsBindingDetailDialog({
                 {description ? <p>{description}</p> : null}{documentation ? <p>{documentation}</p> : null}
                 {specDetailStatus === "loading" ? <p role="status">正在加载规格详情…</p> : null}
                 {specDetailStatus === "error" ? <div role="alert" aria-label="规格详情加载失败"><p>{specDetailErrorMessage || "参数说明加载失败，当前配置仍可查看。"}</p><Button variant="outline" onClick={onRetrySpecDetail}>重试规格详情</Button></div> : null}
-                <dl><Field label="当前值" value={currentDisplay} /><Field label="单位" value={unit} /><Field label="约束" value={constraints} /><Field label="所属模块" value={formatModulePathLabel(row.modulePath, row.moduleName)} /><Field label="重要性" value={{ high: "高", medium: "中", low: "低" }[row.importance]} />
+                <dl>{currentDisplay ? <div><dt>当前值</dt><dd><pre className="parameter-value-content" role="region" aria-label="当前生效值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Full parameter values must support keyboard scrolling. */}>{currentDisplay}</pre></dd></div> : null}<Field label="单位" value={unit} /><Field label="约束" value={constraints} /><Field label="所属模块" value={formatModulePathLabel(row.modulePath, row.moduleName)} /><Field label="重要性" value={{ high: "高", medium: "中", low: "低" }[row.importance]} />
                   {legacy?.exampleValue != null ? <Field label="示例值（示意，非推荐）" value={typeof legacy.exampleValue === "string" ? legacy.exampleValue : JSON.stringify(legacy.exampleValue)} /> : null}
                   {legacy?.schemaDefault != null ? <Field label="规格默认" value={JSON.stringify(legacy.schemaDefault)} /> : null}
                   {legacy?.policyTarget != null ? <Field label="策略目标" value={JSON.stringify(legacy.policyTarget)} /> : null}
@@ -145,7 +143,7 @@ export function DtsBindingDetailDialog({
                 {!canEdit ? <p role="status">当前状态暂不可编辑，已有输入已保留。</p> : null}
                 {emptyProperty ? <fieldset disabled={locked}><legend>目标属性状态</legend><div className="parameter-inspector__value-actions"><Button variant="outline" aria-pressed={!isDelete} onClick={() => update({ action: "set", rawValue: "" })}>{row.effectiveValue.kind === "boolean" ? "属性存在（启用）" : "保留空属性"}</Button><Button variant="outline" aria-pressed={isDelete} onClick={() => update({ action: "delete", rawValue: "" })}>移除属性</Button></div><p className="parameter-inspector__hint">属性存在时无需填写字面值，移除仍须审核。</p></fieldset> : <>
                   <label htmlFor={`${id}-target`}>目标值{unit ? <span> · {unit}</span> : null}</label>
-                  {isDelete ? <p role="status">已选择移除属性，提交审核通过后生效。</p> : scalar || simpleString ? <Input id={`${id}-target`} aria-label="目标值" value={scalarText} disabled={locked} aria-invalid={Boolean(syntaxError)} aria-describedby={syntaxError ? `${id}-syntax` : undefined} onChange={event => update({ rawValue: simpleString ? JSON.stringify(event.target.value) : event.target.value.trim() ? `${row.effectiveValue.kind === "cells" && row.effectiveValue.bits !== 32 ? `/bits/ ${row.effectiveValue.bits} ` : ""}<${event.target.value}>` : "", action: "set" })} /> : <Textarea id={`${id}-target`} aria-label="目标值" value={value.rawValue} disabled={locked} rows={complexEditorRows(value.rawValue)} spellCheck={false} aria-invalid={Boolean(syntaxError)} aria-describedby={syntaxError ? `${id}-syntax` : undefined} onChange={event => update({ rawValue: event.target.value, action: "set" })} />}
+                  {isDelete ? <p role="status">已选择移除属性，提交审核通过后生效。</p> : scalar ? <Input id={`${id}-target`} aria-label="目标值" value={scalarText} disabled={locked} aria-invalid={Boolean(syntaxError)} aria-describedby={syntaxError ? `${id}-syntax` : undefined} onChange={event => update({ rawValue: event.target.value.trim() ? `${row.effectiveValue.kind === "cells" && row.effectiveValue.bits !== 32 ? `/bits/ ${row.effectiveValue.bits} ` : ""}<${event.target.value}>` : "", action: "set" })} /> : <Textarea id={`${id}-target`} aria-label="目标值" value={value.rawValue} disabled={locked} rows={complexEditorRows(value.rawValue)} spellCheck={false} aria-invalid={Boolean(syntaxError)} aria-describedby={syntaxError ? `${id}-syntax` : undefined} onChange={event => update({ rawValue: event.target.value, action: "set" })} />}
                   <details className="parameter-inspector__technical"><summary>更多修改操作</summary><Button variant="outline" disabled={locked} onClick={() => update({ action: isDelete ? "set" : "delete", rawValue: isDelete ? row.rawValue : "" })}>{isDelete ? "保留属性" : "移除属性"}</Button></details>
                 </>}
                 {syntaxError ? <p id={`${id}-syntax`} className="parameter-inspector__error">{syntaxError}</p> : null}

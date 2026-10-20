@@ -258,8 +258,8 @@ export function WorkbenchInspectorPanel({
       </div>
     </div>
     <details className="configuration-workbench__property-baseline"><summary>查看原值与差异 · v{selectedMember?.currentVersionNumber ?? "—"}</summary>
-      <p>当前文件值</p><pre>{selectedStructureProperty.rawText || "空值"}</pre>
-      {activePropertyDraft ? <><p>本地修改{activePropertyDraft.present === false ? " · 将删除属性" : ""}</p><pre>{activePropertyDraft.rawText || "空值"}</pre></> : null}
+      <p>当前文件值</p><pre className="parameter-value-content" aria-label="当前属性完整值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete property values support keyboard scrolling. */}>{selectedStructureProperty.rawText || "空值"}</pre>
+      {activePropertyDraft ? <><p>本地修改{activePropertyDraft.present === false ? " · 将删除属性" : ""}</p><pre className="parameter-value-content" aria-label="本地属性完整值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete draft values support keyboard scrolling. */}>{activePropertyDraft.rawText || "空值"}</pre></> : null}
     </details>
   </section> : null;
   if (inspectorLevel === "release") {
@@ -338,7 +338,7 @@ export function WorkbenchInspectorPanel({
         {inspectorLevel === "property" ? sourceEditing ? <section aria-label="当前属性说明">
           {propertyDefinition}
           <p>在源码区切换到编辑模式可修改完整 DTS。</p>
-          <pre>{selectedStructureProperty?.rawText}</pre>
+          <pre className="parameter-value-content" aria-label="当前属性完整值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete source values support keyboard scrolling. */}>{selectedStructureProperty?.rawText}</pre>
         </section> : propertyEditor : null}
         <div className="configuration-workbench__context-details">
         <div className="configuration-workbench__inspector-details">

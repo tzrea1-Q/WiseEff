@@ -13,6 +13,16 @@ const candidate: DtsReloadCandidate = {
 };
 
 describe("DtsReloadCandidateEditDialog", () => {
+  it("preserves the full multiline syntax reference and previous reload value", () => {
+    const value = `<${"12345678 ".repeat(40)}>\n<123 456>\n<789 012>`;
+    render(<DtsReloadCandidateEditDialog candidate={{ ...candidate, baselineValue: value, lastReload: { runId: "run-1", debugValue: value, attemptedAt: "2026-10-19T00:00:00.000Z", outcome: "verified", purpose: "ordinary" } }} initialDebugValue={value} alreadyInBatch={false} onClose={vi.fn()} onDirtyChange={vi.fn()} onConfirm={vi.fn()} />);
+    expect(screen.getByRole("region", { name: "语法参照" }).textContent).toBe(value);
+    const previousValue = screen.getByLabelText("上次重载调试值");
+    expect(previousValue.textContent).toBe(value);
+    expect(previousValue.tagName).toBe("PRE");
+    expect(previousValue).toHaveAttribute("tabindex", "0");
+  });
+
   it("presents meaning and constraints before editing and validates input inline", async () => {
     const onConfirm = vi.fn(() => null);
     render(<DtsReloadCandidateEditDialog candidate={candidate} initialDebugValue="<0>" alreadyInBatch={false} onClose={vi.fn()} onDirtyChange={vi.fn()} onConfirm={onConfirm} />);

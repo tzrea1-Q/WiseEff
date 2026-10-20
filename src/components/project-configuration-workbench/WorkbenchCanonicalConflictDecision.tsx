@@ -1,5 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
   ParameterFileCandidate,
@@ -50,6 +50,7 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
   onSubmitWithoutConflict?: (reason: string, reviewerId: string) => Promise<void>;
   onReturnToBatch?: () => void;
 }) {
+  const valueId = useId();
   const client = useMemo(() => governanceClient ?? createUserGovernanceClient(), [governanceClient]);
   const conflictClient = useMemo(() => repository ?? createCanonicalConflictClient(), [repository]);
   const [conflicts, setConflicts] = useState<CanonicalSourceConflictList | null>(null);
@@ -157,20 +158,23 @@ export function WorkbenchCanonicalConflictDecision({ projectId, currentUserId, c
     {conflicts?.ineligible.map((entry) => <div role="status" key={`${entry.selectedBindingId}:${entry.selectedDraftId}`}>
       参数绑定 <code>{entry.selectedBindingId}</code> · 草稿 <code>{entry.selectedDraftId}</code> 暂不可选，请重新核对来源与候选。<details><summary>核对详情</summary>{entry.reason}</details>
     </div>)}
-    {conflicts?.items.map((entry) => <fieldset key={`${entry.selectedBindingId}:${entry.selectedDraftId}`}>
+    {conflicts?.items.map((entry, entryIndex) => <fieldset key={`${entry.selectedBindingId}:${entry.selectedDraftId}`}>
       <legend>{reviewLocator(entry.choices.file.cohort.find((binding) => binding.bindingId === entry.selectedBindingId)?.locator)}</legend>
       <details><summary>草稿来源</summary>参数绑定 <code>{entry.selectedBindingId}</code> · 草稿 <code>{entry.selectedDraftId}</code> · 作者 <code>{entry.authorUserId}</code></details>
       {(["file", "draft"] as const).map((choice) => {
         const proof = entry.choices[choice];
         const proofReady = conflictProofReady(candidate, preview, entry, choice);
-        return <label key={choice}>
+        const label = choice === "file" ? "使用文件值" : "保留界面草稿值";
+        const contentId = `${valueId}-${entryIndex}-${choice}`;
+        return <div key={choice}><label>
           <input type="radio" name="canonical-conflict-decision"
+            aria-describedby={contentId}
             checked={selected?.bindingId === entry.selectedBindingId && selected.draftId === entry.selectedDraftId && selected.choice === choice}
             disabled={!allowed || !proofReady || busy}
             onChange={() => setSelected({ bindingId: entry.selectedBindingId, draftId: entry.selectedDraftId, choice })} />
-          {choice === "file" ? "使用文件值" : "保留界面草稿值"}：{proof.action === "delete" ? "删除" : <code>{proof.targetText ?? "缺失"}</code>}
+          {label}
           {!proofReady ? <small> · 来源无法核对，暂不可选</small> : null}
-        </label>;
+        </label><pre id={contentId} className="parameter-value-content" aria-label={`${label}：完整内容`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete conflict values support keyboard scrolling. */}>{proof.action === "delete" ? "删除" : proof.targetText ?? "缺失"}</pre></div>;
       })}
     </fieldset>)}
     {item && selected ? <details><summary>所选变更的核对信息</summary><code>{item.choices[selected.choice].decisionProofDigest}</code></details> : null}

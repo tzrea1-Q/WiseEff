@@ -65,6 +65,43 @@ function show(prepared: ManualSyncPreparation = proof, prepareFailure: Error = n
 }
 
 describe("canonical manual sync dialog", () => {
+  it("keeps multiline baseline and uploaded target values complete during manual sync", async () => {
+    const beforeText = `baseline ${"x".repeat(300)}\nbaseline last`;
+    const afterText = "upload first\nupload last";
+    show({ ...proof, targets: [{ ...proof.targets[0]!, beforeText, afterText }, proof.targets[1]!] });
+    const dialog = screen.getByRole("dialog");
+    uploadFile(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "重试准备" }));
+    const original = await within(dialog).findByLabelText("目标 1 基线完整值");
+    expect(original.textContent).toBe(beforeText);
+    expect(original).toHaveAttribute("tabindex", "0");
+    expect(within(dialog).getByLabelText("目标 1 上传文件完整值").textContent).toBe(afterText);
+  });
+
+  it("keeps complete multiline source readable above a separate reachable action footer", async () => {
+    const before = `first before ${"x".repeat(300)}\nlast before`;
+    const after = `first after ${"y".repeat(300)}\nlast after`;
+    const single: Extract<ManualSyncPreparation, { kind: "canonical-source-single" }> = {
+      ...proof, kind: "canonical-source-single", configRevisionId: "revision", before, after,
+      targets: [proof.targets[0]!]
+    };
+    show(single);
+    const dialog = screen.getByRole("dialog");
+    uploadFile(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "预览变更" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "重试准备" }));
+    fireEvent.click(await within(dialog).findByText("完整来源变更"));
+    const original = within(dialog).getByLabelText("来源更新前完整内容");
+    expect(original.textContent).toBe(before);
+    expect(original).toHaveAttribute("tabindex", "0");
+    expect(within(dialog).getByLabelText("来源更新后完整内容").textContent).toBe(after);
+    const scrollBody = original.closest(".review-dialog__body");
+    expect(scrollBody).not.toBeNull();
+    expect(scrollBody).not.toContainElement(within(dialog).getByRole("button", { name: "提交 1 项变更审核" }));
+    expect(within(dialog).getByRole("button", { name: "提交 1 项变更审核" }).closest(".review-dialog__footer")).not.toBeNull();
+  });
+
   it("retries reviewer loading in place without replacing the prepared file, reason, choices or selected reviewer", async () => {
     const user = userEvent.setup();
     const roles = { bindings: [

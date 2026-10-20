@@ -561,6 +561,18 @@ function legacyDraftStorage(baseVersionId = "version-board-12") {
 }
 
 describe("ProjectConfigurationWorkbench", () => {
+  it("keeps complete multiline property values keyboard-readable in the inspector", async () => {
+    const rawText = `"first ${"x".repeat(300)}",\n"last"`;
+    const board = BOARD_STRUCTURE.nodes[0]!;
+    const structure = { nodes: [{ ...board, properties: [{ ...board.properties[0]!, rawText }] }] };
+    renderWorkbench({ search: "?configSet=cs-default&file=file-board&node=board&property=model&inspector=selection",
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => structure) }) });
+    const value = await screen.findByLabelText("当前属性完整值");
+    expect(value).toBeVisible();
+    expect(value.textContent).toBe(rawText);
+    expect(value).toHaveAttribute("tabindex", "0");
+  });
+
   it("scopes API navigation and search while keeping hidden deep links and complete source available", async () => {
     const getStructure = vi.fn(async () => ({ ...BOARD_STRUCTURE,
       navigation: { status: "ready" as const, catalogReleaseId: "release-1", managedNodePaths: ["regulator"] }

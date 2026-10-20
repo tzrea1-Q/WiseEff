@@ -156,9 +156,9 @@ export function DtsReloadCandidateEditDialog({
               onDirtyChange(event.target.value !== initialDebugValue);
             }}
           />
-          <p id={`${fieldId}-format`} className="dts-reload-run-tray__meta">
-            {example ? <>语法参照 <code>{example}</code>（仅供格式参考，不是业务取值建议）</> : "空属性不需要赋值；可输入 /delete-property/ 删除该属性。"}
-          </p>
+          <div id={`${fieldId}-format`} className="dts-reload-run-tray__meta">
+            {example ? <><p>语法参照（仅供格式参考，不是业务取值建议）</p><pre className="parameter-value-content" role="region" aria-label="语法参照" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing value scrollport must support keyboard scrolling. */}>{example}</pre></> : "空属性不需要赋值；可输入 /delete-property/ 删除该属性。"}
+          </div>
           {errorMessage || validationError ? <p id={`${fieldId}-error`} role="alert" className="node-row-error">{errorMessage || validationError}</p> : null}
         </div>
         <details className="dts-reload-candidate-edit__details">
@@ -188,9 +188,9 @@ export function DtsReloadCandidateEditDialog({
         <section className="dts-reload-candidate-edit__history" aria-labelledby={`${fieldId}-history`}>
           <h3 id={`${fieldId}-history`}>上次重载</h3>
               <div className="debug-detail-fields">
-                <div className="debug-detail-row">
-                  <span>调试值</span>
-                  <strong className="mono">{candidate.lastReload.debugValue}</strong>
+                <div>
+                  <span className="field-label">调试值</span>
+                  <pre className="parameter-value-content" role="region" aria-label="上次重载调试值" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing value scrollport must support keyboard scrolling. */}>{candidate.lastReload.debugValue}</pre>
                 </div>
                 <div className="debug-detail-row">
                   <span>结果</span>

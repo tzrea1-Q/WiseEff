@@ -44,7 +44,8 @@ import {
   debugValuePreview,
   getDebugNormalizationModeLabel,
   getDebugValueFormatLabel,
-  isComplexDebugParameter
+  isComplexDebugParameter,
+  TABLE_PREVIEW_MAX_CHARS
 } from "./debugValueKind";
 import { resolveWriteFormatExample, resolveWriteFormatHint } from "@/domain/debugging/writeFormat";
 import { nodeRowSubtitle } from "@/domain/debugging/nodeRowSubtitle";
@@ -237,7 +238,7 @@ function DebugCurrentValueCell({ row, connected }: { row: RuntimeRow; connected:
 }
 
 function readbackOutcomeLabel(row: RuntimeRow) {
-  if (row.readbackOutcome === "observed") return row.lastReadValue === undefined ? "已回读" : `回读值：${displayCurrentValue(row)}`;
+  if (row.readbackOutcome === "observed") return row.lastReadValue === undefined ? "已回读" : "已回读 · 返回值见当前值";
   if (row.readbackOutcome === "failed") return "回读失败";
   if (row.readbackOutcome === "unsupported") return "不支持回读";
   if (row.readbackOutcome === "not_requested") return "未执行回读";
@@ -247,10 +248,10 @@ function readbackOutcomeLabel(row: RuntimeRow) {
 
 function DebugValueCodeBlock({ label, row, value }: { label: string; row: RuntimeRow; value: string }) {
   return (
-    <div className="debug-value-code-block">
+    <div className={`debug-value-code-block${isComplexDebugParameter(row) ? "" : " debug-value-code-block--text"}`}>
       <div className="debug-value-code-block__head">
         <strong>{label}</strong>
-        <DebugValueFormatBadge row={row} />
+        {!isComplexDebugParameter(row) && row.unit ? <span className="node-detail-meta-label">单位：{row.unit}</span> : <DebugValueFormatBadge row={row} />}
       </div>
       <pre aria-label={label} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing code scrollport must support keyboard scrolling. */}>
         <code>{value || "-"}</code>
@@ -751,7 +752,7 @@ export function NodeDebuggingPage({
                           !row.draftValue ? <span className="node-value-placeholder">未设置</span> : isComplexDebugParameter(row) ? (
                             <DebugTableValuePreview value={row.draftValue} row={row} />
                           ) : (
-                            row.draftValue
+                            <DebugTableValueText value={row.draftValue} />
                           )
                         ) : (
                           <span>{row.accessMode === "WO" ? "只写（安全写入不可用）" : "只读"}</span>
@@ -885,7 +886,9 @@ export function NodeDebuggingPage({
                 {pathCopyResult?.path === editingRow.nodePath ? <small role="status" className="node-detail-path__feedback">{pathCopyResult.message}</small> : null}
               </section>
               <div className="debug-detail-fields">
-                {isComplexDebugParameter(editingRow) && editingRow.lastReadValue !== undefined ? (
+                {editingRow.lastReadValue !== undefined && (isComplexDebugParameter(editingRow)
+                  || /[\r\n]/.test(editingRow.runtimeCurrentValue)
+                  || editingRow.runtimeCurrentValue.length > TABLE_PREVIEW_MAX_CHARS) ? (
                   <DebugValueCodeBlock label="当前值" row={editingRow} value={editingRow.runtimeCurrentValue} />
                 ) : (
                   <div className="debug-detail-row">

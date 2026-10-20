@@ -2115,7 +2115,7 @@ describe("/node-debugging", () => {
 
   it("preserves line breaks in the current value table preview", async () => {
     const multilineValue = [
-      "voltage=5V",
+      `voltage=${"5V ".repeat(90)}`,
       "current=3A",
       "mode=turbo",
       "profile=balanced"
@@ -2152,6 +2152,11 @@ describe("/node-debugging", () => {
       element?.classList.contains("debug-value-preview") ?? false
     );
     expect(preview.textContent).toBe(multilineValue);
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const fullValue = within(getNodeDetailDialog()).getByLabelText("当前值", { exact: true });
+    expect(fullValue.tagName).toBe("PRE");
+    expect(fullValue.textContent).toBe(multilineValue);
+    expect(fullValue).toHaveAttribute("tabindex", "0");
   });
 
   it("shows preview and digest for complex write events in operation history", async () => {

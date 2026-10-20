@@ -241,10 +241,16 @@ export function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapsho
                   <p className="mt-1 font-mono text-muted-foreground">节点：{entry.nodePath}</p>
                 ) : null}
                 {entry.readValue !== null && entry.readValue !== undefined ? (
-                  <p className="mt-1 font-mono">读回：{entry.readValue}</p>
+                  <div className="mt-1">
+                    <p>读回：</p>
+                    <pre className="parameter-value-content" role="region" aria-label={`${entry.propertyKey} 读回值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing value scrollport must support keyboard scrolling. */}>{entry.readValue}</pre>
+                  </div>
                 ) : null}
                 {entry.outcome !== "unbound" && entry.expectedValue ? (
-                  <p className="mt-1 font-mono text-muted-foreground">期望：{entry.expectedValue}</p>
+                  <div className="mt-1 text-muted-foreground">
+                    <p>期望：</p>
+                    <pre className="parameter-value-content" role="region" aria-label={`${entry.propertyKey} 期望值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing value scrollport must support keyboard scrolling. */}>{entry.expectedValue}</pre>
+                  </div>
                 ) : null}
               </li>
             ))}
@@ -379,10 +385,13 @@ export function DeployConfirmBody({
               <li key={target.bindingId}>
                 <div className="font-medium">{target.propertyKey}</div>
                 <div className="font-mono text-muted-foreground">{target.nodePath}</div>
-                <div className="font-mono">
-                  {isRestore
-                    ? target.debugValue
-                    : `${target.baselineValue ?? "—"} → ${target.debugValue}`}
+                {!isRestore ? <div>
+                  <p>库基线</p>
+                  <pre className="parameter-value-content" role="region" aria-label={`${target.propertyKey} 库基线`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing value scrollport must support keyboard scrolling. */}>{target.baselineValue ?? "—"}</pre>
+                </div> : null}
+                <div>
+                  <p>{isRestore ? "将部署的基线值" : "调试值"}</p>
+                  <pre className="parameter-value-content" role="region" aria-label={`${target.propertyKey} ${isRestore ? "将部署的基线值" : "调试值"}`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- This overflowing value scrollport must support keyboard scrolling. */}>{target.debugValue}</pre>
                 </div>
               </li>
             ))}

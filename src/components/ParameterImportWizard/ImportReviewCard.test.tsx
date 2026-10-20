@@ -72,6 +72,30 @@ function renderCard(overrides: Partial<Parameters<typeof ImportReviewCard>[0]> =
 }
 
 describe("ImportReviewCard", () => {
+  it("exposes the complete multiline import comparison as keyboard-scrollable values", () => {
+    const currentValue = `first line ${"x".repeat(300)}\nlast line`;
+    renderCard({ row: buildRow({ currentValue, existingParameter: { ...existingParameter, currentValue: "old first\nold last" } }) });
+    expect(screen.getByLabelText("当前值：库中值").textContent).toBe("old first\nold last");
+    const imported = screen.getByLabelText("当前值：导入值");
+    expect(imported.textContent).toBe(currentValue);
+    expect(imported).toHaveAttribute("tabindex", "0");
+  });
+
+  it("preserves multiline current and recommended values through editing and saving", () => {
+    const currentValue = "first current line\nsecond current line";
+    const recommendedValue = "first recommended line\nsecond recommended line";
+    const { onUpdate } = renderCard({ row: buildRow({ currentValue, recommendedValue, existingParameter }) });
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    expect(screen.getByRole("textbox", { name: "编辑当前值" })).toHaveValue(currentValue);
+    expect(screen.getByRole("textbox", { name: "编辑推荐值" })).toHaveValue(recommendedValue);
+    fireEvent.change(screen.getByRole("textbox", { name: "编辑当前值" }), { target: { value: `${currentValue}\nthird current line` } });
+    fireEvent.change(screen.getByRole("textbox", { name: "编辑推荐值" }), { target: { value: `${recommendedValue}\nthird recommended line` } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(onUpdate).toHaveBeenCalledWith("import-row-1", expect.objectContaining({
+      currentValue: `${currentValue}\nthird current line`, recommendedValue: `${recommendedValue}\nthird recommended line`
+    }));
+  });
+
   it("shows a diff table comparing imported values against the existing parameter", () => {
     renderCard({ row: buildRow({ existingParameter }) });
 

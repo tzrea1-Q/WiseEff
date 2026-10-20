@@ -85,9 +85,9 @@ export function NodeOperationHistoryPanel({ events }: { events: NodeOperationEve
                       {event.valueDigest ? <div><dt>值摘要</dt><dd><code>{event.valueDigest}</code></dd></div> : null}
                     </dl>
                     <strong>标准输出</strong>
-                    <pre aria-label="标准输出">{event.stdout || "无输出"}</pre>
+                    <pre aria-label="标准输出" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Scrollable operation output must support keyboard navigation. */}>{event.stdout || "无输出"}</pre>
                     <strong>错误输出</strong>
-                    <pre aria-label="错误输出">{event.stderr || "无输出"}</pre>
+                    <pre aria-label="错误输出" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Scrollable operation output must support keyboard navigation. */}>{event.stderr || "无输出"}</pre>
                   </details>
                 </div>
                 <time className="operation-history-time" dateTime={event.at}>{formatTime(event.at)}</time>

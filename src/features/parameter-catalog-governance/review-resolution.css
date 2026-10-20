@@ -139,6 +139,7 @@
 .review-resolution__evidence span {
   display: block;
   margin-top: var(--space-1);
+  white-space: pre-wrap;
 }
 
 .review-resolution__choices {

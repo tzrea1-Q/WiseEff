@@ -11,6 +11,7 @@ import { installConsistencyReadGuard } from "./consistency";
 import { AUDIT_KIND_LABELS } from "../../src/domain/audit/auditSlugLabels";
 import { detectBrowserBridgeTarget } from "../../src/infrastructure/http/bridgeReleaseSelection";
 import { parseParameterAdminModulesSubView } from "../../src/application/parameters/parameterAdminOrganizationPath";
+import type { DebugRuntimeNodeDto } from "../../src/infrastructure/http/debuggingDtos";
 import {
   closeXiaozePopupIfOpen,
   expectBoundedMainScroll,
@@ -257,6 +258,211 @@ for (const path of ["/node-debugging", "/dts-reload"]) {
 }
 
 const moduleNavigationPaths = ["/parameters", "/node-debugging", "/dts-reload", "/parameter-admin/specs"];
+
+{
+  const fixtureId = "keeps multiline node read details complete and locally scrollable (UI fixture, no hardware proof)";
+  if (shouldRegisterConsistencyFixture(qualityLane, fixtureId)) test(fixtureId, async ({ context, page }, testInfo) => {
+    testInfo.annotations.push({ type: "setup", description: "Identity and node identities come from the real API. Two existing RW nodes are exposed as scalar/complex in a read-only response fixture; discovery, session and reads are synthetic. No server data or device is changed, and this does not prove real hardware reads or writes." });
+    const blockedRequests = await installConsistencyReadGuard(context);
+    const consoleErrors: string[] = [];
+    const readGuardDiagnostics: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      // The read guard intentionally closes every socket, including Vite HMR.
+      const expectedSocketClose = message.location().url.includes("/@vite/client")
+        && message.text().startsWith("[vite] failed to connect to websocket.");
+      (expectedSocketClose ? readGuardDiagnostics : consoleErrors).push(message.text());
+    });
+    page.on("pageerror", (error) => consoleErrors.push(error.message));
+    const rawValue = Array.from({ length: 40 }, (_, index) => `line-${String(index + 1).padStart(2, "0")} ${"0123456789abcdef".repeat(24)} ${index === 39 ? "MULTILINE-END-MARKER" : "row-end"}`).join("\n");
+    let nodes: DebugRuntimeNodeDto[] = [];
+    await context.route("**/api/v1/debugging/nodes?*", async (route) => {
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      const body = await response.json() as { items: DebugRuntimeNodeDto[] };
+      if (new URL(route.request().url()).searchParams.get("protocol") !== "hdc") return route.fulfill({ response, json: body });
+      nodes = body.items.filter((node) => node.enabled && node.accessMode === "RW").slice(0, 2)
+        .map((node, index) => ({ ...node, valueKind: index === 0 ? "scalar" : "complex", valueFormat: "raw", normalizationMode: "exact" }));
+      expect(nodes).toHaveLength(2);
+      await route.fulfill({ response, json: { ...body, items: nodes } });
+    });
+    await context.route("**/api/v1/device-bridges/mine", (route) => route.fulfill({ json: { items: [] } }));
+    await context.route("**/local-bridge/health", (route) => route.fulfill({ json: {
+      ok: true, paired: true, connected: true, bridgeId: "quality-multiline-bridge", clientVersion: "999.0.0",
+      updatedAt: "2026-10-19T00:00:00Z", tools: { hdc: { available: true }, adb: { available: false } }
+    } }));
+    const target = { id: "bridge:quality-multiline-target", deviceId: "bridge:quality-multiline-bridge", bridgeId: "quality-multiline-bridge",
+      bridgeMachineLabel: "多行布局检查工作站", protocol: "hdc", label: "多行布局检查设备", targetRef: "quality-multiline-target", status: "detected" };
+    await context.route("**/api/v1/debugging/targets/detect", (route) => {
+      expect(route.request().postDataJSON()).not.toHaveProperty("protocol");
+      return route.fulfill({ json: { items: [target] } });
+    });
+    await context.route("**/api/v1/debugging/sessions", (route) => route.fulfill({ json: { item: {
+      id: "quality-multiline-session", deviceId: target.deviceId, targetId: target.id, protocol: "hdc", status: "active",
+      startedAt: "2026-10-19T00:00:00Z", endedAt: null
+    } } }));
+    await context.route("**/api/v1/debugging/sessions/quality-multiline-session/events", (route) => route.fulfill({ json: { items: [] } }));
+    await context.route("**/api/v1/debugging/nodes/read", (route) => {
+      const node = nodes.find((entry) => entry.id === route.request().postDataJSON().nodeId);
+      expect(node).toBeDefined();
+      return route.fulfill({ json: { operation: {
+        id: `quality-multiline-read-${node!.id}`, sessionId: "quality-multiline-session", parameterId: node!.id,
+        nodeId: node!.id, protocol: "hdc", nodePath: node!.nodePath, operationType: "read", status: "succeeded",
+        requestedValue: null, previousValue: null, readValue: rawValue, readbackValue: null, verified: null,
+        failureReason: null, durationMs: 1, snapshotId: null, createdAt: "2026-10-19T00:00:00Z"
+      } } });
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const [identity] = await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/me"),
+      test.step("quality:navigation", () => page.goto("/node-debugging"))
+    ]);
+    expect(identity.ok()).toBe(true);
+    await expectUsablePage(page);
+    await settleQualityRoute(page, "/node-debugging", { readOnly: true });
+    await settleXiaozePopupClosed(page);
+    await settleAppToasts(page);
+    expect(nodes).toHaveLength(2);
+    for (const width of [1440, 1280]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 800 });
+      for (const node of nodes) {
+        const row = page.getByRole("row").filter({ has: page.getByRole("button", { name: `查看/修改 ${node.name}`, exact: true }) });
+        await expect(row.getByText("读取成功", { exact: true })).toBeVisible();
+        await row.getByRole("button", { name: `查看/修改 ${node.name}`, exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: node.name, exact: true });
+        const value = dialog.locator('pre[aria-label="当前值"]');
+        await expect(value).toBeVisible();
+        expect(await value.locator("code").textContent(), "full raw value, all newlines and final marker must survive presentation").toBe(rawValue);
+        const geometry = await value.evaluate((element) => ({
+          clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
+          clientHeight: element.clientHeight, scrollHeight: element.scrollHeight,
+          overflowY: getComputedStyle(element).overflowY
+        }));
+        expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+        expect(["auto", "scroll"]).toContain(geometry.overflowY);
+        if (node.valueKind === "complex") expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
+        else expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
+        await value.focus();
+        await page.keyboard.press("PageDown");
+        await expect.poll(() => value.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await value.evaluate((element) => element.scrollTo({ top: element.scrollHeight, left: element.scrollWidth }));
+        if (node.valueKind === "complex") await expect.poll(() => value.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+        const bounds = await dialog.evaluate((element) => {
+          const card = element.querySelector(".node-detail-card")!.getBoundingClientRect();
+          const sheet = element.getBoundingClientRect();
+          const body = element.querySelector(".workbench-sheet-body")!;
+          return { cardRight: card.right, sheetRight: sheet.right, sheetWidth: sheet.width,
+            bodyWidth: body.clientWidth, bodyScrollWidth: body.scrollWidth };
+        });
+        expect(bounds.cardRight).toBeLessThanOrEqual(bounds.sheetRight);
+        expect(bounds.sheetWidth).toBeLessThanOrEqual(width);
+        expect(bounds.bodyScrollWidth).toBeLessThanOrEqual(bounds.bodyWidth + 1);
+        await expectNoHorizontalOverflow(page);
+        await expect(dialog.getByRole("button", { name: "暂存", exact: true })).toBeInViewport();
+        await expect(dialog.getByRole("button", { name: "写入并回读", exact: true })).toBeInViewport();
+        await testInfo.attach(`node-multiline-${node.valueKind}-${width}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+        await dialog.getByRole("button", { name: "取消", exact: true }).click();
+        await expect(dialog).toHaveCount(0);
+      }
+    }
+    await testInfo.attach("node-multiline-console-errors", { contentType: "application/json", body: JSON.stringify({ errors: consoleErrors, readGuardDiagnostics }) });
+    expect(consoleErrors).toEqual([]);
+    expect(blockedRequests).toEqual([]);
+  });
+}
+
+{
+  const fixtureId = "keeps long DTS string details and unchanged previews bounded (read-only response fixture)";
+  if (shouldRegisterConsistencyFixture(qualityLane, fixtureId)) test(fixtureId, async ({ context, page }, testInfo) => {
+    testInfo.annotations.push({ type: "setup", description: "A real project Binding retains its identity and pins while only rawValue/effectiveValue are replaced in a GET response to exercise long DTS strings. Identity, topology and definition reads use the real API. Draft edits remain local; no save, device write or server mutation is performed." });
+    const blockedRequests = await installConsistencyReadGuard(context);
+    const consoleErrors: string[] = [];
+    const readGuardDiagnostics: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      const expectedSocketClose = message.location().url.includes("/@vite/client")
+        && message.text().startsWith("[vite] failed to connect to websocket.");
+      (expectedSocketClose ? readGuardDiagnostics : consoleErrors).push(message.text());
+    });
+    page.on("pageerror", (error) => consoleErrors.push(error.message));
+    const stringValue = Array.from({ length: 40 }, (_, index) => `line-${index + 1} ${"0123456789abcdef".repeat(24)} ${index === 39 ? "PARAMETER-END-MARKER" : "row-end"}`).join("\n");
+    const rawValue = JSON.stringify(stringValue);
+    let bindingId = "";
+    await context.route(/\/api\/v2\/projects\/aurora\/parameter-bindings(?:\?.*)?$/, async (route) => {
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      const body = await response.json() as { items: Array<Record<string, unknown>> };
+      const binding = body.items.find((item) => typeof item.rawValue === "string" && item.rawValue.startsWith("<"));
+      expect(binding, "a real DTS Binding must be available before replacing its value response").toBeDefined();
+      bindingId = binding!.id as string;
+      await route.fulfill({ response, json: { ...body, items: body.items.map((item) => item.id === bindingId
+        ? { ...item, rawValue, effectiveValue: { kind: "strings", values: [stringValue] } } : item) } });
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const [identity] = await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/me"),
+      test.step("quality:navigation", () => page.goto("/parameters?project=aurora"))
+    ]);
+    expect(identity.ok()).toBe(true);
+    await expectUsablePage(page);
+    await settleQualityRoute(page, "/parameters", { readOnly: true });
+    await settleXiaozePopupClosed(page);
+    await settleAppToasts(page);
+    await expect.poll(() => bindingId).not.toBe("");
+    await page.locator(`[data-binding-id="${bindingId}"]`).getByRole("button", { name: /^参数详情 / }).click();
+    const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: /· 参数详情$/ }) });
+    const target = dialog.getByRole("textbox", { name: "目标值", exact: true });
+    const unchanged = dialog.getByRole("list", { name: "值未改变", exact: true });
+    for (const width of [1440, 1280]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 800 });
+      const listPreview = page.locator(`[data-binding-id="${bindingId}"] [data-label="当前值"] code`);
+      expect(await listPreview.textContent()).toBe(rawValue);
+      const previewSize = await listPreview.evaluate((element) => ({
+        height: element.getBoundingClientRect().height, lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight)
+      }));
+      expect(previewSize.height, "the table must keep a four-line preview while details retain the full value")
+        .toBeLessThanOrEqual(previewSize.lineHeight * 4 + 1);
+      await expect(target).toHaveValue(rawValue);
+      expect(await target.evaluate((element) => element.tagName)).toBe("TEXTAREA");
+      const editor = await target.evaluate((element) => ({ height: element.clientHeight, scrollHeight: element.scrollHeight }));
+      expect(editor.height, "long string editing must stay in a bounded local scrollport").toBeLessThanOrEqual(320);
+      expect(editor.scrollHeight).toBeGreaterThan(editor.height);
+      await expect(unchanged).toBeVisible();
+      expect(await unchanged.locator("code").textContent(), "unchanged preview must retain the complete escaped multiline DTS string").toBe(rawValue);
+      const current = dialog.getByRole("region", { name: "当前生效值", exact: true });
+      expect(await current.textContent()).toBe(rawValue);
+      expect(await current.evaluate((element) => element.clientHeight)).toBeLessThanOrEqual(320);
+      await current.focus();
+      await page.keyboard.press("PageDown");
+      await expect.poll(() => current.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      const geometry = await dialog.evaluate((element) => {
+        const content = element.querySelector(".parameter-inspector__content")!;
+        const preview = element.querySelector('.submission-preview-diff[data-kind="equal"]')!;
+        const box = element.getBoundingClientRect();
+        return { right: box.right, left: box.left, contentWidth: content.clientWidth, contentScrollWidth: content.scrollWidth,
+          previewWidth: preview.clientWidth, previewScrollWidth: preview.scrollWidth };
+      });
+      expect(geometry.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.right).toBeLessThanOrEqual(width);
+      expect(geometry.contentScrollWidth).toBeLessThanOrEqual(geometry.contentWidth + 1);
+      expect(geometry.previewScrollWidth).toBeLessThanOrEqual(geometry.previewWidth + 1);
+      await testInfo.attach(`parameter-value-editor-${width}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+      await unchanged.scrollIntoViewIfNeeded();
+      await expect(dialog.getByRole("button", { name: "保存草稿", exact: true })).toBeInViewport();
+      await expectNoHorizontalOverflow(page);
+      await testInfo.attach(`parameter-long-string-${width}`, { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+      await target.fill('"short"');
+      await expect(target).toHaveValue('"short"');
+      expect(await target.evaluate((element) => element.tagName), "shortening a string draft must preserve the multiline editor").toBe("TEXTAREA");
+      await target.fill(rawValue);
+    }
+    await dialog.getByRole("button", { name: "关闭参数详情", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await testInfo.attach("parameter-long-string-console-errors", { contentType: "application/json", body: JSON.stringify({ errors: consoleErrors, readGuardDiagnostics }) });
+    expect(consoleErrors).toEqual([]);
+    expect(blockedRequests).toEqual([]);
+  });
+}
 
 for (const route of consistencyReadOnlyRoutes) {
   for (const theme of ["light", "dark"] as const) {

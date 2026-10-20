@@ -45,6 +45,21 @@ function setup(items: CanonicalSourceConflictList["items"] = [conflict], overrid
 }
 
 describe("WorkbenchCanonicalConflictDecision", () => {
+  it("separates complete multiline conflict values from their selectable choices", async () => {
+    const fileValue = `file first ${"x".repeat(300)}\nfile last`;
+    const draftValue = "draft first\ndraft last";
+    setup([{ ...conflict, choices: {
+      file: { ...conflict.choices.file, targetText: fileValue },
+      draft: { ...conflict.choices.draft, targetText: draftValue }
+    } }]);
+    const file = await screen.findByLabelText("使用文件值：完整内容");
+    expect(file.textContent).toBe(fileValue);
+    expect(file).toHaveAttribute("tabindex", "0");
+    expect(screen.getByLabelText("保留界面草稿值：完整内容").textContent).toBe(draftValue);
+    fireEvent.click(screen.getByRole("radio", { name: "保留界面草稿值" }));
+    expect(screen.getByRole("radio", { name: "保留界面草稿值" })).toBeChecked();
+  });
+
   it("keeps the previous empty-conflict presentation for callers without an inline target", async () => {
     setup([]);
     expect(await screen.findByText("当前候选没有来源冲突。")).toBeInTheDocument();

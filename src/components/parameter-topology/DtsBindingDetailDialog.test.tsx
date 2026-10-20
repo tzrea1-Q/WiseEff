@@ -89,6 +89,21 @@ const specDetail = {
 };
 
 describe("DtsBindingDetailDialog unified inspector", () => {
+  it.each(["first line\nsecond line", "a".repeat(240), "short string"])("edits single strings as DTS source without stripping their original value (case %#)", (text) => {
+    const rawValue = JSON.stringify(text);
+    const onDraftChange = vi.fn();
+    const view = renderDialog({ canEdit: true, onDraftChange, onSaveDraft: vi.fn(), row: gpioRow({ rawValue, effectiveValue: { kind: "strings", values: [text] } }) });
+    const editor = screen.getByRole("textbox", { name: "目标值" });
+    expect(editor.tagName).toBe("TEXTAREA");
+    expect(editor).toHaveValue(rawValue);
+    const nextRaw = JSON.stringify(`${text}\nlast line`);
+    fireEvent.change(editor, { target: { value: nextRaw } });
+    expect(onDraftChange).toHaveBeenCalledWith({ rawValue: nextRaw, reason: "", action: "set" });
+    view.rerender(<DtsBindingDetailDialog {...view.props} draft={{ rawValue: '"short"', reason: "", action: "set" }} />);
+    expect(screen.getByRole("textbox", { name: "目标值" }).tagName).toBe("TEXTAREA");
+    expect(screen.getByRole("textbox", { name: "目标值" })).toHaveValue('"short"');
+  });
+
   it("prioritizes pinned description and documentation and exposes definition before technical identity", () => {
     renderDialog({ row: gpioRow({ description: "固定版本的展示描述。", documentation: "固定版本的参数说明。" }), specDetail, specDetailStatus: "ready" });
     const dialog = screen.getByRole("dialog", { name: "GPIO 中断 · 参数详情" });

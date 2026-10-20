@@ -1,5 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
@@ -73,6 +73,7 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
     loading: boolean; error: string; canonical: boolean | null };
   onDismiss: () => void;
 }) {
+  const valueId = useId();
   const [file, setFile] = useState<File | null>(null);
   const [prepared, setPrepared] = useState<ManualSyncPreparation | null>(null);
   const [conflicts, setConflicts] = useState<CanonicalSourceConflictList | null>(null);
@@ -341,9 +342,10 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
     } finally { setBusy(false); }
   };
 
-  return <ModalDialog open className="submission-dialog canonical-batch-submit-dialog canonical-manual-sync-dialog" onDismiss={busy ? undefined : onDismiss} describedBy>
+  return <ModalDialog open className="submission-dialog review-dialog canonical-batch-submit-dialog canonical-manual-sync-dialog" onDismiss={busy ? undefined : onDismiss} describedBy>
     {({ titleId, descriptionId }) => <>
       <h2 id={titleId}>上传 {context.format.toUpperCase()} 来源并准备审核</h2>
+      <div className="review-dialog__body">
       <p id={descriptionId}>上传「{context.fileName}」的新内容，预览变更并选择审核人；另一名审核人批准后才更新配置。</p>
       {sourceState?.loading ? <p role="status">正在重新核对文件版本与来源证明；已暂时阻止提交，上传和选择会保留。</p> : null}
       {sourceState?.error ? <p role="alert">当前来源核对失败，已阻止提交：{sourceState.error}。请关闭弹窗并刷新工作台。</p> : null}
@@ -366,27 +368,31 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
           <button type="button" className="button subtle" onClick={() => context.onOpenExisting?.(conflicts.request!.id)}>查看已有审核</button> : null}
         <p>本次涉及 {prepared.targets.length} 项变更，关联 {prepared.cohort.length} 项参数。</p>
         {prepared.kind === "canonical-source-single" ? <details><summary>完整来源变更</summary>
-          <pre>{prepared.before}</pre><pre>{prepared.after}</pre>
+          <pre className="parameter-value-content" aria-label="来源更新前完整内容" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete source values support keyboard scrolling. */}>{prepared.before}</pre>
+          <pre className="parameter-value-content" aria-label="来源更新后完整内容" tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete source values support keyboard scrolling. */}>{prepared.after}</pre>
         </details> : null}
         {prepared.baseDigest === prepared.proposedDigest ? <p role="status">上传文件与当前版本内容相同，无需更新。</p> : null}
         <ol aria-label="手动同步完整有序目标">{prepared.targets.map((target, index) => {
           const options = conflicts?.items.filter((item) => item.selectedBindingId === target.bindingId) ?? [];
           return <li key={target.bindingId}>
             变更 {index + 1}：{reviewLocator(target.locator)} · {target.action === "delete" ? "删除" : "设置"}
-            <div>基线 <code>{target.beforeText}</code> → 上传文件值 {target.action === "delete" ? "删除" : <code>{target.afterText}</code>}</div>
+            <div>基线<pre className="parameter-value-content" aria-label={`目标 ${index + 1} 基线完整值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete baseline values support keyboard scrolling. */}>{target.beforeText}</pre></div>
+            <div>上传文件值<pre id={`${valueId}-${index}-file`} className="parameter-value-content" aria-label={`目标 ${index + 1} 上传文件完整值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete upload values support keyboard scrolling. */}>{target.action === "delete" ? "删除" : target.afterText}</pre></div>
             <fieldset disabled={busy || submitAttempted}>
               <legend>目标 {index + 1} 的最终选择</legend>
               <label><input type="radio" name={`decision-${target.bindingId}`}
+                aria-describedby={`${valueId}-${index}-file`}
                 checked={decisions[target.bindingId]?.choice === "file"}
                 onChange={() => chooseDecision(target.bindingId, "file")} />
                 采用文件值{options.length ? "（已有竞争草稿，须明确选择）" : ""}</label>
               {options.map((item, draftIndex) => <div key={item.selectedDraftId}><label>
                 <input type="radio" name={`decision-${target.bindingId}`}
+                  aria-describedby={`${valueId}-${index}-draft-${draftIndex}`}
                   checked={decisions[target.bindingId]?.choice === "draft"
                     && decisions[target.bindingId]?.draftId === item.selectedDraftId}
                   onChange={() => chooseDecision(target.bindingId, "draft", item.selectedDraftId)} />
-                采用界面草稿 {draftIndex + 1}（值 {item.choices.draft.action === "delete"
-                  ? "删除" : <code>{item.choices.draft.targetText}</code>}）</label>
+                采用界面草稿 {draftIndex + 1}</label>
+                <pre id={`${valueId}-${index}-draft-${draftIndex}`} className="parameter-value-content" aria-label={`目标 ${index + 1} 草稿 ${draftIndex + 1} 完整值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete draft values support keyboard scrolling. */}>{item.choices.draft.action === "delete" ? "删除" : item.choices.draft.targetText}</pre>
               </div>)}
             </fieldset>
             {conflicts?.ineligible.filter((item) => item.selectedBindingId === target.bindingId).map((item) =>
@@ -415,7 +421,8 @@ export function WorkbenchCanonicalManualSyncDialog({ context, sourceState, onDis
         onClick={() => setReviewerRetry((value) => value + 1)}>重新加载审核人</button> : null}
       {!loadingReviewers && !reviewersError && !reviewers.length ? <p role="status">需要另一名软件审核人。<a href={`/parameter-admin/projects/${encodeURIComponent(context.projectId)}/review-roles`} target="_blank" rel="noreferrer">配置审核角色</a></p> : null}
       {error ? <p role="alert">{error}</p> : null}
-      <div className="dialog-actions">
+      </div>
+      <div className="dialog-actions review-dialog__footer">
         <button className="button subtle" type="button" disabled={busy} onClick={onDismiss}>取消</button>
         {!prepared ? <button className="button primary" type="button" disabled={!file || busy || conflicted || !sourceReady || file.size === 0 || file.size > MAX_SOURCE_BYTES}
           onClick={() => void prepare()}>{busy ? "准备中…" : prepareBody.current ? "重试准备" : "预览变更"}</button>

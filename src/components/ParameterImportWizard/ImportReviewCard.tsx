@@ -161,12 +161,13 @@ export function ImportReviewCard({
             />
             <label>
               <span>当前值</span>
-              <input aria-label="编辑当前值" value={draft.currentValue ?? ""} onChange={(event) => setDraft({ ...draft, currentValue: event.target.value })} />
+              <textarea aria-label="编辑当前值" rows={4} value={draft.currentValue ?? ""} onChange={(event) => setDraft({ ...draft, currentValue: event.target.value })} />
             </label>
             <label>
               <span>推荐值</span>
-              <input
+              <textarea
                 aria-label="编辑推荐值"
+                rows={4}
                 value={draft.recommendedValue ?? ""}
                 onChange={(event) => setDraft({ ...draft, recommendedValue: event.target.value })}
               />
@@ -321,8 +322,8 @@ export function ImportReviewCard({
               return (
                 <tr key={key} className={changed ? "import-review-diff-row import-review-diff-row--changed" : "import-review-diff-row"}>
                   <td>{label}</td>
-                  <td>{existingValue || "—"}</td>
-                  <td>{importedValue || "—"}</td>
+                  <td><pre className="parameter-value-content" aria-label={`${label}：库中值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete import values support keyboard scrolling. */}>{existingValue || "—"}</pre></td>
+                  <td><pre className="parameter-value-content" aria-label={`${label}：导入值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete import values support keyboard scrolling. */}>{importedValue || "—"}</pre></td>
                 </tr>
               );
             })}

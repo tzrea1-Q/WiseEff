@@ -217,12 +217,12 @@ export function WorkbenchSourceRollbackDialog({
                 const options = conflicts?.items.filter((item) => item.selectedBindingId === target.bindingId) ?? [];
                 return <li key={target.bindingId}>
                   变更 {index + 1}：{reviewLocator(target.locator)} · {target.action === "delete" ? "删除" : "设置"}
-                  <div>基线 <code>{target.beforeText}</code> → 历史文件值 {target.action === "delete" ? "删除（无替换值）" : <code>{target.afterText}</code>}</div>
+                  <div>基线<pre className="parameter-value-content" aria-label={`回滚目标 ${index + 1} 基线完整值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete baseline values support keyboard scrolling. */}>{target.beforeText}</pre></div>
+                  <div>历史文件值<pre className="parameter-value-content" aria-label={`回滚目标 ${index + 1} 历史文件完整值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete historical values support keyboard scrolling. */}>{target.action === "delete" ? "删除（无替换值）" : target.afterText}</pre></div>
                   {options.length ? <>
                     <p>此目标有 {options.length} 份竞争草稿；当前回滚仅支持采用历史文件值，草稿会保留并预计过期。</p>
                     <ul>{options.map((item, draftIndex) => <li key={item.selectedDraftId}>
-                      草稿 {draftIndex + 1}：{item.choices.draft.action === "delete"
-                        ? "删除" : <code>{item.choices.draft.targetText}</code>}
+                      草稿 {draftIndex + 1}：<pre className="parameter-value-content" aria-label={`回滚目标 ${index + 1} 草稿 ${draftIndex + 1} 完整值`} tabIndex={0 /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- Complete draft values support keyboard scrolling. */}>{item.choices.draft.action === "delete" ? "删除" : item.choices.draft.targetText}</pre>
                     </li>)}</ul>
                     <label><input type="checkbox" checked={Boolean(confirmed[target.bindingId])}
                       disabled={submitting || submittedOnce} onChange={(event) => {

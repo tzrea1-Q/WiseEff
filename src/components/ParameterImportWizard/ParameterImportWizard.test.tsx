@@ -535,7 +535,7 @@ describe("ParameterImportWizard", () => {
     const canonicalRow = within(dialog).getByRole("region", { name: "导入行 iin_max" });
     const legacyRow = within(dialog).getByRole("region", { name: "导入行 legacy_only" });
     expect(within(canonicalRow).getByText("待核对")).toBeInTheDocument();
-    expect(within(canonicalRow).getByRole("cell", { name: "3000" })).toBeInTheDocument();
+    expect(within(canonicalRow).getByLabelText("当前值：库中值").textContent).toBe("3000");
     expect(within(legacyRow).getByText("未匹配")).toBeInTheDocument();
     expect(within(legacyRow).queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
 
@@ -548,8 +548,8 @@ describe("ParameterImportWizard", () => {
     fireEvent.change(within(canonicalRow).getByLabelText("编辑当前值"), { target: { value: "3200" } });
     fireEvent.click(within(canonicalRow).getByRole("button", { name: "保存" }));
     expect(within(canonicalRow).getByText("待核对")).toBeInTheDocument();
-    expect(within(canonicalRow).getByRole("cell", { name: "3000" })).toBeInTheDocument();
-    expect(within(canonicalRow).getByRole("cell", { name: "3200" })).toBeInTheDocument();
+    expect(within(canonicalRow).getByLabelText("当前值：库中值").textContent).toBe("3000");
+    expect(within(canonicalRow).getByLabelText("当前值：导入值").textContent).toBe("3200");
   });
 
   it("rejects a pending project A read after switching to B and never matches A on review edits", async () => {
@@ -595,14 +595,14 @@ describe("ParameterImportWizard", () => {
     expect(within(dialog).getByLabelText("目标项目")).toHaveTextContent("Project B（B）");
     const rowB = within(dialog).getByRole("region", { name: "导入行 b_only" });
     expect(within(dialog).queryByRole("region", { name: "导入行 a_only" })).not.toBeInTheDocument();
-    expect(within(rowB).getByRole("cell", { name: "222" })).toBeInTheDocument();
+    expect(within(rowB).getByLabelText("当前值：库中值").textContent).toBe("222");
     fireEvent.click(within(rowB).getByRole("button", { name: "编辑" }));
     fireEvent.change(within(rowB).getByLabelText("编辑参数名"), { target: { value: "a_only" } });
     fireEvent.click(within(rowB).getByRole("button", { name: "保存" }));
     expect(within(rowB).getByText("未匹配")).toBeInTheDocument();
     expect(within(rowB).queryByRole("table", { name: "字段差异" })).not.toBeInTheDocument();
     expect(within(rowB).queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole("cell", { name: "111" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("111", { exact: true })).not.toBeInTheDocument();
   });
 
   it.each([
