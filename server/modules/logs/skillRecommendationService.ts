@@ -1,5 +1,6 @@
 import type { Database, Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
+import { organizationId, type LogPrincipal } from "./principal";
 import { requireLogUpload } from "./policy";
 import type { ObjectStore } from "./objectStore";
 import type { LogSkillSpec } from "./skillSpec";
@@ -20,7 +21,7 @@ async function recommendationCandidates(db: Queryable, organizationId: string) {
 /** Only active, published skills from this organization can participate. */
 export async function recommendOrganizationLogSkills(db: Queryable, auth: AuthContext, files: RecommendationFile[]): Promise<LogSkillRecommendationResult> {
   requireLogUpload(auth);
-  return recommendLogSkills(await recommendationCandidates(db, auth.organization.id), files);
+  return recommendLogSkills(await recommendationCandidates(db, organizationId(auth)), files);
 }
 
 /** Read a bounded prefix, never the full stored bundle. Oversized lines are ignored. */
@@ -69,21 +70,21 @@ export async function storedRecommendationFiles(store: ObjectStore, files: Array
   finally { clearTimeout(timer); }
 }
 
-export async function selectUploadLogSkill(db: Database, auth: AuthContext,
+export async function selectUploadLogSkill(db: Database, auth: LogPrincipal,
   input: { logDomainId?: string; skillSelection?: "generic" }, files: RecommendationFile[]) {
   if (input.logDomainId) return { logDomainId: input.logDomainId,
     skillSelection: { mode: "explicit", reasons: [] } satisfies NonNullable<LogRecordDto["skillSelection"]> };
   const generic = { logDomainId: undefined,
     skillSelection: { mode: "generic", reasons: [] } satisfies NonNullable<LogRecordDto["skillSelection"]> };
   if (input.skillSelection === "generic" || !files.length) return generic;
-  requireLogUpload(auth);
+  if (!("kind" in auth)) requireLogUpload(auth);
   try {
     // A nested transaction is a SAVEPOINT: PostgreSQL errors/timeouts must not
     // leave the enclosing upload transaction aborted. Preserve statement_timeout.
     return await db.transaction(async (tx) => {
       const previous = (await tx.query<{ timeout: string }>("select current_setting('lock_timeout') as timeout")).rows[0];
       await tx.query("select set_config('lock_timeout', '200ms', true)");
-      const candidates = await recommendationCandidates(tx, auth.organization.id);
+      const candidates = await recommendationCandidates(tx, organizationId(auth));
       const ranked = recommendLogSkills(candidates, files);
       const best = ranked.recommendations.find((item) => item.skillId === ranked.recommendedSkillId);
       const candidate = candidates.find((item) => item.skillId === best?.skillId);
@@ -95,7 +96,7 @@ export async function selectUploadLogSkill(db: Database, auth: AuthContext,
           join log_domains d on d.id=r.skill_id and d.organization_id=r.organization_id
           where r.organization_id=$1 and r.skill_id=$2 and r.id=$3
             and r.status in ('published', 'superseded') and d.status='active'
-          for key share of d, r skip locked`, [auth.organization.id, best.skillId, candidate.revisionId]);
+          for key share of d, r skip locked`, [organizationId(auth), best.skillId, candidate.revisionId]);
         if (!available.rows.length) throw new Error("Recommendation unavailable");
         await tx.query("select set_config('lock_timeout', $1, true)", [previous.timeout]);
         return { logDomainId: best.skillId, recommendedSkillRevisionId: candidate.revisionId,

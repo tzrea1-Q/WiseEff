@@ -4,6 +4,7 @@ import type { AuthContext } from "./types";
 import type { TokenVerifier } from "./tokenVerifier";
 import type { Queryable } from "../../shared/database/client";
 import { getAuthContextForExternalIdentity } from "./repository";
+import { isIntegrationAuthorization } from "./integrationCredentialResolver";
 
 export type AuthMode = "development" | "production";
 
@@ -19,6 +20,16 @@ export type AuthContextResolverOptions = {
 };
 
 export function createAuthContextResolver(options: AuthContextResolverOptions): AuthContextResolver {
+  const resolve = createUserAuthContextResolver(options);
+  return async (request) => {
+    if (isIntegrationAuthorization(request.headers.authorization)) {
+      throw new ApiError("UNAUTHENTICATED", "A user credential is required.");
+    }
+    return resolve(request);
+  };
+}
+
+function createUserAuthContextResolver(options: AuthContextResolverOptions): AuthContextResolver {
   if (options.mode === "production") {
     if (options.localAuthResolver) {
       return async (request) => {

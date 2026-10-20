@@ -2,6 +2,7 @@ import type { ZodTypeAny } from "zod";
 import { z } from "zod";
 import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema, logSkillRecommendationRequestSchema } from "../../logs/schemas";
 import { logSkillSpecSchema, parseTestRequestSchema, skillFilePreviewRequestSchema, skillFilePreviewResponseSchema } from "../../logs/skillSpec";
+import { issueLogIntegrationCredentialBodySchema } from "../../logs/schemas";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
 import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
@@ -43,6 +44,7 @@ import {
   logFeedbackInsightsResponseSchema,
   logFeedbackResponseSchema,
   logFileUploadResponseSchema,
+  logIntegrationCredentialListResponseSchema, logIntegrationCredentialResponseSchema, logIntegrationCredentialSecretResponseSchema,
   logRecordListResponseSchema,
   logRecordResponseSchema,
   logLineRangeResponseSchema,
@@ -94,6 +96,10 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogFormatPreviewRequest: formatPreviewRequestSchema,
   LogFormatPreviewResponse: formatPreviewResponseSchema,
   LogFileUploadRequest: createLogFileBodySchema,
+  IssueLogIntegrationCredentialRequest: issueLogIntegrationCredentialBodySchema,
+  LogIntegrationCredentialListResponse: logIntegrationCredentialListResponseSchema,
+  LogIntegrationCredentialResponse: logIntegrationCredentialResponseSchema,
+  LogIntegrationCredentialSecretResponse: logIntegrationCredentialSecretResponseSchema,
   CreateLogRecordRequest: createLogBodySchema,
   CreateLogDomainRequest: createLogDomainBodySchema,
   LogRerunRequest: rerunLogBodySchema,
@@ -204,6 +210,7 @@ export const dtoSchemaCoveredRouteIds = [
   "parameters-dashboard-hotspots",
   "parameterModules.getRegistry",
   "logs.uploadFile",
+  "logs.listIntegrationCredentials", "logs.issueIntegrationCredential", "logs.rotateIntegrationCredential", "logs.revokeIntegrationCredential",
   "logs.list",
   "logs.get",
   "logs.getLines",

@@ -18,6 +18,9 @@ import { parseContractDto } from "./parseContractDto";
 import {
   jobResponseSchema,
   logJobDtoSchema,
+  logIntegrationCredentialListResponseSchema,
+  logIntegrationCredentialSecretResponseSchema,
+  logIntegrationCredentialResponseSchema,
   logTraceResponseSchema,
   logSkillDryRunResponseSchema,
   logSkillDryRunDetailResponseSchema,
@@ -407,6 +410,18 @@ export function createHttpLogAnalysisRepository(
       const response = parseContractDto(logSkillListResponseSchema,
         await apiClient.get(buildLogDomainsPath(query).replace("log-domains", "log-skills")), "LogSkillListResponse");
       return logDomainListFromDto(response);
+    },
+    async listIntegrationCredentials() {
+      return parseContractDto(logIntegrationCredentialListResponseSchema, await apiClient.get("/api/v1/log-integration-credentials"), "LogIntegrationCredentialListResponse").items;
+    },
+    async issueIntegrationCredential(input) {
+      return parseContractDto(logIntegrationCredentialSecretResponseSchema, await apiClient.post("/api/v1/log-integration-credentials", input), "LogIntegrationCredentialSecretResponse");
+    },
+    async rotateIntegrationCredential(id) {
+      return parseContractDto(logIntegrationCredentialSecretResponseSchema, await apiClient.post(`/api/v1/log-integration-credentials/${encodeURIComponent(id)}/rotate`, {}), "LogIntegrationCredentialSecretResponse");
+    },
+    async revokeIntegrationCredential(id) {
+      return parseContractDto(logIntegrationCredentialResponseSchema, await apiClient.post(`/api/v1/log-integration-credentials/${encodeURIComponent(id)}/revoke`, {}), "LogIntegrationCredentialResponse").item;
     },
     async listSkillTemplates() {
       return parseContractDto(logSkillTemplateListResponseSchema, await apiClient.get("/api/v1/log-skill-templates"), "LogSkillTemplateListResponse").items;

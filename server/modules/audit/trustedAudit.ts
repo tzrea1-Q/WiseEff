@@ -32,6 +32,11 @@ export function projectTrustedInvocationForAudit(
 ): TrustedInvocationAuditProjection {
   const trusted = assertTrustedInvocationContext(context);
 
+  if (trusted.initiator === "integration") {
+    return { organizationId: trusted.organizationId, actorUserId: null, actorType: "integration",
+      metadata: { initiator: "integration", credentialId: trusted.credentialId } };
+  }
+
   if (trusted.initiator === "user") {
     return {
       organizationId: trusted.principal.organization.id,

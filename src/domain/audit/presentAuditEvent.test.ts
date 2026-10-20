@@ -32,6 +32,16 @@ const baseEvent: AuditEventView = {
 };
 
 describe("presentAuditEvent", () => {
+  it.each([
+    ["issue", "签发集成凭据"], ["rotate", "轮换集成凭据"], ["revoke", "撤销集成凭据"]
+  ])("uses readable credential action and metadata name for %s", (kind, action) => {
+    const presentation = presentAuditEvent({ ...baseEvent, app: "log-analysis", kind: `log-integration-credential-${kind}`,
+      action, targetType: "log-integration-credential", targetId: "credential-uuid",
+      metadata: { name: "Factory pipeline", skillId: "skill-1", skillName: "Charging" } });
+    expect(presentation.headline).toBe(action);
+    expect(presentation.targetLabel).toBe("Factory pipeline");
+  });
+
   it("builds human-readable parameter change and participants", () => {
     const presentation = presentAuditEvent(baseEvent);
 

@@ -8,6 +8,12 @@ Intelligent analysis (`/logs`), under Log analysis, is available to hardware use
 
 Turning a report into a knowledge draft also requires `knowledge:edit`. Admins with `logs:admin-domains` can maintain Log domains in Log administration (`/log-admin`). This guide describes the real API workflow. Mock mode simulates uploads and cannot confirm whether an analysis or feedback was saved on the server.
 
+## Connect an external uploader
+
+In the skill workspace, open Integration → Integration credentials. Administrators with `logs:admin-domains` can issue a named credential; Bind to this skill is on by default. The list shows its name, bound skill, status, creation time and last use. Unbound credentials can upload to other skills in the same organization. Copy the skill key and upload example, replacing the credential placeholder with the secret from your secret manager.
+
+The issue and rotation dialogs show the secret once. Copy it, save it securely and select the acknowledgement before closing. Rotation immediately invalidates the old secret; update the uploader. Revocation requires confirmation and cannot be undone. Archiving a skill revokes its bound credentials. Credentials can upload and read only their own records, reports and files; they cannot access administration or another uploader's records. Users with `logs:view` see these records normally; the Metadata tab identifies the credential that uploaded them.
+
 ## Author a diagnostic procedure
 
 In API mode, Admins with `logs:admin-domains` can open a skill in `/log-admin?tab=skills` and choose Diagnostic procedure. The Markdown editor prefills five headings when no procedure exists: scope, what to check first, root-cause criteria, common misjudgements, and recommended actions. Switch between Edit and Preview to check the text. The counter shows the 20,000-character limit.

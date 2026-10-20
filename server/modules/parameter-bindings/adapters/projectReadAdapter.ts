@@ -35,7 +35,7 @@ export async function readProjectProtectedParameters(
   input: { readonly invocation: TrustedInvocationContext; readonly projectId?: string }
 ): Promise<readonly ProjectProtectedParameter[]> {
   const invocation = assertTrustedInvocationContext(input.invocation);
-  if (invocation.initiator === "system") {
+  if (invocation.initiator === "system" || invocation.initiator === "integration") {
     throw new ApiError("FORBIDDEN", "Project parameter reads require an accountable principal.");
   }
   const auth = invocation.principal;

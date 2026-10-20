@@ -1,5 +1,20 @@
 # WiseEff API 合同设计
 
+## 日志集成凭据（#1248）
+
+ADR-0048 扩展 ADR-0038：`Authorization: Bearer wie_<credentialId>_<secret>` 仅按 `wie_` 前缀进入凭据解析器，其他用户令牌不变。集成主体受组织隔离，绝不成为 `AuthContext`，没有用户角色或权限。
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-integration-credentials` | 用户须有 `logs:admin-domains`；返回本组织 `{ items }`，不含密钥或哈希。 |
+| `POST` | `/api/v1/log-integration-credentials` | 同上；请求 `{ name, skillId?: string \| null }`；返回 `201 { item, token }`。 |
+| `POST` | `/api/v1/log-integration-credentials/:credentialId/rotate` | 同上；请求 `{}`；返回 `{ item, token }`，旧密钥立即失效。 |
+| `POST` | `/api/v1/log-integration-credentials/:credentialId/revoke` | 同上；请求 `{}`；返回 `{ item }`，下一请求即拒绝该凭据。 |
+
+DTO 包含 `id`、`organizationId`、`name`、可空的 `skillId`、`skillName`、`createdBy`、`status: active \| revoked`、`createdAt` 及可空的 `rotatedAt`、`revokedAt`、`lastUsedAt`。签发、轮换仅返回一次明文，绝不存储、记录日志或写入审计。生命周期写入与成功审计同事务；归档技能撤销绑定凭据。
+
+路由边界白名单仅含 `POST /api/v1/log-files`、`POST /api/v1/logs` 及读取自身创建的记录、报告、文件；其他路由在处理器或领域读取前拒绝，包括仅供用户访问的推荐预览端点。绑定凭据不传选择字段时，使用绑定技能并记录 `skillSelection.mode: "explicit"`；指定其他技能返回 `403`。未绑定凭据不传选择字段时，对本组织已发布技能进行推荐。仅未绑定凭据可发送 `skillSelection: "generic"`，要求通用分析。绑定凭据请求通用分析返回 `403`，即使同时传入匹配的选择字段；冲突选择也返回 `403`。未知或已撤销凭据返回 `401`，其他创建者或其他组织的记录返回 `404`/`403`。上传复用原大小、速率、分析限制，最近使用时间至多每分钟更新一次。记录暴露可空的 `createdByCredentialId` / `createdByCredentialName`，上传用户为空，本组织有 `logs:view` 的用户照常可见。上传审计 `actor_type = integration`，actor 为凭据 id；人工策略拒绝 integration 发起者。
+
 > English: [English](../../design-docs/api-contract.md)
 
 日期：2026-05-25
@@ -492,7 +507,7 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 
 限制：最多 200 个文件，路径为 1–1024 字符且不含控制字符，每文件最多 64 行、每行最多 2 KiB UTF-8。结构预检在解析数组元素前检查类型和限制，遇到首个违规字段立即返回 `400 VALIDATION_FAILED`，只包含一条问题。推荐端点另将完整 HTTP JSON 请求体限制为 27,079,424 字节：`200 × (64 × (2048 + 3) + 1024 × 4 + 32) + 1024`，涵盖文件头字节、行分隔符、路径 UTF-8 和 JSON 封装。超限在解析前返回 `413`。即使各字段都符合限制，JSON 转义也计入此传输上限。评分器只检查前 64 行，并整行忽略超长行，避免截断前缀造成错误的锚定匹配。读取已存储日志包时，每文件最多检查 131,200 字节，并丢弃不完整的末行；所有文件头读取共用 500 ms 时限，超时后路由回退通用分析。评分另有包含编译在内的 100 ms 预算，一次排名最多检查 100 个技能、每技能 512 个声明模式、200,000 次求值。文件路径或技能 id 重复、路径或模式无效、候选超限，或模式缓存、编译、求值、时间预算耗尽时，整份排名清空并走通用分析。每技能按确定的文件及特征顺序保留最多 24 条理由，每条详情最多 512 字符。推荐限制不会扩大上传或解包预算。
 
-JSON、multipart 的 `POST /api/v1/log-files` 以及基于已有文件的 `POST /api/v1/logs`，始终优先使用显式 `skillKey`、`skillId` 或旧别名 `logDomainId`，任一显式选择字段都会记录为 `skillSelection.mode: "explicit"`；同时提供的选择字段仍须一致，否则返回 `400 VALIDATION_FAILED`。否则 `skillSelection: "generic"` 明确禁用技能；所有选择字段都省略时用同一评分器检查已存储日志包。推荐失败不阻挡原本有效的上传。新记录返回 `skillSelection: { mode: "recommended" | "explicit" | "generic", reasons }`；推荐模式保存获胜理由，手动指定与通用模式的理由为空。迁移 `0206_log_skill_selection.sql` 添加可空 JSONB 列 `log_records.skill_selection`，null 表示历史记录的选择来源未知。报告元数据在钉住技能版本旁显示选择结果。上传保留原始上传记录，并按最终选定的显式或推荐技能计算文件角色与 `skillMatched`，供报告及分析用例使用。
+JSON、multipart 的 `POST /api/v1/log-files` 以及基于已有文件的 `POST /api/v1/logs`，始终优先使用用户显式传入的 `skillKey`、`skillId` 或旧别名 `logDomainId`，并记录 `skillSelection.mode: "explicit"`；同时提供的选择字段仍须一致，否则返回 `400 VALIDATION_FAILED`。否则 `skillSelection: "generic"` 明确禁用技能。凭据上传先检查绑定冲突，冲突返回 `403`。绑定凭据不能绕过其绑定：发送 `skillSelection: "generic"` 返回 `403`，即使同时传入匹配的选择字段。未绑定凭据可用 `skillSelection: "generic"` 明确禁用技能。其余情况，显式选择或凭据绑定技能均记录为显式选择。所有选择字段都省略且凭据未绑定技能时，用同一评分器检查已存储日志包。推荐失败不阻挡原本有效的上传。新记录返回 `skillSelection: { mode: "recommended" | "explicit" | "generic", reasons }`；推荐模式保存获胜理由，手动指定与通用模式的理由为空。迁移 `0206_log_skill_selection.sql` 添加可空 JSONB 列 `log_records.skill_selection`，null 表示历史记录的选择来源未知。报告元数据在钉住技能版本旁显示选择结果。上传保留原始上传记录，并按最终选定的显式或推荐技能计算文件角色与 `skillMatched`，供报告及分析用例使用。
 
 上传对话框在浏览器支持时，本地读取有界文件头、压缩包路径及文件头（`.zip`、`.tar.gz`/`.tgz`、`.gz`、`.tar`），否则仅使用名称。压缩包预览另有压缩 16 MiB、展开 32 MiB 和三秒限制。错误或超时静默保留原选择，不产生新的预选，也不禁用上传。自动预选不发送上传技能选择字段，由服务端独立检查已存储数据；手动改选发送技能 id，「不使用技能」发送 `skillSelection: "generic"`。
 

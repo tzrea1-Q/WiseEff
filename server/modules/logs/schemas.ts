@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { LOG_SKILL_RECOMMENDATION_LIMITS as recommendationLimits } from "./skillRecommendation";
 
+export const issueLogIntegrationCredentialBodySchema = z.object({
+  name: z.string().trim().min(1).max(120), skillId: z.string().min(1).nullable().optional()
+}).strict();
+
 export const sourceSnapshotUploadSchema = z.object({
   versionLabel: z.string().trim().min(1).max(200),
   fileName: z.string().min(1).max(255)

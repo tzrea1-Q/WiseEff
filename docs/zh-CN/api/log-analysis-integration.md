@@ -4,24 +4,32 @@
 
 外部系统如何把日志推入 WiseEff 分析并通过轮询或技能的**结果 Webhook** 消费结果。本指南通过内联示例说明上传、任务、报告、文件行窗口和 Webhook 签名校验，不提供打包 SDK。
 
-前置阅读:[认证](authentication.md)(Bearer Token)、[错误](errors.md)(错误信封)。端点契约见 [API Contract](../../design-docs/api-contract.md) 与 [openapi.json](../../generated/openapi.json)。
+前置条件：管理员签发的集成凭据。前置阅读：[认证](authentication.md)、[错误](errors.md)（错误信封）。端点契约见 [API Contract](../../design-docs/api-contract.md) 与 [openapi.json](../../generated/openapi.json)。
 
 ## 1. 推送日志
 
+### 集成凭据
+
+有 `logs:admin-domains` 的管理员在技能工作区「集成 → 集成凭据」签发凭据。签发和轮换时密钥仅显示一次；复制到安全的密钥管理工具，勾选已保存后才能关闭。通过 TLS 发送 `Authorization: Bearer <集成凭据>`。下文的 `$WISEEFF_INTEGRATION_CREDENTIAL` 从密钥管理工具提供，绝不把值写入代码或日志。
+
+凭据是本组织内独立的机器身份，没有用户账号、角色或权限。固定范围仅为 `POST /api/v1/log-files`、`POST /api/v1/logs` 上传，以及读取它自己创建的记录、报告和文件。不能列出记录或技能，不能读取其他凭据或用户的记录，也不能访问 jobs/SSE、运行历史、轨迹、源码管理、`/me` 或凭据管理。技能选择字段由用户在工作区复制。绑定凭据不传选择字段时，显式使用其绑定技能；指定其他技能返回 `403`。未绑定凭据不传选择字段时，对本组织已发布技能进行自动推荐。仅未绑定凭据可发送 `skillSelection: "generic"`，要求通用分析。绑定凭据发送此请求返回 `403`，即使同时传入匹配绑定技能的选择字段。大小、速率、分析限制与用户上传一致。
+
+轮换后旧密钥立即失效；撤销在下一请求生效。归档技能会撤销其绑定凭据。服务器只存哈希，列表不返回密钥。记录携带 `createdByCredentialId` / `createdByCredentialName`，上传用户为空；有 `logs:view` 的组织用户照常可见。上传审计标识集成凭据，最近使用时间至多每分钟更新一次。
+
 ### 通过 skillKey 选择分析技能
 
-在分析技能工作区的「集成」分区复制 `skillKey`、上传地址及可直接执行的 JSON/base64 或 multipart 示例。通过 `$WISEEFF_TOKEN` 提供 bearer token；示例不会包含真实凭据。`skillKey` 在组织内唯一，满足 `^[a-z0-9][a-z0-9-]{1,62}$`，重命名和发布不会改变它。管理员可在此编辑 key，修改会审计；集成方之后需使用新 key。创建时从名称生成 slug，非 ASCII 名称或碰撞时补充短 id 后缀；迁移 0202 为已有身份回填。
+在分析技能工作区的「集成」分区复制 `skillKey`、上传地址及 JSON/base64 或 multipart 示例。执行前替换集成凭据占位符；示例不会包含真实凭据。`skillKey` 在组织内唯一，满足 `^[a-z0-9][a-z0-9-]{1,62}$`，重命名和发布不会改变它。管理员可在此编辑 key，修改会审计；集成方之后需使用新 key。创建时从名称生成 slug，非 ASCII 名称或碰撞时补充短 id 后缀；迁移 0202 为已有身份回填。
 
 `POST /api/v1/log-files`（JSON 或 multipart）和 `POST /api/v1/logs`（已有文件）均接受 `skillKey`，继续支持 `skillId` 及兼容别名 `logDomainId`。同时提供多个选择字段时必须指向同一技能；冲突返回 `400 VALIDATION_FAILED`。key 只在调用方组织内解析，未知或跨组织 key 会被拒绝。上传成功后钉住技能当前已发布版本，包含模型和预算；后续修改、发布不影响该运行。
 
 ```bash
 curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
-  -H "Authorization: Bearer $WISEEFF_TOKEN" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   -H 'Content-Type: application/json' \
   --data '{"skillKey":"charging","fileName":"example.log","contentType":"text/plain","contentBase64":"SU5GTyBib290Cg=="}'
 
 curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
-  -H "Authorization: Bearer $WISEEFF_TOKEN" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   --form-string 'skillKey=charging' \
   -F 'file=@device.log;type=text/plain' -F 'file=@kernel.log;type=text/plain'
 ```
@@ -30,11 +38,11 @@ curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
 
 步骤预算须为至少 1 的整数；版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含提前收敛调用；不做 token 估算，也不承诺单次调用的严格限额。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。没有得到已接地最终报告时，耗尽运行沿用 `rules-fallback` 结果及 `degradedReason: "token-budget-exhausted"`。省略 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
 
-`POST /api/v1/log-files`，内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。用 `skillKey`、`skillId` 或兼容别名 `logDomainId` 指定已发布技能（通过 `GET /api/v1/log-skills` 列举）。任何显式选择字段都优先于推荐。不传技能选择字段时，服务端根据已存储日志包，仅对本组织有效、已发布的技能评分。最高分唯一且至少为 8 时使用该技能；并列、低分或推荐预算耗尽时走通用分析。要固定使用通用分析，请不传技能选择字段，并发送 `skillSelection: "generic"`。multipart 上传和从已有文件创建记录的 `POST /api/v1/logs` 遵循相同规则。
+`POST /api/v1/log-files`，内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。用 `skillKey`、`skillId` 或兼容别名 `logDomainId` 指定已发布技能（用户可通过 `GET /api/v1/log-skills` 列举）。任何显式选择字段及凭据绑定技能都优先于推荐。不传技能选择字段且凭据未绑定技能时，服务端根据已存储日志包，仅对本组织有效、已发布的技能评分。最高分唯一且至少为 8 时使用该技能；并列、低分或推荐预算耗尽时走通用分析。要固定使用通用分析，请使用用户会话或未绑定凭据，不传技能选择字段，并发送 `skillSelection: "generic"`。绑定凭据不能请求通用分析：发送 `skillSelection: "generic"` 返回 `403`，即使同时传入匹配的技能选择字段；与凭据绑定技能冲突的选择也返回 `403`。multipart 上传和从已有文件创建记录的 `POST /api/v1/logs` 遵循相同规则。
 
 ### 预览技能推荐
 
-`POST /api/v1/log-skills/recommend` 要求账号有效且具备 `logs:upload`。请求示例为 `{ "files": [{ "path": "kernel.log", "head": ["charging current reduced"] }] }`。返回 `{ "recommendations": [{ "skillId": "...", "score": 8, "reasons": [{ "kind": "pattern", "file": "kernel.log", "detail": "..." }] }], "recommendedSkillId": "..." }`。没有达到阈值的唯一候选时省略 `recommendedSkillId`。排名最多包含 100 个技能，每技能最多 24 条理由。`kind` 为 `file` 或 `pattern`；分数用于排序，不是分析正确的概率。此端点只预览选择；上传时省略技能选择字段，服务端才会根据已存储内容独立评分。权重和限制见[推荐契约](../design-docs/api-contract.md#技能推荐与上传路由-1247)。
+`POST /api/v1/log-skills/recommend` 要求用户账号有效且具备 `logs:upload`，集成凭据不能访问。请求示例为 `{ "files": [{ "path": "kernel.log", "head": ["charging current reduced"] }] }`。返回 `{ "recommendations": [{ "skillId": "...", "score": 8, "reasons": [{ "kind": "pattern", "file": "kernel.log", "detail": "..." }] }], "recommendedSkillId": "..." }`。没有达到阈值的唯一候选时省略 `recommendedSkillId`。排名最多包含 100 个技能，每技能最多 24 条理由。`kind` 为 `file` 或 `pattern`；分数用于排序，不是分析正确的概率。此端点只预览选择；上传时省略技能选择字段且没有凭据绑定技能时，服务端才会根据已存储内容独立评分。权重和限制见[推荐契约](../design-docs/api-contract.md#技能推荐与上传路由-1247)。
 
 可选字段 `sourceVersion` 为源码快照版本标签（去除首尾空白后 1–200 字符），用于选择钉住技能所属的匹配快照。匹配快照即使仍在排队、索引中或索引失败，也会被选中；只有快照就绪时才向 Agent 提供源码工具。没有匹配标签或未传标签时，使用钉住版本的默认快照。未知标签会记录在报告来源中，并在该处附上简短回退说明。JSON 上传、multipart 上传以及从已有文件创建记录的 `POST /api/v1/logs` 均接受此字段。`GET /api/v1/log-skills` 返回 `hasSourceSnapshots` 和 `readySourceVersions`；后者是就绪快照版本标签数组，不含快照元数据。上传对话框提供这些标签及默认快照选项；集成 API 仍接受自由填写的版本标签。
 
@@ -42,7 +50,7 @@ curl --fail-with-body -X POST "$WISEEFF_API/api/v1/log-files" \
 
 ```bash
 curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   -H "Content-Type: application/json" \
   -d "$(jq -n \
     --arg content "$(base64 < charging-foldback.log)" \
@@ -56,9 +64,9 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 
 支持的文本扩展名为 `.log`、`.txt`、`.csv` 和 `.json`；日志包接收支持 UTF-8 及带 BOM 的 UTF-16 文本。压缩包可包含多份文件，支持 `.gz`、`.zip`、`.tar`、`.tar.gz` 和 `.tgz`。若要将多份独立文本文件合并为一条记录，使用 `multipart/form-data` 并重复传入 `file` 字段。记录的 `files` 清单列出已分析和已跳过的条目。上传受压缩体积、解包体积、文件数和单文件大小的配置限制，参见[环境变量](../developer/environment-variables.md)。解包另有 200 倍压缩比上限，最低预算为 1 MiB。被拒绝的输入保留可读的失败原因。
 
-## 2. 轮询任务
+## 2. 轮询记录
 
-`GET /api/v1/jobs/{jobId}` 直到 `status` 为 `complete` 或 `failed`。建议节奏:前 ~30 秒每 1s,之后退避到 2–5s;分析目标 p95 ≤ 3 分钟(≤ 10MB 日志)。`GET /api/v1/jobs/{jobId}/events` 以 Server-Sent Events 提供相同快照。
+使用上传该记录的凭据轮询 `GET /api/v1/logs/{logId}`，直到 `status` 为 `complete` 或 `failed`。建议节奏：前约 30 秒每秒一次，之后退避到 2–5 秒；分析目标 p95 ≤ 3 分钟（≤ 10MB 日志）。任务轮询 `GET /api/v1/jobs/{jobId}` 与任务 SSE `GET /api/v1/jobs/{jobId}/events` 仅供用户会话使用，不在集成凭据范围内。
 
 ## 3. 获取结果
 
@@ -84,13 +92,13 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 
 ### 获取单文件的行窗口
 
-`GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` 返回一份已分析文件的指定行窗口。需要 `logs:view`，组织范围与记录本身一致。`file` 使用记录 `files` 清单中的准确 `path`；这是日志包内路径，不是对象存储键。
+`GET /api/v1/logs/{logId}/lines?file=...&startLine=...&endLine=...` 返回一份已分析文件的指定行窗口。接受创建记录的集成凭据，或同组织有 `logs:view` 的用户。`file` 使用记录 `files` 清单中的准确 `path`；这是日志包内路径，不是对象存储键。
 
 两个行号参数均必填，必须为正整数，从 1 开始计数，且包含首尾行。一次最多请求 400 行。`endLine` 超过文件末尾时，服务端会裁剪到末行；`startLine` 越界、首尾颠倒或请求超过 400 行时，返回 `400 VALIDATION_FAILED`。末尾换行符不会额外增加一行，实际空行仍可读取。空文件返回 `startLine: 1`、`endLine: 0`、`totalLines: 0` 和 `lines: []`。旧索引会在访问时延迟重建。文件不存在或已跳过时，返回 `404 NOT_FOUND`。
 
 ```bash
 curl -sS --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $WISEEFF_INTEGRATION_CREDENTIAL" \
   --data-urlencode "file=device/kernel.log" \
   --data-urlencode "startLine=40" \
   --data-urlencode "endLine=42"
@@ -206,6 +214,6 @@ printf '%s.' "$TIMESTAMP" | cat - "$BODY_FILE" \
 ## 推送侧错误处理与重试
 
 - `400 VALIDATION_FAILED`:base64 或字段错误——修正请求,不要原样重试。
-- `401 / 403`:令牌或权限问题(`logs:upload`);见[认证](authentication.md)。
+- `401 / 403`：无效或已撤销的凭据、不在白名单的路由或技能绑定问题；用户上传仍需 `logs:upload`。见[认证](authentication.md)。
 - 上传遇 `5xx`:可带退避重试;每次成功上传都会新建记录(服务端不去重),激进重试请自备幂等保护。
-- `failed` 记录带可读 `failureReason`(格式不支持、压缩包超限、重试耗尽);修正输入后可用 `POST /api/v1/logs/{logId}/rerun` 重新分析。
+- `failed` 记录带可读 `failureReason`（格式不支持、压缩包超限、重试耗尽）。有权限的用户可用 `POST /api/v1/logs/{logId}/rerun` 重跑；集成凭据需修正输入后重新上传。

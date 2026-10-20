@@ -1288,7 +1288,7 @@ function LogErrorAlert({ log, onRetry }: { log: LogRecord; onRetry: () => void }
           <div><dt>文件名</dt><dd>{log.fileName}</dd></div>
           <div><dt>文件大小</dt><dd>{log.fileSizeMB} MB</dd></div>
           <div><dt>上传时间</dt><dd>{log.capturedAt}</dd></div>
-          <div><dt>上传者</dt><dd>{log.submittedBy}</dd></div>
+          <div><dt>上传者</dt><dd>{log.createdByCredentialId ? `通过集成凭据 ${log.createdByCredentialName ?? log.createdByCredentialId}` : log.submittedBy}</dd></div>
         </dl>
         <button className="button danger" type="button" onClick={onRetry}>
           重新上传
@@ -1633,6 +1633,7 @@ function LogMetadata({ log }: { log: LogRecord }) {
         {{ recommended: "自动推荐", explicit: "用户指定", generic: "通用分析" }[log.skillSelection.mode]}
         {log.skillSelection.reasons.length ? <RecommendationReasons reasons={log.skillSelection.reasons} label="技能选择理由" /> : null}
       </dd></div> : null}
+      <div><dt>上传来源</dt><dd>{log.createdByCredentialId ? `通过集成凭据 ${log.createdByCredentialName ?? log.createdByCredentialId}` : log.submittedBy}</dd></div>
     </dl>
   );
 }

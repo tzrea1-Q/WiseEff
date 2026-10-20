@@ -3,6 +3,9 @@ import { MAX_LOG_JSON_UPLOAD_BYTES } from "./bundleIntake";
 import { z } from "zod";
 import type { LogSkillBudgetCaps } from "./skillBudgets";
 import type { AuthContext } from "../auth/types";
+import type { IntegrationPrincipal } from "../auth/integrationPrincipal";
+import { isIntegrationAuthorization } from "../auth/integrationCredentialResolver";
+import { issueLogIntegrationCredentialBodySchema, issueIntegrationCredential, listIntegrationCredentials, revokeIntegrationCredential, rotateIntegrationCredential } from "./integrationCredentials";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -109,6 +112,7 @@ function parseWithSchema<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: 
 }
 
 async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext, request: RouteRequest) {
+  if (isIntegrationAuthorization(request.headers.authorization)) throw new ApiError("UNAUTHENTICATED", "A user credential is required.");
   return getCurrentAuthContext(request);
 }
 
@@ -137,6 +141,7 @@ export function registerLogRoutes(
     webhooks?: LogWebhookRouteContext;
     skillBudgetCaps?: LogSkillBudgetCaps;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
+    getIntegrationPrincipal?: (request: RouteRequest) => Promise<IntegrationPrincipal>;
   }
 ) {
   router.get("/api/v1/logs/:logId/analysis-case-prefill", async (request) => {
@@ -198,6 +203,30 @@ export function registerLogRoutes(
     requireLocalOrganization(auth);
     const body = parseWithSchema(logSkillRecommendationRequestSchema, request.body);
     return { status: 200, body: await recommendOrganizationLogSkills(requireDb(options.db), auth, body.files) };
+  });
+  const getLogPrincipal = async (request: RouteRequest): Promise<AuthContext | IntegrationPrincipal> => {
+    if (isIntegrationAuthorization(request.headers.authorization)) {
+      if (!options.getIntegrationPrincipal) throw new ApiError("UNAUTHENTICATED", "Integration credential resolver is required.");
+      return options.getIntegrationPrincipal(request);
+    }
+    return getAuth(options.getCurrentAuthContext, request);
+  };
+  router.get("/api/v1/log-integration-credentials", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await listIntegrationCredentials(requireDb(options.db), auth) };
+  });
+  router.post("/api/v1/log-integration-credentials", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const body = parseWithSchema(issueLogIntegrationCredentialBodySchema, request.body);
+    return { status: 201, headers: { "Cache-Control": "no-store" }, body: await issueIntegrationCredential(requireDb(options.db), auth, body, createUserInvocation(auth), { requestId: request.requestId }) };
+  });
+  router.post("/api/v1/log-integration-credentials/:credentialId/rotate", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, headers: { "Cache-Control": "no-store" }, body: await rotateIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, createUserInvocation(auth), { requestId: request.requestId }) };
+  });
+  router.post("/api/v1/log-integration-credentials/:credentialId/revoke", async (request) => {
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    return { status: 200, body: await revokeIntegrationCredential(requireDb(options.db), auth, request.params.credentialId, createUserInvocation(auth), { requestId: request.requestId }) };
   });
   router.get("/api/v1/log-skills/:skillId/source-versions", async (request) => {
     const auth = await getAuth(options.getCurrentAuthContext, request);
@@ -268,7 +297,7 @@ export function registerLogRoutes(
   router.post("/api/v1/log-files", async (request) => {
     const db = requireDb(options.db);
     const objectStore = requireObjectStore(options.objectStore);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getLogPrincipal(request);
     const multipart = (request.body as Partial<MultipartBody>)?.kind === "multipart" ? request.body as MultipartBody : undefined;
     const files = multipart?.files.filter((file) => file.fieldName === "file");
     if (multipart && !files?.length) throw new ApiError("VALIDATION_FAILED", "请选择至少一个日志文件");
@@ -306,7 +335,7 @@ export function registerLogRoutes(
 
   router.post("/api/v1/logs", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const auth = await getLogPrincipal(request);
     const body = parseWithSchema(createLogBodySchema, request.body);
     const result = await createLogFromFile(
       db,
@@ -353,8 +382,8 @@ export function registerLogRoutes(
 
   router.get("/api/v1/logs/:logId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
-    requireLocalOrganization(auth);
+    const auth = await getLogPrincipal(request);
+    if (!("kind" in auth)) requireLocalOrganization(auth);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
     const item = await getLogRecord(db, auth, params.logId);
 
@@ -372,8 +401,8 @@ export function registerLogRoutes(
 
   router.get("/api/v1/logs/:logId/lines", async (request) => {
     const db = requireDb(options.db);
-    const auth = await getAuth(options.getCurrentAuthContext, request);
-    requireLocalOrganization(auth);
+    const auth = await getLogPrincipal(request);
+    if (!("kind" in auth)) requireLocalOrganization(auth);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
     const query = parseWithSchema(logLineRangeQuerySchema, request.query);
     const item = await getLogLineRange(db, requireObjectStore(options.objectStore), auth, params.logId, query);

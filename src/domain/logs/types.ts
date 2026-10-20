@@ -141,6 +141,8 @@ export type LogSignalSummary = {
 
 export type LogRecord = {
   skillSelection?: LogSkillSelection;
+  createdByCredentialId?: string | null;
+  createdByCredentialName?: string | null;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string }>;
   sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" };
   sourceSnapshotSelection?: "matched_version" | "default" | "none";

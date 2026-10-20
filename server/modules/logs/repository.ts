@@ -1,5 +1,6 @@
 import { loadLogFiles, fileInventory } from "./filesRepository";
 import type { AuthContext } from "../auth/types";
+import type { IntegrationPrincipal } from "../auth/integrationPrincipal";
 import { enqueueTerminalLogWebhook } from "./webhookOutbox";
 import { completeJob, createLogAnalysisJob, updateJobProgress } from "../jobs/repository";
 import type { LogAnalysisJobDto } from "../jobs/types";
@@ -28,6 +29,7 @@ type LogFileObjectRow = {
   file_size_bytes: number | string;
   checksum_sha256: string;
   uploaded_by_user_id: string | null;
+  created_by_credential_id?: string | null;
   created_at: string | Date;
 };
 
@@ -62,6 +64,8 @@ type LogRecordRow = RevisionRow & {
   captured_at: string | Date;
   updated_at: string | Date;
   submitted_by: string | null;
+  created_by_credential_id?: string | null;
+  created_by_credential_name?: string | null;
   related_parameter_id: string | null;
   related_parameter_project_id?: string | null;
   failure_reason: string | null;
@@ -135,6 +139,7 @@ export type LogFileObjectDto = {
   fileSizeBytes: number;
   checksumSha256: string;
   uploadedByUserId: string | null;
+  createdByCredentialId?: string;
   createdAt: string;
 };
 
@@ -165,7 +170,8 @@ export type CreateLogRecordWithRunAndJobInput = {
   fileObjectId: string;
   fileName: string;
   source: string;
-  submittedByUserId: string;
+  submittedByUserId: string | null;
+  createdByCredentialId?: string;
   analysisQuestion?: string;
   relatedParameterId?: string;
   relatedParameterProjectId?: string;
@@ -266,6 +272,7 @@ function toFileObjectDto(row: LogFileObjectRow): LogFileObjectDto {
     fileSizeBytes: Number(row.file_size_bytes),
     checksumSha256: row.checksum_sha256,
     uploadedByUserId: row.uploaded_by_user_id,
+    createdByCredentialId: row.created_by_credential_id ?? undefined,
     createdAt: dateTimeToIso(row.created_at)
   };
 }
@@ -308,6 +315,8 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     capturedAt: dateTimeToIso(row.captured_at),
     updatedAt: dateTimeToIso(row.updated_at),
     submittedBy: row.submitted_by ?? "已注销用户",
+    createdByCredentialId: row.created_by_credential_id ?? undefined,
+    createdByCredentialName: row.created_by_credential_name ?? undefined,
     relatedParameterId: row.related_parameter_id ?? undefined,
     relatedParameterProjectId: row.related_parameter_project_id ?? undefined,
     failureReason: row.failure_reason ?? undefined,
@@ -428,6 +437,8 @@ const logSelect = `
     lr.captured_at,
     lr.updated_at,
     users.name as submitted_by,
+    lr.created_by_credential_id,
+    credential.name as created_by_credential_name,
     lr.related_parameter_id,
     lr.related_parameter_project_id,
     lr.failure_reason,
@@ -445,6 +456,7 @@ const logSelect = `
   left join log_source_snapshots source on source.id = lar.source_snapshot_id and source.organization_id = lr.organization_id
   left join log_analysis_reports report on report.run_id = lr.current_run_id
   left join users on users.id = lr.submitted_by_user_id
+  left join log_integration_credentials credential on credential.id = lr.created_by_credential_id and credential.organization_id = lr.organization_id
   left join log_domains ld on ld.id = lr.log_domain_id
 `;
 
@@ -467,16 +479,17 @@ export async function createFileObject(
     contentType: string;
     fileSizeBytes: number;
     checksumSha256: string;
-    uploadedByUserId: string;
+    uploadedByUserId: string | null;
+    createdByCredentialId?: string;
   }
 ) {
   const result = await db.query<LogFileObjectRow>(
     `
     insert into log_file_objects (
       id, organization_id, storage_key, file_name, content_type,
-      file_size_bytes, checksum_sha256, uploaded_by_user_id
+      file_size_bytes, checksum_sha256, uploaded_by_user_id, created_by_credential_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     returning *
     `,
     [
@@ -487,7 +500,8 @@ export async function createFileObject(
       input.contentType,
       input.fileSizeBytes,
       input.checksumSha256,
-      input.uploadedByUserId
+      input.uploadedByUserId,
+      input.createdByCredentialId ?? null
     ]
   );
 
@@ -522,9 +536,9 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
       `
       insert into log_records (
         id, organization_id, file_object_id, file_name, source, status,
-        analysis_question, related_parameter_id, related_parameter_project_id, submitted_by_user_id, log_domain_id, skill_selection
+        analysis_question, related_parameter_id, related_parameter_project_id, submitted_by_user_id, log_domain_id, created_by_credential_id, skill_selection
       )
-      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9, $10, $11::jsonb)
+      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9, $10, $11, $12::jsonb)
       returning id
       `,
       [
@@ -538,6 +552,7 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         input.relatedParameterProjectId ?? null,
         input.submittedByUserId,
         input.logDomainId ?? null,
+        input.createdByCredentialId ?? null,
         input.skillSelection ? jsonb(input.skillSelection) : null
       ]
     );
@@ -585,6 +600,8 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         captured_at,
         updated_at,
         (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
+        created_by_credential_id,
+        (select name from log_integration_credentials where id = log_records.created_by_credential_id and organization_id = log_records.organization_id) as created_by_credential_name,
         related_parameter_id,
         related_parameter_project_id,
         failure_reason,
@@ -610,7 +627,8 @@ export async function markUnsupportedLog(
     fileObjectId: string;
     fileName: string;
     source: string;
-    submittedByUserId: string;
+    submittedByUserId: string | null;
+    createdByCredentialId?: string;
     failureReason: string;
     analysisQuestion?: string;
     relatedParameterId?: string;
@@ -624,9 +642,9 @@ export async function markUnsupportedLog(
     insert into log_records (
       id, organization_id, file_object_id, file_name, source, status,
       failure_reason, analysis_question, related_parameter_id, submitted_by_user_id, log_domain_id,
-      related_parameter_project_id, skill_selection
+      related_parameter_project_id, created_by_credential_id, skill_selection
     )
-    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9, $10, $11, $12::jsonb)
+    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
     returning
       id,
       current_run_id,
@@ -648,6 +666,8 @@ export async function markUnsupportedLog(
       captured_at,
       updated_at,
       (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
+      created_by_credential_id,
+      (select name from log_integration_credentials where id = log_records.created_by_credential_id and organization_id = log_records.organization_id) as created_by_credential_name,
       related_parameter_id,
       related_parameter_project_id,
       failure_reason,
@@ -668,6 +688,7 @@ export async function markUnsupportedLog(
       input.submittedByUserId,
       input.logDomainId ?? null,
       input.relatedParameterProjectId ?? null,
+      input.createdByCredentialId ?? null,
       input.skillSelection ? jsonb(input.skillSelection) : null
     ]
   );
@@ -725,13 +746,16 @@ export async function listLogs(
   return Promise.all(result.rows.map(async (row) => ({ ...toLogDto(row, [], readableKnowledgeIds), files: fileInventory(await loadLogFiles(db, auth.organization.id, row.id)) })));
 }
 
-export async function getLogDetail(db: Queryable, auth: AuthContext, logId: string) {
-  const { organizationWide, projectIds } = relatedParameterVisibilityValues(auth);
+export async function getLogDetail(db: Queryable, auth: AuthContext | IntegrationPrincipal, logId: string) {
+  const integration = "kind" in auth;
+  const organizationId = integration ? auth.organizationId : auth.organization.id;
+  const { organizationWide, projectIds } = integration ? { organizationWide: false, projectIds: [] } : relatedParameterVisibilityValues(auth);
   const result = await db.query<LogRecordRow>(
     `
     ${logSelect}
     where lr.organization_id = $1
       and lr.id = $2
+      and ($5::text is null or lr.created_by_credential_id = $5)
       and (
         lr.related_parameter_id is null
         or (
@@ -746,7 +770,7 @@ export async function getLogDetail(db: Queryable, auth: AuthContext, logId: stri
       )
     limit 1
     `,
-    [auth.organization.id, logId, organizationWide, projectIds]
+    [organizationId, logId, organizationWide, projectIds, integration ? auth.credentialId : null]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -762,11 +786,11 @@ export async function getLogDetail(db: Queryable, auth: AuthContext, logId: stri
       and ($3::text is null or e.run_id = $3)
     order by e.created_at asc, e.id asc
     `,
-    [auth.organization.id, logId, row.current_run_id ?? null]
+    [organizationId, logId, row.current_run_id ?? null]
   );
 
-  const readableKnowledgeIds = await readableKnowledgeEntryIds(db, auth, (row.knowledge_revisions ?? []).map((revision) => revision.entryId));
-  return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto), readableKnowledgeIds), files: fileInventory(await loadLogFiles(db, auth.organization.id, logId)) };
+  const readableKnowledgeIds = integration ? new Set<string>() : await readableKnowledgeEntryIds(db, auth, (row.knowledge_revisions ?? []).map((revision) => revision.entryId));
+  return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto), readableKnowledgeIds), files: fileInventory(await loadLogFiles(db, organizationId, logId)) };
 }
 
 export async function listRuns(db: Queryable, auth: AuthContext, logId: string) {

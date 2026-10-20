@@ -7,6 +7,7 @@ import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
 import type { AuthContext } from "./modules/auth/types";
+import { allowsIntegrationPrincipal, isIntegrationAuthorization, resolveIntegrationCredential } from "./modules/auth/integrationCredentialResolver";
 import { createOidcVerifier } from "./modules/auth/oidcVerifier";
 import { createTokenVerifier, type TokenVerifier } from "./modules/auth/tokenVerifier";
 import { registerJobRoutes } from "./modules/jobs/routes";
@@ -52,7 +53,7 @@ import { registerUserRoutes } from "./modules/users/routes";
 import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
 import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
 import { DEBUG_CATALOG_MAX_DOCUMENT_BYTES } from "./modules/debugging/schemas";
-import { createRouter, type RouteRequest } from "./shared/http/router";
+import { createRouter, type HttpMethod, type RouteRequest } from "./shared/http/router";
 import { isRootDatabase, type Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import { loadLogBundleLimits } from "./config/env";
@@ -62,6 +63,12 @@ import { ApiError } from "./shared/http/errors";
 import type { JsonWebKey } from "node:crypto";
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
+
+function requireIntegrationRouteAccess(method: HttpMethod, pattern: string | undefined, authorization: RouteRequest["headers"]["authorization"]) {
+  if (isIntegrationAuthorization(authorization) && !allowsIntegrationPrincipal(method, pattern)) {
+    throw new ApiError("FORBIDDEN", "Integration credentials cannot access this route.");
+  }
+}
 
 async function getCurrentAuthContext(options: { db?: Database }, request: RouteRequest) {
   const userId = request.headers["x-wiseeff-user"]?.toString() ?? developmentAuthContext.user.id;
@@ -121,6 +128,11 @@ export type WiseEffServerOptions = {
  */
 export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
+  const handle = router.handle;
+  router.handle = async (request) => {
+    requireIntegrationRouteAccess(request.method, router.matchRoutePattern(request.method, request.path), request.headers.authorization);
+    return handle(request);
+  };
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
   const localAuthService = options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
@@ -216,6 +228,10 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     skillBudgetCaps: {
       stepBudget: options.env?.LOG_ANALYSIS_MAX_STEPS ?? 6,
       tokenBudget: options.env?.LOG_ANALYSIS_TOKEN_BUDGET ?? 8000
+    },
+    getIntegrationPrincipal: (request) => {
+      if (!options.db) throw new ApiError("UNAUTHENTICATED", "Integration credential authentication requires a database.");
+      return resolveIntegrationCredential(options.db, request.headers.authorization);
     },
     getCurrentAuthContext: authResolver
   });
@@ -344,7 +360,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
 export function createWiseEffServer(options: WiseEffServerOptions = {}) {
   const { router, metrics, tracing } = buildWiseEffRouter(options);
   return attachDeviceBridgeServer(
-    createHttpServer(router, { metrics, tracing, maxBodyBytes: resolveRouteBodyLimit }),
+    createHttpServer(router, { metrics, tracing, maxBodyBytes: resolveRouteBodyLimit,
+      beforeBody: ({ method, routePattern, headers }) => requireIntegrationRouteAccess(method, routePattern, headers.authorization) }),
     options
   );
 }

@@ -79,6 +79,8 @@ export const logEvidenceDtoSchema = z.object({
 
 export const logRecordDtoSchema = z.object({
   skillSelection: logSkillSelectionSchema.optional(),
+  createdByCredentialId: z.string().optional(),
+  createdByCredentialName: z.string().optional(),
   knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
   ...sourceProvenanceShape,
   signalSummary: logSignalSummarySchema.optional(),
@@ -276,6 +278,15 @@ export const logWebhookTestOutcomeSchema = z.object({
 
 export const logRecordListResponseSchema = itemsEnvelopeSchema(logRecordDtoSchema);
 export const logRecordResponseSchema = itemEnvelopeSchema(logRecordDtoSchema);
+
+export const logIntegrationCredentialDtoSchema = z.object({
+  id: z.string(), organizationId: z.string(), name: z.string(), skillId: z.string().nullable(),
+  skillName: z.string().nullable(), status: z.enum(["active", "revoked"]), createdBy: z.string().nullable(),
+  createdAt: z.string(), rotatedAt: z.string().nullable(), revokedAt: z.string().nullable(), lastUsedAt: z.string().nullable()
+});
+export const logIntegrationCredentialListResponseSchema = itemsEnvelopeSchema(logIntegrationCredentialDtoSchema);
+export const logIntegrationCredentialResponseSchema = itemEnvelopeSchema(logIntegrationCredentialDtoSchema);
+export const logIntegrationCredentialSecretResponseSchema = z.object({ item: logIntegrationCredentialDtoSchema, token: z.string() });
 export const logFileUploadResponseSchema = z.object({
   fileObject: logFileObjectDtoSchema,
   log: logRecordDtoSchema,

@@ -14,6 +14,12 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 
 ## Current Security Baseline
 
+### Log integration credentials (ADR-0048)
+
+`wie_` bearers resolve to an organization-scoped integration principal, never a user `AuthContext`. Only log uploads and reads of the credential's own record, report and files accept that principal; other routes reject it before handler/domain access, including the user-only recommendation preview endpoint. A skill-bound credential without a selector uses its bound skill as an explicit selection; a conflicting selector returns `403`. An unbound credential without a selector uses recommendation over its organization's published skills. Only unbound credentials can request general analysis with `skillSelection: "generic"`. Bound credentials receive `403` for generic analysis, even with a matching skill selector; a conflicting selector also returns `403`. User bearer resolution is unchanged. Uploads retain existing size, rate and analysis limits.
+
+Secrets contain at least 256 random bits; the server stores only their hash and uses constant-time comparison. Plaintext is returned once on issue/rotation and must never enter logs, audits or persistent storage. Rotation replaces the secret immediately, revocation is effective on the next request, and skill archival revokes bound credentials. Lifecycle writes require `logs:admin-domains` and are audited in their transaction. Records store the creating credential with a null uploading user; upload audits use `actor_type = integration`. Human-required policies reject integration initiators. Last-use writes are throttled to once per minute.
+
 - Frontend role model lives in `src/domain/users/types.ts`.
 - Page/action permission helpers live in `src/app/permissions.ts`.
 - M0 backend auth context lives in `server/modules/auth/`.
