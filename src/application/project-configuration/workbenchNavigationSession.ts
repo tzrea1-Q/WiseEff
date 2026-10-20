@@ -16,6 +16,8 @@ import {
 export type WorkbenchNavigationSnapshot = {
   selectedNodePath: string | null;
   selectedPropertyName: string | null;
+  /** Explicit navigation owns source positioning; source scroll only follows in the tree. */
+  sourceFocusTarget: { nodePath: string; propertyName: string | null } | null;
   searchDraft: string;
   /** Last successfully completed search, including searches with zero hits. */
   searchQuery: string | null;
@@ -43,7 +45,7 @@ export type WorkbenchNavigationSession = WorkbenchNavigationSnapshot & {
   setSearchDraft(value: string): void;
   consumePendingFocusLine(): number | null;
   beginSuppressScrollSync(durationMs?: number): void;
-  setStructureSelection(nodePath: string | null, propertyName: string | null): void;
+  setStructureSelection(nodePath: string | null, propertyName: string | null, revealSource?: boolean): void;
   applyNodePropertyFromUrl(input: {
     search: string;
     structureNodes: DtsStructuralNode[];
@@ -119,6 +121,7 @@ function emptySnapshot(): WorkbenchNavigationSnapshot {
   return {
     selectedNodePath: null,
     selectedPropertyName: null,
+    sourceFocusTarget: null,
     searchDraft: "",
     searchQuery: null,
     searchHits: [],
@@ -134,6 +137,7 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
   const listeners = new Set<() => void>();
   let selectedNodePath: string | null = null;
   let selectedPropertyName: string | null = null;
+  let sourceFocusTarget: WorkbenchNavigationSnapshot["sourceFocusTarget"] = null;
   let searchDraft = "";
   let searchQuery: string | null = null;
   let searchGeneration = 0;
@@ -150,6 +154,7 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
     snapshot = {
       selectedNodePath,
       selectedPropertyName,
+      sourceFocusTarget,
       searchDraft,
       searchQuery,
       searchHits,
@@ -172,6 +177,9 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
     },
     get selectedPropertyName() {
       return selectedPropertyName;
+    },
+    get sourceFocusTarget() {
+      return sourceFocusTarget;
     },
     get searchDraft() {
       return searchDraft;
@@ -231,42 +239,39 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
       }, durationMs);
       scheduleEmit();
     },
-    setStructureSelection(nodePath, propertyName) {
+    setStructureSelection(nodePath, propertyName, revealSource = true) {
       selectedNodePath = nodePath;
       selectedPropertyName = propertyName;
+      if (revealSource) sourceFocusTarget = nodePath === null ? null : { nodePath, propertyName };
       scheduleEmit();
     },
     applyNodePropertyFromUrl({ search, structureNodes, structureLoading, structureError }) {
+      const select = (nodePath: string | null, propertyName: string | null) => {
+        const sameFocus = sourceFocusTarget?.nodePath === nodePath && sourceFocusTarget?.propertyName === propertyName;
+        api.setStructureSelection(nodePath, propertyName, !sameFocus);
+      };
       const requestedNode = queryValue(search, "node");
       const requestedProperty = queryValue(search, "property");
       if (!requestedNode) {
-        selectedNodePath = null;
-        selectedPropertyName = null;
-        scheduleEmit();
+        select(null, null);
         return;
       }
       if (structureLoading || (structureNodes.length === 0 && !structureError)) {
-        selectedNodePath = requestedNode;
-        selectedPropertyName = requestedProperty;
-        scheduleEmit();
+        select(requestedNode, requestedProperty);
         return;
       }
       const exists = structureNodes.some((node) => node.nodePath === requestedNode);
       if (!exists) {
-        selectedNodePath = null;
-        selectedPropertyName = null;
-        scheduleEmit();
+        select(null, null);
         return;
       }
-      selectedNodePath = requestedNode;
+      let propertyName: string | null = null;
       if (requestedProperty) {
         const node = structureNodes.find((item) => item.nodePath === requestedNode);
         const propertyExists = node?.properties.some((property) => property.name === requestedProperty);
-        selectedPropertyName = propertyExists ? requestedProperty : null;
-      } else {
-        selectedPropertyName = null;
+        propertyName = propertyExists ? requestedProperty : null;
       }
-      scheduleEmit();
+      select(requestedNode, propertyName);
     },
     resolveSelectedConfigSet({ search, configSets }) {
       const requested = queryValue(search, "configSet");
@@ -359,8 +364,7 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
       });
     },
     selectStructureTarget(projectId, search, input) {
-      selectedNodePath = input.nodePath;
-      selectedPropertyName = input.propertyName;
+      api.setStructureSelection(input.nodePath, input.propertyName);
       api.beginSuppressScrollSync();
       scheduleEmit();
       return formatWorkbenchPath(projectId, search, {
@@ -406,6 +410,7 @@ export function createWorkbenchNavigationSession(): WorkbenchNavigationSession {
     },
     selectSearchHit(projectId, search, input) {
       api.beginSuppressScrollSync();
+      api.setStructureSelection(input.hit.nodePath, input.hit.propertyName ?? null);
       if (input.hit.source) {
         pendingFocusLine = input.hit.source.startLine;
       }

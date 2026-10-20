@@ -22,6 +22,25 @@ const configSets = [
 ] as const;
 
 describe("WorkbenchNavigationSession", () => {
+  it("keeps source-following tree selection separate from an explicit source focus target", () => {
+    const session = createWorkbenchNavigationSession();
+    session.setStructureSelection("soc/charger", null);
+    const focus = session.sourceFocusTarget;
+    expect(focus).toEqual({ nodePath: "soc/charger", propertyName: null });
+    session.applyNodePropertyFromUrl({ search: "?node=soc%2Fcharger", structureNodes: [], structureLoading: true, structureError: "" });
+    expect(session.sourceFocusTarget).toBe(focus);
+    session.setStructureSelection("soc", null, false);
+    expect(session.selectedNodePath).toBe("soc");
+    expect(session.sourceFocusTarget).toBe(focus);
+    session.setStructureSelection("soc/charger", null);
+    expect(session.sourceFocusTarget).toEqual(focus);
+    expect(session.sourceFocusTarget).not.toBe(focus);
+    session.setStructureSelection("soc/battery", "status");
+    expect(session.sourceFocusTarget).toEqual({ nodePath: "soc/battery", propertyName: "status" });
+    session.applyNodePropertyFromUrl({ search: "", structureNodes: [], structureLoading: false, structureError: "" });
+    expect(session.sourceFocusTarget).toBeNull();
+  });
+
   it("propagates organization navigation scope to project search", async () => {
     const session = createWorkbenchNavigationSession();
     const search = vi.fn().mockResolvedValue({ hits: [] });

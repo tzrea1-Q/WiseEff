@@ -29,6 +29,28 @@ function setup(overrides: Partial<WorkbenchDtsEditorProps> = {}) {
 }
 
 describe("WorkbenchDtsEditor", () => {
+  it("reveals a repeated explicit result but ignores unrelated focus-line updates", () => {
+    const span = { startLine: 2, endLine: 2 };
+    const input = setup({ focusSpan: span, focusLine: 2 });
+    const scroll = vi.spyOn(EditorView, "scrollIntoView");
+    input.rerenderProps({ focusLine: null });
+    expect(scroll).not.toHaveBeenCalled();
+    input.rerenderProps({ focusSpan: { ...span } });
+    expect(scroll).toHaveBeenCalledOnce();
+    scroll.mockRestore();
+  });
+
+  it("highlights a navigation search without moving until a result or next command is chosen", () => {
+    const input = setup({ findNextToken: 0 });
+    const editor = input.getEditor();
+    const selection = editor.state.selection.main;
+    input.rerenderProps({ findQuery: "one", findNextToken: 0 });
+    expect(editor.state.selection.main).toEqual(selection);
+    input.rerenderProps({ findNextToken: 1 });
+    const match = editor.state.selection.main;
+    expect(editor.state.sliceDoc(match.from, match.to)).toBe("one");
+  });
+
   it("marks edits immediately and captures Cmd/Ctrl+S before debounced persistence", () => {
     vi.useFakeTimers();
     const input = setup();

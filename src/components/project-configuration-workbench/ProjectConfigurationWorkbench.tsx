@@ -352,6 +352,7 @@ export function ProjectConfigurationWorkbench({
     session: navigationSession,
     selectedNodePath,
     selectedPropertyName,
+    sourceFocusTarget,
     searchDraft,
     searchQuery,
     searchHits,
@@ -843,15 +844,15 @@ export function ProjectConfigurationWorkbench({
   ]);
 
   const focusSpan = useMemo(() => {
-    if (!selectedNodePath) return null;
-    const node = structureNodes.find((item) => item.nodePath === selectedNodePath);
+    if (!sourceFocusTarget) return null;
+    const node = structureNodes.find((item) => item.nodePath === sourceFocusTarget.nodePath);
     if (!node) return null;
-    if (selectedPropertyName) {
-      const property = node.properties.find((item) => item.name === selectedPropertyName);
+    if (sourceFocusTarget.propertyName) {
+      const property = node.properties.find((item) => item.name === sourceFocusTarget.propertyName);
       return locatorToFocusSpan(property?.source ?? node.source);
     }
     return locatorToFocusSpan(node.source);
-  }, [selectedNodePath, selectedPropertyName, structureNodes]);
+  }, [sourceFocusTarget, structureNodes]);
 
   const selectStructureTarget = useCallback(
     (fileId: string, nodePath: string | null, propertyName: string | null = null, showSource = false) => {
@@ -914,7 +915,7 @@ export function ProjectConfigurationWorkbench({
         if (navigationSession.suppressScrollSync || navigationSession.selectedPropertyName) return;
         const nearest = nearestNodeForLine(structureNodes, line);
         if (!nearest || nearest.nodePath === navigationSession.selectedNodePath) return;
-        navigationSession.setStructureSelection(nearest.nodePath, null);
+        navigationSession.setStructureSelection(nearest.nodePath, null, false);
       }, 80);
     },
     [canvasMode, navigationSession, selectedMember, selectedNodePath, structureNodes, suppressScrollSync]

@@ -68,7 +68,7 @@ vi.mock("./WorkbenchDtsEditor", async () => {
       else if (pending.current) { clearTimeout(pending.current); pending.current = null; }
     }, [props.sessionKey, props.resetKey]);
     React.useImperativeHandle(ref, () => ({ getSnapshot: snapshot, flush, focus() {}, revealLine() {}, openSearch() {} }));
-    return <div data-focused={Boolean(props.focusSpan || props.focusLine)}>
+    return <div data-focused={Boolean(props.focusSpan || props.focusLine)} data-focus-start={props.focusSpan?.startLine}>
       <textarea aria-label={props.ariaLabel ?? "DTS 源码"} value={text} readOnly={props.readOnly}
         onBlur={flush} onScroll={() => props.onVisibleLineChange?.(1)} onChange={(event) => {
           latest.current = event.target.value; setText(event.target.value); generation.current += 1;
@@ -561,6 +561,19 @@ function legacyDraftStorage(baseVersionId = "version-board-12") {
 }
 
 describe("ProjectConfigurationWorkbench", () => {
+  it("follows source scrolling in the tree without replacing the explicit source focus", async () => {
+    renderSourceWorkbench({ search: "?configSet=cs-default&file=file-board&node=regulator", syncSearch: true });
+    const source = await screen.findByRole("textbox", { name: "DTS 源码" });
+    await waitFor(() => expect(source.parentElement).toHaveAttribute("data-focus-start", "4"));
+    const board = await screen.findByRole("treeitem", { name: "节点 board" });
+    await waitFor(() => expect(screen.getByRole("treeitem", { name: "节点 regulator" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.scroll(source);
+    await waitFor(() => expect(board).toHaveAttribute("aria-selected", "true"));
+    expect(source.parentElement).toHaveAttribute("data-focus-start", "4");
+    fireEvent.click(board);
+    await waitFor(() => expect(source.parentElement).toHaveAttribute("data-focus-start", "1"));
+  });
+
   it("keeps complete multiline property values keyboard-readable in the inspector", async () => {
     const rawText = `"first ${"x".repeat(300)}",\n"last"`;
     const board = BOARD_STRUCTURE.nodes[0]!;
