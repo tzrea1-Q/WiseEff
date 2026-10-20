@@ -12,6 +12,43 @@ import type { Database } from "../../../../shared/database/client";
 import type { GateResult } from "../../core/types";
 import { countedResult } from "./evidence";
 import { IMMUTABLE_CATALOG_RELATIONS, catalogRelation, quoteIdent } from "./relations";
+import type { GateQuery } from "./session";
+
+// Permanent erasure is an explicit platform-administrator maintenance action.
+// Its bodies remain pinned by the canonical schema fingerprint; these gates
+// separately verify the exact callable signatures and least-privilege boundary.
+export async function readDefinitionErasureCapabilities(query: GateQuery) {
+  const routines = [
+    ["parameter_catalog.definition_erasure_object_is_referenced(text,text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.finish_parameter_definition_erasure_object(text,text)", "search_path=pg_catalog, parameter_catalog"],
+    ["parameter_catalog.lock_parameter_definition_purge(text)", "search_path=pg_catalog, parameter_catalog, catalog_publication, public"],
+    ["parameter_catalog.lock_parameter_plane_archive()", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.preview_parameter_definition_purge(text)", "search_path=pg_catalog, parameter_catalog, public"],
+    ["parameter_catalog.purge_parameter_definition(text,jsonb,text,text)", "search_path=pg_catalog, parameter_catalog, public, catalog_publication"],
+    ["parameter_catalog.read_parameter_definition_erasure(text)", "search_path=pg_catalog, parameter_catalog"],
+  ] as const;
+  const roles = ["public", CATALOG_SYNCHRONIZER_ROLE, CATALOG_PUBLICATION_COORDINATOR_ROLE, CATALOG_BASELINE_READER_ROLE,
+    "catalog_verification_writer_role", "catalog_verifier_role", "wiseeff_mod_d02_capture", "wiseeff_mod_d02_source_reader", "catalog_mod_d02_capture_owner"];
+  const result = await query<{ identity: string; owner: string; security_definer: boolean; owner_login: boolean;
+    owner_superuser: boolean; settings: string[] | null; writer_execute: boolean; other_execute: boolean }>(`
+    select p.oid::regprocedure::text as identity,owner.rolname as owner,p.prosecdef as security_definer,
+      owner.rolcanlogin as owner_login,owner.rolsuper as owner_superuser,p.proconfig as settings,
+      has_function_privilege($2,p.oid,'execute') as writer_execute,
+      exists(select 1 from unnest($3::text[]) role_name where has_function_privilege(role_name,p.oid,'execute')) as other_execute
+      from pg_proc p join pg_roles owner on owner.oid=p.proowner
+      where p.oid=any(select to_regprocedure(identity) from unnest($1::text[]) identity)`,
+  [routines.map(([identity]) => identity), PARAMETER_GOVERNANCE_WRITER_ROLE, roles]);
+  const approved = new Set<string>(routines.flatMap(([identity, settings]) => result.rows.some(row => row.identity === identity
+    && row.owner === CATALOG_MIGRATION_OWNER && row.security_definer && !row.owner_login && !row.owner_superuser
+    && row.settings?.length === 1 && row.settings[0] === settings && row.writer_execute && !row.other_execute) ? [identity] : []));
+  const privateBoundary = await query<{ blocked: boolean }>(`select not exists(select 1 from unnest($1::text[]) role_name where
+    has_table_privilege(role_name,'parameter_catalog.definition_purge_rows','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') or
+    has_any_column_privilege(role_name,'parameter_catalog.definition_purge_rows','SELECT,INSERT,UPDATE') or
+    has_function_privilege(role_name,'parameter_catalog.definition_purge_mark(regclass,jsonb,text)','execute') or
+    has_function_privilege(role_name,'parameter_catalog.definition_purge_allows_change(text,text,jsonb,text)','execute')) as blocked`,
+  [[...roles, PARAMETER_GOVERNANCE_WRITER_ROLE]]);
+  return { approved, violationCount: routines.length - approved.size + (privateBoundary.rows[0]?.blocked === true ? 0 : 1) };
+}
 
 export type PrivilegeProbe = {
   readonly role: string;
@@ -213,6 +250,7 @@ const DTS_OBSERVATION_OCCURRENCE_BODY_SHA256 =
   "779e47230dcde8f668f773aa39774ed522c07fee50a7678333bee45ed1d9e4dc";
 
 export const runP02 = async (db: Database): Promise<GateResult> => {
+  const erasure = await readDefinitionErasureCapabilities(db.query.bind(db));
   const probes: PrivilegeProbe[] = [];
   for (const role of [PARAMETER_GOVERNANCE_WRITER_ROLE, CATALOG_SYNCHRONIZER_ROLE]) {
     for (const sql of legacyInserts()) {
@@ -265,7 +303,7 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
     [PARAMETER_GOVERNANCE_WRITER_ROLE, CATALOG_SYNCHRONIZER_ROLE],
   );
   const unexpectedDefiners = definers.rows.filter(
-    (row) => row.proname !== "assert_catalog_subject_active" && !(
+    (row) => !erasure.approved.has(row.identity) && row.proname !== "assert_catalog_subject_active" && !(
       row.identity === REVIEWED_TOMBSTONE_IDENTITY
       && createHash("sha256").update(row.body).digest("hex") === REVIEWED_TOMBSTONE_BODY_SHA256
       && row.function_owner === CATALOG_MIGRATION_OWNER
@@ -315,7 +353,7 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
     && occurrence.executable_roles[0] === PARAMETER_GOVERNANCE_WRITER_ROLE;
 
   const bypasses = probes.filter((item) => item.succeeded || item.sqlstate !== "42501");
-  const violationCount = bypasses.length + unexpectedDefiners.length + (validDtsOccurrence ? 0 : 1);
+  const violationCount = bypasses.length + unexpectedDefiners.length + (validDtsOccurrence ? 0 : 1) + erasure.violationCount;
   await db.query("reset role").catch(() => undefined);
   return countedResult("PCAT-DB-P02", "PCAT-PRIV-LEGACY-WRITER-BYPASS", violationCount, {
     bypassCount: bypasses.length,
@@ -326,5 +364,6 @@ export const runP02 = async (db: Database): Promise<GateResult> => {
       ...unexpectedDefiners.map((row) => row.proname),
       ...(!validDtsOccurrence ? [DTS_OBSERVATION_OCCURRENCE_IDENTITY] : []),
     ],
+    erasureCapabilityViolations: erasure.violationCount,
   });
 };

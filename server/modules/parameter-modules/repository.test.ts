@@ -76,7 +76,7 @@ describe("parameter module canonical registry counts", () => {
     expect(registrySql).not.toContain("catalog_state");
     expect(registrySql).not.toContain("catalog_release_subjects");
     expect(registrySql).not.toContain("definition_revisions");
-    expect(query).toHaveBeenCalledTimes(4);
+    expect(query).toHaveBeenCalledTimes(5);
   });
 
   it("returns zero definition facts only when the caller explicitly has no Catalog", async () => {

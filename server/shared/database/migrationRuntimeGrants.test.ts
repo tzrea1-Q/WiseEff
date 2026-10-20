@@ -12,10 +12,18 @@ function missingRuntimeGrants(sql: string): string[] {
     if (parts.length === 2 && parts[0] !== "public") continue;
     const table = parts.at(-1)!;
     if (optOuts.includes(table)) continue;
-    const hasGrant = blocks.some((block) => block.index! > create.index!
-      && new RegExp(`\\b${table}\\b`).test(block[2])
-      && /has_table_privilege\s*\(\s*oid\s*,\s*'public\.log_domains'\s*,\s*'INSERT'\s*\)/i.test(block[2])
-      && /grant\s+select\s*,\s*insert\s*,\s*update\s*,\s*delete\s+on\b/i.test(block[2]));
+    const hasGrant = blocks.some((block) => {
+      if (block.index! <= create.index! || !new RegExp(`\\b${table}\\b`).test(block[2])) return false;
+      const runtimeDml = /has_table_privilege\s*\(\s*oid\s*,\s*'public\.log_domains'\s*,\s*'INSERT'\s*\)/i.test(block[2])
+        && /grant\s+select\s*,\s*insert\s*,\s*update\s*,\s*delete\s+on\b/i.test(block[2]);
+      // Recognition settings mirror each existing module privilege separately;
+      // a read-only module role must not receive all runtime DML privileges.
+      const modulePrivileges = /select\s+grantee\s*,\s*privilege_type\s+from\s+information_schema\.role_table_grants/i.test(block[2])
+        && /table_schema\s*=\s*'public'\s+and\s+table_name\s*=\s*'parameter_modules'/i.test(block[2])
+        && /privilege_type\s+in\s*\(\s*'SELECT'\s*,\s*'INSERT'\s*,\s*'UPDATE'\s*,\s*'DELETE'\s*\)/i.test(block[2])
+        && new RegExp(`execute\\s+format\\(\\s*'grant %s on public\\.${table} to %I'\\s*,\\s*(\\w+)\\.privilege_type\\s*,\\s*\\1\\.grantee\\s*\\)`, "i").test(block[2]);
+      return runtimeDml || modulePrivileges;
+    });
     if (!hasGrant) missing.push(table);
   }
   return missing;
@@ -45,6 +53,24 @@ describe("public table runtime grants (0185 onward)", () => {
     expect(missingRuntimeGrants("create table public.example as select 1 as id;")).toEqual(["example"]);
     expect(missingRuntimeGrants("create table parameter_catalog.example (id text);")).toEqual([]);
     expect(missingRuntimeGrants(`/* ${create} */ -- ${create}`)).toEqual([]);
+  });
+
+  it("accepts exact per-privilege module grants without allowing an unrelated or broader grant", () => {
+    const create = "create table public.example (id text);";
+    const block = `do $$ declare app_grant record; begin
+      for app_grant in select grantee, privilege_type from information_schema.role_table_grants
+        where table_schema = 'public' and table_name = 'parameter_modules'
+          and privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+      loop execute format('grant %s on public.example to %I', app_grant.privilege_type, app_grant.grantee);
+      end loop; end $$;`;
+    expect(missingRuntimeGrants(`${create}\n${block}`)).toEqual([]);
+    for (const invalid of [block.replace("'parameter_modules'", "'unrelated'"),
+      block.replace("'public'", "'other_schema'"), block.replace("app_grant.grantee", "someone_else.grantee"),
+      block.replace("app_grant.privilege_type", "'ALL'"), block.replace("on public.example", "on public.unrelated"),
+      block.replace(", 'DELETE'", "")]) {
+      expect(missingRuntimeGrants(`${create}\n${invalid}`)).toEqual(["example"]);
+    }
+    expect(missingRuntimeGrants(`${block}\n${create}`)).toEqual(["example"]);
   });
 
   const migrationsDir = new URL("../../migrations/", import.meta.url);

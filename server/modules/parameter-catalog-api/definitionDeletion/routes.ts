@@ -2,6 +2,7 @@ import type { Database } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../../shared/http/router";
 import type { AuthContext } from "../../auth/types";
+import { createUserInvocation } from "../../auth/trustedInvocation";
 import { catalogDeleteDefinitionRequestSchema } from "../../contracts/dtoSchemas/parameterDefinitionDeletion";
 import type { DefinitionArchiveStores } from "./archives";
 import { deleteDefinition, previewDefinitionDeletion, requireDefinitionErasureAdministrator } from "./service";
@@ -24,7 +25,7 @@ export function registerDefinitionDeletionRoutes(router: WiseEffRouter, options:
     requireDefinitionErasureAdministrator(auth);
     const parsed = catalogDeleteDefinitionRequestSchema.safeParse(request.body);
     if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "请先读取并确认删除影响。", { issues: parsed.error.issues });
-    return { status: 200, body: await deleteDefinition(database(), auth,
+    return { status: 200, body: await deleteDefinition(database(), createUserInvocation(auth),
       request.params.definitionId!, parsed.data.previewToken, request.requestId, options) };
   });
 }

@@ -129,6 +129,7 @@ export async function readRegistry(
   db: Queryable,
   organizationId: string,
   catalog: RegistryCatalogSnapshot | null,
+  options: { includeAdminSettings?: boolean } = {},
 ): Promise<ParameterModuleRegistryDto> {
   const modules = await db.query<ParameterModuleRow>(
     `select
@@ -139,7 +140,7 @@ export async function readRegistry(
        coalesce(pm.description, '') as description,
        coalesce(pm.scope, '') as scope,
        coalesce(pm.importance, 'medium') as importance,
-       pm.importance_override,
+       ${options.includeAdminSettings === false ? "" : "pm.importance_override,"}
        coalesce(pm.kind, 'business') as kind,
        coalesce(pm.origin, 'curated') as origin,
        pm.source_key,
@@ -171,7 +172,8 @@ export async function readRegistry(
       order by priority desc, match_value asc`,
     [organizationId]
   );
-  const recognition = await loadModuleRecognitionSettings(db, organizationId, catalog);
+  const recognition = options.includeAdminSettings === false ? new Map()
+    : await loadModuleRecognitionSettings(db, organizationId, catalog);
   return {
     modules: modules.rows.map((row) =>
       ({ ...moduleFromRow(

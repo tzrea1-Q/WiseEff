@@ -58,10 +58,20 @@ const validCompatibles = (values: readonly string[]): string[] => [...new Set(va
   return parsed.ok ? [parsed.value] : [];
 }))];
 
+async function moduleRecognitionRulesAvailable(db: Queryable): Promise<boolean> {
+  // Historical upgrade fixtures run current binding code before migration 0212.
+  // Probe existence without issuing a failing statement inside their transaction.
+  const result = await db.query<{ available: boolean }>(
+    "select to_regclass('public.module_recognition_rules') is not null as available",
+  );
+  return result.rows[0]?.available === true;
+}
+
 /** Effective current settings; legacy records are defaults only, never the write target. */
 export async function loadModuleRecognitionSettings(
   db: Queryable, organizationId: string, catalog: Partial<CatalogSnapshot> | null = null,
 ): Promise<Map<string, ModuleRecognitionSettings>> {
+  const rulesAvailable = await moduleRecognitionRulesAvailable(db);
   const rows = await db.query<ModuleRecognitionRow>(
     `select module.id, module.kind, module.source_key,
        coalesce((select array_agg(mapping.match_value order by mapping.match_value)
@@ -69,12 +79,14 @@ export async function loadModuleRecognitionSettings(
            and mapping.parameter_module_id = module.id and mapping.match_kind = 'compatible'), '{}') as legacy_compatibles,
        node_type.bare_node_name as legacy_node_type,
        driver.driver_nature as legacy_nature, driver.instance_cardinality as legacy_cardinality,
-       rule.module_id as rule_module_id, rule.canonical_subject_id, rule.compatibles,
-       rule.driver_nature, rule.instance_cardinality, rule.node_type_name
+       ${rulesAvailable ? `rule.module_id as rule_module_id, rule.canonical_subject_id, rule.compatibles,
+       rule.driver_nature, rule.instance_cardinality, rule.node_type_name` : `null::text as rule_module_id,
+       null::text as canonical_subject_id, null::text[] as compatibles,
+       null::text as driver_nature, null::text as instance_cardinality, null::text as node_type_name`}
      from public.parameter_modules module
      left join public.driver_registrations driver on driver.attribution_subject_id = module.attribution_subject_id
      left join public.node_type_definitions node_type on node_type.attribution_subject_id = module.attribution_subject_id
-     left join public.module_recognition_rules rule on rule.organization_id = module.organization_id and rule.module_id = module.id
+     ${rulesAvailable ? "left join public.module_recognition_rules rule on rule.organization_id = module.organization_id and rule.module_id = module.id" : ""}
      where module.organization_id = $1 and module.kind in ('driver-group', 'node-type')`,
     [organizationId],
   );
@@ -142,6 +154,7 @@ export type EffectiveModuleRecognitionRule = {
 
 /** Placement is authoritative when a Subject is registered or moved after a local rule was saved. */
 export async function loadOrganizationRecognitionRules(db: Queryable, organizationId: string): Promise<EffectiveModuleRecognitionRule[]> {
+  if (!await moduleRecognitionRulesAvailable(db)) return [];
   const rules = await db.query<EffectiveModuleRecognitionRule>(
     `select module_id, canonical_subject_id, compatibles, driver_nature, instance_cardinality, node_type_name
      from public.module_recognition_rules where organization_id = $1`, [organizationId],

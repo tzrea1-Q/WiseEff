@@ -209,7 +209,7 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
   const scopes = organizations.length > 0 ? organizations : ["platform"];
   for (const organizationId of scopes) {
     const auth = inventoryAuth(organizationId);
-    const registry = await readRegistry(database, organizationId, null);
+    const registry = await readRegistry(database, organizationId, null, { includeAdminSettings: false });
     for (const module of registry.modules) {
       byKey.set(`parameter-module:${module.id}`, {
         kind: "parameter-module",
@@ -330,7 +330,7 @@ async function observeLegacyModule(
   organizationId: string,
   moduleId: string,
 ): Promise<ModQueryObservation> {
-  const registry = await readRegistry(database, organizationId, null);
+  const registry = await readRegistry(database, organizationId, null, { includeAdminSettings: false });
   const item = registry.modules.find((row) => row.id === moduleId);
   if (!item) {
     return {
@@ -800,7 +800,7 @@ export async function provideModParameterCatalogComparisonCaseBatchV2(
     digest: CatalogReleaseDigest(manifest.catalogRelease.digest),
   };
 
-  const registry = await readRegistry(input.database, organizationId, null);
+  const registry = await readRegistry(input.database, organizationId, null, { includeAdminSettings: false });
   const modules = [...registry.modules].sort((left, right) =>
     compareText(left.id, right.id) || compareText(left.kind, right.kind));
   const inventory: ComparisonCaseInventoryV2[] = modules.map((module) => ({

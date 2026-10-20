@@ -3,7 +3,7 @@ import pg from "pg";
 import type { Database, Queryable } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 import type { AuthContext } from "../../auth/types";
-import { createUserInvocation } from "../../auth/trustedInvocation";
+import { assertTrustedInvocationContext, type TrustedInvocationContext } from "../../auth/trustedInvocation";
 import { writePlatformAuditEvent } from "../../audit/repository";
 import { projectTrustedInvocationForAudit } from "../../audit/trustedAudit";
 import { prepareCatalogDefinitionErasure } from "../../catalog-publication/definitionErasure";
@@ -77,11 +77,14 @@ async function finishObjectCleanup(db: Database, definitionId: string, state: Er
   }
 }
 
-export async function deleteDefinition(db: Database, auth: AuthContext, definitionId: string,
+export async function deleteDefinition(db: Database, invocation: TrustedInvocationContext, definitionId: string,
   previewToken: string, requestId: string, stores: DefinitionArchiveStores = {}) {
+  const trusted = assertTrustedInvocationContext(invocation);
+  if (trusted.initiator !== "user") throw new ApiError("FORBIDDEN", "彻底删除参数定义必须由平台超级管理员本人执行。");
+  const auth = trusted.principal;
   requireDefinitionErasureAdministrator(auth);
   const auditId = randomUUID();
-  const actor = projectTrustedInvocationForAudit(createUserInvocation(auth));
+  const actor = projectTrustedInvocationForAudit(trusted);
   let preparedArchive: DefinitionArchiveErasure | undefined;
   let rolledBack = false;
   const result = await db.transaction(async tx => {

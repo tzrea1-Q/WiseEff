@@ -394,7 +394,11 @@ export async function updateParameterModule(
     ]
   );
 
-  if (result.rows[0] && nextName !== existing.name && parameterIdentityMode() === "legacy") {
+  // Structural module renames change display metadata, never retained flat
+  // labels. Registered business placements also read their live module label.
+  if (result.rows[0] && nextName !== existing.name && parameterIdentityMode() === "legacy"
+    && existing.kind !== "driver-group" && existing.kind !== "node-type"
+    && await countCanonicalPlacementsForModule(db, input) === 0) {
     const linked = await db.query<{ present: boolean }>(
       `select exists (
         select 1 from ${LEGACY_IDENTITY_SQL.definitionsTable}

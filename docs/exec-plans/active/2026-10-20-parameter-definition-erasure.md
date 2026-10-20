@@ -13,7 +13,7 @@ A platform administrator can permanently remove a shared definition and its valu
 - Only an authenticated, global `platform-admin` may preview or execute erasure. Preview and execution use the same target closure; a stale preview cannot authorize a changed deletion.
 - Remove the definition, all its revision/head rows, bindings, values, histories and associated governance/legacy records. Shared source occurrences/files, other definitions and their actual values remain.
 - Revoke affected multi-parameter requests rather than retaining a misleading approval over changed contents. Detach surviving replacement-value provenance instead of deleting the surviving value.
-- Rewrite affected Catalog release artifacts, embedded source documents and materialization fingerprints together. Keep surviving definition/revision identities and contents. Old pins become stale; caches and later installation must not revive an erased definition.
+- Rewrite affected Catalog release artifacts, embedded source documents and materialization fingerprints together. Keep surviving definition/revision identities and contents, except clearing erased successor references and retiring deprecated definitions that depended on them. Old pins become stale; caches and later installation must not revive an erased definition.
 - Scrub database and object archives. Preserve embedded original configuration files. Object deletion failure remains retryable and cannot report complete deletion.
 - Keep an erasure marker and audit containing identity, actor, counts and old/new hashes, without deleted definition contents or values.
 

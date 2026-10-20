@@ -3,9 +3,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Database } from "../../../shared/database/client";
 import { makeTestAuthContext } from "../../../testing/authContext";
-import { previewDefinitionDeletion, requireDefinitionErasureAdministrator } from "./service";
+import { createAgentInvocation, createSystemInvocation } from "../../auth/trustedInvocation";
+import { deleteDefinition, previewDefinitionDeletion, requireDefinitionErasureAdministrator } from "./service";
 
 describe("definition deletion boundary", () => {
+  it("rejects non-human invocations before any database write", async () => {
+    const db: Database = { query: vi.fn(), transaction: vi.fn() };
+    const auth = makeTestAuthContext({ roleId: "platform-admin" });
+    for (const invocation of [createSystemInvocation({ kind: "job", name: "erase" }),
+      createAgentInvocation(auth, { sessionId: "session", toolCallId: "call", approval: { required: false } })]) {
+      await expect(deleteDefinition(db, invocation, "pdef_selected", "preview", "request"))
+        .rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    }
+    expect(db.transaction).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
+  });
   it.each([
     { roleId: "admin" as const },
     { roleId: "platform-admin" as const, isActive: false },

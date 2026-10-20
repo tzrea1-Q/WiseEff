@@ -198,8 +198,10 @@ describe("canonical parameter Catalog schema", () => {
       "catalog_state",
       "catalog_subject_aliases",
       "catalog_subjects",
+      "definition_erasures",
       "definition_proposal_revisions",
       "definition_proposals",
+      "definition_purge_rows",
       "definition_replacement_previews",
       "definition_replacement_projects",
       "definition_replacements",
@@ -246,6 +248,16 @@ describe("canonical parameter Catalog schema", () => {
     `);
 
     expect(result.rows.map((row) => row.table_name)).toEqual(expected);
+    const maintenance = await client.query(`select c.relname as name,pg_get_userbyid(c.relowner) as owner,
+      has_table_privilege('public',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as public_access,
+      has_table_privilege('parameter_governance_writer_role',c.oid,'INSERT,UPDATE,DELETE,TRUNCATE') as writer_mutation,
+      has_table_privilege('catalog_synchronizer_role',c.oid,'INSERT,UPDATE,DELETE,TRUNCATE') as synchronizer_mutation
+      from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      where n.nspname='parameter_catalog' and c.relname=any($1::text[]) order by c.relname`,
+    [["definition_erasures", "definition_purge_rows"]]);
+    expect(maintenance.rows).toEqual(["definition_erasures", "definition_purge_rows"].map(name => ({
+      name, owner: "catalog_migration_owner", public_access: false, writer_mutation: false, synchronizer_mutation: false,
+    })));
   });
 
   it("persists the authoritative safe-integer Catalog release sequence", async () => {
